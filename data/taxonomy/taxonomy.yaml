@@ -1,0 +1,88 @@
+version: '1.0'
+project: HZense
+root_topics:
+  - id: topic-artificial-intelligence
+    name: Artificial Intelligence
+    children:
+      - id: topic-foundation-models
+        name: Foundation Models
+        children:
+          - { id: topic-language-models, name: Language Models }
+          - { id: topic-multimodal-models, name: Multimodal Models }
+          - { id: topic-reasoning-models, name: Reasoning Models }
+          - { id: topic-small-models, name: Small Models }
+      - id: topic-ai-agents
+        name: AI Agents
+        children:
+          - { id: topic-agent-architecture, name: Agent Architecture }
+          - { id: topic-tool-use, name: Tool Use }
+          - { id: topic-agent-memory, name: Memory }
+          - { id: topic-multi-agent-systems, name: Multi-Agent Systems }
+          - { id: topic-agent-protocols, name: Agent Protocols }
+      - id: topic-ai-security
+        name: AI Security
+        children:
+          - { id: topic-model-security, name: Model Security }
+          - { id: topic-agent-security, name: Agent Security }
+          - { id: topic-prompt-injection, name: Prompt Injection }
+          - { id: topic-ai-supply-chain-security, name: AI Supply Chain Security }
+          - { id: topic-ai-runtime-security, name: AI Runtime Security }
+      - id: topic-ai-infrastructure
+        name: AI Infrastructure
+        children:
+          - { id: topic-training-infrastructure, name: Training Infrastructure }
+          - { id: topic-inference-infrastructure, name: Inference Infrastructure }
+          - { id: topic-ai-networking, name: AI Networking }
+          - { id: topic-ai-data-infrastructure, name: AI Data Infrastructure }
+      - { id: topic-ai-safety, name: AI Safety }
+      - { id: topic-physical-ai, name: Physical AI }
+  - id: topic-cybersecurity
+    name: Cybersecurity
+    children:
+      - { id: topic-cloud-security, name: Cloud Security }
+      - { id: topic-endpoint-security, name: Endpoint Security }
+      - { id: topic-identity-access, name: Identity & Access }
+      - { id: topic-application-security, name: Application Security }
+      - { id: topic-network-security, name: Network Security }
+      - { id: topic-data-security, name: Data Security }
+      - { id: topic-zero-trust, name: Zero Trust }
+      - { id: topic-software-supply-chain-security, name: Software Supply Chain Security }
+      - { id: topic-hardware-security, name: Hardware Security }
+  - id: topic-semiconductors
+    name: Semiconductors
+    children:
+      - { id: topic-gpu, name: GPU }
+      - { id: topic-cpu, name: CPU }
+      - { id: topic-ai-accelerators, name: AI Accelerators }
+      - id: topic-memory
+        name: Memory
+        children:
+          - { id: topic-hbm, name: HBM }
+          - { id: topic-dram, name: DRAM }
+      - { id: topic-advanced-packaging, name: Advanced Packaging }
+      - { id: topic-lithography, name: Lithography }
+      - { id: topic-foundry, name: Foundry }
+      - { id: topic-eda, name: EDA }
+      - { id: topic-chiplets, name: Chiplets }
+      - { id: topic-semiconductor-supply-chain, name: Semiconductor Supply Chain }
+  - id: topic-robotics
+    name: Robotics
+    children:
+      - { id: topic-humanoid-robotics, name: Humanoid Robotics }
+      - { id: topic-industrial-robotics, name: Industrial Robotics }
+      - { id: topic-service-robotics, name: Service Robotics }
+      - { id: topic-robot-learning, name: Robot Learning }
+      - { id: topic-embodied-ai, name: Embodied AI }
+      - { id: topic-autonomous-navigation, name: Autonomous Navigation }
+      - { id: topic-robot-hardware, name: Robot Hardware }
+  - { id: topic-quantum, name: Quantum }
+  - { id: topic-cloud-infrastructure, name: Cloud & Infrastructure }
+  - { id: topic-autonomous-systems, name: Autonomous Systems }
+  - { id: topic-energy-technology, name: Energy Technology }
+  - { id: topic-space-technology, name: Space Technology }
+  - { id: topic-biotechnology, name: Biotechnology }
+
+cross_domain_relations:
+  - source: topic-ai-security
+    relation: related_to
+    target: topic-cybersecurity
