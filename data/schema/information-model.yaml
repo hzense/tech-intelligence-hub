@@ -1,4 +1,4 @@
-version: '1.0'
+version: '1.1'
 project: HZense
 
 id_policy:
@@ -42,15 +42,14 @@ content_types:
       trend: [rapid_growth, growth, stable, decline, rapid_decline]
       maturity: [research, early, emerging, growth, mature]
       strategic_value: [low, medium, high, critical]
-  paper:
-    required: [id, title, type, status, date]
+  paper_note:
+    description: HZense analysis or notes about a paper; distinct from the objective paper entity.
+    required: [id, title, type, status, date, paper]
     fields:
-      paper_url: url|null
-      conference: string|null
-      authors: entity_id[]
-      institutions: entity_id[]
+      paper: entity_id
       topics: topic_id[]
       importance: '1..5'
+      related_entities: entity_id[]
 
 entity_types:
   person:
@@ -61,16 +60,33 @@ entity_types:
     fields: [aliases, country, founded, website, categories, technologies, products]
   institution:
     required: [id, type, name, institution_type, status]
-    fields: [country, city, website, topics]
+    fields: [aliases, country, city, website, topics]
   technology:
     required: [id, type, name, status]
-    fields: [aliases, category, topics]
+    fields: [aliases, category, description, topics]
   product:
     required: [id, type, name, status]
-    fields: [company, product_type, technologies, topics]
-  paper:
+    fields: [aliases, company, product_type, technologies, topics, website]
+  model:
+    description: Named AI/ML or computational model distinct from the commercial product wrapping it.
     required: [id, type, name, status]
-    fields: [authors, institutions, topics, url]
+    fields: [aliases, developer, model_family, modalities, release_date, license, technologies, topics, website]
+  dataset:
+    description: Dataset, benchmark corpus, evaluation set, or structured research data asset.
+    required: [id, type, name, status]
+    fields: [aliases, creators, dataset_type, domain, release_date, license, size, topics, website]
+  standard_protocol:
+    description: Technical standard, protocol, specification, interface, or interoperability framework.
+    required: [id, type, name, status]
+    fields: [aliases, maintainers, standard_type, version, release_date, technologies, topics, website]
+  paper:
+    description: Objective scholarly work entity; HZense commentary belongs in paper_note content.
+    required: [id, type, name, status]
+    fields: [title, authors, institutions, published_at, venue, doi, arxiv_id, topics, url]
+  event:
+    description: Conference, launch event, policy hearing, competition, expo, or other time-bounded technology event.
+    required: [id, type, name, status]
+    fields: [aliases, event_type, starts_at, ends_at, location, organizer, topics, website]
 
 relation_model:
   required: [id, source, relation_type, target, confidence]
@@ -105,38 +121,19 @@ relation_model:
     - influences
     - depends_on
     - part_of
+    - trained_on
+    - evaluated_on
+    - implements
+    - conforms_to
+    - successor_of
+    - version_of
+    - presented_at
+    - organized_by
+    - announced_at
 
 signal_model:
-  required:
-    - id
-    - title
-    - type
-    - occurred_at
-    - captured_at
-    - status
-    - source_type
-    - source_name
-    - summary
-    - importance
-    - strength
-    - confidence
-    - novelty
-  types:
-    - research
-    - product
-    - funding
-    - acquisition
-    - hiring
-    - policy
-    - technology
-    - market
-    - people
-    - open_source
-    - security
-    - patent
-    - partnership
-    - regulation
-    - supply_chain
+  required: [id, title, type, occurred_at, captured_at, status, source_type, source_name, summary, importance, strength, confidence, novelty]
+  types: [research, product, funding, acquisition, hiring, policy, technology, market, people, open_source, security, patent, partnership, regulation, supply_chain]
   statuses: [inbox, reviewed, accepted, rejected, archived]
   scales:
     importance: '1..5'
@@ -147,29 +144,10 @@ signal_model:
 
 source_model:
   required: [id, name, type, trust_score, active]
-  types:
-    - website
-    - rss
-    - paper
-    - company_blog
-    - research_lab
-    - news_media
-    - newsletter
-    - github
-    - social
-    - regulator
-    - patent_database
+  types: [website, rss, paper, company_blog, research_lab, news_media, newsletter, github, social, regulator, patent_database]
 
 radar_model:
-  required:
-    - id
-    - topic
-    - date
-    - attention
-    - trend
-    - maturity
-    - strategic_value
-    - confidence
+  required: [id, topic, date, attention, trend, maturity, strategic_value, confidence]
   attention: '0..100'
   trend: [rapid_growth, growth, stable, decline, rapid_decline]
   maturity: [research, early, emerging, growth, mature]
@@ -187,6 +165,7 @@ data_consistency:
   - all_ids_unique
   - all_relation_endpoints_must_exist
   - all_topic_refs_must_exist
+  - paper_entity_and_paper_note_content_must_use_distinct_ids
   - rejected_signals_cannot_affect_radar
   - archived_entities_are_not_physically_deleted
   - search_and_embeddings_are_rebuildable
@@ -194,10 +173,5 @@ data_consistency:
 
 schema_versioning:
   semantic_versioning: true
-  minor_changes:
-    - add_optional_field
-    - add_enum_value
-  major_changes:
-    - change_id_policy
-    - remove_field
-    - change_source_of_truth
+  minor_changes: [add_optional_field, add_enum_value, add_entity_type]
+  major_changes: [change_id_policy, remove_field, change_source_of_truth]
