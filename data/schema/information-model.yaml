@@ -1,0 +1,203 @@
+version: '1.0'
+project: HZense
+
+id_policy:
+  format: '<type>-<slug>'
+  case: lowercase
+  separator: '-'
+  stable_after_publish: true
+  public_id_required: true
+
+content_types:
+  daily:
+    required: [id, title, type, status, date, language]
+    fields:
+      signal_count: integer
+      major_developments: integer
+      rising_topics: topic_id[]
+  weekly:
+    required: [id, title, type, status, week, start_date, end_date]
+    fields:
+      signal_count: integer
+      daily_refs: content_id[]
+      featured_topics: topic_id[]
+  insight:
+    required: [id, title, type, status, date, importance]
+    fields:
+      topics: topic_id[]
+      companies: entity_id[]
+      technologies: entity_id[]
+      evidence_signals: signal_id[]
+  briefing:
+    required: [id, title, type, status, date]
+    fields:
+      topics: topic_id[]
+      technologies: entity_id[]
+      importance: '1..5'
+  topic:
+    required: [id, title, type, status]
+    fields:
+      parent: topic_id|null
+      attention: '0..100'
+      trend: [rapid_growth, growth, stable, decline, rapid_decline]
+      maturity: [research, early, emerging, growth, mature]
+      strategic_value: [low, medium, high, critical]
+  paper:
+    required: [id, title, type, status, date]
+    fields:
+      paper_url: url|null
+      conference: string|null
+      authors: entity_id[]
+      institutions: entity_id[]
+      topics: topic_id[]
+      importance: '1..5'
+
+entity_types:
+  person:
+    required: [id, type, name, status]
+    fields: [aliases, role, organizations, location, research_areas, topics, website]
+  company:
+    required: [id, type, name, status]
+    fields: [aliases, country, founded, website, categories, technologies, products]
+  institution:
+    required: [id, type, name, institution_type, status]
+    fields: [country, city, website, topics]
+  technology:
+    required: [id, type, name, status]
+    fields: [aliases, category, topics]
+  product:
+    required: [id, type, name, status]
+    fields: [company, product_type, technologies, topics]
+  paper:
+    required: [id, type, name, status]
+    fields: [authors, institutions, topics, url]
+
+relation_model:
+  required: [id, source, relation_type, target, confidence]
+  directed: true
+  allowed_types:
+    - works_at
+    - founded
+    - leads
+    - advises
+    - invests_in
+    - acquired
+    - invested_in
+    - partnered_with
+    - competes_with
+    - supplies
+    - customer_of
+    - develops
+    - owns
+    - uses
+    - integrates
+    - commercializes
+    - employs
+    - researches
+    - created
+    - collaborates_with
+    - authored_by
+    - published_by
+    - supports
+    - challenges
+    - related_to
+    - mentions
+    - influences
+    - depends_on
+    - part_of
+
+signal_model:
+  required:
+    - id
+    - title
+    - type
+    - occurred_at
+    - captured_at
+    - status
+    - source_type
+    - source_name
+    - summary
+    - importance
+    - strength
+    - confidence
+    - novelty
+  types:
+    - research
+    - product
+    - funding
+    - acquisition
+    - hiring
+    - policy
+    - technology
+    - market
+    - people
+    - open_source
+    - security
+    - patent
+    - partnership
+    - regulation
+    - supply_chain
+  statuses: [inbox, reviewed, accepted, rejected, archived]
+  scales:
+    importance: '1..5'
+    strength: '1..5'
+    confidence: '0.0..1.0'
+    novelty: '0.0..1.0'
+  radar_eligible_statuses: [reviewed, accepted]
+
+source_model:
+  required: [id, name, type, trust_score, active]
+  types:
+    - website
+    - rss
+    - paper
+    - company_blog
+    - research_lab
+    - news_media
+    - newsletter
+    - github
+    - social
+    - regulator
+    - patent_database
+
+radar_model:
+  required:
+    - id
+    - topic
+    - date
+    - attention
+    - trend
+    - maturity
+    - strategic_value
+    - confidence
+  attention: '0..100'
+  trend: [rapid_growth, growth, stable, decline, rapid_decline]
+  maturity: [research, early, emerging, growth, mature]
+  strategic_value: [low, medium, high, critical]
+  confidence: '0.0..1.0'
+  time_series: true
+
+search_document:
+  derived: true
+  source_of_truth: false
+  required: [id, source_id, source_type, title, body, importance, date]
+  fields: [topics, entities, embedding_ref]
+
+data_consistency:
+  - all_ids_unique
+  - all_relation_endpoints_must_exist
+  - all_topic_refs_must_exist
+  - rejected_signals_cannot_affect_radar
+  - archived_entities_are_not_physically_deleted
+  - search_and_embeddings_are_rebuildable
+  - markdown_and_postgres_align_on_public_id
+
+schema_versioning:
+  semantic_versioning: true
+  minor_changes:
+    - add_optional_field
+    - add_enum_value
+  major_changes:
+    - change_id_policy
+    - remove_field
+    - change_source_of_truth
