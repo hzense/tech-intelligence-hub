@@ -2,195 +2,127 @@
 
 > **Sense what matters in technology.**
 
-**HZense** is a Technology Intelligence platform for continuously discovering, organizing, connecting, interpreting, and tracking important changes across technology.
+HZense is a Technology Intelligence platform for turning fragmented technical information into structured, versioned intelligence.
 
-**Official domain:** [hzense.com](https://hzense.com) *(registered; deployment pending)*  
-**Canonical production URL:** `https://hzense.com`  
-**GitHub organization:** `https://github.com/hzense`  
-**Official repository:** `https://github.com/hzense/tech-intelligence-hub`
+- Website: **https://hzense.com** *(registered; deployment pending)*
+- GitHub Organization: **https://github.com/hzense**
+- Main Repository: **https://github.com/hzense/tech-intelligence-hub**
 
-HZense is designed around a simple intelligence pipeline:
+## Intelligence pipeline
 
-> **Sources → Signals → Daily Intelligence → Weekly Intelligence → Topics → Insights → Radar**
+> **Sources → Signals → HZense Daily → HZense Weekly → Topics → Insights → Radar**
 
-The goal is not to build another news feed or bookmark collection. HZense turns fragmented technical information into a long-lived, structured intelligence system.
-
-## Brand and Domain
-
-| Item | Value |
-|---|---|
-| Brand | HZense |
-| Product category | Technology Intelligence |
-| Tagline | Sense what matters in technology. |
-| Primary domain | `hzense.com` |
-| Canonical URL | `https://hzense.com` |
-| GitHub organization | `github.com/hzense` |
-| Official repository | `github.com/hzense/tech-intelligence-hub` |
-| Domain status | Registered |
-| Website status | Pre-MVP; deployment pending |
-
-Planned public routes:
-
-```text
-https://hzense.com/
-https://hzense.com/daily
-https://hzense.com/weekly
-https://hzense.com/signals
-https://hzense.com/insights
-https://hzense.com/topics
-https://hzense.com/radar
-https://hzense.com/resources
-https://hzense.com/ask
-```
-
-## Product Modules
+## Product modules
 
 - **HZense Daily** — daily technology intelligence brief
-- **HZense Weekly** — weekly synthesis and selected reading
+- **HZense Weekly** — weekly synthesis
 - **HZense Signals** — atomic technology signals
 - **HZense Insights** — deep analysis and original judgments
-- **HZense Topics** — continuously evolving topic knowledge bases
-- **HZense Radar** — technology attention, trend, maturity and strategic-value tracking
+- **HZense Topics** — evolving topic knowledge bases
+- **HZense Radar** — attention, trend, maturity and strategic-value tracking
 - **HZense Resources** — people, companies, institutions, technologies, products, models, datasets, standards/protocols, papers and events
 - **Ask HZense** — future AI-powered intelligence retrieval and analysis
 
-## Core Principles
+## Architecture baseline
 
-1. **Knowledge assets must remain portable.** Formal long-form content lives in Git-managed Markdown/MDX.
-2. **Structured intelligence must remain queryable.** Entities, relations, signals, indexes and radar history live in PostgreSQL.
-3. **Signals are not insights.** Raw information moves through review, synthesis and analysis before influencing higher-level intelligence.
-4. **Human judgment remains important.** AI assists collection, classification, extraction and drafting; strategic interpretation remains reviewable.
-5. **Architecture-ready, not infrastructure-heavy.** Start simple and preserve clear upgrade paths for RAG, graph analytics and automation.
-
-## Information Model
-
-HZense currently defines ten primary entity types:
-
-| Entity | Purpose |
-|---|---|
-| Person | Researchers, professors, founders, executives and other important people |
-| Company | Commercial organizations and startups |
-| Institution | Universities, laboratories, research institutes and public organizations |
-| Technology | Technical concepts and technologies |
-| Product | Commercial or operational technology products |
-| Model | Named AI/ML or computational models |
-| Dataset | Datasets, benchmarks and evaluation corpora |
-| Standard / Protocol | Standards, protocols, specifications and interoperability frameworks |
-| Paper | Objective scholarly works |
-| Event | Conferences, launches, hearings, expos and other time-bounded events |
-
-A **Paper** is an objective entity. HZense commentary about a paper is stored separately as **PaperNote** content.
-
-## Technology Stack
-
-Current architecture baseline:
-
-- **Language:** TypeScript
-- **Web:** Next.js + React
-- **UI:** Tailwind CSS
-- **Content:** Markdown / MDX
-- **Database:** PostgreSQL
-- **ORM:** Drizzle ORM
-- **Vector Search:** pgvector
-- **Search:** PostgreSQL FTS → Hybrid Search
-- **Graph v1:** PostgreSQL relations
-- **Graph later:** Neo4j optional
-- **AI:** provider abstraction, OpenAI first
-- **Hosting:** Vercel
-- **Database Hosting:** Supabase or Neon
-- **Object Storage:** Cloudflare R2
-- **Automation:** GitHub Actions + scheduled jobs
-
-### Source of Truth
+- TypeScript
+- Next.js + React (next milestone)
+- Markdown / MDX as formal content source of truth
+- PostgreSQL + Drizzle ORM for structured intelligence
+- pgvector for semantic retrieval
+- PostgreSQL FTS → Hybrid Search
+- Vercel for the web application
+- Cloudflare R2 / S3-compatible storage for large media
 
 > **Git / Markdown = content Source of Truth**  
-> **PostgreSQL = entity / relation / index Source of Truth**
+> **PostgreSQL = entity / relation / signal / index Source of Truth**
 
-## Repository Direction
+## Repository structure
 
 ```text
-tech-intelligence-hub/
-├── apps/
-│   └── web/
-├── content/
-│   ├── daily/
-│   ├── weekly/
-│   ├── insights/
-│   ├── topics/
-│   ├── briefings/
-│   └── papers/
-├── packages/
-│   ├── content/
-│   ├── database/
-│   ├── search/
-│   ├── intelligence/
-│   └── ui/
-├── data/
-│   ├── schema/
-│   ├── taxonomy/
-│   └── radar/
-├── scripts/
-├── docs/
-└── .github/
+apps/
+  web/                     # Next.js application boundary
+content/
+  daily/
+  weekly/
+  insights/
+  topics/
+  briefings/
+  papers/
+packages/
+  content/                 # Zod schemas + Markdown validation
+  database/                # Drizzle physical schema
+  search/                  # search boundary
+  intelligence/            # ranking / RAG / Radar boundary
+  ui/                      # design-system boundary
+data/
+  schema/
+  taxonomy/
+  seed/
+  radar/
+db/
+  migrations/
+scripts/
+docs/
+  adr/
+.github/
+  workflows/
 ```
 
-The full repository skeleton will be created during the implementation phase.
+## Project baselines
 
-## Project Baselines
-
-- [`docs/DESIGN.md`](docs/DESIGN.md) — product vision, information architecture and implementation roadmap
-- [`docs/TECHNICAL_ARCHITECTURE.md`](docs/TECHNICAL_ARCHITECTURE.md) — technical architecture and technology decisions
-- [`docs/INFORMATION_MODEL.md`](docs/INFORMATION_MODEL.md) — knowledge and data model
+- [`docs/DESIGN.md`](docs/DESIGN.md) — product and information architecture
+- [`docs/TECHNICAL_ARCHITECTURE.md`](docs/TECHNICAL_ARCHITECTURE.md) — technical architecture
+- [`docs/INFORMATION_MODEL.md`](docs/INFORMATION_MODEL.md) — knowledge/data model
+- [`docs/DEVELOPMENT_FOUNDATION.md`](docs/DEVELOPMENT_FOUNDATION.md) — executable engineering foundation
+- [`docs/ENGINEERING_STANDARDS.md`](docs/ENGINEERING_STANDARDS.md) — engineering rules
+- [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md) — V1 acceptance criteria
 - [`data/schema/information-model.yaml`](data/schema/information-model.yaml) — machine-readable information model
-- [`data/taxonomy/taxonomy.yaml`](data/taxonomy/taxonomy.yaml) — controlled technology taxonomy
+- [`data/taxonomy/taxonomy.yaml`](data/taxonomy/taxonomy.yaml) — controlled taxonomy
 
-## Current Status
+## Current status
 
-**Foundation / pre-MVP**
+**Development Foundation v1.0 — complete**
 
 Completed:
 
-- [x] Product design baseline
-- [x] HZense brand baseline
-- [x] `hzense.com` primary domain registered
-- [x] GitHub Organization `hzense` created
-- [x] Main repository transferred to `hzense/tech-intelligence-hub`
-- [x] ChatGPT GitHub App connected to the HZense Organization
-- [x] Technical architecture baseline
-- [x] Information Model v1.1
-- [x] Initial taxonomy
-- [x] Machine-readable schema
+- [x] Product / brand / domain baseline
+- [x] GitHub Organization and public Organization profile
+- [x] Technical architecture
+- [x] Information Model v1.1 and taxonomy
+- [x] pnpm workspace + Turborepo repository skeleton
+- [x] Strict TypeScript / ESLint / Prettier baseline
+- [x] Vitest / Playwright baseline
+- [x] PostgreSQL / Drizzle physical schema
+- [x] pgvector-enabled migration baseline
+- [x] Executable Zod Front Matter validation
+- [x] Seed topics, entities, relations and historical signals
+- [x] Seed Daily / Weekly / Insight / Topic Markdown
+- [x] CI workflow baseline
+- [x] Architecture Decision Records
 
-Next:
+Next milestone:
 
-- [ ] HZense GitHub Organization profile (`hzense/.github`)
-- [ ] Repository skeleton
-- [ ] Seed data
-- [ ] Database schema / migrations
-- [ ] Executable content schema validation
-- [ ] Next.js application skeleton
-- [ ] First Vercel deployment and `hzense.com` binding
-- [ ] HZense Daily MVP
-- [ ] Insights / Topics / Weekly / Signals
-- [ ] Search
-- [ ] Radar
-- [ ] Ask HZense
+- [ ] Initialize the Next.js application in `apps/web`
+- [ ] Build Home + HZense Daily first
+- [ ] Add Insights / Topics / Weekly / Signals / Resources
+- [ ] Add basic search
+- [ ] Deploy to Vercel and bind `hzense.com`
 
-## Evolution
+## Local foundation checks
 
-```text
-V1  Knowledge Hub
-        ↓
-V2  Intelligence Platform
-        ↓
-V3  Intelligence Engine
-        ↓
-V4  Personal Technology Intelligence OS
+```bash
+corepack enable
+corepack prepare pnpm@11.21.0 --activate
+pnpm install
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm content:validate
+pnpm seed:validate
 ```
 
-Long-term direction:
-
-> **Discover → Understand → Connect → Track → Predict**
+The first dependency install should commit `pnpm-lock.yaml`. After that, CI should switch to a frozen lockfile install.
 
 ---
 
