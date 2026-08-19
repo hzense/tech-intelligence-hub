@@ -1,0 +1,15 @@
+{
+  "name": "@hzense/database",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src drizzle.config.ts",
+    "test": "vitest run --passWithNoTests",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "db:migrate": "drizzle-kit migrate --config drizzle.config.ts"
+  },
+  "dependencies": { "drizzle-orm": "^0.45.2", "pg": "^8.22.0" },
+  "devDependencies": { "drizzle-kit": "^0.31.10", "typescript": "^5.9.2", "vitest": "^4.1.10" }
+}

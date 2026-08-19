@@ -1,0 +1,32 @@
+{
+  "name": "hzense-tech-intelligence-hub",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@11.21.0",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "content:validate": "pnpm --filter @hzense/content validate",
+    "seed:validate": "node scripts/validate-seed.mjs",
+    "db:generate": "pnpm --filter @hzense/database db:generate",
+    "db:migrate": "pnpm --filter @hzense/database db:migrate",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^24.13.3",
+    "eslint": "^9.39.5",
+    "prettier": "^3.9.6",
+    "turbo": "^2.10.10",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10",
+    "yaml": "^2.9.0"
+  }
+}

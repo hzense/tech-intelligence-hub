@@ -1,0 +1,14 @@
+{
+  "name": "@hzense/content",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src test",
+    "validate": "tsx src/validate.ts"
+  },
+  "dependencies": { "gray-matter": "^4.0.3", "zod": "^4.4.3" },
+  "devDependencies": { "tsx": "^4.20.6", "typescript": "^5.9.2", "vitest": "^4.1.10" }
+}
