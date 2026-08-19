@@ -5,7 +5,9 @@
 **HZense** is a Technology Intelligence platform for continuously discovering, organizing, connecting, interpreting, and tracking important changes across technology.
 
 **Official domain:** [hzense.com](https://hzense.com) *(registered; deployment pending)*  
-**Canonical production URL:** `https://hzense.com`
+**Canonical production URL:** `https://hzense.com`  
+**GitHub organization:** `https://github.com/hzense`  
+**Official repository:** `https://github.com/hzense/tech-intelligence-hub`
 
 HZense is designed around a simple intelligence pipeline:
 
@@ -22,6 +24,8 @@ The goal is not to build another news feed or bookmark collection. HZense turns 
 | Tagline | Sense what matters in technology. |
 | Primary domain | `hzense.com` |
 | Canonical URL | `https://hzense.com` |
+| GitHub organization | `github.com/hzense` |
+| Official repository | `github.com/hzense/tech-intelligence-hub` |
 | Domain status | Registered |
 | Website status | Pre-MVP; deployment pending |
 
@@ -149,6 +153,9 @@ Completed:
 - [x] Product design baseline
 - [x] HZense brand baseline
 - [x] `hzense.com` primary domain registered
+- [x] GitHub Organization `hzense` created
+- [x] Main repository transferred to `hzense/tech-intelligence-hub`
+- [x] ChatGPT GitHub App connected to the HZense Organization
 - [x] Technical architecture baseline
 - [x] Information Model v1.1
 - [x] Initial taxonomy
@@ -156,6 +163,7 @@ Completed:
 
 Next:
 
+- [ ] HZense GitHub Organization profile (`hzense/.github`)
 - [ ] Repository skeleton
 - [ ] Seed data
 - [ ] Database schema / migrations
