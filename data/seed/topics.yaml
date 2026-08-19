@@ -1,0 +1,15 @@
+- id: topic-foundation-models
+  title: Foundation Models
+  status: strategic
+- id: topic-ai-agents
+  title: AI Agents
+  status: strategic
+- id: topic-ai-infrastructure
+  title: AI Infrastructure
+  status: strategic
+- id: topic-ai-security
+  title: AI Security
+  status: active
+- id: topic-humanoid-robotics
+  title: Humanoid Robotics
+  status: active

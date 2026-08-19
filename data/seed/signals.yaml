@@ -1,0 +1,154 @@
+- id: signal-20170612-transformer
+  title: Attention Is All You Need introduced the Transformer architecture
+  type: research
+  occurred_at: 2017-06-12T00:00:00Z
+  captured_at: 2026-08-20T00:00:00Z
+  status: accepted
+  source_id: source-arxiv
+  summary: The Transformer paper established the attention-centric architecture that became foundational to modern large language models.
+  importance: 5
+  strength: 5
+  confidence: 1.0
+  novelty: 1.0
+  topics: [topic-foundation-models]
+  entities: [paper-attention-is-all-you-need]
+- id: signal-20221130-chatgpt
+  title: OpenAI released ChatGPT publicly
+  type: product
+  occurred_at: 2022-11-30T00:00:00Z
+  captured_at: 2026-08-20T00:00:00Z
+  status: accepted
+  source_id: source-openai
+  summary: ChatGPT brought conversational large-language-model interaction to a mass audience.
+  importance: 5
+  strength: 5
+  confidence: 1.0
+  novelty: 1.0
+  topics: [topic-foundation-models, topic-ai-agents]
+  entities: [company-openai, product-chatgpt]
+- id: signal-20230314-gpt4
+  title: OpenAI announced GPT-4
+  type: product
+  occurred_at: 2023-03-14T00:00:00Z
+  captured_at: 2026-08-20T00:00:00Z
+  status: accepted
+  source_id: source-openai
+  summary: GPT-4 advanced multimodal and general-purpose foundation-model capabilities.
+  importance: 5
+  strength: 5
+  confidence: 1.0
+  novelty: 0.9
+  topics: [topic-foundation-models]
+  entities: [company-openai, model-gpt-4]
+- id: signal-20240418-llama3
+  title: Meta introduced Llama 3
+  type: product
+  occurred_at: 2024-04-18T00:00:00Z
+  captured_at: 2026-08-20T00:00:00Z
+  status: accepted
+  source_id: source-meta
+  summary: Llama 3 strengthened the open-weight foundation-model ecosystem.
+  importance: 4
+  strength: 4
+  confidence: 1.0
+  novelty: 0.8
+  topics: [topic-foundation-models]
+  entities: [company-meta, model-llama-3]
+- id: signal-20240513-gpt4o
+  title: OpenAI announced GPT-4o
+  type: product
+  occurred_at: 2024-05-13T00:00:00Z
+  captured_at: 2026-08-20T00:00:00Z
+  status: accepted
+  source_id: source-openai
+  summary: GPT-4o emphasized natively multimodal interaction across text, vision and audio.
+  importance: 5
+  strength: 4
+  confidence: 1.0
+  novelty: 0.9
+  topics: [topic-foundation-models]
+  entities: [company-openai, model-gpt-4o]
+- id: signal-20240318-blackwell
+  title: NVIDIA introduced the Blackwell platform
+  type: product
+  occurred_at: 2024-03-18T00:00:00Z
+  captured_at: 2026-08-20T00:00:00Z
+  status: accepted
+  source_id: source-nvidia
+  summary: Blackwell represented a major new NVIDIA platform generation for accelerated AI computing.
+  importance: 5
+  strength: 5
+  confidence: 1.0
+  novelty: 0.9
+  topics: [topic-ai-infrastructure]
+  entities: [company-nvidia, product-nvidia-blackwell]
+- id: signal-20240610-apple-intelligence
+  title: Apple announced Apple Intelligence
+  type: product
+  occurred_at: 2024-06-10T00:00:00Z
+  captured_at: 2026-08-20T00:00:00Z
+  status: accepted
+  source_id: source-apple
+  summary: Apple introduced a system-level personal intelligence initiative integrated across its device ecosystem.
+  importance: 4
+  strength: 4
+  confidence: 1.0
+  novelty: 0.8
+  topics: [topic-ai-agents, topic-foundation-models]
+  entities: [company-apple]
+- id: signal-20240620-claude35
+  title: Anthropic announced Claude 3.5 Sonnet
+  type: product
+  occurred_at: 2024-06-20T00:00:00Z
+  captured_at: 2026-08-20T00:00:00Z
+  status: accepted
+  source_id: source-anthropic
+  summary: Claude 3.5 Sonnet advanced Anthropic's frontier model family and computer-interaction direction.
+  importance: 4
+  strength: 4
+  confidence: 1.0
+  novelty: 0.8
+  topics: [topic-foundation-models, topic-ai-agents]
+  entities: [company-anthropic, model-claude-3-5-sonnet]
+- id: signal-20240229-figure-openai
+  title: Figure announced collaboration with OpenAI
+  type: partnership
+  occurred_at: 2024-02-29T00:00:00Z
+  captured_at: 2026-08-20T00:00:00Z
+  status: accepted
+  source_id: source-figure
+  summary: Figure announced an OpenAI collaboration focused on language and visual processing for humanoid robots.
+  importance: 4
+  strength: 4
+  confidence: 0.95
+  novelty: 0.8
+  topics: [topic-humanoid-robotics, topic-ai-agents]
+  entities: [company-figure-ai, company-openai]
+- id: signal-20240417-electric-atlas
+  title: Boston Dynamics unveiled the electric Atlas platform
+  type: product
+  occurred_at: 2024-04-17T00:00:00Z
+  captured_at: 2026-08-20T00:00:00Z
+  status: accepted
+  source_id: source-boston-dynamics
+  summary: Boston Dynamics introduced a fully electric Atlas generation for humanoid robotics development.
+  importance: 4
+  strength: 4
+  confidence: 1.0
+  novelty: 0.8
+  topics: [topic-humanoid-robotics]
+  entities: [company-boston-dynamics]
+- id: signal-20241125-mcp
+  title: Anthropic introduced Model Context Protocol
+  type: technology
+  occurred_at: 2024-11-25T00:00:00Z
+  captured_at: 2026-08-20T00:00:00Z
+  status: accepted
+  source_id: source-anthropic
+  summary: Model Context Protocol introduced an open protocol for connecting AI assistants with tools and data sources.
+  importance: 5
+  strength: 5
+  confidence: 1.0
+  novelty: 0.9
+  topics: [topic-ai-agents, topic-ai-security]
+  entities: [company-anthropic, standard-model-context-protocol]

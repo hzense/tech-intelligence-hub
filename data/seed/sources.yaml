@@ -1,0 +1,9 @@
+- { id: source-arxiv, name: arXiv, type: paper, trust_score: 90, active: true }
+- { id: source-openai, name: OpenAI, type: company_blog, trust_score: 95, active: true }
+- { id: source-anthropic, name: Anthropic, type: company_blog, trust_score: 95, active: true }
+- { id: source-meta, name: Meta AI, type: company_blog, trust_score: 95, active: true }
+- { id: source-google, name: Google, type: company_blog, trust_score: 95, active: true }
+- { id: source-nvidia, name: NVIDIA, type: company_blog, trust_score: 95, active: true }
+- { id: source-apple, name: Apple, type: company_blog, trust_score: 95, active: true }
+- { id: source-figure, name: Figure AI, type: company_blog, trust_score: 90, active: true }
+- { id: source-boston-dynamics, name: Boston Dynamics, type: company_blog, trust_score: 90, active: true }

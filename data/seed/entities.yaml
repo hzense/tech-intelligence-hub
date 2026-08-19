@@ -1,0 +1,17 @@
+- { id: company-openai, type: company, name: OpenAI, status: active }
+- { id: company-anthropic, type: company, name: Anthropic, status: active }
+- { id: company-meta, type: company, name: Meta, status: active }
+- { id: company-google, type: company, name: Google, status: active }
+- { id: company-nvidia, type: company, name: NVIDIA, status: active }
+- { id: company-apple, type: company, name: Apple, status: active }
+- { id: company-figure-ai, type: company, name: Figure AI, status: active }
+- { id: company-boston-dynamics, type: company, name: Boston Dynamics, status: active }
+- { id: product-chatgpt, type: product, name: ChatGPT, status: active }
+- { id: model-gpt-4, type: model, name: GPT-4, status: active }
+- { id: model-gpt-4o, type: model, name: GPT-4o, status: active }
+- { id: model-claude-3-5-sonnet, type: model, name: Claude 3.5 Sonnet, status: active }
+- { id: model-llama-3, type: model, name: Llama 3, status: active }
+- { id: product-nvidia-blackwell, type: product, name: NVIDIA Blackwell, status: active }
+- { id: standard-model-context-protocol, type: standard_protocol, name: Model Context Protocol, status: active }
+- { id: paper-attention-is-all-you-need, type: paper, name: Attention Is All You Need, status: active }
+- { id: dataset-swe-bench, type: dataset, name: SWE-bench, status: active }

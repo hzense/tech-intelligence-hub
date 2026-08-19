@@ -1,0 +1,8 @@
+- { id: relation-openai-chatgpt, source: company-openai, relation_type: develops, target: product-chatgpt, confidence: 1.0 }
+- { id: relation-openai-gpt4, source: company-openai, relation_type: develops, target: model-gpt-4, confidence: 1.0 }
+- { id: relation-openai-gpt4o, source: company-openai, relation_type: develops, target: model-gpt-4o, confidence: 1.0 }
+- { id: relation-anthropic-claude35, source: company-anthropic, relation_type: develops, target: model-claude-3-5-sonnet, confidence: 1.0 }
+- { id: relation-meta-llama3, source: company-meta, relation_type: develops, target: model-llama-3, confidence: 1.0 }
+- { id: relation-nvidia-blackwell, source: company-nvidia, relation_type: develops, target: product-nvidia-blackwell, confidence: 1.0 }
+- { id: relation-anthropic-mcp, source: company-anthropic, relation_type: created, target: standard-model-context-protocol, confidence: 1.0 }
+- { id: relation-figure-openai, source: company-figure-ai, relation_type: partnered_with, target: company-openai, confidence: 0.95 }
