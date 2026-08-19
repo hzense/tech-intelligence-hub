@@ -4,11 +4,40 @@
 
 **HZense** is a Technology Intelligence platform for continuously discovering, organizing, connecting, interpreting, and tracking important changes across technology.
 
+**Official domain:** [hzense.com](https://hzense.com) *(registered; deployment pending)*  
+**Canonical production URL:** `https://hzense.com`
+
 HZense is designed around a simple intelligence pipeline:
 
 > **Sources → Signals → Daily Intelligence → Weekly Intelligence → Topics → Insights → Radar**
 
 The goal is not to build another news feed or bookmark collection. HZense turns fragmented technical information into a long-lived, structured intelligence system.
+
+## Brand and Domain
+
+| Item | Value |
+|---|---|
+| Brand | HZense |
+| Product category | Technology Intelligence |
+| Tagline | Sense what matters in technology. |
+| Primary domain | `hzense.com` |
+| Canonical URL | `https://hzense.com` |
+| Domain status | Registered |
+| Website status | Pre-MVP; deployment pending |
+
+Planned public routes:
+
+```text
+https://hzense.com/
+https://hzense.com/daily
+https://hzense.com/weekly
+https://hzense.com/signals
+https://hzense.com/insights
+https://hzense.com/topics
+https://hzense.com/radar
+https://hzense.com/resources
+https://hzense.com/ask
+```
 
 ## Product Modules
 
@@ -119,6 +148,7 @@ Completed:
 
 - [x] Product design baseline
 - [x] HZense brand baseline
+- [x] `hzense.com` primary domain registered
 - [x] Technical architecture baseline
 - [x] Information Model v1.1
 - [x] Initial taxonomy
@@ -129,7 +159,9 @@ Next:
 - [ ] Repository skeleton
 - [ ] Seed data
 - [ ] Database schema / migrations
+- [ ] Executable content schema validation
 - [ ] Next.js application skeleton
+- [ ] First Vercel deployment and `hzense.com` binding
 - [ ] HZense Daily MVP
 - [ ] Insights / Topics / Weekly / Signals
 - [ ] Search
