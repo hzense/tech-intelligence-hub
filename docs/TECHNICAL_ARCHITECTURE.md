@@ -2,11 +2,13 @@
 
 ## HZense · Technology Intelligence — Technical Architecture
 
-**版本：** v1.0  
-**日期：** 2026-08-18  
+**版本：** v1.1  
+**日期：** 2026-08-19  
 **状态：** Architecture Baseline  
 **品牌：** HZense  
-**品牌标语：** Sense what matters in technology.
+**品牌标语：** Sense what matters in technology.  
+**官方域名：** `hzense.com`  
+**Canonical Production URL：** `https://hzense.com`
 
 ---
 
@@ -35,6 +37,8 @@ HZense 采用“Git/Markdown 为知识资产源，PostgreSQL 为索引与关系�
 | Object Storage | Cloudflare R2 / S3-compatible |
 | Hosting | Vercel |
 | DB Hosting | Supabase / Neon |
+| DNS | Registrar DNS initially; Cloudflare DNS optional before production |
+| Production Domain | `hzense.com` |
 | Source Control | GitHub |
 | Automation | GitHub Actions + Scheduled Jobs |
 
@@ -78,6 +82,9 @@ Topic Detection / Trend Analysis / Radar Calculation
 Next.js App
 Home / HZense Daily / Topics / Insights / Weekly
 Signals / Resources / Radar / Ask HZense
+        ↓
+Production
+https://hzense.com
 ```
 
 ## 5. Web 与 UI
@@ -104,11 +111,15 @@ content/
 
 ## 7. PostgreSQL 数据域
 
-Entities：Person、Company、Institution、Technology、Product、Paper、Topic。
+Entity 类型：Person、Company、Institution、Technology、Product、Model、Dataset、Standard / Protocol、Paper、Event。
 
-Relations 示例：Person → works_at → Company；Company → develops → Technology；Paper → researches → Topic；Signal → mentions → Company；Insight → supports → Topic。
+Topic 作为受控分类与知识组织单元独立管理，不与 Entity 类型混淆。
+
+Relations 示例：Person → works_at → Company；Company → develops → Technology；Model → trained_on → Dataset；Model → evaluated_on → Dataset；Product → uses → Model；Technology → implements → Standard / Protocol；Paper → presented_at → Event；Signal → mentions → Company；Insight → supports → Topic。
 
 Operational Data：Signals、Radar snapshots、Search metadata、Ingestion jobs、Source status、Admin settings。
+
+Paper 是客观论文 Entity；HZense 对论文的解读正文以 PaperNote Content 保存。
 
 ## 8. Search 与 Vector
 
@@ -183,6 +194,7 @@ tech-intelligence-hub/
 │   ├── intelligence/
 │   └── ui/
 ├── data/
+│   ├── schema/
 │   ├── taxonomy/
 │   └── radar/
 ├── scripts/
@@ -191,7 +203,8 @@ tech-intelligence-hub/
 ├── docs/
 │   ├── DESIGN.md
 │   ├── TECHNICAL_ARCHITECTURE.md
-│   └── CONTENT_SCHEMA.md
+│   ├── INFORMATION_MODEL.md
+│   └── adr/
 ├── db/
 └── .github/workflows/
 ```
@@ -200,12 +213,53 @@ tech-intelligence-hub/
 
 ```text
 GitHub
-├── Vercel → Next.js
+├── Vercel → Next.js → hzense.com
 ├── Supabase / Neon → PostgreSQL + pgvector
 └── Cloudflare R2 → Images / Attachments
 ```
 
 首版采用 Public Read + Admin Auth，不建设复杂多用户系统。
+
+### 14.1 域名与路由策略
+
+生产环境唯一主域名：
+
+```text
+https://hzense.com
+```
+
+域名规则：
+
+- `hzense.com` 是唯一 Canonical Host。
+- `www.hzense.com` 使用永久重定向跳转到 `https://hzense.com`。
+- Vercel Preview URL 仅用于开发、测试和 PR 预览，不参与搜索引擎索引。
+- 所有生产页面输出指向 `https://hzense.com` 的 canonical metadata。
+- 强制 HTTPS，并启用 HSTS 前先完成域名、证书和回滚验证。
+- DNS 供应商不在架构阶段强制锁定；首个部署可直接使用注册商 DNS，生产稳定前可评估迁移至 Cloudflare DNS。
+
+公共路由基线：
+
+```text
+/             Home
+/daily        HZense Daily
+/weekly       HZense Weekly
+/signals      HZense Signals
+/insights     HZense Insights
+/topics       HZense Topics
+/radar        HZense Radar
+/resources    HZense Resources
+/ask          Ask HZense
+```
+
+环境域名策略：
+
+```text
+Production    https://hzense.com
+Preview       Vercel-generated preview URL
+Local         http://localhost:3000
+```
+
+首次 MVP 部署时完成：Vercel Project 绑定、DNS 记录配置、SSL 验证、`www` 重定向、canonical metadata、sitemap 和 robots 配置。
 
 ## 15. CMS 策略
 
@@ -237,12 +291,22 @@ GitHub
 ## 18. 下一步
 
 1. 建立 Repository Skeleton。
-2. 创建 CONTENT_SCHEMA.md 和 taxonomy.yaml。
-3. 定义 Entity / Relation Schema。
-4. 初始化 Next.js + TypeScript + Tailwind + Drizzle。
-5. 接 PostgreSQL。
-6. 开始 HZense Website MVP。
+2. 建立 PostgreSQL / Drizzle Physical Schema 与 Migration Baseline。
+3. 建立 TypeScript + Zod 可执行内容校验。
+4. 建立 Seed Data 与引用一致性校验。
+5. 固化 pnpm / Turborepo / TypeScript / ESLint / Prettier / Vitest / Playwright / CI 工程规范。
+6. 初始化 Next.js + TypeScript + Tailwind + Drizzle。
+7. 完成首个可部署 MVP 后绑定 `hzense.com`。
 
 ---
+
+## v1.1 域名与模型同步
+
+- 正式生产域名锁定为 **hzense.com**。
+- Canonical URL 锁定为 **https://hzense.com**。
+- 增加生产、预览和本地环境的域名策略。
+- 增加公共路由、`www` 重定向、HTTPS、canonical metadata、sitemap 和 robots 基线。
+- 同步 Information Model v1.1 的十类 Entity 与 Paper / PaperNote 边界。
+- 更新开发启动前的下一步工程任务。
 
 > **HZense — Sense what matters in technology.**
