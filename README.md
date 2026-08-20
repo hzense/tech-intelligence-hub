@@ -1,4 +1,4 @@
-# HZense
+<p align="center">\n  <img src="assets/brand/hzense-logo.png" alt="HZense logo" width="180" />\n</p>\n\n# HZense
 
 > **Sense what matters in technology.**
 
