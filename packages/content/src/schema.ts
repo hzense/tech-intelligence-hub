@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 const id = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+// YAML date-only values are normalized in UTC; callers should avoid local-time Date constructors.
 const date = z.preprocess(
   (value) => (value instanceof Date && !Number.isNaN(value.valueOf()) ? value.toISOString().slice(0, 10) : value),
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
