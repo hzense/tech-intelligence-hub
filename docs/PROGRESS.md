@@ -48,7 +48,7 @@
 - [ ] 生成并提交 `pnpm-lock.yaml`
 - [ ] 使用 frozen lockfile 安装依赖
 - [x] 确认 lint、typecheck、unit tests、content validation、seed validation 全部通过
-- [x] 在 GitHub 上保留可核查的[绿色 CI 运行记录](https://github.com/hzense/tech-intelligence-hub/actions/runs/32343000918)
+- [x] 在 GitHub 上保留可核查的[绿色 CI 运行记录](https://github.com/hzense/tech-intelligence-hub/actions/runs/32343147358)
 - [ ] 补充内容中的 Topic / Entity / Signal 交叉引用校验
 
 ### P0 — 建立第一个可见网站
@@ -94,7 +94,7 @@
 | 基础关键词搜索 | ⬜ | 只有 Search 边界与数据库结构 |
 | 手工 Radar | ⬜ | 数据目录为空 |
 | 亮色与暗色主题 | ⬜ | 尚无 UI 应用 |
-| CI 全部通过 | 🟡 | [Foundation CI 已通过](https://github.com/hzense/tech-intelligence-hub/actions/runs/32343000918)；仍缺依赖锁文件与 frozen install |
+| CI 全部通过 | 🟡 | [Foundation CI 已通过](https://github.com/hzense/tech-intelligence-hub/actions/runs/32343147358)；仍缺依赖锁文件与 frozen install |
 | Vercel 生产部署与域名 | ⬜ | Repository README 标记 deployment pending |
 | sitemap、robots、canonical metadata | ⬜ | 尚未实现 |
 
@@ -102,9 +102,9 @@
 
 | 优先级 | 风险 | 处理方式 |
 |---|---|---|
-| P0 | 没有 lockfile，构建不可完全复现 | 完成首次依赖安装并提交 lockfile |
-| P0 | 尚无 lockfile，CI 仍使用非冻结安装 | 生成并提交 lockfile，然后切换到 frozen install |
+| P0 | 没有 lockfile，构建不可完全复现且 CI 仍使用非冻结安装 | 生成并提交 lockfile，然后切换到 frozen install |
 | P0 | 继续增加文档可能掩盖产品开发未启动 | 暂停非必要架构扩展，优先交付 Home + Daily |
+| P1 | 日期字段当前只校验格式，不校验真实日历日期 | 后续增加语义日期校验与边界测试 |
 | P1 | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程 |
 | P1 | 没有 Issue / PR 任务流 | 后续里程碑拆分为可验收 Issue，通过 PR 合并 |
 | P1 | 数据库与部署尚未落地 | 先使用 Preview 验证产品，再开通生产基础设施 |
