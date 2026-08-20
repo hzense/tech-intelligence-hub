@@ -75,6 +75,7 @@ docs/
 - [`docs/TECHNICAL_ARCHITECTURE.md`](docs/TECHNICAL_ARCHITECTURE.md) — technical architecture
 - [`docs/INFORMATION_MODEL.md`](docs/INFORMATION_MODEL.md) — knowledge/data model
 - [`docs/DEVELOPMENT_FOUNDATION.md`](docs/DEVELOPMENT_FOUNDATION.md) — executable engineering foundation
+- [`docs/PROGRESS.md`](docs/PROGRESS.md) — live development progress dashboard
 - [`docs/ENGINEERING_STANDARDS.md`](docs/ENGINEERING_STANDARDS.md) — engineering rules
 - [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md) — V1 acceptance criteria
 - [`data/schema/information-model.yaml`](data/schema/information-model.yaml) — machine-readable information model
