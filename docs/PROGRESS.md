@@ -10,7 +10,7 @@
 
 | 进度轴 | 当前进度 | 状态 | 判断 |
 |---|---:|---|---|
-| 开发基础建设 | 80% | 🟡 基本完成 | 架构、Monorepo、数据模型和校验工具已建立；依赖锁定与可验证 CI 仍待完成 |
+| 开发基础建设 | 85% | 🟡 基本完成 | 架构、Monorepo、数据模型和校验工具已建立，完整 CI 已通过；依赖锁定仍待完成 |
 | 网站 MVP | 12% | 🔴 起步阶段 | 内容与数据底座已存在，但 Next.js 应用和用户页面尚未初始化 |
 | 生产就绪度 | 5% | 🔴 尚未就绪 | 尚无数据库实例、预览部署、生产部署和域名绑定证据 |
 
@@ -20,7 +20,7 @@
 |---|---|---:|---|
 | 0. 品牌与产品基线 | ✅ 完成 | 100% | HZense 品牌、产品定位、模块、官方域名和 MVP 范围确定 |
 | 1. 技术与信息架构 | ✅ 完成 | 100% | 技术栈、Source of Truth、信息模型、taxonomy 和 ADR 确定 |
-| 2. Development Foundation | 🟡 验证中 | 80% | Monorepo、Schema、Migration、Validation、Seed、测试和 CI 可重复运行 |
+| 2. Development Foundation | 🟡 验证中 | 85% | Monorepo、Schema、Migration、Validation、Seed 与 CI 已验证；可重复锁定安装仍待完成 |
 | 3. Web Application Shell | ⬜ 未开始 | 0% | Next.js、Tailwind、App Router、主题、全局布局和导航可运行 |
 | 4. MVP 内容与功能 | ⬜ 未开始 | 0% | 核心路由、Markdown 内容加载、引用解析、搜索和 Radar 可用 |
 | 5. Production Release | ⬜ 未开始 | 0% | Vercel 生产部署、数据库、域名、HTTPS、SEO 与运行监控完成 |
@@ -38,6 +38,7 @@
 - [x] Topic、Entity、Relation、Source、Signal 种子数据
 - [x] Daily、Weekly、Insight、Topic 样例内容
 - [x] GitHub Actions CI 工作流定义
+- [x] Foundation CI 完整通过（install、lint、typecheck、test、content validation、seed validation）
 - [x] 架构决策记录（ADR）
 
 ## 当前里程碑：Web MVP Alpha
@@ -46,8 +47,8 @@
 
 - [ ] 生成并提交 `pnpm-lock.yaml`
 - [ ] 使用 frozen lockfile 安装依赖
-- [ ] 确认 lint、typecheck、unit tests、content validation、seed validation 全部通过
-- [ ] 在 GitHub 上保留可核查的绿色 CI 运行记录
+- [x] 确认 lint、typecheck、unit tests、content validation、seed validation 全部通过
+- [x] 在 GitHub 上保留可核查的[绿色 CI 运行记录](https://github.com/hzense/tech-intelligence-hub/actions/runs/32343000918)
 - [ ] 补充内容中的 Topic / Entity / Signal 交叉引用校验
 
 ### P0 — 建立第一个可见网站
@@ -93,7 +94,7 @@
 | 基础关键词搜索 | ⬜ | 只有 Search 边界与数据库结构 |
 | 手工 Radar | ⬜ | 数据目录为空 |
 | 亮色与暗色主题 | ⬜ | 尚无 UI 应用 |
-| CI 全部通过 | 🟡 | Workflow 已定义，但仍缺依赖锁文件和可核查绿色运行 |
+| CI 全部通过 | 🟡 | [Foundation CI 已通过](https://github.com/hzense/tech-intelligence-hub/actions/runs/32343000918)；仍缺依赖锁文件与 frozen install |
 | Vercel 生产部署与域名 | ⬜ | Repository README 标记 deployment pending |
 | sitemap、robots、canonical metadata | ⬜ | 尚未实现 |
 
@@ -102,7 +103,7 @@
 | 优先级 | 风险 | 处理方式 |
 |---|---|---|
 | P0 | 没有 lockfile，构建不可完全复现 | 完成首次依赖安装并提交 lockfile |
-| P0 | CI 存在但缺少可核查通过记录 | 修复后在 PR 和 main 上跑通 CI |
+| P0 | 尚无 lockfile，CI 仍使用非冻结安装 | 生成并提交 lockfile，然后切换到 frozen install |
 | P0 | 继续增加文档可能掩盖产品开发未启动 | 暂停非必要架构扩展，优先交付 Home + Daily |
 | P1 | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程 |
 | P1 | 没有 Issue / PR 任务流 | 后续里程碑拆分为可验收 Issue，通过 PR 合并 |
@@ -120,4 +121,4 @@
 
 | 日期 | 更新 |
 |---|---|
-| 2026-08-20 | 创建首版进度看板；确认项目处于 Development Foundation 向 Website MVP 过渡阶段 |
+| 2026-08-20 | 创建首版进度看板；修复 pnpm 11 构建授权与 YAML 日期校验；Foundation CI 首次完整通过 |
