@@ -6,8 +6,17 @@ import { dailySignals } from "@/lib/content";
 export const metadata: Metadata = {
   title: "每日简报 — 2024 年 6 月 20 日",
   description: "涵盖基础模型、AI 基础设施与 AI 安全的历史示例简报。",
-  openGraph: { images: [] },
-  twitter: { images: [] },
+  openGraph: {
+    title: "每日简报 — 2024 年 6 月 20 日",
+    description: "涵盖基础模型、AI 基础设施与 AI 安全的历史示例简报。",
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "HZense 科技情报" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "每日简报 — 2024 年 6 月 20 日",
+    description: "涵盖基础模型、AI 基础设施与 AI 安全的历史示例简报。",
+    images: ["/og.png"],
+  },
 };
 
 export default function DailyDetailPage() {
@@ -38,7 +47,7 @@ export default function DailyDetailPage() {
                   <span className="signal-category">{signal.category}</span>
                   <h2>{signal.title}</h2>
                   <p>{signal.summary}</p>
-                  <div className="why-it-matters"><strong>为什么重要</strong><p>{index === 0 ? "分发能力与工作流控制带来的复利，可能快于单纯的模型差异化。" : index === 1 ? "基础设施设计正在决定产品经济性、可靠性与能力交付速度。" : "自主执行会放大身份、权限、隔离与可观测性薄弱所带来的风险。"}</p></div>
+                  <div className="why-it-matters"><strong>为什么重要</strong><p>{signal.whyItMatters}</p></div>
                 </div>
               </section>
             ))}
