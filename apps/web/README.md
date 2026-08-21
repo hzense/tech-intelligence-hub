@@ -15,4 +15,8 @@ pnpm --filter @hzense/web dev
 The initial MVP includes the responsive home experience, technology radar, theme toggle,
 Daily index, and a historical seed briefing route.
 
-Current hosted checkpoint: https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site
+## Styling conventions
+
+HZense uses semantic CSS classes and centralized design tokens as its primary styling
+convention. Tailwind remains available in the toolchain, but new interface work should
+follow the existing semantic class system unless the team explicitly decides to migrate.
