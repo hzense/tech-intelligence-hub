@@ -9,7 +9,14 @@ export function SiteShell({ children }: { children: ReactNode }) {
       <header className="site-header">
         <div className="section-shell header-inner">
           <Link className="brand" href="/" aria-label="HZense 首页">
-            <Image src="/hzense-logo.png" width={44} height={44} alt="" priority />
+            <Image
+              src="/hzense-logo.png"
+              width={44}
+              height={44}
+              alt=""
+              priority
+              unoptimized
+            />
             <span><strong>HZense</strong><small>科技情报</small></span>
           </Link>
           <nav aria-label="主导航">
