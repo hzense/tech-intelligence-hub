@@ -4,21 +4,21 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL("https://hzense.com"),
   title: {
-    default: "HZense — Technology Intelligence",
+    default: "HZense — 科技情报",
     template: "%s · HZense",
   },
   description:
-    "HZense turns fragmented technology signals into structured, versioned intelligence.",
+    "HZense 将分散的科技信号转化为结构化、可追溯的科技情报。",
   openGraph: {
-    title: "HZense — Technology Intelligence",
-    description: "Sense what matters in technology.",
+    title: "HZense — 科技情报",
+    description: "感知科技真正重要的变化。",
     type: "website",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "HZense Technology Intelligence" }],
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "HZense 科技情报" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "HZense — Technology Intelligence",
-    description: "Sense what matters in technology.",
+    title: "HZense — 科技情报",
+    description: "感知科技真正重要的变化。",
     images: ["/og.png"],
   },
   icons: {
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="zh-CN" suppressHydrationWarning>
       <body>{children}</body>
     </html>
   );

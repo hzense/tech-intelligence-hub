@@ -8,19 +8,19 @@ export function SiteShell({ children }: { children: ReactNode }) {
     <div className="site-frame">
       <header className="site-header">
         <div className="section-shell header-inner">
-          <Link className="brand" href="/" aria-label="HZense home">
+          <Link className="brand" href="/" aria-label="HZense 首页">
             <Image src="/hzense-logo.png" width={44} height={44} alt="" priority />
-            <span><strong>HZense</strong><small>Technology Intelligence</small></span>
+            <span><strong>HZense</strong><small>科技情报</small></span>
           </Link>
-          <nav aria-label="Primary navigation">
-            <Link href="/daily">Daily</Link>
-            <Link href="/#intelligence">Insights</Link>
-            <Link href="/#radar">Radar</Link>
-            <span className="nav-muted">Topics</span>
+          <nav aria-label="主导航">
+            <Link href="/daily">每日简报</Link>
+            <Link href="/#intelligence">洞察</Link>
+            <Link href="/#radar">雷达</Link>
+            <span className="nav-muted">专题</span>
           </nav>
           <div className="header-actions">
             <ThemeToggle />
-            <a className="ask-link" href="mailto:hello@hzense.com">Ask HZense <span>↗</span></a>
+            <a className="ask-link" href="mailto:hello@hzense.com">联系 HZense <span>↗</span></a>
           </div>
         </div>
       </header>
@@ -29,9 +29,9 @@ export function SiteShell({ children }: { children: ReactNode }) {
         <div className="section-shell footer-inner">
           <div>
             <strong>HZense</strong>
-            <span>Sense what matters in technology.</span>
+            <span>感知科技真正重要的变化。</span>
           </div>
-          <p>Structured signals. Connected evidence. Clearer decisions.</p>
+          <p>结构化信号，关联证据，更清晰的决策。</p>
           <span>© 2026 HZense</span>
         </div>
       </footer>

@@ -16,7 +16,7 @@ export function ThemeToggle() {
   }
 
   return (
-    <button className="theme-toggle" type="button" onClick={toggleTheme} aria-label="Toggle color theme">
+    <button className="theme-toggle" type="button" onClick={toggleTheme} aria-label="切换亮色或暗色主题">
       <span aria-hidden="true">◐</span>
     </button>
   );

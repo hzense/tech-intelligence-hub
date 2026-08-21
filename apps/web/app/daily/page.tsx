@@ -4,8 +4,8 @@ import { SiteShell } from "@/components/site-shell";
 import { dailySignals } from "@/lib/content";
 
 export const metadata: Metadata = {
-  title: "HZense Daily",
-  description: "Daily technology intelligence briefs from HZense.",
+  title: "每日简报",
+  description: "HZense 每日科技情报简报。",
 };
 
 export default function DailyPage() {
@@ -13,20 +13,20 @@ export default function DailyPage() {
     <SiteShell>
       <main className="page-main section-shell">
         <section className="page-hero">
-          <p className="kicker">HZENSE DAILY</p>
-          <h1>The signals worth carrying into your day.</h1>
-          <p>Concise technology intelligence, connected to deeper topics, entities, and evidence.</p>
+          <p className="kicker">HZENSE 每日简报</p>
+          <h1>值得带入今天的重要信号。</h1>
+          <p>精炼的科技情报，并与更深入的专题、实体和证据相互关联。</p>
         </section>
-        <section className="daily-list" aria-label="Daily briefs">
+        <section className="daily-list" aria-label="每日简报列表">
           <Link className="daily-list-feature" href="/daily/2024-06-20">
             <div>
-              <span className="archive-label">HISTORICAL SEED BRIEF</span>
-              <time dateTime="2024-06-20">20 June 2024</time>
+              <span className="archive-label">历史示例简报</span>
+              <time dateTime="2024-06-20">2024 年 6 月 20 日</time>
             </div>
             <div>
-              <h2>Platform shifts, infrastructure pressure, and AI security</h2>
-              <p>Three connected signals establish the initial HZense content model and reading experience.</p>
-              <div className="brief-stats"><span>3 signals</span><span>3 developments</span><span>3 topics</span></div>
+              <h2>平台转型、基础设施压力与 AI 安全</h2>
+              <p>三个相互关联的信号，共同构成 HZense 首个内容模型与阅读体验。</p>
+              <div className="brief-stats"><span>3 个信号</span><span>3 项进展</span><span>3 个专题</span></div>
             </div>
             <span className="arrow-box">↗</span>
           </Link>
