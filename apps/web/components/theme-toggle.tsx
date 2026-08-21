@@ -1,14 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
-
 export function ThemeToggle() {
-  useEffect(() => {
-    const stored = window.localStorage.getItem("hzense-theme");
-    const enabled = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
-    document.documentElement.dataset.theme = enabled ? "dark" : "light";
-  }, []);
-
   function toggleTheme() {
     const next = document.documentElement.dataset.theme !== "dark";
     document.documentElement.dataset.theme = next ? "dark" : "light";
