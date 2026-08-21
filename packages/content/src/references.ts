@@ -1,6 +1,6 @@
 import type { FrontMatter } from './schema.js';
 
-export type ReferenceKind = 'content' | 'entity' | 'signal' | 'topic';
+export type ReferenceKind = 'content' | 'daily' | 'entity' | 'signal' | 'topic';
 
 export interface ContentDocument {
   file: string;
@@ -71,7 +71,7 @@ export function findReferenceIssues(
         checkReferences(issues, document, 'signal_refs', 'signal', frontMatter.signal_refs, catalogs.signalIds);
         break;
       case 'weekly':
-        checkReferences(issues, document, 'daily_refs', 'content', frontMatter.daily_refs, dailyIds);
+        checkReferences(issues, document, 'daily_refs', 'daily', frontMatter.daily_refs, dailyIds);
         checkReferences(issues, document, 'featured_topics', 'topic', frontMatter.featured_topics, topicIds);
         break;
       case 'insight':

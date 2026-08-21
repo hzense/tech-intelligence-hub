@@ -67,6 +67,18 @@ describe('content cross-reference validation', () => {
         topics: [],
         evidence_signals: [],
       }),
+      document('weekly.md', {
+        id: 'weekly-2024-w25',
+        title: 'Weekly',
+        type: 'weekly',
+        status: 'published',
+        week: '2024-W25',
+        start_date: '2024-06-17',
+        end_date: '2024-06-23',
+        signal_count: 1,
+        daily_refs: ['daily-missing'],
+        featured_topics: [],
+      }),
     ];
 
     expect(findReferenceIssues(documents, catalogs)).toEqual(
@@ -75,6 +87,7 @@ describe('content cross-reference validation', () => {
         expect.objectContaining({ field: 'topics', reason: 'missing', target: 'topic-missing' }),
         expect.objectContaining({ field: 'companies', reason: 'missing', target: 'company-missing' }),
         expect.objectContaining({ field: 'evidence_signals', reason: 'missing', target: 'signal-missing' }),
+        expect.objectContaining({ field: 'daily_refs', kind: 'daily', reason: 'missing', target: 'daily-missing' }),
       ]),
     );
   });

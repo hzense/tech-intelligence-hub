@@ -52,7 +52,7 @@
 - [x] 生成并提交 `pnpm-lock.yaml`
 - [x] 使用 frozen lockfile 安装依赖
 - [x] 确认 lint、typecheck、unit tests、content validation、seed validation 全部通过
-- [x] 在 GitHub 上保留可核查的[绿色 CI 运行记录](https://github.com/hzense/tech-intelligence-hub/actions/runs/32495187964)
+- [x] 在 GitHub 上保留可核查的[最终 head CI 记录](https://github.com/hzense/tech-intelligence-hub/pull/4/checks)
 - [x] 补充内容中的 Topic / Entity / Signal 交叉引用校验
 
 ### P0 — 建立第一个可见网站
@@ -95,11 +95,11 @@
 | Home、Daily、Insights、Topics、Weekly、Signals、Resources 路由 | 🟡 | Home 与 Daily 已实现；其余路由待开发 |
 | 桌面端与移动端可用 | 🟡 | 响应式页面已发布；仍缺 Playwright 视觉与交互冒烟测试 |
 | Markdown/MDX 通过验证层加载 | 🟡 | Schema 和 validator 已存在，但未接入 Web runtime |
-| Topic / Entity 引用无断链 | 🟡 | Seed 引用有基础校验，内容引用尚未完整校验 |
+| Topic / Entity 引用无断链 | ✅ | Seed 与内容引用均由 CI 校验 |
 | 基础关键词搜索 | ⬜ | 只有 Search 边界与数据库结构 |
 | 手工 Radar | 🟡 | 首页 seed Radar 已可用；尚未接入正式数据目录 |
 | 亮色与暗色主题 | ✅ | Web Shell 已实现主题切换 |
-| CI 全部通过 | ✅ | [PR #4 CI 已通过](https://github.com/hzense/tech-intelligence-hub/actions/runs/32495187964)，包含 frozen install、内容与 Seed 校验 |
+| CI 全部通过 | ✅ | [PR #4 最终 head CI](https://github.com/hzense/tech-intelligence-hub/pull/4/checks)包含 frozen install、内容与 Seed 校验 |
 | Vercel 生产部署与域名 | ⬜ | 已有 Hosted Alpha，但 Vercel 与正式域名尚未配置 |
 | sitemap、robots、canonical metadata | ⬜ | 已有基础 metadata 与 Open Graph；sitemap、robots 和 canonical 待实现 |
 
@@ -120,6 +120,7 @@
 3. “文档已写”不等于“功能已实现”；“Workflow 已定义”不等于“CI 已通过”。
 4. 任务完成必须附带至少一种证据：测试结果、绿色 CI、预览链接、生产链接或可核查文件。
 5. Website MVP 完成度以 [MVP Acceptance Criteria](./MVP_ACCEPTANCE.md) 为准。
+6. CI 证据必须对应 PR 最终 head commit；合并前最后核对一次，PR 内优先使用始终指向当前 head 的 Checks 链接。
 
 ## 更新记录
 
