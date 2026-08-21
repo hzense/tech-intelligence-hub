@@ -12,7 +12,7 @@ export default function Home() {
               <span className="live-dot" /> 持续提炼的科技情报
             </div>
             <h1>
-              感知科技<span>真正重要</span>的变化。
+              感知科技的<span>变化</span>
             </h1>
             <p className="hero-intro">
               HZense 将分散的信号转化为结构化情报——帮助你看清发生了什么、

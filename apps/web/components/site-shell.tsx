@@ -29,7 +29,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
         <div className="section-shell footer-inner">
           <div>
             <strong>HZense</strong>
-            <span>感知科技真正重要的变化。</span>
+            <span>感知科技的变化</span>
           </div>
           <p>结构化信号，关联证据，更清晰的决策。</p>
           <span>© 2026 HZense</span>
