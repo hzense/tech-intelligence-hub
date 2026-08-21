@@ -35,14 +35,14 @@ export default function Home() {
             </div>
           </div>
 
-          <aside className="signal-panel" aria-label="科技信号概览">
+          <aside className="signal-panel" aria-label="科技信号示例">
             <div className="signal-glow" />
             <div className="signal-panel-header">
               <div>
                 <span className="panel-kicker">信号图谱</span>
                 <strong>新兴科技情报</strong>
               </div>
-              <span className="status-pill">实时</span>
+              <span className="status-pill">示例数据</span>
             </div>
             <div className="signal-visual" aria-hidden="true">
               <div className="orbit orbit-one" />
@@ -55,9 +55,9 @@ export default function Home() {
               <span className="node node-agent">智能体</span>
             </div>
             <div className="signal-metrics">
-              <div><strong>24</strong><span>追踪信号</span></div>
-              <div><strong>5</strong><span>优先级变化</span></div>
-              <div><strong>3</strong><span>上升议题</span></div>
+              <div><strong>24</strong><span>追踪信号（示例）</span></div>
+              <div><strong>5</strong><span>优先级变化（示例）</span></div>
+              <div><strong>3</strong><span>上升议题（示例）</span></div>
             </div>
           </aside>
         </section>
