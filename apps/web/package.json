@@ -6,6 +6,7 @@
   "scripts": {
     "predev": "pnpm --filter @hzense/content build",
     "dev": "next dev",
+    "prebuild": "pnpm --filter @hzense/content build",
     "build": "next build",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",

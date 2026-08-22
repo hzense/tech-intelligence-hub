@@ -17,6 +17,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      - name: Verify direct Web deployment build
+        run: pnpm --filter @hzense/web build
       - run: pnpm build
       - run: pnpm test
       - run: pnpm content:validate

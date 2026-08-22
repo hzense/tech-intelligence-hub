@@ -75,6 +75,7 @@ docs/
 - [`docs/TECHNICAL_ARCHITECTURE.md`](docs/TECHNICAL_ARCHITECTURE.md) — technical architecture
 - [`docs/INFORMATION_MODEL.md`](docs/INFORMATION_MODEL.md) — knowledge/data model
 - [`docs/DEVELOPMENT_FOUNDATION.md`](docs/DEVELOPMENT_FOUNDATION.md) — executable engineering foundation
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — production deployment runbook
 - [`docs/PROGRESS.md`](docs/PROGRESS.md) — live development progress dashboard
 - [`docs/ENGINEERING_STANDARDS.md`](docs/ENGINEERING_STANDARDS.md) — engineering rules
 - [`docs/MVP_ACCEPTANCE.md`](docs/MVP_ACCEPTANCE.md) — V1 acceptance criteria
@@ -83,7 +84,7 @@ docs/
 
 ## Current status
 
-**Development Foundation v1.0 — complete**
+**Website MVP Alpha — in progress**
 
 Completed:
 
@@ -100,12 +101,13 @@ Completed:
 - [x] Seed topics, entities, relations and historical signals
 - [x] Seed Daily / Weekly / Insight / Topic Markdown
 - [x] CI workflow baseline
+- [x] Next.js Home, Daily and validated Markdown runtime
 - [x] Architecture Decision Records
 
 Next milestone:
 
-- [ ] Initialize the Next.js application in `apps/web`
-- [ ] Build Home + HZense Daily first
+- [x] Initialize the Next.js application in `apps/web`
+- [x] Build Home + HZense Daily first
 - [ ] Add Insights / Topics / Weekly / Signals / Resources
 - [ ] Add basic search
 - [ ] Deploy to Vercel and bind `hzense.com`
