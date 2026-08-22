@@ -2,7 +2,7 @@
 id: insight-ai-infrastructure-bottlenecks
 title: AI 基础设施瓶颈正在重塑竞争边界
 type: insight
-status: draft
+status: published
 date: 2024-03-19
 language: zh-CN
 summary: 算力、内存、网络与电力的协同效率，正在决定模型能力能否转化为可规模化的产品。

@@ -50,7 +50,7 @@ export async function getDailyEntryByDate(date: string): Promise<DailyEntry | un
 export async function getInsightEntries(): Promise<InsightEntry[]> {
   return (await getContent())
     .filter(isInsight)
-    .filter((entry) => entry.frontMatter.status !== 'archived')
+    .filter((entry) => entry.frontMatter.status === 'published')
     .sort((left, right) => right.frontMatter.date.localeCompare(left.frontMatter.date));
 }
 

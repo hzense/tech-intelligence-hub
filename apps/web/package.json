@@ -9,7 +9,7 @@
     "build": "next build",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --test test/content.test.mjs"
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@hzense/content": "workspace:*",
