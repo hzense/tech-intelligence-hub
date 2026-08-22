@@ -1,14 +1,14 @@
 ---
 id: topic-ai-security
-title: AI Security
+title: AI 安全
 type: topic
 status: active
-language: en
+language: zh-CN
 attention: 85
 trend: rapid_growth
 maturity: emerging
 strategic_value: high
 ---
-# AI Security
+# AI 安全
 
-Seed topic for model, agent, tool, runtime and AI supply-chain security.
+覆盖模型、智能体、工具、运行时与 AI 供应链安全的种子专题。

@@ -1,14 +1,14 @@
 ---
 id: topic-ai-agents
-title: AI Agents
+title: AI 智能体
 type: topic
 status: strategic
-language: en
+language: zh-CN
 attention: 92
 trend: rapid_growth
 maturity: emerging
 strategic_value: critical
 ---
-# AI Agents
+# AI 智能体
 
-Seed topic covering tool use, agent protocols, memory, orchestration and computer interaction.
+覆盖工具使用、智能体协议、记忆、编排与计算机交互的种子专题。

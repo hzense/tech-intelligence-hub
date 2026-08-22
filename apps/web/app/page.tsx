@@ -1,8 +1,24 @@
 import Link from "next/link";
 import { SiteShell } from "@/components/site-shell";
-import { intelligenceCards, radarItems } from "@/lib/content";
+import { radarItems } from "@/lib/content";
+import { formatZhDate, getDailyEntries, getInsightEntries, getTopicTitleMap } from "@/lib/content-runtime";
 
-export default function Home() {
+export default async function Home() {
+  const [dailyEntries, insightEntries, topicTitleMap] = await Promise.all([
+    getDailyEntries(),
+    getInsightEntries(),
+    getTopicTitleMap(),
+  ]);
+  const latestDaily = dailyEntries[0];
+  const intelligenceCards = insightEntries.slice(0, 3).map((entry) => ({
+    label: "洞察",
+    date: formatZhDate(entry.frontMatter.date),
+    title: entry.frontMatter.title,
+    summary: entry.summary,
+    topics: entry.frontMatter.topics.map((topic) => topicTitleMap.get(topic) ?? topic),
+  }));
+  const dailyHref = latestDaily ? `/daily/${latestDaily.frontMatter.date}` : "/daily";
+
   return (
     <SiteShell>
       <main>
@@ -19,7 +35,7 @@ export default function Home() {
               为何重要，以及下一步应该关注什么。
             </p>
             <div className="hero-actions">
-              <Link className="button button-primary" href="/daily/2024-06-20">
+              <Link className="button button-primary" href={dailyHref}>
                 阅读示例简报 <span aria-hidden="true">↗</span>
               </Link>
               <a className="button button-secondary" href="#radar">
@@ -125,17 +141,19 @@ export default function Home() {
           <div className="daily-card">
             <div className="daily-meta">
               <span>HZENSE 每日简报</span>
-              <time dateTime="2024-06-20">2024 年 6 月 20 日 · 历史示例</time>
+              {latestDaily ? (
+                <time dateTime={latestDaily.frontMatter.date}>{formatZhDate(latestDaily.frontMatter.date)} · 历史示例</time>
+              ) : <span>内容准备中</span>}
             </div>
             <div className="daily-content">
               <div>
                 <p className="kicker">一份简报，聚焦真正重要的信号。</p>
-                <h2>你的每日科技情报简报。</h2>
+                <h2>{latestDaily?.frontMatter.title ?? "你的每日科技情报简报。"}</h2>
               </div>
               <p>
                 精炼汇总重大进展、上升议题与关联信号，既能快速阅读，也能深入探索。
               </p>
-              <Link className="circle-link" href="/daily/2024-06-20" aria-label="阅读 HZense 每日简报">
+              <Link className="circle-link" href={dailyHref} aria-label="阅读 HZense 每日简报">
                 ↗
               </Link>
             </div>
