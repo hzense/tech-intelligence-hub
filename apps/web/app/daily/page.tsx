@@ -1,14 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteShell } from "@/components/site-shell";
-import { dailySignals } from "@/lib/content";
+import { formatZhDate, getDailyEntries, splitSignalHeading } from "@/lib/content-runtime";
 
 export const metadata: Metadata = {
   title: "每日简报",
   description: "HZense 每日科技情报简报。",
 };
 
-export default function DailyPage() {
+export default async function DailyPage() {
+  const dailyEntries = await getDailyEntries();
+  const latestDaily = dailyEntries[0];
+  const previewSections = latestDaily?.sections.filter((section) => section.heading !== "执行摘要") ?? [];
+
   return (
     <SiteShell>
       <main className="page-main section-shell">
@@ -18,26 +22,35 @@ export default function DailyPage() {
           <p>精炼的科技情报，并与更深入的专题、实体和证据相互关联。</p>
         </section>
         <section className="daily-list" aria-label="每日简报列表">
-          <Link className="daily-list-feature" href="/daily/2024-06-20">
-            <div>
-              <span className="archive-label">历史示例简报</span>
-              <time dateTime="2024-06-20">2024 年 6 月 20 日</time>
-            </div>
-            <div>
-              <h2>平台转型、基础设施压力与 AI 安全</h2>
-              <p>三个相互关联的信号，共同构成 HZense 首个内容模型与阅读体验。</p>
-              <div className="brief-stats"><span>3 个信号</span><span>3 项进展</span><span>3 个专题</span></div>
-            </div>
-            <span className="arrow-box">↗</span>
-          </Link>
+          {dailyEntries.map((entry) => (
+            <Link className="daily-list-feature" href={`/daily/${entry.frontMatter.date}`} key={entry.frontMatter.id}>
+              <div>
+                <span className="archive-label">历史示例简报</span>
+                <time dateTime={entry.frontMatter.date}>{formatZhDate(entry.frontMatter.date)}</time>
+              </div>
+              <div>
+                <h2>{entry.frontMatter.title}</h2>
+                <p>{entry.summary}</p>
+                <div className="brief-stats">
+                  <span>{entry.frontMatter.signal_count} 个信号</span>
+                  <span>{entry.frontMatter.major_developments} 项进展</span>
+                  <span>{entry.frontMatter.rising_topics.length} 个专题</span>
+                </div>
+              </div>
+              <span className="arrow-box">↗</span>
+            </Link>
+          ))}
           <div className="signal-preview-grid">
-            {dailySignals.map((signal, index) => (
-              <article key={signal.title}>
-                <span>0{index + 1} · {signal.category}</span>
-                <h3>{signal.title}</h3>
-                <p>{signal.summary}</p>
-              </article>
-            ))}
+            {previewSections.map((section, index) => {
+              const signal = splitSignalHeading(section);
+              return (
+                <article key={section.heading}>
+                  <span>0{index + 1} · {signal.category}</span>
+                  <h3>{signal.title}</h3>
+                  <p>{section.paragraphs[0]}</p>
+                </article>
+              );
+            })}
           </div>
         </section>
       </main>

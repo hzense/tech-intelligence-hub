@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { dailySignals, intelligenceCards, radarItems } from '../lib/content.ts';
+import { radarItems } from '../lib/content.ts';
 
-test('keeps the homepage and Daily routes populated', () => {
-  assert.equal(intelligenceCards.length, 3);
+test('keeps the static technology radar populated', () => {
   assert.equal(radarItems.length, 4);
-  assert.equal(dailySignals.length, 3);
-  assert.ok(dailySignals.every((signal) => signal.whyItMatters.length > 0));
+  assert.ok(radarItems.every((item) => item.score > 0 && item.score <= 100));
 });

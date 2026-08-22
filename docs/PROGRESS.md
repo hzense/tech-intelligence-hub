@@ -1,6 +1,6 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-08-21  
+**最后更新：** 2026-08-22
 **当前阶段：** Website MVP Alpha  
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
@@ -11,7 +11,7 @@
 | 进度轴 | 当前进度 | 状态 | 判断 |
 |---|---:|---|---|
 | 开发基础建设 | 100% | ✅ 完成 | 架构、Monorepo、数据模型、冻结依赖安装和内容交叉引用校验均已通过 CI |
-| 网站 MVP | 48% | 🟡 Alpha 可访问 | Home、Daily、Radar、响应式布局和主题已运行；内容管线、搜索和其余路由待接入 |
+| 网站 MVP | 58% | 🟡 Alpha 可访问 | Home、Daily 与 Insights 卡片已由经过校验的 Markdown 驱动；搜索和其余路由待接入 |
 | 生产就绪度 | 12% | 🔴 尚未就绪 | 已有可访问 Hosted Alpha；尚无数据库、Vercel 生产部署和域名绑定证据 |
 
 ## 阶段看板
@@ -22,7 +22,7 @@
 | 1. 技术与信息架构 | ✅ 完成 | 100% | 技术栈、Source of Truth、信息模型、taxonomy 和 ADR 确定 |
 | 2. Development Foundation | ✅ 完成 | 100% | Monorepo、Schema、Migration、Validation、Seed、锁文件与冻结安装均已验证 |
 | 3. Web Application Shell | ✅ 完成 | 100% | Next.js、Tailwind、App Router、主题、全局布局和导航可运行 |
-| 4. MVP 内容与功能 | 🟡 开发中 | 35% | Home、Daily 和 seed Radar 可用；Markdown runtime、搜索和其余核心路由待完成 |
+| 4. MVP 内容与功能 | 🟡 开发中 | 50% | Home、Daily 和 seed Radar 可用；Markdown runtime 已接入，搜索和其余核心路由待完成 |
 | 5. Production Release | 🔴 未就绪 | 10% | Hosted Alpha 可访问；Vercel、数据库、域名、HTTPS 验证与监控待完成 |
 
 ## 已完成
@@ -41,6 +41,7 @@
 - [x] Foundation CI 完整通过（install、lint、typecheck、test、content validation、seed validation）
 - [x] Next.js Web Shell、响应式首页、全局导航与亮色/暗色主题
 - [x] HZense Daily 列表页和历史 seed 详情页
+- [x] 经过 Schema 与交叉引用校验的 Markdown/MDX Web runtime
 - [x] HZense 品牌 Logo、Open Graph 分享图和基础 metadata
 - [x] [Hosted Alpha 检查点](https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site)
 - [x] 架构决策记录（ADR）
@@ -63,7 +64,7 @@
 - [x] 实现响应式首页
 - [x] 实现 HZense Daily 列表页
 - [x] 实现 HZense Daily 详情页
-- [ ] 通过 `@hzense/content` 加载并校验 Markdown 内容
+- [x] 通过 `@hzense/content` 加载并校验 Markdown 内容
 - [ ] 建立桌面端和移动端 Playwright 冒烟测试
 - [x] 发布可访问的 [Hosted Alpha 检查点](https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site)
 - [ ] 生成第一个 Vercel Preview URL
@@ -94,7 +95,7 @@
 |---|---|---|
 | Home、Daily、Insights、Topics、Weekly、Signals、Resources 路由 | 🟡 | Home 与 Daily 已实现；其余路由待开发 |
 | 桌面端与移动端可用 | 🟡 | 响应式页面已发布；仍缺 Playwright 视觉与交互冒烟测试 |
-| Markdown/MDX 通过验证层加载 | 🟡 | Schema 和 validator 已存在，但未接入 Web runtime |
+| Markdown/MDX 通过验证层加载 | ✅ | [PR #6 head CI](https://github.com/hzense/tech-intelligence-hub/pull/6/checks)验证同一加载器用于 CI 校验与 Web 构建 |
 | Topic / Entity 引用无断链 | ✅ | Seed 与内容引用均由 CI 校验 |
 | 基础关键词搜索 | ⬜ | 只有 Search 边界与数据库结构 |
 | 手工 Radar | 🟡 | 首页 seed Radar 已可用；尚未接入正式数据目录 |
@@ -107,10 +108,8 @@
 
 | 优先级 | 风险 | 处理方式 |
 |---|---|---|
-| P0 | Web 页面仍使用 seed 内容，尚未接入 `@hzense/content` | 下一迭代优先接入 Markdown runtime，复用本次建立的引用校验 |
 | P1 | 日期字段当前只校验格式，不校验真实日历日期 | 后续增加语义日期校验与边界测试 |
 | P1 | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程 |
-| P1 | 没有 Issue / PR 任务流 | 后续里程碑拆分为可验收 Issue，通过 PR 合并 |
 | P1 | 数据库与 Vercel 部署尚未落地 | 先用 Hosted Alpha 验证产品，再开通生产基础设施 |
 
 ## 进度更新规则
@@ -126,6 +125,7 @@
 
 | 日期 | 更新 |
 |---|---|
+| 2026-08-22 | PR #6 将经过交叉引用校验的 Markdown runtime 接入 Home 与动态 Daily 路由，并把样例内容统一为中文 |
 | 2026-08-21 | PR #4 完成依赖锁定、frozen install 和 Topic / Entity / Signal / Content 交叉引用校验，Development Foundation 达到验收标准 |
 | 2026-08-21 | 发布 Web MVP Alpha：完成 Home、Daily、Radar、响应式 Shell、主题与品牌资源，并提供可访问 Hosted checkpoint |
 | 2026-08-20 | 创建首版进度看板；修复 pnpm 11 构建授权与 YAML 日期校验；Foundation CI 首次完整通过 |

@@ -1,14 +1,14 @@
 ---
 id: topic-ai-infrastructure
-title: AI Infrastructure
+title: AI 基础设施
 type: topic
 status: strategic
-language: en
+language: zh-CN
 attention: 94
 trend: growth
 maturity: growth
 strategic_value: critical
 ---
-# AI Infrastructure
+# AI 基础设施
 
-Seed topic covering accelerated computing, networking, memory, inference and training infrastructure.
+覆盖加速计算、网络、内存、推理与训练基础设施的种子专题。

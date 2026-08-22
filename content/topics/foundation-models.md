@@ -1,14 +1,14 @@
 ---
 id: topic-foundation-models
-title: Foundation Models
+title: 基础模型
 type: topic
 status: strategic
-language: en
+language: zh-CN
 attention: 95
 trend: growth
 maturity: growth
 strategic_value: critical
 ---
-# Foundation Models
+# 基础模型
 
-Seed topic for the HZense knowledge model. It aggregates model releases, research, infrastructure dependencies and related insights.
+HZense 知识模型中的种子专题，聚合模型发布、研究、基础设施依赖与相关洞察。
