@@ -1,10 +1,15 @@
-<p align="center">\n  <img src="assets/brand/hzense-logo.png" alt="HZense logo" width="180" />\n</p>\n\n# HZense
+<p align="center">
+  <img src="assets/brand/hzense-logo.png" alt="HZense logo" width="180" />
+</p>
+
+# HZense
 
 > **Sense what matters in technology.**
 
 HZense is a Technology Intelligence platform for turning fragmented technical information into structured, versioned intelligence.
 
-- Website: **https://hzense.com** *(registered; deployment pending)*
+- Website: **https://hzense.com** *(registered; domain binding pending)*
+- Vercel Production: **https://tech-intelligence-hub-web.vercel.app/**
 - GitHub Organization: **https://github.com/hzense**
 - Main Repository: **https://github.com/hzense/tech-intelligence-hub**
 
@@ -26,7 +31,7 @@ HZense is a Technology Intelligence platform for turning fragmented technical in
 ## Architecture baseline
 
 - TypeScript
-- Next.js + React (next milestone)
+- Next.js + React
 - Markdown / MDX as formal content source of truth
 - PostgreSQL + Drizzle ORM for structured intelligence
 - pgvector for semantic retrieval
@@ -108,9 +113,10 @@ Next milestone:
 
 - [x] Initialize the Next.js application in `apps/web`
 - [x] Build Home + HZense Daily first
+- [x] Deploy to Vercel
+- [ ] Bind `hzense.com`
 - [ ] Add Insights / Topics / Weekly / Signals / Resources
 - [ ] Add basic search
-- [ ] Deploy to Vercel and bind `hzense.com`
 
 ## Local foundation checks
 
