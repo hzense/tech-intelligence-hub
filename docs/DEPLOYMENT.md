@@ -4,6 +4,12 @@
 
 GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正式源码。Pull Request 生成 Preview Deployment；合并到 `main` 后生成 Production Deployment。旧 Hosted Alpha 仅用于历史对照，在正式域名切换后停止维护。
 
+## 当前部署
+
+- Vercel Production：https://tech-intelligence-hub-web.vercel.app/
+- 首次线上验收：Home、Daily 列表、Daily 动态详情与 Logo 均正常
+- 下一步：确认 PR Preview 自动部署后合并 PR7，再绑定 `hzense.com`
+
 ## Vercel 项目设置
 
 | 设置 | 值 |
