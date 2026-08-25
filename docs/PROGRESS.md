@@ -1,6 +1,6 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-08-23
+**最后更新：** 2026-08-25
 **当前阶段：** Website MVP Alpha  
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
@@ -12,7 +12,7 @@
 |---|---:|---|---|
 | 开发基础建设 | 100% | ✅ 完成 | 架构、Monorepo、数据模型、冻结依赖安装和内容交叉引用校验均已通过 CI |
 | 网站 MVP | 58% | 🟡 Alpha 可访问 | Home、Daily 与 Insights 卡片已由经过校验的 Markdown 驱动；搜索和其余路由待接入 |
-| 生产就绪度 | 30% | 🟡 部署已建立 | Vercel Preview 与 Production 已运行；数据库、正式域名、完整 HTTPS/日志/监控验收待完成 |
+| 生产就绪度 | 50% | 🟡 正式域名已上线 | Vercel Production、`hzense.com`、HTTPS 与 `www` 重定向已验收；数据库、错误页、日志和监控待完成 |
 
 ## 阶段看板
 
@@ -23,7 +23,7 @@
 | 2. Development Foundation | ✅ 完成 | 100% | Monorepo、Schema、Migration、Validation、Seed、锁文件与冻结安装均已验证 |
 | 3. Web Application Shell | ✅ 完成 | 100% | Next.js、Tailwind、App Router、主题、全局布局和导航可运行 |
 | 4. MVP 内容与功能 | 🟡 开发中 | 50% | Home、Daily 和 seed Radar 可用；Markdown runtime 已接入，搜索和其余核心路由待完成 |
-| 5. Production Release | 🟡 进行中 | 30% | Vercel Preview、Production 与 GitHub 自动部署已建立；数据库、域名、HTTPS 验收与监控待完成 |
+| 5. Production Release | 🟡 进行中 | 50% | Vercel Production、正式域名、HTTPS 与 `www` 重定向已建立；数据库、错误页、日志与监控待完成 |
 
 ## 已完成
 
@@ -46,6 +46,8 @@
 - [x] [Hosted Alpha 检查点](https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site)
 - [x] [Vercel Production Deployment](https://tech-intelligence-hub-web.vercel.app/)
 - [x] GitHub PR Preview 与 `main` Production 自动部署
+- [x] [正式生产域名](https://hzense.com/)与 HTTPS
+- [x] `www.hzense.com` → `hzense.com` 重定向
 - [x] 架构决策记录（ADR）
 
 ## 当前里程碑：Web MVP Alpha
@@ -87,9 +89,10 @@
 - [ ] 创建托管 PostgreSQL / pgvector 实例
 - [ ] 执行并验证生产 Migration
 - [x] 建立 [Vercel Production Deployment](https://tech-intelligence-hub-web.vercel.app/)
-- [ ] 绑定 `hzense.com`
-- [ ] 配置 `www.hzense.com` → `hzense.com` 重定向
-- [ ] 验证 HTTPS、错误页、日志和基本安全配置
+- [x] 绑定 [`hzense.com`](https://hzense.com/)
+- [x] 配置 `www.hzense.com` → `hzense.com` 重定向
+- [x] 验证 HTTPS 与 HTTP → HTTPS 跳转
+- [ ] 验证错误页、日志、监控和基本安全配置
 
 ## MVP 验收状态
 
@@ -103,7 +106,7 @@
 | 手工 Radar | 🟡 | 首页 seed Radar 已可用；尚未接入正式数据目录 |
 | 亮色与暗色主题 | ✅ | Web Shell 已实现主题切换 |
 | CI 全部通过 | ✅ | [PR #7 最终 head CI](https://github.com/hzense/tech-intelligence-hub/pull/7/checks)包含 frozen install、直接 Web 构建、内容与 Seed 校验 |
-| Vercel 生产部署与域名 | 🟡 | [Vercel Production](https://tech-intelligence-hub-web.vercel.app/) 已上线；`hzense.com` 尚未绑定 |
+| Vercel 生产部署与域名 | ✅ | [`hzense.com`](https://hzense.com/) 已上线；HTTPS、HTTP → HTTPS 与 `www` → 根域名跳转均已验收 |
 | sitemap、robots、canonical metadata | ⬜ | 已有基础 metadata 与 Open Graph；sitemap、robots 和 canonical 待实现 |
 
 ## 当前风险与阻塞
@@ -112,7 +115,7 @@
 |---|---|---|
 | P1 | 日期字段当前只校验格式，不校验真实日历日期 | 后续增加语义日期校验与边界测试 |
 | P1 | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程 |
-| P1 | 数据库、正式域名与生产监控尚未落地 | 先绑定 `hzense.com`，再完成数据库、HTTPS、日志和监控验收 |
+| P1 | 数据库、错误页、日志与生产监控尚未落地 | 下一步创建托管 PostgreSQL / pgvector，执行 Migration，并完成运行与安全验收 |
 
 ## 进度更新规则
 
@@ -127,6 +130,7 @@
 
 | 日期 | 更新 |
 |---|---|
+| 2026-08-25 | `hzense.com` 正式上线；完成 HTTPS、HTTP → HTTPS、`www.hzense.com` → 根域名、首页与 Daily 路由验收 |
 | 2026-08-23 | PR #7 建立 Vercel Preview 与 Production 自动部署，完成 Home、Daily 动态路由和 Logo 的首次线上验收，并补充部署构建门禁与运行手册 |
 | 2026-08-22 | PR #6 将经过交叉引用校验的 Markdown runtime 接入 Home 与动态 Daily 路由，并把样例内容统一为中文 |
 | 2026-08-21 | PR #4 完成依赖锁定、frozen install 和 Topic / Entity / Signal / Content 交叉引用校验，Development Foundation 达到验收标准 |
