@@ -53,3 +53,30 @@ test('baseline security headers are returned', async ({ request }) => {
   expect(response.headers()['referrer-policy']).toBe('strict-origin-when-cross-origin');
   expect(response.headers()['permissions-policy']).toContain('camera=()');
 });
+
+test('Insights list and detail routes render validated content', async ({ page, request }) => {
+  await page.goto('/insights');
+  await expect(page).toHaveTitle('洞察 · HZense');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('把信号转化为判断');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    'https://hzense.com/insights',
+  );
+
+  const detailHref = await page.locator('a.insight-index-card').first().getAttribute('href');
+  expect(detailHref).toMatch(/^\/insights\/[^/]+$/);
+
+  const sitemapResponse = await request.get('/sitemap.xml');
+  expect(await sitemapResponse.text()).toContain(`https://hzense.com${detailHref}`);
+
+  await page.goto(detailHref as string);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const article = page.locator('article.insight-detail-body');
+  await expect(article).toBeVisible();
+  await expect(article.locator('section.insight-section').first()).toBeVisible();
+  await expect(article.getByRole('heading', { level: 2 }).first()).toBeVisible();
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    `https://hzense.com${detailHref}`,
+  );
+});

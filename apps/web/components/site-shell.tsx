@@ -21,7 +21,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
           </Link>
           <nav aria-label="主导航">
             <Link href="/daily">每日简报</Link>
-            <Link href="/#intelligence">洞察</Link>
+            <Link href="/insights">洞察</Link>
             <Link href="/#radar">雷达</Link>
             <span className="nav-muted">专题</span>
           </nav>

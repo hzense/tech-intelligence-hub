@@ -54,6 +54,10 @@ export async function getInsightEntries(): Promise<InsightEntry[]> {
     .sort((left, right) => right.frontMatter.date.localeCompare(left.frontMatter.date));
 }
 
+export async function getInsightEntryById(id: string): Promise<InsightEntry | undefined> {
+  return (await getInsightEntries()).find((entry) => entry.frontMatter.id === id);
+}
+
 export async function getTopicTitleMap(): Promise<Map<string, string>> {
   return new Map(
     (await getContent()).filter(isTopic).map((entry) => [entry.frontMatter.id, entry.frontMatter.title]),

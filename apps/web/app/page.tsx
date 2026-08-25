@@ -12,6 +12,7 @@ export default async function Home() {
   const latestDaily = dailyEntries[0];
   const intelligenceCards = insightEntries.slice(0, 3).map((entry) => ({
     label: "洞察",
+    href: `/insights/${entry.frontMatter.id}`,
     date: formatZhDate(entry.frontMatter.date),
     title: entry.frontMatter.title,
     summary: entry.summary,
@@ -85,11 +86,11 @@ export default async function Home() {
               <p className="kicker">精选情报</p>
               <h2>让信号形成理解。</h2>
             </div>
-            <Link className="text-link" href="/daily">查看 HZense 每日简报 <span>↗</span></Link>
+            <Link className="text-link" href="/insights">查看全部洞察 <span>↗</span></Link>
           </div>
           <div className="insight-grid">
             {intelligenceCards.map((card, index) => (
-              <article className="insight-card" key={card.title}>
+              <Link className="insight-card" href={card.href} key={card.title}>
                 <div className="card-topline">
                   <span>{card.label}</span>
                   <time>{card.date}</time>
@@ -102,7 +103,7 @@ export default async function Home() {
                 <div className="topic-row">
                   {card.topics.map((topic) => <span key={topic}>{topic}</span>)}
                 </div>
-              </article>
+              </Link>
             ))}
           </div>
         </section>
