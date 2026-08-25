@@ -52,11 +52,9 @@ Vercel Preview URL 可作为界面验收证据，但不能替代 GitHub Actions�
 
 ## 首次上线顺序
 
-1. 导入 GitHub 仓库并按上表创建 Vercel 项目。
-2. 用 PR 的 Preview Deployment 验证 Home、Daily 列表和至少一篇 Daily 详情。
-3. 合并后验证 Production Deployment。
-4. 添加 `hzense.com`，完成 DNS 与 SSL 验证。
-5. 添加 `www.hzense.com` 并重定向到根域名。
-6. 验证 canonical、sitemap、robots、错误页与基础监控后，停止维护旧 Hosted Alpha。
-
-截至 2026-08-25，第 1–5 步已完成并通过线上验收；第 6 步仍在进行中。
+1. ✅ 已完成：导入 GitHub 仓库并按上表创建 Vercel 项目。
+2. ✅ 已完成：用 PR 的 Preview Deployment 验证 Home、Daily 列表和至少一篇 Daily 详情。
+3. ✅ 已完成：合并后验证 Production Deployment。
+4. ✅ 已完成：添加 `hzense.com`，完成 DNS 与 SSL 验证。
+5. ✅ 已完成：添加 `www.hzense.com` 并重定向到根域名。
+6. 🚧 进行中：验证 canonical、sitemap、robots、错误页与基础监控后，停止维护旧 Hosted Alpha。
