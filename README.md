@@ -8,7 +8,7 @@
 
 HZense is a Technology Intelligence platform for turning fragmented technical information into structured, versioned intelligence.
 
-- Website: **https://hzense.com** *(registered; domain binding pending)*
+- Website: **https://hzense.com** *(production)*
 - Vercel Production: **https://tech-intelligence-hub-web.vercel.app/**
 - GitHub Organization: **https://github.com/hzense**
 - Main Repository: **https://github.com/hzense/tech-intelligence-hub**
@@ -114,7 +114,7 @@ Next milestone:
 - [x] Initialize the Next.js application in `apps/web`
 - [x] Build Home + HZense Daily first
 - [x] Deploy to Vercel
-- [ ] Bind `hzense.com`
+- [x] Bind `hzense.com` and redirect `www.hzense.com` to the apex domain
 - [ ] Add Insights / Topics / Weekly / Signals / Resources
 - [ ] Add basic search
 
