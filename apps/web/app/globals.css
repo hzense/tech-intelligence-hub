@@ -286,3 +286,95 @@ nav a:hover { color: var(--brand-bright); }
 .error-state .button {
   cursor: pointer;
 }
+
+
+.insights-index-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.insight-index-card {
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
+}
+.insight-index-card:hover {
+  transform: translateY(-5px);
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line));
+  box-shadow: var(--shadow);
+}
+.insight-index-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .1em;
+}
+.insight-index-meta span:first-child { color: var(--brand); }
+.insight-index-card h2 {
+  margin: 70px 0 18px;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.06;
+  letter-spacing: -.05em;
+}
+.insight-index-card > p {
+  margin: 0 0 30px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.insight-index-card .topic-row { margin-top: auto; }
+.insight-detail-body {
+  max-width: 820px;
+  padding-top: 60px;
+}
+.insight-section {
+  padding: 42px 0;
+  border-top: 1px solid var(--line);
+}
+.insight-section:first-child { border-top: 0; }
+.insight-section > span {
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+.insight-section h2 {
+  margin: 16px 0 22px;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.1;
+  letter-spacing: -.045em;
+}
+.insight-section p {
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.85;
+}
+.insight-evidence {
+  margin-top: 42px;
+  padding: 28px;
+  border-radius: 18px;
+  background: var(--surface-soft);
+}
+.insight-evidence strong {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--brand);
+  font-size: 11px;
+  letter-spacing: .1em;
+}
+.insight-evidence p { margin: 0; color: var(--muted); line-height: 1.7; }
+
+@media (max-width: 700px) {
+  .insights-index-grid { grid-template-columns: 1fr; }
+  .insight-index-card { min-height: 320px; padding: 24px; }
+  .insight-index-card h2 { margin-top: 48px; }
+}

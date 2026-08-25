@@ -9,7 +9,7 @@ test('traces repository content required by deployed routes', () => {
 
   const includes = nextConfig.outputFileTracingIncludes;
   assert.ok(includes);
-  for (const route of ['/', '/daily', '/daily/[date]', '/sitemap.xml']) {
+  for (const route of ['/', '/daily', '/daily/[date]', '/insights', '/insights/[id]', '/sitemap.xml']) {
     assert.deepEqual(includes[route], ['../../content/**/*', '../../data/seed/*.yaml']);
   }
 });
