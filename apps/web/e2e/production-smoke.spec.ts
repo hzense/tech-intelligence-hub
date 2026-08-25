@@ -4,7 +4,7 @@ test('home and Daily routes render with canonical metadata', async ({ page }) =>
   await page.goto('/');
   await expect(page).toHaveTitle('HZense — 科技情报');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('感知科技的变化');
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://hzense.com/');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://hzense.com');
 
   await page.goto('/daily');
   await expect(page).toHaveTitle('每日简报 · HZense');
