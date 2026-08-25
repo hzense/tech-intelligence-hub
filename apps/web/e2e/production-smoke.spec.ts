@@ -1,4 +1,10 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function getFirstDailyHref(page: Page): Promise<string> {
+  const href = await page.locator('a.daily-list-feature').first().getAttribute('href');
+  expect(href).toMatch(/^\/daily\/[^/]+$/);
+  return href as string;
+}
 
 test('home and Daily routes render with canonical metadata', async ({ page }) => {
   await page.goto('/');
@@ -14,18 +20,22 @@ test('home and Daily routes render with canonical metadata', async ({ page }) =>
     'https://hzense.com/daily',
   );
 
-  await page.goto('/daily/2024-06-20');
+  const detailHref = await getFirstDailyHref(page);
+  await page.goto(detailHref);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
-    'https://hzense.com/daily/2024-06-20',
+    `https://hzense.com${detailHref}`,
   );
 });
 
 test('metadata routes and custom 404 are available', async ({ page, request }) => {
+  await page.goto('/daily');
+  const detailHref = await getFirstDailyHref(page);
+
   const sitemapResponse = await request.get('/sitemap.xml');
   expect(sitemapResponse.ok()).toBeTruthy();
-  expect(await sitemapResponse.text()).toContain('https://hzense.com/daily/2024-06-20');
+  expect(await sitemapResponse.text()).toContain(`https://hzense.com${detailHref}`);
 
   const robotsResponse = await request.get('/robots.txt');
   expect(robotsResponse.ok()).toBeTruthy();
