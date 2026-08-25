@@ -54,7 +54,6 @@ test('baseline security headers are returned', async ({ request }) => {
   expect(response.headers()['permissions-policy']).toContain('camera=()');
 });
 
-
 test('Insights list and detail routes render validated content', async ({ page, request }) => {
   await page.goto('/insights');
   await expect(page).toHaveTitle('洞察 · HZense');
@@ -72,7 +71,10 @@ test('Insights list and detail routes render validated content', async ({ page, 
 
   await page.goto(detailHref as string);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.getByText('研判', { exact: true })).toBeVisible();
+  const article = page.locator('article.insight-detail-body');
+  await expect(article).toBeVisible();
+  await expect(article.locator('section.insight-section').first()).toBeVisible();
+  await expect(article.getByRole('heading', { level: 2 }).first()).toBeVisible();
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     `https://hzense.com${detailHref}`,
