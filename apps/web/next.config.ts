@@ -26,6 +26,8 @@ const nextConfig: NextConfig = {
     '/daily/[date]': contentTrace,
     '/insights': contentTrace,
     '/insights/[id]': contentTrace,
+    '/topics': contentTrace,
+    '/topics/[id]': contentTrace,
     '/sitemap.xml': contentTrace,
   },
 };

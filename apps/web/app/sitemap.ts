@@ -1,12 +1,13 @@
 import type { MetadataRoute } from 'next';
-import { getDailyEntries, getInsightEntries } from '@/lib/content-runtime';
+import { getDailyEntries, getInsightEntries, getTopicEntries } from '@/lib/content-runtime';
 
 const siteUrl = 'https://hzense.com';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [dailyEntries, insightEntries] = await Promise.all([
+  const [dailyEntries, insightEntries, topicEntries] = await Promise.all([
     getDailyEntries(),
     getInsightEntries(),
+    getTopicEntries(),
   ]);
 
   return [
@@ -35,6 +36,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: `${siteUrl}/insights/${entry.frontMatter.id}`,
       lastModified: new Date(`${entry.frontMatter.date}T00:00:00Z`),
       changeFrequency: 'monthly' as const,
+      priority: 0.8,
+    })),
+    {
+      url: `${siteUrl}/topics`,
+      changeFrequency: 'weekly',
+      priority: 0.9,
+    },
+    ...topicEntries.map((entry) => ({
+      url: `${siteUrl}/topics/${entry.frontMatter.id}`,
+      changeFrequency: 'weekly' as const,
       priority: 0.8,
     })),
   ];

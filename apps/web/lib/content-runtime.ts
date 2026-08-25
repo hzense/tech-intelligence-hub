@@ -58,9 +58,36 @@ export async function getInsightEntryById(id: string): Promise<InsightEntry | un
   return (await getInsightEntries()).find((entry) => entry.frontMatter.id === id);
 }
 
+export async function getTopicEntries(): Promise<TopicEntry[]> {
+  return (await getContent())
+    .filter(isTopic)
+    .filter((entry) => entry.frontMatter.status !== 'archived')
+    .sort(
+      (left, right) =>
+        (right.frontMatter.attention ?? 0) - (left.frontMatter.attention ?? 0) ||
+        left.frontMatter.title.localeCompare(right.frontMatter.title, 'zh-CN'),
+    );
+}
+
+export async function getTopicEntryById(id: string): Promise<TopicEntry | undefined> {
+  return (await getTopicEntries()).find((entry) => entry.frontMatter.id === id);
+}
+
+export async function getInsightsForTopic(topicId: string): Promise<InsightEntry[]> {
+  return (await getInsightEntries()).filter((entry) =>
+    entry.frontMatter.topics.includes(topicId),
+  );
+}
+
+export async function getDailyEntriesForTopic(topicId: string): Promise<DailyEntry[]> {
+  return (await getDailyEntries()).filter((entry) =>
+    entry.frontMatter.rising_topics.includes(topicId),
+  );
+}
+
 export async function getTopicTitleMap(): Promise<Map<string, string>> {
   return new Map(
-    (await getContent()).filter(isTopic).map((entry) => [entry.frontMatter.id, entry.frontMatter.title]),
+    (await getTopicEntries()).map((entry) => [entry.frontMatter.id, entry.frontMatter.title]),
   );
 }
 

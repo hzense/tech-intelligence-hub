@@ -63,7 +63,9 @@ export default async function InsightDetailPage({ params }: InsightDetailProps) 
             <span>重要度 {entry.frontMatter.importance}/5</span>
             <span>{entry.frontMatter.evidence_signals.length} 条证据信号</span>
             {entry.frontMatter.topics.map((topic) => (
-              <span key={topic}>{topicTitleMap.get(topic) ?? topic}</span>
+              <Link href={`/topics/${topic}`} key={topic}>
+                {topicTitleMap.get(topic) ?? topic}
+              </Link>
             ))}
           </div>
         </header>

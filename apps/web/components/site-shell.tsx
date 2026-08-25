@@ -23,7 +23,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <Link href="/daily">每日简报</Link>
             <Link href="/insights">洞察</Link>
             <Link href="/#radar">雷达</Link>
-            <span className="nav-muted">专题</span>
+            <Link href="/topics">专题</Link>
           </nav>
           <div className="header-actions">
             <ThemeToggle />
