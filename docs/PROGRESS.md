@@ -11,7 +11,7 @@
 | 进度轴 | 当前进度 | 状态 | 判断 |
 |---|---:|---|---|
 | 开发基础建设 | 100% | ✅ 完成 | 架构、Monorepo、数据模型、冻结依赖安装和内容交叉引用校验均已通过 CI |
-| 网站 MVP | 70% | 🟡 Alpha 可访问 | Home、Daily 与 Insights 已由验证内容驱动；Topics、Weekly、Signals、Resources 和搜索待接入 |
+| 网站 MVP | 78% | 🟡 Alpha 可访问 | Home、Daily、Insights 与 Topics 已由验证内容驱动；Weekly、Signals、Resources 和搜索待接入 |
 | 生产就绪度 | 65% | 🟡 基础防护已建立 | 正式域名、HTTPS、错误界面、搜索引擎元数据和安全响应头已建立；数据库、日志和监控待完成 |
 
 ## 阶段看板
@@ -22,7 +22,7 @@
 | 1. 技术与信息架构 | ✅ 完成 | 100% | 技术栈、Source of Truth、信息模型、taxonomy 和 ADR 确定 |
 | 2. Development Foundation | ✅ 完成 | 100% | Monorepo、Schema、Migration、Validation、Seed、锁文件与冻结安装均已验证 |
 | 3. Web Application Shell | ✅ 完成 | 100% | Next.js、Tailwind、App Router、主题、全局布局和导航可运行 |
-| 4. MVP 内容与功能 | 🟡 开发中 | 60% | Home、Daily、Insights 和 seed Radar 可用；搜索和其余核心路由待完成 |
+| 4. MVP 内容与功能 | 🟡 开发中 | 70% | Home、Daily、Insights、Topics 和 seed Radar 可用；搜索和其余核心路由待完成 |
 | 5. Production Release | 🟡 进行中 | 65% | 域名、HTTPS、错误界面、搜索元数据和安全响应头已建立；数据库、日志与监控待完成 |
 
 ## 已完成
@@ -42,6 +42,7 @@
 - [x] Next.js Web Shell、响应式首页、全局导航与亮色/暗色主题
 - [x] HZense Daily 列表页和历史 seed 详情页
 - [x] HZense Insights 列表页、动态详情页与首页入口
+- [x] HZense Topics 列表页、动态详情页与关联情报入口
 - [x] 经过 Schema 与交叉引用校验的 Markdown/MDX Web runtime
 - [x] HZense 品牌 Logo、Open Graph 分享图和基础 metadata
 - [x] [Hosted Alpha 检查点](https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site)
@@ -81,7 +82,7 @@
 ### P1 — 扩展 MVP
 
 - [x] Insights
-- [ ] Topics
+- [x] Topics
 - [ ] Weekly
 - [ ] Signals
 - [ ] Resources
@@ -104,14 +105,14 @@
 
 | MVP 验收项 | 状态 | 当前证据 / 缺口 |
 |---|---|---|
-| Home、Daily、Insights、Topics、Weekly、Signals、Resources 路由 | 🟡 | Home、Daily 与 Insights 已实现；Topics、Weekly、Signals 和 Resources 待开发 |
-| 桌面端与移动端可用 | ✅ | PR #9 在 Desktop Chrome 与 Pixel 7 视口运行 Home、Daily、404、metadata 与安全响应头冒烟测试 |
+| Home、Daily、Insights、Topics、Weekly、Signals、Resources 路由 | 🟡 | Home、Daily、Insights 与 Topics 已实现；Weekly、Signals 和 Resources 待开发 |
+| 桌面端与移动端可用 | ✅ | PR #11 在 Desktop Chrome 与 Pixel 7 视口验证 Home、Daily、Insights、Topics、404、metadata 与安全响应头 |
 | Markdown/MDX 通过验证层加载 | ✅ | [PR #6 head CI](https://github.com/hzense/tech-intelligence-hub/pull/6/checks)验证同一加载器用于 CI 校验与 Web 构建 |
 | Topic / Entity 引用无断链 | ✅ | Seed 与内容引用均由 CI 校验 |
 | 基础关键词搜索 | ⬜ | 只有 Search 边界与数据库结构 |
 | 手工 Radar | 🟡 | 首页 seed Radar 已可用；尚未接入正式数据目录 |
 | 亮色与暗色主题 | ✅ | Web Shell 已实现主题切换 |
-| CI 全部通过 | ✅ | [PR #10 Checks](https://github.com/hzense/tech-intelligence-hub/pull/10/checks)验证 Insights 列表、详情、canonical、sitemap 与双视口可用性 |
+| CI 全部通过 | ✅ | [PR #11 Checks](https://github.com/hzense/tech-intelligence-hub/pull/11/checks)验证 Topics 列表、详情、关联内容、canonical、sitemap 与双视口可用性 |
 | Vercel 生产部署与域名 | ✅ | [`hzense.com`](https://hzense.com/) 已上线；HTTPS、HTTP → HTTPS 与 `www` → 根域名跳转均已验收 |
 | sitemap、robots、canonical metadata | ✅ | App Router metadata routes 与页面 canonical 由 PR #9 的 Playwright 测试自动验证 |
 
@@ -136,6 +137,7 @@
 
 | 日期 | 更新 |
 |---|---|
+| 2026-08-25 | PR #11 将已验证的 Topic Markdown 接入列表、动态详情、导航、关联情报、sitemap 与双视口冒烟测试 |
 | 2026-08-25 | PR #10 将已验证的 Insight Markdown 接入列表、动态详情、首页、导航、sitemap 与双视口冒烟测试 |
 | 2026-08-25 | PR #9 建立 canonical、sitemap、robots、错误界面、安全响应头及桌面/移动端 Playwright 发布门禁 |
 | 2026-08-25 | `hzense.com` 正式上线；完成 HTTPS、HTTP → HTTPS、`www.hzense.com` → 根域名、首页与 Daily 路由验收 |
