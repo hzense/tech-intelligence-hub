@@ -6,6 +6,15 @@ import { formatZhDate, getDailyEntries, splitSignalHeading } from "@/lib/content
 export const metadata: Metadata = {
   title: "每日简报",
   description: "HZense 每日科技情报简报。",
+  alternates: {
+    canonical: "/daily",
+  },
+  openGraph: {
+    title: "每日简报",
+    description: "HZense 每日科技情报简报。",
+    url: "/daily",
+    type: "website",
+  },
 };
 
 export default async function DailyPage() {

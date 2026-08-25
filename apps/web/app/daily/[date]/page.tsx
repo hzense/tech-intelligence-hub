@@ -23,11 +23,16 @@ export async function generateMetadata({ params }: DailyDetailProps): Promise<Me
   if (!entry) return {};
 
   const title = `每日简报 — ${formatZhDate(entry.frontMatter.date)}`;
+  const canonical = `/daily/${entry.frontMatter.date}`;
   return {
     title,
     description: entry.summary,
+    alternates: {
+      canonical,
+    },
     openGraph: {
       title,
+      url: canonical,
       description: entry.summary,
       images: [{ url: "/og.png", width: 1200, height: 630, alt: "HZense 科技情报" }],
     },
