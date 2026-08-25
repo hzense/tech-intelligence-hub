@@ -6,9 +6,11 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 ## 当前部署
 
+- 正式生产域名：https://hzense.com/
 - Vercel Production：https://tech-intelligence-hub-web.vercel.app/
-- 首次线上验收：Home、Daily 列表、Daily 动态详情与 Logo 均正常
-- 下一步：确认 PR Preview 自动部署后合并 PR7，再绑定 `hzense.com`
+- 域名策略：`www.hzense.com` 重定向到 `hzense.com`
+- 2026-08-25 线上验收：HTTPS、HTTP → HTTPS、`www` → 根域名、Home、Daily 列表与 Daily 动态路由均正常
+- 下一步：验证 canonical、sitemap、robots、错误页、日志与基础监控
 
 ## Vercel 项目设置
 
@@ -56,3 +58,5 @@ Vercel Preview URL 可作为界面验收证据，但不能替代 GitHub Actions�
 4. 添加 `hzense.com`，完成 DNS 与 SSL 验证。
 5. 添加 `www.hzense.com` 并重定向到根域名。
 6. 验证 canonical、sitemap、robots、错误页与基础监控后，停止维护旧 Hosted Alpha。
+
+截至 2026-08-25，第 1–5 步已完成并通过线上验收；第 6 步仍在进行中。
