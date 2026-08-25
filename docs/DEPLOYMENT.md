@@ -10,7 +10,8 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 - Vercel Production：https://tech-intelligence-hub-web.vercel.app/
 - 域名策略：`www.hzense.com` 重定向到 `hzense.com`
 - 2026-08-25 线上验收：HTTPS、HTTP → HTTPS、`www` → 根域名、Home、Daily 列表与 Daily 动态路由均正常
-- 下一步：验证 canonical、sitemap、robots、错误页、日志与基础监控
+- 当前已建立：canonical、sitemap、robots、错误界面、基础安全响应头和桌面/移动端 Playwright 冒烟测试
+- 下一步：验证 Vercel 生产日志与基础监控，并创建托管 PostgreSQL / pgvector
 
 ## Vercel 项目设置
 
@@ -47,6 +48,7 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 5. 单元测试
 6. 内容 Front Matter 与交叉引用校验
 7. Seed 数据校验
+8. Desktop Chrome 与 Pixel 7 视口的 Playwright 生产冒烟测试
 
 Vercel Preview URL 可作为界面验收证据，但不能替代 GitHub Actions。只有 PR 最终 head 的 CI 与 Preview 均通过后才能合并。
 
@@ -57,4 +59,5 @@ Vercel Preview URL 可作为界面验收证据，但不能替代 GitHub Actions�
 3. ✅ 已完成：合并后验证 Production Deployment。
 4. ✅ 已完成：添加 `hzense.com`，完成 DNS 与 SSL 验证。
 5. ✅ 已完成：添加 `www.hzense.com` 并重定向到根域名。
-6. 🚧 进行中：验证 canonical、sitemap、robots、错误页与基础监控后，停止维护旧 Hosted Alpha。
+6. ✅ 已完成：建立 canonical、sitemap、robots、错误界面与基础安全响应头。
+7. 🚧 进行中：验证生产日志与基础监控后，停止维护旧 Hosted Alpha。

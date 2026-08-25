@@ -23,7 +23,11 @@ export const metadata: Metadata = {
   },
   description:
     "HZense 将分散的科技信号转化为结构化、可追溯的科技情报。",
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
+    url: "/",
     title: "HZense — 科技情报",
     description: "感知科技的变化",
     type: "website",
