@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "content:validate": "pnpm --filter @hzense/content validate",
-    "seed:validate": "node scripts/validate-seed.mjs",
+    "seed:validate": "pnpm --filter @hzense/content build && node scripts/validate-seed.mjs",
     "db:generate": "pnpm --filter @hzense/database db:generate",
     "db:migrate": "pnpm --filter @hzense/database db:migrate",
     "test:e2e": "playwright test"

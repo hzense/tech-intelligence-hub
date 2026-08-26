@@ -114,6 +114,46 @@ async function loadSeedFile<T>(
   return z.array(schema).parse(input);
 }
 
+export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
+  const ids = new Set<string>();
+  const entries = [
+    ...catalog.topics,
+    ...catalog.entities,
+    ...catalog.sources,
+    ...catalog.relations,
+    ...catalog.signals,
+  ];
+
+  for (const entry of entries) {
+    if (ids.has(entry.id)) throw new Error(`Duplicate id: ${entry.id}`);
+    ids.add(entry.id);
+  }
+
+  const topicIds = new Set(catalog.topics.map((topic) => topic.id));
+  const entityIds = new Set(catalog.entities.map((entity) => entity.id));
+  const sourceIds = new Set(catalog.sources.map((source) => source.id));
+
+  for (const relation of catalog.relations) {
+    if (!entityIds.has(relation.source) || !entityIds.has(relation.target)) {
+      throw new Error(`Broken relation: ${relation.id}`);
+    }
+  }
+
+  for (const signal of catalog.signals) {
+    if (!sourceIds.has(signal.source_id)) {
+      throw new Error(`Unknown source: ${signal.id}`);
+    }
+    for (const topic of signal.topics) {
+      if (!topicIds.has(topic)) throw new Error(`Unknown topic ${topic} in ${signal.id}`);
+    }
+    for (const entity of signal.entities) {
+      if (!entityIds.has(entity)) throw new Error(`Unknown entity ${entity} in ${signal.id}`);
+    }
+  }
+
+  return catalog;
+}
+
 export async function loadSeedCatalog(seedRoot: string): Promise<SeedCatalog> {
   const [entities, relations, signals, sources, topics] = await Promise.all([
     loadSeedFile(seedRoot, 'entities.yaml', entitySchema),
@@ -122,5 +162,5 @@ export async function loadSeedCatalog(seedRoot: string): Promise<SeedCatalog> {
     loadSeedFile(seedRoot, 'sources.yaml', sourceSchema),
     loadSeedFile(seedRoot, 'topics.yaml', topicSchema),
   ]);
-  return { entities, relations, signals, sources, topics };
+  return validateSeedCatalog({ entities, relations, signals, sources, topics });
 }
