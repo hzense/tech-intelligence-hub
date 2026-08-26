@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getSignalEntries, getSignalEntryById } from '../lib/seed-runtime.ts';
+import {
+  getResourceEntries,
+  getResourceEntryById,
+  getSignalEntries,
+  getSignalEntryById,
+} from '../lib/seed-runtime.ts';
 
 test('only exposes reviewed or accepted Signals in reverse chronological order', async () => {
   const signals = await getSignalEntries();
@@ -23,4 +28,14 @@ test('resolves a public Signal by its stable id', async () => {
   assert.ok(firstSignal);
 
   assert.equal((await getSignalEntryById(firstSignal.id))?.id, firstSignal.id);
+});
+
+
+test('only exposes active Resources and resolves their stable ids', async () => {
+  const resources = await getResourceEntries();
+  const firstResource = resources[0];
+
+  assert.ok(firstResource);
+  assert.ok(resources.every((resource) => resource.status === 'active'));
+  assert.equal((await getResourceEntryById(firstResource.id))?.id, firstResource.id);
 });

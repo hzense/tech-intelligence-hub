@@ -106,7 +106,7 @@ Completed:
 - [x] Seed topics, entities, relations and historical signals
 - [x] Seed Daily / Weekly / Insight / Topic Markdown
 - [x] CI workflow baseline
-- [x] Next.js Home, Daily, Insights, Topics and validated Markdown runtime
+- [x] Next.js Home, Daily, Weekly, Insights, Topics, Signals and Resources routes
 - [x] Architecture Decision Records
 
 Next milestone:
@@ -117,7 +117,7 @@ Next milestone:
 - [x] Bind `hzense.com` and redirect `www.hzense.com` to the apex domain
 - [x] Add Insights list and detail routes
 - [x] Add Topics list and detail routes
-- [ ] Add Weekly / Signals / Resources
+- [x] Add Weekly / Signals / Resources
 - [ ] Add basic search
 
 ## Local foundation checks
