@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { MobileNavigation } from "./mobile-navigation";
 import { ThemeToggle } from "./theme-toggle";
 
 export function SiteShell({ children }: { children: ReactNode }) {
@@ -19,7 +20,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
             />
             <span><strong>HZense</strong><small>科技情报</small></span>
           </Link>
-          <nav aria-label="主导航">
+          <nav className="desktop-nav" aria-label="主导航">
             <Link href="/daily">每日简报</Link>
             <Link href="/weekly">周报</Link>
             <Link href="/insights">洞察</Link>
@@ -31,6 +32,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
           <div className="header-actions">
             <ThemeToggle />
             <a className="ask-link" href="mailto:hello@hzense.com">联系 HZense <span>↗</span></a>
+            <MobileNavigation />
           </div>
         </div>
       </header>
