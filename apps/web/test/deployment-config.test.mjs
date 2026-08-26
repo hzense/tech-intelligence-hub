@@ -17,6 +17,8 @@ test('traces repository content required by deployed routes', () => {
     '/weekly/[week]',
     '/insights',
     '/insights/[id]',
+    '/signals',
+    '/signals/[id]',
     '/topics',
     '/topics/[id]',
     '/sitemap.xml',

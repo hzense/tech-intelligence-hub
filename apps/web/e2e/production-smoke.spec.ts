@@ -134,3 +134,29 @@ test('Weekly list and detail routes connect Daily and Topic evidence', async ({ 
     `https://hzense.com${detailHref}`,
   );
 });
+
+
+test('Signals list and detail routes expose traceable seed intelligence', async ({ page, request }) => {
+  await page.goto('/signals');
+  await expect(page).toHaveTitle('信号 · HZense');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('记录变化发生的时刻');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    'https://hzense.com/signals',
+  );
+
+  const detailHref = await page.locator('a.signal-index-card').first().getAttribute('href');
+  expect(detailHref).toMatch(/^\/signals\/[^/]+$/);
+
+  const sitemapResponse = await request.get('/sitemap.xml');
+  expect(await sitemapResponse.text()).toContain(`https://hzense.com${detailHref}`);
+
+  await page.goto(detailHref as string);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('article.signal-detail-body')).toBeVisible();
+  await expect(page.locator('aside.signal-context-panel')).toBeVisible();
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    `https://hzense.com${detailHref}`,
+  );
+});

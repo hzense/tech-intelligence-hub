@@ -24,6 +24,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <Link href="/weekly">周报</Link>
             <Link href="/insights">洞察</Link>
             <Link href="/topics">专题</Link>
+            <Link href="/signals">信号</Link>
             <Link href="/#radar">雷达</Link>
           </nav>
           <div className="header-actions">
