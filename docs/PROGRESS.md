@@ -1,6 +1,6 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-08-25
+**最后更新：** 2026-08-26
 **当前阶段：** Website MVP Alpha  
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
@@ -11,7 +11,7 @@
 | 进度轴 | 当前进度 | 状态 | 判断 |
 |---|---:|---|---|
 | 开发基础建设 | 100% | ✅ 完成 | 架构、Monorepo、数据模型、冻结依赖安装和内容交叉引用校验均已通过 CI |
-| 网站 MVP | 78% | 🟡 Alpha 可访问 | Home、Daily、Insights 与 Topics 已由验证内容驱动；Weekly、Signals、Resources 和搜索待接入 |
+| 网站 MVP | 92% | 🟡 Alpha 可访问 | Home、Daily、Weekly、Insights、Topics、Signals 与 Resources 已由验证内容驱动；基础搜索待接入 |
 | 生产就绪度 | 65% | 🟡 基础防护已建立 | 正式域名、HTTPS、错误界面、搜索引擎元数据和安全响应头已建立；数据库、日志和监控待完成 |
 
 ## 阶段看板
@@ -22,7 +22,7 @@
 | 1. 技术与信息架构 | ✅ 完成 | 100% | 技术栈、Source of Truth、信息模型、taxonomy 和 ADR 确定 |
 | 2. Development Foundation | ✅ 完成 | 100% | Monorepo、Schema、Migration、Validation、Seed、锁文件与冻结安装均已验证 |
 | 3. Web Application Shell | ✅ 完成 | 100% | Next.js、Tailwind、App Router、主题、全局布局和导航可运行 |
-| 4. MVP 内容与功能 | 🟡 开发中 | 70% | Home、Daily、Insights、Topics 和 seed Radar 可用；搜索和其余核心路由待完成 |
+| 4. MVP 内容与功能 | 🟡 开发中 | 90% | Home、Daily、Weekly、Insights、Topics、Signals、Resources 和 seed Radar 可用；基础搜索待完成 |
 | 5. Production Release | 🟡 进行中 | 65% | 域名、HTTPS、错误界面、搜索元数据和安全响应头已建立；数据库、日志与监控待完成 |
 
 ## 已完成
@@ -42,7 +42,7 @@
 - [x] Next.js Web Shell、响应式首页、全局导航与亮色/暗色主题
 - [x] HZense Daily 列表页和历史 seed 详情页
 - [x] HZense Insights 列表页、动态详情页与首页入口
-- [x] HZense Topics 列表页、动态详情页与关联情报入口
+- [x] HZense Topics 列表页、动态详情页与关联情报入口\n- [x] HZense Weekly 列表页、动态详情页与 Daily / Topic 证据链接\n- [x] HZense Signals 列表页、动态详情页与类型化 Seed runtime\n- [x] HZense Resources 列表页、动态详情页与双向实体关系
 - [x] 经过 Schema 与交叉引用校验的 Markdown/MDX Web runtime
 - [x] HZense 品牌 Logo、Open Graph 分享图和基础 metadata
 - [x] [Hosted Alpha 检查点](https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site)
@@ -105,7 +105,7 @@
 
 | MVP 验收项 | 状态 | 当前证据 / 缺口 |
 |---|---|---|
-| Home、Daily、Insights、Topics、Weekly、Signals、Resources 路由 | 🟡 | Home、Daily、Insights 与 Topics 已实现；Weekly、Signals 和 Resources 待开发 |
+| Home、Daily、Insights、Topics、Weekly、Signals、Resources 路由 | ✅ | PR #12–#14 已实现 Weekly、Signals、Resources 列表与详情路由，并通过 Vercel Preview 页面验收 |
 | 桌面端与移动端可用 | ✅ | PR #11 在 Desktop Chrome 与 Pixel 7 视口验证 Home、Daily、Insights、Topics、404、metadata 与安全响应头 |
 | Markdown/MDX 通过验证层加载 | ✅ | [PR #6 head CI](https://github.com/hzense/tech-intelligence-hub/pull/6/checks)验证同一加载器用于 CI 校验与 Web 构建 |
 | Topic / Entity 引用无断链 | ✅ | Seed 与内容引用均由 CI 校验 |

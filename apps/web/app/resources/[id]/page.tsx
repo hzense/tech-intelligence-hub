@@ -108,13 +108,21 @@ export default async function ResourceDetailPage({ params }: ResourceDetailProps
                   const target = entityMap.get(relation.target);
                   return (
                     <div key={relation.id}>
-                      <Link href={`/resources/${relation.source}`}>
-                        {source?.name ?? relation.source}
-                      </Link>
+                      {source?.status === 'active' ? (
+                        <Link href={`/resources/${relation.source}`}>{source.name}</Link>
+                      ) : (
+                        <strong title="该资源当前未公开">
+                          {source?.name ?? relation.source}
+                        </strong>
+                      )}
                       <span>{formatRelationType(relation.relation_type)}</span>
-                      <Link href={`/resources/${relation.target}`}>
-                        {target?.name ?? relation.target}
-                      </Link>
+                      {target?.status === 'active' ? (
+                        <Link href={`/resources/${relation.target}`}>{target.name}</Link>
+                      ) : (
+                        <strong title="该资源当前未公开">
+                          {target?.name ?? relation.target}
+                        </strong>
+                      )}
                       <small>置信度 {Math.round(relation.confidence * 100)}%</small>
                     </div>
                   );

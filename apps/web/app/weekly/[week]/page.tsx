@@ -98,28 +98,36 @@ export default async function WeeklyDetailPage({ params }: WeeklyDetailProps) {
           <div className="weekly-related-grid">
             <div>
               <h3>本周每日简报</h3>
-              <div className="related-link-list">
-                {relatedDailyEntries.map((daily) => (
-                  <Link
-                    href={`/daily/${daily.frontMatter.date}`}
-                    key={daily.frontMatter.id}
-                  >
-                    <span>{formatZhDate(daily.frontMatter.date)}</span>
-                    <strong>{daily.frontMatter.title}</strong>
-                  </Link>
-                ))}
-              </div>
+              {relatedDailyEntries.length > 0 ? (
+                <div className="related-link-list">
+                  {relatedDailyEntries.map((daily) => (
+                    <Link
+                      href={`/daily/${daily.frontMatter.date}`}
+                      key={daily.frontMatter.id}
+                    >
+                      <span>{formatZhDate(daily.frontMatter.date)}</span>
+                      <strong>{daily.frontMatter.title}</strong>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="related-empty">本周暂无关联每日简报。</p>
+              )}
             </div>
             <div>
               <h3>重点专题</h3>
-              <div className="related-link-list">
-                {entry.frontMatter.featured_topics.map((topic) => (
-                  <Link href={`/topics/${topic}`} key={topic}>
-                    <span>持续跟踪</span>
-                    <strong>{topicTitleMap.get(topic) ?? topic}</strong>
-                  </Link>
-                ))}
-              </div>
+              {entry.frontMatter.featured_topics.length > 0 ? (
+                <div className="related-link-list">
+                  {entry.frontMatter.featured_topics.map((topic) => (
+                    <Link href={`/topics/${topic}`} key={topic}>
+                      <span>持续跟踪</span>
+                      <strong>{topicTitleMap.get(topic) ?? topic}</strong>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="related-empty">本周暂无重点专题。</p>
+              )}
             </div>
           </div>
         </section>

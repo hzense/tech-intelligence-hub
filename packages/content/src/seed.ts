@@ -4,6 +4,7 @@ import { parse } from 'yaml';
 import { z } from 'zod';
 
 const id = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+const seedDateTime = z.iso.datetime({ offset: true });
 
 const entitySchema = z.object({
   id,
@@ -63,8 +64,8 @@ const signalSchema = z.object({
     'regulation',
     'supply_chain',
   ]),
-  occurred_at: z.string().min(1),
-  captured_at: z.string().min(1),
+  occurred_at: seedDateTime,
+  captured_at: seedDateTime,
   status: z.enum(['inbox', 'reviewed', 'accepted', 'rejected', 'archived']),
   source_id: id,
   summary: z.string().min(1),
