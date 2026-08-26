@@ -28,6 +28,8 @@ const nextConfig: NextConfig = {
     '/weekly/[week]': contentTrace,
     '/insights': contentTrace,
     '/insights/[id]': contentTrace,
+    '/signals': contentTrace,
+    '/signals/[id]': contentTrace,
     '/topics': contentTrace,
     '/topics/[id]': contentTrace,
     '/sitemap.xml': contentTrace,
