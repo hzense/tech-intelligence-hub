@@ -160,3 +160,31 @@ test('Signals list and detail routes expose traceable seed intelligence', async 
     `https://hzense.com${detailHref}`,
   );
 });
+
+
+test('Resources list and detail routes connect entities, relations, and Signals', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/resources');
+  await expect(page).toHaveTitle('资源 · HZense');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('理解信号背后的参与者');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    'https://hzense.com/resources',
+  );
+
+  const detailHref = await page.locator('a.resource-index-card').first().getAttribute('href');
+  expect(detailHref).toMatch(/^\/resources\/[^/]+$/);
+
+  const sitemapResponse = await request.get('/sitemap.xml');
+  expect(await sitemapResponse.text()).toContain(`https://hzense.com${detailHref}`);
+
+  await page.goto(detailHref as string);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('.resource-detail-grid')).toBeVisible();
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    `https://hzense.com${detailHref}`,
+  );
+});

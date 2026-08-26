@@ -40,3 +40,27 @@ export async function getSeedSourceMap(): Promise<Map<string, SeedSource>> {
 export async function getSeedRelations(): Promise<SeedRelation[]> {
   return (await getSeedCatalog()).relations;
 }
+
+
+export async function getResourceEntries(): Promise<SeedEntity[]> {
+  return (await getSeedCatalog()).entities
+    .filter((entity) => entity.status === 'active')
+    .sort(
+      (left, right) =>
+        left.type.localeCompare(right.type) || left.name.localeCompare(right.name),
+    );
+}
+
+export async function getResourceEntryById(id: string): Promise<SeedEntity | undefined> {
+  return (await getResourceEntries()).find((entity) => entity.id === id);
+}
+
+export async function getSignalsForEntity(entityId: string): Promise<SeedSignal[]> {
+  return (await getSignalEntries()).filter((signal) => signal.entities.includes(entityId));
+}
+
+export async function getRelationsForEntity(entityId: string): Promise<SeedRelation[]> {
+  return (await getSeedRelations()).filter(
+    (relation) => relation.source === entityId || relation.target === entityId,
+  );
+}

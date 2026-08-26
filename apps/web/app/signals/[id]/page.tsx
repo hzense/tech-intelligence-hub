@@ -107,7 +107,9 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
               <span>关联实体</span>
               <div className="context-link-list">
                 {entry.entities.map((entity) => (
-                  <span key={entity}>{entityMap.get(entity)?.name ?? entity}</span>
+                  <Link href={`/resources/${entity}`} key={entity}>
+                    {entityMap.get(entity)?.name ?? entity}
+                  </Link>
                 ))}
               </div>
             </section>

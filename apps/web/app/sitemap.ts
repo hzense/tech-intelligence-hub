@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { getSignalEntries } from '@/lib/seed-runtime';
+import { getResourceEntries, getSignalEntries } from '@/lib/seed-runtime';
 import {
   getDailyEntries,
   getInsightEntries,
@@ -10,14 +10,21 @@ import {
 const siteUrl = 'https://hzense.com';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [dailyEntries, insightEntries, signalEntries, topicEntries, weeklyEntries] =
-    await Promise.all([
-      getDailyEntries(),
-      getInsightEntries(),
-      getSignalEntries(),
-      getTopicEntries(),
-      getWeeklyEntries(),
-    ]);
+  const [
+    dailyEntries,
+    insightEntries,
+    resourceEntries,
+    signalEntries,
+    topicEntries,
+    weeklyEntries,
+  ] = await Promise.all([
+    getDailyEntries(),
+    getInsightEntries(),
+    getResourceEntries(),
+    getSignalEntries(),
+    getTopicEntries(),
+    getWeeklyEntries(),
+  ]);
 
   return [
     {
@@ -57,6 +64,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: new Date(`${entry.frontMatter.date}T00:00:00Z`),
       changeFrequency: 'monthly' as const,
       priority: 0.8,
+    })),
+    {
+      url: `${siteUrl}/resources`,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    ...resourceEntries.map((entry) => ({
+      url: `${siteUrl}/resources/${entry.id}`,
+      changeFrequency: 'monthly' as const,
+      priority: 0.7,
     })),
     {
       url: `${siteUrl}/signals`,
