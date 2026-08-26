@@ -577,3 +577,116 @@ nav a:hover { color: var(--brand-bright); }
     position: static;
   }
 }
+
+
+.weekly-index-list {
+  border-top: 1px solid var(--line);
+}
+.weekly-index-card {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 120px;
+  gap: 48px;
+  padding: 46px 0;
+  border-bottom: 1px solid var(--line);
+  transition: color .2s ease;
+}
+.weekly-index-card:hover h2 { color: var(--brand-bright); }
+.weekly-index-period {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.weekly-index-period span {
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+.weekly-index-period small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.weekly-index-card h2 {
+  margin: 0 0 14px;
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  line-height: 1.12;
+  letter-spacing: -.045em;
+  transition: color .2s ease;
+}
+.weekly-index-card > div:nth-child(2) > p {
+  max-width: 680px;
+  color: var(--muted);
+  line-height: 1.75;
+}
+.weekly-index-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+}
+.weekly-index-score strong {
+  color: var(--brand);
+  font-size: 3.5rem;
+  line-height: .85;
+  letter-spacing: -.08em;
+}
+.weekly-index-score span,
+.weekly-index-score small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+.weekly-detail-body {
+  max-width: 820px;
+  padding: 64px 0 76px;
+}
+.weekly-narrative {
+  padding: 42px 0;
+  border-top: 1px solid var(--line);
+}
+.weekly-narrative:first-child { border-top: 0; }
+.weekly-narrative > span {
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .14em;
+}
+.weekly-narrative h2 {
+  margin: 16px 0 22px;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.1;
+  letter-spacing: -.045em;
+}
+.weekly-narrative p {
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.85;
+}
+.weekly-related-section {
+  padding: 80px 0 120px;
+  border-top: 1px solid var(--line);
+}
+.weekly-related-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 48px;
+}
+.weekly-related-grid h3 {
+  margin: 0 0 18px;
+  font-size: 1.1rem;
+}
+
+@media (max-width: 700px) {
+  .weekly-index-card {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .weekly-index-score {
+    align-items: flex-start;
+  }
+  .weekly-related-grid {
+    grid-template-columns: 1fr;
+  }
+}

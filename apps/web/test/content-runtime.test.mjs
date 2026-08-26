@@ -8,6 +8,8 @@ import {
   getInsightsForTopic,
   getTopicEntries,
   getTopicEntryById,
+  getWeeklyEntries,
+  getWeeklyEntryByWeek,
 } from '../lib/content-runtime.ts';
 
 test('only exposes published Insights to public pages', async () => {
@@ -57,5 +59,18 @@ test('resolves Topic detail and its published intelligence relationships', async
     dailyEntries.every((entry) =>
       entry.frontMatter.rising_topics.includes(firstTopic.frontMatter.id),
     ),
+  );
+});
+
+
+test('only exposes published Weekly entries and resolves their stable week route', async () => {
+  const entries = await getWeeklyEntries();
+  const firstEntry = entries[0];
+
+  assert.ok(firstEntry);
+  assert.ok(entries.every((entry) => entry.frontMatter.status === 'published'));
+  assert.equal(
+    (await getWeeklyEntryByWeek(firstEntry.frontMatter.week))?.frontMatter.id,
+    firstEntry.frontMatter.id,
   );
 });

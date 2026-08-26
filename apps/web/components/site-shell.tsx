@@ -21,9 +21,10 @@ export function SiteShell({ children }: { children: ReactNode }) {
           </Link>
           <nav aria-label="主导航">
             <Link href="/daily">每日简报</Link>
+            <Link href="/weekly">周报</Link>
             <Link href="/insights">洞察</Link>
-            <Link href="/#radar">雷达</Link>
             <Link href="/topics">专题</Link>
+            <Link href="/#radar">雷达</Link>
           </nav>
           <div className="header-actions">
             <ThemeToggle />
