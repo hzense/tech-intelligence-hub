@@ -91,4 +91,45 @@ describe('content cross-reference validation', () => {
       ]),
     );
   });
+
+  it('rejects archived Topic references from published content while allowing drafts', () => {
+    const documents = [
+      document('archived-topic.md', {
+        id: 'topic-legacy',
+        title: 'Legacy topic',
+        type: 'topic',
+        status: 'archived',
+      }),
+      document('published-insight.md', {
+        id: 'insight-published',
+        title: 'Published insight',
+        type: 'insight',
+        status: 'published',
+        date: '2024-06-23',
+        importance: 4,
+        topics: ['topic-legacy'],
+        evidence_signals: [],
+      }),
+      document('draft-insight.md', {
+        id: 'insight-draft',
+        title: 'Draft insight',
+        type: 'insight',
+        status: 'draft',
+        date: '2024-06-24',
+        importance: 3,
+        topics: ['topic-legacy'],
+        evidence_signals: [],
+      }),
+    ];
+
+    expect(findReferenceIssues(documents, catalogs)).toEqual([
+      {
+        file: 'published-insight.md',
+        field: 'topics',
+        kind: 'topic',
+        reason: 'archived',
+        target: 'topic-legacy',
+      },
+    ]);
+  });
 });

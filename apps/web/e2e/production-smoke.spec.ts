@@ -80,3 +80,29 @@ test('Insights list and detail routes render validated content', async ({ page, 
     `https://hzense.com${detailHref}`,
   );
 });
+
+test('Topics list and detail routes connect related intelligence', async ({ page, request }) => {
+  await page.goto('/topics');
+  await expect(page).toHaveTitle('专题 · HZense');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('持续跟踪技术变化');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    'https://hzense.com/topics',
+  );
+
+  const detailHref = await page.locator('a.topic-index-card').first().getAttribute('href');
+  expect(detailHref).toMatch(/^\/topics\/[^/]+$/);
+
+  const sitemapResponse = await request.get('/sitemap.xml');
+  expect(await sitemapResponse.text()).toContain(`https://hzense.com${detailHref}`);
+
+  await page.goto(detailHref as string);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('article.topic-overview')).toBeVisible();
+  await expect(page.locator('aside.topic-metrics-panel')).toBeVisible();
+  await expect(page.locator('section.topic-related-section')).toBeVisible();
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    `https://hzense.com${detailHref}`,
+  );
+});
