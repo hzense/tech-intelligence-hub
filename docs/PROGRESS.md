@@ -83,9 +83,9 @@
 
 - [x] Insights
 - [x] Topics
-- [ ] Weekly
-- [ ] Signals
-- [ ] Resources
+- [x] Weekly
+- [x] Signals
+- [x] Resources
 - [ ] 基础关键词搜索
 - [ ] 手工维护的 Radar
 - [x] sitemap、robots 和 canonical metadata
@@ -120,7 +120,6 @@
 
 | 优先级 | 风险 | 处理方式 |
 |---|---|---|
-| P1 | 日期字段当前只校验格式，不校验真实日历日期 | 后续增加语义日期校验与边界测试 |
 | P1 | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程 |
 | P1 | 数据库、生产日志与监控尚未落地 | 下一步创建托管 PostgreSQL / pgvector，执行 Migration，并完成 Vercel 日志与监控验收 |
 
@@ -137,6 +136,7 @@
 
 | 日期 | 更新 |
 |---|---|
+| 2026-08-26 | PR #12–#14 接入 Weekly、Signals、Resources、类型化 Seed runtime、日期语义校验与实体关系图谱 |
 | 2026-08-25 | PR #11 将已验证的 Topic Markdown 接入列表、动态详情、导航、关联情报、sitemap 与双视口冒烟测试 |
 | 2026-08-25 | PR #10 将已验证的 Insight Markdown 接入列表、动态详情、首页、导航、sitemap 与双视口冒烟测试 |
 | 2026-08-25 | PR #9 建立 canonical、sitemap、robots、错误界面、安全响应头及桌面/移动端 Playwright 发布门禁 |
