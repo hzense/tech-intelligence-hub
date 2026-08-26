@@ -24,6 +24,8 @@ const nextConfig: NextConfig = {
     '/': contentTrace,
     '/daily': contentTrace,
     '/daily/[date]': contentTrace,
+    '/weekly': contentTrace,
+    '/weekly/[week]': contentTrace,
     '/insights': contentTrace,
     '/insights/[id]': contentTrace,
     '/topics': contentTrace,

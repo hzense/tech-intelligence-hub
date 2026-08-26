@@ -13,6 +13,8 @@ test('traces repository content required by deployed routes', () => {
     '/',
     '/daily',
     '/daily/[date]',
+    '/weekly',
+    '/weekly/[week]',
     '/insights',
     '/insights/[id]',
     '/topics',

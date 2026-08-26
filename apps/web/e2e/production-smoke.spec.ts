@@ -106,3 +106,31 @@ test('Topics list and detail routes connect related intelligence', async ({ page
     `https://hzense.com${detailHref}`,
   );
 });
+
+
+test('Weekly list and detail routes connect Daily and Topic evidence', async ({ page, request }) => {
+  await page.goto('/weekly');
+  await expect(page).toHaveTitle('每周综述 · HZense');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('把一周变化连成趋势');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    'https://hzense.com/weekly',
+  );
+
+  const detailHref = await page.locator('a.weekly-index-card').first().getAttribute('href');
+  expect(detailHref).toMatch(/^\/weekly\/[^/]+$/);
+
+  const sitemapResponse = await request.get('/sitemap.xml');
+  expect(await sitemapResponse.text()).toContain(`https://hzense.com${detailHref}`);
+
+  await page.goto(detailHref as string);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('article.weekly-detail-body')).toBeVisible();
+  await expect(page.locator('section.weekly-related-section')).toBeVisible();
+  await expect(page.locator('section.weekly-related-section a[href^="/daily/"]').first()).toBeVisible();
+  await expect(page.locator('section.weekly-related-section a[href^="/topics/"]').first()).toBeVisible();
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    `https://hzense.com${detailHref}`,
+  );
+});

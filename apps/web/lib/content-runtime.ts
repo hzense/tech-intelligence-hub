@@ -9,10 +9,12 @@ import {
 type DailyFrontMatter = Extract<FrontMatter, { type: 'daily' }>;
 type InsightFrontMatter = Extract<FrontMatter, { type: 'insight' }>;
 type TopicFrontMatter = Extract<FrontMatter, { type: 'topic' }>;
+type WeeklyFrontMatter = Extract<FrontMatter, { type: 'weekly' }>;
 
 export type DailyEntry = ContentEntry<DailyFrontMatter>;
 export type InsightEntry = ContentEntry<InsightFrontMatter>;
 export type TopicEntry = ContentEntry<TopicFrontMatter>;
+export type WeeklyEntry = ContentEntry<WeeklyFrontMatter>;
 
 let contentPromise: ReturnType<typeof loadContent> | undefined;
 
@@ -36,6 +38,10 @@ function isTopic(entry: ContentEntry): entry is TopicEntry {
   return entry.frontMatter.type === 'topic';
 }
 
+function isWeekly(entry: ContentEntry): entry is WeeklyEntry {
+  return entry.frontMatter.type === 'weekly';
+}
+
 export async function getDailyEntries(): Promise<DailyEntry[]> {
   return (await getContent())
     .filter(isDaily)
@@ -45,6 +51,30 @@ export async function getDailyEntries(): Promise<DailyEntry[]> {
 
 export async function getDailyEntryByDate(date: string): Promise<DailyEntry | undefined> {
   return (await getDailyEntries()).find((entry) => entry.frontMatter.date === date);
+}
+
+export async function getWeeklyEntries(): Promise<WeeklyEntry[]> {
+  return (await getContent())
+    .filter(isWeekly)
+    .filter((entry) => entry.frontMatter.status === 'published')
+    .sort((left, right) => right.frontMatter.week.localeCompare(left.frontMatter.week));
+}
+
+export async function getWeeklyEntryByWeek(week: string): Promise<WeeklyEntry | undefined> {
+  return (await getWeeklyEntries()).find((entry) => entry.frontMatter.week === week);
+}
+
+export async function getDailyEntriesForWeekly(week: string): Promise<DailyEntry[]> {
+  const weekly = await getWeeklyEntryByWeek(week);
+  if (!weekly) return [];
+
+  const dailyById = new Map(
+    (await getDailyEntries()).map((entry) => [entry.frontMatter.id, entry]),
+  );
+  return weekly.frontMatter.daily_refs.flatMap((id) => {
+    const entry = dailyById.get(id);
+    return entry ? [entry] : [];
+  });
 }
 
 export async function getInsightEntries(): Promise<InsightEntry[]> {
@@ -89,6 +119,11 @@ export async function getTopicTitleMap(): Promise<Map<string, string>> {
   return new Map(
     (await getTopicEntries()).map((entry) => [entry.frontMatter.id, entry.frontMatter.title]),
   );
+}
+
+export function formatZhWeek(week: string): string {
+  const [year = '0000', weekNumber = '00'] = week.split('-W');
+  return `${year} 年第 ${Number(weekNumber)} 周`;
 }
 
 export function formatZhDate(date: string): string {
