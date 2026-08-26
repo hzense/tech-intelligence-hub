@@ -91,8 +91,6 @@ describe('content cross-reference validation', () => {
       ]),
     );
   });
-});
-
 
   it('rejects archived Topic references from published content while allowing drafts', () => {
     const documents = [
@@ -134,3 +132,4 @@ describe('content cross-reference validation', () => {
       },
     ]);
   });
+});
