@@ -17,7 +17,7 @@ export interface ReferenceIssue {
   file: string;
   field: string;
   kind: ReferenceKind;
-  reason: 'duplicate' | 'missing';
+  reason: 'archived' | 'duplicate' | 'missing';
   target: string;
 }
 
@@ -36,6 +36,33 @@ function checkReferences(
   }
 }
 
+function checkTopicReferences(
+  issues: ReferenceIssue[],
+  document: ContentDocument,
+  field: string,
+  values: readonly string[],
+  allowed: ReadonlySet<string>,
+  archived: ReadonlySet<string>,
+) {
+  checkReferences(issues, document, field, 'topic', values, allowed);
+
+  if (document.frontMatter.type === 'topic' || document.frontMatter.status !== 'published') {
+    return;
+  }
+
+  for (const target of values) {
+    if (archived.has(target)) {
+      issues.push({
+        file: document.file,
+        field,
+        kind: 'topic',
+        reason: 'archived',
+        target,
+      });
+    }
+  }
+}
+
 export function findReferenceIssues(
   documents: readonly ContentDocument[],
   catalogs: ReferenceCatalogs,
@@ -44,6 +71,7 @@ export function findReferenceIssues(
   const contentIds = new Set<string>();
   const dailyIds = new Set<string>();
   const contentTopicIds = new Set<string>();
+  const archivedTopicIds = new Set<string>();
 
   for (const document of documents) {
     const { id, type } = document.frontMatter;
@@ -58,7 +86,10 @@ export function findReferenceIssues(
     }
     contentIds.add(id);
     if (type === 'daily') dailyIds.add(id);
-    if (type === 'topic') contentTopicIds.add(id);
+    if (type === 'topic') {
+      contentTopicIds.add(id);
+      if (document.frontMatter.status === 'archived') archivedTopicIds.add(id);
+    }
   }
 
   const topicIds = new Set([...catalogs.topicIds, ...contentTopicIds]);
@@ -67,30 +98,72 @@ export function findReferenceIssues(
     const frontMatter = document.frontMatter;
     switch (frontMatter.type) {
       case 'daily':
-        checkReferences(issues, document, 'rising_topics', 'topic', frontMatter.rising_topics, topicIds);
+        checkTopicReferences(
+          issues,
+          document,
+          'rising_topics',
+          frontMatter.rising_topics,
+          topicIds,
+          archivedTopicIds,
+        );
         checkReferences(issues, document, 'signal_refs', 'signal', frontMatter.signal_refs, catalogs.signalIds);
         break;
       case 'weekly':
         checkReferences(issues, document, 'daily_refs', 'daily', frontMatter.daily_refs, dailyIds);
-        checkReferences(issues, document, 'featured_topics', 'topic', frontMatter.featured_topics, topicIds);
+        checkTopicReferences(
+          issues,
+          document,
+          'featured_topics',
+          frontMatter.featured_topics,
+          topicIds,
+          archivedTopicIds,
+        );
         break;
       case 'insight':
-        checkReferences(issues, document, 'topics', 'topic', frontMatter.topics, topicIds);
+        checkTopicReferences(
+          issues,
+          document,
+          'topics',
+          frontMatter.topics,
+          topicIds,
+          archivedTopicIds,
+        );
         checkReferences(issues, document, 'companies', 'entity', frontMatter.companies ?? [], catalogs.entityIds);
         checkReferences(issues, document, 'technologies', 'entity', frontMatter.technologies ?? [], catalogs.entityIds);
         checkReferences(issues, document, 'evidence_signals', 'signal', frontMatter.evidence_signals, catalogs.signalIds);
         checkReferences(issues, document, 'counter_signals', 'signal', frontMatter.counter_signals ?? [], catalogs.signalIds);
         break;
       case 'briefing':
-        checkReferences(issues, document, 'topics', 'topic', frontMatter.topics, topicIds);
+        checkTopicReferences(
+          issues,
+          document,
+          'topics',
+          frontMatter.topics,
+          topicIds,
+          archivedTopicIds,
+        );
         checkReferences(issues, document, 'technologies', 'entity', frontMatter.technologies ?? [], catalogs.entityIds);
         break;
       case 'topic':
-        checkReferences(issues, document, 'parent', 'topic', frontMatter.parent ? [frontMatter.parent] : [], topicIds);
+        checkTopicReferences(
+          issues,
+          document,
+          'parent',
+          frontMatter.parent ? [frontMatter.parent] : [],
+          topicIds,
+          archivedTopicIds,
+        );
         break;
       case 'paper_note':
         checkReferences(issues, document, 'paper', 'entity', [frontMatter.paper], catalogs.entityIds);
-        checkReferences(issues, document, 'topics', 'topic', frontMatter.topics, topicIds);
+        checkTopicReferences(
+          issues,
+          document,
+          'topics',
+          frontMatter.topics,
+          topicIds,
+          archivedTopicIds,
+        );
         checkReferences(issues, document, 'related_entities', 'entity', frontMatter.related_entities ?? [], catalogs.entityIds);
         break;
     }
