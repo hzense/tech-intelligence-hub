@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   getResourceEntries,
   getResourceEntryById,
+  getRadarSnapshots,
   getSignalEntries,
   getSignalEntryById,
 } from '../lib/seed-runtime.ts';
@@ -38,4 +39,15 @@ test('only exposes active Resources and resolves their stable ids', async () => 
   assert.ok(firstResource);
   assert.ok(resources.every((resource) => resource.status === 'active'));
   assert.equal((await getResourceEntryById(firstResource.id))?.id, firstResource.id);
+});
+
+test('loads validated Radar snapshots in reverse date and attention order', async () => {
+  const snapshots = await getRadarSnapshots();
+
+  assert.equal(snapshots.length, 5);
+  assert.ok(snapshots.every((snapshot) => snapshot.attention >= 0 && snapshot.attention <= 100));
+  assert.deepEqual(
+    snapshots.map((snapshot) => snapshot.attention),
+    [...snapshots].map((snapshot) => snapshot.attention).sort((left, right) => right - left),
+  );
 });

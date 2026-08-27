@@ -15,6 +15,7 @@ async function createSeedRoot(
 
   await Promise.all([
     writeFile(join(root, 'entities.yaml'), '[]\n'),
+    writeFile(join(root, 'radar.yaml'), '[]\n'),
     writeFile(join(root, 'relations.yaml'), '[]\n'),
     writeFile(
       join(root, 'sources.yaml'),
@@ -66,11 +67,29 @@ describe('seed datetime validation', () => {
 
 describe('seed reference validation', () => {
   it('rejects a Signal whose source does not exist', async () => {
-    const root = await createSeedRoot(
-      '2024-02-29T00:00:00Z',
-      'source-missing',
-    );
+    const root = await createSeedRoot('2024-02-29T00:00:00Z', 'source-missing');
 
     await expect(loadSeedCatalog(root)).rejects.toThrow('Unknown source: signal-example');
+  });
+
+  it('rejects a Radar snapshot whose Topic does not exist', async () => {
+    const root = await createSeedRoot('2024-02-29T00:00:00Z');
+    await writeFile(
+      join(root, 'radar.yaml'),
+      `- id: radar-missing
+  topic: topic-missing
+  date: 2026-08-27
+  domain: artificial_intelligence
+  attention: 80
+  trend: growth
+  maturity: emerging
+  strategic_value: high
+  confidence: 0.9
+`,
+    );
+
+    await expect(loadSeedCatalog(root)).rejects.toThrow(
+      'Unknown topic topic-missing in radar-missing',
+    );
   });
 });

@@ -147,7 +147,8 @@ source_model:
   types: [website, rss, paper, company_blog, research_lab, news_media, newsletter, github, social, regulator, patent_database]
 
 radar_model:
-  required: [id, topic, date, attention, trend, maturity, strategic_value, confidence]
+  required: [id, topic, date, domain, attention, trend, maturity, strategic_value, confidence]
+  domain: [artificial_intelligence, infrastructure, security, robotics]
   attention: '0..100'
   trend: [rapid_growth, growth, stable, decline, rapid_decline]
   maturity: [research, early, emerging, growth, mature]

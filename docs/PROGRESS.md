@@ -22,7 +22,7 @@
 | 1. 技术与信息架构 | ✅ 完成 | 100% | 技术栈、Source of Truth、信息模型、taxonomy 和 ADR 确定 |
 | 2. Development Foundation | ✅ 完成 | 100% | Monorepo、Schema、Migration、Validation、Seed、锁文件与冻结安装均已验证 |
 | 3. Web Application Shell | ✅ 完成 | 100% | Next.js、Tailwind、App Router、主题、全局布局和导航可运行 |
-| 4. MVP 内容与功能 | ✅ 完成 | 100% | Home、Daily、Weekly、Insights、Topics、Signals、Resources、基础搜索和 seed Radar 可用 |
+| 4. MVP 内容与功能 | ✅ 完成 | 100% | Home、Daily、Weekly、Insights、Topics、Signals、Resources、基础搜索和独立 Radar 可用 |
 | 5. Production Release | 🟡 进行中 | 65% | 域名、HTTPS、错误界面、搜索元数据和安全响应头已建立；数据库、日志与监控待完成 |
 
 ## 已完成
@@ -47,6 +47,7 @@
 - [x] HZense Signals 列表页、动态详情页与类型化 Seed runtime
 - [x] HZense Resources 列表页、动态详情页与双向实体关系
 - [x] 已发布 Daily、Weekly、Insights、Topics、Signals、Resources 的基础关键词搜索
+- [x] 独立 Radar 页面、类型化快照、可分享筛选与 Topic / Signal / Resource 证据链
 - [x] 经过 Schema 与交叉引用校验的 Markdown/MDX Web runtime
 - [x] HZense 品牌 Logo、Open Graph 分享图和基础 metadata
 - [x] [Hosted Alpha 检查点](https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site)
@@ -91,7 +92,7 @@
 - [x] Signals
 - [x] Resources
 - [x] 基础关键词搜索
-- [x] 手工维护的 Radar（首页 curated seed，满足 V1 验收）
+- [x] 手工维护的 Radar（独立路由、类型化快照与跨内容证据链）
 - [x] sitemap、robots 和 canonical metadata
 
 ### P1 — 生产发布
@@ -114,7 +115,7 @@
 | Markdown/MDX 通过验证层加载 | ✅ | [PR #6 head CI](https://github.com/hzense/tech-intelligence-hub/pull/6/checks)验证同一加载器用于 CI 校验与 Web 构建 |
 | Topic / Entity 引用无断链 | ✅ | Seed 与内容引用均由 CI 校验 |
 | 基础关键词搜索 | ✅ | PR #16 接入六类公开内容、相关度排序、类型筛选及双视口验收 |
-| 手工 Radar | ✅ | 首页 curated seed Radar 已满足 V1；独立 Radar 页面留待 MVP 后扩展 |
+| 手工 Radar | ✅ | PR #17 将类型化 Radar 快照接入独立页面、筛选、可视化与证据链 |
 | 亮色与暗色主题 | ✅ | Web Shell 已实现主题切换 |
 | CI 全部通过 | ✅ | [PR #16 Checks](https://github.com/hzense/tech-intelligence-hub/pull/16/checks)验证构建、单测、内容校验、Seed 校验与双视口搜索流程 |
 | Vercel 生产部署与域名 | ✅ | [`hzense.com`](https://hzense.com/) 已上线；HTTPS、HTTP → HTTPS 与 `www` → 根域名跳转均已验收 |
@@ -140,6 +141,7 @@
 
 | 日期 | 更新 |
 |---|---|
+| 2026-08-27 | PR #17 接入独立 Radar 路由、类型化快照、领域/阶段/趋势筛选与 Topic / Signal / Resource 证据链 |
 | 2026-08-27 | PR #16 接入六类公开内容的关键词搜索、类型筛选、相关度排序、导航入口及桌面/移动端验收 |
 | 2026-08-26 | PR #15 统一 Seed Schema 与引用校验入口，增加 CI 手动触发并修复进度文档格式 |
 | 2026-08-26 | PR #12–#14 接入 Weekly、Signals、Resources、类型化 Seed runtime、日期语义校验与实体关系图谱 |

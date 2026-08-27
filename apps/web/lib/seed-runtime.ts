@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import {
   loadSeedCatalog,
   type SeedEntity,
+  type SeedRadarSnapshot,
   type SeedRelation,
   type SeedSignal,
   type SeedSource,
@@ -41,6 +42,14 @@ export async function getSeedRelations(): Promise<SeedRelation[]> {
   return (await getSeedCatalog()).relations;
 }
 
+export async function getRadarSnapshots(): Promise<SeedRadarSnapshot[]> {
+  return [...(await getSeedCatalog()).radar].sort(
+    (left, right) =>
+      right.date.localeCompare(left.date) ||
+      right.attention - left.attention ||
+      left.topic.localeCompare(right.topic),
+  );
+}
 
 export async function getResourceEntries(): Promise<SeedEntity[]> {
   return (await getSeedCatalog()).entities

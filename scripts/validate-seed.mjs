@@ -4,5 +4,5 @@ import { loadSeedCatalog } from '../packages/content/dist/src/index.js';
 const catalog = await loadSeedCatalog(resolve('data/seed'));
 
 console.log(
-  `Seed validation OK: ${catalog.topics.length} topics, ${catalog.entities.length} entities, ${catalog.relations.length} relations, ${catalog.signals.length} signals.`,
+  `Seed validation OK: ${catalog.topics.length} topics, ${catalog.entities.length} entities, ${catalog.relations.length} relations, ${catalog.signals.length} signals, ${catalog.radar.length} Radar snapshots.`,
 );

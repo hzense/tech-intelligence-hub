@@ -189,6 +189,28 @@ test('Resources list and detail routes connect entities, relations, and Signals'
   );
 });
 
+test('Radar visualizes and filters traceable technology assessments', async ({ page, request }) => {
+  await page.goto('/radar');
+  await expect(page).toHaveTitle('科技雷达 · HZense');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('看清技术所处的位置');
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    'https://hzense.com/radar',
+  );
+  await expect(page.locator('.radar-entry-card')).toHaveCount(5);
+  await expect(page.locator('.radar-entry-card a[href^="/signals/"]').first()).toBeVisible();
+  await expect(page.locator('.radar-entry-card a[href^="/resources/"]').first()).toBeVisible();
+
+  const sitemapResponse = await request.get('/sitemap.xml');
+  expect(await sitemapResponse.text()).toContain('https://hzense.com/radar');
+
+  await page.getByLabel('领域').selectOption('security');
+  await page.getByRole('button', { name: '应用筛选' }).click();
+  await expect(page).toHaveURL(/domain=security/);
+  await expect(page.locator('.radar-entry-card')).toHaveCount(1);
+  await expect(page.getByRole('heading', { level: 2, name: 'AI 安全' })).toBeVisible();
+});
+
 
 test('mobile navigation keeps every primary route reachable', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -207,6 +229,7 @@ test('mobile navigation keeps every primary route reachable', async ({ page }) =
   await expect(menuButton).toHaveAttribute('aria-expanded', 'true');
   await expect(mobileNavigation).toBeVisible();
   await expect(mobileNavigation.getByRole('link', { name: '资源' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('link', { name: '雷达' })).toBeVisible();
 
   await mobileNavigation.getByRole('link', { name: '洞察' }).click();
   await expect(page).toHaveURL(/\/insights$/);
