@@ -213,3 +213,28 @@ test('mobile navigation keeps every primary route reachable', async ({ page }) =
   await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
   await expect(mobileNavigation).toBeHidden();
 });
+
+test('search finds and filters published intelligence', async ({ page }) => {
+  await page.goto('/search');
+
+  await expect(page.getByRole('heading', { level: 1, name: '搜索结构化科技情报。' })).toBeVisible();
+  await page.getByRole('searchbox', { name: '关键词' }).fill('OpenAI');
+  await page.getByRole('button', { name: '搜索' }).click();
+
+  await expect(page).toHaveURL(/\/search\?q=OpenAI/);
+  await expect(page.getByText(/条结果 · “OpenAI”/)).toBeVisible();
+  await expect(page.getByRole('list', { name: '搜索结果' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /OpenAI/ }).first()).toBeVisible();
+
+  await page
+    .getByRole('navigation', { name: '搜索结果类型' })
+    .getByRole('link', { name: '资源', exact: true })
+    .click();
+  await expect(page).toHaveURL(/type=resource/);
+  await expect(page.getByRole('link', { name: /OpenAI/ }).first()).toBeVisible();
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    'https://hzense.com/search',
+  );
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
+});

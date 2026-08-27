@@ -11,6 +11,7 @@ const navigationItems = [
   { href: "/signals", label: "信号" },
   { href: "/resources", label: "资源" },
   { href: "/#radar", label: "雷达" },
+  { href: "/search", label: "搜索" },
 ] as const;
 
 export function MobileNavigation() {
