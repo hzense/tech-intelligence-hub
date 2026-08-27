@@ -30,6 +30,9 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <Link href="/#radar">雷达</Link>
           </nav>
           <div className="header-actions">
+            <Link className="search-link" href="/search" aria-label="搜索">
+              <span aria-hidden="true">⌕</span>
+            </Link>
             <ThemeToggle />
             <a className="ask-link" href="mailto:hello@hzense.com">联系 HZense <span>↗</span></a>
             <MobileNavigation />

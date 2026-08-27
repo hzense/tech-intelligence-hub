@@ -30,6 +30,7 @@ const nextConfig: NextConfig = {
     '/insights/[id]': contentTrace,
     '/resources': contentTrace,
     '/resources/[id]': contentTrace,
+    '/search': contentTrace,
     '/signals': contentTrace,
     '/signals/[id]': contentTrace,
     '/topics': contentTrace,

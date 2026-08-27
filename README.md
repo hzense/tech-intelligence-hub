@@ -89,7 +89,7 @@ docs/
 
 ## Current status
 
-**Website MVP Alpha — in progress**
+**Website MVP — release candidate**
 
 Completed:
 
@@ -107,6 +107,7 @@ Completed:
 - [x] Seed Daily / Weekly / Insight / Topic Markdown
 - [x] CI workflow baseline
 - [x] Next.js Home, Daily, Weekly, Insights, Topics, Signals and Resources routes
+- [x] Basic keyword search across published content
 - [x] Architecture Decision Records
 
 Next milestone:
@@ -118,7 +119,13 @@ Next milestone:
 - [x] Add Insights list and detail routes
 - [x] Add Topics list and detail routes
 - [x] Add Weekly / Signals / Resources
-- [ ] Add basic search
+- [x] Add basic search
+
+Next phase:
+
+- [ ] Publish the dedicated HZense Radar route
+- [ ] Connect the current Daily content production workflow
+- [ ] Provision PostgreSQL / pgvector and production observability
 
 ## Local foundation checks
 
