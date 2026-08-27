@@ -116,7 +116,7 @@
 | 基础关键词搜索 | ✅ | PR #16 接入六类公开内容、相关度排序、类型筛选及双视口验收 |
 | 手工 Radar | ✅ | 首页 curated seed Radar 已满足 V1；独立 Radar 页面留待 MVP 后扩展 |
 | 亮色与暗色主题 | ✅ | Web Shell 已实现主题切换 |
-| CI 全部通过 | ✅ | [PR #11 Checks](https://github.com/hzense/tech-intelligence-hub/pull/11/checks)验证 Topics 列表、详情、关联内容、canonical、sitemap 与双视口可用性 |
+| CI 全部通过 | ✅ | [PR #16 Checks](https://github.com/hzense/tech-intelligence-hub/pull/16/checks)验证构建、单测、内容校验、Seed 校验与双视口搜索流程 |
 | Vercel 生产部署与域名 | ✅ | [`hzense.com`](https://hzense.com/) 已上线；HTTPS、HTTP → HTTPS 与 `www` → 根域名跳转均已验收 |
 | sitemap、robots、canonical metadata | ✅ | App Router metadata routes 与页面 canonical 由 PR #9 的 Playwright 测试自动验证 |
 
