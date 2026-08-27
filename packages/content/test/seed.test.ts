@@ -6,7 +6,10 @@ import { loadSeedCatalog } from '../src/seed.js';
 
 const temporaryRoots: string[] = [];
 
-async function createSeedRoot(occurredAt: string): Promise<string> {
+async function createSeedRoot(
+  occurredAt: string,
+  signalSourceId = 'source-example',
+): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'hzense-seed-'));
   temporaryRoots.push(root);
 
@@ -26,7 +29,7 @@ async function createSeedRoot(occurredAt: string): Promise<string> {
   occurred_at: ${occurredAt}
   captured_at: 2026-08-20T00:00:00Z
   status: reviewed
-  source_id: source-example
+  source_id: ${signalSourceId}
   summary: Example summary
   importance: 3
   strength: 3
@@ -58,5 +61,16 @@ describe('seed datetime validation', () => {
     const root = await createSeedRoot('2024-02-30T00:00:00Z');
 
     await expect(loadSeedCatalog(root)).rejects.toThrow();
+  });
+});
+
+describe('seed reference validation', () => {
+  it('rejects a Signal whose source does not exist', async () => {
+    const root = await createSeedRoot(
+      '2024-02-29T00:00:00Z',
+      'source-missing',
+    );
+
+    await expect(loadSeedCatalog(root)).rejects.toThrow('Unknown source: signal-example');
   });
 });

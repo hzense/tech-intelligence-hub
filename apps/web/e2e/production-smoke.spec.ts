@@ -188,3 +188,28 @@ test('Resources list and detail routes connect entities, relations, and Signals'
     `https://hzense.com${detailHref}`,
   );
 });
+
+
+test('mobile navigation keeps every primary route reachable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  const desktopNavigation = page.getByRole('navigation', { name: '主导航' });
+  const menuButton = page.locator('.mobile-menu-toggle');
+  const mobileNavigation = page.getByRole('navigation', { name: '移动导航' });
+
+  await expect(desktopNavigation).toBeHidden();
+  await expect(menuButton).toBeVisible();
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+  await expect(mobileNavigation).toBeHidden();
+
+  await menuButton.click();
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+  await expect(mobileNavigation).toBeVisible();
+  await expect(mobileNavigation.getByRole('link', { name: '资源' })).toBeVisible();
+
+  await mobileNavigation.getByRole('link', { name: '洞察' }).click();
+  await expect(page).toHaveURL(/\/insights$/);
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+  await expect(mobileNavigation).toBeHidden();
+});
