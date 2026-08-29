@@ -27,7 +27,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <Link href="/topics">专题</Link>
             <Link href="/signals">信号</Link>
             <Link href="/resources">资源</Link>
-            <Link href="/#radar">雷达</Link>
+            <Link href="/radar">雷达</Link>
           </nav>
           <div className="header-actions">
             <Link className="search-link" href="/search" aria-label="搜索">

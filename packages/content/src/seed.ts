@@ -4,6 +4,7 @@ import { parse } from 'yaml';
 import { z } from 'zod';
 
 const id = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+const seedDate = z.iso.date();
 const seedDateTime = z.iso.datetime({ offset: true });
 
 const entitySchema = z.object({
@@ -91,25 +92,35 @@ const topicSchema = z.object({
   status: z.enum(['watching', 'active', 'strategic', 'archived']),
 });
 
+const radarSchema = z.object({
+  id,
+  topic: id,
+  date: seedDate,
+  domain: z.enum(['artificial_intelligence', 'infrastructure', 'security', 'robotics']),
+  attention: z.number().int().min(0).max(100),
+  trend: z.enum(['rapid_growth', 'growth', 'stable', 'decline', 'rapid_decline']),
+  maturity: z.enum(['research', 'early', 'emerging', 'growth', 'mature']),
+  strategic_value: z.enum(['low', 'medium', 'high', 'critical']),
+  confidence: z.number().min(0).max(1),
+});
+
 export type SeedEntity = z.infer<typeof entitySchema>;
 export type SeedRelation = z.infer<typeof relationSchema>;
+export type SeedRadarSnapshot = z.infer<typeof radarSchema>;
 export type SeedSignal = z.infer<typeof signalSchema>;
 export type SeedSource = z.infer<typeof sourceSchema>;
 export type SeedTopic = z.infer<typeof topicSchema>;
 
 export interface SeedCatalog {
   entities: SeedEntity[];
+  radar: SeedRadarSnapshot[];
   relations: SeedRelation[];
   signals: SeedSignal[];
   sources: SeedSource[];
   topics: SeedTopic[];
 }
 
-async function loadSeedFile<T>(
-  seedRoot: string,
-  name: string,
-  schema: z.ZodType<T>,
-): Promise<T[]> {
+async function loadSeedFile<T>(seedRoot: string, name: string, schema: z.ZodType<T>): Promise<T[]> {
   const input: unknown = parse(await readFile(join(seedRoot, name), 'utf8'));
   return z.array(schema).parse(input);
 }
@@ -122,6 +133,7 @@ export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
     ...catalog.sources,
     ...catalog.relations,
     ...catalog.signals,
+    ...catalog.radar,
   ];
 
   for (const entry of entries) {
@@ -132,6 +144,18 @@ export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
   const topicIds = new Set(catalog.topics.map((topic) => topic.id));
   const entityIds = new Set(catalog.entities.map((entity) => entity.id));
   const sourceIds = new Set(catalog.sources.map((source) => source.id));
+  const radarTopicDates = new Set<string>();
+
+  for (const snapshot of catalog.radar) {
+    if (!topicIds.has(snapshot.topic)) {
+      throw new Error(`Unknown topic ${snapshot.topic} in ${snapshot.id}`);
+    }
+    const topicDate = `${snapshot.topic}:${snapshot.date}`;
+    if (radarTopicDates.has(topicDate)) {
+      throw new Error(`Duplicate Radar topic/date: ${topicDate}`);
+    }
+    radarTopicDates.add(topicDate);
+  }
 
   for (const relation of catalog.relations) {
     if (!entityIds.has(relation.source) || !entityIds.has(relation.target)) {
@@ -155,12 +179,13 @@ export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
 }
 
 export async function loadSeedCatalog(seedRoot: string): Promise<SeedCatalog> {
-  const [entities, relations, signals, sources, topics] = await Promise.all([
+  const [entities, radar, relations, signals, sources, topics] = await Promise.all([
     loadSeedFile(seedRoot, 'entities.yaml', entitySchema),
+    loadSeedFile(seedRoot, 'radar.yaml', radarSchema),
     loadSeedFile(seedRoot, 'relations.yaml', relationSchema),
     loadSeedFile(seedRoot, 'signals.yaml', signalSchema),
     loadSeedFile(seedRoot, 'sources.yaml', sourceSchema),
     loadSeedFile(seedRoot, 'topics.yaml', topicSchema),
   ]);
-  return validateSeedCatalog({ entities, relations, signals, sources, topics });
+  return validateSeedCatalog({ entities, radar, relations, signals, sources, topics });
 }

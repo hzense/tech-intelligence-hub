@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { SiteShell } from "@/components/site-shell";
-import { radarItems } from "@/lib/content";
 import { formatZhDate, getDailyEntries, getInsightEntries, getTopicTitleMap } from "@/lib/content-runtime";
+import { formatRadarMaturity, formatRadarTrend } from "@/lib/radar-presentation";
+import { getRadarEntries } from "@/lib/radar-runtime";
 
 export default async function Home() {
-  const [dailyEntries, insightEntries, topicTitleMap] = await Promise.all([
+  const [dailyEntries, insightEntries, radarEntries, topicTitleMap] = await Promise.all([
     getDailyEntries(),
     getInsightEntries(),
+    getRadarEntries(),
     getTopicTitleMap(),
   ]);
   const latestDaily = dailyEntries[0];
@@ -39,9 +41,9 @@ export default async function Home() {
               <Link className="button button-primary" href={dailyHref}>
                 阅读示例简报 <span aria-hidden="true">↗</span>
               </Link>
-              <a className="button button-secondary" href="#radar">
+              <Link className="button button-secondary" href="/radar">
                 探索技术雷达
-              </a>
+              </Link>
             </div>
             <div className="coverage-row" aria-label="关注领域">
               <span>人工智能</span><i />
@@ -117,21 +119,23 @@ export default async function Home() {
               <p>
                 持续观察正在塑造下一个周期的技术，判断其关注度、成熟度与战略价值。
               </p>
-              <a className="button button-light" href="#radar-list">打开技术雷达</a>
+              <Link className="button button-light" href="/radar">打开技术雷达</Link>
             </div>
             <div className="radar-list" id="radar-list">
-              {radarItems.map((item, index) => (
-                <article key={item.name}>
+              {radarEntries.slice(0, 4).map((entry, index) => (
+                <article key={entry.snapshot.id}>
                   <span className="radar-index">0{index + 1}</span>
                   <div className="radar-name">
-                    <strong>{item.name}</strong>
-                    <span>{item.stage}</span>
+                    <strong>{entry.topic.frontMatter.title}</strong>
+                    <span>{formatRadarMaturity(entry.snapshot.maturity)}</span>
                   </div>
-                  <div className="trend-track" aria-label={`${item.name} 评分 ${item.score}，满分 100`}>
-                    <span style={{ width: `${item.score}%` }} />
+                  <div className="trend-track" aria-label={`${entry.topic.frontMatter.title} 关注度 ${entry.snapshot.attention}，满分 100`}>
+                    <span style={{ width: `${entry.snapshot.attention}%` }} />
                   </div>
-                  <strong className="trend-score">{item.score}</strong>
-                  <span className={`trend-label ${item.trend}`}>{item.trendLabel}</span>
+                  <strong className="trend-score">{entry.snapshot.attention}</strong>
+                  <span className={`trend-label ${entry.snapshot.trend}`}>
+                    {formatRadarTrend(entry.snapshot.trend)}
+                  </span>
                 </article>
               ))}
             </div>

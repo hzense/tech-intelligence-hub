@@ -120,10 +120,10 @@ Next milestone:
 - [x] Add Topics list and detail routes
 - [x] Add Weekly / Signals / Resources
 - [x] Add basic search
+- [x] Publish the dedicated HZense Radar route
 
 Next phase:
 
-- [ ] Publish the dedicated HZense Radar route
 - [ ] Connect the current Daily content production workflow
 - [ ] Provision PostgreSQL / pgvector and production observability
 
