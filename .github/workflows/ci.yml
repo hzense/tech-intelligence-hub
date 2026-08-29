@@ -16,6 +16,8 @@ jobs:
       - run: corepack enable
       - run: corepack prepare pnpm@11.21.0 --activate
       - run: pnpm install --frozen-lockfile
+      - name: Audit production dependencies
+        run: pnpm audit --prod
       - run: pnpm lint
       - run: pnpm typecheck
       - name: Verify direct Web deployment build
