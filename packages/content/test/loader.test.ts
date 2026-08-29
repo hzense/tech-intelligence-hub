@@ -149,4 +149,40 @@ Broken reference.
       'daily/2024/2024-06-20.md: signal_refs missing signal "signal-missing"',
     );
   });
+
+  it('reports the complete Topic parent cycle through the content validation path', async () => {
+    const { contentRoot, seedRoot } = await createFixture();
+    const topicsRoot = join(contentRoot, 'topics');
+    await mkdir(topicsRoot, { recursive: true });
+    await Promise.all([
+      writeFile(
+        join(topicsRoot, 'a.md'),
+        `---
+id: topic-a
+title: Topic A
+type: topic
+status: active
+parent: topic-b
+---
+Topic A.
+`,
+      ),
+      writeFile(
+        join(topicsRoot, 'b.md'),
+        `---
+id: topic-b
+title: Topic B
+type: topic
+status: active
+parent: topic-a
+---
+Topic B.
+`,
+      ),
+    ]);
+
+    await expect(loadContent({ contentRoot, seedRoot })).rejects.toThrow(
+      'topics/a.md: parent cycle topic "topic-a -> topic-b -> topic-a"',
+    );
+  });
 });

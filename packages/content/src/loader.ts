@@ -157,8 +157,10 @@ export async function loadContent({
   }));
   const referenceIssues = findReferenceIssues(documents, catalogs);
   if (referenceIssues.length > 0) {
-    const details = referenceIssues.map(
-      (issue) => `- ${issue.file}: ${issue.field} ${issue.reason} ${issue.kind} "${issue.target}"`,
+    const details = referenceIssues.map((issue) =>
+      issue.reason === 'cycle'
+        ? `- ${issue.file}: ${issue.field} cycle ${issue.kind} "${issue.cycle.join(' -> ')}"`
+        : `- ${issue.file}: ${issue.field} ${issue.reason} ${issue.kind} "${issue.target}"`,
     );
     throw new Error(`Content reference validation failed:\n${details.join('\n')}`);
   }
