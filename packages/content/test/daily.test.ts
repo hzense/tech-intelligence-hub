@@ -275,6 +275,17 @@ describe('Daily generation policy', () => {
     };
     expect(() => validateDailyIntegrity([entry], catalog([signal()]))).not.toThrow();
   });
+
+  it('escapes apostrophes in generated YAML strings', () => {
+    const inputCatalog = catalog([signal()]);
+    const topic = inputCatalog.topics[0];
+    if (!topic) throw new Error('Expected a Topic fixture');
+    topic.title = "Builder's Models";
+    const parsed = matter(
+      renderDailyDraft(selectDailyCandidates(inputCatalog, buildDailyDraftRequest('2026-08-20'))),
+    );
+    expect(validateFrontMatter(parsed.data).summary).toContain("Builder's Models");
+  });
 });
 
 describe('Daily integrity and publication gates', () => {
