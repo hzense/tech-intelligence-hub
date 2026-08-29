@@ -39,7 +39,7 @@ Core products:
 
 ## Official links
 
-- Website: **https://hzense.com** *(deployment pending)*
+- Website: **https://hzense.com** _(deployment pending)_
 - Main repository: **https://github.com/hzense/tech-intelligence-hub**
 
 ## Principles
@@ -85,4 +85,4 @@ Next milestone:
 ---
 
 **HZense — Technology Intelligence**  
-*Sense what matters in technology.*
+_Sense what matters in technology._

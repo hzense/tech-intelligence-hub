@@ -23,10 +23,7 @@ export const metadata: Metadata = {
 };
 
 export default async function WeeklyPage() {
-  const [entries, topicTitleMap] = await Promise.all([
-    getWeeklyEntries(),
-    getTopicTitleMap(),
-  ]);
+  const [entries, topicTitleMap] = await Promise.all([getWeeklyEntries(), getTopicTitleMap()]);
 
   return (
     <SiteShell>

@@ -58,7 +58,9 @@ export default async function TopicDetailPage({ params }: TopicDetailProps) {
   return (
     <SiteShell>
       <main className="article-main section-shell">
-        <Link className="back-link" href="/topics">← 返回全部专题</Link>
+        <Link className="back-link" href="/topics">
+          ← 返回全部专题
+        </Link>
         <header className="article-header">
           <div className="article-meta">
             <span>HZENSE 专题</span>
@@ -115,10 +117,7 @@ export default async function TopicDetailPage({ params }: TopicDetailProps) {
               {relatedInsights.length > 0 ? (
                 <div className="related-link-list">
                   {relatedInsights.map((insight) => (
-                    <Link
-                      href={`/insights/${insight.frontMatter.id}`}
-                      key={insight.frontMatter.id}
-                    >
+                    <Link href={`/insights/${insight.frontMatter.id}`} key={insight.frontMatter.id}>
                       <span>{formatZhDate(insight.frontMatter.date)}</span>
                       <strong>{insight.frontMatter.title}</strong>
                     </Link>
@@ -133,10 +132,7 @@ export default async function TopicDetailPage({ params }: TopicDetailProps) {
               {relatedDailyEntries.length > 0 ? (
                 <div className="related-link-list">
                   {relatedDailyEntries.map((daily) => (
-                    <Link
-                      href={`/daily/${daily.frontMatter.date}`}
-                      key={daily.frontMatter.id}
-                    >
+                    <Link href={`/daily/${daily.frontMatter.date}`} key={daily.frontMatter.id}>
                       <span>{formatZhDate(daily.frontMatter.date)}</span>
                       <strong>{daily.frontMatter.title}</strong>
                     </Link>

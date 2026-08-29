@@ -15,16 +15,16 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 ## Vercel 项目设置
 
-| 设置 | 值 |
-|---|---|
-| Git Repository | `hzense/tech-intelligence-hub` |
-| Framework Preset | Next.js |
-| Root Directory | `apps/web` |
-| Include source files outside Root Directory | 开启 |
-| Node.js Version | 24.x |
-| Install Command | 使用 Vercel 自动检测的 pnpm workspace 安装 |
-| Build Command | `pnpm build` |
-| Production Branch | `main` |
+| 设置                                        | 值                                         |
+| ------------------------------------------- | ------------------------------------------ |
+| Git Repository                              | `hzense/tech-intelligence-hub`             |
+| Framework Preset                            | Next.js                                    |
+| Root Directory                              | `apps/web`                                 |
+| Include source files outside Root Directory | 开启                                       |
+| Node.js Version                             | 24.x                                       |
+| Install Command                             | 使用 Vercel 自动检测的 pnpm workspace 安装 |
+| Build Command                               | `pnpm build`                               |
+| Production Branch                           | `main`                                     |
 
 仓库根目录的 `packageManager` 固定为 pnpm 11.21.0，锁文件必须以 frozen 模式通过 CI。`apps/web` 的 `prebuild` 会先构建 `@hzense/content`，因此 Vercel 从 Web workspace 直接构建时不会依赖 Turborepo 的隐式前置产物。
 

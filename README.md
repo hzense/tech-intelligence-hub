@@ -8,7 +8,7 @@
 
 HZense is a Technology Intelligence platform for turning fragmented technical information into structured, versioned intelligence.
 
-- Website: **https://hzense.com** *(production)*
+- Website: **https://hzense.com** _(production)_
 - Vercel Production: **https://tech-intelligence-hub-web.vercel.app/**
 - GitHub Organization: **https://github.com/hzense**
 - Main Repository: **https://github.com/hzense/tech-intelligence-hub**
@@ -17,7 +17,7 @@ HZense is a Technology Intelligence platform for turning fragmented technical in
 
 > **Sources → Signals → HZense Daily → HZense Weekly → Topics → Insights → Radar**
 
-Daily candidates are generated deterministically from reviewed Signals and opened as Draft PRs; publication remains a human-only decision. See [Continuous Daily](docs/CONTINUOUS_DAILY.md).
+Daily candidates are generated deterministically from reviewed Signals, validated as immutable artifacts and designed to open as Draft PRs; publication remains a human-only decision. Automatic PR creation is currently feature-gated by an organization policy. See [Continuous Daily](docs/CONTINUOUS_DAILY.md).
 
 ## Product modules
 
@@ -126,7 +126,8 @@ Next milestone:
 
 Next phase:
 
-- [ ] Connect the current Daily content production workflow
+- [x] Connect deterministic Daily candidate generation and validate a real dry-run artifact
+- [ ] Enable organization policy for automatic Continuous Daily Draft PR creation
 - [ ] Provision PostgreSQL / pgvector and production observability
 
 ## Local foundation checks
@@ -159,4 +160,4 @@ An older database created directly from `0000_foundation.sql` has no migration-h
 ---
 
 **HZense — Technology Intelligence**  
-*Sense what matters in technology.*
+_Sense what matters in technology._

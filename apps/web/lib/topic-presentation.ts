@@ -44,8 +44,6 @@ export function formatTopicMaturity(value: TopicFrontMatter['maturity']): string
   return value ? maturityLabels[value] : '待评估';
 }
 
-export function formatTopicStrategicValue(
-  value: TopicFrontMatter['strategic_value'],
-): string {
+export function formatTopicStrategicValue(value: TopicFrontMatter['strategic_value']): string {
   return value ? strategicValueLabels[value] : '待评估';
 }

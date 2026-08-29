@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@11.21.0",
-  "engines": { "node": ">=24 <25" },
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "build": "turbo run build",
     "lint": "turbo run lint",
@@ -11,6 +13,7 @@
     "test": "turbo run test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "workflow:validate": "node scripts/validate-workflows.mjs",
     "content:validate": "pnpm --filter @hzense/content validate",
     "daily:generate": "pnpm --filter @hzense/content generate:daily",
     "daily:publication-check": "pnpm --filter @hzense/content validate:daily-publication",

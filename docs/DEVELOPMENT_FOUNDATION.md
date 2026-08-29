@@ -18,6 +18,7 @@ This foundation converts the design repository into an executable monorepo bound
 corepack enable
 corepack prepare pnpm@11.21.0 --activate
 pnpm install
+pnpm workflow:validate
 pnpm format:check
 pnpm lint
 pnpm typecheck

@@ -55,8 +55,7 @@ export async function getResourceEntries(): Promise<SeedEntity[]> {
   return (await getSeedCatalog()).entities
     .filter((entity) => entity.status === 'active')
     .sort(
-      (left, right) =>
-        left.type.localeCompare(right.type) || left.name.localeCompare(right.name),
+      (left, right) => left.type.localeCompare(right.type) || left.name.localeCompare(right.name),
     );
 }
 

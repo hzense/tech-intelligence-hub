@@ -1,26 +1,32 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import { SiteShell } from "@/components/site-shell";
-import { formatDailyEdition, formatZhDate, getDailyEntries, splitSignalHeading } from "@/lib/content-runtime";
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { SiteShell } from '@/components/site-shell';
+import {
+  formatDailyEdition,
+  formatZhDate,
+  getDailyEntries,
+  splitSignalHeading,
+} from '@/lib/content-runtime';
 
 export const metadata: Metadata = {
-  title: "每日简报",
-  description: "HZense 每日科技情报简报。",
+  title: '每日简报',
+  description: 'HZense 每日科技情报简报。',
   alternates: {
-    canonical: "/daily",
+    canonical: '/daily',
   },
   openGraph: {
-    title: "每日简报",
-    description: "HZense 每日科技情报简报。",
-    url: "/daily",
-    type: "website",
+    title: '每日简报',
+    description: 'HZense 每日科技情报简报。',
+    url: '/daily',
+    type: 'website',
   },
 };
 
 export default async function DailyPage() {
   const dailyEntries = await getDailyEntries();
   const latestDaily = dailyEntries[0];
-  const previewSections = latestDaily?.sections.filter((section) => section.heading !== "执行摘要") ?? [];
+  const previewSections =
+    latestDaily?.sections.filter((section) => section.heading !== '执行摘要') ?? [];
 
   return (
     <SiteShell>
@@ -32,10 +38,18 @@ export default async function DailyPage() {
         </section>
         <section className="daily-list" aria-label="每日简报列表">
           {dailyEntries.map((entry) => (
-            <Link className="daily-list-feature" href={`/daily/${entry.frontMatter.date}`} key={entry.frontMatter.id}>
+            <Link
+              className="daily-list-feature"
+              href={`/daily/${entry.frontMatter.date}`}
+              key={entry.frontMatter.id}
+            >
               <div>
-                <span className="archive-label">{formatDailyEdition(entry.frontMatter.edition)}</span>
-                <time dateTime={entry.frontMatter.date}>{formatZhDate(entry.frontMatter.date)}</time>
+                <span className="archive-label">
+                  {formatDailyEdition(entry.frontMatter.edition)}
+                </span>
+                <time dateTime={entry.frontMatter.date}>
+                  {formatZhDate(entry.frontMatter.date)}
+                </time>
               </div>
               <div>
                 <h2>{entry.frontMatter.title}</h2>
@@ -54,7 +68,9 @@ export default async function DailyPage() {
               const signal = splitSignalHeading(section);
               return (
                 <article key={section.heading}>
-                  <span>0{index + 1} · {signal.category}</span>
+                  <span>
+                    0{index + 1} · {signal.category}
+                  </span>
                   <h3>{signal.title}</h3>
                   <p>{section.paragraphs[0]}</p>
                 </article>

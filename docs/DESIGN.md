@@ -172,12 +172,14 @@ AI 可辅助 URL 读取、摘要、Topic 分类、Company / People / Technology 
 ## 21. 实施路线
 
 ### Phase 0A — 技术架构与品牌基线
+
 - [x] HZense 品牌确定
 - [x] `hzense.com` 官方域名注册
 - [x] 产品信息架构
 - [x] 首版技术架构设计
 
 ### Phase 0B — Schema / Taxonomy
+
 - [x] Information Model
 - [x] Taxonomy
 - [x] Entity / Relation Schema
@@ -187,6 +189,7 @@ AI 可辅助 URL 读取、摘要、Topic 分类、Company / People / Technology 
 - [ ] Repository Skeleton
 
 ### Phase 1 — Knowledge Base
+
 - [ ] Insights
 - [ ] Daily
 - [ ] Weekly
@@ -196,6 +199,7 @@ AI 可辅助 URL 读取、摘要、Topic 分类、Company / People / Technology 
 - [ ] Entities / Relations
 
 ### Phase 2 — Website MVP
+
 - [ ] Home
 - [ ] Daily
 - [ ] Insights
@@ -210,18 +214,22 @@ AI 可辅助 URL 读取、摘要、Topic 分类、Company / People / Technology 
 - [ ] `hzense.com` DNS / Domain Binding
 
 ### Phase 3 — Radar
+
 - [ ] Attention / Trend / Maturity / Strategic Value
 - [ ] Historical snapshots
 
 ### Phase 4 — Timeline
+
 - [ ] Entity timelines
 - [ ] Signal-derived timeline
 
 ### Phase 5 — Intelligence Graph
+
 - [ ] Entity Relation Model
 - [ ] Graph Visualization
 
 ### Phase 6 — Ask HZense
+
 - [ ] FTS
 - [ ] Embeddings / pgvector
 - [ ] Hybrid Search
@@ -229,11 +237,13 @@ AI 可辅助 URL 读取、摘要、Topic 分类、Company / People / Technology 
 - [ ] Citations
 
 ### Phase 7 — Automated Ingestion
+
 - [ ] RSS / arXiv / GitHub / Blogs / Company Sources / Newsletters
 - [ ] Dedup / Classification / Entity Extraction / Ranking
 - [ ] Signal Inbox + Human Review
 
 ### Phase 8 — Intelligence Automation
+
 - [ ] Daily candidate generation
 - [ ] Weekly candidate generation
 - [ ] Topic updates

@@ -3,10 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { SiteShell } from '@/components/site-shell';
 import { formatZhDate } from '@/lib/content-runtime';
-import {
-  formatEntityType,
-  formatRelationType,
-} from '@/lib/resource-presentation';
+import { formatEntityType, formatRelationType } from '@/lib/resource-presentation';
 import {
   getRelationsForEntity,
   getResourceEntries,
@@ -59,7 +56,9 @@ export default async function ResourceDetailPage({ params }: ResourceDetailProps
   return (
     <SiteShell>
       <main className="article-main section-shell">
-        <Link className="back-link" href="/resources">← 返回全部资源</Link>
+        <Link className="back-link" href="/resources">
+          ← 返回全部资源
+        </Link>
         <header className="article-header">
           <div className="article-meta">
             <span>{formatEntityType(entry.type)}</span>
@@ -111,17 +110,13 @@ export default async function ResourceDetailPage({ params }: ResourceDetailProps
                       {source?.status === 'active' ? (
                         <Link href={`/resources/${relation.source}`}>{source.name}</Link>
                       ) : (
-                        <strong title="该资源当前未公开">
-                          {source?.name ?? relation.source}
-                        </strong>
+                        <strong title="该资源当前未公开">{source?.name ?? relation.source}</strong>
                       )}
                       <span>{formatRelationType(relation.relation_type)}</span>
                       {target?.status === 'active' ? (
                         <Link href={`/resources/${relation.target}`}>{target.name}</Link>
                       ) : (
-                        <strong title="该资源当前未公开">
-                          {target?.name ?? relation.target}
-                        </strong>
+                        <strong title="该资源当前未公开">{target?.name ?? relation.target}</strong>
                       )}
                       <small>置信度 {Math.round(relation.confidence * 100)}%</small>
                     </div>

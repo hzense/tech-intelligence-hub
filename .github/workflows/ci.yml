@@ -6,29 +6,82 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: 24.19.0
+  PNPM_VERSION: 11.21.0
+
 jobs:
   foundation:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Lint GitHub Actions workflows
+        env:
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            --output "$archive"
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
-      - run: corepack enable
-      - run: corepack prepare pnpm@11.21.0 --activate
-      - run: pnpm install --frozen-lockfile
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Activate pnpm
+        run: corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate workflow security contracts
+        run: pnpm workflow:validate
+      - name: Check repository formatting
+        run: pnpm format:check
       - name: Audit production dependencies
         run: pnpm audit --prod
-      - run: pnpm lint
-      - run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
       - name: Verify direct Web deployment build
         run: pnpm --filter @hzense/web build
-      - run: pnpm build
-      - run: pnpm test
-      - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
-      - run: pnpm content:validate
-      - run: pnpm seed:validate
+      - name: Build workspace
+        run: pnpm build
+      - name: Run unit tests
+        run: pnpm test
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run production browser smoke tests
+        run: pnpm test:e2e
+      - name: Validate content references and integrity
+        run: pnpm content:validate
+      - name: Validate Seed and Radar data
+        run: pnpm seed:validate
+      - name: Summarize foundation gate
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo '## Foundation gate'
+            echo "- Result: $JOB_STATUS"
+            echo "- Node.js: $NODE_VERSION"
+            echo "- pnpm: $PNPM_VERSION"
+            echo '- Checks: format, audit, lint, typecheck, build, unit, browser, content and Seed'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   database-migrations:
     runs-on: ubuntu-latest
@@ -48,32 +101,65 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
-      - run: corepack enable
-      - run: corepack prepare pnpm@11.21.0 --activate
-      - run: pnpm install --frozen-lockfile
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Activate pnpm
+        run: corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
       - name: Verify fresh, legacy, rerun and rollback migrations
         env:
           MIGRATION_TEST_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
         run: pnpm --filter @hzense/database test:migrations
+      - name: Summarize migration gate
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo '## Database migration gate'
+            echo "- Result: $JOB_STATUS"
+            echo '- Matrix: fresh, legacy upgrade, idempotent rerun and rollback'
+            echo '- Service: PostgreSQL 16 + pgvector 0.8.6 (digest pinned)'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   daily-publication-gate:
     name: ${{ github.event_name == 'workflow_dispatch' && 'daily-candidate-validation' || 'daily-publication-gate' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
-      - run: corepack enable
-      - run: corepack prepare pnpm@11.21.0 --activate
-      - run: pnpm install --frozen-lockfile
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Enable Corepack
+        run: corepack enable
+      - name: Activate pnpm
+        run: corepack prepare "pnpm@${PNPM_VERSION}" --activate
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
       - name: Validate Daily structure and evidence
         run: pnpm content:validate
       - name: Require a human publication state
         if: github.event_name != 'workflow_dispatch'
         run: pnpm daily:publication-check
+      - name: Summarize Daily gate
+        if: always()
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          {
+            echo '## Daily publication gate'
+            echo "- Result: $JOB_STATUS"
+            echo "- Event: $EVENT_NAME"
+            echo "- Check context: ${{ github.event_name == 'workflow_dispatch' && 'daily-candidate-validation' || 'daily-publication-gate' }}"
+          } >> "$GITHUB_STEP_SUMMARY"

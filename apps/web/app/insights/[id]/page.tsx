@@ -42,16 +42,15 @@ export async function generateMetadata({ params }: InsightDetailProps): Promise<
 
 export default async function InsightDetailPage({ params }: InsightDetailProps) {
   const { id } = await params;
-  const [entry, topicTitleMap] = await Promise.all([
-    getInsightEntryById(id),
-    getTopicTitleMap(),
-  ]);
+  const [entry, topicTitleMap] = await Promise.all([getInsightEntryById(id), getTopicTitleMap()]);
   if (!entry) notFound();
 
   return (
     <SiteShell>
       <main className="article-main section-shell">
-        <Link className="back-link" href="/insights">← 返回全部洞察</Link>
+        <Link className="back-link" href="/insights">
+          ← 返回全部洞察
+        </Link>
         <header className="article-header">
           <div className="article-meta">
             <span>HZENSE 洞察</span>

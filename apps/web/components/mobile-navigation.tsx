@@ -1,17 +1,17 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useState } from "react";
+import Link from 'next/link';
+import { useState } from 'react';
 
 const navigationItems = [
-  { href: "/daily", label: "每日简报" },
-  { href: "/weekly", label: "周报" },
-  { href: "/insights", label: "洞察" },
-  { href: "/topics", label: "专题" },
-  { href: "/signals", label: "信号" },
-  { href: "/resources", label: "资源" },
-  { href: "/radar", label: "雷达" },
-  { href: "/search", label: "搜索" },
+  { href: '/daily', label: '每日简报' },
+  { href: '/weekly', label: '周报' },
+  { href: '/insights', label: '洞察' },
+  { href: '/topics', label: '专题' },
+  { href: '/signals', label: '信号' },
+  { href: '/resources', label: '资源' },
+  { href: '/radar', label: '雷达' },
+  { href: '/search', label: '搜索' },
 ] as const;
 
 export function MobileNavigation() {
@@ -22,7 +22,7 @@ export function MobileNavigation() {
       <button
         className="mobile-menu-toggle"
         type="button"
-        aria-label={isOpen ? "关闭主导航" : "打开主导航"}
+        aria-label={isOpen ? '关闭主导航' : '打开主导航'}
         aria-expanded={isOpen}
         aria-controls="mobile-menu"
         onClick={() => setIsOpen((open) => !open)}

@@ -53,7 +53,9 @@ export default async function WeeklyDetailPage({ params }: WeeklyDetailProps) {
   return (
     <SiteShell>
       <main className="article-main section-shell">
-        <Link className="back-link" href="/weekly">← 返回全部周报</Link>
+        <Link className="back-link" href="/weekly">
+          ← 返回全部周报
+        </Link>
         <header className="article-header">
           <div className="article-meta">
             <span>HZENSE WEEKLY</span>
@@ -101,10 +103,7 @@ export default async function WeeklyDetailPage({ params }: WeeklyDetailProps) {
               {relatedDailyEntries.length > 0 ? (
                 <div className="related-link-list">
                   {relatedDailyEntries.map((daily) => (
-                    <Link
-                      href={`/daily/${daily.frontMatter.date}`}
-                      key={daily.frontMatter.id}
-                    >
+                    <Link href={`/daily/${daily.frontMatter.date}`} key={daily.frontMatter.id}>
                       <span>{formatZhDate(daily.frontMatter.date)}</span>
                       <strong>{daily.frontMatter.title}</strong>
                     </Link>

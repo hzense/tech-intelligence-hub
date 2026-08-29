@@ -18,10 +18,7 @@ export const metadata: Metadata = {
 };
 
 export default async function InsightsPage() {
-  const [entries, topicTitleMap] = await Promise.all([
-    getInsightEntries(),
-    getTopicTitleMap(),
-  ]);
+  const [entries, topicTitleMap] = await Promise.all([getInsightEntries(), getTopicTitleMap()]);
 
   return (
     <SiteShell>
@@ -40,7 +37,9 @@ export default async function InsightsPage() {
             >
               <div className="insight-index-meta">
                 <span>重要度 {entry.frontMatter.importance}/5</span>
-                <time dateTime={entry.frontMatter.date}>{formatZhDate(entry.frontMatter.date)}</time>
+                <time dateTime={entry.frontMatter.date}>
+                  {formatZhDate(entry.frontMatter.date)}
+                </time>
               </div>
               <h2>{entry.frontMatter.title}</h2>
               <p>{entry.summary}</p>

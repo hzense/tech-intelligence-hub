@@ -12,7 +12,9 @@ companies: [company-nvidia]
 technologies: [product-nvidia-blackwell]
 evidence_signals: [signal-20240318-blackwell]
 ---
+
 # AI 基础设施瓶颈正在重塑竞争边界
 
 ## 研判
+
 模型进展与产品采用都受计算、网络、内存和电力约束。HZense 因此把基础设施视为核心情报专题，而不是被隐藏在产品背后的实现细节。
