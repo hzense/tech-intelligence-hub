@@ -13,13 +13,18 @@ export interface ReferenceCatalogs {
   topicIds: ReadonlySet<string>;
 }
 
-export interface ReferenceIssue {
+interface ReferenceIssueBase {
   file: string;
   field: string;
   kind: ReferenceKind;
-  reason: 'archived' | 'duplicate' | 'missing';
-  target: string;
 }
+
+export type ReferenceIssue =
+  | (ReferenceIssueBase & {
+      reason: 'archived' | 'duplicate' | 'missing';
+      target: string;
+    })
+  | (ReferenceIssueBase & { reason: 'cycle'; cycle: readonly string[] });
 
 function checkReferences(
   issues: ReferenceIssue[],
@@ -60,6 +65,72 @@ function checkTopicReferences(
         target,
       });
     }
+  }
+}
+
+function canonicalizeTopicCycle(topicIds: readonly string[]): string[] {
+  let startIndex = 0;
+  for (let index = 1; index < topicIds.length; index += 1) {
+    if (topicIds[index]! < topicIds[startIndex]!) startIndex = index;
+  }
+  return [...topicIds.slice(startIndex), ...topicIds.slice(0, startIndex)];
+}
+
+function checkTopicParentCycles(issues: ReferenceIssue[], documents: readonly ContentDocument[]) {
+  const topicCounts = new Map<string, number>();
+  for (const document of documents) {
+    if (document.frontMatter.type !== 'topic') continue;
+    const topicId = document.frontMatter.id;
+    topicCounts.set(topicId, (topicCounts.get(topicId) ?? 0) + 1);
+  }
+
+  const topicParents = new Map<string, string | undefined>();
+  const topicFiles = new Map<string, string>();
+  for (const document of documents) {
+    if (document.frontMatter.type !== 'topic') continue;
+    const topicId = document.frontMatter.id;
+    if (topicCounts.get(topicId) !== 1) continue;
+    topicParents.set(topicId, document.frontMatter.parent ?? undefined);
+    topicFiles.set(topicId, document.file);
+  }
+
+  const done = new Set<string>();
+  const reportedCycles = new Set<string>();
+
+  for (const startTopicId of [...topicParents.keys()].sort()) {
+    if (done.has(startTopicId)) continue;
+
+    const path: string[] = [];
+    const pathPositions = new Map<string, number>();
+    let topicId: string | undefined = startTopicId;
+
+    while (topicId && topicParents.has(topicId) && !done.has(topicId)) {
+      const cycleStart = pathPositions.get(topicId);
+      if (cycleStart !== undefined) {
+        const cycleIds = canonicalizeTopicCycle(path.slice(cycleStart));
+        const firstTopicId = cycleIds[0];
+        const cycleKey = cycleIds.join('\0');
+        const file = firstTopicId ? topicFiles.get(firstTopicId) : undefined;
+        if (firstTopicId && file && !reportedCycles.has(cycleKey)) {
+          reportedCycles.add(cycleKey);
+          issues.push({
+            file,
+            field: 'parent',
+            kind: 'topic',
+            reason: 'cycle',
+            cycle: [...cycleIds, firstTopicId],
+          });
+        }
+        break;
+      }
+
+      pathPositions.set(topicId, path.length);
+      path.push(topicId);
+      const parentId = topicParents.get(topicId);
+      topicId = parentId && topicParents.has(parentId) ? parentId : undefined;
+    }
+
+    for (const visitedTopicId of path) done.add(visitedTopicId);
   }
 }
 
@@ -224,6 +295,8 @@ export function findReferenceIssues(
         break;
     }
   }
+
+  checkTopicParentCycles(issues, documents);
 
   return issues;
 }

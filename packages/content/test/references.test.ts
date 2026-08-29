@@ -12,6 +12,16 @@ function document(file: string, input: unknown): ContentDocument {
   return { file, frontMatter: validateFrontMatter(input) };
 }
 
+function topicDocument(file: string, id: string, parent?: string): ContentDocument {
+  return document(file, {
+    id,
+    title: id,
+    type: 'topic',
+    status: 'active',
+    ...(parent ? { parent } : {}),
+  });
+}
+
 describe('content cross-reference validation', () => {
   it('accepts references that resolve to seed and content records', () => {
     const documents = [
@@ -150,5 +160,56 @@ describe('content cross-reference validation', () => {
         target: 'topic-legacy',
       },
     ]);
+  });
+
+  it('rejects a Topic that names itself as its parent', () => {
+    const overlappingCatalogs = {
+      ...catalogs,
+      topicIds: new Set([...catalogs.topicIds, 'topic-self']),
+    };
+
+    expect(
+      findReferenceIssues(
+        [topicDocument('topics/self.md', 'topic-self', 'topic-self')],
+        overlappingCatalogs,
+      ),
+    ).toEqual([
+      {
+        file: 'topics/self.md',
+        field: 'parent',
+        kind: 'topic',
+        reason: 'cycle',
+        cycle: ['topic-self', 'topic-self'],
+      },
+    ]);
+  });
+
+  it('reports every Topic ID in a multi-node parent cycle exactly once', () => {
+    const documents = [
+      topicDocument('topics/tail.md', 'topic-0-tail', 'topic-a'),
+      topicDocument('topics/a.md', 'topic-a', 'topic-b'),
+      topicDocument('topics/b.md', 'topic-b', 'topic-a'),
+    ];
+
+    expect(findReferenceIssues(documents, catalogs)).toEqual([
+      {
+        file: 'topics/a.md',
+        field: 'parent',
+        kind: 'topic',
+        reason: 'cycle',
+        cycle: ['topic-a', 'topic-b', 'topic-a'],
+      },
+    ]);
+  });
+
+  it('allows an acyclic parent chain that terminates at a seed-only Topic', () => {
+    const documents = [
+      topicDocument('topics/root.md', 'topic-root'),
+      topicDocument('topics/child.md', 'topic-child', 'topic-root'),
+      topicDocument('topics/grandchild.md', 'topic-grandchild', 'topic-child'),
+      topicDocument('topics/model-serving.md', 'topic-model-serving', 'topic-foundation-models'),
+    ];
+
+    expect(findReferenceIssues(documents, catalogs)).toEqual([]);
   });
 });
