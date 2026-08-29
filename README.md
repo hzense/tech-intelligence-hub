@@ -147,15 +147,26 @@ The first dependency install should commit `pnpm-lock.yaml`. After that, CI shou
 
 ## Database migration contract
 
-`packages/database/src/schema.ts` is the Drizzle physical-schema declaration. Executable migrations are reviewed, sequential `NNNN_name.sql` files in `db/migrations/`; `pnpm db:migrate` is the only migration command. The runner applies each file in a transaction, serializes concurrent runs, and records a SHA-256 checksum in `hzense_schema_migrations`. Applied files must never be edited.
+`packages/database/src/schema.ts` is the Drizzle physical-schema declaration. Executable migrations are reviewed, sequential `NNNN_name.sql` files in `db/migrations/`; their immutable SHA-256 values are recorded in `db/migrations/checksums.json`. The runner applies each file in a transaction, serializes concurrent runs, and records the checksum in `hzense_schema_migrations`. Applied files must never be edited.
 
-For a new PostgreSQL database with pgvector available:
+Local development uses only a literal loopback PostgreSQL URL:
 
 ```bash
-DATABASE_URL=postgresql://... pnpm db:migrate
+DATABASE_URL=postgresql://...@127.0.0.1:5432/hzense pnpm db:migrate:local
 ```
 
-An older database created directly from `0000_foundation.sql` has no migration-history row. Adopt it only after verifying that the exact checked-in file created the schema, then pass that file's SHA-256 as `HZENSE_DATABASE_BASELINE_CHECKSUM`. Unknown legacy Source, Signal, or Radar rows stop the evidence migration with their IDs so provenance can be backfilled explicitly.
+Production uses a dedicated non-pooling endpoint and a restricted database-owner role. The provider or database administrator must install the reviewed pgvector version first. `DATABASE_DIRECT_URL` must set `sslmode=verify-full`; its host, port, database and user must independently match the `HZENSE_DATABASE_EXPECTED_*` values. The safe order is:
+
+```bash
+pnpm db:preflight:production
+# create and record a provider snapshot or pg_dump backup here
+pnpm db:migrate
+pnpm db:verify:production
+```
+
+Preflight is read-only and rejects a transaction-pooler-shaped operating model by requiring an explicitly reviewed direct endpoint; it also checks the authenticated/effective role, PostgreSQL major, TLS session, pgvector version, schema privileges, target ownership and migration history before any DDL. Production entry points reject Node's process-wide TLS certificate-validation bypass. Verification runs in a read-only transaction and checks table durability, ownership, RLS/policy/trigger state, the complete column/enum/key/index contract, `vector(1536)`, exact migration checksums and Radar evidence invariants. Never run `test:migrations` against a production server: it creates and drops disposable databases.
+
+An older database created directly from `0000_foundation.sql` has no migration-history row. Standard production migration deliberately refuses to adopt it. The break-glass path requires a separate catalog review, confirmation that the exact checked-in file created the schema, and an explicit `HZENSE_DATABASE_BASELINE_CHECKSUM` passed only to the low-level local runner. Unknown legacy Source, Signal, or Radar rows stop the evidence migration with their IDs so provenance can be backfilled explicitly.
 
 ---
 

@@ -8,6 +8,7 @@ import {
   migrationChecksum,
   planPendingMigrations,
   shouldAdoptFoundation,
+  verifyMigrationManifest,
 } from '../src/migrate.mjs';
 
 describe('database migration runner', () => {
@@ -19,6 +20,7 @@ describe('database migration runner', () => {
       '0001_radar_evidence.sql',
     ]);
     expect(migrations.every((migration) => migration.checksum.length === 64)).toBe(true);
+    await expect(verifyMigrationManifest(migrations)).resolves.toBeUndefined();
   });
 
   it('rejects checksum drift and non-prefix migration history', () => {
@@ -78,7 +80,10 @@ describe('database migration runner', () => {
   it('uses the auditable SQL runner for pnpm db:migrate', async () => {
     const packageJson = JSON.parse(await readFile(resolve(process.cwd(), 'package.json'), 'utf8'));
 
-    expect(packageJson.scripts['db:migrate']).toBe('node src/migrate.mjs');
+    expect(packageJson.scripts['db:migrate']).toBe('node src/production-migrate.mjs');
+    expect(packageJson.scripts['db:migrate:local']).toBe('node src/local-migrate.mjs');
+    expect(packageJson.scripts['db:preflight:production']).toBe('node src/preflight.mjs');
+    expect(packageJson.scripts['db:verify:production']).toContain('node src/verify.mjs');
     expect(packageJson.scripts['db:generate']).toBeUndefined();
     expect(packageJson.scripts['test:migrations']).toContain('require-integration-env.mjs');
     expect(migrationChecksum('select 1')).toBe(
