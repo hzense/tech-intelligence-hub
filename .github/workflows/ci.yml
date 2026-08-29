@@ -88,7 +88,7 @@ jobs:
     timeout-minutes: 10
     services:
       postgres:
-        image: pgvector/pgvector:0.8.6-pg16-bookworm@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
+        image: pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -126,7 +126,7 @@ jobs:
             echo '## Database migration gate'
             echo "- Result: $JOB_STATUS"
             echo '- Matrix: restricted migrator, full schema contract, idempotent rerun, lock contention, legacy upgrade and rollback'
-            echo '- Service: PostgreSQL 16 + administrator-preinstalled pgvector 0.8.6 (digest pinned)'
+            echo '- Service: PostgreSQL 18 + administrator-preinstalled pgvector 0.8.6 (digest pinned)'
           } >> "$GITHUB_STEP_SUMMARY"
 
   daily-publication-gate:

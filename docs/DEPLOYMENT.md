@@ -11,7 +11,7 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 - 域名策略：`www.hzense.com` 重定向到 `hzense.com`
 - 2026-08-25 线上验收：HTTPS、HTTP → HTTPS、`www` → 根域名、Home、Daily 列表与 Daily 动态路由均正常
 - 当前已建立：canonical、sitemap、robots、错误界面、基础安全响应头和桌面/移动端 Playwright 冒烟测试
-- 当前未发现可验证的托管 PostgreSQL 关联或 Production 数据库凭据；下一步是在选定 provider 后创建专用 PostgreSQL / pgvector 实例，再执行下方只读预检
+- 2026-08-29 已通过 Vercel Marketplace 创建 Neon Free 生产实例 `hzense-production-postgres`，仅连接 Production；实时核验为 AWS `us-east-1`、PostgreSQL 18、可用 pgvector 0.8.6，生产 Migration 尚未执行
 
 ## Vercel 项目设置
 
@@ -56,9 +56,9 @@ CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当�
 
 ## PostgreSQL 首次生产迁移
 
-当前仓库与 GitHub `Production` environment 均没有数据库 secret，Web runtime 也尚未依赖 PostgreSQL；因此容器 CI 只能证明生产迁移工具链，不能冒充真实托管实例验收。创建资源后按以下顺序执行：
+当前 Vercel 项目已注入 Neon 集成变量，但它们属于默认 owner，不能用于生产迁移；GitHub `Production` environment 仍未配置受限迁移角色 secret，Web runtime 也尚未依赖 PostgreSQL。因此容器 CI 只能证明生产迁移工具链，不能冒充真实托管实例验收。按以下顺序执行：
 
-1. 从 provider 控制台确认 PostgreSQL 16 的 direct/session endpoint；transaction pooling 不支持迁移器使用的 session advisory lock，不能使用。
+1. 从 provider 控制台确认 PostgreSQL 18 的 direct/session endpoint；transaction pooling 不支持迁移器使用的 session advisory lock，不能使用。
 2. 由 provider 或管理员安装已审核版本的 pgvector，创建一个 `NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`、不属于其他角色且拥有专用数据库的迁移角色，并从 `public` 撤销 `PUBLIC CREATE`。
 3. 将 direct URL 作为 `DATABASE_DIRECT_URL` 注入受保护的执行环境。URL 必须显式使用端口和 `sslmode=verify-full`；host、port、database、user 另存为独立 `HZENSE_DATABASE_EXPECTED_*` 配置，不能从 URL 自动派生。
 4. 执行 `pnpm db:preflight:production`。它只读检查真实 session、TLS、版本、权限、扩展、目标库与 migration history，不打印 URL 或凭据。
@@ -77,4 +77,4 @@ CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当�
 5. ✅ 已完成：添加 `www.hzense.com` 并重定向到根域名。
 6. ✅ 已完成：建立 canonical、sitemap、robots、错误界面与基础安全响应头。
 7. 🚧 进行中：验证生产日志与基础监控后，停止维护旧 Hosted Alpha。
-8. 🚧 待资源：创建托管 PostgreSQL / pgvector，以真实 direct endpoint 完成 preflight → backup → migrate → verify。
+8. 🚧 进行中：Neon PostgreSQL 18 实例已创建并连接 Production；待建立受限角色、安装 pgvector 后，以真实 direct endpoint 完成 preflight → backup → migrate → verify。

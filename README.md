@@ -128,7 +128,8 @@ Next phase:
 
 - [x] Connect deterministic Daily candidate generation and validate a real dry-run artifact
 - [ ] Enable organization policy for automatic Continuous Daily Draft PR creation
-- [ ] Provision PostgreSQL / pgvector and production observability
+- [x] Provision managed PostgreSQL 18 / pgvector 0.8.6
+- [ ] Complete production database migration and observability
 
 ## Local foundation checks
 

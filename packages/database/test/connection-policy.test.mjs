@@ -206,7 +206,7 @@ describe('database connection policy', () => {
     ).toMatchObject({
       connectionString: productionPolicy.connectionString,
       profile: 'production',
-      expectedPostgresMajor: 16,
+      expectedPostgresMajor: 18,
     });
   });
 });

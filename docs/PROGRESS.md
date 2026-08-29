@@ -100,7 +100,7 @@
 
 ### P1 — 生产发布
 
-- [ ] 创建托管 PostgreSQL / pgvector 实例
+- [x] 创建托管 PostgreSQL 18 / pgvector 0.8.6 实例
 - [ ] 执行并验证生产 Migration
 - [x] 建立 [Vercel Production Deployment](https://tech-intelligence-hub-web.vercel.app/)
 - [x] 绑定 [`hzense.com`](https://hzense.com/)

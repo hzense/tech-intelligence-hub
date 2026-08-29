@@ -22,7 +22,7 @@ function requireString(value, label) {
 
 export async function inspectDatabasePreflight(
   client,
-  { expectedDatabase, expectedUser, expectedPgvectorVersion, expectedPostgresMajor = 16, profile },
+  { expectedDatabase, expectedUser, expectedPgvectorVersion, expectedPostgresMajor = 18, profile },
 ) {
   const databaseName = requireString(expectedDatabase, 'HZENSE_DATABASE_EXPECTED_NAME');
   const userName = requireString(expectedUser, 'HZENSE_DATABASE_EXPECTED_USER');
@@ -200,7 +200,7 @@ export async function runDatabasePreflight({
   expectedUser,
   nodeTlsRejectUnauthorized,
   expectedPgvectorVersion,
-  expectedPostgresMajor = 16,
+  expectedPostgresMajor = 18,
   connectionTimeoutMillis = 10_000,
 } = {}) {
   const policy = validateConnectionTarget({
