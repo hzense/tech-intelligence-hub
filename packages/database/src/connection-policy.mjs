@@ -154,6 +154,6 @@ export function productionDatabaseOptions(environment = process.env) {
     expectedUser: environment.HZENSE_DATABASE_EXPECTED_USER,
     nodeTlsRejectUnauthorized: environment.NODE_TLS_REJECT_UNAUTHORIZED,
     expectedPgvectorVersion: environment.HZENSE_DATABASE_EXPECTED_PGVECTOR_VERSION,
-    expectedPostgresMajor: Number(environment.HZENSE_DATABASE_EXPECTED_POSTGRES_MAJOR ?? '16'),
+    expectedPostgresMajor: Number(environment.HZENSE_DATABASE_EXPECTED_POSTGRES_MAJOR ?? '18'),
   };
 }

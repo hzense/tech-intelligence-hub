@@ -59,7 +59,7 @@ function productionLikeOptions(databaseName) {
     expectedDatabase: databaseName,
     expectedUser: migrationRole,
     expectedPgvectorVersion: '0.8.6',
-    expectedPostgresMajor: 16,
+    expectedPostgresMajor: 18,
   };
 }
 
