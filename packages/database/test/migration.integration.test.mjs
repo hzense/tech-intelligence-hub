@@ -4,12 +4,19 @@ import process from 'node:process';
 import { URL } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { loadMigrations, runMigrations } from '../src/migrate.mjs';
+import { validateConnectionTarget } from '../src/connection-policy.mjs';
+import { loadMigrations, migrationLockKeys, runMigrations } from '../src/migrate.mjs';
+import { inspectDatabasePreflight, runDatabasePreflight } from '../src/preflight.mjs';
+import { expectedTableNames, verifyDatabaseContract } from '../src/verify.mjs';
 
 const { Client } = pg;
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
+if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
 const integrationSuite = adminUrl ? describe.sequential : describe.skip;
 const runSuffix = `${process.pid}_${Date.now()}`;
+const migrationRole = `hzense_migrator_${runSuffix}`;
+const inheritedRole = `hzense_parent_${runSuffix}`;
+const migrationPassword = 'hzense-migration-test-only';
 const databaseNames = {
   fresh: `hzense_migration_fresh_${runSuffix}`,
   legacy: `hzense_migration_legacy_${runSuffix}`,
@@ -24,11 +31,44 @@ function quotedDatabaseName(name) {
   return `"${name}"`;
 }
 
-function connectionUrl(databaseName) {
+function quotedRoleName(name) {
+  if (!/^hzense_(?:migrator|parent)_[0-9_]+$/.test(name)) {
+    throw new Error(`Unsafe migration-test role name: ${name}`);
+  }
+  return `"${name}"`;
+}
+
+function adminDatabaseUrl(databaseName) {
   if (!adminUrl) throw new Error('MIGRATION_TEST_ADMIN_URL is required');
   const url = new URL(adminUrl);
   url.pathname = `/${databaseName}`;
   return url.toString();
+}
+
+function connectionUrl(databaseName) {
+  const url = new URL(adminDatabaseUrl(databaseName));
+  url.username = migrationRole;
+  url.password = migrationPassword;
+  return url.toString();
+}
+
+function productionLikeOptions(databaseName) {
+  return {
+    connectionString: connectionUrl(databaseName),
+    profile: 'local-test',
+    expectedDatabase: databaseName,
+    expectedUser: migrationRole,
+    expectedPgvectorVersion: '0.8.6',
+    expectedPostgresMajor: 16,
+  };
+}
+
+async function runGuardedMigrations(databaseName) {
+  const options = productionLikeOptions(databaseName);
+  return runMigrations({
+    connectionString: options.connectionString,
+    beforeMigrate: (client) => inspectDatabasePreflight(client, options),
+  });
 }
 
 async function withClient(connectionString, callback) {
@@ -62,8 +102,25 @@ integrationSuite('PostgreSQL migration integration', () => {
   beforeAll(async () => {
     adminClient = new Client({ connectionString: adminUrl });
     await adminClient.connect();
+    await adminClient.query(
+      `CREATE ROLE ${quotedRoleName(migrationRole)}
+       LOGIN PASSWORD '${migrationPassword}'
+       NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`,
+    );
+    await adminClient.query(
+      `CREATE ROLE ${quotedRoleName(inheritedRole)}
+       NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`,
+    );
     for (const name of Object.values(databaseNames)) {
-      await adminClient.query(`CREATE DATABASE ${quotedDatabaseName(name)}`);
+      await adminClient.query(
+        `CREATE DATABASE ${quotedDatabaseName(name)} OWNER ${quotedRoleName(migrationRole)}`,
+      );
+      await withClient(adminDatabaseUrl(name), (client) =>
+        client.query(`
+          CREATE EXTENSION vector;
+          REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+        `),
+      );
     }
   }, 30_000);
 
@@ -78,26 +135,200 @@ integrationSuite('PostgreSQL migration integration', () => {
       );
       await adminClient.query(`DROP DATABASE IF EXISTS ${quotedDatabaseName(name)}`);
     }
+    await adminClient.query(`DROP ROLE IF EXISTS ${quotedRoleName(migrationRole)}`);
+    await adminClient.query(`DROP ROLE IF EXISTS ${quotedRoleName(inheritedRole)}`);
     await adminClient.end();
   }, 30_000);
 
   it('migrates a fresh pgvector database and reruns idempotently', async () => {
     const databaseUrl = connectionUrl(databaseNames.fresh);
+    await expect(
+      runDatabasePreflight(productionLikeOptions(databaseNames.fresh)),
+    ).resolves.toMatchObject({
+      pendingMigrations: ['0000_foundation.sql', '0001_radar_evidence.sql'],
+      pgvectorVersion: '0.8.6',
+    });
 
-    await runMigrations({ connectionString: databaseUrl });
-    await runMigrations({ connectionString: databaseUrl });
+    await runGuardedMigrations(databaseNames.fresh);
+    const firstHistory = await withClient(databaseUrl, (client) =>
+      client.query('SELECT name, checksum, applied_at FROM hzense_schema_migrations ORDER BY name'),
+    );
+    await runGuardedMigrations(databaseNames.fresh);
 
     await withClient(databaseUrl, async (client) => {
-      const history = await client.query('SELECT name FROM hzense_schema_migrations ORDER BY name');
-      expect(history.rows.map((row) => row.name)).toEqual([
-        '0000_foundation.sql',
-        '0001_radar_evidence.sql',
-      ]);
+      const migrations = await loadMigrations(resolve(process.cwd(), '../../db/migrations'));
+      const history = await client.query(
+        'SELECT name, checksum, applied_at FROM hzense_schema_migrations ORDER BY name',
+      );
+      expect(history.rows).toEqual(firstHistory.rows);
+      expect(history.rows.map(({ name, checksum }) => ({ name, checksum }))).toEqual(
+        migrations.map(({ name, checksum }) => ({ name, checksum })),
+      );
       await expect(client.query('SELECT source_url FROM signals LIMIT 0')).resolves.toBeDefined();
       await expect(
         client.query('SELECT position FROM radar_snapshot_signals LIMIT 0'),
       ).resolves.toBeDefined();
+
+      const ownership = await client.query(
+        `SELECT DISTINCT tableowner
+         FROM pg_tables
+         WHERE schemaname = 'public' AND tablename = ANY($1::text[])`,
+        [[...expectedTableNames]],
+      );
+      expect(ownership.rows).toEqual([{ tableowner: migrationRole }]);
+      const vectorOwner = await client.query(
+        "SELECT pg_get_userbyid(extowner) AS owner FROM pg_extension WHERE extname = 'vector'",
+      );
+      expect(vectorOwner.rows[0].owner).not.toBe(migrationRole);
     });
+    await expect(
+      verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+    ).resolves.toMatchObject({
+      migrationCount: 2,
+      tableCount: 13,
+    });
+  }, 30_000);
+
+  it('rejects a migration login that can inherit or SET ROLE', async () => {
+    await adminClient.query(
+      `GRANT ${quotedRoleName(inheritedRole)} TO ${quotedRoleName(migrationRole)}`,
+    );
+    try {
+      await expect(
+        runDatabasePreflight(productionLikeOptions(databaseNames.fresh)),
+      ).rejects.toThrow(/must not inherit or be able to SET ROLE/);
+    } finally {
+      await adminClient.query(
+        `REVOKE ${quotedRoleName(inheritedRole)} FROM ${quotedRoleName(migrationRole)}`,
+      );
+    }
+  }, 30_000);
+
+  it('fails fast under migration lock contention without changing history', async () => {
+    const databaseUrl = connectionUrl(databaseNames.fresh);
+    const holder = new Client({ connectionString: databaseUrl });
+    await holder.connect();
+    const historyBefore = await withClient(databaseUrl, (client) =>
+      client.query('SELECT name, checksum, applied_at FROM hzense_schema_migrations ORDER BY name'),
+    );
+    try {
+      await holder.query('SELECT pg_advisory_lock($1, $2)', migrationLockKeys);
+      await expect(runMigrations({ connectionString: databaseUrl })).rejects.toThrow(
+        /Another database migration process currently holds the lock/,
+      );
+    } finally {
+      await holder.query('SELECT pg_advisory_unlock($1, $2)', migrationLockKeys);
+      await holder.end();
+    }
+
+    const historyAfter = await withClient(databaseUrl, (client) =>
+      client.query('SELECT name, checksum, applied_at FROM hzense_schema_migrations ORDER BY name'),
+    );
+    expect(historyAfter.rows).toEqual(historyBefore.rows);
+    await expect(runGuardedMigrations(databaseNames.fresh)).resolves.toBeUndefined();
+  }, 30_000);
+
+  it('detects semantic default and check-constraint drift without relying on names', async () => {
+    const databaseUrl = connectionUrl(databaseNames.fresh);
+    const driftClient = new Client({ connectionString: databaseUrl });
+    await driftClient.connect();
+    const constraint = await driftClient.query(
+      `SELECT conname
+       FROM pg_constraint
+       WHERE conrelid = 'public.sources'::regclass
+         AND contype = 'c'
+         AND pg_get_constraintdef(oid) LIKE '%trust_score%'`,
+    );
+    const originalName = constraint.rows[0]?.conname;
+    if (typeof originalName !== 'string' || !/^[a-z0-9_]+$/.test(originalName)) {
+      throw new Error('Could not resolve the trust-score constraint safely');
+    }
+
+    await driftClient.query(`
+      ALTER TABLE sources DROP CONSTRAINT "${originalName}";
+      ALTER TABLE sources ADD CONSTRAINT hzense_test_trust_score_ck CHECK (true);
+      ALTER TABLE sources ALTER COLUMN active SET DEFAULT false;
+    `);
+    try {
+      await expect(
+        verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+      ).rejects.toThrow(/default expression mismatch|check constraint expression mismatch/);
+    } finally {
+      await driftClient.query(`
+        ALTER TABLE sources ALTER COLUMN active SET DEFAULT true;
+        ALTER TABLE sources DROP CONSTRAINT hzense_test_trust_score_ck;
+        ALTER TABLE sources ADD CHECK (trust_score BETWEEN 0 AND 100);
+      `);
+      await driftClient.end();
+    }
+    await expect(
+      verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+    ).resolves.toBeDefined();
+  }, 30_000);
+
+  it('detects table durability, ownership, RLS, policy and trigger drift', async () => {
+    const databaseUrl = connectionUrl(databaseNames.fresh);
+    const driftClient = new Client({ connectionString: databaseUrl });
+    await driftClient.connect();
+    try {
+      await driftClient.query('ALTER TABLE content_registry SET UNLOGGED');
+      await expect(
+        verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+      ).rejects.toThrow(/table persistence mismatch/);
+      await driftClient.query('ALTER TABLE content_registry SET LOGGED');
+
+      await withClient(adminDatabaseUrl(databaseNames.fresh), (client) =>
+        client.query(`ALTER TABLE content_registry OWNER TO ${quotedRoleName(inheritedRole)}`),
+      );
+      await expect(
+        verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+      ).rejects.toThrow(/table owner mismatch/);
+      await withClient(adminDatabaseUrl(databaseNames.fresh), (client) =>
+        client.query(`ALTER TABLE content_registry OWNER TO ${quotedRoleName(migrationRole)}`),
+      );
+
+      await driftClient.query('ALTER TABLE content_registry ENABLE ROW LEVEL SECURITY');
+      await expect(
+        verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+      ).rejects.toThrow(/unexpected row-level security/);
+      await driftClient.query('ALTER TABLE content_registry DISABLE ROW LEVEL SECURITY');
+
+      await driftClient.query('CREATE POLICY hzense_test_policy ON content_registry USING (true)');
+      await expect(
+        verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+      ).rejects.toThrow(/unexpected row-level security policy/);
+      await driftClient.query('DROP POLICY hzense_test_policy ON content_registry');
+
+      await driftClient.query(`
+        CREATE FUNCTION hzense_test_trigger() RETURNS trigger
+        LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
+        CREATE TRIGGER hzense_test_trigger
+        BEFORE UPDATE ON content_registry
+        FOR EACH ROW EXECUTE FUNCTION hzense_test_trigger();
+      `);
+      await expect(
+        verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+      ).rejects.toThrow(/unexpected user trigger/);
+      await driftClient.query(`
+        DROP TRIGGER hzense_test_trigger ON content_registry;
+        DROP FUNCTION hzense_test_trigger();
+      `);
+    } finally {
+      await withClient(adminDatabaseUrl(databaseNames.fresh), (client) =>
+        client.query(`ALTER TABLE content_registry OWNER TO ${quotedRoleName(migrationRole)}`),
+      );
+      await driftClient.query(`
+        ALTER TABLE content_registry SET LOGGED;
+        ALTER TABLE content_registry DISABLE ROW LEVEL SECURITY;
+        DROP POLICY IF EXISTS hzense_test_policy ON content_registry;
+        DROP TRIGGER IF EXISTS hzense_test_trigger ON content_registry;
+        DROP FUNCTION IF EXISTS hzense_test_trigger();
+      `);
+      await driftClient.end();
+    }
+    await expect(
+      verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+    ).resolves.toBeDefined();
   }, 30_000);
 
   it('upgrades a populated 0000 database to the current evidence seed', async () => {
@@ -184,6 +415,9 @@ integrationSuite('PostgreSQL migration integration', () => {
       );
       expect(evidence.rows).toEqual([{ signal_id: 'signal-20241125-mcp', position: 0 }]);
     });
+    await expect(
+      verifyDatabaseContract(productionLikeOptions(databaseNames.legacy)),
+    ).resolves.toBeDefined();
   }, 30_000);
 
   it('rolls back 0001 when legacy provenance cannot be backfilled', async () => {

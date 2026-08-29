@@ -19,6 +19,9 @@
     "daily:publication-check": "pnpm --filter @hzense/content validate:daily-publication",
     "seed:validate": "pnpm --filter @hzense/content build && node scripts/validate-seed.mjs",
     "db:migrate": "pnpm --filter @hzense/database db:migrate",
+    "db:migrate:local": "pnpm --filter @hzense/database db:migrate:local",
+    "db:preflight:production": "pnpm --filter @hzense/database db:preflight:production",
+    "db:verify:production": "pnpm --filter @hzense/database db:verify:production",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

@@ -8,7 +8,10 @@
     "lint": "eslint src test",
     "test": "vitest run --passWithNoTests",
     "test:migrations": "node test/require-integration-env.mjs && vitest run test/migration.integration.test.mjs",
-    "db:migrate": "node src/migrate.mjs"
+    "db:preflight:production": "node src/preflight.mjs",
+    "db:migrate": "node src/production-migrate.mjs",
+    "db:migrate:local": "node src/local-migrate.mjs",
+    "db:verify:production": "node src/preflight.mjs && node src/verify.mjs"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

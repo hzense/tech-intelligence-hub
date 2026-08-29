@@ -121,7 +121,7 @@ Operational Data：Signals、Radar snapshots、Search metadata、Ingestion jobs�
 
 Paper 是客观论文 Entity；HZense 对论文的解读正文以 PaperNote Content 保存。
 
-Drizzle Schema 描述当前物理模型；实际变更只通过 `db/migrations/` 中经过评审的顺序 SQL 执行。`pnpm db:migrate` 为唯一执行入口，使用 PostgreSQL advisory lock、逐文件事务与 SHA-256 历史记录；已执行迁移不可修改。旧的未跟踪 `0000` Schema 只有在操作者显式提供该文件校验和时才可采纳，未知数据必须先补齐来源与证据字段。
+Drizzle Schema 描述当前物理模型；实际变更只通过 `db/migrations/` 中经过评审的顺序 SQL 执行。`pnpm db:migrate` 是生产安全入口，会先校验 direct endpoint、TLS、受限角色、pgvector 与迁移历史；本地开发必须显式使用 `pnpm db:migrate:local`。两者共享 PostgreSQL advisory lock、逐文件事务、不可变 checksum manifest 与 SHA-256 历史记录；已执行迁移不可修改。生产入口拒绝采纳未跟踪的旧 `0000` Schema；此类遗留库只能进入单独评审的 break-glass 流程，未知数据必须先补齐来源与证据字段。
 
 ## 8. Search 与 Vector
 

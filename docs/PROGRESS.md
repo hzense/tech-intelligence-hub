@@ -34,6 +34,7 @@
 - [x] pnpm workspace 与 Turborepo 工程边界
 - [x] TypeScript、ESLint、Prettier、Vitest 和 Playwright 基础配置
 - [x] PostgreSQL / Drizzle Schema、顺序 Migration、事务执行器与 pgvector CI 验证
+- [x] 受限迁移角色、Migration checksum manifest、生产 direct/TLS 预检与只读完整 schema verifier
 - [x] Markdown Front Matter Zod Schema 与基础单元测试
 - [x] Topic、Entity、Relation、Source、Signal 种子数据
 - [x] Daily、Weekly、Insight、Topic 样例内容
@@ -125,10 +126,11 @@
 
 ## 当前风险与阻塞
 
-| 优先级 | 风险                                           | 处理方式                                                                           |
-| ------ | ---------------------------------------------- | ---------------------------------------------------------------------------------- |
-| P1     | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程                                            |
-| P1     | 数据库、生产日志与监控尚未落地                 | 下一步创建托管 PostgreSQL / pgvector，执行 Migration，并完成 Vercel 日志与监控验收 |
+| 优先级 | 风险                                           | 处理方式                                                                                                              |
+| ------ | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| P1     | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程                                                                               |
+| P1     | 尚无可验证的托管数据库关联或生产凭据           | 先选定 provider 和 direct endpoint，再按 preflight → backup → migrate → verify 执行；禁止把本地破坏性集成测试指向生产 |
+| P1     | 生产日志与监控尚未落地                         | 验证 Vercel runtime logs、基础告警与后续数据库可观测性                                                                |
 
 ## 进度更新规则
 

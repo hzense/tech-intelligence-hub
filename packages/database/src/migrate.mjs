@@ -9,9 +9,12 @@ import pg from 'pg';
 const { Client } = pg;
 
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
+const migrationManifestPath = fileURLToPath(
+  new URL('../../../db/migrations/checksums.json', import.meta.url),
+);
 const migrationNamePattern = /^\d{4}_[a-z0-9_]+\.sql$/;
 const foundationMigrationName = '0000_foundation.sql';
-const migrationLockKeys = [1_215_921_955, 1_298_498_925];
+export const migrationLockKeys = [1_215_921_955, 1_298_498_925];
 
 const foundationColumns = {
   topics: ['id', 'title', 'parent_id', 'status', 'metadata'],
@@ -123,6 +126,26 @@ const foundationEnums = {
 
 export function migrationChecksum(sql) {
   return createHash('sha256').update(sql).digest('hex');
+}
+
+export async function verifyMigrationManifest(migrations, manifestPath = migrationManifestPath) {
+  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+  const expectedNames = Object.keys(manifest).sort();
+  const actualNames = migrations.map((migration) => migration.name);
+
+  if (expectedNames.join(',') !== actualNames.join(',')) {
+    throw new Error(
+      `Migration checksum manifest does not match SQL files; expected ${expectedNames.join(', ')}, found ${actualNames.join(', ')}`,
+    );
+  }
+
+  for (const migration of migrations) {
+    if (manifest[migration.name] !== migration.checksum) {
+      throw new Error(
+        `Migration checksum manifest mismatch for ${migration.name}; applied migrations are append-only`,
+      );
+    }
+  }
 }
 
 export async function loadMigrations(directory = migrationDirectory) {
@@ -324,20 +347,30 @@ export async function runMigrations({
   connectionString = process.env.DATABASE_URL,
   directory = migrationDirectory,
   baselineChecksum = process.env.HZENSE_DATABASE_BASELINE_CHECKSUM,
+  connectionTimeoutMillis = 10_000,
+  manifestPath = directory === migrationDirectory ? migrationManifestPath : undefined,
+  beforeMigrate,
 } = {}) {
   if (!connectionString) {
     throw new Error('DATABASE_URL is required');
   }
 
   const migrations = await loadMigrations(directory);
+  if (manifestPath) {
+    await verifyMigrationManifest(migrations, manifestPath);
+  }
   const client = new Client({
     connectionString,
     application_name: 'hzense-schema-migrations',
+    connectionTimeoutMillis,
   });
   let locked = false;
 
   await client.connect();
   try {
+    if (beforeMigrate) {
+      await beforeMigrate(client);
+    }
     await client.query('SET search_path TO public');
     const lockResult = await client.query(
       'SELECT pg_try_advisory_lock($1, $2) AS locked',
@@ -368,6 +401,7 @@ export async function runMigrations({
       try {
         await client.query("SET LOCAL lock_timeout = '10s'");
         await client.query("SET LOCAL statement_timeout = '5min'");
+        await client.query("SET LOCAL idle_in_transaction_session_timeout = '5min'");
         await client.query(migration.sql);
         await client.query(
           `INSERT INTO hzense_schema_migrations (name, checksum)
