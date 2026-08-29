@@ -11,7 +11,8 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 - 域名策略：`www.hzense.com` 重定向到 `hzense.com`
 - 2026-08-25 线上验收：HTTPS、HTTP → HTTPS、`www` → 根域名、Home、Daily 列表与 Daily 动态路由均正常
 - 当前已建立：canonical、sitemap、robots、错误界面、基础安全响应头和桌面/移动端 Playwright 冒烟测试
-- 2026-08-29 已通过 Vercel Marketplace 创建 Neon Free 生产实例 `hzense-production-postgres`，仅连接 Production；实时核验为 AWS `us-east-1`、PostgreSQL 18、可用 pgvector 0.8.6，生产 Migration 尚未执行
+- 2026-08-29 已通过 Vercel Marketplace 创建 Neon Free 生产实例 `hzense-production-postgres`；实时验收为 AWS `us-east-1`、PostgreSQL 18.6、pgvector 0.8.6，2 个生产 Migration、13 张表与 0 个待执行 Migration 均已验证
+- Vercel Production 项目连接已解除，集成注入的数据库变量均不存在；Neon 实例与迁移前快照保留，Web runtime 当前没有数据库凭据、角色或授权
 
 ## Vercel 项目设置
 
@@ -54,9 +55,11 @@ Vercel Preview URL 可作为界面验收证据，但不能替代 GitHub Actions�
 
 CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当自动事件未创建运行记录时，应从 Actions 页面选择 CI workflow 和目标分支手动运行；手动运行必须对应 PR 的最终 head commit。
 
-## PostgreSQL 首次生产迁移
+## PostgreSQL 生产迁移
 
-当前 Vercel 项目已注入 Neon 集成变量，但它们属于默认 owner，不能用于生产迁移；GitHub `Production` environment 仍未配置受限迁移角色 secret，Web runtime 也尚未依赖 PostgreSQL。因此容器 CI 只能证明生产迁移工具链，不能冒充真实托管实例验收。按以下顺序执行：
+2026-08-29 首次生产迁移已使用受限迁移角色和 direct TLS endpoint 完成，并由独立进程复核。迁移前未设置自动过期时间的手动快照 `pre-migration-2026-08-29T20:46:11Z` 仍保留；Vercel Production 项目连接已解除，集成注入的数据库变量均不存在，Neon 资源本身未删除。GitHub `Production` environment 未配置迁移 secret，Web runtime 也尚未依赖 PostgreSQL，且没有数据库凭据、角色或授权。
+
+后续生产 Migration 仍必须按以下顺序执行；容器 CI 只能证明工具链，不能冒充真实托管实例验收：
 
 1. 从 provider 控制台确认 PostgreSQL 18 的 direct/session endpoint；transaction pooling 不支持迁移器使用的 session advisory lock，不能使用。
 2. 由 provider 或管理员安装已审核版本的 pgvector，创建一个 `NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`、不属于其他角色且拥有专用数据库的迁移角色，并从 `public` 撤销 `PUBLIC CREATE`。
@@ -64,7 +67,7 @@ CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当�
 4. 执行 `pnpm db:preflight:production`。它只读检查真实 session、TLS、版本、权限、扩展、目标库与 migration history，不打印 URL 或凭据。生产预检始终要求 Node TLS socket 同时满足 `encrypted=true`、证书链已授权、peer certificate 匹配已审核 host，且协商 TLS 1.2/1.3 与有效 cipher；普通 PostgreSQL 还会组合 `pg_stat_ssl` 证据。Neon 等在 PostgreSQL-aware proxy 终止客户端 TLS 的 provider 可能只让该视图看到内部 hop，此时仅使用完整的客户端证据。URL 仍必须通过 `sslmode=verify-full` 与目标 host 校验，不能用该 fallback 接受未验证证书。
 5. 在 provider 创建可恢复快照或执行受保护的 `pg_dump -Fc`，记录备份标识并验证可列出/恢复；备份不得上传到 GitHub Actions artifact。
 6. 执行 `pnpm db:migrate`，随后执行 `pnpm db:verify:production`。后者只读复核表持久性、所有者、RLS/policy/trigger 状态、catalog、checksum、pgvector typmod 和数据不变量。
-7. 再配置独立只读运行时角色与 Web 健康检查；迁移角色不得作为应用凭据。
+7. 再通过单独评审的权限脚本配置独立运行时角色、应用连接和 Web 健康检查；迁移角色不得作为应用凭据。此项尚未执行。
 
 禁止对生产运行 `pnpm --filter @hzense/database test:migrations`。该测试套件会创建、终止连接并删除多个临时数据库，只能使用显式的本地管理员 URL。
 
@@ -77,4 +80,4 @@ CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当�
 5. ✅ 已完成：添加 `www.hzense.com` 并重定向到根域名。
 6. ✅ 已完成：建立 canonical、sitemap、robots、错误界面与基础安全响应头。
 7. 🚧 进行中：验证生产日志与基础监控后，停止维护旧 Hosted Alpha。
-8. 🚧 进行中：Neon PostgreSQL 18 实例已创建并连接 Production；待建立受限角色、安装 pgvector 后，以真实 direct endpoint 完成 preflight → backup → migrate → verify。
+8. ✅ 已完成：创建 Neon PostgreSQL 18 / pgvector 0.8.6 实例与受限迁移角色，使用真实 direct TLS endpoint 完成 preflight → snapshot → migrate → verify；随后解除 Vercel Production 项目连接并确认集成注入的数据库变量均不存在。
