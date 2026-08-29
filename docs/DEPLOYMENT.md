@@ -57,7 +57,7 @@ CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当�
 
 ## PostgreSQL 生产迁移
 
-2026-08-29 首次生产迁移已使用受限迁移角色和 direct TLS endpoint 完成，并由独立进程复核。迁移前的永久快照 `pre-migration-2026-08-29T20:46:11Z` 仍保留；Vercel Production 项目连接已解除，集成注入的数据库变量均不存在，Neon 资源本身未删除。GitHub `Production` environment 未配置迁移 secret，Web runtime 也尚未依赖 PostgreSQL，且没有数据库凭据、角色或授权。
+2026-08-29 首次生产迁移已使用受限迁移角色和 direct TLS endpoint 完成，并由独立进程复核。迁移前未设置自动过期时间的手动快照 `pre-migration-2026-08-29T20:46:11Z` 仍保留；Vercel Production 项目连接已解除，集成注入的数据库变量均不存在，Neon 资源本身未删除。GitHub `Production` environment 未配置迁移 secret，Web runtime 也尚未依赖 PostgreSQL，且没有数据库凭据、角色或授权。
 
 后续生产 Migration 仍必须按以下顺序执行；容器 CI 只能证明工具链，不能冒充真实托管实例验收：
 

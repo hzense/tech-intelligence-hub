@@ -145,22 +145,22 @@
 
 ## 更新记录
 
-| 日期       | 更新                                                                                                                                                                     |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 2026-08-29 | 真实 Neon 生产实例保留永久快照 `pre-migration-2026-08-29T20:46:11Z`，完成 2 个 Migration、13 张表与 0 pending 独立复核；解除 Vercel 项目连接并确认集成数据库变量均不存在 |
-| 2026-08-29 | PR #24–#25 固定 PostgreSQL 18 / pgvector 0.8.6 生产合约与 Neon 代理 TLS 证据                                                                                             |
-| 2026-08-29 | PR #19 建立 Radar 评分级证据、精确一手来源、Information Model v2.0.0 与可回滚 PostgreSQL Migration 验证                                                                  |
-| 2026-08-29 | PR #18 升级 Next.js / React 安全补丁版本，并在 CI 增加生产依赖审计门禁                                                                                                   |
-| 2026-08-27 | PR #17 接入独立 Radar 路由、类型化示例快照、领域/阶段/趋势筛选与 Topic / Signal / Resource 关联内容                                                                      |
-| 2026-08-27 | PR #16 接入六类公开内容的关键词搜索、类型筛选、相关度排序、导航入口及桌面/移动端验收                                                                                     |
-| 2026-08-26 | PR #15 统一 Seed Schema 与引用校验入口，增加 CI 手动触发并修复进度文档格式                                                                                               |
-| 2026-08-26 | PR #12–#14 接入 Weekly、Signals、Resources、类型化 Seed runtime、日期语义校验与实体关系图谱                                                                              |
-| 2026-08-25 | PR #11 将已验证的 Topic Markdown 接入列表、动态详情、导航、关联情报、sitemap 与双视口冒烟测试                                                                            |
-| 2026-08-25 | PR #10 将已验证的 Insight Markdown 接入列表、动态详情、首页、导航、sitemap 与双视口冒烟测试                                                                              |
-| 2026-08-25 | PR #9 建立 canonical、sitemap、robots、错误界面、安全响应头及桌面/移动端 Playwright 发布门禁                                                                             |
-| 2026-08-25 | `hzense.com` 正式上线；完成 HTTPS、HTTP → HTTPS、`www.hzense.com` → 根域名、首页与 Daily 路由验收                                                                        |
-| 2026-08-23 | PR #7 建立 Vercel Preview 与 Production 自动部署，完成 Home、Daily 动态路由和 Logo 的首次线上验收，并补充部署构建门禁与运行手册                                          |
-| 2026-08-22 | PR #6 将经过交叉引用校验的 Markdown runtime 接入 Home 与动态 Daily 路由，并把样例内容统一为中文                                                                          |
-| 2026-08-21 | PR #4 完成依赖锁定、frozen install 和 Topic / Entity / Signal / Content 交叉引用校验，Development Foundation 达到验收标准                                                |
-| 2026-08-21 | 发布 Web MVP Alpha：完成 Home、Daily、Radar、响应式 Shell、主题与品牌资源，并提供可访问 Hosted checkpoint                                                                |
-| 2026-08-20 | 创建首版进度看板；修复 pnpm 11 构建授权与 YAML 日期校验；Foundation CI 首次完整通过                                                                                      |
+| 日期       | 更新                                                                                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-29 | 真实 Neon 生产实例保留未设置自动过期时间的手动快照 `pre-migration-2026-08-29T20:46:11Z`，完成 2 个 Migration、13 张表与 0 pending 独立复核；解除 Neon–Vercel 项目连接并确认集成数据库变量均不存在 |
+| 2026-08-29 | PR #24–#25 固定 PostgreSQL 18 / pgvector 0.8.6 生产合约与 Neon 代理 TLS 证据                                                                                                                      |
+| 2026-08-29 | PR #19 建立 Radar 评分级证据、精确一手来源、Information Model v2.0.0 与可回滚 PostgreSQL Migration 验证                                                                                           |
+| 2026-08-29 | PR #18 升级 Next.js / React 安全补丁版本，并在 CI 增加生产依赖审计门禁                                                                                                                            |
+| 2026-08-27 | PR #17 接入独立 Radar 路由、类型化示例快照、领域/阶段/趋势筛选与 Topic / Signal / Resource 关联内容                                                                                               |
+| 2026-08-27 | PR #16 接入六类公开内容的关键词搜索、类型筛选、相关度排序、导航入口及桌面/移动端验收                                                                                                              |
+| 2026-08-26 | PR #15 统一 Seed Schema 与引用校验入口，增加 CI 手动触发并修复进度文档格式                                                                                                                        |
+| 2026-08-26 | PR #12–#14 接入 Weekly、Signals、Resources、类型化 Seed runtime、日期语义校验与实体关系图谱                                                                                                       |
+| 2026-08-25 | PR #11 将已验证的 Topic Markdown 接入列表、动态详情、导航、关联情报、sitemap 与双视口冒烟测试                                                                                                     |
+| 2026-08-25 | PR #10 将已验证的 Insight Markdown 接入列表、动态详情、首页、导航、sitemap 与双视口冒烟测试                                                                                                       |
+| 2026-08-25 | PR #9 建立 canonical、sitemap、robots、错误界面、安全响应头及桌面/移动端 Playwright 发布门禁                                                                                                      |
+| 2026-08-25 | `hzense.com` 正式上线；完成 HTTPS、HTTP → HTTPS、`www.hzense.com` → 根域名、首页与 Daily 路由验收                                                                                                 |
+| 2026-08-23 | PR #7 建立 Vercel Preview 与 Production 自动部署，完成 Home、Daily 动态路由和 Logo 的首次线上验收，并补充部署构建门禁与运行手册                                                                   |
+| 2026-08-22 | PR #6 将经过交叉引用校验的 Markdown runtime 接入 Home 与动态 Daily 路由，并把样例内容统一为中文                                                                                                   |
+| 2026-08-21 | PR #4 完成依赖锁定、frozen install 和 Topic / Entity / Signal / Content 交叉引用校验，Development Foundation 达到验收标准                                                                         |
+| 2026-08-21 | 发布 Web MVP Alpha：完成 Home、Daily、Radar、响应式 Shell、主题与品牌资源，并提供可访问 Hosted checkpoint                                                                                         |
+| 2026-08-20 | 创建首版进度看板；修复 pnpm 11 构建授权与 YAML 日期校验；Foundation CI 首次完整通过                                                                                                               |
