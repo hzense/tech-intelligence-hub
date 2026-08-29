@@ -220,7 +220,7 @@ async function inspectFoundationSchema(client) {
   const enumNames = Object.keys(foundationEnums);
   const enumResult = await client.query(
     `SELECT type_info.typname AS name,
-            array_agg(enum_value.enumlabel ORDER BY enum_value.enumsortorder) AS labels
+            array_agg(enum_value.enumlabel::text ORDER BY enum_value.enumsortorder) AS labels
      FROM pg_type AS type_info
      JOIN pg_enum AS enum_value ON enum_value.enumtypid = type_info.oid
      JOIN pg_namespace AS namespace_info ON namespace_info.oid = type_info.typnamespace
@@ -245,7 +245,7 @@ async function inspectFoundationSchema(client) {
 
   for (const [enumName, expectedLabels] of Object.entries(foundationEnums)) {
     const labels = presentEnums.get(enumName);
-    if (!labels) {
+    if (!Array.isArray(labels)) {
       problems.push(`missing enum ${enumName}`);
       continue;
     }
