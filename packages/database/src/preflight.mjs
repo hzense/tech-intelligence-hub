@@ -34,19 +34,16 @@ export async function inspectProductionTls(client, expectedHost) {
      WHERE pid = pg_backend_pid()`,
   );
   const serverTls = ssl.rows[0];
-  if (
+  const serverReportsTls = ssl.rowCount === 1 && serverTls?.ssl === true;
+  const serverTlsIsAcceptable =
     ssl.rowCount === 1 &&
     serverTls?.ssl === true &&
     typeof serverTls.version === 'string' &&
     ['TLSv1.2', 'TLSv1.3'].includes(serverTls.version) &&
     typeof serverTls.cipher === 'string' &&
-    serverTls.cipher.length > 0
-  ) {
-    return {
-      source: 'postgres',
-      version: serverTls.version,
-      cipher: serverTls.cipher,
-    };
+    serverTls.cipher.length > 0;
+  if (serverReportsTls && !serverTlsIsAcceptable) {
+    throw new Error('Production database session is not protected by observable TLS');
   }
 
   // Providers such as Neon terminate client TLS at a PostgreSQL-aware proxy.
@@ -75,7 +72,7 @@ export async function inspectProductionTls(client, expectedHost) {
     certificateMatchesHost
   ) {
     return {
-      source: 'client',
+      source: serverTlsIsAcceptable ? 'postgres+client' : 'client',
       version,
       cipher,
     };

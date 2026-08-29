@@ -37,11 +37,11 @@ describe('production TLS evidence', () => {
   it('prefers PostgreSQL catalog evidence when the server observes TLS', async () => {
     const client = tlsClient({
       rows: [{ ssl: true, version: 'TLSv1.3', cipher: 'TLS_AES_256_GCM_SHA384' }],
-      stream: undefined,
+      stream: secureStream(),
     });
 
     await expect(inspectProductionTls(client, expectedHost)).resolves.toEqual({
-      source: 'postgres',
+      source: 'postgres+client',
       version: 'TLSv1.3',
       cipher: 'TLS_AES_256_GCM_SHA384',
     });
@@ -150,7 +150,7 @@ describe('production TLS evidence', () => {
   it('rejects a deprecated protocol reported by PostgreSQL', async () => {
     const client = tlsClient({
       rows: [{ ssl: true, version: 'TLSv1.1', cipher: 'ECDHE-RSA-AES256-SHA' }],
-      stream: undefined,
+      stream: secureStream(),
     });
 
     await expect(inspectProductionTls(client, expectedHost)).rejects.toThrow(
