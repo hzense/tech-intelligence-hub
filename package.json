@@ -13,6 +13,7 @@
     "test": "turbo run test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "workflow:validate": "node scripts/validate-workflows.mjs",
     "content:validate": "pnpm --filter @hzense/content validate",
     "daily:generate": "pnpm --filter @hzense/content generate:daily",
     "daily:publication-check": "pnpm --filter @hzense/content validate:daily-publication",

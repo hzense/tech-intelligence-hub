@@ -17,7 +17,7 @@ HZense is a Technology Intelligence platform for turning fragmented technical in
 
 > **Sources → Signals → HZense Daily → HZense Weekly → Topics → Insights → Radar**
 
-Daily candidates are generated deterministically from reviewed Signals and opened as Draft PRs; publication remains a human-only decision. See [Continuous Daily](docs/CONTINUOUS_DAILY.md).
+Daily candidates are generated deterministically from reviewed Signals, validated as immutable artifacts and designed to open as Draft PRs; publication remains a human-only decision. Automatic PR creation is currently feature-gated by an organization policy. See [Continuous Daily](docs/CONTINUOUS_DAILY.md).
 
 ## Product modules
 
@@ -126,7 +126,8 @@ Next milestone:
 
 Next phase:
 
-- [ ] Connect the current Daily content production workflow
+- [x] Connect deterministic Daily candidate generation and validate a real dry-run artifact
+- [ ] Enable organization policy for automatic Continuous Daily Draft PR creation
 - [ ] Provision PostgreSQL / pgvector and production observability
 
 ## Local foundation checks

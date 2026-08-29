@@ -51,13 +51,15 @@ The second command intentionally fails while any Daily remains `draft` or `revie
 The workflow separates authority:
 
 1. `generate` has read-only repository access. It installs dependencies, creates one candidate and manifest in a temporary directory, then validates formatting, content, Seed data and content tests.
-2. `publish` receives only the validated artifact. It does not install dependencies or execute repository code. It verifies the exact path, base commit and SHA-256 before pushing `automation/daily-YYYY-MM-DD` and opening a Draft PR.
+2. `publish` receives only the validated artifact. It does not install dependencies or execute repository code. It verifies the exact path, base commit and SHA-256 before pushing `automation/daily-YYYY-MM-DD` and opening a Draft PR. This job also requires the repository variable `CONTINUOUS_DAILY_PUBLISH_ENABLED=true`.
 
 The publishing job uses only job-scoped `contents: write`, `pull-requests: write` and `actions: write`. It never force-pushes. An existing open PR is preserved; an orphan branch is accepted only if its diff and candidate checksum match the artifact. A push made with `GITHUB_TOKEN` does not start another workflow run, so the job explicitly dispatches `ci.yml` for the candidate commit.
 
 That explicit dispatch reports `daily-candidate-validation`, which validates draft structure without impersonating the required publication check. Only pull-request and `main` push events report `daily-publication-gate`; on a candidate PR it intentionally remains red while the Daily is `draft` or `review`.
 
-Repository Actions settings must keep the default workflow token permission at read-only and enable “Allow GitHub Actions to create and approve pull requests.” The workflow receives PR write permission but contains no approval operation.
+Repository Actions settings keep the default workflow token permission at read-only. Automatic Draft PR creation additionally requires the organization to allow “GitHub Actions to create and approve pull requests”; the workflow receives PR write permission but contains no approval operation.
+
+As of 2026-08-29, the organization policy blocks that repository setting, so `CONTINUOUS_DAILY_PUBLISH_ENABLED` is intentionally unset. Scheduled and manual runs can generate, validate and retain an artifact, but the `publication-disabled` job records that no branch or PR was created. The 2026-08-20 dry-run has been independently verified through its manifest and SHA-256. An organization owner must enable the permission before the repository variable is set to `true`.
 
 GitHub references: [timezone-aware schedules](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onschedule), [`GITHUB_TOKEN` event behavior](https://docs.github.com/en/actions/concepts/security/github_token), and [repository Actions permissions](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
 
@@ -71,9 +73,11 @@ Before marking the Draft PR ready:
 4. Remove `HZENSE_DAILY_CANDIDATE` and any human-review placeholder.
 5. Do not hand-edit the window, Signal references or input fingerprint. If the selected evidence is wrong, close the candidate and correct the source Signal before regenerating it.
 6. Change `status: draft` to `status: published`; this new commit makes `daily-publication-gate` eligible to pass.
-7. Mark the PR ready, wait for `foundation`, `database-migrations` and `daily-publication-gate`, obtain the required human review, then merge.
+7. Mark the PR ready, wait for `foundation`, `database-migrations` and `daily-publication-gate`, obtain the required CODEOWNER review, then merge.
 
 Draft and review content is excluded from the public Daily list, detail routes, search and sitemap. A live edition is labeled “正式简报”; only retrospective content is labeled “历史回顾样例.”
+
+Because the repository currently has one write-capable human, a self-authored change under `content/daily/` cannot satisfy its own CODEOWNER review. Normal Daily publication must therefore originate from the automation account. For an exceptional emergency correction, the administrator must keep all required checks enabled, temporarily disable only the Code Owner review requirement, merge the reviewed PR, immediately restore the requirement, verify the protection response and record the break-glass action on the PR. Adding a second trusted reviewer removes this exception.
 
 ## Recovery and rollback
 

@@ -49,7 +49,8 @@
 - [x] 已发布 Daily、Weekly、Insights、Topics、Signals、Resources 的基础关键词搜索
 - [x] 独立 Radar 页面、类型化快照、可分享筛选、评分级 Signal 证据与原始来源链接
 - [x] 经过 Schema 与交叉引用校验的 Markdown/MDX Web runtime
-- [x] Continuous Daily 确定性候选生成、Draft PR、人工发布门禁与回滚手册
+- [x] Continuous Daily 确定性候选生成、完整 dry-run、人工发布门禁与回滚手册
+- [ ] Continuous Daily 自动 Draft PR（组织策略暂时禁止 Actions 创建 PR；仓库发布开关保持关闭）
 - [x] HZense 品牌 Logo、Open Graph 分享图和基础 metadata
 - [x] [Hosted Alpha 检查点](https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site)
 - [x] [Vercel Production Deployment](https://tech-intelligence-hub-web.vercel.app/)

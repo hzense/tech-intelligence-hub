@@ -6,7 +6,8 @@
 - Formatting: Prettier. Linting: ESLint flat config + typescript-eslint.
 - Unit tests: Vitest. Browser/E2E: Playwright once `apps/web` is initialized.
 - Secrets: never commit `.env`; only `.env.example` is versioned.
-- Branching: `main` must stay releasable; development uses short-lived feature branches and PRs. Enable branch protection after the first green CI run.
+- Branching: `main` must stay releasable; development uses short-lived feature branches and PRs. Protected `main` requires an up-to-date branch plus `foundation`, `database-migrations` and `daily-publication-gate`; Daily changes additionally require the declared CODEOWNER.
+- Workflow security: top-level token access is read-only, write permissions are job-scoped, third-party Actions use immutable commit SHAs and every job has a timeout.
 - Commits: concise imperative messages; one architectural concern per commit where practical.
 - Data changes: migrations are append-only after production deployment. Never edit a migration already applied in production.
 - Content changes: all Markdown front matter must pass `pnpm content:validate`.
