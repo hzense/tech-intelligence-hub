@@ -21,17 +21,25 @@ export async function getRadarEntries(filters: RadarFilters = {}): Promise<Radar
   const resourceById = new Map(resources.map((resource) => [resource.id, resource]));
 
   return filterLatestRadarSnapshots(snapshots, filters)
-    .flatMap((snapshot) => {
+    .map((snapshot) => {
       const topic = topicById.get(snapshot.topic);
-      if (!topic) return [];
-      const relatedSignals = signals.filter((signal) => signal.topics.includes(snapshot.topic));
+      if (!topic) {
+        throw new Error(
+          `Radar snapshot ${snapshot.id} references unpublished Topic ${snapshot.topic}`,
+        );
+      }
+      const relatedSignals = signals.filter(
+        (signal) =>
+          signal.topics.includes(snapshot.topic) &&
+          new Date(signal.occurred_at).toISOString().slice(0, 10) <= snapshot.date,
+      );
       const relatedResources = [
         ...new Set(relatedSignals.flatMap((signal) => signal.entities)),
       ].flatMap((id) => {
         const resource = resourceById.get(id);
         return resource ? [resource] : [];
       });
-      return [{ snapshot, topic, signals: relatedSignals, resources: relatedResources }];
+      return { snapshot, topic, signals: relatedSignals, resources: relatedResources };
     })
     .sort(
       (left, right) =>

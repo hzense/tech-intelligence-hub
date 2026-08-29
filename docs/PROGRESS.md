@@ -1,6 +1,6 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-08-27
+**最后更新：** 2026-08-29
 **当前阶段：** Website MVP Release Candidate
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
@@ -115,9 +115,9 @@
 | Markdown/MDX 通过验证层加载 | ✅ | [PR #6 head CI](https://github.com/hzense/tech-intelligence-hub/pull/6/checks)验证同一加载器用于 CI 校验与 Web 构建 |
 | Topic / Entity 引用无断链 | ✅ | Seed 与内容引用均由 CI 校验 |
 | 基础关键词搜索 | ✅ | PR #16 接入六类公开内容、相关度排序、类型筛选及双视口验收 |
-| 手工 Radar | ✅ | PR #17 将类型化 Radar 快照接入独立页面、筛选、可视化与证据链 |
+| 手工 Radar | ✅ | PR #17 将类型化 Radar 示例快照接入独立页面、筛选、可视化与关联内容 |
 | 亮色与暗色主题 | ✅ | Web Shell 已实现主题切换 |
-| CI 全部通过 | ✅ | [PR #16 Checks](https://github.com/hzense/tech-intelligence-hub/pull/16/checks)验证构建、单测、内容校验、Seed 校验与双视口搜索流程 |
+| CI 全部通过 | ✅ | [PR #17 Checks](https://github.com/hzense/tech-intelligence-hub/pull/17/checks)验证生产依赖审计、构建、单测、内容校验、Seed 校验与双视口 Radar 流程 |
 | Vercel 生产部署与域名 | ✅ | [`hzense.com`](https://hzense.com/) 已上线；HTTPS、HTTP → HTTPS 与 `www` → 根域名跳转均已验收 |
 | sitemap、robots、canonical metadata | ✅ | App Router metadata routes 与页面 canonical 由 PR #9 的 Playwright 测试自动验证 |
 
@@ -141,7 +141,8 @@
 
 | 日期 | 更新 |
 |---|---|
-| 2026-08-27 | PR #17 接入独立 Radar 路由、类型化快照、领域/阶段/趋势筛选与 Topic / Signal / Resource 证据链 |
+| 2026-08-29 | PR #18 升级 Next.js / React 安全补丁版本，并在 CI 增加生产依赖审计门禁 |
+| 2026-08-27 | PR #17 接入独立 Radar 路由、类型化示例快照、领域/阶段/趋势筛选与 Topic / Signal / Resource 关联内容 |
 | 2026-08-27 | PR #16 接入六类公开内容的关键词搜索、类型筛选、相关度排序、导航入口及桌面/移动端验收 |
 | 2026-08-26 | PR #15 统一 Seed Schema 与引用校验入口，增加 CI 手动触发并修复进度文档格式 |
 | 2026-08-26 | PR #12–#14 接入 Weekly、Signals、Resources、类型化 Seed runtime、日期语义校验与实体关系图谱 |

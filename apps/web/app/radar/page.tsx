@@ -13,12 +13,18 @@ import {
   radarMaturityOptions,
   radarTrendOptions,
 } from '@/lib/radar-presentation';
-import { getRadarNodePosition, type RadarFilters } from '@/lib/radar-model';
+import {
+  getRadarAttentionPosition,
+  getLatestRadarSnapshotDate,
+  getRadarMaturityPosition,
+  getRadarNodePositions,
+  type RadarFilters,
+} from '@/lib/radar-model';
 import { getRadarEntries } from '@/lib/radar-runtime';
 
 export const metadata: Metadata = {
   title: '科技雷达',
-  description: 'HZense 科技雷达：按关注度、趋势、成熟度与战略价值追踪关键技术方向。',
+  description: 'HZense 科技雷达：展示手工维护的技术方向结构化示例快照。',
   alternates: { canonical: '/radar' },
   openGraph: {
     title: 'HZense 科技雷达',
@@ -29,6 +35,8 @@ export const metadata: Metadata = {
 };
 
 type RadarSearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+const radarAttentionTicks = [100, 75, 50, 25, 0] as const;
 
 function firstValue(value: string | string[] | undefined): string {
   return Array.isArray(value) ? (value[0] ?? '') : (value ?? '');
@@ -45,7 +53,8 @@ export default async function RadarPage({ searchParams }: { searchParams: RadarS
     ...(isRadarTrend(trendValue) ? { trend: trendValue } : {}),
   };
   const entries = await getRadarEntries(filters);
-  const latestDate = entries[0]?.snapshot.date;
+  const latestDate = getLatestRadarSnapshotDate(entries.map((entry) => entry.snapshot));
+  const radarNodePositions = getRadarNodePositions(entries.map((entry) => entry.snapshot));
 
   return (
     <SiteShell>
@@ -53,8 +62,8 @@ export default async function RadarPage({ searchParams }: { searchParams: RadarS
         <section className="page-hero radar-page-hero">
           <p className="kicker">HZENSE RADAR</p>
           <h1>看清技术所处的位置。</h1>
-          <p>以专题为观察单元，把已验证信号转化为关注度、趋势、成熟度与战略价值判断。</p>
-          {latestDate ? <time dateTime={latestDate}>当前快照 · {latestDate}</time> : null}
+          <p>以专题为观察单元，用手工维护的结构化快照呈现关注度、趋势、成熟度与战略价值。</p>
+          {latestDate ? <time dateTime={latestDate}>示例快照 · {latestDate}</time> : null}
         </section>
 
         <form className="radar-filters" action="/radar" aria-label="科技雷达筛选">
@@ -100,14 +109,49 @@ export default async function RadarPage({ searchParams }: { searchParams: RadarS
             <section className="radar-matrix" aria-label="科技雷达可视化">
               <div className="radar-matrix-label radar-matrix-y">关注度</div>
               <div className="radar-matrix-label radar-matrix-x">成熟度 →</div>
+              <div className="radar-attention-scale" aria-hidden="true">
+                {radarAttentionTicks.map((attention) => (
+                  <span
+                    key={attention}
+                    style={{ bottom: `${getRadarAttentionPosition(attention)}%` }}
+                  >
+                    {attention}
+                  </span>
+                ))}
+              </div>
+              <div className="radar-maturity-scale" aria-hidden="true">
+                {radarMaturityOptions.map((option) => (
+                  <span
+                    key={option.value}
+                    style={{ left: `${getRadarMaturityPosition(option.value)}%` }}
+                  >
+                    {option.label}
+                  </span>
+                ))}
+              </div>
+              <div className="radar-strategic-legend" aria-label="战略价值图例">
+                <span>
+                  <i className="radar-legend-critical" />
+                  关键
+                </span>
+                <span>
+                  <i className="radar-legend-high" />高
+                </span>
+                <span>
+                  <i className="radar-legend-medium" />中
+                </span>
+                <span>
+                  <i className="radar-legend-low" />低
+                </span>
+              </div>
               <div className="radar-matrix-grid" aria-hidden="true" />
               {entries.map((entry) => (
                 <Link
                   className={`radar-node radar-node-${entry.snapshot.strategic_value}`}
                   href={`/topics/${entry.snapshot.topic}`}
                   key={entry.snapshot.id}
-                  style={getRadarNodePosition(entry.snapshot)}
-                  aria-label={`${entry.topic.frontMatter.title}，关注度 ${entry.snapshot.attention}，${formatRadarMaturity(entry.snapshot.maturity)}`}
+                  style={radarNodePositions.get(entry.snapshot.id)}
+                  aria-label={`${entry.topic.frontMatter.title}，关注度 ${entry.snapshot.attention}，${formatRadarTrend(entry.snapshot.trend)}，${formatRadarMaturity(entry.snapshot.maturity)}，战略价值 ${formatRadarStrategicValue(entry.snapshot.strategic_value)}`}
                 >
                   <span>{entry.snapshot.attention}</span>
                   <strong>{entry.topic.frontMatter.title}</strong>
@@ -146,7 +190,7 @@ export default async function RadarPage({ searchParams }: { searchParams: RadarS
                   </dl>
                   <div className="radar-evidence">
                     <div>
-                      <span>关联信号</span>
+                      <span>同专题信号</span>
                       {entry.signals.slice(0, 3).map((signal) => (
                         <Link href={`/signals/${signal.id}`} key={signal.id}>
                           {signal.title}
@@ -163,7 +207,7 @@ export default async function RadarPage({ searchParams }: { searchParams: RadarS
                     </div>
                   </div>
                   <Link className="radar-topic-link" href={`/topics/${entry.snapshot.topic}`}>
-                    查看专题证据链 <span aria-hidden="true">↗</span>
+                    查看专题详情 <span aria-hidden="true">↗</span>
                   </Link>
                 </article>
               ))}

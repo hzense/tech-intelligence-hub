@@ -1118,29 +1118,85 @@ button, input { font: inherit; }
 }
 .radar-matrix-label { position: absolute; z-index: 2; color: #9eb7db; font-size: 9px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
 .radar-matrix-y { top: 18px; left: 22px; }
-.radar-matrix-x { right: 24px; bottom: 18px; }
+.radar-matrix-x { top: 18px; right: 24px; }
+.radar-attention-scale,
+.radar-maturity-scale { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.radar-attention-scale span {
+  position: absolute;
+  left: 20px;
+  transform: translateY(50%);
+  color: #7793bb;
+  font: 800 8px/1 ui-monospace, monospace;
+}
+.radar-maturity-scale span {
+  position: absolute;
+  bottom: 17px;
+  transform: translateX(-50%);
+  color: #9eb7db;
+  font-size: 8px;
+  font-weight: 750;
+}
+.radar-strategic-legend {
+  position: absolute;
+  z-index: 4;
+  top: 16px;
+  left: 50%;
+  display: flex;
+  gap: 12px;
+  transform: translateX(-50%);
+  color: #9eb7db;
+  font-size: 8px;
+}
+.radar-strategic-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.radar-strategic-legend i { width: 9px; height: 9px; border: 1px solid; border-radius: 999px; }
+.radar-strategic-legend i.radar-legend-critical { border-color: rgba(101,227,255,.78); }
+.radar-strategic-legend i.radar-legend-high { border-color: rgba(143,181,255,.62); }
+.radar-strategic-legend i.radar-legend-medium { border-color: rgba(255,255,255,.42); }
+.radar-strategic-legend i.radar-legend-low { border-color: rgba(255,255,255,.24); }
 .radar-node {
   position: absolute;
   z-index: 3;
-  width: 116px;
-  min-height: 70px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
-  gap: 4px;
-  padding: 10px;
+  padding: 0;
   transform: translate(-50%, 50%);
   border: 1px solid rgba(255,255,255,.32);
-  border-radius: 18px;
+  border-radius: 999px;
   background: rgba(8, 35, 82, .82);
   color: white;
   text-align: center;
   backdrop-filter: blur(12px);
   box-shadow: 0 14px 32px rgba(0,0,0,.22);
 }
-.radar-node span { color: #65e3ff; font: 900 18px/1 ui-monospace, monospace; }
-.radar-node strong { font-size: 10px; line-height: 1.25; }
+.radar-node span { color: #65e3ff; font: 900 11px/1 ui-monospace, monospace; }
+.radar-node strong {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: max-content;
+  max-width: 180px;
+  padding: 7px 9px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 8px;
+  background: #06152f;
+  box-shadow: 0 10px 24px rgba(0,0,0,.3);
+  font-size: 10px;
+  line-height: 1.25;
+  opacity: 0;
+  pointer-events: none;
+}
+.radar-node:hover,
+.radar-node:focus-visible { z-index: 5; }
+.radar-node:hover strong,
+.radar-node:focus-visible strong { opacity: 1; }
+.radar-node:focus-visible { outline: 2px solid white; outline-offset: 3px; }
 .radar-node-critical { border-color: rgba(101,227,255,.78); }
 .radar-node-high { border-color: rgba(143,181,255,.62); }
+.radar-node-medium { border-color: rgba(255,255,255,.42); }
+.radar-node-low { border-color: rgba(255,255,255,.24); }
 .radar-entry-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding-top: 38px; }
 .radar-entry-card { display: flex; flex-direction: column; min-height: 500px; padding: 28px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); }
 .radar-entry-heading { display: flex; justify-content: space-between; gap: 24px; }
@@ -1163,13 +1219,17 @@ button, input { font: inherit; }
 
 @media (max-width: 900px) {
   .radar-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .radar-matrix { display: none; }
   .radar-entry-grid { grid-template-columns: 1fr; }
+}
+
+@media (hover: none) {
+  .radar-matrix { display: none; }
 }
 
 @media (max-width: 700px) {
   .radar-filters { grid-template-columns: 1fr; padding: 18px; }
   .radar-filters button, .radar-filters > a { width: 100%; }
-  .radar-matrix { display: none; }
   .radar-entry-grid { padding-top: 28px; }
   .radar-entry-card { min-height: auto; padding: 22px; }
   .radar-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }

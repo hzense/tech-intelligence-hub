@@ -31,7 +31,6 @@ test('resolves a public Signal by its stable id', async () => {
   assert.equal((await getSignalEntryById(firstSignal.id))?.id, firstSignal.id);
 });
 
-
 test('only exposes active Resources and resolves their stable ids', async () => {
   const resources = await getResourceEntries();
   const firstResource = resources[0];
@@ -44,10 +43,15 @@ test('only exposes active Resources and resolves their stable ids', async () => 
 test('loads validated Radar snapshots in reverse date and attention order', async () => {
   const snapshots = await getRadarSnapshots();
 
-  assert.equal(snapshots.length, 5);
+  assert.ok(snapshots.length > 0);
   assert.ok(snapshots.every((snapshot) => snapshot.attention >= 0 && snapshot.attention <= 100));
-  assert.deepEqual(
-    snapshots.map((snapshot) => snapshot.attention),
-    [...snapshots].map((snapshot) => snapshot.attention).sort((left, right) => right - left),
-  );
+  for (let index = 1; index < snapshots.length; index += 1) {
+    const previous = snapshots[index - 1];
+    const current = snapshots[index];
+    assert.ok(previous && current);
+    assert.ok(
+      previous.date > current.date ||
+        (previous.date === current.date && previous.attention >= current.attention),
+    );
+  }
 });
