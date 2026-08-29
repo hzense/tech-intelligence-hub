@@ -1,0 +1,249 @@
+name: Continuous Daily candidate
+
+on:
+  schedule:
+    - cron: '17 7 * * *'
+      timezone: Europe/Berlin
+    - cron: '47 7 * * *'
+      timezone: Europe/Berlin
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'YYYY-MM-DD; blank means today in Europe/Berlin'
+        required: false
+        type: string
+      dry_run:
+        description: 'Generate and validate without opening a PR'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: continuous-daily
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      changed: ${{ steps.generate.outputs.changed }}
+      date: ${{ steps.generate.outputs.date }}
+      relative_path: ${{ steps.generate.outputs.relative_path }}
+      sha256: ${{ steps.generate.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: corepack prepare pnpm@11.21.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Generate deterministic candidate
+        id: generate
+        env:
+          REQUESTED_DATE: ${{ inputs.date }}
+        run: |
+          target_date="${REQUESTED_DATE:-$(TZ=Europe/Berlin date +%F)}"
+          artifact_root="$RUNNER_TEMP/daily-artifact"
+          mkdir -p "$artifact_root"
+          pnpm daily:generate \
+            --date "$target_date" \
+            --output-root "$artifact_root" \
+            --manifest "$artifact_root/manifest.json" \
+            --base-sha "$(git rev-parse HEAD)" \
+            --github-output "$GITHUB_OUTPUT"
+      - name: Validate candidate in the repository context
+        if: steps.generate.outputs.changed == 'true'
+        env:
+          RELATIVE_PATH: ${{ steps.generate.outputs.relative_path }}
+        run: |
+          [[ "$RELATIVE_PATH" =~ ^content/daily/[0-9]{4}/[0-9]{4}-[0-9]{2}-[0-9]{2}\.md$ ]]
+          mkdir -p "$(dirname "$RELATIVE_PATH")"
+          cp "$RUNNER_TEMP/daily-artifact/$RELATIVE_PATH" "$RELATIVE_PATH"
+          pnpm exec prettier --check "$RELATIVE_PATH"
+          pnpm content:validate
+          pnpm seed:validate
+          pnpm --filter @hzense/content test
+      - name: Upload validated candidate
+        if: steps.generate.outputs.changed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: continuous-daily-candidate
+          path: ${{ runner.temp }}/daily-artifact
+          if-no-files-found: error
+          retention-days: 3
+      - name: Summarize generation
+        if: always()
+        env:
+          CHANGED: ${{ steps.generate.outputs.changed }}
+          DATE: ${{ steps.generate.outputs.date }}
+          ELIGIBLE: ${{ steps.generate.outputs.eligible_signals }}
+          SELECTED: ${{ steps.generate.outputs.selected_signals }}
+        run: |
+          {
+            echo '## Continuous Daily generation'
+            echo "- Date: ${DATE:-not resolved}"
+            echo "- Candidate created: ${CHANGED:-false}"
+            echo "- Eligible signals: ${ELIGIBLE:-0}"
+            echo "- Selected signals: ${SELECTED:-0}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    needs: generate
+    if: needs.generate.outputs.changed == 'true' && github.ref_name == github.event.repository.default_branch && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: continuous-daily-candidate
+          path: ${{ runner.temp }}/daily-artifact
+      - name: Verify immutable candidate artifact
+        id: verify
+        run: |
+          manifest="$RUNNER_TEMP/daily-artifact/manifest.json"
+          jq -e '.version == 1' "$manifest" >/dev/null
+          target_date="$(jq -r '.date' "$manifest")"
+          relative_path="$(jq -r '.relative_path' "$manifest")"
+          expected_sha="$(jq -r '.sha256' "$manifest")"
+          base_sha="$(jq -r '.base_sha' "$manifest")"
+          [[ "$target_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
+          [[ "$relative_path" == "content/daily/${target_date:0:4}/${target_date}.md" ]]
+          [[ "$expected_sha" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$base_sha" =~ ^[0-9a-f]{40,64}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$base_sha" ]]
+          [[ "$(sha256sum "$RUNNER_TEMP/daily-artifact/$relative_path" | cut -d' ' -f1)" == "$expected_sha" ]]
+          grep -qx 'status: draft' "$RUNNER_TEMP/daily-artifact/$relative_path"
+          {
+            echo "date=$target_date"
+            echo "relative_path=$relative_path"
+            echo "sha256=$expected_sha"
+          } >> "$GITHUB_OUTPUT"
+      - name: Create or recover the Draft PR
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+          RELATIVE_PATH: ${{ steps.verify.outputs.relative_path }}
+          TARGET_DATE: ${{ steps.verify.outputs.date }}
+          EXPECTED_SHA: ${{ steps.verify.outputs.sha256 }}
+        run: |
+          branch="automation/daily-$TARGET_DATE"
+          artifact="$RUNNER_TEMP/daily-artifact/$RELATIVE_PATH"
+          base_sha="$(git rev-parse HEAD)"
+          repo_owner="${GITHUB_REPOSITORY%%/*}"
+
+          find_matching_prs() {
+            gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" \
+              -f state=open \
+              -f "head=$repo_owner:$branch" \
+              -f "base=$DEFAULT_BRANCH" \
+              -F per_page=2
+          }
+
+          validate_matching_prs() {
+            local payload="$1"
+            [[ "$(jq 'length' <<< "$payload")" -le 1 ]]
+            jq -e \
+              --arg base "$DEFAULT_BRANCH" \
+              --arg branch "$branch" \
+              --arg repo "$GITHUB_REPOSITORY" \
+              'all(.[ ];
+                .head.ref == $branch and
+                .head.repo.full_name == $repo and
+                .base.ref == $base and
+                .base.repo.full_name == $repo and
+                (.draft | type == "boolean")
+              )' <<< "$payload" >/dev/null
+          }
+
+          if [[ -e "$RELATIVE_PATH" ]]; then
+            echo "Daily already exists on $DEFAULT_BRANCH; nothing to publish." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          pr_json="$(find_matching_prs)"
+          validate_matching_prs "$pr_json"
+          pr_url="$(jq -r '.[0].html_url // empty' <<< "$pr_json")"
+          if [[ -n "$pr_url" && "$(jq -r '.[0].draft' <<< "$pr_json")" != 'true' ]]; then
+            {
+              echo '## Continuous Daily PR already under human review'
+              echo "- PR: $pr_url"
+              echo '- The bot preserved the ready-for-review PR without changing or dispatching it.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ -z "$pr_url" ]] && git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null 2>&1; then
+            git fetch origin "$branch"
+            [[ "$(git merge-base "$base_sha" FETCH_HEAD)" == "$base_sha" ]]
+            [[ "$(git diff --name-only "$base_sha...FETCH_HEAD")" == "$RELATIVE_PATH" ]]
+            branch_sha="$(git show "FETCH_HEAD:$RELATIVE_PATH" | sha256sum | cut -d' ' -f1)"
+            [[ "$branch_sha" == "$EXPECTED_SHA" ]]
+          elif [[ -z "$pr_url" ]]; then
+            git config user.name 'hzense-daily[bot]'
+            git config user.email 'hzense-daily[bot]@users.noreply.github.com'
+            git switch -c "$branch"
+            mkdir -p "$(dirname "$RELATIVE_PATH")"
+            cp "$artifact" "$RELATIVE_PATH"
+            git add -- "$RELATIVE_PATH"
+            [[ "$(git diff --cached --name-only)" == "$RELATIVE_PATH" ]]
+            git commit -m "content: draft HZense Daily $TARGET_DATE"
+            if ! git push --set-upstream origin "$branch"; then
+              remote_sha="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+              [[ -n "$remote_sha" && "$remote_sha" == "$(git rev-parse HEAD)" ]]
+            fi
+          fi
+
+          if [[ -z "$pr_url" ]]; then
+            pr_body="## Continuous Daily candidate
+
+          This Draft PR was generated deterministically from reviewed or accepted Signals captured in the audited Daily window.
+
+          Human publication checklist:
+          - Verify every Signal and original source.
+          - Confirm the cutoff, unique references, counts, and rising Topics.
+          - Do not hand-edit the audited window, Signal references, or input fingerprint; regenerate after correcting source data instead.
+          - Replace every automated placeholder with original Chinese analysis.
+          - Remove the candidate marker and change status from draft to published.
+          - Mark the PR ready, wait for all required checks, approve, then merge.
+
+          The bot will never mark this PR ready, approve it, or merge it."
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base "$DEFAULT_BRANCH" \
+              --head "$branch" \
+              --draft \
+              --title "content: HZense Daily candidate $TARGET_DATE" \
+              --body "$pr_body" || true
+            pr_json="$(find_matching_prs)"
+            validate_matching_prs "$pr_json"
+            pr_url="$(jq -r '.[0].html_url // empty' <<< "$pr_json")"
+            [[ -n "$pr_url" ]]
+            [[ "$(jq -r '.[0].draft' <<< "$pr_json")" == 'true' ]]
+          fi
+
+          head_sha="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+          existing_run="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --branch "$branch" --event workflow_dispatch --limit 20 --json headSha --jq ".[] | select(.headSha == \"$head_sha\") | .headSha" | head -n1)"
+          if [[ -z "$existing_run" ]]; then
+            gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          fi
+          {
+            echo '## Continuous Daily Draft PR'
+            echo "- PR: $pr_url"
+            echo "- Branch: $branch"
+            echo '- Publication remains a human-only action.'
+          } >> "$GITHUB_STEP_SUMMARY"

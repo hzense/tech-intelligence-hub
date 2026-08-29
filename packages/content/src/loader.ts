@@ -1,9 +1,10 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { extname, join, relative, sep } from 'node:path';
 import matter from 'gray-matter';
-import { parse } from 'yaml';
 import { findReferenceIssues, type ContentDocument, type ReferenceCatalogs } from './references.js';
+import { validateDailyIntegrity } from './daily.js';
 import { validateFrontMatter, type FrontMatter } from './schema.js';
+import { loadSeedCatalog } from './seed.js';
 
 export interface MarkdownSection {
   heading: string;
@@ -29,9 +30,11 @@ export interface LoadContentOptions {
 async function walk(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = await Promise.all(
-    entries.map((entry) => entry.isDirectory()
-      ? walk(join(directory, entry.name))
-      : Promise.resolve([join(directory, entry.name)])),
+    entries.map((entry) =>
+      entry.isDirectory()
+        ? walk(join(directory, entry.name))
+        : Promise.resolve([join(directory, entry.name)]),
+    ),
   );
   return files.flat().sort();
 }
@@ -108,31 +111,10 @@ function firstParagraph(body: string): string {
   return paragraphsFromLines(body.split(/\r?\n/))[0] ?? '';
 }
 
-async function loadSeedIds(seedRoot: string, name: string): Promise<Set<string>> {
-  const filePath = join(seedRoot, name);
-  const records: unknown = parse(await readFile(filePath, 'utf8'));
-  if (!Array.isArray(records)) throw new Error(`Expected an array in ${filePath}`);
-
-  const ids = new Set<string>();
-  for (const record of records) {
-    if (typeof record !== 'object' || record === null || !('id' in record) || typeof record.id !== 'string') {
-      throw new Error(`Expected every record in ${filePath} to have a string id`);
-    }
-    ids.add(record.id);
-  }
-  return ids;
-}
-
-async function loadCatalogs(seedRoot: string): Promise<ReferenceCatalogs> {
-  const [topicIds, entityIds, signalIds] = await Promise.all([
-    loadSeedIds(seedRoot, 'topics.yaml'),
-    loadSeedIds(seedRoot, 'entities.yaml'),
-    loadSeedIds(seedRoot, 'signals.yaml'),
-  ]);
-  return { topicIds, entityIds, signalIds };
-}
-
-export async function loadContent({ contentRoot, seedRoot }: LoadContentOptions): Promise<ContentEntry[]> {
+export async function loadContent({
+  contentRoot,
+  seedRoot,
+}: LoadContentOptions): Promise<ContentEntry[]> {
   const files = (await walk(contentRoot)).filter((file) => ['.md', '.mdx'].includes(extname(file)));
   const entries: ContentEntry[] = [];
   const parseFailures: string[] = [];
@@ -158,21 +140,30 @@ export async function loadContent({ contentRoot, seedRoot }: LoadContentOptions)
   }
 
   if (parseFailures.length > 0) {
-    throw new Error(`Content front matter validation failed:\n${parseFailures.map((failure) => `- ${failure}`).join('\n')}`);
+    throw new Error(
+      `Content front matter validation failed:\n${parseFailures.map((failure) => `- ${failure}`).join('\n')}`,
+    );
   }
 
-  const catalogs = await loadCatalogs(seedRoot);
+  const seedCatalog = await loadSeedCatalog(seedRoot);
+  const catalogs: ReferenceCatalogs = {
+    topicIds: new Set(seedCatalog.topics.map((topic) => topic.id)),
+    entityIds: new Set(seedCatalog.entities.map((entity) => entity.id)),
+    signalIds: new Set(seedCatalog.signals.map((signal) => signal.id)),
+  };
   const documents: ContentDocument[] = entries.map((entry) => ({
     file: entry.relativePath,
     frontMatter: entry.frontMatter,
   }));
   const referenceIssues = findReferenceIssues(documents, catalogs);
   if (referenceIssues.length > 0) {
-    const details = referenceIssues.map((issue) =>
-      `- ${issue.file}: ${issue.field} ${issue.reason} ${issue.kind} "${issue.target}"`,
+    const details = referenceIssues.map(
+      (issue) => `- ${issue.file}: ${issue.field} ${issue.reason} ${issue.kind} "${issue.target}"`,
     );
     throw new Error(`Content reference validation failed:\n${details.join('\n')}`);
   }
+
+  validateDailyIntegrity(entries, seedCatalog);
 
   return entries.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 }

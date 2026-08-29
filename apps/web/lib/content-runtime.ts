@@ -131,6 +131,10 @@ export function formatZhDate(date: string): string {
   return `${year} 年 ${Number(month)} 月 ${Number(day)} 日`;
 }
 
+export function formatDailyEdition(edition: DailyFrontMatter['edition']): string {
+  return edition === 'historical_example' ? '历史回顾样例' : '正式简报';
+}
+
 export function splitSignalHeading(section: MarkdownSection): { category: string; title: string } {
   const [category = '情报信号', ...titleParts] = section.heading.split(/[｜|]/).map((part) => part.trim());
   return {

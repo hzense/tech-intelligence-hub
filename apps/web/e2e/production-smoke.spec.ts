@@ -28,10 +28,16 @@ test('home and Daily routes render with canonical metadata', async ({ page }) =>
     'href',
     'https://hzense.com/daily',
   );
+  await expect(page.locator('.archive-label').first()).toHaveText('历史回顾样例');
 
   const detailHref = await getFirstDailyHref(page);
   await page.goto(detailHref);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const evidence = page.locator('.daily-evidence');
+  const firstSourceLink = evidence.locator('a[target="_blank"]').first();
+  await expect(evidence.locator('article')).toHaveCount(3);
+  await expect(firstSourceLink).toHaveAttribute('href', /^https:\/\//);
+  await expect(firstSourceLink).toHaveAttribute('target', '_blank');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     `https://hzense.com${detailHref}`,

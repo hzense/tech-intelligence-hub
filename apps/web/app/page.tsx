@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { SiteShell } from "@/components/site-shell";
-import { formatZhDate, getDailyEntries, getInsightEntries, getTopicTitleMap } from "@/lib/content-runtime";
+import { formatDailyEdition, formatZhDate, getDailyEntries, getInsightEntries, getTopicTitleMap } from "@/lib/content-runtime";
 import { formatRadarMaturity, formatRadarTrend } from "@/lib/radar-presentation";
 import { getRadarEntries } from "@/lib/radar-runtime";
 
@@ -21,6 +21,7 @@ export default async function Home() {
     topics: entry.frontMatter.topics.map((topic) => topicTitleMap.get(topic) ?? topic),
   }));
   const dailyHref = latestDaily ? `/daily/${latestDaily.frontMatter.date}` : "/daily";
+  const dailyAction = latestDaily?.frontMatter.edition === "live" ? "阅读每日简报" : "阅读示例简报";
 
   return (
     <SiteShell>
@@ -39,7 +40,7 @@ export default async function Home() {
             </p>
             <div className="hero-actions">
               <Link className="button button-primary" href={dailyHref}>
-                阅读示例简报 <span aria-hidden="true">↗</span>
+                {dailyAction} <span aria-hidden="true">↗</span>
               </Link>
               <Link className="button button-secondary" href="/radar">
                 探索技术雷达
@@ -147,7 +148,7 @@ export default async function Home() {
             <div className="daily-meta">
               <span>HZENSE 每日简报</span>
               {latestDaily ? (
-                <time dateTime={latestDaily.frontMatter.date}>{formatZhDate(latestDaily.frontMatter.date)} · 历史示例</time>
+                <time dateTime={latestDaily.frontMatter.date}>{formatZhDate(latestDaily.frontMatter.date)} · {formatDailyEdition(latestDaily.frontMatter.edition)}</time>
               ) : <span>内容准备中</span>}
             </div>
             <div className="daily-content">

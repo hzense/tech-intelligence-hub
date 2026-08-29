@@ -12,6 +12,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "content:validate": "pnpm --filter @hzense/content validate",
+    "daily:generate": "pnpm --filter @hzense/content generate:daily",
+    "daily:publication-check": "pnpm --filter @hzense/content validate:daily-publication",
     "seed:validate": "pnpm --filter @hzense/content build && node scripts/validate-seed.mjs",
     "db:migrate": "pnpm --filter @hzense/database db:migrate",
     "test:e2e": "playwright test"

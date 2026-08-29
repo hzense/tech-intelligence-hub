@@ -17,6 +17,8 @@ HZense is a Technology Intelligence platform for turning fragmented technical in
 
 > **Sources → Signals → HZense Daily → HZense Weekly → Topics → Insights → Radar**
 
+Daily candidates are generated deterministically from reviewed Signals and opened as Draft PRs; publication remains a human-only decision. See [Continuous Daily](docs/CONTINUOUS_DAILY.md).
+
 ## Product modules
 
 - **HZense Daily** — daily technology intelligence brief

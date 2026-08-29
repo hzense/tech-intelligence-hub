@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteShell } from "@/components/site-shell";
-import { formatZhDate, getDailyEntries, splitSignalHeading } from "@/lib/content-runtime";
+import { formatDailyEdition, formatZhDate, getDailyEntries, splitSignalHeading } from "@/lib/content-runtime";
 
 export const metadata: Metadata = {
   title: "每日简报",
@@ -34,7 +34,7 @@ export default async function DailyPage() {
           {dailyEntries.map((entry) => (
             <Link className="daily-list-feature" href={`/daily/${entry.frontMatter.date}`} key={entry.frontMatter.id}>
               <div>
-                <span className="archive-label">历史示例简报</span>
+                <span className="archive-label">{formatDailyEdition(entry.frontMatter.edition)}</span>
                 <time dateTime={entry.frontMatter.date}>{formatZhDate(entry.frontMatter.date)}</time>
               </div>
               <div>

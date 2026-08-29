@@ -53,6 +53,7 @@ const sourceSchema = z.object({
 
 const signalSchema = z.object({
   id,
+  event_key: id.optional(),
   title: z.string().min(1),
   type: z.enum([
     'research',

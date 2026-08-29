@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  formatDailyEdition,
+  getDailyEntries,
   getDailyEntriesForTopic,
   getInsightEntries,
   getInsightEntryById,
@@ -11,6 +13,15 @@ import {
   getWeeklyEntries,
   getWeeklyEntryByWeek,
 } from '../lib/content-runtime.ts';
+
+test('only exposes published Daily entries and labels their edition explicitly', async () => {
+  const entries = await getDailyEntries();
+
+  assert.ok(entries.length > 0);
+  assert.ok(entries.every((entry) => entry.frontMatter.status === 'published'));
+  assert.equal(formatDailyEdition('historical_example'), '历史回顾样例');
+  assert.equal(formatDailyEdition('live'), '正式简报');
+});
 
 test('only exposes published Insights to public pages', async () => {
   const insights = await getInsightEntries();
@@ -61,7 +72,6 @@ test('resolves Topic detail and its published intelligence relationships', async
     ),
   );
 });
-
 
 test('only exposes published Weekly entries and resolves their stable week route', async () => {
   const entries = await getWeeklyEntries();
