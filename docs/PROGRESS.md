@@ -30,10 +30,10 @@
 - [x] HZense 产品设计与品牌基线
 - [x] `hzense.com` 作为正式生产域名
 - [x] Next.js / PostgreSQL / Drizzle / pgvector / Vercel 技术架构
-- [x] Information Model v1.1 与 taxonomy
+- [x] Information Model v2.0.0、证据完整性契约与 taxonomy
 - [x] pnpm workspace 与 Turborepo 工程边界
 - [x] TypeScript、ESLint、Prettier、Vitest 和 Playwright 基础配置
-- [x] PostgreSQL / Drizzle Schema 与初始 Migration
+- [x] PostgreSQL / Drizzle Schema、顺序 Migration、事务执行器与 pgvector CI 验证
 - [x] Markdown Front Matter Zod Schema 与基础单元测试
 - [x] Topic、Entity、Relation、Source、Signal 种子数据
 - [x] Daily、Weekly、Insight、Topic 样例内容
@@ -47,7 +47,7 @@
 - [x] HZense Signals 列表页、动态详情页与类型化 Seed runtime
 - [x] HZense Resources 列表页、动态详情页与双向实体关系
 - [x] 已发布 Daily、Weekly、Insights、Topics、Signals、Resources 的基础关键词搜索
-- [x] 独立 Radar 页面、类型化快照、可分享筛选与 Topic / Signal / Resource 证据链
+- [x] 独立 Radar 页面、类型化快照、可分享筛选、评分级 Signal 证据与原始来源链接
 - [x] 经过 Schema 与交叉引用校验的 Markdown/MDX Web runtime
 - [x] HZense 品牌 Logo、Open Graph 分享图和基础 metadata
 - [x] [Hosted Alpha 检查点](https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site)
@@ -92,7 +92,7 @@
 - [x] Signals
 - [x] Resources
 - [x] 基础关键词搜索
-- [x] 手工维护的 Radar（独立路由、类型化快照与跨内容证据链）
+- [x] 手工维护的 Radar（独立路由、类型化快照、评分说明与可追溯证据链）
 - [x] sitemap、robots 和 canonical metadata
 
 ### P1 — 生产发布
@@ -115,9 +115,9 @@
 | Markdown/MDX 通过验证层加载 | ✅ | [PR #6 head CI](https://github.com/hzense/tech-intelligence-hub/pull/6/checks)验证同一加载器用于 CI 校验与 Web 构建 |
 | Topic / Entity 引用无断链 | ✅ | Seed 与内容引用均由 CI 校验 |
 | 基础关键词搜索 | ✅ | PR #16 接入六类公开内容、相关度排序、类型筛选及双视口验收 |
-| 手工 Radar | ✅ | PR #17 将类型化 Radar 示例快照接入独立页面、筛选、可视化与关联内容 |
+| 手工 Radar | ✅ | PR #17 接入页面与可视化；[PR #19](https://github.com/hzense/tech-intelligence-hub/pull/19)增加评分说明、明确 Signal 引用与 HTTPS 原始来源 |
 | 亮色与暗色主题 | ✅ | Web Shell 已实现主题切换 |
-| CI 全部通过 | ✅ | [PR #17 Checks](https://github.com/hzense/tech-intelligence-hub/pull/17/checks)验证生产依赖审计、构建、单测、内容校验、Seed 校验与双视口 Radar 流程 |
+| CI 全部通过 | ✅ | [PR #19 Checks](https://github.com/hzense/tech-intelligence-hub/pull/19/checks)验证生产依赖审计、构建、单测、内容/Seed、双视口 Radar 与真实 pgvector Migration 流程 |
 | Vercel 生产部署与域名 | ✅ | [`hzense.com`](https://hzense.com/) 已上线；HTTPS、HTTP → HTTPS 与 `www` → 根域名跳转均已验收 |
 | sitemap、robots、canonical metadata | ✅ | App Router metadata routes 与页面 canonical 由 PR #9 的 Playwright 测试自动验证 |
 
@@ -141,6 +141,7 @@
 
 | 日期 | 更新 |
 |---|---|
+| 2026-08-29 | PR #19 建立 Radar 评分级证据、精确一手来源、Information Model v2.0.0 与可回滚 PostgreSQL Migration 验证 |
 | 2026-08-29 | PR #18 升级 Next.js / React 安全补丁版本，并在 CI 增加生产依赖审计门禁 |
 | 2026-08-27 | PR #17 接入独立 Radar 路由、类型化示例快照、领域/阶段/趋势筛选与 Topic / Signal / Resource 关联内容 |
 | 2026-08-27 | PR #16 接入六类公开内容的关键词搜索、类型筛选、相关度排序、导航入口及桌面/移动端验收 |

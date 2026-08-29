@@ -864,6 +864,8 @@ button, input { font: inherit; }
   letter-spacing: .12em;
 }
 .signal-context-panel small { color: var(--muted); line-height: 1.6; }
+.signal-source-link { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; color: var(--ink); }
+.signal-source-link small { color: var(--brand); font-size: 10px; font-weight: 800; }
 .context-link-list {
   display: flex;
   flex-wrap: wrap;
@@ -1208,10 +1210,18 @@ button, input { font: inherit; }
 .radar-metrics div { padding: 14px 10px; background: var(--surface-soft); }
 .radar-metrics dt { color: var(--muted); font-size: 8px; font-weight: 850; letter-spacing: .08em; }
 .radar-metrics dd { margin: 7px 0 0; font-size: 11px; font-weight: 850; }
+.radar-assessment { padding: 18px 0; border-top: 1px solid var(--line); }
 .radar-evidence { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; padding: 20px 0; border-top: 1px solid var(--line); }
 .radar-evidence > div { display: flex; flex-direction: column; gap: 8px; }
+.radar-assessment > span,
 .radar-evidence > div > span { color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.radar-assessment p { margin: 9px 0 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
 .radar-evidence a { font-size: 10px; font-weight: 750; line-height: 1.45; }
+.radar-evidence-item { display: flex; flex-direction: column; gap: 3px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.radar-evidence-item:last-child { padding-bottom: 0; border-bottom: 0; }
+.radar-evidence a.radar-evidence-source { color: var(--muted); font-size: 10px; font-weight: 700; }
+.radar-related-context small { color: var(--muted); font-size: 9px; }
+.radar-related-context .radar-related-resources { margin-top: 8px; }
 .radar-topic-link { margin-top: auto; padding-top: 18px; border-top: 1px solid var(--line); color: var(--brand); font-size: 11px; font-weight: 850; }
 .radar-empty { margin-top: 38px; padding: 48px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); }
 .radar-empty h2 { margin: 0; font-size: 2rem; letter-spacing: -.04em; }

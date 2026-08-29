@@ -263,7 +263,7 @@ HZense 最终不是“保存写过什么”的静态网站，而是能够持续�
 - Canonical Production URL 锁定为 **https://hzense.com**。
 - 产品公共路径统一规划为 `/daily`、`/weekly`、`/signals`、`/insights`、`/topics`、`/radar`、`/resources` 和 `/ask`。
 - 首次 MVP 部署后绑定 Vercel，并将 `www.hzense.com` 重定向到根域名。
-- 同步更新 Information Model v1.1 的十类 Entity 表述与项目实施状态。
+- 同步更新 Information Model v2.0.0 的证据契约、十类 Entity 表述与项目实施状态。
 
 ## v1.2 品牌基线更新
 

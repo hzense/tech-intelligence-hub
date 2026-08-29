@@ -2,9 +2,12 @@
 
 ## Technology Intelligence Information Model
 
-**版本：** v1.0  
-**日期：** 2026-08-18  
-**状态：** Information Model Baseline  
+**版本：** v2.0.0
+
+**日期：** 2026-08-29
+
+**状态：** Evidence Integrity Baseline
+
 **项目：** HZense — Technology Intelligence
 
 ---
@@ -680,9 +683,8 @@ type: product
 occurred_at: 2026-08-18T10:00:00Z
 captured_at: 2026-08-18T10:15:00Z
 status: reviewed
-source_type: web
-source_url: https://example.com
-source_name: Example
+source_id: source-openai-blog
+source_url: https://openai.com/example-event
 summary: string
 importance: 4
 strength: 3
@@ -825,10 +827,14 @@ Source 字段：
 id: source-openai-blog
 name: OpenAI Blog
 type: company_blog
-url: https://example.com
-trust_score: 0.95
+url: https://openai.com/
+trust_score: 95
 active: true
+allowed_hosts:
+  - openai.com
 ```
+
+`allowed_hosts` 表示发布者自身域名或其授权分发商域名。Signal 的 `source_url` hostname 必须命中该白名单；发布者身份与页面托管方不同的情况（例如公司签发、新闻稿平台分发）需要显式列出，不能只凭展示名称推断。
 
 ---
 
@@ -975,16 +981,18 @@ Radar Snapshot 必须是时间序列数据，不能只保存当前值。
 id: radar-topic-agent-security-2026-08-18
 topic: topic-agent-security
 date: 2026-08-18
+domain: security
 attention: 88
 trend: rapid_growth
 maturity: early
 strategic_value: high
 confidence: 0.87
-signal_count_7d: 16
-signal_count_30d: 48
-insight_refs: []
-reasoning: string
+evidence_signals:
+  - signal-20260818-001
+reasoning: 人工确认的评分依据、证据局限与判断说明。
 ```
+
+`evidence_signals` 是有序、非空的评分级证据，不等同于按 Topic 自动聚合的相关内容。每条证据必须存在、不得重复、状态为 `reviewed` 或 `accepted`、关联同一 Topic，且 `occurred_at` 与 `captured_at` 均不得晚于快照日期。Signal 的 `source_url` 必须指向该事件的精确 HTTPS 原始页面。
 
 ---
 
@@ -1094,6 +1102,8 @@ companies:
 
 HZense 的 Insight 和 Radar 判断需要可追溯证据。
 
+V2 的 Radar 以 `evidence_signals` 明确保存评分级 Signal 引用，并由 `reasoning` 记录人工判断。Signal 的 `source_url` 指向精确原始页面，从 Radar 到 Signal 再到一手来源形成可点击链路。按 Topic 自动聚合的内容只能标记为“相关内容”，不能替代评分证据。
+
 建议 Evidence 统一引用：
 
 ```text
@@ -1177,7 +1187,7 @@ Search Document 是派生数据，不是 Source of Truth。
 
 # 40. 数据库核心表建议
 
-V1 PostgreSQL 预计包含：
+V2 PostgreSQL 核心表包含或规划包含：
 
 ```text
 entities
@@ -1189,6 +1199,7 @@ signals
 signal_sources
 sources
 radar_snapshots
+radar_snapshot_signals
 content_index
 search_documents
 embeddings
@@ -1207,10 +1218,12 @@ ingestion_jobs
 2. 所有关系 source / target 必须存在。
 3. 所有 Topic 引用必须存在于 Taxonomy。
 4. archived 对象不得自动进入新 Daily。
-5. rejected Signal 不得影响 Radar。
-6. 删除 Entity 优先采用 archived，不做物理删除。
-7. Search / Embedding 属于可重建派生数据。
-8. Markdown 正文与 PostgreSQL index 通过 public_id 对齐。
+5. rejected、inbox、archived Signal 不得作为 Radar 评分证据。
+6. Radar 证据信号必须存在且唯一，关联同一 Topic，发生与采集时间均不晚于快照日期。
+7. Signal 原始来源必须使用合法 HTTPS URL，且 hostname 命中 Source 的 `allowed_hosts`。
+8. 删除 Entity 优先采用 archived，不做物理删除。
+9. Search / Embedding 属于可重建派生数据。
+10. Markdown 正文与 PostgreSQL index 通过 public_id 对齐。
 
 ---
 
@@ -1338,4 +1351,4 @@ Radar
 Intelligence
 ```
 
-这套模型作为 HZense v1.0 的正式 Information Model Baseline。
+这套模型作为 HZense v2.0.0 的正式 Evidence Integrity Baseline。

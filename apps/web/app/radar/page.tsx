@@ -24,7 +24,7 @@ import { getRadarEntries } from '@/lib/radar-runtime';
 
 export const metadata: Metadata = {
   title: '科技雷达',
-  description: 'HZense 科技雷达：展示手工维护的技术方向结构化示例快照。',
+  description: 'HZense 科技雷达：展示带有可追溯评分证据的技术方向结构化示例快照。',
   alternates: { canonical: '/radar' },
   openGraph: {
     title: 'HZense 科技雷达',
@@ -62,7 +62,9 @@ export default async function RadarPage({ searchParams }: { searchParams: RadarS
         <section className="page-hero radar-page-hero">
           <p className="kicker">HZENSE RADAR</p>
           <h1>看清技术所处的位置。</h1>
-          <p>以专题为观察单元，用手工维护的结构化快照呈现关注度、趋势、成熟度与战略价值。</p>
+          <p>
+            以专题为观察单元，用手工维护、可追溯评分证据的结构化快照呈现关注度、趋势、成熟度与战略价值。
+          </p>
           {latestDate ? <time dateTime={latestDate}>示例快照 · {latestDate}</time> : null}
         </section>
 
@@ -188,18 +190,41 @@ export default async function RadarPage({ searchParams }: { searchParams: RadarS
                       <dd>{Math.round(entry.snapshot.confidence * 100)}%</dd>
                     </div>
                   </dl>
+                  <section className="radar-assessment" aria-label="评分说明">
+                    <span>评分说明</span>
+                    <p>{entry.snapshot.reasoning}</p>
+                  </section>
                   <div className="radar-evidence">
-                    <div>
-                      <span>同专题信号</span>
-                      {entry.signals.slice(0, 3).map((signal) => (
-                        <Link href={`/signals/${signal.id}`} key={signal.id}>
-                          {signal.title}
-                        </Link>
+                    <div className="radar-scoring-evidence">
+                      <span>评分依据</span>
+                      {entry.evidenceSignals.map(({ signal, source }) => (
+                        <div className="radar-evidence-item" key={signal.id}>
+                          <Link href={`/signals/${signal.id}`}>{signal.title}</Link>
+                          <a
+                            aria-label={`${source.name} 原始来源：${signal.title}（在新窗口打开）`}
+                            className="radar-evidence-source"
+                            href={signal.source_url}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            {source.name} · 原始来源 ↗
+                          </a>
+                        </div>
                       ))}
                     </div>
-                    <div>
-                      <span>关联资源</span>
-                      {entry.resources.slice(0, 4).map((resource) => (
+                    <div className="radar-related-context">
+                      <span>同专题相关内容</span>
+                      {entry.relatedSignals.length > 0 ? (
+                        entry.relatedSignals.slice(0, 3).map((signal) => (
+                          <Link href={`/signals/${signal.id}`} key={signal.id}>
+                            {signal.title}
+                          </Link>
+                        ))
+                      ) : (
+                        <small>暂无额外信号</small>
+                      )}
+                      <span className="radar-related-resources">关联资源</span>
+                      {entry.relatedResources.slice(0, 4).map((resource) => (
                         <Link href={`/resources/${resource.id}`} key={resource.id}>
                           {resource.name}
                         </Link>

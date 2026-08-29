@@ -6,7 +6,16 @@
   trend: growth
   maturity: growth
   strategic_value: critical
-  confidence: 0.96
+  confidence: 0.82
+  evidence_signals:
+    - signal-20170612-transformer
+    - signal-20221130-chatgpt
+    - signal-20230314-gpt4
+    - signal-20240418-llama3
+    - signal-20240513-gpt4o
+    - signal-20240620-claude35
+  reasoning: >-
+    示例评分依据 Transformer、ChatGPT 与多条 2023–2024 官方模型发布信号，反映基础模型能力和生态持续演进。证据未覆盖 2025–2026 新进展，因此置信度按历史样例下调。
 - id: radar-20260827-ai-infrastructure
   topic: topic-ai-infrastructure
   date: 2026-08-27
@@ -15,7 +24,11 @@
   trend: growth
   maturity: growth
   strategic_value: critical
-  confidence: 0.95
+  confidence: 0.55
+  evidence_signals:
+    - signal-20240318-blackwell
+  reasoning: >-
+    Blackwell 平台发布直接体现 AI 计算基础设施继续升级。当前 Seed 只有一条 2024 年官方产品信号，能支持方向判断但不足以代表完整市场，因此置信度较低。
 - id: radar-20260827-ai-agents
   topic: topic-ai-agents
   date: 2026-08-27
@@ -24,16 +37,27 @@
   trend: rapid_growth
   maturity: emerging
   strategic_value: critical
-  confidence: 0.92
+  confidence: 0.72
+  evidence_signals:
+    - signal-20240610-apple-intelligence
+    - signal-20240620-claude35
+    - signal-20240229-figure-openai
+    - signal-20241125-mcp
+  reasoning: >-
+    系统级智能、计算机交互、具身合作与 MCP 工具协议共同表明 Agent 正从对话走向执行。证据覆盖多个一手来源，但仍停留在 2024 年样例，因此置信度保持中等。
 - id: radar-20260827-ai-security
   topic: topic-ai-security
   date: 2026-08-27
   domain: security
-  attention: 85
-  trend: rapid_growth
+  attention: 55
+  trend: growth
   maturity: emerging
-  strategic_value: high
-  confidence: 0.9
+  strategic_value: medium
+  confidence: 0.4
+  evidence_signals:
+    - signal-20241125-mcp
+  reasoning: >-
+    MCP 扩大助手对工具和数据源的访问面，使权限与边界治理更值得关注；但这是一条跨专题协议信号，不是直接安全事件或控制证据，因此关注度、趋势与战略价值均收敛为中等判断，并保留低置信度。
 - id: radar-20260827-humanoid-robotics
   topic: topic-humanoid-robotics
   date: 2026-08-27
@@ -42,4 +66,9 @@
   trend: growth
   maturity: early
   strategic_value: high
-  confidence: 0.88
+  confidence: 0.62
+  evidence_signals:
+    - signal-20240229-figure-openai
+    - signal-20240417-electric-atlas
+  reasoning: >-
+    Figure 与 OpenAI 的合作以及全电 Atlas 发布，分别体现智能能力整合和机器人平台迭代。两条 2024 年一手信号能支撑早期趋势判断，但样本有限且未覆盖后续商业化进展。
