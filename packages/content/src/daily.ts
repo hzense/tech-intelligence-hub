@@ -239,6 +239,10 @@ function yamlList(values: string[]): string {
   return values.map((value) => `  - ${value}`).join('\n');
 }
 
+function yamlString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 export function dailyInputFingerprint(selection: DailySelection): string {
   const input = {
     request: selection.request,
@@ -301,11 +305,11 @@ edition: live
 date: ${selection.request.date}
 language: zh-CN
 timezone: ${selection.request.timezone}
-window_start_at: ${JSON.stringify(selection.request.windowStartAt)}
-cutoff_at: ${JSON.stringify(selection.request.cutoffAt)}
+window_start_at: ${yamlString(selection.request.windowStartAt)}
+cutoff_at: ${yamlString(selection.request.cutoffAt)}
 generator_version: ${selection.request.policyVersion}
 input_fingerprint: ${fingerprint}
-summary: ${JSON.stringify(summary)}
+summary: ${yamlString(summary)}
 signal_count: ${selection.signals.length}
 major_developments: ${selection.signals.length}
 rising_topics:
