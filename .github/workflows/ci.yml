@@ -2,6 +2,7 @@ name: CI
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -58,3 +59,21 @@ jobs:
         env:
           MIGRATION_TEST_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
         run: pnpm --filter @hzense/database test:migrations
+
+  daily-publication-gate:
+    name: ${{ github.event_name == 'workflow_dispatch' && 'daily-candidate-validation' || 'daily-publication-gate' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: corepack prepare pnpm@11.21.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - name: Validate Daily structure and evidence
+        run: pnpm content:validate
+      - name: Require a human publication state
+        if: github.event_name != 'workflow_dispatch'
+        run: pnpm daily:publication-check

@@ -167,13 +167,26 @@ id: daily-2026-08-18
 title: HZense Daily — 2026-08-18
 type: daily
 status: published
+edition: live
 date: 2026-08-18
 language: zh-CN
-signal_count: 23
-major_developments: 8
+timezone: Europe/Berlin
+window_start_at: 2026-08-17T07:00:00+02:00
+cutoff_at: 2026-08-18T07:00:00+02:00
+generator_version: daily-v1
+input_fingerprint: sha256:...
+summary: 本期经人工审核的科技情报摘要。
+signal_count: 5
+major_developments: 5
 rising_topics:
   - topic-agent-security
   - topic-ai-infrastructure
+signal_refs:
+  - signal-example-1
+  - signal-example-2
+  - signal-example-3
+  - signal-example-4
+  - signal-example-5
 importance: 5
 ---
 ```
@@ -194,6 +207,8 @@ Related Topics
 ```
 
 Daily 必须可追溯到其引用的 Signals。
+
+Continuous Daily 自动化只能生成 `status: draft`。`live` 版本必须保留选择窗口、cutoff、生成器版本与输入指纹；人工核验并移除候选占位内容后才能改为 `published`。回顾样例使用 `edition: historical_example`，避免把后来回填的 Signal 冒充为历史日期当时已经采集的证据。
 
 ---
 

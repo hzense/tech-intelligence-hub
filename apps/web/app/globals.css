@@ -434,6 +434,12 @@ button, input { font: inherit; }
   letter-spacing: .1em;
 }
 .insight-evidence p { margin: 0; color: var(--muted); line-height: 1.7; }
+.daily-evidence { margin-top: 42px; padding: 28px; border-radius: 18px; background: var(--surface-soft); }
+.daily-evidence > strong { display: block; margin-bottom: 12px; color: var(--brand); font-size: 11px; letter-spacing: .1em; }
+.daily-evidence > div { display: grid; border-top: 1px solid var(--line); }
+.daily-evidence article { display: flex; justify-content: space-between; gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.daily-evidence article > a:first-child { color: var(--ink); font-weight: 750; }
+.daily-evidence article > a:last-child { flex: 0 0 auto; color: var(--brand); font-size: 11px; font-weight: 800; }
 
 @media (max-width: 700px) {
   .insights-index-grid { grid-template-columns: 1fr; }

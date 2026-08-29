@@ -20,8 +20,10 @@ describe('content cross-reference validation', () => {
         title: 'Daily',
         type: 'daily',
         status: 'published',
+        edition: 'historical_example',
         date: '2024-06-20',
         language: 'en',
+        summary: 'Summary',
         signal_count: 1,
         major_developments: 1,
         rising_topics: ['topic-foundation-models'],
@@ -83,11 +85,28 @@ describe('content cross-reference validation', () => {
 
     expect(findReferenceIssues(documents, catalogs)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ field: 'id', reason: 'duplicate', target: 'insight-platform-shift' }),
+        expect.objectContaining({
+          field: 'id',
+          reason: 'duplicate',
+          target: 'insight-platform-shift',
+        }),
         expect.objectContaining({ field: 'topics', reason: 'missing', target: 'topic-missing' }),
-        expect.objectContaining({ field: 'companies', reason: 'missing', target: 'company-missing' }),
-        expect.objectContaining({ field: 'evidence_signals', reason: 'missing', target: 'signal-missing' }),
-        expect.objectContaining({ field: 'daily_refs', kind: 'daily', reason: 'missing', target: 'daily-missing' }),
+        expect.objectContaining({
+          field: 'companies',
+          reason: 'missing',
+          target: 'company-missing',
+        }),
+        expect.objectContaining({
+          field: 'evidence_signals',
+          reason: 'missing',
+          target: 'signal-missing',
+        }),
+        expect.objectContaining({
+          field: 'daily_refs',
+          kind: 'daily',
+          reason: 'missing',
+          target: 'daily-missing',
+        }),
       ]),
     );
   });
