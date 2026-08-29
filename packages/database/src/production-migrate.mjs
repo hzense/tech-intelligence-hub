@@ -13,10 +13,11 @@ async function runProductionMigration() {
   }
 
   const options = productionDatabaseOptions();
-  validateConnectionTarget(options);
+  const policy = validateConnectionTarget(options);
   await runMigrations({
     connectionString: options.connectionString,
-    beforeMigrate: (client) => inspectDatabasePreflight(client, options),
+    beforeMigrate: (client) =>
+      inspectDatabasePreflight(client, { ...options, expectedHost: policy.host }),
   });
   await verifyDatabaseContract(options);
 }

@@ -1,6 +1,8 @@
 import console from 'node:console';
+import { Buffer } from 'node:buffer';
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { checkServerIdentity } from 'node:tls';
 import { fileURLToPath, pathToFileURL, URL } from 'node:url';
 import pg from 'pg';
 import { productionDatabaseOptions, validateConnectionTarget } from './connection-policy.mjs';
@@ -13,6 +15,72 @@ const migrationManifest = fileURLToPath(
   new URL('../../../db/migrations/checksums.json', import.meta.url),
 );
 
+export async function inspectProductionTls(client, expectedHost) {
+  const reviewedHost = requireString(expectedHost, 'HZENSE_DATABASE_EXPECTED_HOST');
+  const clientSsl = client?.ssl;
+  const connectionSsl = client?.connectionParameters?.ssl;
+  if (
+    clientSsl === false ||
+    clientSsl?.rejectUnauthorized === false ||
+    connectionSsl === false ||
+    connectionSsl?.rejectUnauthorized === false
+  ) {
+    throw new Error('Production database TLS certificate verification is disabled');
+  }
+
+  const ssl = await client.query(
+    `SELECT ssl, version, cipher
+     FROM pg_stat_ssl
+     WHERE pid = pg_backend_pid()`,
+  );
+  const serverTls = ssl.rows[0];
+  const serverReportsTls = ssl.rowCount === 1 && serverTls?.ssl === true;
+  const serverTlsIsAcceptable =
+    ssl.rowCount === 1 &&
+    serverTls?.ssl === true &&
+    typeof serverTls.version === 'string' &&
+    ['TLSv1.2', 'TLSv1.3'].includes(serverTls.version) &&
+    typeof serverTls.cipher === 'string' &&
+    serverTls.cipher.length > 0;
+  if (serverReportsTls && !serverTlsIsAcceptable) {
+    throw new Error('Production database session is not protected by observable TLS');
+  }
+
+  // Providers such as Neon terminate client TLS at a PostgreSQL-aware proxy.
+  // In that topology pg_stat_ssl describes the proxy-to-compute hop, so require
+  // an authenticated Node TLS socket before accepting client-side evidence.
+  const stream = client?.connection?.stream;
+  const version = typeof stream?.getProtocol === 'function' ? stream.getProtocol() : undefined;
+  const cipherInfo = typeof stream?.getCipher === 'function' ? stream.getCipher() : undefined;
+  const cipher = cipherInfo?.standardName ?? cipherInfo?.name;
+  const certificate =
+    typeof stream?.getPeerCertificate === 'function' ? stream.getPeerCertificate() : undefined;
+  const certificateMatchesHost =
+    certificate &&
+    Object.keys(certificate).length > 0 &&
+    Buffer.isBuffer(certificate.raw) &&
+    certificate.raw.length > 0 &&
+    checkServerIdentity(reviewedHost, certificate) === undefined;
+  if (
+    stream?.encrypted === true &&
+    stream.authorized === true &&
+    !stream.authorizationError &&
+    typeof version === 'string' &&
+    ['TLSv1.2', 'TLSv1.3'].includes(version) &&
+    typeof cipher === 'string' &&
+    cipher.length > 0 &&
+    certificateMatchesHost
+  ) {
+    return {
+      source: serverTlsIsAcceptable ? 'postgres+client' : 'client',
+      version,
+      cipher,
+    };
+  }
+
+  throw new Error('Production database session is not protected by observable TLS');
+}
+
 function requireString(value, label) {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`${label} is required`);
@@ -22,7 +90,14 @@ function requireString(value, label) {
 
 export async function inspectDatabasePreflight(
   client,
-  { expectedDatabase, expectedUser, expectedPgvectorVersion, expectedPostgresMajor = 18, profile },
+  {
+    expectedHost,
+    expectedDatabase,
+    expectedUser,
+    expectedPgvectorVersion,
+    expectedPostgresMajor = 18,
+    profile,
+  },
 ) {
   const databaseName = requireString(expectedDatabase, 'HZENSE_DATABASE_EXPECTED_NAME');
   const userName = requireString(expectedUser, 'HZENSE_DATABASE_EXPECTED_USER');
@@ -136,17 +211,13 @@ export async function inspectDatabasePreflight(
   }
 
   let tlsVersion = 'local plaintext';
+  let tlsCipher = 'none';
+  let tlsEvidence = 'local';
   if (profile === 'production') {
-    const ssl = await client.query(
-      `SELECT ssl, version, cipher
-       FROM pg_stat_ssl
-       WHERE pid = pg_backend_pid()`,
-    );
-    const tls = ssl.rows[0];
-    if (ssl.rowCount !== 1 || tls?.ssl !== true || !tls.version || !tls.cipher) {
-      throw new Error('Production database session is not protected by observable TLS');
-    }
+    const tls = await inspectProductionTls(client, expectedHost);
     tlsVersion = tls.version;
+    tlsCipher = tls.cipher;
+    tlsEvidence = tls.source;
   } else if (profile !== 'local-test') {
     throw new Error('database profile must be local-test or production');
   }
@@ -179,7 +250,7 @@ export async function inspectDatabasePreflight(
   const pending = planPendingMigrations(migrations, appliedRows);
 
   console.log(
-    `[db:preflight] verified ${databaseName}/${userName}, PostgreSQL ${expectedPostgresMajor}, ${tlsVersion}, pgvector ${vectorVersion}, ${pending.length} pending migrations`,
+    `[db:preflight] verified ${databaseName}/${userName}, PostgreSQL ${expectedPostgresMajor}, ${tlsVersion}/${tlsCipher} (${tlsEvidence} evidence), pgvector ${vectorVersion}, ${pending.length} pending migrations`,
   );
   return {
     database: databaseName,
@@ -187,6 +258,8 @@ export async function inspectDatabasePreflight(
     postgresMajor: expectedPostgresMajor,
     pgvectorVersion: vectorVersion,
     tlsVersion,
+    tlsCipher,
+    tlsEvidence,
     pendingMigrations: pending.map((migration) => migration.name),
   };
 }
@@ -221,6 +294,7 @@ export async function runDatabasePreflight({
   try {
     await client.query("SET statement_timeout = '30s'");
     return await inspectDatabasePreflight(client, {
+      expectedHost: policy.host,
       expectedDatabase: expectedDatabase ?? policy.database,
       expectedUser: expectedUser ?? policy.user,
       expectedPgvectorVersion,
