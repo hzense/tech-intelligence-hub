@@ -5,11 +5,17 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src drizzle.config.ts",
+    "lint": "eslint src test",
     "test": "vitest run --passWithNoTests",
-    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
-    "db:migrate": "drizzle-kit migrate --config drizzle.config.ts"
+    "test:migrations": "node test/require-integration-env.mjs && vitest run test/migration.integration.test.mjs",
+    "db:migrate": "node src/migrate.mjs"
   },
-  "dependencies": { "drizzle-orm": "^0.45.2", "pg": "^8.22.0" },
-  "devDependencies": { "drizzle-kit": "^0.31.10", "typescript": "^5.9.2", "vitest": "^4.1.10" }
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.22.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  }
 }

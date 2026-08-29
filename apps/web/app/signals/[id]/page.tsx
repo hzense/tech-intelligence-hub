@@ -3,11 +3,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { SiteShell } from '@/components/site-shell';
 import { formatZhDate, getTopicTitleMap } from '@/lib/content-runtime';
-import {
-  formatPercentage,
-  formatSignalType,
-  formatSourceType,
-} from '@/lib/signal-presentation';
+import { formatPercentage, formatSignalType, formatSourceType } from '@/lib/signal-presentation';
 import {
   getSeedEntityMap,
   getSeedSourceMap,
@@ -61,13 +57,13 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
   return (
     <SiteShell>
       <main className="article-main section-shell">
-        <Link className="back-link" href="/signals">← 返回全部信号</Link>
+        <Link className="back-link" href="/signals">
+          ← 返回全部信号
+        </Link>
         <header className="article-header">
           <div className="article-meta">
             <span>{formatSignalType(entry.type)}</span>
-            <time dateTime={entry.occurred_at}>
-              {formatZhDate(entry.occurred_at.slice(0, 10))}
-            </time>
+            <time dateTime={entry.occurred_at}>{formatZhDate(entry.occurred_at.slice(0, 10))}</time>
           </div>
           <h1>{entry.title}</h1>
           <p>{entry.summary}</p>
@@ -78,16 +74,37 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
             <h2>为什么值得记录</h2>
             <p>{entry.summary}</p>
             <div className="signal-dimension-grid">
-              <div><span>重要度</span><strong>{entry.importance}/5</strong></div>
-              <div><span>强度</span><strong>{entry.strength}/5</strong></div>
-              <div><span>置信度</span><strong>{formatPercentage(entry.confidence)}</strong></div>
-              <div><span>新颖度</span><strong>{formatPercentage(entry.novelty)}</strong></div>
+              <div>
+                <span>重要度</span>
+                <strong>{entry.importance}/5</strong>
+              </div>
+              <div>
+                <span>强度</span>
+                <strong>{entry.strength}/5</strong>
+              </div>
+              <div>
+                <span>置信度</span>
+                <strong>{formatPercentage(entry.confidence)}</strong>
+              </div>
+              <div>
+                <span>新颖度</span>
+                <strong>{formatPercentage(entry.novelty)}</strong>
+              </div>
             </div>
           </article>
           <aside className="signal-context-panel">
             <section>
               <span>来源</span>
-              <strong>{source?.name ?? entry.source_id}</strong>
+              <a
+                aria-label={`${source?.name ?? entry.source_id} 原始来源（在新窗口打开）`}
+                className="signal-source-link"
+                href={entry.source_url}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                <strong>{source?.name ?? entry.source_id}</strong>
+                <small>查看原始来源 ↗</small>
+              </a>
               <small>
                 {source ? formatSourceType(source.type) : '待补充'} · 信任分{' '}
                 {source?.trust_score ?? '—'}

@@ -6,6 +6,11 @@ import { z } from 'zod';
 const id = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const seedDate = z.iso.date();
 const seedDateTime = z.iso.datetime({ offset: true });
+const httpsUrl = z.url({ protocol: /^https$/ });
+
+function toUtcDate(value: string): string {
+  return new Date(value).toISOString().slice(0, 10);
+}
 
 const entitySchema = z.object({
   id,
@@ -43,6 +48,7 @@ const sourceSchema = z.object({
   ]),
   trust_score: z.number().int().min(0).max(100),
   active: z.boolean(),
+  allowed_hosts: z.array(z.hostname()).min(1),
 });
 
 const signalSchema = z.object({
@@ -69,6 +75,7 @@ const signalSchema = z.object({
   captured_at: seedDateTime,
   status: z.enum(['inbox', 'reviewed', 'accepted', 'rejected', 'archived']),
   source_id: id,
+  source_url: httpsUrl,
   summary: z.string().min(1),
   importance: z.number().int().min(1).max(5),
   strength: z.number().int().min(1).max(5),
@@ -102,6 +109,8 @@ const radarSchema = z.object({
   maturity: z.enum(['research', 'early', 'emerging', 'growth', 'mature']),
   strategic_value: z.enum(['low', 'medium', 'high', 'critical']),
   confidence: z.number().min(0).max(1),
+  evidence_signals: z.array(id).min(1),
+  reasoning: z.string().trim().min(1),
 });
 
 export type SeedEntity = z.infer<typeof entitySchema>;
@@ -143,7 +152,8 @@ export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
 
   const topicIds = new Set(catalog.topics.map((topic) => topic.id));
   const entityIds = new Set(catalog.entities.map((entity) => entity.id));
-  const sourceIds = new Set(catalog.sources.map((source) => source.id));
+  const sourceById = new Map(catalog.sources.map((source) => [source.id, source]));
+  const signalById = new Map(catalog.signals.map((signal) => [signal.id, signal]));
   const radarTopicDates = new Set<string>();
 
   for (const snapshot of catalog.radar) {
@@ -155,6 +165,33 @@ export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
       throw new Error(`Duplicate Radar topic/date: ${topicDate}`);
     }
     radarTopicDates.add(topicDate);
+
+    const evidenceIds = new Set<string>();
+    for (const signalId of snapshot.evidence_signals) {
+      if (evidenceIds.has(signalId)) {
+        throw new Error(`Duplicate Radar evidence signal ${signalId} in ${snapshot.id}`);
+      }
+      evidenceIds.add(signalId);
+
+      const signal = signalById.get(signalId);
+      if (!signal) {
+        throw new Error(`Unknown Radar evidence signal ${signalId} in ${snapshot.id}`);
+      }
+      if (signal.status !== 'reviewed' && signal.status !== 'accepted') {
+        throw new Error(`Ineligible Radar evidence signal ${signalId} in ${snapshot.id}`);
+      }
+      if (!signal.topics.includes(snapshot.topic)) {
+        throw new Error(
+          `Radar evidence signal ${signalId} does not reference ${snapshot.topic} in ${snapshot.id}`,
+        );
+      }
+      if (toUtcDate(signal.occurred_at) > snapshot.date) {
+        throw new Error(`Future Radar evidence occurrence ${signalId} in ${snapshot.id}`);
+      }
+      if (toUtcDate(signal.captured_at) > snapshot.date) {
+        throw new Error(`Future Radar evidence capture ${signalId} in ${snapshot.id}`);
+      }
+    }
   }
 
   for (const relation of catalog.relations) {
@@ -164,8 +201,18 @@ export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
   }
 
   for (const signal of catalog.signals) {
-    if (!sourceIds.has(signal.source_id)) {
+    const source = sourceById.get(signal.source_id);
+    if (!source) {
       throw new Error(`Unknown source: ${signal.id}`);
+    }
+    const sourceHostname = new URL(signal.source_url).hostname.toLowerCase();
+    if (
+      !source.allowed_hosts.some(
+        (allowedHost) =>
+          sourceHostname === allowedHost || sourceHostname.endsWith(`.${allowedHost}`),
+      )
+    ) {
+      throw new Error(`Unexpected source URL host ${sourceHostname} in ${signal.id}`);
     }
     for (const topic of signal.topics) {
       if (!topicIds.has(topic)) throw new Error(`Unknown topic ${topic} in ${signal.id}`);

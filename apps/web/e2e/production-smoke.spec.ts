@@ -172,6 +172,9 @@ test('Signals list and detail routes expose traceable seed intelligence', async 
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('article.signal-detail-body')).toBeVisible();
   await expect(page.locator('aside.signal-context-panel')).toBeVisible();
+  await expect(page.locator('a.signal-source-link')).toHaveAttribute('href', /^https:\/\//);
+  await expect(page.locator('a.signal-source-link')).toHaveAttribute('target', '_blank');
+  await expect(page.locator('a.signal-source-link')).toHaveAttribute('rel', 'noopener noreferrer');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     `https://hzense.com${detailHref}`,
@@ -219,6 +222,39 @@ test('Radar visualizes and filters traceable technology assessments', async ({ p
   expect(unfilteredCount).toBeGreaterThan(0);
   await expect(radarEntries.locator('a[href^="/signals/"]').first()).toBeVisible();
   await expect(radarEntries.locator('a[href^="/resources/"]').first()).toBeVisible();
+  await expect(radarEntries.locator('.radar-assessment')).toHaveCount(unfilteredCount);
+
+  const evidenceShape = await radarEntries.evaluateAll((cards) =>
+    cards.map((card) => ({
+      evidenceSignals: [...card.querySelectorAll('.radar-scoring-evidence a[href^="/signals/"]')]
+        .map((link) => link.getAttribute('href'))
+        .filter((href): href is string => Boolean(href)),
+      sourceLinks: [...card.querySelectorAll('a.radar-evidence-source')].map((link) => ({
+        href: link.getAttribute('href'),
+        rel: link.getAttribute('rel'),
+        target: link.getAttribute('target'),
+      })),
+      relatedSignals: [...card.querySelectorAll('.radar-related-context a[href^="/signals/"]')]
+        .map((link) => link.getAttribute('href'))
+        .filter((href): href is string => Boolean(href)),
+      reasoning: card.querySelector('.radar-assessment p')?.textContent?.trim() ?? '',
+    })),
+  );
+  for (const entry of evidenceShape) {
+    expect(entry.reasoning.length).toBeGreaterThan(0);
+    expect(entry.evidenceSignals.length).toBeGreaterThan(0);
+    expect(new Set(entry.evidenceSignals).size).toBe(entry.evidenceSignals.length);
+    expect(entry.sourceLinks).toHaveLength(entry.evidenceSignals.length);
+    expect(
+      entry.sourceLinks.every(
+        ({ href, rel, target }) =>
+          href?.startsWith('https://') && rel === 'noopener noreferrer' && target === '_blank',
+      ),
+    ).toBeTruthy();
+    expect(
+      entry.relatedSignals.every((href) => !entry.evidenceSignals.includes(href)),
+    ).toBeTruthy();
+  }
 
   const evidenceHrefs = await radarEntries
     .locator('a.radar-topic-link, a[href^="/signals/"], a[href^="/resources/"]')
@@ -236,6 +272,17 @@ test('Radar visualizes and filters traceable technology assessments', async ({ p
     const response = await request.get(href);
     expect(response.ok(), `${href} returned ${response.status()}`).toBeTruthy();
   }
+
+  const firstEvidenceSignalHref = evidenceShape[0]?.evidenceSignals[0];
+  const firstEvidenceSourceHref = evidenceShape[0]?.sourceLinks[0]?.href;
+  expect(firstEvidenceSignalHref).toBeTruthy();
+  expect(firstEvidenceSourceHref).toMatch(/^https:\/\//);
+  await page.goto(firstEvidenceSignalHref as string);
+  await expect(page.locator('a.signal-source-link')).toHaveAttribute(
+    'href',
+    firstEvidenceSourceHref as string,
+  );
+  await page.goto('/radar');
 
   const radarMatrix = page.locator('.radar-matrix');
   const radarNodes = page.locator('.radar-node');
@@ -284,15 +331,15 @@ test('Radar visualizes and filters traceable technology assessments', async ({ p
 
   await page.getByLabel('领域').selectOption('security');
   await page.getByLabel('成熟阶段').selectOption('emerging');
-  await page.getByLabel('趋势').selectOption('rapid_growth');
+  await page.getByLabel('趋势').selectOption('growth');
   await page.getByRole('button', { name: '应用筛选' }).click();
   const filteredUrl = new URL(page.url());
   expect(filteredUrl.searchParams.get('domain')).toBe('security');
   expect(filteredUrl.searchParams.get('maturity')).toBe('emerging');
-  expect(filteredUrl.searchParams.get('trend')).toBe('rapid_growth');
+  expect(filteredUrl.searchParams.get('trend')).toBe('growth');
   await expect(page.getByLabel('领域')).toHaveValue('security');
   await expect(page.getByLabel('成熟阶段')).toHaveValue('emerging');
-  await expect(page.getByLabel('趋势')).toHaveValue('rapid_growth');
+  await expect(page.getByLabel('趋势')).toHaveValue('growth');
   await expect(radarEntries.first()).toBeVisible();
 
   const filteredCount = await radarEntries.count();
@@ -304,14 +351,14 @@ test('Radar visualizes and filters traceable technology assessments', async ({ p
   const filteredEntryText = await radarEntries.allTextContents();
   expect(
     filteredEntryText.every(
-      (entryText) => entryText.includes('涌现期') && entryText.includes('快速上升'),
+      (entryText) => entryText.includes('涌现期') && entryText.includes('上升'),
     ),
   ).toBeTruthy();
 
   await page.reload();
   await expect(page.getByLabel('领域')).toHaveValue('security');
   await expect(page.getByLabel('成熟阶段')).toHaveValue('emerging');
-  await expect(page.getByLabel('趋势')).toHaveValue('rapid_growth');
+  await expect(page.getByLabel('趋势')).toHaveValue('growth');
   await expect(radarEntries).toHaveCount(filteredCount);
 
   await page.goto('/radar?domain=security&maturity=mature&trend=rapid_decline');

@@ -1,4 +1,4 @@
-version: '1.1'
+version: '2.0.0'
 project: HZense
 
 id_policy:
@@ -132,7 +132,7 @@ relation_model:
     - announced_at
 
 signal_model:
-  required: [id, title, type, occurred_at, captured_at, status, source_type, source_name, summary, importance, strength, confidence, novelty]
+  required: [id, title, type, occurred_at, captured_at, status, source_id, source_url, summary, importance, strength, confidence, novelty]
   types: [research, product, funding, acquisition, hiring, policy, technology, market, people, open_source, security, patent, partnership, regulation, supply_chain]
   statuses: [inbox, reviewed, accepted, rejected, archived]
   scales:
@@ -141,19 +141,23 @@ signal_model:
     confidence: '0.0..1.0'
     novelty: '0.0..1.0'
   radar_eligible_statuses: [reviewed, accepted]
+  source_url: exact_event_page_https
 
 source_model:
-  required: [id, name, type, trust_score, active]
+  required: [id, name, type, trust_score, active, allowed_hosts]
   types: [website, rss, paper, company_blog, research_lab, news_media, newsletter, github, social, regulator, patent_database]
+  allowed_hosts: publisher_or_authorized_distributor_hostname[]
 
 radar_model:
-  required: [id, topic, date, domain, attention, trend, maturity, strategic_value, confidence]
+  required: [id, topic, date, domain, attention, trend, maturity, strategic_value, confidence, evidence_signals, reasoning]
   domain: [artificial_intelligence, infrastructure, security, robotics]
   attention: '0..100'
   trend: [rapid_growth, growth, stable, decline, rapid_decline]
   maturity: [research, early, emerging, growth, mature]
   strategic_value: [low, medium, high, critical]
   confidence: '0.0..1.0'
+  evidence_signals: ordered_non_empty_signal_id[]
+  reasoning: non_empty_editorial_text
   time_series: true
 
 search_document:
@@ -168,6 +172,11 @@ data_consistency:
   - all_topic_refs_must_exist
   - paper_entity_and_paper_note_content_must_use_distinct_ids
   - rejected_signals_cannot_affect_radar
+  - radar_evidence_signals_must_exist_and_be_unique
+  - radar_evidence_signals_must_be_reviewed_or_accepted
+  - radar_evidence_signals_must_match_topic_and_snapshot_date
+  - signal_source_urls_must_be_https
+  - signal_source_url_host_must_match_source_allowlist
   - archived_entities_are_not_physically_deleted
   - search_and_embeddings_are_rebuildable
   - markdown_and_postgres_align_on_public_id

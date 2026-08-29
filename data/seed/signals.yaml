@@ -5,6 +5,7 @@
   captured_at: 2026-08-20T00:00:00Z
   status: accepted
   source_id: source-arxiv
+  source_url: https://arxiv.org/abs/1706.03762
   summary: The Transformer paper established the attention-centric architecture that became foundational to modern large language models.
   importance: 5
   strength: 5
@@ -19,6 +20,7 @@
   captured_at: 2026-08-20T00:00:00Z
   status: accepted
   source_id: source-openai
+  source_url: https://openai.com/index/chatgpt/
   summary: ChatGPT brought conversational large-language-model interaction to a mass audience.
   importance: 5
   strength: 5
@@ -33,6 +35,7 @@
   captured_at: 2026-08-20T00:00:00Z
   status: accepted
   source_id: source-openai
+  source_url: https://openai.com/index/gpt-4-research/
   summary: GPT-4 advanced multimodal and general-purpose foundation-model capabilities.
   importance: 5
   strength: 5
@@ -47,6 +50,7 @@
   captured_at: 2026-08-20T00:00:00Z
   status: accepted
   source_id: source-meta
+  source_url: https://ai.meta.com/blog/meta-llama-3/
   summary: Llama 3 strengthened the open-weight foundation-model ecosystem.
   importance: 4
   strength: 4
@@ -61,6 +65,7 @@
   captured_at: 2026-08-20T00:00:00Z
   status: accepted
   source_id: source-openai
+  source_url: https://openai.com/index/hello-gpt-4o/
   summary: GPT-4o emphasized natively multimodal interaction across text, vision and audio.
   importance: 5
   strength: 4
@@ -75,6 +80,7 @@
   captured_at: 2026-08-20T00:00:00Z
   status: accepted
   source_id: source-nvidia
+  source_url: https://nvidianews.nvidia.com/news/nvidia-blackwell-platform-arrives-to-power-a-new-era-of-computing
   summary: Blackwell represented a major new NVIDIA platform generation for accelerated AI computing.
   importance: 5
   strength: 5
@@ -89,6 +95,7 @@
   captured_at: 2026-08-20T00:00:00Z
   status: accepted
   source_id: source-apple
+  source_url: https://www.apple.com/newsroom/2024/06/introducing-apple-intelligence-for-iphone-ipad-and-mac/
   summary: Apple introduced a system-level personal intelligence initiative integrated across its device ecosystem.
   importance: 4
   strength: 4
@@ -99,10 +106,11 @@
 - id: signal-20240620-claude35
   title: Anthropic announced Claude 3.5 Sonnet
   type: product
-  occurred_at: 2024-06-20T00:00:00Z
+  occurred_at: 2024-06-21T00:00:00Z
   captured_at: 2026-08-20T00:00:00Z
   status: accepted
   source_id: source-anthropic
+  source_url: https://www.anthropic.com/news/claude-3-5-sonnet
   summary: Claude 3.5 Sonnet advanced Anthropic's frontier model family and computer-interaction direction.
   importance: 4
   strength: 4
@@ -117,6 +125,7 @@
   captured_at: 2026-08-20T00:00:00Z
   status: accepted
   source_id: source-figure
+  source_url: https://www.prnewswire.com/news-releases/figure-raises-675m-at-2-6b-valuation-and-signs-collaboration-agreement-with-openai-302074897.html
   summary: Figure announced an OpenAI collaboration focused on language and visual processing for humanoid robots.
   importance: 4
   strength: 4
@@ -131,6 +140,7 @@
   captured_at: 2026-08-20T00:00:00Z
   status: accepted
   source_id: source-boston-dynamics
+  source_url: https://bostondynamics.com/blog/electric-new-era-for-atlas/
   summary: Boston Dynamics introduced a fully electric Atlas generation for humanoid robotics development.
   importance: 4
   strength: 4
@@ -145,6 +155,7 @@
   captured_at: 2026-08-20T00:00:00Z
   status: accepted
   source_id: source-anthropic
+  source_url: https://www.anthropic.com/news/model-context-protocol
   summary: Model Context Protocol introduced an open protocol for connecting AI assistants with tools and data sources.
   importance: 5
   strength: 5

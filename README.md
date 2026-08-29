@@ -96,7 +96,7 @@ Completed:
 - [x] Product / brand / domain baseline
 - [x] GitHub Organization and public Organization profile
 - [x] Technical architecture
-- [x] Information Model v1.1 and taxonomy
+- [x] Information Model v2.0.0 and taxonomy
 - [x] pnpm workspace + Turborepo repository skeleton
 - [x] Strict TypeScript / ESLint / Prettier baseline
 - [x] Vitest / Playwright baseline
@@ -141,6 +141,18 @@ pnpm seed:validate
 ```
 
 The first dependency install should commit `pnpm-lock.yaml`. After that, CI should switch to a frozen lockfile install.
+
+## Database migration contract
+
+`packages/database/src/schema.ts` is the Drizzle physical-schema declaration. Executable migrations are reviewed, sequential `NNNN_name.sql` files in `db/migrations/`; `pnpm db:migrate` is the only migration command. The runner applies each file in a transaction, serializes concurrent runs, and records a SHA-256 checksum in `hzense_schema_migrations`. Applied files must never be edited.
+
+For a new PostgreSQL database with pgvector available:
+
+```bash
+DATABASE_URL=postgresql://... pnpm db:migrate
+```
+
+An older database created directly from `0000_foundation.sql` has no migration-history row. Adopt it only after verifying that the exact checked-in file created the schema, then pass that file's SHA-256 as `HZENSE_DATABASE_BASELINE_CHECKSUM`. Unknown legacy Source, Signal, or Radar rows stop the evidence migration with their IDs so provenance can be backfilled explicitly.
 
 ---
 

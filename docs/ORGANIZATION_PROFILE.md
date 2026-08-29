@@ -75,7 +75,7 @@ Completed:
 - HZense GitHub Organization established
 - Main repository transferred to HZense
 - Technical architecture baseline
-- Information Model v1.1
+- Information Model v2.0.0
 - Initial technology taxonomy
 
 Next milestone:

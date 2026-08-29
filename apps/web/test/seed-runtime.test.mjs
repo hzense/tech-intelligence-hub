@@ -16,6 +16,7 @@ test('only exposes reviewed or accepted Signals in reverse chronological order',
   assert.ok(
     signals.every((signal) => signal.status === 'accepted' || signal.status === 'reviewed'),
   );
+  assert.ok(signals.every((signal) => signal.source_url.startsWith('https://')));
   assert.deepEqual(
     signals.map((signal) => signal.occurred_at),
     [...signals]
@@ -41,10 +42,25 @@ test('only exposes active Resources and resolves their stable ids', async () => 
 });
 
 test('loads validated Radar snapshots in reverse date and attention order', async () => {
-  const snapshots = await getRadarSnapshots();
+  const [snapshots, signals] = await Promise.all([getRadarSnapshots(), getSignalEntries()]);
+  const signalById = new Map(signals.map((signal) => [signal.id, signal]));
 
   assert.ok(snapshots.length > 0);
   assert.ok(snapshots.every((snapshot) => snapshot.attention >= 0 && snapshot.attention <= 100));
+  for (const snapshot of snapshots) {
+    assert.ok(snapshot.reasoning.trim().length > 0);
+    assert.ok(snapshot.evidence_signals.length > 0);
+    assert.equal(new Set(snapshot.evidence_signals).size, snapshot.evidence_signals.length);
+    for (const signalId of snapshot.evidence_signals) {
+      const signal = signalById.get(signalId);
+      assert.ok(signal);
+      assert.ok(signal.status === 'accepted' || signal.status === 'reviewed');
+      assert.ok(signal.topics.includes(snapshot.topic));
+      assert.ok(new Date(signal.occurred_at).toISOString().slice(0, 10) <= snapshot.date);
+      assert.ok(new Date(signal.captured_at).toISOString().slice(0, 10) <= snapshot.date);
+      assert.ok(signal.source_url.startsWith('https://'));
+    }
+  }
   for (let index = 1; index < snapshots.length; index += 1) {
     const previous = snapshots[index - 1];
     const current = snapshots[index];

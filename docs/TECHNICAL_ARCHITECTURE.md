@@ -121,6 +121,8 @@ Operational Data：Signals、Radar snapshots、Search metadata、Ingestion jobs�
 
 Paper 是客观论文 Entity；HZense 对论文的解读正文以 PaperNote Content 保存。
 
+Drizzle Schema 描述当前物理模型；实际变更只通过 `db/migrations/` 中经过评审的顺序 SQL 执行。`pnpm db:migrate` 为唯一执行入口，使用 PostgreSQL advisory lock、逐文件事务与 SHA-256 历史记录；已执行迁移不可修改。旧的未跟踪 `0000` Schema 只有在操作者显式提供该文件校验和时才可采纳，未知数据必须先补齐来源与证据字段。
+
 ## 8. Search 与 Vector
 
 V1 使用 PostgreSQL Full Text Search。V2 升级 Hybrid Search：Keyword + Vector + Entity + Recency + Importance。
@@ -306,7 +308,7 @@ Local         http://localhost:3000
 - Canonical URL 锁定为 **https://hzense.com**。
 - 增加生产、预览和本地环境的域名策略。
 - 增加公共路由、`www` 重定向、HTTPS、canonical metadata、sitemap 和 robots 基线。
-- 同步 Information Model v1.1 的十类 Entity 与 Paper / PaperNote 边界。
+- 同步 Information Model v2.0.0 的证据契约、十类 Entity 与 Paper / PaperNote 边界。
 - 更新开发启动前的下一步工程任务。
 
 > **HZense — Sense what matters in technology.**

@@ -7,7 +7,7 @@ This foundation converts the design repository into an executable monorepo bound
 ## Delivered
 
 1. Repository skeleton: pnpm workspace + Turborepo, `apps/web`, `packages/content`, `packages/database`, search/intelligence/ui boundaries, content/data/db/scripts/workflows.
-2. Physical data model: PostgreSQL + Drizzle schema and baseline SQL migration, including pgvector.
+2. Physical data model: PostgreSQL + Drizzle schema and reviewed sequential SQL migrations, including pgvector, transactional execution and checksum history.
 3. Executable content validation: Zod schemas for Daily, Weekly, Insight, Briefing, Topic and PaperNote plus a Markdown validator and unit tests.
 4. Seed data: stable historical technology topics, entities, relations and signals plus representative Daily/Weekly/Insight/Topic Markdown.
 5. Engineering baseline: strict TypeScript, ESLint, Prettier, Vitest, Playwright config, environment template and CI.

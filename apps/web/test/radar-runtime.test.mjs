@@ -36,16 +36,14 @@ test('filters Radar entries by shareable dimensions', async () => {
   const entries = filterLatestRadarSnapshots(await getRadarSnapshots(), {
     domain: 'security',
     maturity: 'emerging',
-    trend: 'rapid_growth',
+    trend: 'growth',
   });
 
   assert.ok(entries.length > 0);
   assert.ok(
     entries.every(
       (entry) =>
-        entry.domain === 'security' &&
-        entry.maturity === 'emerging' &&
-        entry.trend === 'rapid_growth',
+        entry.domain === 'security' && entry.maturity === 'emerging' && entry.trend === 'growth',
     ),
   );
 });
