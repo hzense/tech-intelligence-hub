@@ -10,6 +10,7 @@ describe('database catalog expression canonicalization', () => {
     ).toBe('confidence>=0andconfidence<=1');
     expect(canonicalCatalogExpression("'watching'::topic_status")).toBe("'watching'");
     expect(canonicalCatalogExpression('now()')).toBe('now');
+    expect(canonicalCatalogExpression('CHECK (("position" >= 0))')).toBe('"position">=0');
   });
 
   it('keeps semantic weakening visible to exact contract comparison', () => {

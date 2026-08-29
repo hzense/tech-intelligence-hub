@@ -236,7 +236,7 @@ const expectedCheckExpressions = {
     ],
     ['lengthbtrimreasoning>0'],
   ],
-  radar_snapshot_signals: [['position>=0']],
+  radar_snapshot_signals: [['position>=0', '"position">=0']],
   hzense_schema_migrations: [['lengthchecksum=64']],
 };
 
