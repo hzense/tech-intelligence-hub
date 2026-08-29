@@ -2,11 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { SiteShell } from '@/components/site-shell';
 import { formatEntityType } from '@/lib/resource-presentation';
-import {
-  getResourceEntries,
-  getSeedRelations,
-  getSignalEntries,
-} from '@/lib/seed-runtime';
+import { getResourceEntries, getSeedRelations, getSignalEntries } from '@/lib/seed-runtime';
 
 export const metadata: Metadata = {
   title: '资源',
@@ -52,11 +48,7 @@ export default async function ResourcesPage() {
         </section>
         <section className="resources-index-grid" aria-label="资源列表">
           {entries.map((entry) => (
-            <Link
-              className="resource-index-card"
-              href={`/resources/${entry.id}`}
-              key={entry.id}
-            >
+            <Link className="resource-index-card" href={`/resources/${entry.id}`} key={entry.id}>
               <div className="resource-index-meta">
                 <span>{formatEntityType(entry.type)}</span>
                 <small>{entry.status}</small>

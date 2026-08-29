@@ -1,8 +1,14 @@
-import Link from "next/link";
-import { SiteShell } from "@/components/site-shell";
-import { formatDailyEdition, formatZhDate, getDailyEntries, getInsightEntries, getTopicTitleMap } from "@/lib/content-runtime";
-import { formatRadarMaturity, formatRadarTrend } from "@/lib/radar-presentation";
-import { getRadarEntries } from "@/lib/radar-runtime";
+import Link from 'next/link';
+import { SiteShell } from '@/components/site-shell';
+import {
+  formatDailyEdition,
+  formatZhDate,
+  getDailyEntries,
+  getInsightEntries,
+  getTopicTitleMap,
+} from '@/lib/content-runtime';
+import { formatRadarMaturity, formatRadarTrend } from '@/lib/radar-presentation';
+import { getRadarEntries } from '@/lib/radar-runtime';
 
 export default async function Home() {
   const [dailyEntries, insightEntries, radarEntries, topicTitleMap] = await Promise.all([
@@ -13,15 +19,15 @@ export default async function Home() {
   ]);
   const latestDaily = dailyEntries[0];
   const intelligenceCards = insightEntries.slice(0, 3).map((entry) => ({
-    label: "洞察",
+    label: '洞察',
     href: `/insights/${entry.frontMatter.id}`,
     date: formatZhDate(entry.frontMatter.date),
     title: entry.frontMatter.title,
     summary: entry.summary,
     topics: entry.frontMatter.topics.map((topic) => topicTitleMap.get(topic) ?? topic),
   }));
-  const dailyHref = latestDaily ? `/daily/${latestDaily.frontMatter.date}` : "/daily";
-  const dailyAction = latestDaily?.frontMatter.edition === "live" ? "阅读每日简报" : "阅读示例简报";
+  const dailyHref = latestDaily ? `/daily/${latestDaily.frontMatter.date}` : '/daily';
+  const dailyAction = latestDaily?.frontMatter.edition === 'live' ? '阅读每日简报' : '阅读示例简报';
 
   return (
     <SiteShell>
@@ -47,10 +53,14 @@ export default async function Home() {
               </Link>
             </div>
             <div className="coverage-row" aria-label="关注领域">
-              <span>人工智能</span><i />
-              <span>基础设施</span><i />
-              <span>安全</span><i />
-              <span>机器人</span><i />
+              <span>人工智能</span>
+              <i />
+              <span>基础设施</span>
+              <i />
+              <span>安全</span>
+              <i />
+              <span>机器人</span>
+              <i />
               <span>智能体</span>
             </div>
           </div>
@@ -75,9 +85,18 @@ export default async function Home() {
               <span className="node node-agent">智能体</span>
             </div>
             <div className="signal-metrics">
-              <div><strong>24</strong><span>追踪信号（示例）</span></div>
-              <div><strong>5</strong><span>优先级变化（示例）</span></div>
-              <div><strong>3</strong><span>上升议题（示例）</span></div>
+              <div>
+                <strong>24</strong>
+                <span>追踪信号（示例）</span>
+              </div>
+              <div>
+                <strong>5</strong>
+                <span>优先级变化（示例）</span>
+              </div>
+              <div>
+                <strong>3</strong>
+                <span>上升议题（示例）</span>
+              </div>
             </div>
           </aside>
         </section>
@@ -89,7 +108,9 @@ export default async function Home() {
               <p className="kicker">精选情报</p>
               <h2>让信号形成理解。</h2>
             </div>
-            <Link className="text-link" href="/insights">查看全部洞察 <span>↗</span></Link>
+            <Link className="text-link" href="/insights">
+              查看全部洞察 <span>↗</span>
+            </Link>
           </div>
           <div className="insight-grid">
             {intelligenceCards.map((card, index) => (
@@ -104,7 +125,9 @@ export default async function Home() {
                 <h3>{card.title}</h3>
                 <p>{card.summary}</p>
                 <div className="topic-row">
-                  {card.topics.map((topic) => <span key={topic}>{topic}</span>)}
+                  {card.topics.map((topic) => (
+                    <span key={topic}>{topic}</span>
+                  ))}
                 </div>
               </Link>
             ))}
@@ -117,10 +140,10 @@ export default async function Home() {
               <span className="section-number light">02</span>
               <p className="kicker light">HZENSE 雷达</p>
               <h2>追踪趋势，而不是噪音。</h2>
-              <p>
-                持续观察正在塑造下一个周期的技术，判断其关注度、成熟度与战略价值。
-              </p>
-              <Link className="button button-light" href="/radar">打开技术雷达</Link>
+              <p>持续观察正在塑造下一个周期的技术，判断其关注度、成熟度与战略价值。</p>
+              <Link className="button button-light" href="/radar">
+                打开技术雷达
+              </Link>
             </div>
             <div className="radar-list" id="radar-list">
               {radarEntries.slice(0, 4).map((entry, index) => (
@@ -130,7 +153,10 @@ export default async function Home() {
                     <strong>{entry.topic.frontMatter.title}</strong>
                     <span>{formatRadarMaturity(entry.snapshot.maturity)}</span>
                   </div>
-                  <div className="trend-track" aria-label={`${entry.topic.frontMatter.title} 关注度 ${entry.snapshot.attention}，满分 100`}>
+                  <div
+                    className="trend-track"
+                    aria-label={`${entry.topic.frontMatter.title} 关注度 ${entry.snapshot.attention}，满分 100`}
+                  >
                     <span style={{ width: `${entry.snapshot.attention}%` }} />
                   </div>
                   <strong className="trend-score">{entry.snapshot.attention}</strong>
@@ -148,17 +174,20 @@ export default async function Home() {
             <div className="daily-meta">
               <span>HZENSE 每日简报</span>
               {latestDaily ? (
-                <time dateTime={latestDaily.frontMatter.date}>{formatZhDate(latestDaily.frontMatter.date)} · {formatDailyEdition(latestDaily.frontMatter.edition)}</time>
-              ) : <span>内容准备中</span>}
+                <time dateTime={latestDaily.frontMatter.date}>
+                  {formatZhDate(latestDaily.frontMatter.date)} ·{' '}
+                  {formatDailyEdition(latestDaily.frontMatter.edition)}
+                </time>
+              ) : (
+                <span>内容准备中</span>
+              )}
             </div>
             <div className="daily-content">
               <div>
                 <p className="kicker">一份简报，聚焦真正重要的信号。</p>
-                <h2>{latestDaily?.frontMatter.title ?? "你的每日科技情报简报。"}</h2>
+                <h2>{latestDaily?.frontMatter.title ?? '你的每日科技情报简报。'}</h2>
               </div>
-              <p>
-                精炼汇总重大进展、上升议题与关联信号，既能快速阅读，也能深入探索。
-              </p>
+              <p>精炼汇总重大进展、上升议题与关联信号，既能快速阅读，也能深入探索。</p>
               <Link className="circle-link" href={dailyHref} aria-label="阅读 HZense 每日简报">
                 ↗
               </Link>

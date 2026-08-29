@@ -20,27 +20,27 @@ HZense 采用“Git/Markdown 为知识资产源，PostgreSQL 为索引与关系�
 
 ## 2. 首版冻结技术栈
 
-| 层 | 技术 |
-|---|---|
-| Language | TypeScript |
-| Web | Next.js + React + App Router |
-| UI | Tailwind CSS + lightweight headless components |
-| Content | Markdown / MDX + YAML Front Matter |
-| Database | PostgreSQL |
-| ORM | Drizzle ORM |
-| Vector | pgvector |
-| Search | PostgreSQL FTS → Hybrid Search |
-| Graph V1 | PostgreSQL relations |
-| Graph V3 | Neo4j optional |
-| AI | Provider abstraction + OpenAI first |
-| Auth | Auth.js / Supabase Auth |
-| Object Storage | Cloudflare R2 / S3-compatible |
-| Hosting | Vercel |
-| DB Hosting | Supabase / Neon |
-| DNS | Registrar DNS initially; Cloudflare DNS optional before production |
-| Production Domain | `hzense.com` |
-| Source Control | GitHub |
-| Automation | GitHub Actions + Scheduled Jobs |
+| 层                | 技术                                                               |
+| ----------------- | ------------------------------------------------------------------ |
+| Language          | TypeScript                                                         |
+| Web               | Next.js + React + App Router                                       |
+| UI                | Tailwind CSS + lightweight headless components                     |
+| Content           | Markdown / MDX + YAML Front Matter                                 |
+| Database          | PostgreSQL                                                         |
+| ORM               | Drizzle ORM                                                        |
+| Vector            | pgvector                                                           |
+| Search            | PostgreSQL FTS → Hybrid Search                                     |
+| Graph V1          | PostgreSQL relations                                               |
+| Graph V3          | Neo4j optional                                                     |
+| AI                | Provider abstraction + OpenAI first                                |
+| Auth              | Auth.js / Supabase Auth                                            |
+| Object Storage    | Cloudflare R2 / S3-compatible                                      |
+| Hosting           | Vercel                                                             |
+| DB Hosting        | Supabase / Neon                                                    |
+| DNS               | Registrar DNS initially; Cloudflare DNS optional before production |
+| Production Domain | `hzense.com`                                                       |
+| Source Control    | GitHub                                                             |
+| Automation        | GitHub Actions + Scheduled Jobs                                    |
 
 ## 3. Source of Truth
 

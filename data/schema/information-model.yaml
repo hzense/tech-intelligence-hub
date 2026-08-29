@@ -70,7 +70,18 @@ entity_types:
   model:
     description: Named AI/ML or computational model distinct from the commercial product wrapping it.
     required: [id, type, name, status]
-    fields: [aliases, developer, model_family, modalities, release_date, license, technologies, topics, website]
+    fields:
+      [
+        aliases,
+        developer,
+        model_family,
+        modalities,
+        release_date,
+        license,
+        technologies,
+        topics,
+        website,
+      ]
   dataset:
     description: Dataset, benchmark corpus, evaluation set, or structured research data asset.
     required: [id, type, name, status]
@@ -78,7 +89,8 @@ entity_types:
   standard_protocol:
     description: Technical standard, protocol, specification, interface, or interoperability framework.
     required: [id, type, name, status]
-    fields: [aliases, maintainers, standard_type, version, release_date, technologies, topics, website]
+    fields:
+      [aliases, maintainers, standard_type, version, release_date, technologies, topics, website]
   paper:
     description: Objective scholarly work entity; HZense commentary belongs in paper_note content.
     required: [id, type, name, status]
@@ -132,8 +144,40 @@ relation_model:
     - announced_at
 
 signal_model:
-  required: [id, title, type, occurred_at, captured_at, status, source_id, source_url, summary, importance, strength, confidence, novelty]
-  types: [research, product, funding, acquisition, hiring, policy, technology, market, people, open_source, security, patent, partnership, regulation, supply_chain]
+  required:
+    [
+      id,
+      title,
+      type,
+      occurred_at,
+      captured_at,
+      status,
+      source_id,
+      source_url,
+      summary,
+      importance,
+      strength,
+      confidence,
+      novelty,
+    ]
+  types:
+    [
+      research,
+      product,
+      funding,
+      acquisition,
+      hiring,
+      policy,
+      technology,
+      market,
+      people,
+      open_source,
+      security,
+      patent,
+      partnership,
+      regulation,
+      supply_chain,
+    ]
   statuses: [inbox, reviewed, accepted, rejected, archived]
   scales:
     importance: '1..5'
@@ -145,11 +189,37 @@ signal_model:
 
 source_model:
   required: [id, name, type, trust_score, active, allowed_hosts]
-  types: [website, rss, paper, company_blog, research_lab, news_media, newsletter, github, social, regulator, patent_database]
+  types:
+    [
+      website,
+      rss,
+      paper,
+      company_blog,
+      research_lab,
+      news_media,
+      newsletter,
+      github,
+      social,
+      regulator,
+      patent_database,
+    ]
   allowed_hosts: publisher_or_authorized_distributor_hostname[]
 
 radar_model:
-  required: [id, topic, date, domain, attention, trend, maturity, strategic_value, confidence, evidence_signals, reasoning]
+  required:
+    [
+      id,
+      topic,
+      date,
+      domain,
+      attention,
+      trend,
+      maturity,
+      strategic_value,
+      confidence,
+      evidence_signals,
+      reasoning,
+    ]
   domain: [artificial_intelligence, infrastructure, security, robotics]
   attention: '0..100'
   trend: [rapid_growth, growth, stable, decline, rapid_decline]

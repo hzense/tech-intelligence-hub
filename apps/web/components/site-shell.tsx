@@ -1,8 +1,8 @@
-import Image from "next/image";
-import Link from "next/link";
-import type { ReactNode } from "react";
-import { MobileNavigation } from "./mobile-navigation";
-import { ThemeToggle } from "./theme-toggle";
+import Image from 'next/image';
+import Link from 'next/link';
+import type { ReactNode } from 'react';
+import { MobileNavigation } from './mobile-navigation';
+import { ThemeToggle } from './theme-toggle';
 
 export function SiteShell({ children }: { children: ReactNode }) {
   return (
@@ -10,15 +10,11 @@ export function SiteShell({ children }: { children: ReactNode }) {
       <header className="site-header">
         <div className="section-shell header-inner">
           <Link className="brand" href="/" aria-label="HZense 首页">
-            <Image
-              src="/hzense-logo.png"
-              width={44}
-              height={44}
-              alt=""
-              priority
-              unoptimized
-            />
-            <span><strong>HZense</strong><small>科技情报</small></span>
+            <Image src="/hzense-logo.png" width={44} height={44} alt="" priority unoptimized />
+            <span>
+              <strong>HZense</strong>
+              <small>科技情报</small>
+            </span>
           </Link>
           <nav className="desktop-nav" aria-label="主导航">
             <Link href="/daily">每日简报</Link>
@@ -34,7 +30,9 @@ export function SiteShell({ children }: { children: ReactNode }) {
               <span aria-hidden="true">⌕</span>
             </Link>
             <ThemeToggle />
-            <a className="ask-link" href="mailto:hello@hzense.com">联系 HZense <span>↗</span></a>
+            <a className="ask-link" href="mailto:hello@hzense.com">
+              联系 HZense <span>↗</span>
+            </a>
             <MobileNavigation />
           </div>
         </div>

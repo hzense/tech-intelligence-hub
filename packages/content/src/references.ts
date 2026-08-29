@@ -106,7 +106,14 @@ export function findReferenceIssues(
           topicIds,
           archivedTopicIds,
         );
-        checkReferences(issues, document, 'signal_refs', 'signal', frontMatter.signal_refs, catalogs.signalIds);
+        checkReferences(
+          issues,
+          document,
+          'signal_refs',
+          'signal',
+          frontMatter.signal_refs,
+          catalogs.signalIds,
+        );
         break;
       case 'weekly':
         checkReferences(issues, document, 'daily_refs', 'daily', frontMatter.daily_refs, dailyIds);
@@ -128,10 +135,38 @@ export function findReferenceIssues(
           topicIds,
           archivedTopicIds,
         );
-        checkReferences(issues, document, 'companies', 'entity', frontMatter.companies ?? [], catalogs.entityIds);
-        checkReferences(issues, document, 'technologies', 'entity', frontMatter.technologies ?? [], catalogs.entityIds);
-        checkReferences(issues, document, 'evidence_signals', 'signal', frontMatter.evidence_signals, catalogs.signalIds);
-        checkReferences(issues, document, 'counter_signals', 'signal', frontMatter.counter_signals ?? [], catalogs.signalIds);
+        checkReferences(
+          issues,
+          document,
+          'companies',
+          'entity',
+          frontMatter.companies ?? [],
+          catalogs.entityIds,
+        );
+        checkReferences(
+          issues,
+          document,
+          'technologies',
+          'entity',
+          frontMatter.technologies ?? [],
+          catalogs.entityIds,
+        );
+        checkReferences(
+          issues,
+          document,
+          'evidence_signals',
+          'signal',
+          frontMatter.evidence_signals,
+          catalogs.signalIds,
+        );
+        checkReferences(
+          issues,
+          document,
+          'counter_signals',
+          'signal',
+          frontMatter.counter_signals ?? [],
+          catalogs.signalIds,
+        );
         break;
       case 'briefing':
         checkTopicReferences(
@@ -142,7 +177,14 @@ export function findReferenceIssues(
           topicIds,
           archivedTopicIds,
         );
-        checkReferences(issues, document, 'technologies', 'entity', frontMatter.technologies ?? [], catalogs.entityIds);
+        checkReferences(
+          issues,
+          document,
+          'technologies',
+          'entity',
+          frontMatter.technologies ?? [],
+          catalogs.entityIds,
+        );
         break;
       case 'topic':
         checkTopicReferences(
@@ -155,7 +197,14 @@ export function findReferenceIssues(
         );
         break;
       case 'paper_note':
-        checkReferences(issues, document, 'paper', 'entity', [frontMatter.paper], catalogs.entityIds);
+        checkReferences(
+          issues,
+          document,
+          'paper',
+          'entity',
+          [frontMatter.paper],
+          catalogs.entityIds,
+        );
         checkTopicReferences(
           issues,
           document,
@@ -164,7 +213,14 @@ export function findReferenceIssues(
           topicIds,
           archivedTopicIds,
         );
-        checkReferences(issues, document, 'related_entities', 'entity', frontMatter.related_entities ?? [], catalogs.entityIds);
+        checkReferences(
+          issues,
+          document,
+          'related_entities',
+          'entity',
+          frontMatter.related_entities ?? [],
+          catalogs.entityIds,
+        );
         break;
     }
   }

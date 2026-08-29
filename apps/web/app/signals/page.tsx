@@ -36,11 +36,7 @@ export default async function SignalsPage() {
         </section>
         <section className="signals-index-grid" aria-label="信号列表">
           {entries.map((entry) => (
-            <Link
-              className="signal-index-card"
-              href={`/signals/${entry.id}`}
-              key={entry.id}
-            >
+            <Link className="signal-index-card" href={`/signals/${entry.id}`} key={entry.id}>
               <div className="signal-index-meta">
                 <span>{formatSignalType(entry.type)}</span>
                 <time dateTime={entry.occurred_at}>

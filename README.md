@@ -8,7 +8,7 @@
 
 HZense is a Technology Intelligence platform for turning fragmented technical information into structured, versioned intelligence.
 
-- Website: **https://hzense.com** *(production)*
+- Website: **https://hzense.com** _(production)_
 - Vercel Production: **https://tech-intelligence-hub-web.vercel.app/**
 - GitHub Organization: **https://github.com/hzense**
 - Main Repository: **https://github.com/hzense/tech-intelligence-hub**
@@ -159,4 +159,4 @@ An older database created directly from `0000_foundation.sql` has no migration-h
 ---
 
 **HZense — Technology Intelligence**  
-*Sense what matters in technology.*
+_Sense what matters in technology._

@@ -104,9 +104,7 @@ export async function getTopicEntryById(id: string): Promise<TopicEntry | undefi
 }
 
 export async function getInsightsForTopic(topicId: string): Promise<InsightEntry[]> {
-  return (await getInsightEntries()).filter((entry) =>
-    entry.frontMatter.topics.includes(topicId),
-  );
+  return (await getInsightEntries()).filter((entry) => entry.frontMatter.topics.includes(topicId));
 }
 
 export async function getDailyEntriesForTopic(topicId: string): Promise<DailyEntry[]> {
@@ -136,7 +134,9 @@ export function formatDailyEdition(edition: DailyFrontMatter['edition']): string
 }
 
 export function splitSignalHeading(section: MarkdownSection): { category: string; title: string } {
-  const [category = '情报信号', ...titleParts] = section.heading.split(/[｜|]/).map((part) => part.trim());
+  const [category = '情报信号', ...titleParts] = section.heading
+    .split(/[｜|]/)
+    .map((part) => part.trim());
   return {
     category: titleParts.length > 0 ? category : '情报信号',
     title: titleParts.length > 0 ? titleParts.join('｜') : category,

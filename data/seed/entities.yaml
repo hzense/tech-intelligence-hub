@@ -12,6 +12,16 @@
 - { id: model-claude-3-5-sonnet, type: model, name: Claude 3.5 Sonnet, status: active }
 - { id: model-llama-3, type: model, name: Llama 3, status: active }
 - { id: product-nvidia-blackwell, type: product, name: NVIDIA Blackwell, status: active }
-- { id: standard-model-context-protocol, type: standard_protocol, name: Model Context Protocol, status: active }
-- { id: paper-attention-is-all-you-need, type: paper, name: Attention Is All You Need, status: active }
+- {
+    id: standard-model-context-protocol,
+    type: standard_protocol,
+    name: Model Context Protocol,
+    status: active,
+  }
+- {
+    id: paper-attention-is-all-you-need,
+    type: paper,
+    name: Attention Is All You Need,
+    status: active,
+  }
 - { id: dataset-swe-bench, type: dataset, name: SWE-bench, status: active }
