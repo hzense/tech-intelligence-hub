@@ -1200,28 +1200,131 @@ Search Document 是派生数据，不是 Source of Truth。
 
 ---
 
-# 40. 数据库核心表建议
+# 40. PostgreSQL 物理数据库设计
 
-V2 PostgreSQL 核心表包含或规划包含：
+## 40.1 范围与权威来源
+
+本节描述当前已经实现并由自动校验保护的 PostgreSQL `public` Schema 基线，不把未来规划表述为现状。当前基线包含：
+
+- 13 张持久表：12 张领域或派生数据表，以及 1 张 Migration 历史表。
+- 9 个 PostgreSQL Enum。
+- `vector` 扩展，以及 `search_documents.embedding vector(1536)`。
+- 两个已登记 Migration：`0000_foundation.sql` 与 `0001_radar_evidence.sql`。
+
+物理结构的权威顺序如下：
+
+1. [`db/migrations/*.sql`](../db/migrations/) 是 12 张应用 Schema 表的可执行 DDL 权威来源。
+2. [`packages/database/src/migrate.mjs`](../packages/database/src/migrate.mjs) 创建并维护第 13 张运维表 `hzense_schema_migrations`。
+3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts) 是 12 张应用 Schema 表的 Drizzle 类型映射；运维历史表不进入应用 ORM 映射。
+4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs) 独立校验完整 13 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史。
+5. 本节是上述可执行合约的设计说明，不能代替 Migration 或 Runner DDL。
+
+Git / Markdown 仍是 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文的 Source of Truth。PostgreSQL 保存结构化 Entity、Relation、Signal、Radar、内容登记和可重建搜索数据，不保存正式正文。
+
+## 40.2 已实现表清单
+
+| 领域               | 表                         | 职责与关键字段                                                                                      | 主键、唯一约束与核心关系                                                                          |
+| ------------------ | -------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Taxonomy           | `topics`                   | Topic 标识、标题、可选 `parent_id`、状态和 JSONB 元数据                                             | PK `id`；`parent_id` 当前不是自引用外键                                                           |
+| Entity Graph       | `entities`                 | Person、Company、Technology、Model 等实体；别名以内联 `text[]` 保存                                 | PK `id`                                                                                           |
+| Source             | `sources`                  | 来源类型、主页、可信度、启用状态和允许的证据域名                                                    | PK `id`                                                                                           |
+| Signal             | `signals`                  | 事件时间、来源、精确证据 URL、摘要、重要度、强度、置信度、新颖度和状态                              | PK `id`；`source_id` FK → `sources.id`                                                            |
+| Entity / Topic     | `entity_topics`            | Entity 与 Topic 的多对多关联                                                                        | 复合 PK `(entity_id, topic_id)`；两端均为 FK，删除父对象时级联删除关联                            |
+| Signal / Topic     | `signal_topics`            | Signal 与 Topic 的多对多关联                                                                        | 复合 PK `(signal_id, topic_id)`；两端均为 FK，删除父对象时级联删除关联                            |
+| Signal / Entity    | `signal_entities`          | Signal 与 Entity 的多对多关联                                                                       | 复合 PK `(signal_id, entity_id)`；两端均为 FK，删除父对象时级联删除关联                           |
+| Entity Graph       | `relations`                | Entity → Entity 有向关系，包含关系类型、有效期、置信度、来源引用和 JSONB 元数据                     | PK `id`；`source_id` 与 `target_id` 均 FK → `entities.id`                                         |
+| Radar              | `radar_snapshots`          | Topic 在指定日期的 Domain、Attention、Trend、Maturity、Strategic Value、Confidence 和人工 Reasoning | PK `id`；`topic_id` FK → `topics.id`；唯一 `(topic_id, snapshot_date)`                            |
+| Radar Evidence     | `radar_snapshot_signals`   | Radar Snapshot 的有序评分证据                                                                       | 复合 PK `(snapshot_id, signal_id)`；唯一 `(snapshot_id, position)`；Snapshot 删除时级联删除证据边 |
+| Content Metadata   | `content_registry`         | Markdown 内容的类型、仓库路径、发布状态和时间                                                       | PK `id`；`path` 唯一                                                                              |
+| Search / Embedding | `search_documents`         | 可重建搜索文档，包含正文副本、Topic / Entity JSONB 投影和可选 `vector(1536)`                        | PK `id`；`source_id` 是跨内容类型的逻辑引用，当前没有数据库外键                                   |
+| Operations         | `hzense_schema_migrations` | 已执行 Migration 的文件名、64 字符 SHA-256 Checksum 和应用时间                                      | PK `name`                                                                                         |
+
+## 40.3 核心关系
 
 ```text
-entities
-entity_aliases
-relations
-topics
-topic_relations
-signals
-signal_sources
-sources
-radar_snapshots
-radar_snapshot_signals
-content_index
-search_documents
-embeddings
-ingestion_jobs
+sources 1 ─────── N signals
+
+entities N ───── N topics
+          entity_topics
+
+signals  N ───── N topics
+          signal_topics
+
+signals  N ───── N entities
+          signal_entities
+
+entities 1 ───── N relations N ───── 1 entities
+          source_id                 target_id
+
+topics 1 ─────── N radar_snapshots
+radar_snapshots N ───── N signals
+                  radar_snapshot_signals（有序证据）
 ```
 
-正文内容继续保存在 Markdown。
+所有当前公开对象都直接使用稳定 `text` ID 作为主键；尚未采用“内部 UUID + `public_id`”双层键设计。
+
+## 40.4 声明式约束与索引
+
+数据库直接保证以下规则：
+
+- `sources.trust_score` 为 `0..100`，`allowed_hosts` 必须为非空数组。
+- `signals.source_url` 必须以 `https://` 开头；`importance` 与 `strength` 为 `1..5`；`confidence` 与 `novelty` 为 `0..1`。
+- `relations.confidence` 为 `0..1`。
+- `radar_snapshots.attention` 为 `0..100`，`confidence` 为 `0..1`，`reasoning` 去除空白后不得为空。
+- `radar_snapshot_signals.position` 必须非负，并且同一 Snapshot 内不得重复。
+- `hzense_schema_migrations.checksum` 长度必须为 64。
+
+显式查询索引覆盖：
+
+- `entities(type)` 与 `entities(name)`。
+- `signals(occurred_at)` 与 `signals(status)`。
+- `relations(source_id)` 与 `relations(target_id)`。
+- `radar_snapshot_signals(signal_id)`。
+- `search_documents(source_id)`。
+
+当前物理基线没有 RLS、Policy 或用户 Trigger。未来引入这些机制必须通过单独评审的新 Migration，并同步更新 Verifier 和本节；仅当变更可由 Drizzle 表达且影响应用类型映射时，才同步更新 Drizzle Schema。
+
+## 40.5 Enum 与 pgvector
+
+| Enum              | 允许值                                                                                                                                                                                  |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity_type`     | `person`、`company`、`institution`、`technology`、`product`、`model`、`dataset`、`standard_protocol`、`paper`、`event`                                                                  |
+| `signal_type`     | `research`、`product`、`funding`、`acquisition`、`hiring`、`policy`、`technology`、`market`、`people`、`open_source`、`security`、`patent`、`partnership`、`regulation`、`supply_chain` |
+| `signal_status`   | `inbox`、`reviewed`、`accepted`、`rejected`、`archived`                                                                                                                                 |
+| `source_type`     | `website`、`rss`、`paper`、`company_blog`、`research_lab`、`news_media`、`newsletter`、`github`、`social`、`regulator`、`patent_database`                                               |
+| `topic_status`    | `watching`、`active`、`strategic`、`archived`                                                                                                                                           |
+| `trend`           | `rapid_growth`、`growth`、`stable`、`decline`、`rapid_decline`                                                                                                                          |
+| `maturity`        | `research`、`early`、`emerging`、`growth`、`mature`                                                                                                                                     |
+| `strategic_value` | `low`、`medium`、`high`、`critical`                                                                                                                                                     |
+| `radar_domain`    | `artificial_intelligence`、`infrastructure`、`security`、`robotics`                                                                                                                     |
+
+`search_documents.embedding` 是可空的 `vector(1536)`。Embedding 与 Search Document 同生命周期保存，当前没有独立 `embeddings` 表。
+
+## 40.6 实现边界与原规划差异
+
+| 逻辑概念或原规划     | 当前物理实现或边界                                                                                                                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity_aliases`     | 未独立建表；别名保存在 `entities.aliases text[]`。                                                                                                                      |
+| `topic_relations`    | 尚未实现；当前 `relations` 只连接 Entity。                                                                                                                              |
+| `signal_sources`     | 尚未实现多来源表；每条 Signal 当前只有一个 `source_id`，并以 `source_url` 保存精确证据页面。                                                                            |
+| `content_index`      | 实际实现为 `content_registry`，只登记 Markdown 内容元数据，不保存正式正文。                                                                                             |
+| `embeddings`         | 未独立建表；向量内联在 `search_documents.embedding`。                                                                                                                   |
+| `ingestion_jobs`     | 尚未实现。                                                                                                                                                              |
+| Topic 层级           | `topics.parent_id` 当前没有自引用外键；父级存在性、自引用和循环由内容校验或应用层负责。                                                                                 |
+| Search Document 来源 | `search_documents.source_id` 可以引用不同内容类型，因此当前不绑定单一数据库外键；该表是可重建派生数据。                                                                 |
+| Radar 证据资格       | 数据库保证外键、唯一性和位置范围；其余跨表资格规则由 Migration 审计和生产 Verifier 检测。未来运行时写入路径必须额外提供事务化保证，当前数据库本身不会持续阻止此类违规。 |
+| 正文存储             | Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文继续保存在 Git / Markdown。                                                                                    |
+| Migration 历史       | `hzense_schema_migrations` 是运维控制表，不属于领域信息模型。                                                                                                           |
+
+物理表已经存在不代表 Web Runtime 已经接入数据库；运行时连接、权限和发布状态以 [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md) 为准。
+
+## 40.7 Schema 演进规则
+
+- 已应用 Migration 只追加、不修改；文件 Checksum 固定在 [`db/migrations/checksums.json`](../db/migrations/checksums.json)。
+- 新表、列、Enum 值、约束、索引或权限策略必须通过新的顺序 Migration 引入。
+- Migration Runner 使用 PostgreSQL Advisory Lock 串行化执行；每个 Migration 的 DDL 与对应历史记录在同一事务中原子提交。
+- 每次结构变更必须同步更新本节和独立 Verifier；可由 Drizzle 表达且影响应用类型映射的变更，还必须同步更新 Drizzle Schema。
+- 未来规划对象必须明确标记为“未实现”，不能与当前物理表共同表述为现状。
 
 ---
 
