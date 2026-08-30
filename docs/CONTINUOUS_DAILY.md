@@ -17,7 +17,7 @@ Automation never marks a pull request ready, approves it, merges it, or writes `
 ## Daily v1 contract
 
 - The edition date and selection window are explicit. The regular window is `(previous day 07:00, current day 07:00]` in `Europe/Berlin`; stored timestamps include their UTC offset, including DST transitions.
-- Eligible Signals are `reviewed` or `accepted`, have importance at least 3, were captured inside the window, occurred no later than the cutoff, use an active Source, and reference a non-archived Topic.
+- Eligible Signals are `reviewed` or `accepted`, have importance at least 3, were captured inside the window, occurred no later than the cutoff, use an active Source, and reference a non-archived Topic in the validated Seed projection of the authoritative Taxonomy.
 - Signals already referenced by any Daily are not selected again.
 - Tracking parameters are removed before source-URL deduplication. Ranking is a total order: accepted status, importance, strength, confidence, novelty, occurrence, capture, then stable ID.
 - Selection takes the strongest Signal from each primary Topic first, then fills the remaining positions, with at most two Signals per Topic and five overall.

@@ -8,6 +8,7 @@ export interface ContentDocument {
 }
 
 export interface ReferenceCatalogs {
+  archivedTopicIds: ReadonlySet<string>;
   entityIds: ReadonlySet<string>;
   signalIds: ReadonlySet<string>;
   topicIds: ReadonlySet<string>;
@@ -141,8 +142,6 @@ export function findReferenceIssues(
   const issues: ReferenceIssue[] = [];
   const contentIds = new Set<string>();
   const dailyIds = new Set<string>();
-  const contentTopicIds = new Set<string>();
-  const archivedTopicIds = new Set<string>();
 
   for (const document of documents) {
     const { id, type } = document.frontMatter;
@@ -158,12 +157,19 @@ export function findReferenceIssues(
     contentIds.add(id);
     if (type === 'daily') dailyIds.add(id);
     if (type === 'topic') {
-      contentTopicIds.add(id);
-      if (document.frontMatter.status === 'archived') archivedTopicIds.add(id);
+      if (!catalogs.topicIds.has(id)) {
+        issues.push({
+          file: document.file,
+          field: 'id',
+          kind: 'topic',
+          reason: 'missing',
+          target: id,
+        });
+      }
     }
   }
 
-  const topicIds = new Set([...catalogs.topicIds, ...contentTopicIds]);
+  const topicIds = catalogs.topicIds;
 
   for (const document of documents) {
     const frontMatter = document.frontMatter;
@@ -175,7 +181,7 @@ export function findReferenceIssues(
           'rising_topics',
           frontMatter.rising_topics,
           topicIds,
-          archivedTopicIds,
+          catalogs.archivedTopicIds,
         );
         checkReferences(
           issues,
@@ -194,7 +200,7 @@ export function findReferenceIssues(
           'featured_topics',
           frontMatter.featured_topics,
           topicIds,
-          archivedTopicIds,
+          catalogs.archivedTopicIds,
         );
         break;
       case 'insight':
@@ -204,7 +210,7 @@ export function findReferenceIssues(
           'topics',
           frontMatter.topics,
           topicIds,
-          archivedTopicIds,
+          catalogs.archivedTopicIds,
         );
         checkReferences(
           issues,
@@ -246,7 +252,7 @@ export function findReferenceIssues(
           'topics',
           frontMatter.topics,
           topicIds,
-          archivedTopicIds,
+          catalogs.archivedTopicIds,
         );
         checkReferences(
           issues,
@@ -258,14 +264,8 @@ export function findReferenceIssues(
         );
         break;
       case 'topic':
-        checkTopicReferences(
-          issues,
-          document,
-          'parent',
-          frontMatter.parent ? [frontMatter.parent] : [],
-          topicIds,
-          archivedTopicIds,
-        );
+        // A canonical parent may exist in Taxonomy without being enabled in Seed.
+        // validateTopicContentProjection owns the exact primary-parent check.
         break;
       case 'paper_note':
         checkReferences(
@@ -282,7 +282,7 @@ export function findReferenceIssues(
           'topics',
           frontMatter.topics,
           topicIds,
-          archivedTopicIds,
+          catalogs.archivedTopicIds,
         );
         checkReferences(
           issues,

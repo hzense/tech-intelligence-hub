@@ -11,7 +11,10 @@ import {
 let seedPromise: ReturnType<typeof loadSeedCatalog> | undefined;
 
 function getSeedCatalog() {
-  seedPromise ??= loadSeedCatalog(resolve(process.cwd(), '../../data/seed'));
+  seedPromise ??= loadSeedCatalog(
+    resolve(process.cwd(), '../../data/seed'),
+    resolve(process.cwd(), '../../data/taxonomy/taxonomy.yaml'),
+  );
   return seedPromise;
 }
 

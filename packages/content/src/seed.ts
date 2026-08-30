@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
+import { loadTaxonomy, validateSeedTopicProjection, type TaxonomyCatalog } from './taxonomy.js';
 
 const id = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const seedDate = z.iso.date();
@@ -130,6 +131,10 @@ export interface SeedCatalog {
   topics: SeedTopic[];
 }
 
+export interface LoadedSeedCatalog extends SeedCatalog {
+  taxonomy: TaxonomyCatalog;
+}
+
 async function loadSeedFile<T>(seedRoot: string, name: string, schema: z.ZodType<T>): Promise<T[]> {
   const input: unknown = parse(await readFile(join(seedRoot, name), 'utf8'));
   return z.array(schema).parse(input);
@@ -151,15 +156,20 @@ export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
     ids.add(entry.id);
   }
 
-  const topicIds = new Set(catalog.topics.map((topic) => topic.id));
+  const topicById = new Map(catalog.topics.map((topic) => [topic.id, topic]));
+  const topicIds = new Set(topicById.keys());
   const entityIds = new Set(catalog.entities.map((entity) => entity.id));
   const sourceById = new Map(catalog.sources.map((source) => [source.id, source]));
   const signalById = new Map(catalog.signals.map((signal) => [signal.id, signal]));
   const radarTopicDates = new Set<string>();
 
   for (const snapshot of catalog.radar) {
-    if (!topicIds.has(snapshot.topic)) {
+    const snapshotTopic = topicById.get(snapshot.topic);
+    if (!snapshotTopic) {
       throw new Error(`Unknown topic ${snapshot.topic} in ${snapshot.id}`);
+    }
+    if (snapshotTopic.status === 'archived') {
+      throw new Error(`Archived topic ${snapshot.topic} in ${snapshot.id}`);
     }
     const topicDate = `${snapshot.topic}:${snapshot.date}`;
     if (radarTopicDates.has(topicDate)) {
@@ -217,6 +227,12 @@ export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
     }
     for (const topic of signal.topics) {
       if (!topicIds.has(topic)) throw new Error(`Unknown topic ${topic} in ${signal.id}`);
+      if (
+        (signal.status === 'reviewed' || signal.status === 'accepted') &&
+        topicById.get(topic)?.status === 'archived'
+      ) {
+        throw new Error(`Public Signal ${signal.id} references archived topic ${topic}`);
+      }
     }
     for (const entity of signal.entities) {
       if (!entityIds.has(entity)) throw new Error(`Unknown entity ${entity} in ${signal.id}`);
@@ -226,14 +242,20 @@ export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
   return catalog;
 }
 
-export async function loadSeedCatalog(seedRoot: string): Promise<SeedCatalog> {
-  const [entities, radar, relations, signals, sources, topics] = await Promise.all([
+export async function loadSeedCatalog(
+  seedRoot: string,
+  taxonomyFile: string,
+): Promise<LoadedSeedCatalog> {
+  const [entities, radar, relations, signals, sources, topics, taxonomy] = await Promise.all([
     loadSeedFile(seedRoot, 'entities.yaml', entitySchema),
     loadSeedFile(seedRoot, 'radar.yaml', radarSchema),
     loadSeedFile(seedRoot, 'relations.yaml', relationSchema),
     loadSeedFile(seedRoot, 'signals.yaml', signalSchema),
     loadSeedFile(seedRoot, 'sources.yaml', sourceSchema),
     loadSeedFile(seedRoot, 'topics.yaml', topicSchema),
+    loadTaxonomy(taxonomyFile),
   ]);
-  return validateSeedCatalog({ entities, radar, relations, signals, sources, topics });
+  const catalog = validateSeedCatalog({ entities, radar, relations, signals, sources, topics });
+  validateSeedTopicProjection(catalog.topics, taxonomy);
+  return { ...catalog, taxonomy };
 }

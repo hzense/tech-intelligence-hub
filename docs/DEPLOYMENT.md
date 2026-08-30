@@ -31,10 +31,11 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 ## Monorepo 内容边界
 
-网站构建需要读取 Root Directory 之外的两个目录：
+网站构建需要读取 Root Directory 之外的三个目录：
 
 - `content/`：正式 Markdown/MDX 内容
 - `data/seed/`：Topic、Entity 和 Signal 引用目录
+- `data/taxonomy/`：Topic ID、规范名、primary parent 与跨域关系的正式权威
 
 `apps/web/next.config.ts` 将 output file tracing root 设置为仓库根目录，并为 Home、Daily 列表与 Daily 动态详情路由显式包含以上文件。Vercel 项目仍必须开启 “Include source files outside Root Directory”，否则构建环境在 Next.js 开始追踪之前就可能缺少这些源文件。
 

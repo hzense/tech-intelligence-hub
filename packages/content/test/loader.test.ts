@@ -11,11 +11,28 @@ async function createFixture() {
   temporaryRoots.push(root);
   const contentRoot = join(root, 'content');
   const seedRoot = join(root, 'seed');
+  const taxonomyFile = join(root, 'taxonomy.yaml');
   await Promise.all([
     mkdir(join(contentRoot, 'daily', '2024'), { recursive: true }),
+    mkdir(join(contentRoot, 'topics'), { recursive: true }),
     mkdir(seedRoot, { recursive: true }),
   ]);
   await Promise.all([
+    writeFile(
+      taxonomyFile,
+      `version: '1.0'
+project: HZense
+root_topics:
+  - id: topic-technology
+    name: Technology
+    children:
+      - id: topic-ai
+        name: Artificial Intelligence
+      - id: topic-catalog-only
+        name: Catalog-only Topic
+cross_domain_relations: []
+`,
+    ),
     writeFile(
       join(seedRoot, 'topics.yaml'),
       '- id: topic-ai\n  title: Artificial Intelligence\n  status: active\n',
@@ -46,8 +63,23 @@ async function createFixture() {
   entities: []
 `,
     ),
+    writeFile(
+      join(contentRoot, 'topics', 'ai.md'),
+      `---
+id: topic-ai
+title: 人工智能
+type: topic
+status: active
+parent: topic-technology
+language: zh-CN
+---
+# 人工智能
+
+没有显式摘要时使用正文第一段。
+`,
+    ),
   ]);
-  return { contentRoot, seedRoot };
+  return { contentRoot, seedRoot, taxonomyFile };
 }
 
 afterEach(async () => {
@@ -58,7 +90,7 @@ afterEach(async () => {
 
 describe('loadContent', () => {
   it('loads Markdown and MDX into deterministic, render-ready entries', async () => {
-    const { contentRoot, seedRoot } = await createFixture();
+    const { contentRoot, seedRoot, taxonomyFile } = await createFixture();
     await writeFile(
       join(contentRoot, 'daily', '2024', '2024-06-20.md'),
       `---
@@ -84,23 +116,7 @@ signal_refs: [signal-example]
 这是第二段。
 `,
     );
-    await mkdir(join(contentRoot, 'topics'), { recursive: true });
-    await writeFile(
-      join(contentRoot, 'topics', 'ai.md'),
-      `---
-id: topic-ai
-title: 人工智能
-type: topic
-status: active
-language: zh-CN
----
-# 人工智能
-
-没有显式摘要时使用正文第一段。
-`,
-    );
-
-    const entries = await loadContent({ contentRoot, seedRoot });
+    const entries = await loadContent({ contentRoot, seedRoot, taxonomyFile });
 
     expect(entries.map((entry) => entry.relativePath)).toEqual([
       'daily/2024/2024-06-20.md',
@@ -120,7 +136,7 @@ language: zh-CN
   });
 
   it('rejects broken cross-references with the file and field', async () => {
-    const { contentRoot, seedRoot } = await createFixture();
+    const { contentRoot, seedRoot, taxonomyFile } = await createFixture();
     await writeFile(
       join(contentRoot, 'daily', '2024', '2024-06-20.md'),
       `---
@@ -145,13 +161,13 @@ Broken reference.
 `,
     );
 
-    await expect(loadContent({ contentRoot, seedRoot })).rejects.toThrow(
+    await expect(loadContent({ contentRoot, seedRoot, taxonomyFile })).rejects.toThrow(
       'daily/2024/2024-06-20.md: signal_refs missing signal "signal-missing"',
     );
   });
 
   it('reports the complete Topic parent cycle through the content validation path', async () => {
-    const { contentRoot, seedRoot } = await createFixture();
+    const { contentRoot, seedRoot, taxonomyFile } = await createFixture();
     const topicsRoot = join(contentRoot, 'topics');
     await mkdir(topicsRoot, { recursive: true });
     await Promise.all([
@@ -181,8 +197,69 @@ Topic B.
       ),
     ]);
 
-    await expect(loadContent({ contentRoot, seedRoot })).rejects.toThrow(
+    await expect(loadContent({ contentRoot, seedRoot, taxonomyFile })).rejects.toThrow(
       'topics/a.md: parent cycle topic "topic-a -> topic-b -> topic-a"',
     );
+  });
+
+  it('rejects a Topic page that attempts to enable a Taxonomy-only Topic', async () => {
+    const { contentRoot, seedRoot, taxonomyFile } = await createFixture();
+    await writeFile(
+      join(contentRoot, 'topics', 'rogue.md'),
+      `---
+id: topic-catalog-only
+title: Catalog-only Topic
+type: topic
+status: active
+---
+Catalog-only Topic.
+`,
+    );
+
+    await expect(loadContent({ contentRoot, seedRoot, taxonomyFile })).rejects.toThrow(
+      'topics/rogue.md: id missing topic "topic-catalog-only"',
+    );
+  });
+
+  it('rejects Topic content status that drifts from the Seed projection', async () => {
+    const { contentRoot, seedRoot, taxonomyFile } = await createFixture();
+    await writeFile(
+      join(contentRoot, 'topics', 'ai.md'),
+      `---
+id: topic-ai
+title: 人工智能
+type: topic
+status: strategic
+---
+人工智能。
+`,
+    );
+
+    await expect(loadContent({ contentRoot, seedRoot, taxonomyFile })).rejects.toThrow(
+      'topics/ai.md: Topic topic-ai status mismatch; expected "active", received "strategic"',
+    );
+  });
+
+  it('requires a content page for every non-archived Seed Topic', async () => {
+    const { contentRoot, seedRoot, taxonomyFile } = await createFixture();
+    await rm(join(contentRoot, 'topics', 'ai.md'));
+
+    await expect(loadContent({ contentRoot, seedRoot, taxonomyFile })).rejects.toThrow(
+      'Enabled Seed Topic topic-ai has no content/topics page',
+    );
+  });
+
+  it('allows an archived Seed Topic to have no public content page', async () => {
+    const { contentRoot, seedRoot, taxonomyFile } = await createFixture();
+    await Promise.all([
+      writeFile(
+        join(seedRoot, 'topics.yaml'),
+        '- id: topic-ai\n  title: Artificial Intelligence\n  status: archived\n',
+      ),
+      writeFile(join(seedRoot, 'signals.yaml'), '[]\n'),
+      rm(join(contentRoot, 'topics', 'ai.md')),
+    ]);
+
+    await expect(loadContent({ contentRoot, seedRoot, taxonomyFile })).resolves.toEqual([]);
   });
 });

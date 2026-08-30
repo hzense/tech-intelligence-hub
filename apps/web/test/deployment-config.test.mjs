@@ -27,6 +27,10 @@ test('traces repository content required by deployed routes', () => {
     '/topics/[id]',
     '/sitemap.xml',
   ]) {
-    assert.deepEqual(includes[route], ['../../content/**/*', '../../data/seed/*.yaml']);
+    assert.deepEqual(includes[route], [
+      '../../content/**/*',
+      '../../data/seed/*.yaml',
+      '../../data/taxonomy/taxonomy.yaml',
+    ]);
   }
 });

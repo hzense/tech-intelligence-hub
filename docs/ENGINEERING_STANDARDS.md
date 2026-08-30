@@ -10,6 +10,7 @@
 - Workflow security: top-level token access is read-only, write permissions are job-scoped, third-party Actions use immutable commit SHAs and every job has a timeout.
 - Commits: concise imperative messages; one architectural concern per commit where practical.
 - Data changes: migrations and their checksum manifest are append-only after review. Never edit a migration already applied in any shared environment. Production DDL requires the direct-endpoint preflight, a recoverable backup and the read-only post-verifier; the destructive integration suite is local CI only.
-- Content changes: all Markdown front matter must pass `pnpm content:validate`.
-- Seed changes: cross references must pass `pnpm seed:validate`.
+- Topic changes: Taxonomy, Seed Topics and Topic Markdown must pass the complete authority and projection checks in `pnpm content:validate` and `pnpm seed:validate`.
+- Content changes: all Markdown front matter and Topic references must pass `pnpm content:validate`.
+- Seed changes: Taxonomy membership, canonical Topic titles and cross references must pass `pnpm seed:validate`.
 - Dependency policy: prefer stable releases; upgrades are reviewed through CI rather than floating `latest` tags.

@@ -4,9 +4,10 @@ import { loadContent } from './loader.js';
 
 const contentRoot = resolve(process.cwd(), '../../content');
 const seedRoot = resolve(process.cwd(), '../../data/seed');
+const taxonomyFile = resolve(process.cwd(), '../../data/taxonomy/taxonomy.yaml');
 
 try {
-  const entries = await loadContent({ contentRoot, seedRoot });
+  const entries = await loadContent({ contentRoot, seedRoot, taxonomyFile });
   assertDailyPublicationReady(entries);
   console.log('All Daily content is published or intentionally archived.');
 } catch (error) {

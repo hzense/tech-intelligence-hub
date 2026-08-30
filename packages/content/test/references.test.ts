@@ -3,10 +3,19 @@ import { findReferenceIssues, type ContentDocument } from '../src/references.js'
 import { validateFrontMatter } from '../src/schema.js';
 
 const catalogs = {
+  archivedTopicIds: new Set<string>(),
   topicIds: new Set(['topic-foundation-models']),
   entityIds: new Set(['company-openai']),
   signalIds: new Set(['signal-gpt4o']),
 };
+
+function catalogsWithTopics(topicIds: readonly string[], archivedTopicIds: readonly string[] = []) {
+  return {
+    ...catalogs,
+    archivedTopicIds: new Set(archivedTopicIds),
+    topicIds: new Set([...catalogs.topicIds, ...topicIds]),
+  };
+}
 
 function document(file: string, input: unknown): ContentDocument {
   return { file, frontMatter: validateFrontMatter(input) };
@@ -151,7 +160,9 @@ describe('content cross-reference validation', () => {
       }),
     ];
 
-    expect(findReferenceIssues(documents, catalogs)).toEqual([
+    expect(
+      findReferenceIssues(documents, catalogsWithTopics(['topic-legacy'], ['topic-legacy'])),
+    ).toEqual([
       {
         file: 'published-insight.md',
         field: 'topics',
@@ -163,10 +174,7 @@ describe('content cross-reference validation', () => {
   });
 
   it('rejects a Topic that names itself as its parent', () => {
-    const overlappingCatalogs = {
-      ...catalogs,
-      topicIds: new Set([...catalogs.topicIds, 'topic-self']),
-    };
+    const overlappingCatalogs = catalogsWithTopics(['topic-self']);
 
     expect(
       findReferenceIssues(
@@ -191,7 +199,9 @@ describe('content cross-reference validation', () => {
       topicDocument('topics/b.md', 'topic-b', 'topic-a'),
     ];
 
-    expect(findReferenceIssues(documents, catalogs)).toEqual([
+    expect(
+      findReferenceIssues(documents, catalogsWithTopics(['topic-0-tail', 'topic-a', 'topic-b'])),
+    ).toEqual([
       {
         file: 'topics/a.md',
         field: 'parent',
@@ -210,6 +220,49 @@ describe('content cross-reference validation', () => {
       topicDocument('topics/model-serving.md', 'topic-model-serving', 'topic-foundation-models'),
     ];
 
-    expect(findReferenceIssues(documents, catalogs)).toEqual([]);
+    expect(
+      findReferenceIssues(
+        documents,
+        catalogsWithTopics([
+          'topic-root',
+          'topic-child',
+          'topic-grandchild',
+          'topic-model-serving',
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  it('does not let a Topic content document authorize its own ID', () => {
+    const documents = [
+      topicDocument('topics/rogue.md', 'topic-rogue'),
+      document('insight.md', {
+        id: 'insight-rogue-topic',
+        title: 'Rogue topic reference',
+        type: 'insight',
+        status: 'draft',
+        date: '2026-08-30',
+        importance: 3,
+        topics: ['topic-rogue'],
+        evidence_signals: [],
+      }),
+    ];
+
+    expect(findReferenceIssues(documents, catalogs)).toEqual([
+      {
+        file: 'topics/rogue.md',
+        field: 'id',
+        kind: 'topic',
+        reason: 'missing',
+        target: 'topic-rogue',
+      },
+      {
+        file: 'insight.md',
+        field: 'topics',
+        kind: 'topic',
+        reason: 'missing',
+        target: 'topic-rogue',
+      },
+    ]);
   });
 });

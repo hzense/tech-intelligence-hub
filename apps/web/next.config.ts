@@ -4,7 +4,11 @@ import type { NextConfig } from 'next';
 
 const webRoot = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(webRoot, '../..');
-const contentTrace = ['../../content/**/*', '../../data/seed/*.yaml'];
+const contentTrace = [
+  '../../content/**/*',
+  '../../data/seed/*.yaml',
+  '../../data/taxonomy/taxonomy.yaml',
+];
 const securityHeaders = [
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },

@@ -5,6 +5,7 @@ import { findReferenceIssues, type ContentDocument, type ReferenceCatalogs } fro
 import { validateDailyIntegrity } from './daily.js';
 import { validateFrontMatter, type FrontMatter } from './schema.js';
 import { loadSeedCatalog } from './seed.js';
+import { validateTopicContentProjection } from './taxonomy.js';
 
 export interface MarkdownSection {
   heading: string;
@@ -25,6 +26,7 @@ export interface ContentEntry<TFrontMatter extends FrontMatter = FrontMatter> {
 export interface LoadContentOptions {
   contentRoot: string;
   seedRoot: string;
+  taxonomyFile: string;
 }
 
 async function walk(directory: string): Promise<string[]> {
@@ -114,6 +116,7 @@ function firstParagraph(body: string): string {
 export async function loadContent({
   contentRoot,
   seedRoot,
+  taxonomyFile,
 }: LoadContentOptions): Promise<ContentEntry[]> {
   const files = (await walk(contentRoot)).filter((file) => ['.md', '.mdx'].includes(extname(file)));
   const entries: ContentEntry[] = [];
@@ -145,8 +148,11 @@ export async function loadContent({
     );
   }
 
-  const seedCatalog = await loadSeedCatalog(seedRoot);
+  const seedCatalog = await loadSeedCatalog(seedRoot, taxonomyFile);
   const catalogs: ReferenceCatalogs = {
+    archivedTopicIds: new Set(
+      seedCatalog.topics.filter((topic) => topic.status === 'archived').map((topic) => topic.id),
+    ),
     topicIds: new Set(seedCatalog.topics.map((topic) => topic.id)),
     entityIds: new Set(seedCatalog.entities.map((entity) => entity.id)),
     signalIds: new Set(seedCatalog.signals.map((signal) => signal.id)),
@@ -165,6 +171,7 @@ export async function loadContent({
     throw new Error(`Content reference validation failed:\n${details.join('\n')}`);
   }
 
+  validateTopicContentProjection(documents, seedCatalog.topics, seedCatalog.taxonomy);
   validateDailyIntegrity(entries, seedCatalog);
 
   return entries.sort((left, right) => left.relativePath.localeCompare(right.relativePath));

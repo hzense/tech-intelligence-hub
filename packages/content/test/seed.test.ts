@@ -18,6 +18,16 @@ async function createSeedRoot(
     writeFile(join(root, 'radar.yaml'), '[]\n'),
     writeFile(join(root, 'relations.yaml'), '[]\n'),
     writeFile(
+      join(root, 'taxonomy.yaml'),
+      `version: '1.0'
+project: HZense
+root_topics:
+  - id: topic-example
+    name: Example Topic
+cross_domain_relations: []
+`,
+    ),
+    writeFile(
       join(root, 'sources.yaml'),
       '- id: source-example\n  name: Example\n  type: website\n  trust_score: 80\n  active: true\n  allowed_hosts: [example.com]\n',
     ),
@@ -46,6 +56,10 @@ async function createSeedRoot(
   return root;
 }
 
+function loadFixtureCatalog(root: string) {
+  return loadSeedCatalog(root, join(root, 'taxonomy.yaml'));
+}
+
 interface RadarSeedOptions {
   capturedAt?: string;
   evidenceSignals?: string[];
@@ -54,6 +68,7 @@ interface RadarSeedOptions {
   signalStatus?: string;
   signalTopics?: string[];
   sourceUrl?: string;
+  topicStatus?: string;
 }
 
 async function createRadarSeedRoot({
@@ -64,12 +79,13 @@ async function createRadarSeedRoot({
   signalStatus = 'reviewed',
   signalTopics = ['topic-example'],
   sourceUrl = 'https://example.com/signal',
+  topicStatus = 'active',
 }: RadarSeedOptions = {}): Promise<string> {
   const root = await createSeedRoot(occurredAt);
   await Promise.all([
     writeFile(
       join(root, 'topics.yaml'),
-      '- id: topic-example\n  title: Example Topic\n  status: active\n',
+      `- id: topic-example\n  title: Example Topic\n  status: ${topicStatus}\n`,
     ),
     writeFile(
       join(root, 'signals.yaml'),
@@ -117,7 +133,7 @@ describe('seed datetime validation', () => {
   it('accepts a valid leap-day ISO datetime', async () => {
     const root = await createSeedRoot('2024-02-29T00:00:00Z');
 
-    await expect(loadSeedCatalog(root)).resolves.toMatchObject({
+    await expect(loadFixtureCatalog(root)).resolves.toMatchObject({
       signals: [{ occurred_at: '2024-02-29T00:00:00Z' }],
     });
   });
@@ -125,15 +141,39 @@ describe('seed datetime validation', () => {
   it('rejects an impossible calendar date', async () => {
     const root = await createSeedRoot('2024-02-30T00:00:00Z');
 
-    await expect(loadSeedCatalog(root)).rejects.toThrow();
+    await expect(loadFixtureCatalog(root)).rejects.toThrow();
   });
 });
 
 describe('seed reference validation', () => {
+  it('rejects a Seed Topic that is outside the authoritative Taxonomy', async () => {
+    const root = await createSeedRoot('2024-02-29T00:00:00Z');
+    await writeFile(
+      join(root, 'topics.yaml'),
+      '- id: topic-outside\n  title: Outside Topic\n  status: active\n',
+    );
+
+    await expect(loadFixtureCatalog(root)).rejects.toThrow(
+      'Seed Topic topic-outside is not defined in Taxonomy',
+    );
+  });
+
+  it('rejects a Seed Topic whose canonical title drifts from Taxonomy', async () => {
+    const root = await createSeedRoot('2024-02-29T00:00:00Z');
+    await writeFile(
+      join(root, 'topics.yaml'),
+      '- id: topic-example\n  title: Drifted title\n  status: active\n',
+    );
+
+    await expect(loadFixtureCatalog(root)).rejects.toThrow(
+      'Seed Topic title mismatch for topic-example: expected "Example Topic", received "Drifted title"',
+    );
+  });
+
   it('rejects a Signal whose source does not exist', async () => {
     const root = await createSeedRoot('2024-02-29T00:00:00Z', 'source-missing');
 
-    await expect(loadSeedCatalog(root)).rejects.toThrow('Unknown source: signal-example');
+    await expect(loadFixtureCatalog(root)).rejects.toThrow('Unknown source: signal-example');
   });
 
   it('rejects a Radar snapshot whose Topic does not exist', async () => {
@@ -154,15 +194,53 @@ describe('seed reference validation', () => {
 `,
     );
 
-    await expect(loadSeedCatalog(root)).rejects.toThrow(
+    await expect(loadFixtureCatalog(root)).rejects.toThrow(
       'Unknown topic topic-missing in radar-missing',
     );
+  });
+
+  it('rejects a Radar snapshot for an archived Topic', async () => {
+    const root = await createRadarSeedRoot({ topicStatus: 'archived' });
+
+    await expect(loadFixtureCatalog(root)).rejects.toThrow(
+      'Archived topic topic-example in radar-example',
+    );
+  });
+
+  it('rejects public Signals that reference an archived Topic', async () => {
+    const reviewedRoot = await createRadarSeedRoot({ topicStatus: 'archived' });
+    const acceptedRoot = await createRadarSeedRoot({
+      signalStatus: 'accepted',
+      topicStatus: 'archived',
+    });
+    await Promise.all([
+      writeFile(join(reviewedRoot, 'radar.yaml'), '[]\n'),
+      writeFile(join(acceptedRoot, 'radar.yaml'), '[]\n'),
+    ]);
+
+    await expect(loadFixtureCatalog(reviewedRoot)).rejects.toThrow(
+      'Public Signal signal-example references archived topic topic-example',
+    );
+    await expect(loadFixtureCatalog(acceptedRoot)).rejects.toThrow(
+      'Public Signal signal-example references archived topic topic-example',
+    );
+  });
+
+  it('allows internal historical Signals to retain archived Topic references', async () => {
+    const roots = await Promise.all(
+      ['inbox', 'rejected', 'archived'].map((signalStatus) =>
+        createRadarSeedRoot({ signalStatus, topicStatus: 'archived' }),
+      ),
+    );
+    await Promise.all(roots.map((root) => writeFile(join(root, 'radar.yaml'), '[]\n')));
+
+    await Promise.all(roots.map((root) => expect(loadFixtureCatalog(root)).resolves.toBeDefined()));
   });
 
   it('accepts complete Radar scoring evidence', async () => {
     const root = await createRadarSeedRoot();
 
-    await expect(loadSeedCatalog(root)).resolves.toMatchObject({
+    await expect(loadFixtureCatalog(root)).resolves.toMatchObject({
       radar: [
         {
           evidence_signals: ['signal-example'],
@@ -176,20 +254,20 @@ describe('seed reference validation', () => {
     const emptyEvidenceRoot = await createRadarSeedRoot({ evidenceSignals: [] });
     const blankReasoningRoot = await createRadarSeedRoot({ reasoning: '   ' });
 
-    await expect(loadSeedCatalog(emptyEvidenceRoot)).rejects.toThrow();
-    await expect(loadSeedCatalog(blankReasoningRoot)).rejects.toThrow();
+    await expect(loadFixtureCatalog(emptyEvidenceRoot)).rejects.toThrow();
+    await expect(loadFixtureCatalog(blankReasoningRoot)).rejects.toThrow();
   });
 
   it('rejects non-HTTPS Signal source URLs', async () => {
     const root = await createRadarSeedRoot({ sourceUrl: 'http://example.com/signal' });
 
-    await expect(loadSeedCatalog(root)).rejects.toThrow();
+    await expect(loadFixtureCatalog(root)).rejects.toThrow();
   });
 
   it('rejects a Signal URL outside its Source host allowlist', async () => {
     const root = await createRadarSeedRoot({ sourceUrl: 'https://unrelated.example/signal' });
 
-    await expect(loadSeedCatalog(root)).rejects.toThrow(
+    await expect(loadFixtureCatalog(root)).rejects.toThrow(
       'Unexpected source URL host unrelated.example in signal-example',
     );
   });
@@ -200,10 +278,10 @@ describe('seed reference validation', () => {
       evidenceSignals: ['signal-example', 'signal-example'],
     });
 
-    await expect(loadSeedCatalog(missingRoot)).rejects.toThrow(
+    await expect(loadFixtureCatalog(missingRoot)).rejects.toThrow(
       'Unknown Radar evidence signal signal-missing in radar-example',
     );
-    await expect(loadSeedCatalog(duplicateRoot)).rejects.toThrow(
+    await expect(loadFixtureCatalog(duplicateRoot)).rejects.toThrow(
       'Duplicate Radar evidence signal signal-example in radar-example',
     );
   });
@@ -212,10 +290,10 @@ describe('seed reference validation', () => {
     const ineligibleRoot = await createRadarSeedRoot({ signalStatus: 'inbox' });
     const wrongTopicRoot = await createRadarSeedRoot({ signalTopics: [] });
 
-    await expect(loadSeedCatalog(ineligibleRoot)).rejects.toThrow(
+    await expect(loadFixtureCatalog(ineligibleRoot)).rejects.toThrow(
       'Ineligible Radar evidence signal signal-example in radar-example',
     );
-    await expect(loadSeedCatalog(wrongTopicRoot)).rejects.toThrow(
+    await expect(loadFixtureCatalog(wrongTopicRoot)).rejects.toThrow(
       'Radar evidence signal signal-example does not reference topic-example in radar-example',
     );
   });
@@ -228,10 +306,10 @@ describe('seed reference validation', () => {
       capturedAt: '2026-08-28T00:00:00Z',
     });
 
-    await expect(loadSeedCatalog(futureOccurrenceRoot)).rejects.toThrow(
+    await expect(loadFixtureCatalog(futureOccurrenceRoot)).rejects.toThrow(
       'Future Radar evidence occurrence signal-example in radar-example',
     );
-    await expect(loadSeedCatalog(futureCaptureRoot)).rejects.toThrow(
+    await expect(loadFixtureCatalog(futureCaptureRoot)).rejects.toThrow(
       'Future Radar evidence capture signal-example in radar-example',
     );
   });
@@ -244,8 +322,8 @@ describe('seed reference validation', () => {
       occurredAt: '2026-08-27T23:30:00-02:00',
     });
 
-    await expect(loadSeedCatalog(sameUtcDateRoot)).resolves.toBeDefined();
-    await expect(loadSeedCatalog(futureUtcDateRoot)).rejects.toThrow(
+    await expect(loadFixtureCatalog(sameUtcDateRoot)).resolves.toBeDefined();
+    await expect(loadFixtureCatalog(futureUtcDateRoot)).rejects.toThrow(
       'Future Radar evidence occurrence signal-example in radar-example',
     );
   });
