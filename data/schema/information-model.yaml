@@ -244,13 +244,16 @@ taxonomy_model:
     subset: true
     authoritative_fields: [status]
   content_projection:
-    path: content/topics/*.md
+    root: content/topics
+    recursive: true
+    formats: [md, mdx]
     subset_of_seed: true
     covers_all_non_archived_seed_topics: true
     localized_title: true
   database_projection:
     table: topics
-    status: planned
+    table_status: implemented
+    synchronization_status: planned
     synchronizer_implemented: false
     independently_editable: false
 

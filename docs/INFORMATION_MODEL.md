@@ -871,7 +871,7 @@ Taxonomy 是 HZense 的正式分类体系。
 
 - [`data/taxonomy/taxonomy.yaml`](../data/taxonomy/taxonomy.yaml) 是 Topic ID、英文规范名、primary parent 和跨域关系的唯一权威。
 - [`data/seed/topics.yaml`](../data/seed/topics.yaml) 只能选择 Taxonomy 中的运行时子集并补充 `status`；其 ID 与英文标题不得覆盖 Taxonomy。
-- `content/topics/*.md` 只保存已启用 Topic 的本地化页面、展示字段与正文；每个非 archived Seed Topic 必须恰有一个页面，状态必须与 Seed 一致，显式 `parent` 必须与 Taxonomy 一致。
+- `content/topics/` 下的 Markdown / MDX 只保存已启用 Topic 的本地化页面、展示字段与正文；目录可递归组织，每个非 archived Seed Topic 必须恰有一个页面，状态必须与 Seed 一致，显式 `parent` 必须与 Taxonomy 一致。
 - PostgreSQL `topics` 是未来同步投影，不反向拥有或修改 Taxonomy。
 
 ---

@@ -44,7 +44,7 @@ Daily candidates are generated deterministically from reviewed Signals, validate
 > **Git / Markdown = content Source of Truth**  
 > **PostgreSQL = entity / relation / signal / index Source of Truth**
 
-`data/taxonomy/taxonomy.yaml` is the Source of Truth for Topic IDs, canonical English names, primary-parent hierarchy and cross-domain relations. `data/seed/topics.yaml` is its validated operational subset and owns runtime status; `content/topics/*.md` owns localized Topic pages and body content only. PostgreSQL `topics` is the planned synchronized projection, not an independently edited Topic authority; the synchronizer is not implemented yet.
+`data/taxonomy/taxonomy.yaml` is the Source of Truth for Topic IDs, canonical English names, primary-parent hierarchy and cross-domain relations. `data/seed/topics.yaml` is its validated operational subset and owns runtime status; Markdown/MDX files under `content/topics/` own localized Topic pages and body content only. PostgreSQL `topics` is the planned synchronized projection, not an independently edited Topic authority; the synchronizer is not implemented yet.
 
 ## Repository structure
 
