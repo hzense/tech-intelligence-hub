@@ -113,7 +113,7 @@ Daily 是日常最高频情报入口，不是新闻摘要，而是当天 Signals
 
 ## 8. HZense Topics
 
-Topic 是核心组织单元。首批一级领域包括 Artificial Intelligence、Cybersecurity、Semiconductors、Robotics、Quantum、Cloud、Infrastructure、Autonomous Systems、Energy Technology、Space Technology、Biotechnology。
+Topic 是核心组织单元。首批一级领域包括 Artificial Intelligence、Cybersecurity、Semiconductors、Robotics、Quantum、Cloud & Infrastructure、Autonomous Systems、Energy Technology、Space Technology、Biotechnology。
 
 Topic 页面包含 Overview、My View、Attention、Trend、Maturity、Strategic Value、Key Problems、Key Players、Key People、Research、Signals、Insights 和 Timeline。
 

@@ -4,11 +4,13 @@
 
 **版本：** v2.0.0
 
-**日期：** 2026-08-29
+**日期：** 2026-08-30
 
-**状态：** Evidence Integrity Baseline
+**状态：** Evidence Integrity Baseline — Topic Authority Contract Hardened
 
 **项目：** HZense — Technology Intelligence
+
+本次修订将既有的 Taxonomy 权威规则固化为 Taxonomy → Seed → Content 可执行门禁，不改变 Source of Truth，因此保持 v2.0.0。
 
 ---
 
@@ -865,9 +867,18 @@ Taxonomy 是 HZense 的正式分类体系。
 4. 跨领域关系使用 Relation，不使用多父节点制造混乱。
 5. 自由 Tag 不能替代正式 Topic。
 
+权威边界：
+
+- [`data/taxonomy/taxonomy.yaml`](../data/taxonomy/taxonomy.yaml) 是 Topic ID、英文规范名、primary parent 和跨域关系的唯一权威。
+- [`data/seed/topics.yaml`](../data/seed/topics.yaml) 只能选择 Taxonomy 中的运行时子集并补充 `status`；其 ID 与英文标题不得覆盖 Taxonomy。
+- `content/topics/*.md` 只保存已启用 Topic 的本地化页面、展示字段与正文；每个非 archived Seed Topic 必须恰有一个页面，状态必须与 Seed 一致，显式 `parent` 必须与 Taxonomy 一致。
+- PostgreSQL `topics` 是未来同步投影，不反向拥有或修改 Taxonomy。
+
 ---
 
 # 27. 一级 Taxonomy v1
+
+以下各级树是正式 YAML 的说明性快照；发生差异时始终以 `data/taxonomy/taxonomy.yaml` 为准。
 
 首版一级领域：
 
@@ -939,8 +950,9 @@ Cybersecurity
 ├── Data Security
 ├── Zero Trust
 ├── Software Supply Chain Security
-├── Hardware Security
-└── AI Security
+└── Hardware Security
+
+related_to → AI Security (primary parent: Artificial Intelligence)
 ```
 
 `AI Security` 作为跨域 Topic，primary parent 设在 Artificial Intelligence；Cybersecurity 侧通过 `related_to` 建立关联。
@@ -1310,7 +1322,7 @@ radar_snapshots N ───── N signals
 | `content_index`      | 实际实现为 `content_registry`，只登记 Markdown 内容元数据，不保存正式正文。                                                                                             |
 | `embeddings`         | 未独立建表；向量内联在 `search_documents.embedding`。                                                                                                                   |
 | `ingestion_jobs`     | 尚未实现。                                                                                                                                                              |
-| Topic 层级           | `topics.parent_id` 当前没有自引用外键；父级存在性、自引用和循环由内容校验或应用层负责。                                                                                 |
+| Topic 层级           | `topics.parent_id` 是 Taxonomy primary parent 的数据库投影；父级存在性、唯一性与循环由 Taxonomy 门禁保证，同步不得生成不同层级。                                        |
 | Search Document 来源 | `search_documents.source_id` 可以引用不同内容类型，因此当前不绑定单一数据库外键；该表是可重建派生数据。                                                                 |
 | Radar 证据资格       | 数据库保证外键、唯一性和位置范围；其余跨表资格规则由 Migration 审计和生产 Verifier 检测。未来运行时写入路径必须额外提供事务化保证，当前数据库本身不会持续阻止此类违规。 |
 | 正文存储             | Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文继续保存在 Git / Markdown。                                                                                    |
@@ -1334,14 +1346,17 @@ radar_snapshots N ───── N signals
 
 1. 所有 ID 唯一。
 2. 所有关系 source / target 必须存在。
-3. 所有 Topic 引用必须存在于 Taxonomy。
-4. archived 对象不得自动进入新 Daily。
-5. rejected、inbox、archived Signal 不得作为 Radar 评分证据。
-6. Radar 证据信号必须存在且唯一，关联同一 Topic，发生与采集时间均不晚于快照日期。
-7. Signal 原始来源必须使用合法 HTTPS URL，且 hostname 命中 Source 的 `allowed_hosts`。
-8. 删除 Entity 优先采用 archived，不做物理删除。
-9. Search / Embedding 属于可重建派生数据。
-10. Markdown 正文与 PostgreSQL index 通过 public_id 对齐。
+3. Taxonomy Topic ID 全局唯一，primary parent 由嵌套树唯一派生，跨域关系端点必须存在。
+4. Seed Topic 必须属于 Taxonomy，英文规范标题一致，并且只作为运行时启用子集。
+5. Topic Markdown 必须属于 Seed，状态一致；每个非 archived Seed Topic 必须恰有一个页面，显式 `parent` 必须等于 Taxonomy primary parent。
+6. 所有公开运行时 Topic 引用必须解析到非 archived Seed Topic，包括 published 内容、reviewed / accepted Signal 和 Radar 快照；Topic 内容页不能自行创建 Topic ID。
+7. archived 对象不得自动进入新 Daily。
+8. rejected、inbox、archived Signal 不得作为 Radar 评分证据。
+9. Radar 证据信号必须存在且唯一，关联同一 Topic，发生与采集时间均不晚于快照日期。
+10. Signal 原始来源必须使用合法 HTTPS URL，且 hostname 命中 Source 的 `allowed_hosts`。
+11. 删除 Entity 优先采用 archived，不做物理删除。
+12. Search / Embedding 属于可重建派生数据。
+13. Markdown 正文与 PostgreSQL index 通过 public_id 对齐。
 
 ---
 

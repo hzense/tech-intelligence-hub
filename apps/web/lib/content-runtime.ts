@@ -22,6 +22,7 @@ function getContent() {
   contentPromise ??= loadContent({
     contentRoot: resolve(process.cwd(), '../../content'),
     seedRoot: resolve(process.cwd(), '../../data/seed'),
+    taxonomyFile: resolve(process.cwd(), '../../data/taxonomy/taxonomy.yaml'),
   });
   return contentPromise;
 }

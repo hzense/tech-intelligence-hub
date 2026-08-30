@@ -66,9 +66,9 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Run production browser smoke tests
         run: pnpm test:e2e
-      - name: Validate content references and integrity
+      - name: Validate Topic authority and content integrity
         run: pnpm content:validate
-      - name: Validate Seed and Radar data
+      - name: Validate Taxonomy, Seed and Radar data
         run: pnpm seed:validate
       - name: Summarize foundation gate
         if: always()
@@ -80,7 +80,7 @@ jobs:
             echo "- Result: $JOB_STATUS"
             echo "- Node.js: $NODE_VERSION"
             echo "- pnpm: $PNPM_VERSION"
-            echo '- Checks: format, audit, lint, typecheck, build, unit, browser, content and Seed'
+            echo '- Checks: format, audit, lint, typecheck, build, unit, browser, Taxonomy, content and Seed'
           } >> "$GITHUB_STEP_SUMMARY"
 
   database-migrations:
@@ -146,7 +146,7 @@ jobs:
         run: corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
-      - name: Validate Daily structure and evidence
+      - name: Validate Topic authority, Daily structure and evidence
         run: pnpm content:validate
       - name: Require a human publication state
         if: github.event_name != 'workflow_dispatch'

@@ -33,13 +33,14 @@ async function main(): Promise<void> {
 
   const contentRoot = resolve(process.cwd(), '../../content');
   const seedRoot = resolve(process.cwd(), '../../data/seed');
+  const taxonomyFile = resolve(process.cwd(), '../../data/taxonomy/taxonomy.yaml');
   const outputRoot = resolve(argument('--output-root') ?? resolve(process.cwd(), '../..'));
   const manifestPath = argument('--manifest') ? resolve(argument('--manifest')!) : undefined;
   const baseSha = argument('--base-sha') ?? 'local';
   const request = buildDailyDraftRequest(date);
   const [catalog, entries] = await Promise.all([
-    loadSeedCatalog(seedRoot),
-    loadContent({ contentRoot, seedRoot }),
+    loadSeedCatalog(seedRoot, taxonomyFile),
+    loadContent({ contentRoot, seedRoot, taxonomyFile }),
   ]);
 
   const existing = entries.find(

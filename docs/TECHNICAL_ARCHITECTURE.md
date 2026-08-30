@@ -44,8 +44,10 @@ HZense 采用“Git/Markdown 为知识资产源，PostgreSQL 为索引与关系�
 
 ## 3. Source of Truth
 
-- **Git / Markdown** = 正式内容正文的 Source of Truth。
-- **PostgreSQL** = Entity / Relation / Index / Radar / operational data 的 Source of Truth。
+- **Taxonomy YAML** = Topic ID、英文规范名、primary parent 与跨域关系的 Source of Truth。
+- **Seed Topics** = Taxonomy 的受控运行时子集，并拥有 Topic `status`。
+- **Git / Markdown** = 正式内容正文与本地化 Topic 页面的 Source of Truth。
+- **PostgreSQL** = Entity / Relation / Index / Radar / operational data 的 Source of Truth；`topics` 是 Taxonomy 的未来同步投影，同步器尚未实现。
 - 网站 = Presentation + Intelligence Application Layer。
 
 不把所有关系塞进 YAML，也不把所有正式正文锁进数据库或 CMS。

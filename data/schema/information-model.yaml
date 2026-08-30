@@ -236,10 +236,36 @@ search_document:
   required: [id, source_id, source_type, title, body, importance, date]
   fields: [topics, entities, embedding_ref]
 
+taxonomy_model:
+  source_of_truth: data/taxonomy/taxonomy.yaml
+  authoritative_fields: [id, name, primary_parent, cross_domain_relations]
+  seed_projection:
+    path: data/seed/topics.yaml
+    subset: true
+    authoritative_fields: [status]
+  content_projection:
+    path: content/topics/*.md
+    subset_of_seed: true
+    covers_all_non_archived_seed_topics: true
+    localized_title: true
+  database_projection:
+    table: topics
+    status: planned
+    synchronizer_implemented: false
+    independently_editable: false
+
 data_consistency:
   - all_ids_unique
   - all_relation_endpoints_must_exist
-  - all_topic_refs_must_exist
+  - taxonomy_topic_ids_must_be_unique
+  - taxonomy_primary_parent_must_be_unique_and_acyclic
+  - taxonomy_relation_endpoints_must_exist
+  - seed_topics_must_match_taxonomy_ids_and_names
+  - content_topics_must_match_seed_status
+  - content_topic_parent_must_match_taxonomy_when_present
+  - all_public_topic_refs_must_resolve_to_non_archived_seed_topics
+  - public_signals_must_not_reference_archived_topics
+  - radar_snapshots_must_not_reference_archived_topics
   - paper_entity_and_paper_note_content_must_use_distinct_ids
   - rejected_signals_cannot_affect_radar
   - radar_evidence_signals_must_exist_and_be_unique
