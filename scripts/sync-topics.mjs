@@ -145,15 +145,25 @@ export async function runTopicSyncCommand({
     dryRun: !apply,
     expectedProjectionFingerprint: productionGuards?.expectedProjectionFingerprint,
     expectedPlanFingerprint: productionGuards?.expectedPlanFingerprint,
-    beforeSync: (client) =>
-      inspectSyncTarget(client, {
-        expectedHost: policy.host,
-        expectedDatabase: policy.database,
-        expectedUser: policy.user,
-        expectedPostgresMajor: options.expectedPostgresMajor,
-        expectedConnectionLimit: options.expectedConnectionLimit,
-        profile,
-      }),
+    beforeSync: async (client) => {
+      await client.query("SET statement_timeout = '30s'");
+      let inspection;
+      try {
+        inspection = await inspectSyncTarget(client, {
+          expectedHost: policy.host,
+          expectedDatabase: policy.database,
+          expectedUser: policy.user,
+          expectedPostgresMajor: options.expectedPostgresMajor,
+          expectedConnectionLimit: options.expectedConnectionLimit,
+          profile,
+        });
+      } catch (error) {
+        await client.query('RESET statement_timeout').catch(() => undefined);
+        throw error;
+      }
+      await client.query('RESET statement_timeout');
+      return inspection;
+    },
   });
 
   console.log(

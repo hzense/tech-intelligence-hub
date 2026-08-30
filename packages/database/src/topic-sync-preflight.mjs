@@ -1,11 +1,8 @@
 import { fileURLToPath, URL } from 'node:url';
-import pg from 'pg';
-import { validateConnectionTarget } from './connection-policy.mjs';
 import { loadMigrations, planPendingMigrations, verifyMigrationManifest } from './migrate.mjs';
 import { inspectProductionTls } from './preflight.mjs';
 import { expectedTableNames } from './verify.mjs';
 
-const { Client } = pg;
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
 const migrationManifest = fileURLToPath(
   new URL('../../../db/migrations/checksums.json', import.meta.url),
@@ -508,49 +505,4 @@ export async function inspectTopicSyncPreflight(
     tlsCipher: tls.cipher,
     tlsEvidence: tls.source,
   };
-}
-
-export async function runTopicSyncPreflight({
-  connectionString,
-  profile,
-  expectedHost,
-  expectedPort,
-  expectedDatabase,
-  expectedUser,
-  configurationPrefix = 'HZENSE_TOPIC_SYNC',
-  nodeTlsRejectUnauthorized,
-  expectedPostgresMajor = 18,
-  expectedConnectionLimit = 2,
-  connectionTimeoutMillis = 10_000,
-} = {}) {
-  const policy = validateConnectionTarget({
-    connectionString,
-    profile,
-    expectedHost,
-    expectedPort,
-    expectedDatabase,
-    expectedUser,
-    configurationPrefix,
-    nodeTlsRejectUnauthorized,
-  });
-  if (profile === 'production') assertDirectTopicSyncEndpoint(policy.host);
-  const client = new Client({
-    connectionString,
-    application_name: 'hzense-topic-sync-preflight',
-    connectionTimeoutMillis,
-  });
-  await client.connect();
-  try {
-    await client.query("SET statement_timeout = '30s'");
-    return await inspectTopicSyncPreflight(client, {
-      expectedHost: policy.host,
-      expectedDatabase: expectedDatabase ?? policy.database,
-      expectedUser: expectedUser ?? policy.user,
-      expectedPostgresMajor,
-      expectedConnectionLimit,
-      profile,
-    });
-  } finally {
-    await client.end();
-  }
 }

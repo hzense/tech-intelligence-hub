@@ -50,6 +50,41 @@ async function withClient(connectionString, callback) {
   }
 }
 
+async function readProvisioningState() {
+  return withClient(adminDatabaseUrl(), async (client) => {
+    const privileges = await client.query(
+      `SELECT database_info.datacl::text AS database_acl,
+              namespace_info.nspacl::text AS public_schema_acl,
+              topics_info.relacl::text AS topics_acl,
+              history_info.relacl::text AS history_acl,
+              type_info.typacl::text AS topic_status_acl
+       FROM pg_database AS database_info
+       CROSS JOIN pg_namespace AS namespace_info
+       CROSS JOIN pg_class AS topics_info
+       CROSS JOIN pg_class AS history_info
+       CROSS JOIN pg_type AS type_info
+       WHERE database_info.datname = $1
+         AND namespace_info.nspname = 'public'
+         AND topics_info.oid = 'public.topics'::regclass
+         AND history_info.oid = 'public.hzense_schema_migrations'::regclass
+         AND type_info.oid = 'public.topic_status'::regtype`,
+      [databaseName],
+    );
+    const defaultPrivileges = await client.query(
+      `SELECT default_acl.defaclnamespace,
+              default_acl.defaclobjtype,
+              default_acl.defaclacl::text AS acl
+       FROM pg_default_acl AS default_acl
+       JOIN pg_roles AS owner_info ON owner_info.oid = default_acl.defaclrole
+       WHERE owner_info.rolname = $1
+       ORDER BY default_acl.defaclnamespace, default_acl.defaclobjtype`,
+      [ownerRole],
+    );
+
+    return { privileges: privileges.rows, defaultPrivileges: defaultPrivileges.rows };
+  });
+}
+
 function strictSyncPreflight(client) {
   return inspectTopicSyncPreflight(client, {
     expectedDatabase: databaseName,
@@ -122,6 +157,58 @@ integrationSuite('PostgreSQL Topic sync role provisioning integration', () => {
       await adminClient.query(`DROP ROLE ${quotedIdentifier(ownerRole)}`);
     }
     await adminClient.end();
+  }, 30_000);
+
+  it('rejects execution by a non-owner without changing ACL state', async () => {
+    const before = await readProvisioningState();
+
+    await expect(withClient(adminDatabaseUrl(), (client) => client.query(roleSql))).rejects.toThrow(
+      /Run as owner of current_database/,
+    );
+
+    await expect(readProvisioningState()).resolves.toEqual(before);
+  }, 30_000);
+
+  it('rejects an owner session using SET ROLE without changing ACL state', async () => {
+    const before = await readProvisioningState();
+    await adminClient.query(
+      `GRANT ${quotedIdentifier(syncRole)} TO ${quotedIdentifier(ownerRole)}`,
+    );
+
+    try {
+      await expect(
+        withClient(databaseUrl(ownerRole, ownerPassword), async (client) => {
+          await client.query(`SET ROLE ${quotedIdentifier(syncRole)}`);
+          try {
+            await client.query(roleSql);
+          } finally {
+            await client.query('ROLLBACK');
+            await client.query('RESET ROLE');
+          }
+        }),
+      ).rejects.toThrow(/without SET ROLE/);
+    } finally {
+      await adminClient.query(
+        `REVOKE ${quotedIdentifier(syncRole)} FROM ${quotedIdentifier(ownerRole)}`,
+      );
+    }
+
+    await expect(readProvisioningState()).resolves.toEqual(before);
+  }, 30_000);
+
+  it('rejects incorrect sync-role attributes without changing ACL state', async () => {
+    const before = await readProvisioningState();
+    await adminClient.query(`ALTER ROLE ${quotedIdentifier(syncRole)} INHERIT`);
+
+    try {
+      await expect(
+        withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql)),
+      ).rejects.toThrow(/LOGIN NOINHERIT CONNECTION LIMIT 2/);
+    } finally {
+      await adminClient.query(`ALTER ROLE ${quotedIdentifier(syncRole)} NOINHERIT`);
+    }
+
+    await expect(readProvisioningState()).resolves.toEqual(before);
   }, 30_000);
 
   it('removes ambient PUBLIC database privileges and passes the strict preflight', async () => {

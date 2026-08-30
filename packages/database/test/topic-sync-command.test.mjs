@@ -92,6 +92,65 @@ describe('Topic sync command safety contract', () => {
     expect(executions[0].expectedPlanFingerprint).toBeUndefined();
     expect(executions[1].expectedPlanFingerprint).toBeUndefined();
     expect(dependencies.loadContent).toHaveBeenCalledTimes(2);
+
+    const preflightEvents = [];
+    const preflightClient = {
+      query: vi.fn(async (sql) => {
+        preflightEvents.push(sql);
+      }),
+    };
+    dependencies.inspectTopicSyncPreflight.mockImplementationOnce(async () => {
+      preflightEvents.push('inspect');
+    });
+    await executions[0].beforeSync(preflightClient);
+    expect(preflightEvents).toEqual([
+      "SET statement_timeout = '30s'",
+      'inspect',
+      'RESET statement_timeout',
+    ]);
+    expect(dependencies.inspectTopicSyncPreflight).toHaveBeenCalledWith(
+      preflightClient,
+      expect.objectContaining({
+        expectedDatabase: 'hzense',
+        expectedUser: 'hzense_sync',
+        profile: 'local-test',
+      }),
+    );
+  });
+
+  it('preserves the preflight failure when restoring the session timeout also fails', async () => {
+    const executions = [];
+    const dependencies = commandDependencies(executions);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await runTopicSyncCommand({
+        arguments: ['--profile=local-test'],
+        environment: {
+          HZENSE_TOPIC_SYNC_DATABASE_URL: 'postgresql://hzense_sync:secret@127.0.0.1:5432/hzense',
+        },
+        dependencies,
+      });
+    } finally {
+      log.mockRestore();
+    }
+
+    const preflightEvents = [];
+    const preflightClient = {
+      query: vi.fn(async (sql) => {
+        preflightEvents.push(sql);
+        if (sql === 'RESET statement_timeout') throw new Error('reset failed');
+      }),
+    };
+    dependencies.inspectTopicSyncPreflight.mockImplementationOnce(async () => {
+      preflightEvents.push('inspect');
+      throw new Error('preflight failed');
+    });
+    await expect(executions[0].beforeSync(preflightClient)).rejects.toThrow('preflight failed');
+    expect(preflightEvents).toEqual([
+      "SET statement_timeout = '30s'",
+      'inspect',
+      'RESET statement_timeout',
+    ]);
   });
 
   it('passes both reviewed fingerprints into a guarded production apply', async () => {
