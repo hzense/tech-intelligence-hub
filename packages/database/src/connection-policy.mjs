@@ -56,6 +56,7 @@ export function validateConnectionTarget({
   expectedPort,
   expectedDatabase,
   expectedUser,
+  configurationPrefix = 'HZENSE_DATABASE',
   nodeTlsRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED,
 }) {
   const rawConnectionString = requireString(connectionString, 'database connection string');
@@ -120,10 +121,11 @@ export function validateConnectionTarget({
     throw new Error('Production database connections refuse NODE_TLS_REJECT_UNAUTHORIZED=0');
   }
 
-  const host = requireString(expectedHost, 'HZENSE_DATABASE_EXPECTED_HOST').toLowerCase();
-  const port = requireString(expectedPort, 'HZENSE_DATABASE_EXPECTED_PORT');
-  const expectedName = requireString(expectedDatabase, 'HZENSE_DATABASE_EXPECTED_NAME');
-  const expectedRole = requireString(expectedUser, 'HZENSE_DATABASE_EXPECTED_USER');
+  const prefix = requireString(configurationPrefix, 'database configuration prefix');
+  const host = requireString(expectedHost, `${prefix}_EXPECTED_HOST`).toLowerCase();
+  const port = requireString(expectedPort, `${prefix}_EXPECTED_PORT`);
+  const expectedName = requireString(expectedDatabase, `${prefix}_EXPECTED_NAME`);
+  const expectedRole = requireString(expectedUser, `${prefix}_EXPECTED_USER`);
   if (isUnsafeLocalEndpoint(url.hostname)) {
     throw new Error('production database connections cannot use a loopback host');
   }
@@ -155,5 +157,20 @@ export function productionDatabaseOptions(environment = process.env) {
     nodeTlsRejectUnauthorized: environment.NODE_TLS_REJECT_UNAUTHORIZED,
     expectedPgvectorVersion: environment.HZENSE_DATABASE_EXPECTED_PGVECTOR_VERSION,
     expectedPostgresMajor: Number(environment.HZENSE_DATABASE_EXPECTED_POSTGRES_MAJOR ?? '18'),
+  };
+}
+
+export function topicSyncProductionOptions(environment = process.env) {
+  return {
+    connectionString: environment.HZENSE_TOPIC_SYNC_DATABASE_URL,
+    profile: 'production',
+    expectedHost: environment.HZENSE_TOPIC_SYNC_EXPECTED_HOST,
+    expectedPort: environment.HZENSE_TOPIC_SYNC_EXPECTED_PORT,
+    expectedDatabase: environment.HZENSE_TOPIC_SYNC_EXPECTED_NAME,
+    expectedUser: environment.HZENSE_TOPIC_SYNC_EXPECTED_USER,
+    configurationPrefix: 'HZENSE_TOPIC_SYNC',
+    nodeTlsRejectUnauthorized: environment.NODE_TLS_REJECT_UNAUTHORIZED,
+    expectedPostgresMajor: Number(environment.HZENSE_TOPIC_SYNC_EXPECTED_POSTGRES_MAJOR ?? '18'),
+    expectedConnectionLimit: Number(environment.HZENSE_TOPIC_SYNC_EXPECTED_CONNECTION_LIMIT ?? '2'),
   };
 }

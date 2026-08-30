@@ -145,7 +145,11 @@ integrationSuite('PostgreSQL migration integration', () => {
     await expect(
       runDatabasePreflight(productionLikeOptions(databaseNames.fresh)),
     ).resolves.toMatchObject({
-      pendingMigrations: ['0000_foundation.sql', '0001_radar_evidence.sql'],
+      pendingMigrations: [
+        '0000_foundation.sql',
+        '0001_radar_evidence.sql',
+        '0002_topic_projection.sql',
+      ],
       pgvectorVersion: '0.8.6',
     });
 
@@ -166,6 +170,9 @@ integrationSuite('PostgreSQL migration integration', () => {
       );
       await expect(client.query('SELECT source_url FROM signals LIMIT 0')).resolves.toBeDefined();
       await expect(
+        client.query('SELECT runtime_enabled FROM topics LIMIT 0'),
+      ).resolves.toBeDefined();
+      await expect(
         client.query('SELECT position FROM radar_snapshot_signals LIMIT 0'),
       ).resolves.toBeDefined();
 
@@ -184,7 +191,7 @@ integrationSuite('PostgreSQL migration integration', () => {
     await expect(
       verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
     ).resolves.toMatchObject({
-      migrationCount: 2,
+      migrationCount: 3,
       tableCount: 13,
     });
   }, 30_000);
@@ -266,7 +273,7 @@ integrationSuite('PostgreSQL migration integration', () => {
     ).resolves.toBeDefined();
   }, 30_000);
 
-  it('detects table durability, ownership, RLS, policy and trigger drift', async () => {
+  it('detects table durability, ownership, RLS, policy, trigger and rewrite-rule drift', async () => {
     const databaseUrl = connectionUrl(databaseNames.fresh);
     const driftClient = new Client({ connectionString: databaseUrl });
     await driftClient.connect();
@@ -313,6 +320,15 @@ integrationSuite('PostgreSQL migration integration', () => {
         DROP TRIGGER hzense_test_trigger ON content_registry;
         DROP FUNCTION hzense_test_trigger();
       `);
+
+      await driftClient.query(`
+        CREATE RULE hzense_test_rewrite_rule AS
+        ON UPDATE TO content_registry DO ALSO NOTHING
+      `);
+      await expect(
+        verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+      ).rejects.toThrow(/unexpected rewrite rule/);
+      await driftClient.query('DROP RULE hzense_test_rewrite_rule ON content_registry');
     } finally {
       await withClient(adminDatabaseUrl(databaseNames.fresh), (client) =>
         client.query(`ALTER TABLE content_registry OWNER TO ${quotedRoleName(migrationRole)}`),
@@ -323,6 +339,7 @@ integrationSuite('PostgreSQL migration integration', () => {
         DROP POLICY IF EXISTS hzense_test_policy ON content_registry;
         DROP TRIGGER IF EXISTS hzense_test_trigger ON content_registry;
         DROP FUNCTION IF EXISTS hzense_test_trigger();
+        DROP RULE IF EXISTS hzense_test_rewrite_rule ON content_registry;
       `);
       await driftClient.end();
     }
@@ -339,7 +356,9 @@ integrationSuite('PostgreSQL migration integration', () => {
       client.query(`
         INSERT INTO topics (id, title, status) VALUES
           ('topic-foundation-models', 'Foundation Models', 'strategic'),
-          ('topic-ai-security', 'AI Security', 'active');
+          ('topic-ai-security', 'AI Security', 'active'),
+          ('topic-watching', 'Watching Topic', 'watching'),
+          ('topic-archived', 'Archived Topic', 'archived');
 
         INSERT INTO sources (id, name, type, trust_score, active)
         VALUES ('source-anthropic', 'Anthropic', 'company_blog', 95, true);
@@ -414,6 +433,25 @@ integrationSuite('PostgreSQL migration integration', () => {
          ORDER BY position`,
       );
       expect(evidence.rows).toEqual([{ signal_id: 'signal-20241125-mcp', position: 0 }]);
+
+      const topicProjection = await client.query(
+        `SELECT id, runtime_enabled
+         FROM topics
+         ORDER BY id`,
+      );
+      expect(topicProjection.rows).toEqual([
+        { id: 'topic-ai-security', runtime_enabled: true },
+        { id: 'topic-archived', runtime_enabled: false },
+        { id: 'topic-foundation-models', runtime_enabled: true },
+        { id: 'topic-watching', runtime_enabled: false },
+      ]);
+      await expect(
+        client.query(
+          `UPDATE topics
+           SET status = 'archived', runtime_enabled = true
+           WHERE id = 'topic-ai-security'`,
+        ),
+      ).rejects.toThrow(/topics_runtime_enabled_status_ck/);
     });
     await expect(
       verifyDatabaseContract(productionLikeOptions(databaseNames.legacy)),

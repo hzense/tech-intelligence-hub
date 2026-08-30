@@ -19,6 +19,7 @@ const expectedColumns = {
     parent_id: ['text', false],
     status: ['topic_status', true],
     metadata: ['jsonb', true],
+    runtime_enabled: ['boolean', true],
   },
   entities: {
     id: ['text', true],
@@ -205,6 +206,7 @@ const expectedForeignKeys = new Set([
 ]);
 
 const expectedCheckExpressions = {
+  topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
     ['cardinalityallowed_hosts>0'],
@@ -243,6 +245,7 @@ const expectedCheckExpressions = {
 const expectedDefaults = new Map([
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
+  ['topics.runtime_enabled', new Set(['false'])],
   ['entities.status', new Set(["'active'"])],
   ['entities.aliases', new Set(["'{}'", 'array[]'])],
   ['entities.metadata', new Set(["'{}'"])],
@@ -329,7 +332,10 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
             (SELECT count(*)::integer
              FROM pg_trigger AS trigger_info
              WHERE trigger_info.tgrelid = table_info.oid
-               AND NOT trigger_info.tgisinternal) AS user_trigger_count
+               AND NOT trigger_info.tgisinternal) AS user_trigger_count,
+            (SELECT count(*)::integer
+             FROM pg_rewrite AS rewrite_info
+             WHERE rewrite_info.ev_class = table_info.oid) AS rewrite_rule_count
      FROM pg_class AS table_info
      JOIN pg_namespace AS namespace_info ON namespace_info.oid = table_info.relnamespace
      WHERE namespace_info.nspname = 'public'
@@ -360,6 +366,9 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
     }
     if (table.user_trigger_count !== 0) {
       problems.push(`unexpected user trigger: ${table.name}`);
+    }
+    if (table.rewrite_rule_count !== 0) {
+      problems.push(`unexpected rewrite rule: ${table.name}`);
     }
   }
 

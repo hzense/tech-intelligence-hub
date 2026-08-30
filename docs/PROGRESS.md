@@ -1,7 +1,7 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-08-29
-**当前阶段：** Website MVP Release Candidate
+**最后更新：** 2026-08-30
+**当前阶段：** Topic 数据投影交付（生产同步未执行）
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
 > 本看板区分“工程基础完成度”和“用户可用网站完成度”。百分比是基于下方验收清单的人工估算，不以文档数量或提交数量代替产品进展。
@@ -12,7 +12,7 @@
 | ------------ | -------: | ----------------- | ------------------------------------------------------------------------------------ |
 | 开发基础建设 |     100% | ✅ 完成           | 架构、Monorepo、数据模型、冻结依赖安装和内容交叉引用校验均已通过 CI                  |
 | 网站 MVP     |     100% | ✅ 验收完成       | Home、Daily、Weekly、Insights、Topics、Signals、Resources 与基础搜索均由验证内容驱动 |
-| 生产就绪度   |      80% | 🟡 数据基线已建立 | 正式域名、安全基线与生产数据库迁移已验收；Web 数据库接入、日志和监控待完成           |
+| 生产就绪度   |      80% | 🟡 数据基线已建立 | 2026-08-29 数据库基线已验收；`0002`、Topic 生产同步、Web 数据库接入与监控待完成      |
 
 ## 阶段看板
 
@@ -23,7 +23,7 @@
 | 2. Development Foundation | ✅ 完成   |   100% | Monorepo、Schema、Migration、Validation、Seed、锁文件与冻结安装均已验证              |
 | 3. Web Application Shell  | ✅ 完成   |   100% | Next.js、Tailwind、App Router、主题、全局布局和导航可运行                            |
 | 4. MVP 内容与功能         | ✅ 完成   |   100% | Home、Daily、Weekly、Insights、Topics、Signals、Resources、基础搜索和独立 Radar 可用 |
-| 5. Production Release     | 🟡 进行中 |    80% | 域名、安全基线与生产数据库迁移已验收；Web 数据库接入、日志与监控待完成               |
+| 5. Production Release     | 🟡 进行中 |    80% | 域名与历史数据库基线已验收；`0002`、Topic 生产同步、Web 数据库接入与监控待完成       |
 
 ## 已完成
 
@@ -31,6 +31,7 @@
 - [x] `hzense.com` 作为正式生产域名
 - [x] Next.js / PostgreSQL / Drizzle / pgvector / Vercel 技术架构
 - [x] Information Model v2.0.0、证据完整性契约与 taxonomy
+- [x] PR #29 固化 Taxonomy → Seed → Content 的 Topic 权威链、引用约束与 CI 门禁
 - [x] pnpm workspace 与 Turborepo 工程边界
 - [x] TypeScript、ESLint、Prettier、Vitest 和 Playwright 基础配置
 - [x] PostgreSQL / Drizzle Schema、顺序 Migration、事务执行器与 pgvector CI 验证
@@ -102,7 +103,7 @@
 ### P1 — 生产发布
 
 - [x] 创建托管 PostgreSQL 18 / pgvector 0.8.6 实例
-- [x] 执行并验证生产 Migration（2 个 Migration、13 张表、0 个待执行 Migration）
+- [x] 执行并验证 2026-08-29 生产基线（2 个 Migration、13 张表、当时 0 个待执行 Migration）
 - [x] 建立 [Vercel Production Deployment](https://tech-intelligence-hub-web.vercel.app/)
 - [x] 绑定 [`hzense.com`](https://hzense.com/)
 - [x] 配置 `www.hzense.com` → `hzense.com` 重定向
@@ -110,29 +111,42 @@
 - [x] 验证错误页与基本安全响应头
 - [ ] 验证生产日志与基础监控
 
+### P1 — Git / YAML → PostgreSQL Topic 投影
+
+- [x] PR #29 确立 Taxonomy、Seed、Topic Content 和 PostgreSQL 派生投影的权威边界
+- [ ] 当前交付分支包含 `0002_topic_projection.sql` 与完整 Taxonomy 投影同步器，本地验证仍在进行；待最终评审、PR CI 与合并，不能计为 `main` 或生产完成
+- [ ] 由操作者创建并验证新的可恢复备份，以该 backup ID 声明值应用并验证生产 `0002_topic_projection.sql`
+- [ ] 创建独立最小权限 `hzense_topic_sync`，配置受保护的同步连接与 expected identity
+- [ ] 将同一新 backup ID 声明值绑定首次生产 Apply，并在真实 Neon 上完成 source/plan 双 fingerprint 锁定、持锁写前校验、事务 Apply、独立验证与 no-op 重跑
+- [ ] 评审并接入独立 Runtime Reader、Server-only 数据库客户端、安全健康检查和有上限的只读业务查询
+- [ ] 建立数据库连接数、池等待、查询延迟、超时和错误告警
+
+同步器在仓库中实现或通过本地测试，不等于生产数据已同步。生产就绪度继续保持 80%，直到上述生产角色、备份、Apply 和独立验证均有现场证据。
+
 ## MVP 验收状态
 
-| MVP 验收项                                                     | 状态 | 当前证据 / 缺口                                                                                                                                                     |
-| -------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Home、Daily、Insights、Topics、Weekly、Signals、Resources 路由 | ✅   | PR #12–#14 已实现 Weekly、Signals、Resources 列表与详情路由，并通过 Vercel Preview 页面验收                                                                         |
-| 桌面端与移动端可用                                             | ✅   | PR #11 在 Desktop Chrome 与 Pixel 7 视口验证 Home、Daily、Insights、Topics、404、metadata 与安全响应头                                                              |
-| Markdown/MDX 通过验证层加载                                    | ✅   | [PR #6 head CI](https://github.com/hzense/tech-intelligence-hub/pull/6/checks)验证同一加载器用于 CI 校验与 Web 构建                                                 |
-| Topic / Entity 引用无断链                                      | ✅   | Seed 与内容引用均由 CI 校验                                                                                                                                         |
-| 基础关键词搜索                                                 | ✅   | PR #16 接入六类公开内容、相关度排序、类型筛选及双视口验收                                                                                                           |
-| 手工 Radar                                                     | ✅   | PR #17 接入页面与可视化；[PR #19](https://github.com/hzense/tech-intelligence-hub/pull/19)增加评分说明、明确 Signal 引用与 HTTPS 原始来源                           |
-| 亮色与暗色主题                                                 | ✅   | Web Shell 已实现主题切换                                                                                                                                            |
-| CI 全部通过                                                    | ✅   | [PR #19 Checks](https://github.com/hzense/tech-intelligence-hub/pull/19/checks)验证生产依赖审计、构建、单测、内容/Seed、双视口 Radar 与真实 pgvector Migration 流程 |
-| Vercel 生产部署与域名                                          | ✅   | [`hzense.com`](https://hzense.com/) 已上线；HTTPS、HTTP → HTTPS 与 `www` → 根域名跳转均已验收                                                                       |
-| PostgreSQL 生产数据基线                                        | ✅   | PostgreSQL 18.6 / pgvector 0.8.6、受限迁移角色、迁移前快照、2 个 Migration 与 13 张表已在真实 Neon direct TLS endpoint 验收；独立复核为 0 个待执行 Migration        |
-| sitemap、robots、canonical metadata                            | ✅   | App Router metadata routes 与页面 canonical 由 PR #9 的 Playwright 测试自动验证                                                                                     |
+| MVP 验收项                                                     | 状态 | 当前证据 / 缺口                                                                                                                                                         |
+| -------------------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Home、Daily、Insights、Topics、Weekly、Signals、Resources 路由 | ✅   | PR #12–#14 已实现 Weekly、Signals、Resources 列表与详情路由，并通过 Vercel Preview 页面验收                                                                             |
+| 桌面端与移动端可用                                             | ✅   | PR #11 在 Desktop Chrome 与 Pixel 7 视口验证 Home、Daily、Insights、Topics、404、metadata 与安全响应头                                                                  |
+| Markdown/MDX 通过验证层加载                                    | ✅   | [PR #6 head CI](https://github.com/hzense/tech-intelligence-hub/pull/6/checks)验证同一加载器用于 CI 校验与 Web 构建                                                     |
+| Topic / Entity 引用无断链                                      | ✅   | Seed 与内容引用均由 CI 校验                                                                                                                                             |
+| 基础关键词搜索                                                 | ✅   | PR #16 接入六类公开内容、相关度排序、类型筛选及双视口验收                                                                                                               |
+| 手工 Radar                                                     | ✅   | PR #17 接入页面与可视化；[PR #19](https://github.com/hzense/tech-intelligence-hub/pull/19)增加评分说明、明确 Signal 引用与 HTTPS 原始来源                               |
+| 亮色与暗色主题                                                 | ✅   | Web Shell 已实现主题切换                                                                                                                                                |
+| CI 全部通过                                                    | ✅   | [PR #19 Checks](https://github.com/hzense/tech-intelligence-hub/pull/19/checks)验证生产依赖审计、构建、单测、内容/Seed、双视口 Radar 与真实 pgvector Migration 流程     |
+| Vercel 生产部署与域名                                          | ✅   | [`hzense.com`](https://hzense.com/) 已上线；HTTPS、HTTP → HTTPS 与 `www` → 根域名跳转均已验收                                                                           |
+| PostgreSQL 生产数据基线                                        | ✅   | PostgreSQL 18.6 / pgvector 0.8.6、受限迁移角色、迁移前快照、2 个 Migration 与 13 张表已在 2026-08-29 的真实 Neon direct TLS endpoint 验收；当前分支新增 `0002` 尚未执行 |
+| sitemap、robots、canonical metadata                            | ✅   | App Router metadata routes 与页面 canonical 由 PR #9 的 Playwright 测试自动验证                                                                                         |
 
 ## 当前风险与阻塞
 
-| 优先级 | 风险                                           | 处理方式                                                                                                       |
-| ------ | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| P1     | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程                                                                        |
-| P1     | Web runtime 尚未接入生产数据库                 | 先提交可重复评审的运行时权限脚本和数据库客户端，再配置独立最小权限凭据与健康检查；禁止复用迁移角色或默认 owner |
-| P1     | 生产日志与监控尚未落地                         | 验证 Vercel runtime logs、基础告警与后续数据库可观测性                                                         |
+| 优先级 | 风险                                           | 处理方式                                                                                                                                  |
+| ------ | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| P1     | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程                                                                                                   |
+| P1     | `0002` / Topic 同步器尚未合并，生产均未执行    | 先完成 PR CI 与合并，以人工验证的新备份 migrate / verify `0002`，再创建独立 Sync Role 执行双 fingerprint dry run → Apply → verify → no-op |
+| P1     | Web runtime 尚未接入生产数据库                 | 先提交可重复评审的运行时权限脚本和数据库客户端，再配置独立最小权限凭据与健康检查；禁止复用迁移角色或默认 owner                            |
+| P1     | 生产日志与监控尚未落地                         | 验证 Vercel runtime logs、基础告警与后续数据库可观测性                                                                                    |
 
 ## 进度更新规则
 
@@ -147,6 +161,7 @@
 
 | 日期       | 更新                                                                                                                                                                                              |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-30 | PR #29 合并 Topic 权威链：以 Taxonomy YAML 为 ID / 规范名 / primary parent / 跨域关系权威，Seed 拥有运行时状态，Content 作为本地化页面与完整门禁；PostgreSQL 仍是派生投影                         |
 | 2026-08-29 | 真实 Neon 生产实例保留未设置自动过期时间的手动快照 `pre-migration-2026-08-29T20:46:11Z`，完成 2 个 Migration、13 张表与 0 pending 独立复核；解除 Neon–Vercel 项目连接并确认集成数据库变量均不存在 |
 | 2026-08-29 | PR #24–#25 固定 PostgreSQL 18 / pgvector 0.8.6 生产合约与 Neon 代理 TLS 证据                                                                                                                      |
 | 2026-08-29 | PR #19 建立 Radar 评分级证据、精确一手来源、Information Model v2.0.0 与可回滚 PostgreSQL Migration 验证                                                                                           |

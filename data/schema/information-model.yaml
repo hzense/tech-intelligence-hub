@@ -252,10 +252,103 @@ taxonomy_model:
     localized_title: true
   database_projection:
     table: topics
+    coverage: complete_taxonomy
     table_status: implemented
-    synchronization_status: planned
-    synchronizer_implemented: false
+    schema_migration: db/migrations/0002_topic_projection.sql
+    production_schema_migration_status: not_executed
+    synchronization_status: implemented
+    synchronizer_implemented: true
+    production_sync_status: not_executed
     independently_editable: false
+    column_sources:
+      id: taxonomy.id
+      title: taxonomy.name
+      parent_id: taxonomy.primary_parent
+      status:
+        seed_topic: seed.status
+        taxonomy_only_fallback: watching
+      runtime_enabled: seed_member_and_status_not_archived
+    content_gate:
+      required_before_write: true
+      localized_content_synchronized: false
+    cross_domain_relations:
+      storage: taxonomy_yaml_only
+      database_synchronized: false
+    write_contract:
+      default_mode: dry_run
+      dry_run_persistence: rollback_after_write_verification
+      transaction: single
+      advisory_lock: migration_namespace
+      allowed_operations: [insert, update]
+      delete_allowed: false
+      unknown_database_ids: fail_closed
+      production_role: hzense_topic_sync
+      fingerprints:
+        source: authoritative_projection
+        plan: source_plus_current_managed_database_fields_and_insert_update_noop_sets
+        dry_run_outputs: [source, plan]
+        production_apply_check: after_advisory_and_table_lock_before_write
+      production_apply_requires:
+        [exact_source_fingerprint, exact_plan_fingerprint, operator_verified_backup_declaration]
+      backup_declaration:
+        environment: HZENSE_TOPIC_SYNC_BACKUP_ID
+        meaning: operator_verified_new_recoverable_backup
+        cli_validation: presence_and_format_only
+        provider_verification_by_cli: false
+        log_field: productionBackupDeclarationProvided
+        log_contains_backup_id: false
+      role_preflight:
+        public_schema_access: exact_allowlist
+        other_non_system_schema_access: forbidden
+        executable_security_definer_routines_in_non_system_schemas: forbidden
+        all_non_system_schema_checks:
+          [effective_relation_privileges, column_privileges, sequence_privileges, ownership]
+      role_configuration:
+        script: db/roles/configure_topic_sync.sql
+        role: hzense_topic_sync
+        role_preprovisioned_by: provider_or_local_cluster_administrator
+        contains_credentials: false
+        executor: current_database_and_migration_object_owner
+        target_database_resolution: quoted_current_database
+        migration_prerequisite: 0002_topic_projection.sql
+        advisory_lock: migration_namespace
+        atomic: true
+        public_database_revocations: [connect, create, temporary]
+        public_schema_revocations: [usage, create]
+        migration_owner_default_acl_scope: all_schemas_plus_public_overlays
+        allowed_direct_privileges:
+          database: [connect]
+          schema_public: [usage]
+          type_topic_status: [usage]
+          hzense_schema_migrations: [select]
+          topics: [select, insert, update]
+        local_requires_same_restricted_role: true
+        owner_or_migrator_url_accepted_by_sync_preflight: false
+        production_maintenance_window:
+          full_verify_then_role_config_then_dry_run_apply: same_window
+          owner_migrator_ddl: frozen
+      commands:
+        local_dry_run: db:sync:topics:local:dry-run
+        local_apply: db:sync:topics:local:apply
+        production_dry_run: db:sync:topics:production:dry-run
+        production_apply: db:sync:topics:production:apply
+      production_environment:
+        connection: HZENSE_TOPIC_SYNC_DATABASE_URL
+        expected_identity:
+          [
+            HZENSE_TOPIC_SYNC_EXPECTED_HOST,
+            HZENSE_TOPIC_SYNC_EXPECTED_PORT,
+            HZENSE_TOPIC_SYNC_EXPECTED_NAME,
+            HZENSE_TOPIC_SYNC_EXPECTED_USER,
+            HZENSE_TOPIC_SYNC_EXPECTED_POSTGRES_MAJOR,
+            HZENSE_TOPIC_SYNC_EXPECTED_CONNECTION_LIMIT,
+          ]
+        apply_guard:
+          [
+            HZENSE_TOPIC_SYNC_EXPECTED_FINGERPRINT,
+            HZENSE_TOPIC_SYNC_EXPECTED_PLAN_FINGERPRINT,
+            HZENSE_TOPIC_SYNC_BACKUP_ID,
+          ]
 
 data_consistency:
   - all_ids_unique
@@ -267,6 +360,13 @@ data_consistency:
   - content_topics_must_match_seed_status
   - content_topic_parent_must_match_taxonomy_when_present
   - all_public_topic_refs_must_resolve_to_non_archived_seed_topics
+  - database_topics_must_cover_complete_taxonomy
+  - database_topic_identity_and_parent_must_match_taxonomy
+  - database_topic_status_must_use_seed_or_watching_fallback
+  - database_topic_runtime_enabled_must_match_seed_membership_and_status
+  - database_topic_unknown_ids_must_fail_closed
+  - database_topic_sync_must_never_delete
+  - database_topic_sync_rerun_must_be_noop
   - public_signals_must_not_reference_archived_topics
   - radar_snapshots_must_not_reference_archived_topics
   - paper_entity_and_paper_note_content_must_use_distinct_ids

@@ -113,7 +113,7 @@ jobs:
         run: corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
-      - name: Verify restricted-role migrations and production contracts
+      - name: Verify restricted-role migrations, Topic sync and production contracts
         env:
           MIGRATION_TEST_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
         run: pnpm --filter @hzense/database test:migrations
@@ -125,7 +125,7 @@ jobs:
           {
             echo '## Database migration gate'
             echo "- Result: $JOB_STATUS"
-            echo '- Matrix: restricted migrator, full schema contract, idempotent rerun, lock contention, legacy upgrade and rollback'
+            echo '- Matrix: restricted migrator and Topic writer, full schema contract, idempotent reruns, lock contention, privilege isolation, legacy upgrade and rollback'
             echo '- Service: PostgreSQL 18 + administrator-preinstalled pgvector 0.8.6 (digest pinned)'
           } >> "$GITHUB_STEP_SUMMARY"
 

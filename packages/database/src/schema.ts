@@ -82,13 +82,23 @@ export const radarDomain = pgEnum('radar_domain', [
   'robotics',
 ]);
 
-export const topics = pgTable('topics', {
-  id: text('id').primaryKey(),
-  title: text('title').notNull(),
-  parentId: text('parent_id'),
-  status: topicStatus('status').notNull().default('watching'),
-  metadata: jsonb('metadata').notNull().default({}),
-});
+export const topics = pgTable(
+  'topics',
+  {
+    id: text('id').primaryKey(),
+    title: text('title').notNull(),
+    parentId: text('parent_id'),
+    status: topicStatus('status').notNull().default('watching'),
+    metadata: jsonb('metadata').notNull().default({}),
+    runtimeEnabled: boolean('runtime_enabled').notNull().default(false),
+  },
+  (t) => [
+    check(
+      'topics_runtime_enabled_status_ck',
+      sql`NOT ${t.runtimeEnabled} OR ${t.status} <> 'archived'`,
+    ),
+  ],
+);
 export const entities = pgTable(
   'entities',
   {

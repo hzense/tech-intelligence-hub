@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import { radarSnapshots, radarSnapshotSignals, signals, sources } from '../src/schema.js';
+import { radarSnapshots, radarSnapshotSignals, signals, sources, topics } from '../src/schema.js';
 
 function columnNames(table: Parameters<typeof getTableConfig>[0]): string[] {
   return getTableConfig(table).columns.map((column) => column.name);
@@ -41,5 +41,34 @@ describe('Radar evidence persistence schema', () => {
     expect(migration).toContain('radar_snapshot_signal_position_uq');
     expect(migration).toContain('INSERT INTO radar_snapshot_signals');
     expect(migration).toContain('requires at least one persisted evidence signal per snapshot');
+  });
+});
+
+describe('Topic runtime projection schema', () => {
+  it('keeps runtime eligibility separate from canonical Topic identity and status', () => {
+    const topicConfig = getTableConfig(topics);
+
+    expect(columnNames(topics)).toEqual([
+      'id',
+      'title',
+      'parent_id',
+      'status',
+      'metadata',
+      'runtime_enabled',
+    ]);
+    expect(topicConfig.checks.map((constraint) => constraint.name)).toContain(
+      'topics_runtime_enabled_status_ck',
+    );
+  });
+
+  it('ships an append-only migration with the reviewed runtime backfill', async () => {
+    const migration = await readFile(
+      resolve(process.cwd(), '../../db/migrations/0002_topic_projection.sql'),
+      'utf8',
+    );
+
+    expect(migration).toContain('ADD COLUMN runtime_enabled boolean NOT NULL DEFAULT false;');
+    expect(migration).toContain("SET runtime_enabled = status IN ('active', 'strategic');");
+    expect(migration).toContain("CHECK (NOT runtime_enabled OR status <> 'archived');");
   });
 });

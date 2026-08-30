@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { productionDatabaseOptions, validateConnectionTarget } from '../src/connection-policy.mjs';
+import {
+  productionDatabaseOptions,
+  topicSyncProductionOptions,
+  validateConnectionTarget,
+} from '../src/connection-policy.mjs';
 
 const productionPolicy = {
   connectionString:
@@ -208,5 +212,28 @@ describe('database connection policy', () => {
       profile: 'production',
       expectedPostgresMajor: 18,
     });
+  });
+
+  it('builds an isolated Topic sync connection policy', () => {
+    const options = topicSyncProductionOptions({
+      DATABASE_DIRECT_URL: productionPolicy.connectionString,
+      HZENSE_TOPIC_SYNC_DATABASE_URL:
+        'postgresql://hzense_topic_sync:secret@db.example.com:5432/hzense?sslmode=verify-full',
+      HZENSE_TOPIC_SYNC_EXPECTED_HOST: 'db.example.com',
+      HZENSE_TOPIC_SYNC_EXPECTED_PORT: '5432',
+      HZENSE_TOPIC_SYNC_EXPECTED_NAME: 'hzense',
+      HZENSE_TOPIC_SYNC_EXPECTED_USER: 'hzense_topic_sync',
+      HZENSE_TOPIC_SYNC_EXPECTED_CONNECTION_LIMIT: '2',
+    });
+
+    expect(options).toMatchObject({
+      profile: 'production',
+      configurationPrefix: 'HZENSE_TOPIC_SYNC',
+      expectedConnectionLimit: 2,
+      expectedPostgresMajor: 18,
+    });
+    expect(options.connectionString).toContain('hzense_topic_sync');
+    expect(options.connectionString).not.toBe(productionPolicy.connectionString);
+    expect(validateConnectionTarget(options)).toMatchObject({ user: 'hzense_topic_sync' });
   });
 });
