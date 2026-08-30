@@ -952,7 +952,7 @@ Cybersecurity
 ├── Software Supply Chain Security
 └── Hardware Security
 
-related_to → AI Security (primary parent: Artificial Intelligence)
+AI Security → related_to → Cybersecurity (primary parent: Artificial Intelligence)
 ```
 
 `AI Security` 作为跨域 Topic，primary parent 设在 Artificial Intelligence；Cybersecurity 侧通过 `related_to` 建立关联。
