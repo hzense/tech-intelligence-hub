@@ -9,6 +9,11 @@ describe('database catalog expression canonicalization', () => {
       ),
     ).toBe('confidence>=0andconfidence<=1');
     expect(canonicalCatalogExpression("'watching'::topic_status")).toBe("'watching'");
+    expect(
+      canonicalCatalogExpression(
+        "CHECK ((NOT runtime_enabled) OR (status <> 'archived'::topic_status))",
+      ),
+    ).toBe("notruntime_enabledorstatus<>'archived'");
     expect(canonicalCatalogExpression('now()')).toBe('now');
     expect(canonicalCatalogExpression('CHECK (("position" >= 0))')).toBe('"position">=0');
   });

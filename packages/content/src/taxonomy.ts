@@ -40,10 +40,20 @@ export interface TaxonomyCatalog {
   topicById: ReadonlyMap<string, TaxonomyTopic>;
 }
 
+export type TopicProjectionStatus = 'watching' | 'active' | 'strategic' | 'archived';
+
+export interface TopicDatabaseProjection {
+  id: string;
+  title: string;
+  parentId: string | null;
+  status: TopicProjectionStatus;
+  runtimeEnabled: boolean;
+}
+
 interface SeedTopicProjection {
   id: string;
   title: string;
-  status: string;
+  status: TopicProjectionStatus;
 }
 
 const taxonomyNodeSchema: z.ZodType<TaxonomyNode> = z.lazy(() =>
@@ -137,7 +147,14 @@ export function validateSeedTopicProjection(
   seedTopics: readonly SeedTopicProjection[],
   taxonomy: TaxonomyCatalog,
 ): void {
+  const seedTopicIds = new Set<string>();
+
   for (const seedTopic of seedTopics) {
+    if (seedTopicIds.has(seedTopic.id)) {
+      throw new Error(`Duplicate Seed Topic id: ${seedTopic.id}`);
+    }
+    seedTopicIds.add(seedTopic.id);
+
     const taxonomyTopic = taxonomy.topicById.get(seedTopic.id);
     if (!taxonomyTopic) {
       throw new Error(`Seed Topic ${seedTopic.id} is not defined in Taxonomy`);
@@ -148,6 +165,28 @@ export function validateSeedTopicProjection(
       );
     }
   }
+}
+
+export function buildTopicDatabaseProjection(
+  taxonomy: TaxonomyCatalog,
+  seedTopics: readonly SeedTopicProjection[],
+): TopicDatabaseProjection[] {
+  validateSeedTopicProjection(seedTopics, taxonomy);
+  const seedTopicById = new Map(seedTopics.map((topic) => [topic.id, topic]));
+
+  return taxonomy.topics
+    .map((taxonomyTopic): TopicDatabaseProjection => {
+      const seedTopic = seedTopicById.get(taxonomyTopic.id);
+
+      return {
+        id: taxonomyTopic.id,
+        title: taxonomyTopic.name,
+        parentId: taxonomyTopic.parentId,
+        status: seedTopic?.status ?? 'watching',
+        runtimeEnabled: seedTopic !== undefined && seedTopic.status !== 'archived',
+      };
+    })
+    .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
 }
 
 export function validateTopicContentProjection(

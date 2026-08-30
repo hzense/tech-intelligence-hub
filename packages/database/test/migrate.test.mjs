@@ -18,6 +18,7 @@ describe('database migration runner', () => {
     expect(migrations.map((migration) => migration.name)).toEqual([
       '0000_foundation.sql',
       '0001_radar_evidence.sql',
+      '0002_topic_projection.sql',
     ]);
     expect(migrations.every((migration) => migration.checksum.length === 64)).toBe(true);
     await expect(verifyMigrationManifest(migrations)).resolves.toBeUndefined();
@@ -27,13 +28,14 @@ describe('database migration runner', () => {
     const migrations = [
       { name: '0000_foundation.sql', checksum: 'a', sql: 'first' },
       { name: '0001_radar_evidence.sql', checksum: 'b', sql: 'second' },
+      { name: '0002_topic_projection.sql', checksum: 'c', sql: 'third' },
     ];
 
     expect(
       planPendingMigrations(migrations, [{ name: '0000_foundation.sql', checksum: 'a' }]).map(
         (migration) => migration.name,
       ),
-    ).toEqual(['0001_radar_evidence.sql']);
+    ).toEqual(['0001_radar_evidence.sql', '0002_topic_projection.sql']);
     expect(() =>
       planPendingMigrations(migrations, [{ name: '0000_foundation.sql', checksum: 'changed' }]),
     ).toThrow(/Checksum mismatch/);

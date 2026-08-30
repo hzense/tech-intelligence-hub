@@ -7,7 +7,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test",
     "test": "vitest run --passWithNoTests",
-    "test:migrations": "node test/require-integration-env.mjs && vitest run test/migration.integration.test.mjs",
+    "test:migrations": "node test/require-integration-env.mjs && vitest run test/migration.integration.test.mjs test/topic-sync.integration.test.mjs && vitest run test/topic-sync-role.integration.test.mjs",
     "db:preflight:production": "node src/preflight.mjs",
     "db:migrate": "node src/production-migrate.mjs",
     "db:migrate:local": "node src/local-migrate.mjs",

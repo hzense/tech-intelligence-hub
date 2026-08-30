@@ -47,7 +47,7 @@ HZense 采用“Git/Markdown 为知识资产源，PostgreSQL 为索引与关系�
 - **Taxonomy YAML** = Topic ID、英文规范名、primary parent 与跨域关系的 Source of Truth。
 - **Seed Topics** = Taxonomy 的受控运行时子集，并拥有 Topic `status`。
 - **Git / Markdown** = 正式内容正文与本地化 Topic 页面的 Source of Truth。
-- **PostgreSQL** = Entity / Relation / Index / Radar / operational data 的 Source of Truth；`topics` 是 Taxonomy 的未来同步投影，同步器尚未实现。
+- **PostgreSQL** = Entity / Relation / Index / Radar / operational data 的 Source of Truth；`topics` 是完整 Taxonomy 的派生投影，仓库同步器已实现但生产同步尚未执行。
 - 网站 = Presentation + Intelligence Application Layer。
 
 不把所有关系塞进 YAML，也不把所有正式正文锁进数据库或 CMS。
@@ -124,6 +124,25 @@ Operational Data：Signals、Radar snapshots、Search metadata、Ingestion jobs�
 Paper 是客观论文 Entity；HZense 对论文的解读正文以 PaperNote Content 保存。
 
 Drizzle Schema 描述当前物理模型；实际变更只通过 `db/migrations/` 中经过评审的顺序 SQL 执行。`pnpm db:migrate` 是生产安全入口，会先校验 direct endpoint、TLS、受限角色、pgvector 与迁移历史；本地开发必须显式使用 `pnpm db:migrate:local`。两者共享 PostgreSQL advisory lock、逐文件事务、不可变 checksum manifest 与 SHA-256 历史记录；已执行迁移不可修改。生产入口拒绝采纳未跟踪的旧 `0000` Schema；此类遗留库只能进入单独评审的 break-glass 流程，未知数据必须先补齐来源与证据字段。
+
+### 7.1 Topic 派生投影
+
+```text
+data/taxonomy/taxonomy.yaml ─┐
+data/seed/topics.yaml ───────┼─→ Authority + Content completeness gate
+content/topics/**/*.{md,mdx} ─┘                 ↓
+                              Deterministic projection + source fingerprint
+                                                   ↓
+                             Transactional plan + database-state fingerprint
+                                                   ↓
+                                         PostgreSQL public.topics
+```
+
+投影覆盖完整 Taxonomy。`id`、英文 `title` 与 `parent_id` 来自 Taxonomy；Seed 覆盖 `status`，Taxonomy-only Topic 回退为 `watching`；`runtime_enabled` 只在 Topic 存在于 Seed 且不是 archived 时为真。Content 只参与写前门禁，本地化字段和正文不进入数据库；跨域 Topic 关系本阶段继续只保存在 YAML。
+
+同步器默认执行不持久化的 dry run：它输出只绑定权威投影的 source fingerprint，以及绑定当前数据库托管字段与 insert/update/no-op 计划的 plan fingerprint，在单一事务内执行拟议 DML 与校验后回滚；Apply 才提交同一事务。两种模式均复用 Migration advisory lock，只执行 insert/update。生产 Apply 在取得 advisory lock 与 table lock 后、写入前重新计算并同时匹配两个 reviewed fingerprint；数据库出现未知 Topic ID 或 dry run 后发生计划漂移时 fail closed，绝不自动删除。Apply 必须由独立的 `hzense_topic_sync` 角色执行，并携带操作者已经在 provider 侧验证的新备份 ID 声明；CLI 只检查声明格式与存在性，不能证明备份可恢复。Migrator、Topic Sync Writer 和未来 Runtime Reader 是三个互不复用的权限边界。
+
+`runtime_enabled` 及其状态约束由 `0002_topic_projection.sql` 引入。仓库目标 Schema 已包含该 Migration，但截至 2026-08-30 生产仍只有此前验收的两个 Migration；必须先以 Migrator 应用并验证 `0002`，再使用 Topic Sync Writer 执行投影 DML。
 
 ## 8. Search 与 Vector
 
@@ -296,13 +315,13 @@ Local         http://localhost:3000
 
 ## 18. 下一步
 
-1. 建立 Repository Skeleton。
-2. 建立 PostgreSQL / Drizzle Physical Schema 与 Migration Baseline。
-3. 建立 TypeScript + Zod 可执行内容校验。
-4. 建立 Seed Data 与引用一致性校验。
-5. 固化 pnpm / Turborepo / TypeScript / ESLint / Prettier / Vitest / Playwright / CI 工程规范。
-6. 初始化 Next.js + TypeScript + Tailwind + Drizzle。
-7. 完成首个可部署 MVP 后绑定 `hzense.com`。
+1. 完成 Topic 全量投影同步器的最终评审、CI 与合并。
+2. 以经人工验证的新备份应用并验证生产 `0002`，再用独立 `hzense_topic_sync` 角色完成双 fingerprint dry run、受保护 Apply、独立验证与 no-op 重跑。
+3. 评审并配置独立 Runtime Reader、Server-only 客户端、安全健康检查和一条有上限的真实只读查询。
+4. 建立连接数、池等待、查询延迟、超时和错误告警。
+5. 在稳定数据路径上继续 PostgreSQL FTS、Hybrid Search 与 Ask HZense / RAG。
+
+截至 2026-08-30，步骤 1 的仓库实现位于待合并分支；步骤 2–5 均未完成，不能用本地测试或历史 Migration 验收替代生产证据。
 
 ---
 

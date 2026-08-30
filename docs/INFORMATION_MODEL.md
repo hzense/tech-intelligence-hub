@@ -10,7 +10,7 @@
 
 **项目：** HZense — Technology Intelligence
 
-本次修订将既有的 Taxonomy 权威规则固化为 Taxonomy → Seed → Content 可执行门禁，不改变 Source of Truth，因此保持 v2.0.0。
+本次修订将既有的 Taxonomy 权威规则固化为 Taxonomy → Seed → Content 可执行门禁，并定义其完整 PostgreSQL 派生投影；Source of Truth 未改变，因此保持 v2.0.0。
 
 ---
 
@@ -872,7 +872,7 @@ Taxonomy 是 HZense 的正式分类体系。
 - [`data/taxonomy/taxonomy.yaml`](../data/taxonomy/taxonomy.yaml) 是 Topic ID、英文规范名、primary parent 和跨域关系的唯一权威。
 - [`data/seed/topics.yaml`](../data/seed/topics.yaml) 只能选择 Taxonomy 中的运行时子集并补充 `status`；其 ID 与英文标题不得覆盖 Taxonomy。
 - `content/topics/` 下的 Markdown / MDX 只保存已启用 Topic 的本地化页面、展示字段与正文；目录可递归组织，每个非 archived Seed Topic 必须恰有一个页面，状态必须与 Seed 一致，显式 `parent` 必须与 Taxonomy 一致。
-- PostgreSQL `topics` 是未来同步投影，不反向拥有或修改 Taxonomy。
+- PostgreSQL `topics` 是完整 Taxonomy 的派生投影，不反向拥有或修改 Taxonomy；仓库同步器已经实现，但生产同步尚未执行。
 
 ---
 
@@ -1221,7 +1221,7 @@ Search Document 是派生数据，不是 Source of Truth。
 - 13 张持久表：12 张领域或派生数据表，以及 1 张 Migration 历史表。
 - 9 个 PostgreSQL Enum。
 - `vector` 扩展，以及 `search_documents.embedding vector(1536)`。
-- 两个已登记 Migration：`0000_foundation.sql` 与 `0001_radar_evidence.sql`。
+- 仓库 Migration manifest 登记三个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql` 与 `0002_topic_projection.sql`；这描述目标 Schema，不等同于生产已全部执行。
 
 物理结构的权威顺序如下：
 
@@ -1237,7 +1237,7 @@ Git / Markdown 仍是 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 
 
 | 领域               | 表                         | 职责与关键字段                                                                                      | 主键、唯一约束与核心关系                                                                          |
 | ------------------ | -------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Taxonomy           | `topics`                   | Topic 标识、标题、可选 `parent_id`、状态和 JSONB 元数据                                             | PK `id`；`parent_id` 当前不是自引用外键                                                           |
+| Taxonomy           | `topics`                   | Topic 标识、标题、可选 `parent_id`、状态、`runtime_enabled` 和 JSONB 元数据                         | PK `id`；`parent_id` 当前不是自引用外键                                                           |
 | Entity Graph       | `entities`                 | Person、Company、Technology、Model 等实体；别名以内联 `text[]` 保存                                 | PK `id`                                                                                           |
 | Source             | `sources`                  | 来源类型、主页、可信度、启用状态和允许的证据域名                                                    | PK `id`                                                                                           |
 | Signal             | `signals`                  | 事件时间、来源、精确证据 URL、摘要、重要度、强度、置信度、新颖度和状态                              | PK `id`；`source_id` FK → `sources.id`                                                            |
@@ -1284,6 +1284,7 @@ radar_snapshots N ───── N signals
 - `relations.confidence` 为 `0..1`。
 - `radar_snapshots.attention` 为 `0..100`，`confidence` 为 `0..1`，`reasoning` 去除空白后不得为空。
 - `radar_snapshot_signals.position` 必须非负，并且同一 Snapshot 内不得重复。
+- `topics.runtime_enabled` 为非空布尔值，由同步器按 Seed 成员身份与非 archived 状态确定。
 - `hzense_schema_migrations.checksum` 长度必须为 64。
 
 显式查询索引覆盖：
@@ -1323,6 +1324,8 @@ radar_snapshots N ───── N signals
 | `embeddings`         | 未独立建表；向量内联在 `search_documents.embedding`。                                                                                                                   |
 | `ingestion_jobs`     | 尚未实现。                                                                                                                                                              |
 | Topic 层级           | `topics.parent_id` 是 Taxonomy primary parent 的数据库投影；父级存在性、唯一性与循环由 Taxonomy 门禁保证，同步不得生成不同层级。                                        |
+| Topic 运行时启用     | `topics.runtime_enabled` 仅当 Topic 存在于 Seed 且 Seed 状态不是 `archived` 时为 `true`；Taxonomy-only Topic 为 `false`。                                               |
+| Topic 跨域关系       | 本阶段仍只存在于正式 Taxonomy YAML；物理数据库尚无 `topic_relations` 表，同步器不把关系塞入 Entity `relations` 或 Topic `metadata`。                                    |
 | Search Document 来源 | `search_documents.source_id` 可以引用不同内容类型，因此当前不绑定单一数据库外键；该表是可重建派生数据。                                                                 |
 | Radar 证据资格       | 数据库保证外键、唯一性和位置范围；其余跨表资格规则由 Migration 审计和生产 Verifier 检测。未来运行时写入路径必须额外提供事务化保证，当前数据库本身不会持续阻止此类违规。 |
 | 正文存储             | Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文继续保存在 Git / Markdown。                                                                                    |
@@ -1330,7 +1333,32 @@ radar_snapshots N ───── N signals
 
 物理表已经存在不代表 Web Runtime 已经接入数据库；运行时连接、权限和发布状态以 [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md) 为准。
 
-## 40.7 Schema 演进规则
+## 40.7 Topic 派生投影同步合约
+
+PostgreSQL `topics` 投影完整 Taxonomy，而不是只投影 Seed 子集。列所有权固定如下：
+
+- `id`、`title`、`parent_id` 分别来自 Taxonomy 的 `id`、英文规范名和 primary parent。
+- Topic 存在于 Seed 时，`status` 使用 Seed 状态；Taxonomy-only Topic 回退为 `watching`。
+- `runtime_enabled = true` 当且仅当 Topic 存在于 Seed 且状态不是 `archived`。
+- Topic Markdown / MDX 必须先通过页面覆盖、状态和显式 parent 完整门禁，但本地化标题、展示字段与正文不进入 PostgreSQL。
+- `cross_domain_relations` 本阶段仍只保存在 Taxonomy YAML；同步器不创建隐式数据库关系。
+
+同步器一次运行只接受同一 Git 工作树生成的确定性输入，并区分两类 SHA-256：source fingerprint 只绑定权威投影；plan fingerprint 同时绑定 source fingerprint、当前数据库托管字段，以及 insert / update / no-op 行集。它遵守以下写入边界：
+
+1. 默认运行不持久化的 dry run：在事务内计算并输出 source 与 plan fingerprint，执行拟议 DML 与写后校验，随后强制回滚。
+2. Apply 在一个事务中完成，并复用 Migration advisory lock；取得 advisory lock 与 `topics` table lock 后，必须在任何写入前重新计算并精确匹配 source 与 plan fingerprint，避免输入或 dry run 后的 Topic 托管字段与计划漂移。物理 Schema 完整性由同一维护窗口内先行执行的 `db:verify:production` 保证。
+3. 只允许 `INSERT` 与权威列 `UPDATE`，绝不 `DELETE`、`TRUNCATE` 或修改 Schema。
+4. 如果数据库存在 Taxonomy 之外的 Topic ID，立即 fail closed，不自动删除、归档或接管未知数据。
+5. 生产 Apply 必须通过 `HZENSE_TOPIC_SYNC_EXPECTED_FINGERPRINT` 提供完全匹配的 source fingerprint，通过 `HZENSE_TOPIC_SYNC_EXPECTED_PLAN_FINGERPRINT` 提供完全匹配的 plan fingerprint，并通过 `HZENSE_TOPIC_SYNC_BACKUP_ID` 提供操作者已验证本次新备份后的 backup ID 声明；执行角色固定为独立最小权限 `hzense_topic_sync`。
+6. CLI 只校验 backup ID 声明的存在性与格式，不调用 provider，也不证明备份存在或可恢复；provider 侧的创建、列出与恢复验证必须由操作者在 Apply 前独立完成。
+7. 生产预检必须拒绝 `hzense_topic_sync` 访问 `public` 之外任何非系统 Schema，或执行任何非系统 Schema 中的 `SECURITY DEFINER` routine；有效 relation/table 权限、列级权限、Sequence 权限与 Schema 对象 ownership 检查覆盖所有非系统 Schema。
+8. Apply 后必须独立验证完整行集和列值，再次运行必须生成 no-op 计划，才能证明幂等。
+
+仓库实现与本地测试完成不代表生产已同步。当前生产状态为 `not_executed`；真实角色、备份、dry run、Apply、独立验证和 no-op 重跑均以 [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md) 的现场证据为准。
+
+`runtime_enabled` 由 `0002_topic_projection.sql` 引入。该 Migration 先以 `false` 创建非空列，再将已有 `active` / `strategic` 行回填为 `true`，最后增加“archived 不得启用”的检查约束；完整 Taxonomy 同步随后用权威投影覆盖最终状态。截至 2026-08-30，仓库 Schema 已包含 `0002`，但生产 Migration 和生产 Topic 同步均为 `not_executed`。
+
+## 40.8 Schema 演进规则
 
 - 已应用 Migration 只追加、不修改；文件 Checksum 固定在 [`db/migrations/checksums.json`](../db/migrations/checksums.json)。
 - 新表、列、Enum 值、约束、索引或权限策略必须通过新的顺序 Migration 引入。

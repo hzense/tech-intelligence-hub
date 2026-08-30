@@ -44,7 +44,7 @@ Daily candidates are generated deterministically from reviewed Signals, validate
 > **Git / Markdown = content Source of Truth**  
 > **PostgreSQL = entity / relation / signal / index Source of Truth**
 
-`data/taxonomy/taxonomy.yaml` is the Source of Truth for Topic IDs, canonical English names, primary-parent hierarchy and cross-domain relations. `data/seed/topics.yaml` is its validated operational subset and owns runtime status; Markdown/MDX files under `content/topics/` own localized Topic pages and body content only. PostgreSQL `topics` is the planned synchronized projection, not an independently edited Topic authority; the synchronizer is not implemented yet.
+`data/taxonomy/taxonomy.yaml` is the Source of Truth for Topic IDs, canonical English names, primary-parent hierarchy and cross-domain relations. `data/seed/topics.yaml` is its validated operational subset and owns runtime status; Markdown/MDX files under `content/topics/` own localized Topic pages and body content only. PostgreSQL `topics` is a complete derived projection of the Taxonomy, populated only by the reviewed synchronizer and never edited as an independent Topic authority. The synchronizer is implemented in the repository; production synchronization has not been executed.
 
 ## Repository structure
 
@@ -131,7 +131,11 @@ Next phase:
 - [x] Connect deterministic Daily candidate generation and validate a real dry-run artifact
 - [ ] Enable organization policy for automatic Continuous Daily Draft PR creation
 - [x] Provision managed PostgreSQL 18 / pgvector 0.8.6
-- [x] Complete and independently verify the production database migration
+- [x] Complete and independently verify the initial production database migration (`0000`–`0001`)
+- [x] Enforce the Taxonomy → Seed → Content authority chain
+- [ ] Merge and independently verify the complete Topic projection synchronizer
+- [ ] Apply and verify `0002_topic_projection.sql` in production
+- [ ] Execute and independently verify the first production Topic synchronization
 - [ ] Add the reviewed runtime database integration, health checks and observability
 
 ## Local foundation checks
@@ -149,9 +153,34 @@ pnpm seed:validate
 
 The first dependency install should commit `pnpm-lock.yaml`. After that, CI should switch to a frozen lockfile install.
 
+## Topic database projection contract
+
+PostgreSQL projects every Topic in the authoritative Taxonomy. `topics.id`, `topics.title` and `topics.parent_id` come from Taxonomy; `topics.status` comes from Seed when present and otherwise falls back to `watching`. `topics.runtime_enabled` is true only when the Topic exists in Seed and its Seed status is not `archived`.
+
+Topic Markdown/MDX is a mandatory completeness and consistency gate before a write, but localized titles, display fields and body content are never copied into `topics`. Cross-domain Topic relations remain authoritative only in `data/taxonomy/taxonomy.yaml` in this phase because the physical database has no `topic_relations` table.
+
+The synchronizer is transactional, reuses the Migration advisory-lock namespace, and performs inserts and updates only. It never deletes Topic rows, and it fails closed if PostgreSQL contains an ID outside the authoritative Taxonomy. Its default mode is a non-persistent dry run: the transaction exercises the planned DML and verification, then rolls back. The result includes a source `fingerprint` for the authoritative projection and a `planFingerprint` bound to the current managed database fields plus the insert/update/no-op partition. Production apply requires both reviewed fingerprints and an operator declaration naming a newly created, independently verified backup, and must authenticate as the dedicated least-privilege `hzense_topic_sync` role rather than the Migration or Web Runtime role. Its preflight rejects access to every non-system Schema other than the exact `public` allowlist and any executable `SECURITY DEFINER` routine in a non-system Schema; effective relation, column and Sequence privileges plus object ownership are audited across all non-system Schemas. After acquiring the shared advisory lock and table lock, Apply recomputes and matches both fingerprints before any write, so source or managed Topic drift after dry run fails closed. Physical-Schema integrity is established separately by `db:verify:production` in the same maintenance window. Repository implementation does not imply production execution; the live status and guarded procedure are maintained in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+The provider/cluster administrator must pre-create `hzense_topic_sync`; the reviewed, secret-free [`db/roles/configure_topic_sync.sql`](db/roles/configure_topic_sync.sql) is then run as the explicit database/Migration owner. It validates the fixed role and `0002`, uses the shared advisory lock and a transaction, revokes ambient `PUBLIC` database/schema/data ACLs in `current_database()`, closes that owner's future-object PUBLIC defaults across the database, and installs only the reviewed writer grants. Because these revocations affect every non-owner login relying on ambient or owner-default access in that database, other roles require separate reviewed direct grants. The full owner-side production verifier, ACL configuration, restricted-role dry run and Apply belong to one DDL-frozen maintenance window; the restricted preflight does not replace the full verifier.
+
+The reviewed entry points are intentionally explicit:
+
+```bash
+pnpm db:sync:topics:local:dry-run
+pnpm db:sync:topics:local:apply
+pnpm db:sync:topics:production:dry-run
+pnpm db:sync:topics:production:apply
+```
+
+Production uses `HZENSE_TOPIC_SYNC_DATABASE_URL` plus independently configured `HZENSE_TOPIC_SYNC_EXPECTED_HOST`, `HZENSE_TOPIC_SYNC_EXPECTED_PORT`, `HZENSE_TOPIC_SYNC_EXPECTED_NAME`, `HZENSE_TOPIC_SYNC_EXPECTED_USER`, `HZENSE_TOPIC_SYNC_EXPECTED_POSTGRES_MAJOR` and `HZENSE_TOPIC_SYNC_EXPECTED_CONNECTION_LIMIT`. Apply additionally requires `HZENSE_TOPIC_SYNC_EXPECTED_FINGERPRINT`, `HZENSE_TOPIC_SYNC_EXPECTED_PLAN_FINGERPRINT` and `HZENSE_TOPIC_SYNC_BACKUP_ID`. The CLI validates only that the backup declaration is present and syntactically valid; it cannot call the provider or prove recoverability, which remains an operator gate. Values and credentials must never be committed or printed.
+
+Local Topic sync is equally strict: use a dedicated loopback database, pre-create the same `NOINHERIT CONNECTION LIMIT 2` role, run the reviewed ACL script as that database's Migration owner, then put the restricted role's URL in `HZENSE_TOPIC_SYNC_DATABASE_URL`. A normal `postgres`, owner or Migrator URL is intentionally rejected. Exact local and production setup commands and the database-wide `PUBLIC` ACL impact are documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#本地-topic-同步角色).
+
 ## Database migration contract
 
 `packages/database/src/schema.ts` is the Drizzle physical-schema declaration. Executable migrations are reviewed, sequential `NNNN_name.sql` files in `db/migrations/`; their immutable SHA-256 values are recorded in `db/migrations/checksums.json`. The runner applies each file in a transaction, serializes concurrent runs, and records the checksum in `hzense_schema_migrations`. Applied files must never be edited.
+
+The repository Schema now contains three Migrations. `0002_topic_projection.sql` adds `topics.runtime_enabled` and its status constraint; it must be applied and verified before any Topic projection DML. The last production evidence still covers only the first two Migrations, so `0002` and the first production Topic sync remain `not_executed`.
 
 Local development uses only a literal loopback PostgreSQL URL:
 
