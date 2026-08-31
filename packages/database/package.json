@@ -7,8 +7,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test",
     "test": "vitest run --passWithNoTests",
-    "test:migrations": "node test/require-integration-env.mjs && vitest run test/migration.integration.test.mjs test/topic-sync.integration.test.mjs test/topic-projection-verify.integration.test.mjs && vitest run test/topic-sync-role.integration.test.mjs",
+    "test:migrations": "node test/require-integration-env.mjs && vitest run test/migration.integration.test.mjs test/topic-sync.integration.test.mjs test/topic-projection-verify.integration.test.mjs && vitest run test/topic-sync-role.integration.test.mjs && vitest run test/runtime-reader-role.integration.test.mjs",
     "db:preflight:production": "node src/preflight.mjs",
+    "db:preflight:runtime:production": "node src/runtime-reader-preflight.mjs",
     "db:migrate": "node src/production-migrate.mjs",
     "db:migrate:local": "node src/local-migrate.mjs",
     "db:verify:production": "node src/preflight.mjs && node src/verify.mjs",
@@ -16,7 +17,7 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
-    "pg": "^8.22.0"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "typescript": "^5.9.2",
