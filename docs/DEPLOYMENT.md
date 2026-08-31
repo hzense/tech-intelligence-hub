@@ -166,7 +166,7 @@ Web 只在 `VERCEL_ENV=production` 的请求时延迟创建 server-only `pg.Pool
 
 健康检查固定为动态 Node.js 路由 `/api/health/database`，最长执行 10 秒，为 3.5 秒连接超时与 3 秒客户端查询超时保留平台收尾余量；不得把 `statement_timeout` 或其他 Neon PgBouncer 不支持的参数放进 startup packet。项目级 [`apps/web/vercel.json`](../apps/web/vercel.json) 把该 Function 固定到 `iad1`，不依赖已经弃用的 route-level region export。成功只返回 HTTP 200 与 `{"status":"ok"}`；失败只返回 HTTP 503 与 `{"status":"unavailable"}`，并设置 `Retry-After: 5`。两种响应都必须使用 `Cache-Control: no-store`。结构化日志仅允许事件、结果、耗时、request ID、安全错误码、SQLSTATE 与连接池 total / idle / waiting 计数；禁止记录 URL、host、database、user、SQL、参数或原始异常。
 
-本准备分支建立可评审的 Runtime Reader 仓库边界。Neon 基础治理已有现场证据：已创建一份新的七天分支备份并盘点角色/数据库 ACL；`hzense_runtime` 已设置 `default_transaction_read_only = on`；未使用的 `neondb` 已撤销 ambient `PUBLIC CONNECT` / `CREATE` / `TEMPORARY`。这些动作不等于 Runtime Reader 已上线：目标 `hzense` ACL、独立 Runtime 凭据、受保护生产 preflight、Vercel Production 变量、重部署、线上 health、真实五列查询和日志验证仍未完成。
+Runtime Reader 仓库边界已通过 PR #32–#35 合并并由 CI 验证。Neon 基础治理已有现场证据：已创建一份新的七天分支备份并盘点角色/数据库 ACL；`hzense_runtime` 已设置 `default_transaction_read_only = on`；未使用的 `neondb` 已撤销 ambient `PUBLIC CONNECT` / `CREATE` / `TEMPORARY`。这些动作不等于 Runtime Reader 已上线：目标 `hzense` ACL、独立 Runtime 凭据、受保护生产 preflight、Vercel Production 变量、重部署、线上 health、真实五列查询和日志验证仍未完成。`production-health.yml` 的小时级调度由仓库变量 `PRODUCTION_DATABASE_HEALTH_ENABLED` 控制；首次验收前不得设为 `true`，但维护窗口可以手工触发。
 
 `hzense_migrator` 是维护角色而不是 Web Runtime。Neon Tables 曾用满其旧 `CONNECTION LIMIT 5` 并触发 `53300`，因此本次将运维上限调整为 10，为 provider Web 工具和一次受控维护保留余量。该决定不向 Runtime Reader 授权、不改变 `hzense_runtime` 的 limit 20，也不改变 Web 进程池上限 1；如再次出现容量错误，应先检查 `pg_stat_activity`、连接来源与池行为，而不是继续无界提高上限。
 
@@ -193,8 +193,9 @@ Runtime ACL 脚本包含目标数据库范围的 destructive ACL normalization�
 6. ⏳ 仅在 Vercel Production 配置 Web 请求时需要的 URL、expected host / port / database / user；PostgreSQL major 与 connection limit 留在部署前 preflight 环境，不注入 Preview / CI，也不要求 Web 每请求查询 catalog。
 7. ⏳ 触发新的 Production Deployment，等待对应已合并 commit 达到 `READY`；构建本身不得建立数据库连接。
 8. ⏳ 独立冷/热请求 `/api/health/database`，验证 HTTP 200、正文精确为 `{"status":"ok"}`、`Cache-Control` 包含 `no-store` 且无失败态 `Retry-After`，再验证真实五列查询、池上限和安全日志。任何 503、host/database/user/SQL/参数/原始错误/凭据泄漏，或缺少对应运行时日志证据都视为失败。
+9. ⏳ 只有步骤 8 全部通过后，才将 GitHub 仓库变量 `PRODUCTION_DATABASE_HEALTH_ENABLED` 设置为 `true`，启用 `production-health.yml` 的小时级检查；首次启用后立即手工运行一次并确认成功。该变量不是凭据，不得替代 Vercel Production 的五个 Runtime 配置值。
 
-回滚材料必须先于 destructive ACL normalization 建立。若步骤 4–5 失败，停止发布，不向 Vercel 写入变量；按受保护的 pre-change ACL 记录恢复授权，必要时从本次七天 provider 分支恢复。若步骤 6–8 失败，先移除五个 Runtime Reader Production 变量并重部署上一已知健康 commit，再轮换 Runtime 凭据；若放弃本次接入，再恢复目标 ACL。七天备份到期前必须完成验收或明确执行恢复/重新备份，不能把已过期分支当作回滚证据。
+回滚材料必须先于 destructive ACL normalization 建立。若步骤 4–5 失败，停止发布，不向 Vercel 写入变量；按受保护的 pre-change ACL 记录恢复授权，必要时从本次七天 provider 分支恢复。若步骤 6–8 失败，保持或恢复 `PRODUCTION_DATABASE_HEALTH_ENABLED=false`，先移除五个 Runtime Reader Production 变量并重部署上一已知健康 commit，再轮换 Runtime 凭据；若放弃本次接入，再恢复目标 ACL。七天备份到期前必须完成验收或明确执行恢复/重新备份，不能把已过期分支当作回滚证据。
 
 ## 首次上线顺序
 

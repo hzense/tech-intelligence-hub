@@ -97,6 +97,15 @@ for (const jobId of ['foundation', 'database-migrations', 'daily-publication-gat
   if (!ci.jobs?.[jobId]) issues.push(`ci.yml: missing required gate job ${jobId}`);
 }
 
+const productionHealth = parse(await readFile(join(workflowRoot, 'production-health.yml'), 'utf8'));
+const productionHealthCondition =
+  "github.event_name == 'workflow_dispatch' || vars.PRODUCTION_DATABASE_HEALTH_ENABLED == 'true'";
+if (productionHealth.jobs?.['database-health']?.if !== productionHealthCondition) {
+  issues.push(
+    'production-health.yml: scheduled checks must remain gated by PRODUCTION_DATABASE_HEALTH_ENABLED while manual verification stays available',
+  );
+}
+
 if (issues.length > 0) {
   throw new Error(`Workflow validation failed:\n${issues.map((issue) => `- ${issue}`).join('\n')}`);
 }

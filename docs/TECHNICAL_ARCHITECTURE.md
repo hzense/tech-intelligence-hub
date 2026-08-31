@@ -164,7 +164,7 @@ Web 只在 `VERCEL_ENV=production` 的请求时读取 `HZENSE_RUNTIME_DATABASE_U
 
 唯一首批业务查询使用 `FROM ONLY public.topics` 固定选择上述五列，以 `runtime_enabled = true` 过滤、按 `id` 排序并使用 `1..50` 的参数化 `LIMIT`。Node.js 健康端点固定为 `/api/health/database`、动态执行、最长 10 秒且 `Cache-Control: no-store`；该上限覆盖 3.5 秒连接超时与 3 秒查询超时并保留平台收尾余量。项目级 [`apps/web/vercel.json`](../apps/web/vercel.json) 把 Function 固定到 `iad1`，不使用已弃用的 route-level region export。成功只暴露 `{"status":"ok"}`，失败只暴露 `{"status":"unavailable"}`。结构化日志仅包含事件、结果、耗时、request ID、安全错误码、SQLSTATE 和连接池计数，不记录 URL、host、database、user、SQL、参数或原始异常。
 
-本准备分支建立上述可评审仓库边界，不代表外部上线完成。Neon 侧已创建新的七天回滚分支，复核角色与 database ACL，设置 Runtime 的 read-only session 默认值，隔离未使用的 `neondb` ambient ACL；维护专用 `hzense_migrator` 因 Neon Tables 用满旧五连接上限而从 limit 5 调整为 10。后者不改变 Runtime 权限或 Web pool 上限 1。目标 `hzense` ACL、独立 Runtime 凭据、生产 preflight、Vercel Production 变量、重部署、线上 health、真实五列查询和日志验证仍未完成。
+上述仓库边界已通过 PR #32–#35 合并并由 CI 验证，但不代表外部上线完成。Neon 侧已创建新的七天回滚分支，复核角色与 database ACL，设置 Runtime 的 read-only session 默认值，隔离未使用的 `neondb` ambient ACL；维护专用 `hzense_migrator` 因 Neon Tables 用满旧五连接上限而从 limit 5 调整为 10。后者不改变 Runtime 权限或 Web pool 上限 1。目标 `hzense` ACL、独立 Runtime 凭据、生产 preflight、Vercel Production 变量、重部署、线上 health、真实五列查询和日志验证仍未完成。小时级生产健康工作流只有在首次线上验收成功并设置 `PRODUCTION_DATABASE_HEALTH_ENABLED=true` 后才自动运行；在此之前仅允许受控手工触发。
 
 ## 8. Search 与 Vector
 
