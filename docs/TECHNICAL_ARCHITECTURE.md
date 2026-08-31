@@ -315,13 +315,13 @@ Local         http://localhost:3000
 
 ## 18. 下一步
 
-1. 完成 Topic 全量投影同步器的最终评审、CI 与合并。
-2. 以经人工验证的新备份应用并验证生产 `0002`，再用独立 `hzense_topic_sync` 角色完成双 fingerprint dry run、受保护 Apply、独立验证与 no-op 重跑。
-3. 评审并配置独立 Runtime Reader、Server-only 客户端、安全健康检查和一条有上限的真实只读查询。
-4. 建立连接数、池等待、查询延迟、超时和错误告警。
-5. 在稳定数据路径上继续 PostgreSQL FTS、Hybrid Search 与 Ask HZense / RAG。
+1. ✅ 已完成：PR #30 完成 Topic 全量投影同步器的最终评审、CI 与合并。
+2. ⏳ 未执行：以经人工验证的新备份应用并验证生产 `0002`，再创建并配置独立 `hzense_topic_sync` 角色与 ACL，完成双 fingerprint dry run、受保护 Apply、独立验证与 no-op 重跑。
+3. ⏳ 未执行：评审并配置独立 Runtime Reader、Server-only 客户端、安全健康检查和一条有上限的真实只读查询。
+4. ⏳ 未执行：建立连接数、池等待、查询延迟、超时和错误告警。
+5. ⏳ 未执行：在稳定数据路径上继续 PostgreSQL FTS、Hybrid Search 与 Ask HZense / RAG。
 
-截至 2026-08-30，步骤 1 的仓库实现位于待合并分支；步骤 2–5 均未完成，不能用本地测试或历史 Migration 验收替代生产证据。
+截至 2026-08-31，步骤 1 已通过 PR #30 完成仓库与 CI 交付；生产 `0002`、新备份、ACL 配置、`hzense_topic_sync`、dry run、Apply、独立数据验证、no-op 重跑和 Runtime Reader 均为 `not_executed`。步骤 2–5 不能用本地测试或历史 Migration 验收替代生产证据。
 
 ---
 

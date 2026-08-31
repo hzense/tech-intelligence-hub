@@ -96,7 +96,7 @@ CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当�
 4. 将 `HZENSE_TOPIC_SYNC_DATABASE_URL` 以及独立的 `HZENSE_TOPIC_SYNC_EXPECTED_HOST`、`HZENSE_TOPIC_SYNC_EXPECTED_PORT`、`HZENSE_TOPIC_SYNC_EXPECTED_NAME`、`HZENSE_TOPIC_SYNC_EXPECTED_USER`、`HZENSE_TOPIC_SYNC_EXPECTED_POSTGRES_MAJOR`、`HZENSE_TOPIC_SYNC_EXPECTED_CONNECTION_LIMIT` 注入受保护的手工执行环境；不得使用 `hzense_migrator`、默认 owner、未来 Web Runtime 凭据或公开 CI 日志。
 5. 对真实 direct/session TLS endpoint 执行 `pnpm db:sync:topics:production:dry-run`，核对有效角色、连接上限、Schema / Migration 基线、当前 Topic ID、完整预期行数、insert/update/no-op 数量、source `fingerprint` 与 `planFingerprint`。存在未知数据库 ID 时停止。
 6. 将 dry run 的精确 source fingerprint 写入 `HZENSE_TOPIC_SYNC_EXPECTED_FINGERPRINT`，将精确 plan fingerprint 写入 `HZENSE_TOPIC_SYNC_EXPECTED_PLAN_FINGERPRINT`，并把步骤 2 中已经人工验证的新 backup ID 作为声明值写入 `HZENSE_TOPIC_SYNC_BACKUP_ID`；随后执行 `pnpm db:sync:topics:production:apply`。Apply 必须在持有 advisory lock 与 table lock 的同一事务内、写入前重新计算并同时匹配 source 与 plan guard。任何缺失、不合格式或不匹配都必须在 DML 前失败。
-7. Apply 后由独立只读进程验证完整 Taxonomy 行集、`id/title/parent_id/status/runtime_enabled`、未知行数量为零及 source fingerprint 对应关系。
+7. Apply 后由独立只读进程执行 `pnpm db:verify:topics:production`，在 `BEGIN READ ONLY` 事务中验证完整 62 条 Taxonomy 行集、`id/title/parent_id/status/runtime_enabled`、未知行数量为零及 `HZENSE_TOPIC_SYNC_EXPECTED_FINGERPRINT` 对应关系。该命令只执行预检与 `SELECT`，不接受命令行参数，也不包含任何 DML。
 8. 在同一 `main` commit 上再次执行 `pnpm db:sync:topics:production:dry-run`，结果必须为 no-op，才能记录本次生产同步完成。
 9. 在受保护的运维记录中登记 commit、执行时间、角色、实际 backup ID、两个 fingerprint、insert/update 数量、验证结果和 no-op 证据；不得记录 URL、密码或 Token。CLI 日志只以 `productionBackupDeclarationProvided: true` 表示收到了声明，不打印 backup ID，也不代表它已调用 provider 验证备份存在或可恢复。
 

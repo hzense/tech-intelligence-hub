@@ -17,6 +17,7 @@ const expected = {
 };
 
 async function preflightClient({
+  readOnly = false,
   topicPrivileges = ['SELECT', 'INSERT', 'UPDATE'],
   extraRelations = [],
   rewriteRuleCount = 0,
@@ -39,7 +40,7 @@ async function preflightClient({
             effective_role: 'hzense_topic_sync',
             schema_name: 'public',
             server_version_num: 180_000,
-            read_only: false,
+            read_only: readOnly,
             in_recovery: false,
             rolcanlogin: true,
             rolinherit: false,
@@ -157,6 +158,22 @@ describe('Topic sync least-privilege preflight', () => {
       connectionLimit: 2,
       tlsEvidence: 'local',
     });
+  });
+
+  it('can require the independent verifier to already be inside READ ONLY mode', async () => {
+    await expect(
+      inspectTopicSyncPreflight(await preflightClient({ readOnly: true }), {
+        ...expected,
+        expectedTransactionReadOnly: true,
+      }),
+    ).resolves.toMatchObject({ user: 'hzense_topic_sync' });
+
+    await expect(
+      inspectTopicSyncPreflight(await preflightClient(), {
+        ...expected,
+        expectedTransactionReadOnly: true,
+      }),
+    ).rejects.toThrow(/transaction mode mismatch/);
   });
 
   it('audits all non-system schemas and only actually callable SECURITY DEFINER routines', async () => {
