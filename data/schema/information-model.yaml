@@ -396,6 +396,27 @@ runtime_reader:
     application_ddl: forbidden
     grant_option: forbidden
     object_ownership: forbidden
+    routine_execute:
+      application_routines: forbidden
+      security_definer: forbidden
+      direct_runtime_acl: forbidden
+      pgvector_security_invoker:
+        ordinary_contract: routine_owner_equals_extension_owner
+        production_neon_provider_contract:
+          enabled_by: production_runner_after_neon_pooler_and_tls_verification
+          extension_name: vector
+          extension_version: 0.8.6
+          routine_owner: cloud_admin
+          extension_owner: neondb_owner
+          routine_count: 118
+          public_routine_count: 118
+          approved_routine_owner_count: 118
+          executable_routine_count: 118
+          public_execute_count: 118
+          security_definer_count: 0
+          grantable_count: 0
+          direct_runtime_acl_count: 0
+        drift_behavior: fail_closed
   cross_database_policy:
     ordinary_non_target_databases: no_connect_create_or_temporary
     template0: must_remain_non_connectable

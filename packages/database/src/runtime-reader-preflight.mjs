@@ -68,6 +68,17 @@ const neonRuntimeAdminMembershipContract = Object.freeze({
   inheritOption: false,
   setOption: false,
 });
+// Neon 0.8.6 installs pgvector through two provider roles: neondb_owner owns
+// the extension while cloud_admin owns all extension routines. This is not the
+// portable pgvector ownership model, so only the production runner may accept
+// it after the reviewed Neon endpoint and TLS session have been proved.
+const neonVectorOwnershipSplitContract = Object.freeze({
+  extensionName: 'vector',
+  extensionVersion: '0.8.6',
+  extensionOwner: 'neondb_owner',
+  routineOwner: 'cloud_admin',
+  routineCount: 118,
+});
 export const runtimeReaderTopicColumns = Object.freeze([
   'id',
   'title',
@@ -169,6 +180,39 @@ export function isApprovedNeonRuntimeAdminMembership(row, profile) {
   );
 }
 
+function isApprovedNeonVectorOwnershipSplit(row, profile) {
+  const contract = neonVectorOwnershipSplitContract;
+  return (
+    profile === 'production' &&
+    row?.extension_name === contract.extensionName &&
+    row?.extension_version === contract.extensionVersion &&
+    row?.extension_owner === contract.extensionOwner &&
+    row?.routine_count === contract.routineCount &&
+    row?.public_routine_count === contract.routineCount &&
+    row?.approved_routine_owner_count === contract.routineCount &&
+    row?.executable_routine_count === contract.routineCount &&
+    row?.public_execute_count === contract.routineCount &&
+    row?.security_definer_count === 0 &&
+    row?.grantable_count === 0 &&
+    row?.direct_runtime_acl_count === 0
+  );
+}
+
+function isApprovedNeonVectorOwnershipSplitRoutine(row, profile) {
+  const contract = neonVectorOwnershipSplitContract;
+  return (
+    profile === 'production' &&
+    row?.schema_name === 'public' &&
+    row?.extension_name === contract.extensionName &&
+    row?.extension_version === contract.extensionVersion &&
+    row?.extension_owner === contract.extensionOwner &&
+    row?.routine_owner === contract.routineOwner &&
+    row?.security_definer === false &&
+    row?.grantable === false &&
+    row?.direct_runtime_acl === false
+  );
+}
+
 async function effectiveTablePrivileges(client) {
   return (
     await client.query(
@@ -262,7 +306,11 @@ async function inspectRuntimeReaderTarget(
     expectedConnectionLimit = 20,
     profile,
   },
-  { allowNeonReservedDatabases = false, allowNeonRuntimeAdminMembership = false } = {},
+  {
+    allowNeonReservedDatabases = false,
+    allowNeonRuntimeAdminMembership = false,
+    allowNeonVectorOwnershipSplit = false,
+  } = {},
 ) {
   const databaseName = requireString(expectedDatabase, 'HZENSE_RUNTIME_EXPECTED_NAME');
   const userName = requireString(expectedUser, 'HZENSE_RUNTIME_EXPECTED_USER');
@@ -780,17 +828,104 @@ async function inspectRuntimeReaderTarget(
     );
   }
 
-  const unsafeExecutableRoutines = await client.query(
+  let runnerVerifiedTls;
+  let approvedNeonVectorOwnershipSplit = false;
+  if (allowNeonVectorOwnershipSplit) {
+    if (profile !== 'production') {
+      throw new Error('Neon pgvector ownership verification is production-only');
+    }
+    // The runner validates the Neon pooler before connecting. Verify the live
+    // TLS session before considering the provider-specific ownership split.
+    runnerVerifiedTls = await inspectProductionTls(client, expectedHost);
+    const vectorOwnershipSplit = await client.query(
+      `SELECT extension_info.extname AS extension_name,
+              extension_info.extversion AS extension_version,
+              pg_get_userbyid(extension_info.extowner) AS extension_owner,
+              count(DISTINCT routine_info.oid)::integer AS routine_count,
+              (count(DISTINCT routine_info.oid) FILTER (
+                WHERE namespace_info.nspname = 'public'
+              ))::integer AS public_routine_count,
+              (count(DISTINCT routine_info.oid) FILTER (
+                WHERE pg_get_userbyid(routine_info.proowner) = 'cloud_admin'
+              ))::integer AS approved_routine_owner_count,
+              (count(DISTINCT routine_info.oid) FILTER (
+                WHERE routine_info.prosecdef
+              ))::integer AS security_definer_count,
+              (count(DISTINCT routine_info.oid) FILTER (
+                WHERE has_function_privilege(current_user, routine_info.oid, 'EXECUTE')
+              ))::integer AS executable_routine_count,
+              (count(DISTINCT routine_info.oid) FILTER (
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM aclexplode(
+                    COALESCE(
+                      routine_info.proacl,
+                      acldefault('f', routine_info.proowner)
+                    )
+                  ) AS acl_info
+                  WHERE acl_info.grantee = 0
+                    AND acl_info.privilege_type = 'EXECUTE'
+                )
+              ))::integer AS public_execute_count,
+              (count(DISTINCT routine_info.oid) FILTER (
+                WHERE has_function_privilege(
+                  current_user,
+                  routine_info.oid,
+                  'EXECUTE WITH GRANT OPTION'
+                )
+              ))::integer AS grantable_count,
+              (count(DISTINCT routine_info.oid) FILTER (
+                WHERE EXISTS (
+                  SELECT 1
+                  FROM aclexplode(routine_info.proacl) AS acl_info
+                  WHERE acl_info.grantee = (
+                    SELECT oid FROM pg_roles WHERE rolname = session_user
+                  )
+                )
+              ))::integer AS direct_runtime_acl_count
+       FROM pg_extension AS extension_info
+       LEFT JOIN pg_depend AS extension_dependency
+         ON extension_dependency.refclassid = 'pg_extension'::regclass
+        AND extension_dependency.refobjid = extension_info.oid
+        AND extension_dependency.classid = 'pg_proc'::regclass
+        AND extension_dependency.deptype = 'e'
+       LEFT JOIN pg_proc AS routine_info ON routine_info.oid = extension_dependency.objid
+       LEFT JOIN pg_namespace AS namespace_info
+         ON namespace_info.oid = routine_info.pronamespace
+       WHERE extension_info.extname = 'vector'
+       GROUP BY extension_info.extname,
+                extension_info.extversion,
+                extension_info.extowner`,
+    );
+    approvedNeonVectorOwnershipSplit =
+      vectorOwnershipSplit.rows.length === 1 &&
+      isApprovedNeonVectorOwnershipSplit(vectorOwnershipSplit.rows[0], profile);
+    if (!approvedNeonVectorOwnershipSplit) {
+      throw new Error('Runtime reader Neon pgvector ownership contract changed');
+    }
+  }
+
+  const executableRoutineAudit = await client.query(
     `SELECT namespace_info.nspname AS schema_name,
             routine_info.proname AS name,
             pg_get_function_identity_arguments(routine_info.oid) AS identity_arguments,
             routine_info.prosecdef AS security_definer,
             extension_info.extname AS extension_name,
+            extension_info.extversion AS extension_version,
+            pg_get_userbyid(extension_info.extowner) AS extension_owner,
+            pg_get_userbyid(routine_info.proowner) AS routine_owner,
             has_function_privilege(
               current_user,
               routine_info.oid,
               'EXECUTE WITH GRANT OPTION'
-            ) AS grantable
+            ) AS grantable,
+            EXISTS (
+              SELECT 1
+              FROM aclexplode(routine_info.proacl) AS acl_info
+              WHERE acl_info.grantee = (
+                SELECT oid FROM pg_roles WHERE rolname = session_user
+              )
+            ) AS direct_runtime_acl
      FROM pg_proc AS routine_info
      JOIN pg_namespace AS namespace_info ON namespace_info.oid = routine_info.pronamespace
      LEFT JOIN pg_depend AS extension_dependency
@@ -822,11 +957,15 @@ async function inspectRuntimeReaderTarget(
        )
      ORDER BY namespace_info.nspname, routine_info.proname, routine_info.oid`,
   );
-  if (unsafeExecutableRoutines.rowCount !== 0) {
+  const unsafeExecutableRoutines = executableRoutineAudit.rows.filter(
+    (row) =>
+      !(
+        approvedNeonVectorOwnershipSplit && isApprovedNeonVectorOwnershipSplitRoutine(row, profile)
+      ),
+  );
+  if (unsafeExecutableRoutines.length !== 0) {
     throw new Error(
-      `Runtime reader can execute unsafe non-pgvector application or SECURITY DEFINER routines: ${unsafeExecutableRoutines.rows
-        .map((row) => `${row.schema_name}.${row.name}(${row.identity_arguments})`)
-        .join(', ')}`,
+      'Runtime reader can execute unsafe non-pgvector application or SECURITY DEFINER routines',
     );
   }
 
@@ -899,7 +1038,7 @@ async function inspectRuntimeReaderTarget(
 
   let tls = { source: 'local', version: 'local plaintext', cipher: 'none' };
   if (profile === 'production') {
-    tls = await inspectProductionTls(client, expectedHost);
+    tls = runnerVerifiedTls ?? (await inspectProductionTls(client, expectedHost));
   } else if (profile !== 'local-test') {
     throw new Error('database profile must be local-test or production');
   }
@@ -1286,6 +1425,7 @@ export async function runRuntimeReaderPreflight({
       {
         allowNeonReservedDatabases: true,
         allowNeonRuntimeAdminMembership: true,
+        allowNeonVectorOwnershipSplit: profile === 'production',
       },
     );
   } finally {

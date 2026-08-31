@@ -56,6 +56,39 @@ function neonRuntimeAdminMembershipRow(overrides = {}) {
   };
 }
 
+function neonVectorOwnershipContractRow(overrides = {}) {
+  return {
+    extension_name: 'vector',
+    extension_version: '0.8.6',
+    extension_owner: 'neondb_owner',
+    routine_count: 118,
+    public_routine_count: 118,
+    approved_routine_owner_count: 118,
+    security_definer_count: 0,
+    executable_routine_count: 118,
+    public_execute_count: 118,
+    grantable_count: 0,
+    direct_runtime_acl_count: 0,
+    ...overrides,
+  };
+}
+
+function neonVectorSplitRoutineRow(overrides = {}) {
+  return {
+    schema_name: 'public',
+    name: 'vector_in',
+    identity_arguments: 'cstring, oid, integer',
+    security_definer: false,
+    extension_name: 'vector',
+    extension_version: '0.8.6',
+    extension_owner: 'neondb_owner',
+    routine_owner: 'cloud_admin',
+    grantable: false,
+    direct_runtime_acl: false,
+    ...overrides,
+  };
+}
+
 function expectedColumnRows() {
   return runtimeReaderTopicColumns.map((columnName) => ({
     schema_name: 'public',
@@ -87,6 +120,7 @@ function preflightClient({
   tablePrivilegeRows = [],
   columnPrivilegeRows = expectedColumnRows(),
   ownedObjects = [],
+  neonVectorOwnershipRows = [neonVectorOwnershipContractRow()],
   unsafeRoutines = [],
   directRoutineGrants = [],
   sequencePrivileges = [],
@@ -174,6 +208,9 @@ function preflightClient({
     }
     if (sql.includes("SELECT 'schema' AS object_type")) {
       return { rowCount: ownedObjects.length, rows: ownedObjects };
+    }
+    if (sql.includes('AS approved_routine_owner_count')) {
+      return { rowCount: neonVectorOwnershipRows.length, rows: neonVectorOwnershipRows };
     }
     if (sql.includes('extension_info.extname AS extension_name')) {
       return { rowCount: unsafeRoutines.length, rows: unsafeRoutines };
@@ -868,6 +905,174 @@ describe('Runtime reader least-privilege preflight', () => {
         expected,
       ),
     ).rejects.toThrow(/must not receive application privileges through defaults/);
+  });
+
+  it('accepts the exact Neon pgvector ownership split only through the production runner', async () => {
+    const expectedHost = 'ep-runtime-pooler.us-east-1.aws.neon.tech';
+    const connectionString = `postgresql://hzense_runtime:test-only-password@${expectedHost}:5432/hzense?sslmode=verify-full&channel_binding=prefer`;
+    const client = withProductionTls(
+      {
+        ...preflightClient({ unsafeRoutines: [neonVectorSplitRoutineRow()] }),
+        connect: vi.fn(async () => undefined),
+        end: vi.fn(async () => undefined),
+      },
+      expectedHost,
+    );
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await expect(
+        runRuntimeReaderPreflight({
+          connectionString,
+          profile: 'production',
+          expectedHost,
+          expectedPort: '5432',
+          expectedDatabase: 'hzense',
+          expectedUser: 'hzense_runtime',
+          expectedPostgresMajor: 18,
+          expectedConnectionLimit: 20,
+          createClient: vi.fn(() => client),
+        }),
+      ).resolves.toMatchObject({ user: 'hzense_runtime' });
+
+      const statements = client.query.mock.calls.map(([sql]) => sql);
+      expect(statements.findIndex((sql) => sql.includes('FROM pg_stat_ssl'))).toBeLessThan(
+        statements.findIndex((sql) => sql.includes('AS approved_routine_owner_count')),
+      );
+      expect(client.connect).toHaveBeenCalledOnce();
+      expect(client.end).toHaveBeenCalledOnce();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('keeps the public inspector strict for the Neon pgvector ownership split', async () => {
+    const splitRoutine = neonVectorSplitRoutineRow();
+    await expect(
+      inspectRuntimeReaderPreflight(preflightClient({ unsafeRoutines: [splitRoutine] }), expected),
+    ).rejects.toThrow(
+      /^Runtime reader can execute unsafe non-pgvector application or SECURITY DEFINER routines$/,
+    );
+
+    const expectedHost = 'runtime-pooler.neon.tech';
+    const productionClient = withProductionTls(
+      preflightClient({ unsafeRoutines: [splitRoutine] }),
+      expectedHost,
+    );
+    await expect(
+      inspectRuntimeReaderPreflight(productionClient, {
+        ...expected,
+        profile: 'production',
+        expectedHost,
+      }),
+    ).rejects.toThrow(
+      /^Runtime reader can execute unsafe non-pgvector application or SECURITY DEFINER routines$/,
+    );
+    expect(
+      productionClient.query.mock.calls.some(([sql]) =>
+        sql.includes('AS approved_routine_owner_count'),
+      ),
+    ).toBe(false);
+  });
+
+  it('fails closed for every Neon pgvector ownership-contract drift', async () => {
+    const expectedHost = 'ep-runtime-pooler.us-east-1.aws.neon.tech';
+    const connectionString = `postgresql://hzense_runtime:test-only-password@${expectedHost}:5432/hzense?sslmode=verify-full&channel_binding=prefer`;
+    const drifts = [
+      { extension_version: '0.8.5' },
+      { extension_owner: 'cloud_admin' },
+      { routine_count: 119 },
+      { public_routine_count: 117 },
+      { approved_routine_owner_count: 117 },
+      { security_definer_count: 1 },
+      { executable_routine_count: 117 },
+      { public_execute_count: 117 },
+      { grantable_count: 1 },
+      { direct_runtime_acl_count: 1 },
+    ];
+
+    for (const drift of drifts) {
+      const client = withProductionTls(
+        {
+          ...preflightClient({
+            neonVectorOwnershipRows: [neonVectorOwnershipContractRow(drift)],
+            unsafeRoutines: [neonVectorSplitRoutineRow()],
+          }),
+          connect: vi.fn(async () => undefined),
+          end: vi.fn(async () => undefined),
+        },
+        expectedHost,
+      );
+
+      await expect(
+        runRuntimeReaderPreflight({
+          connectionString,
+          profile: 'production',
+          expectedHost,
+          expectedPort: '5432',
+          expectedDatabase: 'hzense',
+          expectedUser: 'hzense_runtime',
+          expectedPostgresMajor: 18,
+          expectedConnectionLimit: 20,
+          createClient: vi.fn(() => client),
+        }),
+      ).rejects.toThrow(/^Runtime reader Neon pgvector ownership contract changed$/);
+      expect(client.end).toHaveBeenCalledOnce();
+    }
+  });
+
+  it('rejects extra unsafe routines without exposing catalog metadata', async () => {
+    const expectedHost = 'ep-runtime-pooler.us-east-1.aws.neon.tech';
+    const connectionString = `postgresql://hzense_runtime:test-only-password@${expectedHost}:5432/hzense?sslmode=verify-full&channel_binding=prefer`;
+    const client = withProductionTls(
+      {
+        ...preflightClient({
+          unsafeRoutines: [
+            neonVectorSplitRoutineRow(),
+            {
+              schema_name: 'private_catalog',
+              name: 'credential_shaped_routine_name',
+              identity_arguments: 'text',
+              security_definer: true,
+              extension_name: null,
+              extension_version: null,
+              extension_owner: null,
+              routine_owner: 'unexpected_owner',
+              grantable: false,
+              direct_runtime_acl: false,
+            },
+          ],
+        }),
+        connect: vi.fn(async () => undefined),
+        end: vi.fn(async () => undefined),
+      },
+      expectedHost,
+    );
+
+    let failure;
+    try {
+      await runRuntimeReaderPreflight({
+        connectionString,
+        profile: 'production',
+        expectedHost,
+        expectedPort: '5432',
+        expectedDatabase: 'hzense',
+        expectedUser: 'hzense_runtime',
+        expectedPostgresMajor: 18,
+        expectedConnectionLimit: 20,
+        createClient: vi.fn(() => client),
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure.message).toBe(
+      'Runtime reader can execute unsafe non-pgvector application or SECURITY DEFINER routines',
+    );
+    expect(failure.message).not.toContain('private_catalog');
+    expect(failure.message).not.toContain('credential_shaped_routine_name');
+    expect(client.end).toHaveBeenCalledOnce();
   });
 
   it('allows only provider-owned invoker extension routines and rejects every unsafe path', async () => {
