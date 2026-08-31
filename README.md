@@ -133,10 +133,12 @@ Next phase:
 - [x] Provision managed PostgreSQL 18 / pgvector 0.8.6
 - [x] Complete and independently verify the initial production database migration (`0000`–`0001`)
 - [x] Enforce the Taxonomy → Seed → Content authority chain
-- [ ] Merge and independently verify the complete Topic projection synchronizer
-- [ ] Apply and verify `0002_topic_projection.sql` in production
-- [ ] Execute and independently verify the first production Topic synchronization
-- [ ] Add the reviewed runtime database integration, health checks and observability
+- [x] Merge and independently verify the complete Topic projection synchronizer through PR #30
+- [ ] Create and independently verify a new backup, then apply and verify `0002_topic_projection.sql` in production
+- [ ] Create and configure the dedicated `hzense_topic_sync` role and reviewed ACLs, then execute the first production dry run, guarded Apply, independent verification and no-op rerun
+- [ ] Add the reviewed Runtime Reader integration, server-only client, health checks, bounded read-only query and observability
+
+PR #30 completed repository and CI delivery only. Production `0002`, the new backup, ACL configuration, `hzense_topic_sync`, dry run, Apply, independent data verification, no-op rerun and Runtime Reader remain `not_executed`.
 
 ## Local foundation checks
 
@@ -170,9 +172,10 @@ pnpm db:sync:topics:local:dry-run
 pnpm db:sync:topics:local:apply
 pnpm db:sync:topics:production:dry-run
 pnpm db:sync:topics:production:apply
+pnpm db:verify:topics:production
 ```
 
-Production uses `HZENSE_TOPIC_SYNC_DATABASE_URL` plus independently configured `HZENSE_TOPIC_SYNC_EXPECTED_HOST`, `HZENSE_TOPIC_SYNC_EXPECTED_PORT`, `HZENSE_TOPIC_SYNC_EXPECTED_NAME`, `HZENSE_TOPIC_SYNC_EXPECTED_USER`, `HZENSE_TOPIC_SYNC_EXPECTED_POSTGRES_MAJOR` and `HZENSE_TOPIC_SYNC_EXPECTED_CONNECTION_LIMIT`. Apply additionally requires `HZENSE_TOPIC_SYNC_EXPECTED_FINGERPRINT`, `HZENSE_TOPIC_SYNC_EXPECTED_PLAN_FINGERPRINT` and `HZENSE_TOPIC_SYNC_BACKUP_ID`. The CLI validates only that the backup declaration is present and syntactically valid; it cannot call the provider or prove recoverability, which remains an operator gate. Values and credentials must never be committed or printed.
+Production uses `HZENSE_TOPIC_SYNC_DATABASE_URL` plus independently configured `HZENSE_TOPIC_SYNC_EXPECTED_HOST`, `HZENSE_TOPIC_SYNC_EXPECTED_PORT`, `HZENSE_TOPIC_SYNC_EXPECTED_NAME`, `HZENSE_TOPIC_SYNC_EXPECTED_USER`, `HZENSE_TOPIC_SYNC_EXPECTED_POSTGRES_MAJOR` and `HZENSE_TOPIC_SYNC_EXPECTED_CONNECTION_LIMIT`. Apply additionally requires `HZENSE_TOPIC_SYNC_EXPECTED_FINGERPRINT`, `HZENSE_TOPIC_SYNC_EXPECTED_PLAN_FINGERPRINT` and `HZENSE_TOPIC_SYNC_BACKUP_ID`. The independent projection verifier reuses the protected sync connection and expected identity but forces a `READ ONLY` transaction and requires the reviewed source fingerprint; it cannot mutate the database. The CLI validates only that the backup declaration is present and syntactically valid; it cannot call the provider or prove recoverability, which remains an operator gate. Values and credentials must never be committed or printed.
 
 Local Topic sync is equally strict: use a dedicated loopback database, pre-create the same `NOINHERIT CONNECTION LIMIT 2` role, run the reviewed ACL script as that database's Migration owner, then put the restricted role's URL in `HZENSE_TOPIC_SYNC_DATABASE_URL`. A normal `postgres`, owner or Migrator URL is intentionally rejected. Exact local and production setup commands and the database-wide `PUBLIC` ACL impact are documented in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md#本地-topic-同步角色).
 

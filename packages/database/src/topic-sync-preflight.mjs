@@ -96,6 +96,7 @@ export async function inspectTopicSyncPreflight(
     expectedUser,
     expectedPostgresMajor = 18,
     expectedConnectionLimit = 2,
+    expectedTransactionReadOnly = false,
     profile,
   },
 ) {
@@ -109,6 +110,9 @@ export async function inspectTopicSyncPreflight(
   }
   if (expectedConnectionLimit !== 2) {
     throw new Error('HZENSE_TOPIC_SYNC_EXPECTED_CONNECTION_LIMIT must be 2');
+  }
+  if (typeof expectedTransactionReadOnly !== 'boolean') {
+    throw new Error('expectedTransactionReadOnly must be a boolean');
   }
 
   const migrations = await loadMigrations(migrationDirectory);
@@ -174,8 +178,13 @@ export async function inspectTopicSyncPreflight(
       `PostgreSQL major mismatch; expected ${expectedPostgresMajor}, found ${postgresMajor}`,
     );
   }
-  if (target.read_only || target.in_recovery) {
-    throw new Error('Topic sync database target is read-only or in recovery');
+  if (target.read_only !== expectedTransactionReadOnly) {
+    throw new Error(
+      `Topic sync transaction mode mismatch; expected read_only=${expectedTransactionReadOnly}, found ${target.read_only}`,
+    );
+  }
+  if (target.in_recovery) {
+    throw new Error('Topic sync database target is in recovery');
   }
   if (!target.rolcanlogin || target.rolinherit) {
     throw new Error('Topic sync role must be LOGIN and NOINHERIT');

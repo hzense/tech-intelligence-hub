@@ -86,6 +86,9 @@ describe('database migration runner', () => {
     expect(packageJson.scripts['db:migrate:local']).toBe('node src/local-migrate.mjs');
     expect(packageJson.scripts['db:preflight:production']).toBe('node src/preflight.mjs');
     expect(packageJson.scripts['db:verify:production']).toContain('node src/verify.mjs');
+    expect(packageJson.scripts['db:verify:topics:production']).toContain(
+      'node src/topic-projection-verify.mjs',
+    );
     expect(packageJson.scripts['db:generate']).toBeUndefined();
     expect(packageJson.scripts['test:migrations']).toContain('require-integration-env.mjs');
     expect(migrationChecksum('select 1')).toBe(
