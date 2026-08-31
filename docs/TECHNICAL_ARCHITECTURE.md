@@ -47,7 +47,7 @@ HZense 采用“Git/Markdown 为知识资产源，PostgreSQL 为索引与关系�
 - **Taxonomy YAML** = Topic ID、英文规范名、primary parent 与跨域关系的 Source of Truth。
 - **Seed Topics** = Taxonomy 的受控运行时子集，并拥有 Topic `status`。
 - **Git / Markdown** = 正式内容正文与本地化 Topic 页面的 Source of Truth。
-- **PostgreSQL** = Entity / Relation / Index / Radar / operational data 的 Source of Truth；`topics` 是完整 Taxonomy 的派生投影，仓库同步器已实现但生产同步尚未执行。
+- **PostgreSQL** = Entity / Relation / Index / Radar / operational data 的 Source of Truth；`topics` 是完整 Taxonomy 的派生投影，首次生产同步已于 2026-08-31 完成并独立验证。
 - 网站 = Presentation + Intelligence Application Layer。
 
 不把所有关系塞进 YAML，也不把所有正式正文锁进数据库或 CMS。
@@ -140,9 +140,27 @@ content/topics/**/*.{md,mdx} ─┘                 ↓
 
 投影覆盖完整 Taxonomy。`id`、英文 `title` 与 `parent_id` 来自 Taxonomy；Seed 覆盖 `status`，Taxonomy-only Topic 回退为 `watching`；`runtime_enabled` 只在 Topic 存在于 Seed 且不是 archived 时为真。Content 只参与写前门禁，本地化字段和正文不进入数据库；跨域 Topic 关系本阶段继续只保存在 YAML。
 
-同步器默认执行不持久化的 dry run：它输出只绑定权威投影的 source fingerprint，以及绑定当前数据库托管字段与 insert/update/no-op 计划的 plan fingerprint，在单一事务内执行拟议 DML 与校验后回滚；Apply 才提交同一事务。两种模式均复用 Migration advisory lock，只执行 insert/update。生产 Apply 在取得 advisory lock 与 table lock 后、写入前重新计算并同时匹配两个 reviewed fingerprint；数据库出现未知 Topic ID 或 dry run 后发生计划漂移时 fail closed，绝不自动删除。Apply 必须由独立的 `hzense_topic_sync` 角色执行，并携带操作者已经在 provider 侧验证的新备份 ID 声明；CLI 只检查声明格式与存在性，不能证明备份可恢复。Migrator、Topic Sync Writer 和未来 Runtime Reader 是三个互不复用的权限边界。
+同步器默认执行不持久化的 dry run：它输出只绑定权威投影的 source fingerprint，以及绑定当前数据库托管字段与 insert/update/no-op 计划的 plan fingerprint，在单一事务内执行拟议 DML 与校验后回滚；Apply 才提交同一事务。两种模式均复用 Migration advisory lock，只执行 insert/update。生产 Apply 在取得 advisory lock 与 table lock 后、写入前重新计算并同时匹配两个 reviewed fingerprint；数据库出现未知 Topic ID 或 dry run 后发生计划漂移时 fail closed，绝不自动删除。Apply 必须由独立的 `hzense_topic_sync` 角色执行，并携带操作者已经在 provider 侧验证的新备份 ID 声明；CLI 只检查声明格式与存在性，不能证明备份可恢复。Migrator、Topic Sync Writer 和 Runtime Reader 是三个互不复用的权限边界。
 
-`runtime_enabled` 及其状态约束由 `0002_topic_projection.sql` 引入。仓库目标 Schema 已包含该 Migration，但截至 2026-08-30 生产仍只有此前验收的两个 Migration；必须先以 Migrator 应用并验证 `0002`，再使用 Topic Sync Writer 执行投影 DML。
+`runtime_enabled` 及其状态约束由 `0002_topic_projection.sql` 引入。2026-08-31 的生产维护窗口已完成新可恢复分支备份、`0002`、3 个 Migration / 0 pending、最小权限 `hzense_topic_sync`、dry run、受保护 Apply、独立只读验证与 0 变更 no-op 重跑。最终投影为 62 个 Topics、0 个未知行并匹配 reviewed fingerprint；仓库不记录实际备份标识、连接目标或凭据。
+
+### 7.2 Runtime Reader 权限边界
+
+Runtime Reader 使用固定角色 `hzense_runtime`，与 Migrator 和 Topic Sync Writer 完全分离。provider / 集群管理员负责预创建 `LOGIN NOINHERIT CONNECTION LIMIT 20 NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`、零 membership 的角色，并预置 `default_transaction_read_only = on`。仓库 [`configure_runtime_reader.sql`](../db/roles/configure_runtime_reader.sql) 不创建角色、不设置密码，也不会由受限数据库 owner 越权修改另一个角色的 session 默认值；[`runtime-reader-preflight.mjs`](../packages/database/src/runtime-reader-preflight.mjs) 只验证并 fail closed。
+
+Runtime Reader 的应用 Schema allowlist 只有目标数据库 `CONNECT`、`public` Schema `USAGE`、应用 enum type `topic_status` `USAGE`，以及 `topics(id, title, parent_id, status, runtime_enabled)` 五列的 column-level `SELECT`；其他应用 enum type 的默认 `PUBLIC USAGE` 会被撤销。`metadata`、Migration history、其他 HZense 表或列、应用 relation 写入、DDL、`TEMPORARY`、Sequence、应用 routine、数据库 / Migration owner 的未来对象 `PUBLIC` 默认权限、任何 principal 直接给 Runtime 的未来对象默认授权、应用对象 ownership 和 grant option 均不允许。其他可创建应用对象的 principal 仍需由外部 DDL 治理与冻结约束；preflight 拒绝最终产生的 Runtime 有效访问，但不重写所有 principal 的 `PUBLIC` defaults。owner 与 pgvector extension owner 一致、且 extension owner 既不是 Runtime 也不是数据库 owner 的 `SECURITY INVOKER` functions 可以保留既有 `PUBLIC EXECUTE`；routine 审计覆盖所有非系统 Schema，不依赖 Schema `USAGE`。任何非系统 `SECURITY DEFINER`、非 pgvector 应用 routine、非系统 table-inheritance 边或可绕过应用表 ACL 的执行路径都会让 preflight 失败。
+
+上述 Type denylist 只覆盖非系统应用 enums；provider-owned extension Types 与其他非-enum Types 不在声明内，仓库不声称移除了它们的 ambient PostgreSQL `USAGE`。它们不扩展固定五列查询。
+
+由于角色与数据库 ACL 是 cluster-wide，provider / 集群管理员还必须确保 `hzense_runtime` 对每个非目标且 `datallowconn = true` 的数据库均无有效 `CONNECT`、`CREATE` 或 `TEMPORARY`。目标数据库 owner 不修改其他数据库；配置脚本与生产 preflight 只枚举并 fail closed。若 ambient `PUBLIC` 权限不能在保留其他调用方直接授权的前提下安全撤销，则本次上线阻断；独立 provider project 仍可能包含保留数据库，不能替代 live preflight 证据。以后新增可连接数据库也必须重新通过该门禁。
+
+这不是数据库全局绝对只读证明：角色可覆盖 user-settable 的 read-only 默认值，且 `pg_catalog` Large Object 等系统接口可能允许普通登录创建其拥有的对象。Runtime 凭据仍必须作为高敏感值；需要全数据库不可写时，必须另行采用 provider 强制只读副本或管理员级系统函数 ACL 门禁。完整决策见 [ADR 0006](./adr/0006-runtime-reader-boundary.md)。
+
+Web 只在 `VERCEL_ENV=production` 的请求时读取 `HZENSE_RUNTIME_DATABASE_URL` 与 expected host / port / database / user。连接必须使用显式端口、`sslmode=verify-full`、`channel_binding=prefer` 的官方 Neon pooled endpoint，固定用户为 `hzense_runtime`，驱动显式启用稳定版 `pg` 支持的 channel-binding preference，并拒绝 `NODE_TLS_REJECT_UNAUTHORIZED=0`；当前不声称尚未由稳定驱动实现的 require 语义。请求时延迟创建 server-only `pg.Pool`，进程池上限为 1，且只使用 PgBouncer 支持的 startup 参数；查询由客户端 timeout 限时。PostgreSQL major 与角色 connection limit 由部署前 preflight 验证，不在每个 Web 请求中重复查询。Preview、CI、构建期与非生产请求不初始化连接池并 fail closed。
+
+唯一首批业务查询使用 `FROM ONLY public.topics` 固定选择上述五列，以 `runtime_enabled = true` 过滤、按 `id` 排序并使用 `1..50` 的参数化 `LIMIT`。Node.js 健康端点固定为 `/api/health/database`、动态执行、最长 10 秒且 `Cache-Control: no-store`；该上限覆盖 3.5 秒连接超时与 3 秒查询超时并保留平台收尾余量。项目级 [`apps/web/vercel.json`](../apps/web/vercel.json) 把 Function 固定到 `iad1`，不使用已弃用的 route-level region export。成功只暴露 `{"status":"ok"}`，失败只暴露 `{"status":"unavailable"}`。结构化日志仅包含事件、结果、耗时、request ID、安全错误码、SQLSTATE 和连接池计数，不记录 URL、host、database、user、SQL、参数或原始异常。
+
+本准备分支建立上述可评审仓库边界，不代表外部上线完成。provider 角色与 ACL、Vercel Production 变量、重部署、线上 health、真实五列查询和日志验证仍为 `not_executed`。
 
 ## 8. Search 与 Vector
 
@@ -316,12 +334,12 @@ Local         http://localhost:3000
 ## 18. 下一步
 
 1. ✅ 已完成：PR #30 完成 Topic 全量投影同步器的最终评审、CI 与合并。
-2. ⏳ 未执行：以经人工验证的新备份应用并验证生产 `0002`，再创建并配置独立 `hzense_topic_sync` 角色与 ACL，完成双 fingerprint dry run、受保护 Apply、独立验证与 no-op 重跑。
-3. ⏳ 未执行：评审并配置独立 Runtime Reader、Server-only 客户端、安全健康检查和一条有上限的真实只读查询。
+2. ✅ 已完成：以经人工验证的新可恢复分支备份应用并验证生产 `0002`，配置独立 `hzense_topic_sync` 与 ACL，完成双 fingerprint dry run、受保护 Apply、独立验证与 no-op 重跑。
+3. 🚧 准备分支：实现独立 Runtime Reader、Server-only pooled 客户端、Node 健康检查、`iad1` 部署配置和一条有上限的真实只读查询；仓库变更仍待合并。
 4. ⏳ 未执行：建立连接数、池等待、查询延迟、超时和错误告警。
 5. ⏳ 未执行：在稳定数据路径上继续 PostgreSQL FTS、Hybrid Search 与 Ask HZense / RAG。
 
-截至 2026-08-31，步骤 1 已通过 PR #30 完成仓库与 CI 交付；生产 `0002`、新备份、ACL 配置、`hzense_topic_sync`、dry run、Apply、独立数据验证、no-op 重跑和 Runtime Reader 均为 `not_executed`。步骤 2–5 不能用本地测试或历史 Migration 验收替代生产证据。
+截至 2026-08-31，步骤 1–2 已完成并有独立生产证据。步骤 3 的仓库实现处于准备分支；其 provider/Vercel 配置、重部署与线上验证仍为 `not_executed`。步骤 3–5 的外部动作不能用本地测试或历史 Migration / Topic 验收替代。
 
 ---
 

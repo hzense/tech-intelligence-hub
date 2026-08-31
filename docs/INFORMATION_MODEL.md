@@ -872,7 +872,7 @@ Taxonomy 是 HZense 的正式分类体系。
 - [`data/taxonomy/taxonomy.yaml`](../data/taxonomy/taxonomy.yaml) 是 Topic ID、英文规范名、primary parent 和跨域关系的唯一权威。
 - [`data/seed/topics.yaml`](../data/seed/topics.yaml) 只能选择 Taxonomy 中的运行时子集并补充 `status`；其 ID 与英文标题不得覆盖 Taxonomy。
 - `content/topics/` 下的 Markdown / MDX 只保存已启用 Topic 的本地化页面、展示字段与正文；目录可递归组织，每个非 archived Seed Topic 必须恰有一个页面，状态必须与 Seed 一致，显式 `parent` 必须与 Taxonomy 一致。
-- PostgreSQL `topics` 是完整 Taxonomy 的派生投影，不反向拥有或修改 Taxonomy；仓库同步器已经实现，但生产同步尚未执行。
+- PostgreSQL `topics` 是完整 Taxonomy 的派生投影，不反向拥有或修改 Taxonomy；首次生产同步已于 2026-08-31 完成并独立验证。
 
 ---
 
@@ -1221,7 +1221,7 @@ Search Document 是派生数据，不是 Source of Truth。
 - 13 张持久表：12 张领域或派生数据表，以及 1 张 Migration 历史表。
 - 9 个 PostgreSQL Enum。
 - `vector` 扩展，以及 `search_documents.embedding vector(1536)`。
-- 仓库 Migration manifest 登记三个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql` 与 `0002_topic_projection.sql`；这描述目标 Schema，不等同于生产已全部执行。
+- 仓库 Migration manifest 登记三个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql` 与 `0002_topic_projection.sql`；2026-08-31 的独立生产复核确认三者均已执行且 0 pending。
 
 物理结构的权威顺序如下：
 
@@ -1354,9 +1354,9 @@ PostgreSQL `topics` 投影完整 Taxonomy，而不是只投影 Seed 子集。列
 7. 生产预检必须拒绝 `hzense_topic_sync` 访问 `public` 之外任何非系统 Schema，或执行任何非系统 Schema 中的 `SECURITY DEFINER` routine；有效 relation/table 权限、列级权限、Sequence 权限与 Schema 对象 ownership 检查覆盖所有非系统 Schema。
 8. Apply 后必须独立验证完整行集和列值，再次运行必须生成 no-op 计划，才能证明幂等。
 
-仓库实现与本地测试完成不代表生产已同步。当前生产状态为 `not_executed`；真实角色、备份、dry run、Apply、独立验证和 no-op 重跑均以 [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md) 的现场证据为准。
+仓库实现与本地测试本身不代表生产已同步；本次另有现场证据。2026-08-31 已在新可恢复分支备份保护下完成 `hzense_topic_sync` 最小权限配置、生产 dry run、reviewed source / plan fingerprint 防护的 Apply、独立只读验证与 no-op 重跑。结果为 62 个 Topics、0 个未知行、reviewed fingerprint 匹配及 no-op 0 变更。实际 backup ID、连接目标、凭据和 fingerprint 值只保存在受保护运维记录中，不进入仓库。
 
-`runtime_enabled` 由 `0002_topic_projection.sql` 引入。该 Migration 先以 `false` 创建非空列，再将已有 `active` / `strategic` 行回填为 `true`，最后增加“archived 不得启用”的检查约束；完整 Taxonomy 同步随后用权威投影覆盖最终状态。截至 2026-08-30，仓库 Schema 已包含 `0002`，但生产 Migration 和生产 Topic 同步均为 `not_executed`。
+`runtime_enabled` 由 `0002_topic_projection.sql` 引入。该 Migration 先以 `false` 创建非空列，再将已有 `active` / `strategic` 行回填为 `true`，最后增加“archived 不得启用”的检查约束；完整 Taxonomy 同步随后用权威投影覆盖最终状态。生产 `0002` 与首次完整投影均已在 2026-08-31 执行和独立验证。
 
 ## 40.8 Schema 演进规则
 
@@ -1365,6 +1365,29 @@ PostgreSQL `topics` 投影完整 Taxonomy，而不是只投影 Seed 子集。列
 - Migration Runner 使用 PostgreSQL Advisory Lock 串行化执行；每个 Migration 的 DDL 与对应历史记录在同一事务中原子提交。
 - 每次结构变更必须同步更新本节和独立 Verifier；可由 Drizzle 表达且影响应用类型映射的变更，还必须同步更新 Drizzle Schema。
 - 未来规划对象必须明确标记为“未实现”，不能与当前物理表共同表述为现状。
+
+## 40.9 Runtime Reader 边界
+
+Runtime Reader 只消费 Topic 派生投影，不成为新的 Topic Source of Truth。它与 Migrator、`hzense_topic_sync` 分属三个互不复用的角色；固定登录角色为 `hzense_runtime`。
+
+| 审计范围      | 允许的 HZense 应用运行时能力                            |
+| ------------- | ------------------------------------------------------- |
+| Database      | 目标数据库 `CONNECT`                                    |
+| Schema / enum | `public` Schema `USAGE`；`topic_status` enum `USAGE`    |
+| Relation      | 仅 `topics` 的 column-level `SELECT`                    |
+| Columns       | `id`、`title`、`parent_id`、`status`、`runtime_enabled` |
+
+`metadata`、Migration history、其他 HZense 表和其他列均不可读；应用 relation 写入、DDL、`TEMPORARY`、Sequence、应用 routine、数据库 / Migration owner 的未来对象 `PUBLIC` 默认权限、任何 principal 直接给 Runtime 的未来对象默认授权、应用对象 ownership 与 grant option 均不可用，其他应用 enum types 的 `USAGE` 也被撤销。其他可创建应用对象的 principal 仍需纳入外部 DDL 治理与冻结；preflight 拒绝最终产生的 Runtime 有效访问，但不重写每个 principal 的 `PUBLIC` defaults。只有 ownership 与 pgvector extension owner 一致、且 extension owner 既不是 Runtime 也不是数据库 owner 的 `SECURITY INVOKER` functions 可以保留既有 `PUBLIC EXECUTE`；routine 审计覆盖所有非系统 Schema，不依赖 Schema `USAGE`。任何非系统 `SECURITY DEFINER`、非 pgvector 应用 routine、非系统 table-inheritance 边或可绕过应用表 ACL 的执行路径都会使部署前 preflight 失败。首个查询使用 `FROM ONLY public.topics`，避免继承子表参与父表扫描。
+
+Type denylist 只覆盖非系统应用 enums；provider-owned extension Types 与其他非-enum Types 不在该声明内，当前实现不声称移除了它们的 ambient PostgreSQL `USAGE`。它们不扩展固定五列投影。
+
+`hzense_runtime` 还必须对同一 cluster 中每个非目标且 `datallowconn = true` 的数据库均无有效 `CONNECT`、`CREATE` 或 `TEMPORARY`。该 cluster-wide 前置由 provider / 集群管理员实施；目标数据库 owner 脚本与 restricted preflight 只枚举并 fail closed，不修改其他数据库。以后新增可连接数据库会再次触发 drift 门禁。
+
+该角色不是 PostgreSQL 数据库全局绝对只读证明：`default_transaction_read_only` 可由会话覆盖，`pg_catalog` Large Object 等系统接口仍可能创建调用者拥有的对象。当前正式保证是固定 Web 查询与 HZense 应用 Schema 的最小权限；数据库全局不可写需要 provider 强制只读副本或管理员级系统函数 ACL 的独立门禁。
+
+provider / 集群管理员必须预创建 `hzense_runtime`，固定属性为 `LOGIN NOINHERIT CONNECTION LIMIT 20 NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`、零 membership，并设置 `default_transaction_read_only = on`。数据库 owner 运行 [`configure_runtime_reader.sql`](../db/roles/configure_runtime_reader.sql)，但普通受限 owner 不替另一个角色修改 session 默认值；[`runtime-reader-preflight.mjs`](../packages/database/src/runtime-reader-preflight.mjs) 只验证并 fail closed。
+
+Web 只在 Production 请求时通过 pooled TLS 连接以 `FROM ONLY public.topics` 读取 `runtime_enabled = true` 的 Topic，固定选择上述五列、按 `id` 排序，并使用最大 50 的参数化 `LIMIT`。Preview、CI、构建期与非生产请求不连接数据库。Runtime Reader 的完整部署与健康检查合约见 [ADR 0006](./adr/0006-runtime-reader-boundary.md) 和 [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md)。本准备分支的仓库实现仍待合并；provider/Vercel 配置、重部署和线上验证为 `not_executed`。
 
 ---
 
