@@ -43,6 +43,17 @@ describe('Runtime reader role configuration contract', () => {
     }
     expect(sql).toContain('membership_info.member = runtime_role.oid');
     expect(sql).toContain('membership_info.roleid = runtime_role.oid');
+    expect(sql.match(/pg_get_userbyid\(membership_info\.member\) = 'neondb_owner'/g)).toHaveLength(
+      2,
+    );
+    expect(sql.match(/pg_get_userbyid\(membership_info\.grantor\) = 'cloud_admin'/g)).toHaveLength(
+      2,
+    );
+    expect(sql.match(/membership_info\.admin_option/g)).toHaveLength(2);
+    expect(sql.match(/NOT membership_info\.inherit_option/g)).toHaveLength(2);
+    expect(sql.match(/NOT membership_info\.set_option/g)).toHaveLength(2);
+    expect(sql.match(/NOT membership_info\.set_option\n\s+\) IS NOT TRUE/g)).toHaveLength(2);
+    expect(sql).toContain('hzense_runtime has an unsafe incoming or outgoing role membership');
     expect(sql).toContain("ARRAY['default_transaction_read_only=on']::text[]");
     expect(sql).toContain("configured_value.value LIKE 'default_transaction_read_only=%'");
     expect(sql).toContain('database_owner IS DISTINCT FROM current_user');

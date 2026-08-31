@@ -1387,7 +1387,9 @@ Neon 的 provider-owned `postgres` 与 `template1` 是唯一保留库例外，�
 
 该角色不是 PostgreSQL 数据库全局绝对只读证明：`default_transaction_read_only` 可由会话覆盖，`pg_catalog` Large Object 等系统接口仍可能创建调用者拥有的对象。当前正式保证是固定 Web 查询与 HZense 应用 Schema 的最小权限；数据库全局不可写需要 provider 强制只读副本或管理员级系统函数 ACL 的独立门禁。
 
-provider / 集群管理员必须预创建 `hzense_runtime`，固定属性为 `LOGIN NOINHERIT CONNECTION LIMIT 20 NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`、零 membership，并设置 `default_transaction_read_only = on`。数据库 owner 运行 [`configure_runtime_reader.sql`](../db/roles/configure_runtime_reader.sql)，但普通受限 owner 不替另一个角色修改 session 默认值；[`runtime-reader-preflight.mjs`](../packages/database/src/runtime-reader-preflight.mjs) 只验证并 fail closed。
+provider / 集群管理员必须预创建 `hzense_runtime`，固定属性为 `LOGIN NOINHERIT CONNECTION LIMIT 20 NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`，并设置 `default_transaction_read_only = on`。数据库 owner 运行 [`configure_runtime_reader.sql`](../db/roles/configure_runtime_reader.sql)，但普通受限 owner 不替另一个角色修改 session 默认值；[`runtime-reader-preflight.mjs`](../packages/database/src/runtime-reader-preflight.mjs) 只验证并 fail closed。
+
+本地与非生产 profile 要求 `hzense_runtime` 没有任何 incoming / outgoing membership。Neon Production profile 只接受唯一一条 provider 管理边：`roleid = hzense_runtime`、`member = neondb_owner`、`grantor = cloud_admin`，并且 `ADMIN = true`、`INHERIT = false`、`SET = false`。它不让 branch owner 继承或切换为 Runtime，也不向 Runtime 传递 owner 权限；`ADMIN = true` 仍允许 branch owner 转授 Runtime 角色，这是被显式接受并在每次生产 preflight 中重新审计的 provider-governance residual。任何额外、反向或 option 漂移的 membership 都 fail closed。
 
 Web 只在 Production 请求时通过 pooled TLS 连接以 `FROM ONLY public.topics` 读取 `runtime_enabled = true` 的 Topic，固定选择上述五列、按 `id` 排序，并使用最大 50 的参数化 `LIMIT`。Preview、CI、构建期与非生产请求不连接数据库。Runtime Reader 的完整部署与健康检查合约见 [ADR 0006](./adr/0006-runtime-reader-boundary.md) 和 [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md)。
 

@@ -354,7 +354,7 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
     try {
       await expect(
         withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql)),
-      ).rejects.toThrow(/no incoming or outgoing role memberships/);
+      ).rejects.toThrow(/unsafe incoming or outgoing role membership/);
       await expect(readProvisioningState()).resolves.toEqual(before);
     } finally {
       await adminClient.query(

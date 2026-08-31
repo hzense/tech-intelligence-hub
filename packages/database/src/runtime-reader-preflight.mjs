@@ -34,7 +34,6 @@ const neonReservedDatabaseContracts = new Map([
     },
   ],
 ]);
-
 const tablePrivileges = [
   'SELECT',
   'INSERT',
@@ -56,6 +55,19 @@ const expectedPhysicalTopicColumns = new Set([
 ]);
 
 export const runtimeReaderRoleName = 'hzense_runtime';
+// Neon grants its branch owner a cloud_admin-managed ADMIN-only membership for
+// every console-created role. With INHERIT and SET both disabled this does not
+// let neondb_owner assume Runtime privileges. ADMIN can still regrant the role,
+// so this accepted provider-governance residual is runner-only and any
+// different membership or option shape remains a rollout blocker.
+const neonRuntimeAdminMembershipContract = Object.freeze({
+  member: 'neondb_owner',
+  grantedRole: runtimeReaderRoleName,
+  grantor: 'cloud_admin',
+  adminOption: true,
+  inheritOption: false,
+  setOption: false,
+});
 export const runtimeReaderTopicColumns = Object.freeze([
   'id',
   'title',
@@ -141,6 +153,19 @@ export function isApprovedNeonReservedDatabaseException(row, profile) {
     row.public_create === false &&
     row.public_temporary === contract.allowsTemporary &&
     row.direct_runtime_acl === false
+  );
+}
+
+export function isApprovedNeonRuntimeAdminMembership(row, profile) {
+  const contract = neonRuntimeAdminMembershipContract;
+  return (
+    profile === 'production' &&
+    row?.member === contract.member &&
+    row?.granted_role === contract.grantedRole &&
+    row?.grantor === contract.grantor &&
+    row?.admin_option === contract.adminOption &&
+    row?.inherit_option === contract.inheritOption &&
+    row?.set_option === contract.setOption
   );
 }
 
@@ -237,7 +262,7 @@ async function inspectRuntimeReaderTarget(
     expectedConnectionLimit = 20,
     profile,
   },
-  { allowNeonReservedDatabases = false } = {},
+  { allowNeonReservedDatabases = false, allowNeonRuntimeAdminMembership = false } = {},
 ) {
   const databaseName = requireString(expectedDatabase, 'HZENSE_RUNTIME_EXPECTED_NAME');
   const userName = requireString(expectedUser, 'HZENSE_RUNTIME_EXPECTED_USER');
@@ -517,14 +542,32 @@ async function inspectRuntimeReaderTarget(
   }
 
   const memberships = await client.query(
-    `SELECT count(*)::integer AS count
+    `SELECT member_info.rolname AS member,
+            granted_info.rolname AS granted_role,
+            grantor_info.rolname AS grantor,
+            membership_info.admin_option,
+            membership_info.inherit_option,
+            membership_info.set_option
      FROM pg_auth_members AS membership_info
-     JOIN pg_roles AS runtime_info
-       ON runtime_info.oid IN (membership_info.member, membership_info.roleid)
-     WHERE runtime_info.rolname = session_user`,
+     JOIN pg_roles AS member_info ON member_info.oid = membership_info.member
+     JOIN pg_roles AS granted_info ON granted_info.oid = membership_info.roleid
+     JOIN pg_roles AS grantor_info ON grantor_info.oid = membership_info.grantor
+     WHERE (
+       membership_info.member = (
+         SELECT oid FROM pg_roles WHERE rolname = session_user
+       )
+       OR membership_info.roleid = (
+         SELECT oid FROM pg_roles WHERE rolname = session_user
+       )
+     )
+     ORDER BY member_info.rolname, granted_info.rolname, grantor_info.rolname`,
   );
-  if (memberships.rows[0]?.count !== 0) {
-    throw new Error('Runtime reader role must have no incoming or outgoing role memberships');
+  const unsafeMemberships = memberships.rows.filter(
+    (row) =>
+      !(allowNeonRuntimeAdminMembership && isApprovedNeonRuntimeAdminMembership(row, profile)),
+  );
+  if (unsafeMemberships.length > 0) {
+    throw new Error('Runtime reader role has unsafe incoming or outgoing role memberships');
   }
 
   const extraSchemaPrivileges = await client.query(
@@ -1240,7 +1283,10 @@ export async function runRuntimeReaderPreflight({
         expectedConnectionLimit,
         profile,
       },
-      { allowNeonReservedDatabases: true },
+      {
+        allowNeonReservedDatabases: true,
+        allowNeonRuntimeAdminMembership: true,
+      },
     );
   } finally {
     await client.end().catch(() => undefined);
