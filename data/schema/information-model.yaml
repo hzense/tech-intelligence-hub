@@ -255,10 +255,10 @@ taxonomy_model:
     coverage: complete_taxonomy
     table_status: implemented
     schema_migration: db/migrations/0002_topic_projection.sql
-    production_schema_migration_status: not_executed
+    production_schema_migration_status: independently_verified_2026_08_31
     synchronization_status: implemented
     synchronizer_implemented: true
-    production_sync_status: not_executed
+    production_sync_status: independently_verified_2026_08_31
     independently_editable: false
     column_sources:
       id: taxonomy.id
@@ -349,6 +349,102 @@ taxonomy_model:
             HZENSE_TOPIC_SYNC_EXPECTED_PLAN_FINGERPRINT,
             HZENSE_TOPIC_SYNC_BACKUP_ID,
           ]
+
+runtime_reader:
+  status:
+    repository_implementation: prepared_pending_merge
+    neon_baseline_governance: prepared_with_live_evidence
+    target_database_acl: not_executed
+    independent_runtime_credential: not_executed
+    production_preflight: not_executed
+    vercel_production_environment: not_executed
+    production_redeployment: not_executed
+    health_and_bounded_read_acceptance: not_executed
+    safe_log_and_monitoring_acceptance: not_executed
+  role:
+    name: hzense_runtime
+    attributes:
+      [login, noinherit, nosuperuser, nocreatedb, nocreaterole, noreplication, nobypassrls]
+    connection_limit: 20
+    memberships: none
+    default_transaction_read_only: true
+  web_pool:
+    environment: production_only
+    maximum_connections_per_process: 1
+    lazy_initialization: request_only
+  target_database_allowlist:
+    database: [connect]
+    schema_public: [usage]
+    type_topic_status: [usage]
+    topics_columns:
+      select: [id, title, parent_id, status, runtime_enabled]
+    temporary: forbidden
+    relation_writes: forbidden
+    application_ddl: forbidden
+    grant_option: forbidden
+    object_ownership: forbidden
+  cross_database_policy:
+    ordinary_non_target_databases: no_connect_create_or_temporary
+    template0: must_remain_non_connectable
+    neon_reserved_exceptions:
+      matching: exact_contract_not_name_only
+      owner: cloud_admin
+      databases:
+        postgres:
+          template: false
+          connection_limit: -1
+          database_acl_shape: default_null
+          public_privileges: [connect, temporary]
+          create: forbidden
+        template1:
+          template: true
+          connection_limit: -1
+          database_acl_shape: explicit
+          public_privileges: [connect]
+          create: forbidden
+      both_require: [no_grant_option, no_direct_runtime_acl, runtime_identity, read_only, tls]
+      deep_checks: [login_event_triggers, non_system_object_access, non_system_object_ownership]
+      drift_behavior: fail_closed
+  neon_baseline_governance:
+    backup:
+      type: provider_branch
+      retention_days: 7
+      created: '2026-08-31'
+      identifier_recorded_in_repository: false
+      expires_before_acceptance_requires_replacement: true
+    role_and_database_acl_inventory: complete
+    runtime_read_only_default: complete
+    ordinary_neondb_public_acl_isolation: complete
+    target_hzense_acl: pending
+  migration_operations:
+    role: hzense_migrator
+    scope: maintenance_only
+    connection_limit: 10
+    previous_connection_limit: 5
+    rationale: neon_tables_exhausted_old_limit_and_triggered_53300
+    runtime_privilege_impact: none
+    further_increase_requires_connection_source_audit: true
+  production_acceptance_requires:
+    - merged_green_repository_change
+    - independently_rotated_runtime_credential
+    - target_acl_applied_and_verified
+    - target_and_reserved_database_preflight_passed
+    - production_only_vercel_environment
+    - ready_deployment_for_merged_commit
+    - health_200_exact_ok_no_store
+    - real_bounded_five_column_read
+    - safe_runtime_logs
+    - monitoring_baseline_verified
+  rollback:
+    before_acl: protected_pre_change_acl_record_and_current_provider_branch
+    before_vercel: do_not_inject_environment_until_preflight_passes
+    failed_deployment:
+      [
+        remove_runtime_production_environment,
+        redeploy_last_known_good_commit,
+        rotate_runtime_credential,
+      ]
+    abandoned_acl_rollout: restore_reviewed_pre_change_acl_or_provider_branch
 
 data_consistency:
   - all_ids_unique

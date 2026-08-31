@@ -18,7 +18,7 @@ function writeIdlePoolError(error: unknown): void {
     outcome: 'unavailable',
     ...(sqlstate ? { sqlstate } : {}),
   };
-  console.warn(JSON.stringify(record));
+  console.error(JSON.stringify(record));
 }
 
 function createPool(options: RuntimeReaderPoolOptions): pg.Pool {

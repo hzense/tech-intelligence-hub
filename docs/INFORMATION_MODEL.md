@@ -1381,13 +1381,17 @@ Runtime Reader 只消费 Topic 派生投影，不成为新的 Topic Source of Tr
 
 Type denylist 只覆盖非系统应用 enums；provider-owned extension Types 与其他非-enum Types 不在该声明内，当前实现不声称移除了它们的 ambient PostgreSQL `USAGE`。它们不扩展固定五列投影。
 
-`hzense_runtime` 还必须对同一 cluster 中每个非目标且 `datallowconn = true` 的数据库均无有效 `CONNECT`、`CREATE` 或 `TEMPORARY`。该 cluster-wide 前置由 provider / 集群管理员实施；目标数据库 owner 脚本与 restricted preflight 只枚举并 fail closed，不修改其他数据库。以后新增可连接数据库会再次触发 drift 门禁。
+`hzense_runtime` 还必须对同一 cluster 中每个普通非目标且 `datallowconn = true` 的数据库均无有效 `CONNECT`、`CREATE` 或 `TEMPORARY`。该 cluster-wide 前置由 provider / 集群管理员实施；目标数据库 owner 脚本与 restricted preflight 只枚举并 fail closed，不修改其他数据库。以后新增可连接数据库会再次触发 drift 门禁。
+
+Neon 的 provider-owned `postgres` 与 `template1` 是唯一保留库例外，而且例外绑定完整合约而非名称：owner 固定为 `cloud_admin`，数据库模板标志、connection limit、default-vs-explicit ACL 形态、PUBLIC 能力、grant option 与 Runtime direct ACL 必须精确匹配；两者都无 `CREATE`，`postgres` 只保留 provider 默认的 `PUBLIC CONNECT` / `TEMPORARY`，`template1` 只保留 provider 默认的 `PUBLIC CONNECT`。`template0` 必须继续 `datallowconn = false`；`neondb` 与任何普通数据库不得进入例外。生产 preflight 必须以 Runtime 身份逐库连接，复核 identity、global/session read-only、TLS、login event trigger，以及非系统 Schema/object 的 access 与 ownership；任何 drift 都 fail closed。
 
 该角色不是 PostgreSQL 数据库全局绝对只读证明：`default_transaction_read_only` 可由会话覆盖，`pg_catalog` Large Object 等系统接口仍可能创建调用者拥有的对象。当前正式保证是固定 Web 查询与 HZense 应用 Schema 的最小权限；数据库全局不可写需要 provider 强制只读副本或管理员级系统函数 ACL 的独立门禁。
 
 provider / 集群管理员必须预创建 `hzense_runtime`，固定属性为 `LOGIN NOINHERIT CONNECTION LIMIT 20 NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`、零 membership，并设置 `default_transaction_read_only = on`。数据库 owner 运行 [`configure_runtime_reader.sql`](../db/roles/configure_runtime_reader.sql)，但普通受限 owner 不替另一个角色修改 session 默认值；[`runtime-reader-preflight.mjs`](../packages/database/src/runtime-reader-preflight.mjs) 只验证并 fail closed。
 
-Web 只在 Production 请求时通过 pooled TLS 连接以 `FROM ONLY public.topics` 读取 `runtime_enabled = true` 的 Topic，固定选择上述五列、按 `id` 排序，并使用最大 50 的参数化 `LIMIT`。Preview、CI、构建期与非生产请求不连接数据库。Runtime Reader 的完整部署与健康检查合约见 [ADR 0006](./adr/0006-runtime-reader-boundary.md) 和 [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md)。本准备分支的仓库实现仍待合并；provider/Vercel 配置、重部署和线上验证为 `not_executed`。
+Web 只在 Production 请求时通过 pooled TLS 连接以 `FROM ONLY public.topics` 读取 `runtime_enabled = true` 的 Topic，固定选择上述五列、按 `id` 排序，并使用最大 50 的参数化 `LIMIT`。Preview、CI、构建期与非生产请求不连接数据库。Runtime Reader 的完整部署与健康检查合约见 [ADR 0006](./adr/0006-runtime-reader-boundary.md) 和 [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md)。
+
+截至 2026-08-31，代码与 Neon 基础治理已准备：创建了新的七天 provider 回滚分支，设置 `hzense_runtime` 的 read-only session 默认值，撤销未使用 `neondb` 的 ambient database ACL，并在 Neon Tables 用满旧五连接上限后将维护专用 `hzense_migrator` 从 connection limit 5 调整到 10。Migrator 调整不改变 Runtime 权限、其 limit 20 或 Web pool 上限 1。仓库实现仍待合并；目标 `hzense` ACL、独立 Runtime 凭据、目标/保留库生产 preflight、Vercel Production 配置、重部署、健康/五列读取与日志验收仍未完成。
 
 ---
 

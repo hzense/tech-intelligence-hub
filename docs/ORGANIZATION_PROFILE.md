@@ -39,7 +39,7 @@ Core products:
 
 ## Official links
 
-- Website: **https://hzense.com** _(deployment pending)_
+- Website: **https://hzense.com** _(production)_
 - Main repository: **https://github.com/hzense/tech-intelligence-hub**
 
 ## Principles
@@ -66,7 +66,7 @@ HZense Technology Intelligence
 
 ## Current stage
 
-HZense is currently in the **Foundation / pre-MVP** phase.
+HZense is currently in the **production hardening / Runtime Reader rollout** phase. The public MVP and production domain are live; the first production Topic projection is independently verified, while Web Runtime database acceptance is still incomplete.
 
 Completed:
 
@@ -77,10 +77,13 @@ Completed:
 - Technical architecture baseline
 - Information Model v2.0.0
 - Initial technology taxonomy
+- Public MVP and `hzense.com` production deployment
+- PostgreSQL 18 / pgvector physical Schema and independently verified Topic projection
+- Runtime Reader repository boundary and initial Neon governance preparation
 
 Next milestone:
 
-> **Development Foundation → Next.js MVP → First deployment to hzense.com**
+> **Merge Runtime Reader → finish least-privilege production configuration → verify health, bounded read and monitoring**
 
 ---
 

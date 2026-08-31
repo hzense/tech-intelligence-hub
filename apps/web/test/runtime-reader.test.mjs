@@ -339,11 +339,15 @@ test('route and server module preserve the Node-only, request-time deployment bo
   assert.match(routeSource, /export const dynamic = 'force-dynamic'/);
   assert.match(routeSource, /export const maxDuration = 10/);
   assert.doesNotMatch(routeSource, /preferredRegion/);
+  assert.match(routeSource, /console\.error\(serialized\)/);
+  assert.doesNotMatch(routeSource, /console\.warn/);
   assert.deepEqual(vercelConfig, {
     $schema: 'https://openapi.vercel.sh/vercel.json',
     regions: ['iad1'],
   });
   assert.match(serverSource, /import 'server-only'/);
   assert.match(serverSource, /new Pool\(options\)/);
+  assert.match(serverSource, /console\.error\(JSON\.stringify\(record\)\)/);
+  assert.doesNotMatch(serverSource, /console\.warn/);
   assert.doesNotMatch(serverSource, /DATABASE_DIRECT_URL|DATABASE_URL|NEXT_PUBLIC_/);
 });

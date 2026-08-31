@@ -1,18 +1,18 @@
 # HZense 开发进度看板
 
 **最后更新：** 2026-08-31
-**当前阶段：** Runtime Reader 仓库准备（生产配置与上线验证未执行）
+**当前阶段：** Runtime Reader 仓库与 Neon 基础治理已准备（生产凭据、目标 ACL、Vercel 配置与上线验收未完成）
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
 > 本看板区分“工程基础完成度”和“用户可用网站完成度”。百分比是基于下方验收清单的人工估算，不以文档数量或提交数量代替产品进展。
 
 ## 总览
 
-| 进度轴       | 当前进度 | 状态                | 判断                                                                                 |
-| ------------ | -------: | ------------------- | ------------------------------------------------------------------------------------ |
-| 开发基础建设 |     100% | ✅ 完成             | 架构、Monorepo、数据模型、冻结依赖安装和内容交叉引用校验均已通过 CI                  |
-| 网站 MVP     |     100% | ✅ 验收完成         | Home、Daily、Weekly、Insights、Topics、Signals、Resources 与基础搜索均由验证内容驱动 |
-| 生产就绪度   |      90% | 🟡 Topic 投影已验收 | 2026-08-31 已完成 `0002` 与 Topic 生产同步；Runtime Reader 上线与监控待完成          |
+| 进度轴       | 当前进度 | 状态              | 判断                                                                                 |
+| ------------ | -------: | ----------------- | ------------------------------------------------------------------------------------ |
+| 开发基础建设 |     100% | ✅ 完成           | 架构、Monorepo、数据模型、冻结依赖安装和内容交叉引用校验均已通过 CI                  |
+| 网站 MVP     |     100% | ✅ 验收完成       | Home、Daily、Weekly、Insights、Topics、Signals、Resources 与基础搜索均由验证内容驱动 |
+| 生产就绪度   |      90% | 🟡 Runtime 准备中 | Topic 投影已验收，Runtime Reader 的代码和 Neon 基础治理已准备；上线验收仍待完成      |
 
 ## 阶段看板
 
@@ -23,7 +23,7 @@
 | 2. Development Foundation | ✅ 完成   |   100% | Monorepo、Schema、Migration、Validation、Seed、锁文件与冻结安装均已验证              |
 | 3. Web Application Shell  | ✅ 完成   |   100% | Next.js、Tailwind、App Router、主题、全局布局和导航可运行                            |
 | 4. MVP 内容与功能         | ✅ 完成   |   100% | Home、Daily、Weekly、Insights、Topics、Signals、Resources、基础搜索和独立 Radar 可用 |
-| 5. Production Release     | 🟡 进行中 |    90% | 域名、数据库 Schema 与 Topic 投影已验收；Runtime Reader 上线与监控待完成             |
+| 5. Production Release     | 🟡 进行中 |    90% | 域名、数据库 Schema 与 Topic 投影已验收；Runtime Reader 配置、上线与监控待完成       |
 
 ## 已完成
 
@@ -120,11 +120,14 @@
 - [x] 由操作者创建并验证新的可恢复分支备份，以受保护声明值应用并独立验证生产 `0002_topic_projection.sql`
 - [x] 创建独立最小权限 `hzense_topic_sync`，以 owner 执行已评审 ACL 配置，并验证受保护的同步连接与 expected identity
 - [x] 使用 reviewed source/plan fingerprint 完成持锁写前校验、事务 Apply、独立只读验证与 no-op 重跑；结果为 62 个 Topics、0 个未知行、fingerprint 匹配和 0 变更
+- [x] 为 Runtime Reader 上线创建新的七天 provider 分支备份，盘点角色与数据库 ACL，设置 `hzense_runtime` 的 read-only session 默认值，并撤销未使用 `neondb` 的 ambient `PUBLIC` 访问
+- [x] 将维护专用 `hzense_migrator` 的 connection limit 从 5 调整为 10，解除 Neon Tables 占满旧五连接上限导致的 `53300`；该决定不扩大 Web Runtime 权限，Runtime Web pool 上限仍为 1
 - [ ] 合并本准备分支的独立 Runtime Reader、Server-only 数据库客户端、安全健康检查和有上限的只读业务查询
-- [ ] 在 provider 配置并预检 `hzense_runtime` 最小权限角色，仅向 Vercel Production 注入 pooled 连接与 expected identity，重部署并独立验证
+- [ ] 在目标 `hzense` 数据库应用并验证 Runtime ACL，建立独立 Runtime 凭据，并让受保护 preflight 深检目标库及精确允许的 Neon `postgres` / `template1` 保留库状态
+- [ ] 仅向 Vercel Production 注入 pooled 连接与 expected identity，重部署并独立验证健康检查、真实五列读取与安全日志
 - [ ] 建立数据库连接数、池等待、查询延迟、超时和错误告警
 
-2026-08-31 的生产维护窗口已有现场证据：新分支备份确认可恢复，`0002` 已执行，3 个 Migration / 0 pending，`hzense_topic_sync` 与最小 ACL 已复核，dry run → Apply → 独立 verifier → no-op 全部完成，最终 62 个 Topics、0 个未知行且 reviewed fingerprint 匹配。仓库不记录实际连接目标、凭据、fingerprint 值或 backup ID。Runtime Reader 的 provider/Vercel 配置、重部署与线上验证仍为 `not_executed`，因此生产就绪度为 90%。
+2026-08-31 的生产维护窗口已有现场证据：新分支备份确认可恢复，`0002` 已执行，3 个 Migration / 0 pending，`hzense_topic_sync` 与最小 ACL 已复核，dry run → Apply → 独立 verifier → no-op 全部完成，最终 62 个 Topics、0 个未知行且 reviewed fingerprint 匹配。随后完成了 Runtime Reader 的新七天回滚分支、角色/ACL 盘点、`hzense_runtime` read-only 默认值、`neondb` ambient ACL 隔离与 Migrator 连接容量治理。仓库不记录实际连接目标、凭据、fingerprint 值或 backup ID。目标 `hzense` ACL、Runtime 凭据、生产 preflight、Vercel Production 配置、重部署和线上验收仍未完成，因此生产就绪度仍为 90%。
 
 ## MVP 验收状态
 
@@ -144,12 +147,13 @@
 
 ## 当前风险与阻塞
 
-| 优先级 | 风险                                           | 处理方式                                                                                                                              |
-| ------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| P1     | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程                                                                                               |
-| P1     | Runtime Reader 仓库变更尚未合并                | 评审固定五列读取边界、Production-only pooled 客户端、Node 健康检查、`iad1` 部署配置、fail-closed 环境门禁与安全日志                   |
-| P1     | Web runtime 尚未接入生产数据库                 | provider 侧配置并预检独立 `hzense_runtime`，只向 Vercel Production 注入变量，重部署后独立验证；禁止复用 Migrator 或 Topic Sync Writer |
-| P1     | 生产日志与监控尚未落地                         | 验证 Vercel runtime logs、基础告警与后续数据库可观测性                                                                                |
+| 优先级 | 风险                                           | 处理方式                                                                                                                          |
+| ------ | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| P1     | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程                                                                                           |
+| P1     | Runtime Reader 仓库变更尚未合并                | 评审固定五列读取边界、Production-only pooled 客户端、Node 健康检查、`iad1` 部署配置、fail-closed 环境门禁与安全日志               |
+| P1     | Web runtime 尚未接入生产数据库                 | 完成目标 ACL、独立凭据与保留库深检，只向 Vercel Production 注入变量，重部署后独立验证；禁止复用 Migrator 或 Topic Sync Writer     |
+| P1     | Neon 保留数据库依赖 provider-owned 默认 ACL    | 只允许精确匹配 `cloud_admin` 所有的 `postgres` / `template1` 合约，并逐库深检；任何 owner、模板标志、ACL 或对象访问漂移都阻断上线 |
+| P1     | 生产日志与监控尚未落地                         | 验证 Vercel runtime logs、基础告警与后续数据库可观测性                                                                            |
 
 ## 进度更新规则
 
@@ -164,6 +168,7 @@
 
 | 日期       | 更新                                                                                                                                                                                                     |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-08-31 | Runtime Reader 上线前新建七天回滚分支；完成角色/ACL 盘点、Runtime read-only 默认值、`neondb` ambient ACL 隔离，并将维护 Migrator 上限由 5 调整为 10；生产凭据、目标 ACL、Vercel 与健康验收仍待完成       |
 | 2026-08-31 | 新可恢复分支备份、生产 `0002`、3 个 Migration / 0 pending、最小权限 `hzense_topic_sync`、62 个 Topics / 0 unknown、reviewed fingerprint 与 0 变更 no-op 均完成独立验证；Runtime Reader 外部上线仍未执行  |
 | 2026-08-31 | Runtime Reader 准备分支定义 `hzense_runtime` 五列只读边界、Production-only pooled 客户端、Node health、`iad1` 部署配置、Preview/CI fail closed 与安全日志；仓库变更仍待合并和生产验证                    |
 | 2026-08-30 | PR #30 合并完整 Topic 派生投影交付：`0002_topic_projection.sql`、双 fingerprint 同步器、最小权限 `hzense_topic_sync` 配置脚本与 PostgreSQL 18 集成测试进入 `main`；所有生产数据库动作仍为 `not_executed` |

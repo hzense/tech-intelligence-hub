@@ -152,7 +152,9 @@ Runtime Reader 的应用 Schema allowlist 只有目标数据库 `CONNECT`、`pub
 
 上述 Type denylist 只覆盖非系统应用 enums；provider-owned extension Types 与其他非-enum Types 不在声明内，仓库不声称移除了它们的 ambient PostgreSQL `USAGE`。它们不扩展固定五列查询。
 
-由于角色与数据库 ACL 是 cluster-wide，provider / 集群管理员还必须确保 `hzense_runtime` 对每个非目标且 `datallowconn = true` 的数据库均无有效 `CONNECT`、`CREATE` 或 `TEMPORARY`。目标数据库 owner 不修改其他数据库；配置脚本与生产 preflight 只枚举并 fail closed。若 ambient `PUBLIC` 权限不能在保留其他调用方直接授权的前提下安全撤销，则本次上线阻断；独立 provider project 仍可能包含保留数据库，不能替代 live preflight 证据。以后新增可连接数据库也必须重新通过该门禁。
+由于角色与数据库 ACL 是 cluster-wide，每个普通非目标且 `datallowconn = true` 的数据库都必须让 `hzense_runtime` 的有效 `CONNECT`、`CREATE` 与 `TEMPORARY` 为 false。目标数据库 owner 不修改其他数据库；配置脚本与生产 preflight 只枚举并 fail closed。若 ambient `PUBLIC` 权限不能在保留其他调用方直接授权的前提下安全撤销，则本次上线阻断。
+
+Neon 保留数据库只有精确匹配 provider 默认合约的 `postgres` 与 `template1` 可作为窄例外：owner 必须是 `cloud_admin`，模板标志、connection limit、default-vs-explicit ACL 形态、PUBLIC 能力、grant option 与 Runtime direct ACL 必须逐项匹配；`template0` 保持不可连接，`neondb` 及其他普通数据库不得豁免。生产 preflight 必须用 Runtime 凭据逐库连接并深检 identity、read-only/TLS、login event trigger 与非系统对象 access/ownership，而不是只按名称放行。任何 provider 默认或对象状态漂移都会阻断上线。
 
 这不是数据库全局绝对只读证明：角色可覆盖 user-settable 的 read-only 默认值，且 `pg_catalog` Large Object 等系统接口可能允许普通登录创建其拥有的对象。Runtime 凭据仍必须作为高敏感值；需要全数据库不可写时，必须另行采用 provider 强制只读副本或管理员级系统函数 ACL 门禁。完整决策见 [ADR 0006](./adr/0006-runtime-reader-boundary.md)。
 
@@ -160,7 +162,7 @@ Web 只在 `VERCEL_ENV=production` 的请求时读取 `HZENSE_RUNTIME_DATABASE_U
 
 唯一首批业务查询使用 `FROM ONLY public.topics` 固定选择上述五列，以 `runtime_enabled = true` 过滤、按 `id` 排序并使用 `1..50` 的参数化 `LIMIT`。Node.js 健康端点固定为 `/api/health/database`、动态执行、最长 10 秒且 `Cache-Control: no-store`；该上限覆盖 3.5 秒连接超时与 3 秒查询超时并保留平台收尾余量。项目级 [`apps/web/vercel.json`](../apps/web/vercel.json) 把 Function 固定到 `iad1`，不使用已弃用的 route-level region export。成功只暴露 `{"status":"ok"}`，失败只暴露 `{"status":"unavailable"}`。结构化日志仅包含事件、结果、耗时、request ID、安全错误码、SQLSTATE 和连接池计数，不记录 URL、host、database、user、SQL、参数或原始异常。
 
-本准备分支建立上述可评审仓库边界，不代表外部上线完成。provider 角色与 ACL、Vercel Production 变量、重部署、线上 health、真实五列查询和日志验证仍为 `not_executed`。
+本准备分支建立上述可评审仓库边界，不代表外部上线完成。Neon 侧已创建新的七天回滚分支，复核角色与 database ACL，设置 Runtime 的 read-only session 默认值，隔离未使用的 `neondb` ambient ACL；维护专用 `hzense_migrator` 因 Neon Tables 用满旧五连接上限而从 limit 5 调整为 10。后者不改变 Runtime 权限或 Web pool 上限 1。目标 `hzense` ACL、独立 Runtime 凭据、生产 preflight、Vercel Production 变量、重部署、线上 health、真实五列查询和日志验证仍未完成。
 
 ## 8. Search 与 Vector
 
@@ -335,11 +337,11 @@ Local         http://localhost:3000
 
 1. ✅ 已完成：PR #30 完成 Topic 全量投影同步器的最终评审、CI 与合并。
 2. ✅ 已完成：以经人工验证的新可恢复分支备份应用并验证生产 `0002`，配置独立 `hzense_topic_sync` 与 ACL，完成双 fingerprint dry run、受保护 Apply、独立验证与 no-op 重跑。
-3. 🚧 准备分支：实现独立 Runtime Reader、Server-only pooled 客户端、Node 健康检查、`iad1` 部署配置和一条有上限的真实只读查询；仓库变更仍待合并。
-4. ⏳ 未执行：建立连接数、池等待、查询延迟、超时和错误告警。
+3. 🚧 进行中：Runtime Reader 代码与 Neon 基础治理已准备；仍须合并代码、应用目标 ACL、建立独立凭据、通过目标库与保留库 preflight，并完成 Vercel Production 重部署和线上验收。
+4. ⏳ 未执行：建立连接数、池等待、查询延迟、超时和错误告警，并执行一次上线后的告警基线验证。
 5. ⏳ 未执行：在稳定数据路径上继续 PostgreSQL FTS、Hybrid Search 与 Ask HZense / RAG。
 
-截至 2026-08-31，步骤 1–2 已完成并有独立生产证据。步骤 3 的仓库实现处于准备分支；其 provider/Vercel 配置、重部署与线上验证仍为 `not_executed`。步骤 3–5 的外部动作不能用本地测试或历史 Migration / Topic 验收替代。
+截至 2026-08-31，步骤 1–2 已完成并有独立生产证据。步骤 3 已完成代码与 Neon 基础治理准备，但目标 ACL、受保护凭据/preflight、Vercel 配置、重部署与线上验收仍未完成。步骤 3–5 的外部动作不能用本地测试、基础治理或历史 Migration / Topic 验收替代。
 
 ---
 
