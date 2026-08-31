@@ -140,7 +140,9 @@ pnpm db:sync:topics:local:dry-run
 
 ## PostgreSQL Runtime Reader
 
-Runtime Reader 与 Migrator、Topic Sync Writer 是三个不可复用的权限边界。固定登录角色为 `hzense_runtime`，由 provider / 集群管理员预先创建并设置 `LOGIN NOINHERIT CONNECTION LIMIT 20 NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`、零角色成员关系，以及 session 默认值 `default_transaction_read_only = on`。普通受限数据库 owner 不得替另一个角色修改该 session 默认值；[`configure_runtime_reader.sql`](../db/roles/configure_runtime_reader.sql) 与 [`runtime-reader-preflight.mjs`](../packages/database/src/runtime-reader-preflight.mjs) 只验证并 fail closed，不越权设置。
+Runtime Reader 与 Migrator、Topic Sync Writer 是三个不可复用的权限边界。固定登录角色为 `hzense_runtime`，由 provider / 集群管理员预先创建并设置 `LOGIN NOINHERIT CONNECTION LIMIT 20 NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`，以及 session 默认值 `default_transaction_read_only = on`。普通受限数据库 owner 不得替另一个角色修改该 session 默认值；[`configure_runtime_reader.sql`](../db/roles/configure_runtime_reader.sql) 与 [`runtime-reader-preflight.mjs`](../packages/database/src/runtime-reader-preflight.mjs) 只验证并 fail closed，不越权设置。
+
+本地与非生产环境仍要求 `hzense_runtime` 没有任何 incoming / outgoing role membership。Neon Production 只允许唯一一条 provider control-plane 管理关系：`cloud_admin` 将 `hzense_runtime` 授予 `neondb_owner`，且 `ADMIN = true`、`INHERIT = false`、`SET = false`。该边不让 `neondb_owner` 继承或 `SET ROLE` 取得 Runtime 权限，也不向 Runtime 反向授予 owner 能力；`ADMIN = true` 仍允许 provider branch owner 转授该角色，这是被显式接受并在每次生产 preflight 中重新审计的 provider-governance residual。任何第二条边、反向边、不同 member / granted role / grantor，或任一 option 漂移都必须 fail closed。
 
 数据库 owner 运行经过评审的 Runtime Reader ACL 配置后，该角色在目标数据库内只允许：
 
@@ -172,7 +174,7 @@ Runtime ACL 脚本包含目标数据库范围的 destructive ACL normalization�
 
 首次 Runtime Reader 上线必须严格按以下顺序执行。状态以 2026-08-31 的现场证据为准，部分 Neon 基础治理已完成，但生产接入与验收仍未完成：
 
-1. 🟡 `hzense_runtime` 固定属性、零 membership 与 `default_transaction_read_only = on` 已复核；仍须在受保护流程中生成/轮换独立 Runtime 凭据，且不得在 SQL history、终端输出或仓库中暴露。
+1. 🟡 `hzense_runtime` 固定属性、上述唯一 Neon control-plane membership 形态与 `default_transaction_read_only = on` 已盘点；仍须在受保护流程中生成/轮换独立 Runtime 凭据，且不得在 SQL history、终端输出或仓库中暴露。该角色盘点不代表目标 `hzense` ACL 已应用。
 2. 🟡 新的七天 provider 分支备份与 cluster 角色/ACL 盘点已完成；在执行目标 ACL 前仍须用同一维护窗口独立核对 Migration / Table / Topic 基线，并把 pre-change ACL 恢复材料保存在受保护运维记录中。
 3. 🟡 普通 `neondb` 的 ambient 访问已隔离；`postgres` / `template1` 只允许上述精确 Neon 保留库合约，仍须由生产 preflight 使用 Runtime 身份逐库深检。无法匹配或发现其他可连接数据库时，本次上线阻断。
 4. ⏳ 在冻结所有可创建应用对象的 principal（至少 owner / Migrator）DDL 的窗口内，以数据库及 Migration 对象 owner 执行权限脚本；不得把 owner URL 输出到终端或日志。

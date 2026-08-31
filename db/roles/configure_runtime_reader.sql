@@ -25,6 +25,11 @@
 -- connect to each tolerated reserved database and prove that the session is
 -- read-only and cannot reach any non-system object. postgres necessarily keeps
 -- Neon-managed PUBLIC TEMPORARY; treat any catalog drift as a failed rollout.
+-- Neon also retains one cloud_admin-granted ADMIN-only membership from
+-- neondb_owner to hzense_runtime for control-plane role management. It is
+-- tolerated only while INHERIT=false and SET=false. ADMIN still lets the
+-- provider branch owner regrant the role, an accepted provider-governance
+-- residual; every other incoming or outgoing membership remains forbidden.
 --
 -- This file contains no role creation, ALTER ROLE, password, URL or secret.
 
@@ -92,10 +97,20 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM pg_auth_members AS membership_info
-    WHERE membership_info.member = runtime_role.oid
-       OR membership_info.roleid = runtime_role.oid
+    WHERE (
+      membership_info.member = runtime_role.oid
+      OR membership_info.roleid = runtime_role.oid
+    )
+      AND (
+        membership_info.roleid = runtime_role.oid
+        AND pg_get_userbyid(membership_info.member) = 'neondb_owner'
+        AND pg_get_userbyid(membership_info.grantor) = 'cloud_admin'
+        AND membership_info.admin_option
+        AND NOT membership_info.inherit_option
+        AND NOT membership_info.set_option
+      ) IS NOT TRUE
   ) THEN
-    RAISE EXCEPTION 'hzense_runtime must have no incoming or outgoing role memberships';
+    RAISE EXCEPTION 'hzense_runtime has an unsafe incoming or outgoing role membership';
   END IF;
   IF database_owner = runtime_role.rolname THEN
     RAISE EXCEPTION 'hzense_runtime must not own the target database';
@@ -621,6 +636,24 @@ BEGIN
   ) THEN
     RAISE EXCEPTION
       'hzense_runtime has unsafe privileges on another connectable database';
+  END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM pg_auth_members AS membership_info
+    WHERE (
+      membership_info.member = runtime_role_oid
+      OR membership_info.roleid = runtime_role_oid
+    )
+      AND (
+        membership_info.roleid = runtime_role_oid
+        AND pg_get_userbyid(membership_info.member) = 'neondb_owner'
+        AND pg_get_userbyid(membership_info.grantor) = 'cloud_admin'
+        AND membership_info.admin_option
+        AND NOT membership_info.inherit_option
+        AND NOT membership_info.set_option
+      ) IS NOT TRUE
+  ) THEN
+    RAISE EXCEPTION 'hzense_runtime has an unsafe incoming or outgoing role membership';
   END IF;
   IF NOT has_schema_privilege('hzense_runtime', 'public', 'USAGE')
      OR has_schema_privilege('hzense_runtime', 'public', 'USAGE WITH GRANT OPTION')

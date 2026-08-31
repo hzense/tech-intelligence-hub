@@ -6,6 +6,7 @@ import { expectedTableNames } from '../src/verify.mjs';
 import {
   inspectRuntimeReaderPreflight,
   isApprovedNeonReservedDatabaseException,
+  isApprovedNeonRuntimeAdminMembership,
   runRuntimeReaderPreflight,
   runtimeReaderPreflightFailureMessage,
   runtimeReaderProductionOptions,
@@ -43,6 +44,18 @@ function neonReservedDatabaseRow(name = 'postgres') {
   };
 }
 
+function neonRuntimeAdminMembershipRow(overrides = {}) {
+  return {
+    member: 'neondb_owner',
+    granted_role: 'hzense_runtime',
+    grantor: 'cloud_admin',
+    admin_option: true,
+    inherit_option: false,
+    set_option: false,
+    ...overrides,
+  };
+}
+
 function expectedColumnRows() {
   return runtimeReaderTopicColumns.map((columnName) => ({
     schema_name: 'public',
@@ -56,7 +69,7 @@ function expectedColumnRows() {
 
 function preflightClient({
   identity = {},
-  membershipCount = 0,
+  membershipRows = [],
   otherDatabasePrivileges = [],
   enumTypePrivileges = [
     {
@@ -118,7 +131,7 @@ function preflightClient({
       };
     }
     if (sql.includes('FROM pg_auth_members')) {
-      return { rowCount: 1, rows: [{ count: membershipCount }] };
+      return { rowCount: membershipRows.length, rows: membershipRows };
     }
     if (sql.includes('FROM pg_database AS database_info') && sql.includes('connect_allowed')) {
       return { rowCount: otherDatabasePrivileges.length, rows: otherDatabasePrivileges };
@@ -437,8 +450,22 @@ describe('Runtime reader least-privilege preflight', () => {
 
   it('rejects role membership, elevated attributes, TEMP and grant options', async () => {
     await expect(
-      inspectRuntimeReaderPreflight(preflightClient({ membershipCount: 1 }), expected),
-    ).rejects.toThrow(/no incoming or outgoing role memberships/);
+      inspectRuntimeReaderPreflight(
+        preflightClient({
+          membershipRows: [
+            {
+              member: 'hzense_runtime',
+              granted_role: 'unsafe_role',
+              grantor: 'cluster_admin',
+              admin_option: false,
+              inherit_option: true,
+              set_option: true,
+            },
+          ],
+        }),
+        expected,
+      ),
+    ).rejects.toThrow(/unsafe incoming or outgoing role memberships/);
     await expect(
       inspectRuntimeReaderPreflight(
         preflightClient({ identity: { rolcreaterole: true } }),
@@ -457,6 +484,99 @@ describe('Runtime reader least-privilege preflight', () => {
         expected,
       ),
     ).rejects.toThrow(/schema USAGE without CREATE/);
+  });
+
+  it('allows the exact Neon control-plane admin membership only through the production runner', async () => {
+    const providerMembership = neonRuntimeAdminMembershipRow();
+    expect(isApprovedNeonRuntimeAdminMembership(providerMembership, 'production')).toBe(true);
+    expect(isApprovedNeonRuntimeAdminMembership(providerMembership, 'local-test')).toBe(false);
+    expect(isApprovedNeonRuntimeAdminMembership(undefined, 'production')).toBe(false);
+
+    for (const drift of [
+      { ...providerMembership, member: 'another_owner' },
+      { ...providerMembership, granted_role: 'another_role' },
+      { ...providerMembership, grantor: 'neondb_owner' },
+      { ...providerMembership, admin_option: false },
+      { ...providerMembership, admin_option: null },
+      { ...providerMembership, admin_option: 'true' },
+      { ...providerMembership, inherit_option: true },
+      { ...providerMembership, inherit_option: 'false' },
+      { ...providerMembership, set_option: true },
+      { ...providerMembership, set_option: undefined },
+    ]) {
+      expect(isApprovedNeonRuntimeAdminMembership(drift, 'production')).toBe(false);
+    }
+
+    for (const options of [
+      expected,
+      { ...expected, profile: 'production', expectedHost: 'runtime-pooler.neon.tech' },
+    ]) {
+      await expect(
+        inspectRuntimeReaderPreflight(
+          withProductionTls(
+            preflightClient({ membershipRows: [providerMembership] }),
+            'runtime-pooler.neon.tech',
+          ),
+          options,
+        ),
+      ).rejects.toThrow(/unsafe incoming or outgoing role memberships/);
+    }
+
+    const expectedHost = 'ep-runtime-pooler.us-east-1.aws.neon.tech';
+    const connectionString = `postgresql://hzense_runtime:secret@${expectedHost}:5432/hzense?sslmode=verify-full&channel_binding=prefer`;
+    const runnerClient = withProductionTls(
+      {
+        ...preflightClient({ membershipRows: [providerMembership] }),
+        connect: vi.fn(async () => undefined),
+        end: vi.fn(async () => undefined),
+      },
+      expectedHost,
+    );
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await expect(
+        runRuntimeReaderPreflight({
+          connectionString,
+          profile: 'production',
+          expectedHost,
+          expectedPort: '5432',
+          expectedDatabase: 'hzense',
+          expectedUser: 'hzense_runtime',
+          expectedPostgresMajor: 18,
+          expectedConnectionLimit: 20,
+          createClient: vi.fn(() => runnerClient),
+        }),
+      ).resolves.toMatchObject({ user: 'hzense_runtime' });
+
+      const extraMembershipClient = withProductionTls(
+        {
+          ...preflightClient({
+            membershipRows: [
+              providerMembership,
+              neonRuntimeAdminMembershipRow({ member: 'another_owner' }),
+            ],
+          }),
+          connect: vi.fn(async () => undefined),
+          end: vi.fn(async () => undefined),
+        },
+        expectedHost,
+      );
+      await expect(
+        runRuntimeReaderPreflight({
+          connectionString,
+          profile: 'production',
+          expectedHost,
+          expectedPort: '5432',
+          expectedDatabase: 'hzense',
+          expectedUser: 'hzense_runtime',
+          expectedPostgresMajor: 18,
+          expectedConnectionLimit: 20,
+          createClient: vi.fn(() => extraMembershipClient),
+        }),
+      ).rejects.toThrow(/^Runtime reader role has unsafe incoming or outgoing role memberships$/);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('rejects effective privileges on every other connectable database', async () => {

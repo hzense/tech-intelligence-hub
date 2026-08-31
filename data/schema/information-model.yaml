@@ -366,7 +366,20 @@ runtime_reader:
     attributes:
       [login, noinherit, nosuperuser, nocreatedb, nocreaterole, noreplication, nobypassrls]
     connection_limit: 20
-    memberships: none
+    memberships:
+      local_and_nonproduction: none
+      production_neon_control_plane:
+        exact_count: 1
+        granted_role: hzense_runtime
+        member: neondb_owner
+        grantor: cloud_admin
+        admin_option: true
+        inherit_option: false
+        set_option: false
+        purpose: provider_role_administration_only
+        accepted_residual: provider_admin_can_regrant_role
+      all_other_incoming_or_outgoing_memberships: forbidden
+      drift_behavior: fail_closed
     default_transaction_read_only: true
   web_pool:
     environment: production_only
