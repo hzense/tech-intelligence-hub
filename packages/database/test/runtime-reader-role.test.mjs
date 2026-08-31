@@ -135,7 +135,12 @@ describe('Runtime reader role configuration contract', () => {
     expect(sql).toContain('Provider-owned SECURITY INVOKER extension routines');
     expect(sql).toContain("extension_dependency.deptype = 'e'");
     expect(sql).toContain("extension_info.extname <> 'vector'");
-    expect(sql).toContain('routine_info.proowner <> extension_info.extowner');
+    expect(sql.match(/routine_info\.proowner = extension_info\.extowner/g)).toHaveLength(2);
+    expect(sql.match(/extension_info\.extversion = '0\.8\.6'/g)).toHaveLength(2);
+    expect(sql.match(/pg_get_userbyid\(routine_info\.proowner\) = 'cloud_admin'/g)).toHaveLength(2);
+    expect(sql.match(/pg_get_userbyid\(extension_info\.extowner\) = 'neondb_owner'/g)).toHaveLength(
+      2,
+    );
     expect(sql).toContain(
       "namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')",
     );

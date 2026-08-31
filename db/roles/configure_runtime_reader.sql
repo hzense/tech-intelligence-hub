@@ -15,6 +15,10 @@
 -- example pgvector) may retain their built-in PUBLIC EXECUTE privilege; they do
 -- not bypass the table ACL. Application routines, SECURITY DEFINER routines,
 -- direct routine grants and grant options remain forbidden.
+-- Neon pgvector 0.8.6 has a provider-owned split: extension owner neondb_owner,
+-- while every extension routine is owned by cloud_admin. That exact split is
+-- accepted alongside the ordinary same-owner contract; any version, role,
+-- extension dependency or routine-security drift remains forbidden.
 --
 -- Neon retains provider-owned, cluster-wide PUBLIC database ACLs on its
 -- reserved postgres and template1 databases. Those ACLs cannot be changed by
@@ -306,9 +310,18 @@ BEGIN
           AND extension_dependency.objid = routine_info.oid
           AND extension_dependency.deptype = 'e'
           AND extension_info.extname = 'vector'
-          AND routine_info.proowner = extension_info.extowner
-          AND extension_info.extowner <> runtime_role.oid
-          AND pg_get_userbyid(extension_info.extowner) <> current_user
+          AND (
+            (
+              routine_info.proowner = extension_info.extowner
+              AND extension_info.extowner <> runtime_role.oid
+              AND pg_get_userbyid(extension_info.extowner) <> current_user
+            )
+            OR (
+              extension_info.extversion = '0.8.6'
+              AND pg_get_userbyid(routine_info.proowner) = 'cloud_admin'
+              AND pg_get_userbyid(extension_info.extowner) = 'neondb_owner'
+            )
+          )
       )
   ) THEN
     RAISE EXCEPTION
@@ -855,9 +868,18 @@ BEGIN
       AND (
         extension_info.oid IS NULL
         OR extension_info.extname <> 'vector'
-        OR routine_info.proowner <> extension_info.extowner
-        OR extension_info.extowner = runtime_role_oid
-        OR pg_get_userbyid(extension_info.extowner) = current_user
+        OR (
+          (
+            routine_info.proowner = extension_info.extowner
+            AND extension_info.extowner <> runtime_role_oid
+            AND pg_get_userbyid(extension_info.extowner) <> current_user
+          )
+          OR (
+            extension_info.extversion = '0.8.6'
+            AND pg_get_userbyid(routine_info.proowner) = 'cloud_admin'
+            AND pg_get_userbyid(extension_info.extowner) = 'neondb_owner'
+          )
+        ) IS NOT TRUE
         OR routine_info.prosecdef
         OR has_function_privilege(
           'hzense_runtime',
