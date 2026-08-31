@@ -11,7 +11,7 @@ export const maxDuration = 10;
 function writeHealthLog(record: RuntimeReaderHealthLog): void {
   const serialized = JSON.stringify(record);
   if (record.outcome === 'unavailable') {
-    console.warn(serialized);
+    console.error(serialized);
     return;
   }
   console.info(serialized);

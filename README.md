@@ -136,9 +136,11 @@ Next phase:
 - [x] Merge and independently verify the complete Topic projection synchronizer through PR #30
 - [x] Create and independently verify a new recoverable branch backup, then apply and verify `0002_topic_projection.sql` in production
 - [x] Configure the dedicated `hzense_topic_sync` role and reviewed ACLs, then complete the first production dry run, guarded Apply, independent verification and no-op rerun
-- [ ] Merge the reviewed Runtime Reader repository implementation, then configure, redeploy and independently verify its Production-only Vercel integration
+- [ ] Merge the reviewed Runtime Reader repository implementation, finish its target-database ACL and protected credential setup, then configure, redeploy and independently verify its Production-only Vercel integration
 
-The 2026-08-31 production maintenance window completed `0002`, verified 3 Migrations with 0 pending, projected all 62 Topics with 0 unknown rows, matched the reviewed fingerprint and produced a 0-change no-op rerun. A new recoverable branch backup and the least-privilege `hzense_topic_sync` role were also independently verified; sensitive connection and backup identifiers are intentionally not recorded here. The separate Runtime Reader and its Vercel configuration, redeployment and live verification remain incomplete.
+The 2026-08-31 production maintenance window completed `0002`, verified 3 Migrations with 0 pending, projected all 62 Topics with 0 unknown rows, matched the reviewed fingerprint and produced a 0-change no-op rerun. A new recoverable branch backup and the least-privilege `hzense_topic_sync` role were also independently verified; sensitive connection and backup identifiers are intentionally not recorded here.
+
+Runtime Reader preparation has since established a fresh seven-day provider branch backup, enabled `default_transaction_read_only` for `hzense_runtime`, removed ambient `PUBLIC` access to the unused `neondb` database and raised the maintenance-only `hzense_migrator` connection limit from 5 to 10 after Neon Tables exhausted the old five-session ceiling. The exact provider-owned `postgres` and `template1` defaults are handled only as narrow, drift-sensitive reserved-database exceptions and must be connected to and deeply inspected by the production preflight. These baseline changes do **not** complete the rollout: the target `hzense` ACL, independent Runtime credential, protected preflight, Vercel Production variables, redeployment, health/read acceptance and log/monitoring evidence remain pending.
 
 ## Local foundation checks
 

@@ -49,13 +49,28 @@ describe('Runtime reader role configuration contract', () => {
     expect(sql.match(/database_info\.oid <> target_database_oid/g)).toHaveLength(2);
     expect(sql.match(/database_info\.datallowconn/g)).toHaveLength(2);
     expect(sql).toContain(
-      'Provider/cluster administrator must remove hzense_runtime privileges from every other connectable database',
+      'Provider/cluster administrator must remove unsafe hzense_runtime privileges from every other connectable database',
     );
     expect(sql).toContain("name = '0002_topic_projection.sql'");
     expect(sql.match(/FROM pg_inherits AS inheritance_info/g)).toHaveLength(2);
     expect(sql).toContain(
       'Runtime reader forbids PostgreSQL table inheritance in application schemas',
     );
+  });
+
+  it('allows only the exact Neon postgres and template1 provider-reserved database contracts', async () => {
+    const sql = await roleSql();
+
+    expect(sql.match(/pg_get_userbyid\(database_info\.datdba\) = 'cloud_admin'/g)).toHaveLength(2);
+    expect(sql.match(/database_info\.datconnlimit = -1/g)).toHaveLength(2);
+    expect(sql.match(/database_info\.datname = 'postgres'/g)).toHaveLength(2);
+    expect(sql.match(/database_info\.datname = 'template1'/g)).toHaveLength(2);
+    expect(sql.match(/database_info\.datacl IS NULL/g)).toHaveLength(2);
+    expect(sql.match(/database_info\.datacl IS NOT NULL/g)).toHaveLength(2);
+    expect(sql.match(/ARRAY\['CONNECT', 'TEMPORARY'\]::text\[\]/g)).toHaveLength(2);
+    expect(sql.match(/ARRAY\['CONNECT'\]::text\[\]/g)).toHaveLength(2);
+    expect(sql).toContain('hzense_runtime has unsafe privileges on another connectable database');
+    expect(sql).not.toContain("database_info.datname = 'neondb'");
   });
 
   it('grants only the five reviewed Topic columns and no migration-history access', async () => {

@@ -1,0 +1,101 @@
+name: Production database health
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-database-health
+  cancel-in-progress: false
+
+jobs:
+  database-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify production database health contract
+        shell: bash
+        env:
+          HEALTH_URL: https://hzense.com/api/health/database
+        run: |
+          set -euo pipefail
+
+          response_dir="$(mktemp -d)"
+          trap 'rm -rf "$response_dir"' EXIT
+          body_file="$response_dir/body"
+          expected_file="$response_dir/expected"
+          headers_file="$response_dir/headers"
+          metrics_file="$response_dir/metrics"
+
+          if ! curl \
+            --silent \
+            --show-error \
+            --proto '=https' \
+            --tlsv1.2 \
+            --connect-timeout 5 \
+            --max-time 8 \
+            --dump-header "$headers_file" \
+            --output "$body_file" \
+            --write-out '%{http_code}\n%{time_total}\n' \
+            "$HEALTH_URL" > "$metrics_file"; then
+            echo 'Production database health request failed.' >&2
+            exit 1
+          fi
+
+          mapfile -t metrics < "$metrics_file"
+          if [[ "${#metrics[@]}" -ne 2 ]]; then
+            echo 'curl returned an unexpected metrics payload.' >&2
+            exit 1
+          fi
+
+          http_status="${metrics[0]}"
+          total_seconds="${metrics[1]}"
+          if [[ "$http_status" != '200' ]]; then
+            echo "Expected HTTP 200, received HTTP $http_status." >&2
+            exit 1
+          fi
+          if [[ ! "$total_seconds" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            echo 'curl returned an invalid total time.' >&2
+            exit 1
+          fi
+
+          printf '%s' '{"status":"ok"}' > "$expected_file"
+          if ! cmp --silent "$expected_file" "$body_file"; then
+            echo 'Health response body did not exactly match the public contract.' >&2
+            exit 1
+          fi
+
+          cache_control="$(
+            awk '
+              tolower($0) ~ /^cache-control:/ {
+                line = tolower($0)
+                sub(/^[^:]*:[[:space:]]*/, "", line)
+                sub(/\r$/, "", line)
+                print line
+                exit
+              }
+            ' "$headers_file"
+          )"
+          normalized_cache_control="$(printf '%s' "$cache_control" | tr -d '[:space:]')"
+          if [[ ",$normalized_cache_control," != *',no-store,'* ]]; then
+            echo 'Cache-Control is missing the no-store directive.' >&2
+            exit 1
+          fi
+
+          if ! awk -v total_seconds="$total_seconds" \
+            'BEGIN { exit !(total_seconds >= 0 && total_seconds < 8) }'; then
+            echo "Health request took ${total_seconds}s; expected less than 8s." >&2
+            exit 1
+          fi
+
+          {
+            echo '## Production database health'
+            echo '- Result: healthy'
+            echo "- HTTP status: $http_status"
+            echo "- Total time: ${total_seconds}s"
+            echo '- Contract: exact body and no-store cache policy verified'
+          } >> "$GITHUB_STEP_SUMMARY"

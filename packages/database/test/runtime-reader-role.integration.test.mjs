@@ -283,7 +283,9 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
     try {
       await expect(
         withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql)),
-      ).rejects.toThrow(/remove hzense_runtime privileges from every other connectable database/);
+      ).rejects.toThrow(
+        /remove unsafe hzense_runtime privileges from every other connectable database/,
+      );
       await expect(readProvisioningState()).resolves.toEqual(before);
     } finally {
       await isolateOtherDatabases();
@@ -452,7 +454,9 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
     try {
       await expect(
         withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql)),
-      ).rejects.toThrow(/remove hzense_runtime privileges from every other connectable database/);
+      ).rejects.toThrow(
+        /remove unsafe hzense_runtime privileges from every other connectable database/,
+      );
       await expect(readProvisioningState()).resolves.toEqual(before);
       await expect(
         withClient(databaseUrl(runtimeRole, runtimePassword), strictRuntimePreflight),

@@ -16,6 +16,16 @@
 -- not bypass the table ACL. Application routines, SECURITY DEFINER routines,
 -- direct routine grants and grant options remain forbidden.
 --
+-- Neon retains provider-owned, cluster-wide PUBLIC database ACLs on its
+-- reserved postgres and template1 databases. Those ACLs cannot be changed by
+-- the application database owner. The guards below tolerate only the exact
+-- observed cloud_admin-owned catalog contract for those two names; they never
+-- tolerate an application database (including neondb), a direct runtime ACL,
+-- CREATE, or a grant option. The production Runtime reader preflight must then
+-- connect to each tolerated reserved database and prove that the session is
+-- read-only and cannot reach any non-system object. postgres necessarily keeps
+-- Neon-managed PUBLIC TEMPORARY; treat any catalog drift as a failed rollout.
+--
 -- This file contains no role creation, ALTER ROLE, password, URL or secret.
 
 BEGIN;
@@ -126,9 +136,78 @@ BEGIN
         OR has_database_privilege(runtime_role.rolname, database_info.oid, 'CREATE')
         OR has_database_privilege(runtime_role.rolname, database_info.oid, 'TEMPORARY')
       )
+      AND NOT (
+        pg_get_userbyid(database_info.datdba) = 'cloud_admin'
+        AND database_info.datconnlimit = -1
+        AND NOT has_database_privilege(
+          runtime_role.rolname,
+          database_info.oid,
+          'CONNECT WITH GRANT OPTION'
+        )
+        AND NOT has_database_privilege(runtime_role.rolname, database_info.oid, 'CREATE')
+        AND NOT has_database_privilege(
+          runtime_role.rolname,
+          database_info.oid,
+          'CREATE WITH GRANT OPTION'
+        )
+        AND NOT has_database_privilege(
+          runtime_role.rolname,
+          database_info.oid,
+          'TEMPORARY WITH GRANT OPTION'
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM aclexplode(
+            COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+          ) AS acl_info
+          WHERE acl_info.grantee = runtime_role.oid
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM aclexplode(
+            COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+          ) AS acl_info
+          WHERE acl_info.grantee = 0
+            AND acl_info.is_grantable
+        )
+        AND (
+          (
+            database_info.datname = 'postgres'
+            AND NOT database_info.datistemplate
+            AND database_info.datacl IS NULL
+            AND has_database_privilege(runtime_role.rolname, database_info.oid, 'CONNECT')
+            AND has_database_privilege(runtime_role.rolname, database_info.oid, 'TEMPORARY')
+            AND (
+              SELECT array_agg(acl_info.privilege_type ORDER BY acl_info.privilege_type)
+              FROM aclexplode(
+                COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+              ) AS acl_info
+              WHERE acl_info.grantee = 0
+            ) = ARRAY['CONNECT', 'TEMPORARY']::text[]
+          )
+          OR (
+            database_info.datname = 'template1'
+            AND database_info.datistemplate
+            AND database_info.datacl IS NOT NULL
+            AND has_database_privilege(runtime_role.rolname, database_info.oid, 'CONNECT')
+            AND NOT has_database_privilege(
+              runtime_role.rolname,
+              database_info.oid,
+              'TEMPORARY'
+            )
+            AND (
+              SELECT array_agg(acl_info.privilege_type ORDER BY acl_info.privilege_type)
+              FROM aclexplode(
+                COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+              ) AS acl_info
+              WHERE acl_info.grantee = 0
+            ) = ARRAY['CONNECT']::text[]
+          )
+        )
+      )
   ) THEN
     RAISE EXCEPTION
-      'Provider/cluster administrator must remove hzense_runtime privileges from every other connectable database';
+      'Provider/cluster administrator must remove unsafe hzense_runtime privileges from every other connectable database';
   END IF;
 
   IF to_regclass('public.hzense_schema_migrations') IS NULL
@@ -470,9 +549,78 @@ BEGIN
         OR has_database_privilege('hzense_runtime', database_info.oid, 'CREATE')
         OR has_database_privilege('hzense_runtime', database_info.oid, 'TEMPORARY')
       )
+      AND NOT (
+        pg_get_userbyid(database_info.datdba) = 'cloud_admin'
+        AND database_info.datconnlimit = -1
+        AND NOT has_database_privilege(
+          'hzense_runtime',
+          database_info.oid,
+          'CONNECT WITH GRANT OPTION'
+        )
+        AND NOT has_database_privilege('hzense_runtime', database_info.oid, 'CREATE')
+        AND NOT has_database_privilege(
+          'hzense_runtime',
+          database_info.oid,
+          'CREATE WITH GRANT OPTION'
+        )
+        AND NOT has_database_privilege(
+          'hzense_runtime',
+          database_info.oid,
+          'TEMPORARY WITH GRANT OPTION'
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM aclexplode(
+            COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+          ) AS acl_info
+          WHERE acl_info.grantee = runtime_role_oid
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM aclexplode(
+            COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+          ) AS acl_info
+          WHERE acl_info.grantee = 0
+            AND acl_info.is_grantable
+        )
+        AND (
+          (
+            database_info.datname = 'postgres'
+            AND NOT database_info.datistemplate
+            AND database_info.datacl IS NULL
+            AND has_database_privilege('hzense_runtime', database_info.oid, 'CONNECT')
+            AND has_database_privilege('hzense_runtime', database_info.oid, 'TEMPORARY')
+            AND (
+              SELECT array_agg(acl_info.privilege_type ORDER BY acl_info.privilege_type)
+              FROM aclexplode(
+                COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+              ) AS acl_info
+              WHERE acl_info.grantee = 0
+            ) = ARRAY['CONNECT', 'TEMPORARY']::text[]
+          )
+          OR (
+            database_info.datname = 'template1'
+            AND database_info.datistemplate
+            AND database_info.datacl IS NOT NULL
+            AND has_database_privilege('hzense_runtime', database_info.oid, 'CONNECT')
+            AND NOT has_database_privilege(
+              'hzense_runtime',
+              database_info.oid,
+              'TEMPORARY'
+            )
+            AND (
+              SELECT array_agg(acl_info.privilege_type ORDER BY acl_info.privilege_type)
+              FROM aclexplode(
+                COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+              ) AS acl_info
+              WHERE acl_info.grantee = 0
+            ) = ARRAY['CONNECT']::text[]
+          )
+        )
+      )
   ) THEN
     RAISE EXCEPTION
-      'hzense_runtime has privileges on another connectable database';
+      'hzense_runtime has unsafe privileges on another connectable database';
   END IF;
   IF NOT has_schema_privilege('hzense_runtime', 'public', 'USAGE')
      OR has_schema_privilege('hzense_runtime', 'public', 'USAGE WITH GRANT OPTION')

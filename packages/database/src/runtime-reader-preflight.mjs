@@ -10,6 +10,30 @@ import { expectedTableNames } from './verify.mjs';
 const { Client } = pg;
 const pooledHostPattern = /(^|[.-])pooler([.-]|$)/;
 const neonHostSuffix = '.neon.tech';
+// Neon owns these cluster-reserved database ACLs through cloud_admin. The
+// target inspection can defer only this exact catalog shape to a second,
+// database-local inspection; the exported single-target inspector remains
+// strict so callers cannot accidentally skip that second proof.
+const neonReservedDatabaseContracts = new Map([
+  [
+    'postgres',
+    {
+      owner: 'cloud_admin',
+      isTemplate: false,
+      allowsTemporary: true,
+      usesDefaultAcl: true,
+    },
+  ],
+  [
+    'template1',
+    {
+      owner: 'cloud_admin',
+      isTemplate: true,
+      allowsTemporary: false,
+      usesDefaultAcl: false,
+    },
+  ],
+]);
 
 const tablePrivileges = [
   'SELECT',
@@ -96,6 +120,30 @@ function setDifference(expected, actual) {
   return [...expected].filter((value) => !actual.has(value)).sort();
 }
 
+export function isApprovedNeonReservedDatabaseException(row, profile) {
+  const contract = neonReservedDatabaseContracts.get(row?.name);
+  return (
+    profile === 'production' &&
+    contract !== undefined &&
+    row.owner === contract.owner &&
+    row.is_template === contract.isTemplate &&
+    row.allows_connections === true &&
+    row.connection_limit === -1 &&
+    row.connect_allowed === true &&
+    row.connect_grantable === false &&
+    row.create_allowed === false &&
+    row.create_grantable === false &&
+    row.temporary_allowed === contract.allowsTemporary &&
+    row.temporary_grantable === false &&
+    row.acl_is_default === contract.usesDefaultAcl &&
+    row.public_connect === true &&
+    row.public_connect_grantable === false &&
+    row.public_create === false &&
+    row.public_temporary === contract.allowsTemporary &&
+    row.direct_runtime_acl === false
+  );
+}
+
 async function effectiveTablePrivileges(client) {
   return (
     await client.query(
@@ -179,7 +227,7 @@ function requireExactRuntimeColumns(rows) {
   }
 }
 
-export async function inspectRuntimeReaderPreflight(
+async function inspectRuntimeReaderTarget(
   client,
   {
     expectedHost,
@@ -189,6 +237,7 @@ export async function inspectRuntimeReaderPreflight(
     expectedConnectionLimit = 20,
     profile,
   },
+  { allowNeonReservedDatabases = false } = {},
 ) {
   const databaseName = requireString(expectedDatabase, 'HZENSE_RUNTIME_EXPECTED_NAME');
   const userName = requireString(expectedUser, 'HZENSE_RUNTIME_EXPECTED_USER');
@@ -336,13 +385,75 @@ export async function inspectRuntimeReaderPreflight(
 
   const otherDatabasePrivileges = await client.query(
     `SELECT database_info.datname AS name,
+            pg_get_userbyid(database_info.datdba) AS owner,
+            database_info.datistemplate AS is_template,
+            database_info.datallowconn AS allows_connections,
+            database_info.datconnlimit AS connection_limit,
+            database_info.datacl IS NULL AS acl_is_default,
             has_database_privilege(current_user, database_info.oid, 'CONNECT') AS connect_allowed,
+            has_database_privilege(
+              current_user,
+              database_info.oid,
+              'CONNECT WITH GRANT OPTION'
+            ) AS connect_grantable,
             has_database_privilege(current_user, database_info.oid, 'CREATE') AS create_allowed,
             has_database_privilege(
               current_user,
               database_info.oid,
+              'CREATE WITH GRANT OPTION'
+            ) AS create_grantable,
+            has_database_privilege(
+              current_user,
+              database_info.oid,
               'TEMPORARY'
-            ) AS temporary_allowed
+            ) AS temporary_allowed,
+            has_database_privilege(
+              current_user,
+              database_info.oid,
+              'TEMPORARY WITH GRANT OPTION'
+            ) AS temporary_grantable,
+            EXISTS (
+              SELECT 1
+              FROM aclexplode(
+                COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+              ) AS acl_info
+              WHERE acl_info.grantee = 0
+                AND acl_info.privilege_type = 'CONNECT'
+            ) AS public_connect,
+            EXISTS (
+              SELECT 1
+              FROM aclexplode(
+                COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+              ) AS acl_info
+              WHERE acl_info.grantee = 0
+                AND acl_info.privilege_type = 'CONNECT'
+                AND acl_info.is_grantable
+            ) AS public_connect_grantable,
+            EXISTS (
+              SELECT 1
+              FROM aclexplode(
+                COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+              ) AS acl_info
+              WHERE acl_info.grantee = 0
+                AND acl_info.privilege_type = 'CREATE'
+            ) AS public_create,
+            EXISTS (
+              SELECT 1
+              FROM aclexplode(
+                COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+              ) AS acl_info
+              WHERE acl_info.grantee = 0
+                AND acl_info.privilege_type = 'TEMPORARY'
+            ) AS public_temporary,
+            EXISTS (
+              SELECT 1
+              FROM aclexplode(
+                COALESCE(database_info.datacl, acldefault('d', database_info.datdba))
+              ) AS acl_info
+              WHERE acl_info.grantee = (
+                SELECT oid FROM pg_roles WHERE rolname = current_user
+              )
+            ) AS direct_runtime_acl
      FROM pg_database AS database_info
      WHERE database_info.oid <> (
        SELECT oid FROM pg_database WHERE datname = current_database()
@@ -354,9 +465,18 @@ export async function inspectRuntimeReaderPreflight(
     (row) =>
       row.connect_allowed === true || row.create_allowed === true || row.temporary_allowed === true,
   );
-  if (accessibleOtherDatabases.length > 0) {
+  const approvedNeonReservedDatabases = allowNeonReservedDatabases
+    ? accessibleOtherDatabases.filter((row) =>
+        isApprovedNeonReservedDatabaseException(row, profile),
+      )
+    : [];
+  const approvedNeonReservedNames = new Set(approvedNeonReservedDatabases.map((row) => row.name));
+  const unsafeOtherDatabases = accessibleOtherDatabases.filter(
+    (row) => !approvedNeonReservedNames.has(row.name),
+  );
+  if (unsafeOtherDatabases.length > 0) {
     throw new Error(
-      `Runtime reader has privileges on other connectable databases: ${accessibleOtherDatabases
+      `Runtime reader has privileges on other connectable databases: ${unsafeOtherDatabases
         .map((row) => row.name)
         .join(', ')}`,
     );
@@ -751,7 +871,303 @@ export async function inspectRuntimeReaderPreflight(
     tlsVersion: tls.version,
     tlsCipher: tls.cipher,
     tlsEvidence: tls.source,
+    neonReservedDatabasesToVerify: approvedNeonReservedDatabases.map((row) => row.name).sort(),
   };
+}
+
+export async function inspectRuntimeReaderPreflight(client, options) {
+  const result = { ...(await inspectRuntimeReaderTarget(client, options)) };
+  delete result.neonReservedDatabasesToVerify;
+  return result;
+}
+
+async function inspectNeonReservedDatabase(
+  client,
+  { expectedDatabase, expectedHost, expectedPostgresMajor, expectedUser, profile },
+) {
+  const contract = neonReservedDatabaseContracts.get(expectedDatabase);
+  if (!contract) {
+    throw new Error(`Unsupported Neon reserved database: ${expectedDatabase}`);
+  }
+
+  const identity = await client.query(
+    `SELECT current_database() AS database_name,
+            session_user AS authenticated_role,
+            current_user AS effective_role,
+            current_setting('server_version_num')::integer AS server_version_num,
+            current_setting('default_transaction_read_only') = 'on' AS default_read_only,
+            current_setting('transaction_read_only') = 'on' AS read_only,
+            pg_is_in_recovery() AS in_recovery,
+            pg_get_userbyid(database_info.datdba) AS database_owner,
+            database_info.datistemplate AS is_template,
+            database_info.datallowconn AS allows_connections,
+            CASE
+              WHEN EXISTS (
+                SELECT 1
+                FROM pg_db_role_setting AS role_setting
+                WHERE role_setting.setrole = role_info.oid
+                  AND role_setting.setdatabase = database_info.oid
+                  AND EXISTS (
+                    SELECT 1
+                    FROM unnest(role_setting.setconfig) AS configured_value(value)
+                    WHERE configured_value.value LIKE 'default_transaction_read_only=%'
+                  )
+              )
+              THEN EXISTS (
+                SELECT 1
+                FROM pg_db_role_setting AS role_setting
+                WHERE role_setting.setrole = role_info.oid
+                  AND role_setting.setdatabase = database_info.oid
+                  AND role_setting.setconfig
+                    @> ARRAY['default_transaction_read_only=on']::text[]
+              )
+              ELSE COALESCE(role_info.rolconfig, ARRAY[]::text[])
+                @> ARRAY['default_transaction_read_only=on']::text[]
+            END AS role_default_read_only,
+            has_database_privilege(current_user, database_info.oid, 'CONNECT') AS database_connect,
+            has_database_privilege(
+              current_user,
+              database_info.oid,
+              'CONNECT WITH GRANT OPTION'
+            ) AS database_connect_grantable,
+            has_database_privilege(current_user, database_info.oid, 'CREATE') AS database_create,
+            has_database_privilege(current_user, database_info.oid, 'TEMPORARY') AS database_temp
+     FROM pg_database AS database_info
+     JOIN pg_roles AS role_info ON role_info.rolname = session_user
+     WHERE database_info.datname = current_database()`,
+  );
+  const target = identity.rows[0];
+  if (
+    !target ||
+    target.database_name !== expectedDatabase ||
+    target.authenticated_role !== expectedUser ||
+    target.effective_role !== expectedUser ||
+    target.database_owner !== contract.owner ||
+    target.is_template !== contract.isTemplate ||
+    target.allows_connections !== true
+  ) {
+    throw new Error(`Neon reserved database identity mismatch: ${expectedDatabase}`);
+  }
+  const postgresMajor = Math.floor(target.server_version_num / 10_000);
+  if (postgresMajor !== expectedPostgresMajor) {
+    throw new Error(`Neon reserved database PostgreSQL major mismatch: ${expectedDatabase}`);
+  }
+  if (
+    !target.default_read_only ||
+    !target.read_only ||
+    !target.role_default_read_only ||
+    target.in_recovery
+  ) {
+    throw new Error(
+      `Neon reserved database is not a protected read-only session: ${expectedDatabase}`,
+    );
+  }
+  if (
+    !target.database_connect ||
+    target.database_connect_grantable ||
+    target.database_create ||
+    target.database_temp !== contract.allowsTemporary
+  ) {
+    throw new Error(`Neon reserved database privileges changed: ${expectedDatabase}`);
+  }
+
+  const loginEventTriggers = await client.query(
+    `SELECT count(*)::integer AS count
+     FROM pg_event_trigger
+     WHERE evtevent = 'login'
+       AND evtenabled <> 'D'`,
+  );
+  if (loginEventTriggers.rows[0]?.count !== 0) {
+    throw new Error(`Neon reserved database has enabled login triggers: ${expectedDatabase}`);
+  }
+
+  // A catalog-level database ACL is not sufficient evidence. Prove inside the
+  // reserved database that the Runtime role cannot reach or own any non-system
+  // object, even through PUBLIC, defaults, extensions, or grant options.
+  const objectAccess = await client.query(
+    `WITH runtime_role AS (
+       SELECT oid FROM pg_roles WHERE rolname = session_user
+     ),
+     violations AS (
+       SELECT 'schema'::text AS object_type,
+              namespace_info.nspname::text AS object_name
+       FROM pg_namespace AS namespace_info
+       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
+         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
+         AND (
+           pg_get_userbyid(namespace_info.nspowner) = session_user
+           OR has_schema_privilege(current_user, namespace_info.oid, 'CREATE')
+           OR has_schema_privilege(current_user, namespace_info.oid, 'CREATE WITH GRANT OPTION')
+           OR has_schema_privilege(current_user, namespace_info.oid, 'USAGE WITH GRANT OPTION')
+           OR (
+             namespace_info.nspname <> 'public'
+             AND has_schema_privilege(current_user, namespace_info.oid, 'USAGE')
+           )
+         )
+       UNION ALL
+       SELECT DISTINCT 'relation',
+              format('%I.%I', namespace_info.nspname, relation_info.relname)
+       FROM pg_class AS relation_info
+       JOIN pg_namespace AS namespace_info ON namespace_info.oid = relation_info.relnamespace
+       CROSS JOIN unnest($1::text[]) AS privilege_info(privilege)
+       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
+         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
+         AND relation_info.relkind IN ('r', 'p', 'v', 'm', 'f')
+         AND (
+           pg_get_userbyid(relation_info.relowner) = session_user
+           OR has_table_privilege(current_user, relation_info.oid, privilege_info.privilege)
+           OR has_table_privilege(
+             current_user,
+             relation_info.oid,
+             privilege_info.privilege || ' WITH GRANT OPTION'
+           )
+         )
+       UNION ALL
+       SELECT DISTINCT 'column',
+              format(
+                '%I.%I.%I',
+                namespace_info.nspname,
+                relation_info.relname,
+                column_info.attname
+              )
+       FROM pg_class AS relation_info
+       JOIN pg_namespace AS namespace_info ON namespace_info.oid = relation_info.relnamespace
+       JOIN pg_attribute AS column_info ON column_info.attrelid = relation_info.oid
+       CROSS JOIN unnest($2::text[]) AS privilege_info(privilege)
+       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
+         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
+         AND relation_info.relkind IN ('r', 'p', 'v', 'm', 'f')
+         AND column_info.attnum > 0
+         AND NOT column_info.attisdropped
+         AND (
+           has_column_privilege(
+             current_user,
+             relation_info.oid,
+             column_info.attnum,
+             privilege_info.privilege
+           )
+           OR has_column_privilege(
+             current_user,
+             relation_info.oid,
+             column_info.attnum,
+             privilege_info.privilege || ' WITH GRANT OPTION'
+           )
+         )
+       UNION ALL
+       SELECT DISTINCT 'sequence',
+              format('%I.%I', namespace_info.nspname, sequence_info.relname)
+       FROM pg_class AS sequence_info
+       JOIN pg_namespace AS namespace_info ON namespace_info.oid = sequence_info.relnamespace
+       CROSS JOIN unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) AS privilege_info(privilege)
+       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
+         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
+         AND sequence_info.relkind = 'S'
+         AND (
+           pg_get_userbyid(sequence_info.relowner) = session_user
+           OR has_sequence_privilege(current_user, sequence_info.oid, privilege_info.privilege)
+           OR has_sequence_privilege(
+             current_user,
+             sequence_info.oid,
+             privilege_info.privilege || ' WITH GRANT OPTION'
+           )
+         )
+       UNION ALL
+       SELECT DISTINCT 'routine',
+              format(
+                '%I.%I(%s)',
+                namespace_info.nspname,
+                routine_info.proname,
+                pg_get_function_identity_arguments(routine_info.oid)
+              )
+       FROM pg_proc AS routine_info
+       JOIN pg_namespace AS namespace_info ON namespace_info.oid = routine_info.pronamespace
+       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
+         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
+         AND (
+           pg_get_userbyid(routine_info.proowner) = session_user
+           OR has_function_privilege(current_user, routine_info.oid, 'EXECUTE')
+           OR has_function_privilege(
+             current_user,
+             routine_info.oid,
+             'EXECUTE WITH GRANT OPTION'
+           )
+         )
+       UNION ALL
+       SELECT DISTINCT 'type',
+              format('%I.%I', namespace_info.nspname, type_info.typname)
+       FROM pg_type AS type_info
+       JOIN pg_namespace AS namespace_info ON namespace_info.oid = type_info.typnamespace
+       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
+         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
+         AND type_info.typtype IN ('b', 'c', 'd', 'e', 'r', 'm')
+         AND (
+           pg_get_userbyid(type_info.typowner) = session_user
+           OR has_type_privilege(current_user, type_info.oid, 'USAGE')
+           OR has_type_privilege(current_user, type_info.oid, 'USAGE WITH GRANT OPTION')
+         )
+       UNION ALL
+       SELECT 'large_object', large_object_info.oid::text
+       FROM pg_largeobject_metadata AS large_object_info
+       WHERE has_largeobject_privilege(current_user, large_object_info.oid, 'SELECT')
+          OR has_largeobject_privilege(current_user, large_object_info.oid, 'UPDATE')
+       UNION ALL
+       SELECT 'foreign_data_wrapper', wrapper_info.fdwname::text
+       FROM pg_foreign_data_wrapper AS wrapper_info
+       WHERE pg_get_userbyid(wrapper_info.fdwowner) = session_user
+          OR has_foreign_data_wrapper_privilege(current_user, wrapper_info.oid, 'USAGE')
+          OR has_foreign_data_wrapper_privilege(
+            current_user,
+            wrapper_info.oid,
+            'USAGE WITH GRANT OPTION'
+          )
+       UNION ALL
+       SELECT 'foreign_server', server_info.srvname::text
+       FROM pg_foreign_server AS server_info
+       WHERE pg_get_userbyid(server_info.srvowner) = session_user
+          OR has_server_privilege(current_user, server_info.oid, 'USAGE')
+          OR has_server_privilege(current_user, server_info.oid, 'USAGE WITH GRANT OPTION')
+       UNION ALL
+       SELECT 'extension', extension_info.extname::text
+       FROM pg_extension AS extension_info
+       WHERE pg_get_userbyid(extension_info.extowner) = session_user
+       UNION ALL
+       SELECT 'default_acl',
+              format('%I:%s', owner_info.rolname, default_acl.defaclobjtype)
+       FROM pg_default_acl AS default_acl
+       JOIN pg_roles AS owner_info ON owner_info.oid = default_acl.defaclrole
+       CROSS JOIN LATERAL aclexplode(default_acl.defaclacl) AS acl_info
+       WHERE acl_info.grantee = (SELECT oid FROM runtime_role)
+     )
+     SELECT DISTINCT object_type, object_name
+     FROM violations
+     ORDER BY object_type, object_name`,
+    [tablePrivileges, columnPrivileges],
+  );
+  if (objectAccess.rowCount !== 0) {
+    throw new Error(
+      `Runtime reader has non-system object access in Neon reserved database ${expectedDatabase}: ${objectAccess.rows
+        .map((row) => `${row.object_type}:${row.object_name}`)
+        .join(', ')}`,
+    );
+  }
+
+  if (profile === 'production') {
+    await inspectProductionTls(client, expectedHost);
+  } else {
+    throw new Error('Neon reserved database verification is production-only');
+  }
+}
+
+function reservedDatabaseConnectionString(connectionString, databaseName) {
+  const url = new URL(connectionString);
+  url.pathname = `/${databaseName}`;
+  return url.toString();
 }
 
 export async function runRuntimeReaderPreflight({
@@ -785,9 +1201,9 @@ export async function runRuntimeReaderPreflight({
   }
 
   const clientFactory = createClient ?? ((options) => new Client(options));
-  const client = clientFactory({
-    connectionString,
-    application_name: 'hzense-runtime-reader-preflight',
+  const clientOptions = (targetConnectionString, applicationName) => ({
+    connectionString: targetConnectionString,
+    application_name: applicationName,
     connectionTimeoutMillis,
     query_timeout: 8_000,
     ...(profile === 'production'
@@ -796,27 +1212,70 @@ export async function runRuntimeReaderPreflight({
         }
       : {}),
   });
-  if (!client || typeof client.connect !== 'function' || typeof client.end !== 'function') {
-    throw new Error('Runtime reader preflight requires a PostgreSQL client factory');
-  }
+  const createCheckedClient = (options) => {
+    const checkedClient = clientFactory(options);
+    if (
+      !checkedClient ||
+      typeof checkedClient.connect !== 'function' ||
+      typeof checkedClient.end !== 'function'
+    ) {
+      throw new Error('Runtime reader preflight requires a PostgreSQL client factory');
+    }
+    return checkedClient;
+  };
+  const client = createCheckedClient(
+    clientOptions(connectionString, 'hzense-runtime-reader-preflight'),
+  );
 
+  let targetResult;
   try {
     await client.connect();
-    const result = await inspectRuntimeReaderPreflight(client, {
-      expectedHost: policy.host,
-      expectedDatabase: expectedDatabase ?? policy.database,
-      expectedUser: expectedUser ?? policy.user,
-      expectedPostgresMajor,
-      expectedConnectionLimit,
-      profile,
-    });
-    console.log(
-      `[db:runtime-reader-preflight] verified PostgreSQL ${result.postgresMajor}, connection limit ${result.connectionLimit}, ${result.topicColumns.length} Topic columns, ${result.tlsVersion}/${result.tlsCipher} (${result.tlsEvidence} evidence)`,
+    targetResult = await inspectRuntimeReaderTarget(
+      client,
+      {
+        expectedHost: policy.host,
+        expectedDatabase: expectedDatabase ?? policy.database,
+        expectedUser: expectedUser ?? policy.user,
+        expectedPostgresMajor,
+        expectedConnectionLimit,
+        profile,
+      },
+      { allowNeonReservedDatabases: true },
     );
-    return result;
   } finally {
     await client.end().catch(() => undefined);
   }
+
+  const verifiedNeonReservedDatabases = [];
+  for (const reservedDatabase of targetResult.neonReservedDatabasesToVerify) {
+    const reservedClient = createCheckedClient(
+      clientOptions(
+        reservedDatabaseConnectionString(connectionString, reservedDatabase),
+        'hzense-runtime-reader-reserved-preflight',
+      ),
+    );
+    try {
+      await reservedClient.connect();
+      await inspectNeonReservedDatabase(reservedClient, {
+        expectedDatabase: reservedDatabase,
+        expectedHost: policy.host,
+        expectedPostgresMajor,
+        expectedUser: expectedUser ?? policy.user,
+        profile,
+      });
+      verifiedNeonReservedDatabases.push(reservedDatabase);
+    } finally {
+      await reservedClient.end().catch(() => undefined);
+    }
+  }
+
+  const result = { ...targetResult };
+  delete result.neonReservedDatabasesToVerify;
+  const verifiedResult = { ...result, verifiedNeonReservedDatabases };
+  console.log(
+    `[db:runtime-reader-preflight] verified PostgreSQL ${result.postgresMajor}, connection limit ${result.connectionLimit}, ${result.topicColumns.length} Topic columns, ${verifiedNeonReservedDatabases.length} Neon reserved databases, ${result.tlsVersion}/${result.tlsCipher} (${result.tlsEvidence} evidence)`,
+  );
+  return verifiedResult;
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : undefined;

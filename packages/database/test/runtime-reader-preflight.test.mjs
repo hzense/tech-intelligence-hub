@@ -1,8 +1,11 @@
 import console from 'node:console';
+import { Buffer } from 'node:buffer';
+import { URL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { expectedTableNames } from '../src/verify.mjs';
 import {
   inspectRuntimeReaderPreflight,
+  isApprovedNeonReservedDatabaseException,
   runRuntimeReaderPreflight,
   runtimeReaderPreflightFailureMessage,
   runtimeReaderProductionOptions,
@@ -16,6 +19,29 @@ const expected = {
   expectedConnectionLimit: 20,
   profile: 'local-test',
 };
+
+function neonReservedDatabaseRow(name = 'postgres') {
+  const postgres = name === 'postgres';
+  return {
+    name,
+    owner: 'cloud_admin',
+    is_template: !postgres,
+    allows_connections: true,
+    connection_limit: -1,
+    acl_is_default: postgres,
+    connect_allowed: true,
+    connect_grantable: false,
+    create_allowed: false,
+    create_grantable: false,
+    temporary_allowed: postgres,
+    temporary_grantable: false,
+    public_connect: true,
+    public_connect_grantable: false,
+    public_create: false,
+    public_temporary: postgres,
+    direct_runtime_acl: false,
+  };
+}
 
 function expectedColumnRows() {
   return runtimeReaderTopicColumns.map((columnName) => ({
@@ -151,6 +177,85 @@ function preflightClient({
     throw new Error(`Unexpected Runtime reader preflight query: ${sql}`);
   });
   return { query };
+}
+
+function withProductionTls(client, expectedHost) {
+  const query = client.query;
+  client.query = vi.fn(async (sql, ...parameters) => {
+    if (sql.includes('FROM pg_stat_ssl')) {
+      return {
+        rowCount: 1,
+        rows: [{ ssl: true, version: 'TLSv1.3', cipher: 'TLS_AES_256_GCM_SHA384' }],
+      };
+    }
+    return query(sql, ...parameters);
+  });
+  client.ssl = { rejectUnauthorized: true };
+  client.connectionParameters = { ssl: { rejectUnauthorized: true } };
+  client.connection = {
+    stream: {
+      encrypted: true,
+      authorized: true,
+      authorizationError: null,
+      getProtocol: () => 'TLSv1.3',
+      getCipher: () => ({ standardName: 'TLS_AES_256_GCM_SHA384' }),
+      getPeerCertificate: () => ({
+        raw: Buffer.from('test-certificate'),
+        subject: { CN: expectedHost },
+        subjectaltname: `DNS:${expectedHost}`,
+      }),
+    },
+  };
+  return client;
+}
+
+function reservedDatabaseClient(
+  name,
+  { identity = {}, loginTriggerCount = 0, objectAccess = [] } = {},
+) {
+  const postgres = name === 'postgres';
+  const client = {
+    connect: vi.fn(async () => undefined),
+    end: vi.fn(async () => undefined),
+    query: vi.fn(async (sql) => {
+      if (
+        sql.includes('FROM pg_database AS database_info') &&
+        sql.includes('database_info.datistemplate AS is_template')
+      ) {
+        return {
+          rowCount: 1,
+          rows: [
+            {
+              database_name: name,
+              authenticated_role: 'hzense_runtime',
+              effective_role: 'hzense_runtime',
+              server_version_num: 180_000,
+              default_read_only: true,
+              read_only: true,
+              in_recovery: false,
+              database_owner: 'cloud_admin',
+              is_template: !postgres,
+              allows_connections: true,
+              role_default_read_only: true,
+              database_connect: true,
+              database_connect_grantable: false,
+              database_create: false,
+              database_temp: postgres,
+              ...identity,
+            },
+          ],
+        };
+      }
+      if (sql.includes('FROM pg_event_trigger')) {
+        return { rowCount: 1, rows: [{ count: loginTriggerCount }] };
+      }
+      if (sql.includes('WITH runtime_role AS')) {
+        return { rowCount: objectAccess.length, rows: objectAccess };
+      }
+      throw new Error(`Unexpected Neon reserved-database query: ${sql}`);
+    }),
+  };
+  return client;
 }
 
 describe('Runtime reader least-privilege preflight', () => {
@@ -370,6 +475,150 @@ describe('Runtime reader least-privilege preflight', () => {
         expected,
       ),
     ).rejects.toThrow(/privileges on other connectable databases: postgres/);
+  });
+
+  it('recognizes only the exact production Neon reserved-database catalog contract', () => {
+    const postgres = neonReservedDatabaseRow('postgres');
+    const template1 = neonReservedDatabaseRow('template1');
+    expect(isApprovedNeonReservedDatabaseException(postgres, 'production')).toBe(true);
+    expect(isApprovedNeonReservedDatabaseException(template1, 'production')).toBe(true);
+
+    for (const drift of [
+      { ...postgres, name: 'neondb' },
+      { ...postgres, owner: 'hzense_migrator' },
+      { ...postgres, create_allowed: true },
+      { ...postgres, temporary_allowed: false },
+      { ...postgres, direct_runtime_acl: true },
+      { ...template1, public_temporary: true },
+    ]) {
+      expect(isApprovedNeonReservedDatabaseException(drift, 'production')).toBe(false);
+    }
+    expect(isApprovedNeonReservedDatabaseException(postgres, 'local-test')).toBe(false);
+  });
+
+  it('keeps the exported target inspector strict until reserved databases are deeply verified', async () => {
+    await expect(
+      inspectRuntimeReaderPreflight(
+        preflightClient({ otherDatabasePrivileges: [neonReservedDatabaseRow('postgres')] }),
+        { ...expected, profile: 'production', expectedHost: 'runtime-pooler.neon.tech' },
+      ),
+    ).rejects.toThrow(/privileges on other connectable databases: postgres/);
+  });
+
+  it('deeply verifies exact Neon postgres and template1 contracts with isolated clients', async () => {
+    const expectedHost = 'ep-runtime-pooler.us-east-1.aws.neon.tech';
+    const passwordMarker = 'runtime-reader-test-password-marker';
+    const connectionString = `postgresql://hzense_runtime:${passwordMarker}@${expectedHost}:5432/hzense?sslmode=verify-full&channel_binding=prefer`;
+    const targetClient = withProductionTls(
+      {
+        ...preflightClient({
+          otherDatabasePrivileges: [
+            neonReservedDatabaseRow('template1'),
+            neonReservedDatabaseRow('postgres'),
+          ],
+        }),
+        connect: vi.fn(async () => undefined),
+        end: vi.fn(async () => undefined),
+      },
+      expectedHost,
+    );
+    const postgresClient = withProductionTls(reservedDatabaseClient('postgres'), expectedHost);
+    const template1Client = withProductionTls(reservedDatabaseClient('template1'), expectedHost);
+    const clients = [targetClient, postgresClient, template1Client];
+    let nextClient = 0;
+    const createClient = vi.fn(() => clients[nextClient++]);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      const result = await runRuntimeReaderPreflight({
+        connectionString,
+        profile: 'production',
+        expectedHost,
+        expectedPort: '5432',
+        expectedDatabase: 'hzense',
+        expectedUser: 'hzense_runtime',
+        expectedPostgresMajor: 18,
+        expectedConnectionLimit: 20,
+        createClient,
+      });
+
+      expect(result).toMatchObject({
+        database: 'hzense',
+        user: 'hzense_runtime',
+        verifiedNeonReservedDatabases: ['postgres', 'template1'],
+      });
+      expect(result).not.toHaveProperty('neonReservedDatabasesToVerify');
+      expect(createClient).toHaveBeenCalledTimes(3);
+      const options = createClient.mock.calls.map(([clientOptions]) => clientOptions);
+      const urls = options.map(({ connectionString: configuredUrl }) => new URL(configuredUrl));
+      expect(urls.map(({ pathname }) => pathname)).toEqual(['/hzense', '/postgres', '/template1']);
+      expect(urls.every(({ hostname }) => hostname === expectedHost)).toBe(true);
+      expect(options.map(({ application_name: applicationName }) => applicationName)).toEqual([
+        'hzense-runtime-reader-preflight',
+        'hzense-runtime-reader-reserved-preflight',
+        'hzense-runtime-reader-reserved-preflight',
+      ]);
+      expect(clients.every(({ connect }) => connect.mock.calls.length === 1)).toBe(true);
+      expect(clients.every(({ end }) => end.mock.calls.length === 1)).toBe(true);
+      expect(JSON.stringify(result)).not.toContain(passwordMarker);
+      expect(log.mock.calls.flat().join(' ')).not.toContain(passwordMarker);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('fails closed when a reserved database exposes any non-system object', async () => {
+    const expectedHost = 'ep-runtime-pooler.us-east-1.aws.neon.tech';
+    const passwordMarker = 'runtime-reader-test-password-marker';
+    const connectionString = `postgresql://hzense_runtime:${passwordMarker}@${expectedHost}:5432/hzense?sslmode=verify-full&channel_binding=prefer`;
+    const targetClient = withProductionTls(
+      {
+        ...preflightClient({
+          otherDatabasePrivileges: [
+            neonReservedDatabaseRow('postgres'),
+            neonReservedDatabaseRow('template1'),
+          ],
+        }),
+        connect: vi.fn(async () => undefined),
+        end: vi.fn(async () => undefined),
+      },
+      expectedHost,
+    );
+    const postgresClient = withProductionTls(
+      reservedDatabaseClient('postgres', {
+        objectAccess: [{ object_type: 'relation', object_name: 'public.exposed_data' }],
+      }),
+      expectedHost,
+    );
+    const clients = [targetClient, postgresClient];
+    let nextClient = 0;
+    const createClient = vi.fn(() => clients[nextClient++]);
+
+    let failure;
+    try {
+      await runRuntimeReaderPreflight({
+        connectionString,
+        profile: 'production',
+        expectedHost,
+        expectedPort: '5432',
+        expectedDatabase: 'hzense',
+        expectedUser: 'hzense_runtime',
+        expectedPostgresMajor: 18,
+        expectedConnectionLimit: 20,
+        createClient,
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure.message).toContain(
+      'non-system object access in Neon reserved database postgres: relation:public.exposed_data',
+    );
+    expect(failure.message).not.toContain(passwordMarker);
+    expect(createClient).toHaveBeenCalledTimes(2);
+    expect(targetClient.end).toHaveBeenCalledOnce();
+    expect(postgresClient.end).toHaveBeenCalledOnce();
   });
 
   it('allows only non-grantable topic_status USAGE among application enum Types', async () => {
