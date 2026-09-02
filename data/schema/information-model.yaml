@@ -352,15 +352,17 @@ taxonomy_model:
 
 runtime_reader:
   status:
-    repository_implementation: prepared_pending_merge
+    repository_implementation: merged_and_ci_verified
     neon_baseline_governance: prepared_with_live_evidence
-    target_database_acl: not_executed
+    target_database_acl: applied_and_bounded_read_only_verified_2026_09_01
+    target_database_acl_evidence: docs/production-evidence/2026-09-01-runtime-reader-acl.md
     independent_runtime_credential: not_executed
     production_preflight: not_executed
     vercel_production_environment: not_executed
     production_redeployment: not_executed
     health_and_bounded_read_acceptance: not_executed
     safe_log_and_monitoring_acceptance: not_executed
+    scheduled_health_monitor: armed_disabled_until_live_acceptance
   role:
     name: hzense_runtime
     attributes:

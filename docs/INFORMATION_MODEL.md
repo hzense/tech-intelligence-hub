@@ -1393,7 +1393,7 @@ provider / 集群管理员必须预创建 `hzense_runtime`，固定属性为 `LO
 
 Web 只在 Production 请求时通过 pooled TLS 连接以 `FROM ONLY public.topics` 读取 `runtime_enabled = true` 的 Topic，固定选择上述五列、按 `id` 排序，并使用最大 50 的参数化 `LIMIT`。Preview、CI、构建期与非生产请求不连接数据库。Runtime Reader 的完整部署与健康检查合约见 [ADR 0006](./adr/0006-runtime-reader-boundary.md) 和 [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md)。
 
-截至 2026-08-31，代码与 Neon 基础治理已准备：创建了新的七天 provider 回滚分支，设置 `hzense_runtime` 的 read-only session 默认值，撤销未使用 `neondb` 的 ambient database ACL，并在 Neon Tables 用满旧五连接上限后将维护专用 `hzense_migrator` 从 connection limit 5 调整到 10。Migrator 调整不改变 Runtime 权限、其 limit 20 或 Web pool 上限 1。仓库实现仍待合并；目标 `hzense` ACL、独立 Runtime 凭据、目标/保留库生产 preflight、Vercel Production 配置、重部署、健康/五列读取与日志验收仍未完成。
+截至 2026-09-01，代码与 Neon 基础治理已准备：创建了新的七天 provider 回滚分支，设置 `hzense_runtime` 的 read-only session 默认值，撤销未使用 `neondb` 的 ambient database ACL，并在 Neon Tables 用满旧五连接上限后将维护专用 `hzense_migrator` 从 connection limit 5 调整到 10。Migrator 调整不改变 Runtime 权限、其 limit 20 或 Web pool 上限 1。仓库实现已通过 PR #32–#35 合并；目标 `hzense` ACL 的有效权限、直接授权来源和五列 allowlist 已由两组 catalog-only 查询独立复核并保留[脱敏证据](./production-evidence/2026-09-01-runtime-reader-acl.md)。独立 Runtime 凭据、目标/保留库完整生产 preflight、Vercel Production 配置、重部署、健康/真实五列读取与日志验收仍未完成。
 
 ---
 

@@ -166,18 +166,20 @@ Web 只在 `VERCEL_ENV=production` 的请求时延迟创建 server-only `pg.Pool
 
 健康检查固定为动态 Node.js 路由 `/api/health/database`，最长执行 10 秒，为 3.5 秒连接超时与 3 秒客户端查询超时保留平台收尾余量；不得把 `statement_timeout` 或其他 Neon PgBouncer 不支持的参数放进 startup packet。项目级 [`apps/web/vercel.json`](../apps/web/vercel.json) 把该 Function 固定到 `iad1`，不依赖已经弃用的 route-level region export。成功只返回 HTTP 200 与 `{"status":"ok"}`；失败只返回 HTTP 503 与 `{"status":"unavailable"}`，并设置 `Retry-After: 5`。两种响应都必须使用 `Cache-Control: no-store`。结构化日志仅允许事件、结果、耗时、request ID、安全错误码、SQLSTATE 与连接池 total / idle / waiting 计数；禁止记录 URL、host、database、user、SQL、参数或原始异常。
 
-本准备分支建立可评审的 Runtime Reader 仓库边界。Neon 基础治理已有现场证据：已创建一份新的七天分支备份并盘点角色/数据库 ACL；`hzense_runtime` 已设置 `default_transaction_read_only = on`；未使用的 `neondb` 已撤销 ambient `PUBLIC CONNECT` / `CREATE` / `TEMPORARY`。这些动作不等于 Runtime Reader 已上线：目标 `hzense` ACL、独立 Runtime 凭据、受保护生产 preflight、Vercel Production 变量、重部署、线上 health、真实五列查询和日志验证仍未完成。
+Runtime Reader 仓库边界已通过 PR #32–#35 合并并由 CI 验证。Neon 基础治理已有现场证据：已创建一份新的七天分支备份并盘点角色/数据库 ACL；`hzense_runtime` 已设置 `default_transaction_read_only = on`；未使用的 `neondb` 已撤销 ambient `PUBLIC CONNECT` / `CREATE` / `TEMPORARY`。2026-09-01 的两组 catalog-only `SELECT` 又独立确认目标 `hzense` ACL 的有效权限与直接授权来源均匹配五列最小权限合约；[脱敏矩阵与查询/结果指纹](./production-evidence/2026-09-01-runtime-reader-acl.md)不包含连接信息。这些动作仍不等于 Runtime Reader 已上线：独立 Runtime 凭据、受保护生产 preflight、Vercel Production 变量、重部署、线上 health、真实五列查询和日志验证尚未完成。PR #36 合并后，`production-health.yml` 的小时级调度由仓库变量 `PRODUCTION_DATABASE_HEALTH_ENABLED` 控制；首次验收前不得设为 `true`，但维护窗口可以手工触发。变量关闭时，定时 workflow 可能因 job 被跳过而整体显示绿色；这种绿色状态只证明门禁生效，不能作为数据库健康证据。
 
 `hzense_migrator` 是维护角色而不是 Web Runtime。Neon Tables 曾用满其旧 `CONNECTION LIMIT 5` 并触发 `53300`，因此本次将运维上限调整为 10，为 provider Web 工具和一次受控维护保留余量。该决定不向 Runtime Reader 授权、不改变 `hzense_runtime` 的 limit 20，也不改变 Web 进程池上限 1；如再次出现容量错误，应先检查 `pg_stat_activity`、连接来源与池行为，而不是继续无界提高上限。
 
 Runtime ACL 脚本包含目标数据库范围的 destructive ACL normalization：它撤销 `PUBLIC` 的数据库 `CONNECT` / `CREATE` / `TEMPORARY`、`public` Schema、现有应用 Table / Column / Sequence 权限，并从所有非系统应用 enum types 撤销 `PUBLIC USAGE`；随后只给 `hzense_runtime` 恢复本文 allowlist。额外的跨数据库隔离也可能要求集群管理员撤销其他数据库的 `PUBLIC CONNECT` / `CREATE` / `TEMPORARY`。所有依赖 ambient `PUBLIC` 权限的非 owner 登录都可能受影响。执行前必须创建并独立验证新的 provider 分支备份，盘点整个 cluster 中每个可连接数据库的现有非 owner 有效权限并记录可回滚 ACL，为仍需工作的角色准备经过评审的直接授权；不得假设前一次 Topic 备份足以代表当前状态，也不得把目标数据库备份当作其他数据库 ACL 的回滚证据。
 
-首次 Runtime Reader 上线必须严格按以下顺序执行。状态以 2026-08-31 的现场证据为准，部分 Neon 基础治理已完成，但生产接入与验收仍未完成：
+首次 Runtime Reader 上线必须严格按以下顺序执行。状态以 2026-09-01 的现场证据为准；目标 ACL 已完成有界只读复核，但生产接入与验收仍未完成：
 
-1. 🟡 `hzense_runtime` 固定属性、上述唯一 Neon control-plane membership 形态与 `default_transaction_read_only = on` 已盘点；仍须在受保护流程中生成/轮换独立 Runtime 凭据，且不得在 SQL history、终端输出或仓库中暴露。该角色盘点不代表目标 `hzense` ACL 已应用。
-2. 🟡 新的七天 provider 分支备份与 cluster 角色/ACL 盘点已完成；在执行目标 ACL 前仍须用同一维护窗口独立核对 Migration / Table / Topic 基线，并把 pre-change ACL 恢复材料保存在受保护运维记录中。
+1. 🟡 `hzense_runtime` 固定属性、上述唯一 Neon control-plane membership 形态与 `default_transaction_read_only = on` 已盘点；仍须在受保护流程中生成/轮换独立 Runtime 凭据，且不得在 SQL history、终端输出或仓库中暴露。
+2. 🟡 新的七天 provider 分支备份与 cluster 角色/ACL 盘点已完成；本次只读复核没有重新审计受保护的 pre-change ACL 恢复材料。
 3. 🟡 普通 `neondb` 的 ambient 访问已隔离；`postgres` / `template1` 只允许上述精确 Neon 保留库合约，仍须由生产 preflight 使用 Runtime 身份逐库深检。无法匹配或发现其他可连接数据库时，本次上线阻断。
-4. ⏳ 在冻结所有可创建应用对象的 principal（至少 owner / Migrator）DDL 的窗口内，以数据库及 Migration 对象 owner 执行权限脚本；不得把 owner URL 输出到终端或日志。
+4. ✅ 目标 ACL 当前状态已由两组独立、只读的 catalog 查询确认：数据库/Schema/type 直接 allowlist、五列 Column `SELECT`、grant option 与 `PUBLIC`/额外权限 denylist 均匹配，且没有数据库写入。该证据证明当前 ACL 状态，不声称恢复历史 mutation transaction 的时间或操作者；完整生产 preflight 仍属于步骤 5。
+
+   经评审的配置脚本入口保留如下，只有新的受控维护窗口才允许再次执行：
 
    ```bash
    psql -X "$DATABASE_DIRECT_URL" -v ON_ERROR_STOP=1 \
@@ -193,8 +195,9 @@ Runtime ACL 脚本包含目标数据库范围的 destructive ACL normalization�
 6. ⏳ 仅在 Vercel Production 配置 Web 请求时需要的 URL、expected host / port / database / user；PostgreSQL major 与 connection limit 留在部署前 preflight 环境，不注入 Preview / CI，也不要求 Web 每请求查询 catalog。
 7. ⏳ 触发新的 Production Deployment，等待对应已合并 commit 达到 `READY`；构建本身不得建立数据库连接。
 8. ⏳ 独立冷/热请求 `/api/health/database`，验证 HTTP 200、正文精确为 `{"status":"ok"}`、`Cache-Control` 包含 `no-store` 且无失败态 `Retry-After`，再验证真实五列查询、池上限和安全日志。任何 503、host/database/user/SQL/参数/原始错误/凭据泄漏，或缺少对应运行时日志证据都视为失败。
+9. ⏳ 只有步骤 8 全部通过后，才将 GitHub 仓库变量 `PRODUCTION_DATABASE_HEALTH_ENABLED` 设置为 `true`，启用 `production-health.yml` 的小时级检查；首次启用后立即手工运行一次并确认成功。该变量不是凭据，不得替代 Vercel Production 的五个 Runtime 配置值。
 
-回滚材料必须先于 destructive ACL normalization 建立。若步骤 4–5 失败，停止发布，不向 Vercel 写入变量；按受保护的 pre-change ACL 记录恢复授权，必要时从本次七天 provider 分支恢复。若步骤 6–8 失败，先移除五个 Runtime Reader Production 变量并重部署上一已知健康 commit，再轮换 Runtime 凭据；若放弃本次接入，再恢复目标 ACL。七天备份到期前必须完成验收或明确执行恢复/重新备份，不能把已过期分支当作回滚证据。
+回滚材料必须先于 destructive ACL normalization 建立。若步骤 4–5 失败，停止发布，不向 Vercel 写入变量；按受保护的 pre-change ACL 记录恢复授权，必要时从本次七天 provider 分支恢复。若步骤 6–8 失败，保持或恢复 `PRODUCTION_DATABASE_HEALTH_ENABLED=false`，先移除五个 Runtime Reader Production 变量并重部署上一已知健康 commit，再轮换 Runtime 凭据；若放弃本次接入，再恢复目标 ACL。七天备份到期前必须完成验收或明确执行恢复/重新备份，不能把已过期分支当作回滚证据。
 
 ## 首次上线顺序
 
@@ -207,4 +210,4 @@ Runtime ACL 脚本包含目标数据库范围的 destructive ACL normalization�
 7. 🚧 进行中：验证生产日志与基础监控后，停止维护旧 Hosted Alpha。
 8. ✅ 已完成：创建 Neon PostgreSQL 18 / pgvector 0.8.6 实例与受限迁移角色，使用真实 direct TLS endpoint 完成 preflight → snapshot → migrate → verify；随后解除 Vercel Production 项目连接并确认集成注入的数据库变量均不存在。
 9. ✅ 已完成：以新分支备份应用并验证 `0002`，配置 `hzense_topic_sync`，完成 Topic 生产 dry run → Apply → 独立验证 → no-op 重跑。
-10. 🚧 进行中：已完成新七天回滚分支、Runtime read-only 默认值、`neondb` 隔离与 Migrator 容量治理；目标 ACL、独立 Runtime 凭据、保留库深检、Vercel Production 注入、重部署及健康/读取/日志验收仍待完成。
+10. 🚧 进行中：已完成新七天回滚分支、Runtime read-only 默认值、`neondb` 隔离、Migrator 容量治理与目标 ACL 有界只读复核；独立 Runtime 凭据、保留库深检、Vercel Production 注入、重部署及健康/读取/日志验收仍待完成。
