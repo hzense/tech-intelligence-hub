@@ -99,10 +99,38 @@ for (const jobId of ['foundation', 'database-migrations', 'daily-publication-gat
 
 const productionHealth = parse(await readFile(join(workflowRoot, 'production-health.yml'), 'utf8'));
 const productionHealthCondition =
-  "github.event_name == 'workflow_dispatch' || vars.PRODUCTION_DATABASE_HEALTH_ENABLED == 'true'";
+  "github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && vars.PRODUCTION_DATABASE_HEALTH_ENABLED == 'true')";
 if (productionHealth.jobs?.['database-health']?.if !== productionHealthCondition) {
   issues.push(
-    'production-health.yml: scheduled checks must remain gated by PRODUCTION_DATABASE_HEALTH_ENABLED while manual verification stays available',
+    'production-health.yml: keep the reviewed schedule/manual condition in sync with the workflow validator',
+  );
+}
+
+const productionHealthTriggers = productionHealth.on;
+const productionHealthTriggerNames =
+  productionHealthTriggers && typeof productionHealthTriggers === 'object'
+    ? Object.keys(productionHealthTriggers).sort()
+    : [];
+if (productionHealthTriggerNames.join('\0') !== ['schedule', 'workflow_dispatch'].join('\0')) {
+  issues.push(
+    'production-health.yml: only schedule and workflow_dispatch triggers are permitted; update the reviewed contract explicitly before adding another trigger',
+  );
+}
+
+const productionHealthSchedule = productionHealthTriggers?.schedule;
+if (
+  !Array.isArray(productionHealthSchedule) ||
+  productionHealthSchedule.length !== 1 ||
+  productionHealthSchedule[0]?.cron !== '17 * * * *'
+) {
+  issues.push(
+    "production-health.yml: the reviewed schedule must remain exactly '17 * * * *'; update the workflow validator with any approved schedule change",
+  );
+}
+
+if (!Object.prototype.hasOwnProperty.call(productionHealthTriggers ?? {}, 'workflow_dispatch')) {
+  issues.push(
+    'production-health.yml: workflow_dispatch must remain available for controlled checks',
   );
 }
 
