@@ -4,6 +4,7 @@ import process from 'node:process';
 import { pathToFileURL, URL } from 'node:url';
 import pg from 'pg';
 import { validateConnectionTarget } from './connection-policy.mjs';
+import { inspectNeonReservedProviderObjects } from './neon-reserved-provider-contract.mjs';
 import { inspectProductionTls } from './preflight.mjs';
 import { expectedTableNames } from './verify.mjs';
 
@@ -1163,181 +1164,12 @@ async function inspectNeonReservedDatabase(
     throw new Error(`Neon reserved database has enabled login triggers: ${expectedDatabase}`);
   }
 
-  // A catalog-level database ACL is not sufficient evidence. Prove inside the
-  // reserved database that the Runtime role cannot reach or own any non-system
-  // object, even through PUBLIC, defaults, extensions, or grant options.
-  const objectAccess = await client.query(
-    `WITH runtime_role AS (
-       SELECT oid FROM pg_roles WHERE rolname = session_user
-     ),
-     violations AS (
-       SELECT 'schema'::text AS object_type,
-              namespace_info.nspname::text AS object_name
-       FROM pg_namespace AS namespace_info
-       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
-         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
-         AND (
-           pg_get_userbyid(namespace_info.nspowner) = session_user
-           OR has_schema_privilege(current_user, namespace_info.oid, 'CREATE')
-           OR has_schema_privilege(current_user, namespace_info.oid, 'CREATE WITH GRANT OPTION')
-           OR has_schema_privilege(current_user, namespace_info.oid, 'USAGE WITH GRANT OPTION')
-           OR (
-             namespace_info.nspname <> 'public'
-             AND has_schema_privilege(current_user, namespace_info.oid, 'USAGE')
-           )
-         )
-       UNION ALL
-       SELECT DISTINCT 'relation',
-              format('%I.%I', namespace_info.nspname, relation_info.relname)
-       FROM pg_class AS relation_info
-       JOIN pg_namespace AS namespace_info ON namespace_info.oid = relation_info.relnamespace
-       CROSS JOIN unnest($1::text[]) AS privilege_info(privilege)
-       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
-         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
-         AND relation_info.relkind IN ('r', 'p', 'v', 'm', 'f')
-         AND (
-           pg_get_userbyid(relation_info.relowner) = session_user
-           OR has_table_privilege(current_user, relation_info.oid, privilege_info.privilege)
-           OR has_table_privilege(
-             current_user,
-             relation_info.oid,
-             privilege_info.privilege || ' WITH GRANT OPTION'
-           )
-         )
-       UNION ALL
-       SELECT DISTINCT 'column',
-              format(
-                '%I.%I.%I',
-                namespace_info.nspname,
-                relation_info.relname,
-                column_info.attname
-              )
-       FROM pg_class AS relation_info
-       JOIN pg_namespace AS namespace_info ON namespace_info.oid = relation_info.relnamespace
-       JOIN pg_attribute AS column_info ON column_info.attrelid = relation_info.oid
-       CROSS JOIN unnest($2::text[]) AS privilege_info(privilege)
-       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
-         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
-         AND relation_info.relkind IN ('r', 'p', 'v', 'm', 'f')
-         AND column_info.attnum > 0
-         AND NOT column_info.attisdropped
-         AND (
-           has_column_privilege(
-             current_user,
-             relation_info.oid,
-             column_info.attnum,
-             privilege_info.privilege
-           )
-           OR has_column_privilege(
-             current_user,
-             relation_info.oid,
-             column_info.attnum,
-             privilege_info.privilege || ' WITH GRANT OPTION'
-           )
-         )
-       UNION ALL
-       SELECT DISTINCT 'sequence',
-              format('%I.%I', namespace_info.nspname, sequence_info.relname)
-       FROM pg_class AS sequence_info
-       JOIN pg_namespace AS namespace_info ON namespace_info.oid = sequence_info.relnamespace
-       CROSS JOIN unnest(ARRAY['USAGE', 'SELECT', 'UPDATE']) AS privilege_info(privilege)
-       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
-         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
-         AND sequence_info.relkind = 'S'
-         AND (
-           pg_get_userbyid(sequence_info.relowner) = session_user
-           OR has_sequence_privilege(current_user, sequence_info.oid, privilege_info.privilege)
-           OR has_sequence_privilege(
-             current_user,
-             sequence_info.oid,
-             privilege_info.privilege || ' WITH GRANT OPTION'
-           )
-         )
-       UNION ALL
-       SELECT DISTINCT 'routine',
-              format(
-                '%I.%I(%s)',
-                namespace_info.nspname,
-                routine_info.proname,
-                pg_get_function_identity_arguments(routine_info.oid)
-              )
-       FROM pg_proc AS routine_info
-       JOIN pg_namespace AS namespace_info ON namespace_info.oid = routine_info.pronamespace
-       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
-         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
-         AND (
-           pg_get_userbyid(routine_info.proowner) = session_user
-           OR has_function_privilege(current_user, routine_info.oid, 'EXECUTE')
-           OR has_function_privilege(
-             current_user,
-             routine_info.oid,
-             'EXECUTE WITH GRANT OPTION'
-           )
-         )
-       UNION ALL
-       SELECT DISTINCT 'type',
-              format('%I.%I', namespace_info.nspname, type_info.typname)
-       FROM pg_type AS type_info
-       JOIN pg_namespace AS namespace_info ON namespace_info.oid = type_info.typnamespace
-       WHERE namespace_info.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
-         AND namespace_info.nspname !~ '^pg_temp_[0-9]+$'
-         AND namespace_info.nspname !~ '^pg_toast_temp_[0-9]+$'
-         AND type_info.typtype IN ('b', 'c', 'd', 'e', 'r', 'm')
-         AND (
-           pg_get_userbyid(type_info.typowner) = session_user
-           OR has_type_privilege(current_user, type_info.oid, 'USAGE')
-           OR has_type_privilege(current_user, type_info.oid, 'USAGE WITH GRANT OPTION')
-         )
-       UNION ALL
-       SELECT 'large_object', large_object_info.oid::text
-       FROM pg_largeobject_metadata AS large_object_info
-       WHERE has_largeobject_privilege(current_user, large_object_info.oid, 'SELECT')
-          OR has_largeobject_privilege(current_user, large_object_info.oid, 'UPDATE')
-       UNION ALL
-       SELECT 'foreign_data_wrapper', wrapper_info.fdwname::text
-       FROM pg_foreign_data_wrapper AS wrapper_info
-       WHERE pg_get_userbyid(wrapper_info.fdwowner) = session_user
-          OR has_foreign_data_wrapper_privilege(current_user, wrapper_info.oid, 'USAGE')
-          OR has_foreign_data_wrapper_privilege(
-            current_user,
-            wrapper_info.oid,
-            'USAGE WITH GRANT OPTION'
-          )
-       UNION ALL
-       SELECT 'foreign_server', server_info.srvname::text
-       FROM pg_foreign_server AS server_info
-       WHERE pg_get_userbyid(server_info.srvowner) = session_user
-          OR has_server_privilege(current_user, server_info.oid, 'USAGE')
-          OR has_server_privilege(current_user, server_info.oid, 'USAGE WITH GRANT OPTION')
-       UNION ALL
-       SELECT 'extension', extension_info.extname::text
-       FROM pg_extension AS extension_info
-       WHERE pg_get_userbyid(extension_info.extowner) = session_user
-       UNION ALL
-       SELECT 'default_acl',
-              format('%I:%s', owner_info.rolname, default_acl.defaclobjtype)
-       FROM pg_default_acl AS default_acl
-       JOIN pg_roles AS owner_info ON owner_info.oid = default_acl.defaclrole
-       CROSS JOIN LATERAL aclexplode(default_acl.defaclacl) AS acl_info
-       WHERE acl_info.grantee = (SELECT oid FROM runtime_role)
-     )
-     SELECT DISTINCT object_type, object_name
-     FROM violations
-     ORDER BY object_type, object_name`,
-    [tablePrivileges, columnPrivileges],
-  );
-  if (objectAccess.rowCount !== 0) {
-    throw new Error(
-      `Runtime reader has non-system object access in Neon reserved database ${expectedDatabase}: ${objectAccess.rows
-        .map((row) => `${row.object_type}:${row.object_name}`)
-        .join(', ')}`,
-    );
-  }
+  // A catalog-level database ACL is not sufficient evidence. Inventory the
+  // provider-owned catalog and effective Runtime access in one statement so
+  // an exception can be granted only for the exact reviewed Neon snapshot.
+  // The helper still rejects all residual ownership, direct grants, grant
+  // options, indirect routine paths and non-provider objects.
+  await inspectNeonReservedProviderObjects(client, { expectedDatabase, profile });
 
   if (profile === 'production') {
     await inspectProductionTls(client, expectedHost);
