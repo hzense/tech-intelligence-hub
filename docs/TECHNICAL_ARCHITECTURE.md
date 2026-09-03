@@ -29,7 +29,7 @@ HZense 采用“Git/Markdown 为知识资产源，PostgreSQL 为索引与关系�
 | Database          | PostgreSQL                                                         |
 | ORM               | Drizzle ORM                                                        |
 | Vector            | pgvector                                                           |
-| Search            | PostgreSQL FTS → Hybrid Search                                     |
+| Search            | In-process keyword ranking → PostgreSQL FTS → Hybrid Search        |
 | Graph V1          | PostgreSQL relations                                               |
 | Graph V3          | Neo4j optional                                                     |
 | AI                | Provider abstraction + OpenAI first                                |
@@ -164,11 +164,11 @@ Web 只在 `VERCEL_ENV=production` 的请求时读取 `HZENSE_RUNTIME_DATABASE_U
 
 唯一首批业务查询使用 `FROM ONLY public.topics` 固定选择上述五列，以 `runtime_enabled = true` 过滤、按 `id` 排序并使用 `1..50` 的参数化 `LIMIT`。Node.js 健康端点固定为 `/api/health/database`、动态执行、最长 10 秒且 `Cache-Control: no-store`；该上限覆盖 3.5 秒连接超时与 3 秒查询超时并保留平台收尾余量。项目级 [`apps/web/vercel.json`](../apps/web/vercel.json) 把 Function 固定到 `iad1`，不使用已弃用的 route-level region export。成功只暴露 `{"status":"ok"}`，失败只暴露 `{"status":"unavailable"}`。结构化日志仅包含事件、结果、耗时、request ID、安全错误码、SQLSTATE 和连接池计数，不记录 URL、host、database、user、SQL、参数或原始异常。
 
-上述仓库边界已通过 PR #32–#35 合并并由 CI 验证，但不代表外部上线完成。Neon 侧已创建新的七天回滚分支，复核角色与 database ACL，设置 Runtime 的 read-only session 默认值，隔离未使用的 `neondb` ambient ACL；维护专用 `hzense_migrator` 因 Neon Tables 用满旧五连接上限而从 limit 5 调整为 10。后者不改变 Runtime 权限或 Web pool 上限 1。2026-09-01 的两组 catalog-only 查询已确认目标 `hzense` ACL 的有效权限与直接授权来源符合五列最小权限合约；[脱敏证据](./production-evidence/2026-09-01-runtime-reader-acl.md)不替代完整生产 preflight。独立 Runtime 凭据、生产 preflight、Vercel Production 变量、重部署、线上 health、真实五列查询和日志验证仍未完成。PR #36 合并后，小时级生产健康工作流只有在首次线上验收成功并设置 `PRODUCTION_DATABASE_HEALTH_ENABLED=true` 后才自动运行；在此之前仅允许受控手工触发。
+上述仓库边界已通过 PR #32–#35 合并并由 CI 验证，PR #36 又合并了小时级生产健康工作流的 fail-closed 门禁，但这些仓库交付不代表外部上线完成。Neon 侧已创建新的七天回滚分支，复核角色与 database ACL，设置 Runtime 的 read-only session 默认值，隔离未使用的 `neondb` ambient ACL；维护专用 `hzense_migrator` 因 Neon Tables 用满旧五连接上限而从 limit 5 调整为 10。后者不改变 Runtime 权限或 Web pool 上限 1。2026-09-01 的两组 catalog-only 查询已确认目标 `hzense` ACL 的有效权限与直接授权来源符合五列最小权限合约；[脱敏证据](./production-evidence/2026-09-01-runtime-reader-acl.md)不替代完整生产 preflight。独立 Runtime 凭据、生产 preflight、Vercel Production 变量、Runtime-configured 重部署、线上 health、真实五列查询和日志验证仍未完成。当前仓库变量不存在，定时健康任务按设计跳过；只有首次线上验收成功并设置 `PRODUCTION_DATABASE_HEALTH_ENABLED=true` 后才自动运行，在此之前仅允许受控手工触发。
 
 ## 8. Search 与 Vector
 
-V1 使用 PostgreSQL Full Text Search。V2 升级 Hybrid Search：Keyword + Vector + Entity + Recency + Importance。
+当前 V1 使用基于已验证 Markdown/Seed 数据的确定性进程内关键词匹配与加权排序。PostgreSQL Full Text Search 尚未实现，是下一步；其后再升级 Hybrid Search：Keyword + Vector + Entity + Recency + Importance。
 
 向量首版直接使用 pgvector，不引入独立 Vector DB，除非规模与性能证明有必要。
 
@@ -343,7 +343,7 @@ Local         http://localhost:3000
 4. ⏳ 未执行：建立连接数、池等待、查询延迟、超时和错误告警，并执行一次上线后的告警基线验证。
 5. ⏳ 未执行：在稳定数据路径上继续 PostgreSQL FTS、Hybrid Search 与 Ask HZense / RAG。
 
-截至 2026-09-01，步骤 1–2 已完成并有独立生产证据。步骤 3 已完成代码、Neon 基础治理与目标 ACL 有界只读复核，但受保护凭据/完整 preflight、Vercel 配置、重部署与线上验收仍未完成。步骤 3–5 的其他外部动作不能用本地测试、基础治理或历史 Migration / Topic 验收替代。
+截至 2026-09-03，步骤 1–2 已完成并有独立生产证据。步骤 3 已完成代码、Neon 基础治理、目标 ACL 有界只读复核与 PR #36 健康门禁，但受保护凭据/完整 preflight、Vercel 配置、Runtime-configured 重部署与线上验收仍未完成。步骤 3–5 的其他外部动作不能用本地测试、基础治理或历史 Migration / Topic 验收替代。
 
 ---
 

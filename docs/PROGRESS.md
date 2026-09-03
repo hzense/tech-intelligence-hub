@@ -1,6 +1,6 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-09-01
+**最后更新：** 2026-09-03
 **当前阶段：** Runtime Reader 仓库实现与目标 ACL 有界只读复核已完成（生产凭据、完整 preflight、Vercel 配置与上线验收未完成）
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
@@ -54,7 +54,7 @@
 - [x] 独立 Radar 页面、类型化快照、可分享筛选、评分级 Signal 证据与原始来源链接
 - [x] 经过 Schema 与交叉引用校验的 Markdown/MDX Web runtime
 - [x] Continuous Daily 确定性候选生成、完整 dry-run、人工发布门禁与回滚手册
-- [ ] Continuous Daily 自动 Draft PR（组织策略暂时禁止 Actions 创建 PR；仓库发布开关保持关闭）
+- [ ] Continuous Daily 自动 Draft PR（仓库当前不允许 Actions 创建/批准 PR，且发布变量未设置；组织级策略仍待有权限的管理员复核）
 - [x] HZense 品牌 Logo、Open Graph 分享图和基础 metadata
 - [x] [Hosted Alpha 检查点](https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site)
 - [x] [Vercel Production Deployment](https://tech-intelligence-hub-web.vercel.app/)
@@ -124,11 +124,12 @@
 - [x] 将维护专用 `hzense_migrator` 的 connection limit 从 5 调整为 10，解除 Neon Tables 占满旧五连接上限导致的 `53300`；该决定不扩大 Web Runtime 权限，Runtime Web pool 上限仍为 1
 - [x] PR #32–#35 合并独立 Runtime Reader、Server-only 数据库客户端、安全健康检查、有上限的只读业务查询及 Neon provider 合约
 - [x] 以独立 catalog-only 查询确认目标 `hzense` Runtime ACL 当前已应用，并验证有效权限、直接授权来源与五列 allowlist
+- [x] PR #36 合并小时级生产健康检查的 fail-closed 变量门禁，并固定允许的触发器与 cron
 - [ ] 建立独立 Runtime 凭据，并让受保护 preflight 深检目标库及精确允许的 Neon `postgres` / `template1` 保留库状态
-- [ ] 仅向 Vercel Production 注入 pooled 连接与 expected identity，重部署并独立验证健康检查、真实五列读取与安全日志
+- [ ] 仅向 Vercel Production 注入 pooled 连接与 expected identity，触发 Runtime-configured 重部署并独立验证健康检查、真实五列读取与安全日志
 - [ ] 建立数据库连接数、池等待、查询延迟、超时和错误告警
 
-2026-08-31 的生产维护窗口已有现场证据：新分支备份确认可恢复，`0002` 已执行，3 个 Migration / 0 pending，`hzense_topic_sync` 与最小 ACL 已复核，dry run → Apply → 独立 verifier → no-op 全部完成，最终 62 个 Topics、0 个未知行且 reviewed fingerprint 匹配。随后完成了 Runtime Reader 的新七天回滚分支、角色/ACL 盘点、`hzense_runtime` read-only 默认值、`neondb` ambient ACL 隔离与 Migrator 连接容量治理；PR #32–#35 已把仓库实现与 Neon provider 合约合并到 `main`。2026-09-01 又以两组 catalog-only `SELECT` 独立确认目标 `hzense` ACL 的有效权限和直接授权来源，[脱敏结果](./production-evidence/2026-09-01-runtime-reader-acl.md)仅保留布尔值、计数与指纹。Runtime 凭据、完整生产 preflight、Vercel Production 配置、重部署和线上验收仍未完成，因此生产就绪度仍为 90%。
+2026-08-31 的生产维护窗口已有现场证据：新分支备份确认可恢复，`0002` 已执行，3 个 Migration / 0 pending，`hzense_topic_sync` 与最小 ACL 已复核，dry run → Apply → 独立 verifier → no-op 全部完成，最终 62 个 Topics、0 个未知行且 reviewed fingerprint 匹配。随后完成了 Runtime Reader 的新七天回滚分支、角色/ACL 盘点、`hzense_runtime` read-only 默认值、`neondb` ambient ACL 隔离与 Migrator 连接容量治理；PR #32–#35 已把仓库实现与 Neon provider 合约合并到 `main`。2026-09-01 又以两组 catalog-only `SELECT` 独立确认目标 `hzense` ACL 的有效权限和直接授权来源，[脱敏结果](./production-evidence/2026-09-01-runtime-reader-acl.md)仅保留布尔值、计数与指纹。PR #36 于 2026-09-02 合并健康监控门禁；截至 2026-09-03，仓库变量未设置、定时任务按设计跳过，公开健康探针仍返回 HTTP 503。Runtime 凭据、完整生产 preflight、Vercel Production 配置、Runtime-configured 重部署和线上验收仍未完成，因此生产就绪度仍为 90%。
 
 ## MVP 验收状态
 
@@ -151,7 +152,7 @@
 | 优先级 | 风险                                           | 处理方式                                                                                                                          |
 | ------ | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | P1     | 样例内容主要来自 2024 年，无法代表日常更新能力 | Web Alpha 后接入当前 Daily 内容生产流程                                                                                           |
-| P1     | 小时级健康监控必须晚于首次线上验收启用         | 首次验收前保持 `PRODUCTION_DATABASE_HEALTH_ENABLED` 关闭；验收通过后启用调度并立即手工验证一次                                    |
+| P1     | 小时级健康监控必须晚于首次线上验收启用         | 当前变量不存在且定时任务按设计跳过；首次验收通过后再启用调度并立即手工验证一次                                                    |
 | P1     | Web runtime 尚未接入生产数据库                 | 目标 ACL 已有界验证；继续完成独立凭据与保留库深检，只向 Vercel Production 注入变量，重部署后独立验证；禁止复用其他角色            |
 | P1     | Neon 保留数据库依赖 provider-owned 默认 ACL    | 只允许精确匹配 `cloud_admin` 所有的 `postgres` / `template1` 合约，并逐库深检；任何 owner、模板标志、ACL 或对象访问漂移都阻断上线 |
 | P1     | 生产日志与监控尚未落地                         | 验证 Vercel runtime logs、基础告警与后续数据库可观测性                                                                            |
@@ -169,8 +170,9 @@
 
 | 日期       | 更新                                                                                                                                                                                                     |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-03 | PR #36 已合并并通过 main CI；健康任务因仓库变量未设置而按设计跳过，公开探针仍为 HTTP 503，不能视作数据库健康证据                                                                                         |
+| 2026-09-02 | PR #36 合并显式 schedule/变量门禁、触发器与 cron 防漂移校验，并保留受控手工验证入口                                                                                                                      |
 | 2026-09-01 | Neon catalog-only 复核确认 Runtime 目标 ACL 与五列 allowlist；脱敏矩阵及查询/结果 SHA-256 已入库，其他上线门禁不变                                                                                       |
-| 2026-08-31 | PR #36 校正 Runtime Reader 已合并状态，并为小时级生产健康检查增加显式启用门禁；当前 503 `missing_configuration` 现场证据确认 Vercel Production 尚未注入 Runtime 配置且日志未泄露连接信息                 |
 | 2026-08-31 | Runtime Reader 上线前新建七天回滚分支；完成角色/ACL 盘点、Runtime read-only 默认值、`neondb` ambient ACL 隔离，并将维护 Migrator 上限由 5 调整为 10；生产凭据、目标 ACL、Vercel 与健康验收仍待完成       |
 | 2026-08-31 | 新可恢复分支备份、生产 `0002`、3 个 Migration / 0 pending、最小权限 `hzense_topic_sync`、62 个 Topics / 0 unknown、reviewed fingerprint 与 0 变更 no-op 均完成独立验证；Runtime Reader 外部上线仍未执行  |
 | 2026-08-31 | Runtime Reader 准备分支定义 `hzense_runtime` 五列只读边界、Production-only pooled 客户端、Node health、`iad1` 部署配置、Preview/CI fail closed 与安全日志；仓库变更仍待合并和生产验证                    |

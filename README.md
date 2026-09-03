@@ -37,7 +37,7 @@ Daily candidates are generated deterministically from reviewed Signals, validate
 - Markdown / MDX as formal content source of truth
 - PostgreSQL + Drizzle ORM for structured intelligence
 - pgvector for semantic retrieval
-- PostgreSQL FTS → Hybrid Search
+- Current in-process keyword ranking → PostgreSQL FTS → Hybrid Search
 - Vercel for the web application
 - Cloudflare R2 / S3-compatible storage for large media
 
@@ -129,7 +129,7 @@ Next milestone:
 Next phase:
 
 - [x] Connect deterministic Daily candidate generation and validate a real dry-run artifact
-- [ ] Enable organization policy for automatic Continuous Daily Draft PR creation
+- [ ] Enable the repository permission and publication variable for automatic Continuous Daily Draft PR creation
 - [x] Provision managed PostgreSQL 18 / pgvector 0.8.6
 - [x] Complete and independently verify the initial production database migration (`0000`–`0001`)
 - [x] Enforce the Taxonomy → Seed → Content authority chain
@@ -138,11 +138,12 @@ Next phase:
 - [x] Configure the dedicated `hzense_topic_sync` role and reviewed ACLs, then complete the first production dry run, guarded Apply, independent verification and no-op rerun
 - [x] Merge the reviewed Runtime Reader repository implementation and Neon provider contracts through PR #32–#35
 - [x] Confirm with an independent read-only check that the bounded target-database Runtime ACL is applied
+- [x] Merge PR #36's fail-closed scheduled-health gate and trigger/cron validation
 - [ ] Finish protected Runtime credential setup and preflight, then configure, redeploy and independently verify the Production-only Vercel integration
 
 The 2026-08-31 production maintenance window completed `0002`, verified 3 Migrations with 0 pending, projected all 62 Topics with 0 unknown rows, matched the reviewed fingerprint and produced a 0-change no-op rerun. A new recoverable branch backup and the least-privilege `hzense_topic_sync` role were also independently verified; sensitive connection and backup identifiers are intentionally not recorded here.
 
-Runtime Reader repository implementation is merged through PR #32–#35. Preparation has also established a fresh seven-day provider branch backup, enabled `default_transaction_read_only` for `hzense_runtime`, removed ambient `PUBLIC` access to the unused `neondb` database and raised the maintenance-only `hzense_migrator` connection limit from 5 to 10 after Neon Tables exhausted the old five-session ceiling. A bounded read-only catalog verification on 2026-09-01 confirmed the target `hzense` ACL and its direct grant sources; the [sanitized matrix](docs/production-evidence/2026-09-01-runtime-reader-acl.md) is retained without connection details. The exact provider-owned `postgres` and `template1` defaults are handled only as narrow, drift-sensitive reserved-database exceptions and must still be connected to and deeply inspected by the production preflight. These changes do **not** complete the rollout: the independent Runtime credential, protected preflight, Vercel Production variables, redeployment, health/read acceptance and log/monitoring evidence remain pending. After PR #36 is merged, the hourly public-health workflow remains disabled through the `PRODUCTION_DATABASE_HEALTH_ENABLED` repository variable until live acceptance succeeds; manual dispatch remains available for the acceptance window.
+Runtime Reader repository implementation is merged through PR #32–#35, and PR #36 adds the fail-closed scheduled-health gate. Preparation has also established a fresh seven-day provider branch backup, enabled `default_transaction_read_only` for `hzense_runtime`, removed ambient `PUBLIC` access to the unused `neondb` database and raised the maintenance-only `hzense_migrator` connection limit from 5 to 10 after Neon Tables exhausted the old five-session ceiling. A bounded read-only catalog verification on 2026-09-01 confirmed the target `hzense` ACL and its direct grant sources; the [sanitized matrix](docs/production-evidence/2026-09-01-runtime-reader-acl.md) is retained without connection details. The exact provider-owned `postgres` and `template1` defaults are handled only as narrow, drift-sensitive reserved-database exceptions and must still be connected to and deeply inspected by the production preflight. These changes do **not** complete the rollout: the independent Runtime credential, protected preflight, Vercel Production variables, Runtime-configured redeployment, health/read acceptance and log/monitoring evidence remain pending. As of 2026-09-03, the health repository variable is absent, scheduled jobs are skipped, and the public health probe remains fail-closed with HTTP 503; manual dispatch remains available for the controlled acceptance window.
 
 ## Local foundation checks
 
