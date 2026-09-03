@@ -93,7 +93,7 @@ https://hzense.com/resources    HZense Resources
 https://hzense.com/ask          Ask HZense
 ```
 
-当前状态：域名已经注册，网站部署和 DNS 绑定将在首个可用 MVP 发布时完成。
+当前状态：域名、网站部署、DNS、HTTPS、`www` 重定向与主要公开路由均已上线；Runtime Reader 数据库路径也已完成功能/配置生产验收。
 
 ## 5. Home
 
@@ -184,39 +184,39 @@ AI 可辅助 URL 读取、摘要、Topic 分类、Company / People / Technology 
 - [x] Taxonomy
 - [x] Entity / Relation Schema
 - [x] Machine-readable Schema
-- [ ] Executable Front Matter Validation
-- [ ] Physical Database Schema / Migrations
-- [ ] Repository Skeleton
+- [x] Executable Front Matter Validation
+- [x] Physical Database Schema / Migrations
+- [x] Repository Skeleton
 
 ### Phase 1 — Knowledge Base
 
-- [ ] Insights
-- [ ] Daily
-- [ ] Weekly
+- [x] Insights
+- [x] Daily
+- [x] Weekly
 - [ ] Briefings
-- [ ] Topics
-- [ ] Signals
-- [ ] Entities / Relations
+- [x] Topics
+- [x] Signals
+- [x] Entities / Relations
 
 ### Phase 2 — Website MVP
 
-- [ ] Home
-- [ ] Daily
-- [ ] Insights
-- [ ] Topics
-- [ ] Weekly
-- [ ] Signals
-- [ ] Resources
-- [ ] Search
-- [ ] Responsive UI
-- [ ] Dark / Light Mode
-- [ ] Vercel Deployment
-- [ ] `hzense.com` DNS / Domain Binding
+- [x] Home
+- [x] Daily
+- [x] Insights
+- [x] Topics
+- [x] Weekly
+- [x] Signals
+- [x] Resources
+- [x] Search
+- [x] Responsive UI
+- [x] Dark / Light Mode
+- [x] Vercel Deployment
+- [x] `hzense.com` DNS / Domain Binding
 
 ### Phase 3 — Radar
 
-- [ ] Attention / Trend / Maturity / Strategic Value
-- [ ] Historical snapshots
+- [x] Attention / Trend / Maturity / Strategic Value
+- [x] Historical snapshots
 
 ### Phase 4 — Timeline
 
@@ -244,7 +244,7 @@ AI 可辅助 URL 读取、摘要、Topic 分类、Company / People / Technology 
 
 ### Phase 8 — Intelligence Automation
 
-- [ ] Daily candidate generation
+- [x] Daily candidate generation
 - [ ] Weekly candidate generation
 - [ ] Topic updates
 - [ ] Radar recommendations

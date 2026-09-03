@@ -85,10 +85,11 @@ order, retaining Neon's `t` / `f` and decimal cell strings.
 
 ## Evidence boundary
 
-This proves the current bounded target-database ACL state. It does not prove
-the timestamp or identity of the historical mutation transaction and does not
-replace `pnpm db:preflight:runtime:production`. The following gates remain
-unexecuted:
+This proves the bounded target-database ACL state at the time of these queries.
+It does not prove the timestamp or identity of the historical mutation
+transaction and does not replace
+`pnpm db:preflight:runtime:production`. At this evidence timestamp, the
+following gates were unexecuted:
 
 - independent protected Runtime credential rotation;
 - Runtime-authenticated pooled TLS and identity verification;
@@ -97,3 +98,9 @@ unexecuted:
 - Vercel Production environment configuration and redeployment;
 - HTTP 200 health, real five-column query and safe-log acceptance;
 - scheduled-monitor activation.
+
+Those rollout gates were later evaluated by the
+[production preflight](./2026-09-03-runtime-reader-preflight.md) and
+[functional/configuration production acceptance](./2026-09-03-runtime-reader-production-acceptance.md).
+A separate post-acceptance credential rotation remains outstanding and is not
+evidenced by this ACL-only record.

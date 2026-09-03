@@ -93,7 +93,7 @@ docs/
 
 ## Current status
 
-**Website MVP — release candidate**
+**Production hardening — post-rollout monitoring**
 
 Completed:
 
@@ -139,11 +139,13 @@ Next phase:
 - [x] Merge the reviewed Runtime Reader repository implementation and Neon provider contracts through PR #32–#35
 - [x] Confirm with an independent read-only check that the bounded target-database Runtime ACL is applied
 - [x] Merge PR #36's fail-closed scheduled-health gate and trigger/cron validation
-- [ ] Finish protected Runtime credential setup and preflight, then configure, redeploy and independently verify the Production-only Vercel integration
+- [x] Finish protected Runtime credential setup and preflight, then configure, redeploy and independently verify the Production-only Vercel integration
+- [ ] Rotate the Production Runtime credential and repeat the bounded acceptance sequence
+- [ ] Add detailed connection-capacity, pool-wait, query-latency, timeout and error alerting
 
 The 2026-08-31 production maintenance window completed `0002`, verified 3 Migrations with 0 pending, projected all 62 Topics with 0 unknown rows, matched the reviewed fingerprint and produced a 0-change no-op rerun. A new recoverable branch backup and the least-privilege `hzense_topic_sync` role were also independently verified; sensitive connection and backup identifiers are intentionally not recorded here.
 
-Runtime Reader repository implementation is merged through PR #32–#35, and PR #36 adds the fail-closed scheduled-health gate. Preparation has also established a fresh seven-day provider branch backup, enabled `default_transaction_read_only` for `hzense_runtime`, removed ambient `PUBLIC` access to the unused `neondb` database and raised the maintenance-only `hzense_migrator` connection limit from 5 to 10 after Neon Tables exhausted the old five-session ceiling. A bounded read-only catalog verification on 2026-09-01 confirmed the target `hzense` ACL and its direct grant sources; the [sanitized matrix](docs/production-evidence/2026-09-01-runtime-reader-acl.md) is retained without connection details. The exact provider-owned `postgres` and `template1` defaults are handled only as narrow, drift-sensitive reserved-database exceptions and must still be connected to and deeply inspected by the production preflight. These changes do **not** complete the rollout: the independent Runtime credential, protected preflight, Vercel Production variables, Runtime-configured redeployment, health/read acceptance and log/monitoring evidence remain pending. As of 2026-09-03, the health repository variable is absent, scheduled jobs are skipped, and the public health probe remains fail-closed with HTTP 503; manual dispatch remains available for the controlled acceptance window.
+Runtime Reader repository implementation is merged through PR #32–#35, PR #36 adds the fail-closed scheduled-health gate, and PR #38 pins the production-verified Neon provider catalog contract. Preparation established a fresh seven-day provider branch backup, enabled `default_transaction_read_only` for `hzense_runtime`, removed ambient `PUBLIC` access to the unused `neondb` database and raised the maintenance-only `hzense_migrator` connection limit from 5 to 10 after Neon Tables exhausted the old five-session ceiling. A bounded read-only catalog verification on 2026-09-01 confirmed the target `hzense` ACL and its direct grant sources; the [sanitized matrix](docs/production-evidence/2026-09-01-runtime-reader-acl.md) is retained without connection details. On 2026-09-03, the independent credential and complete target/reserved-database preflight passed, five server-only values were configured only in Vercel Production, and the Runtime-configured deployment, public health route, real bounded read, safe logs and first manual run of the hourly-health workflow all passed [production acceptance](docs/production-evidence/2026-09-03-runtime-reader-production-acceptance.md). The hourly health gate is enabled; credential rotation and detailed connection, pool, latency, timeout and error alerting remain separate security/operations tasks.
 
 ## Local foundation checks
 
