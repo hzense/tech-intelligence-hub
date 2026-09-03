@@ -66,7 +66,7 @@ HZense Technology Intelligence
 
 ## Current stage
 
-HZense is currently in the **production hardening / Runtime Reader rollout** phase. The public MVP and production domain are live; the first production Topic projection is independently verified, while Web Runtime database acceptance is still incomplete.
+HZense is currently in the **production hardening / post-rollout monitoring** phase. The public MVP, production domain, first production Topic projection and Web Runtime database path are live and independently verified.
 
 Completed:
 
@@ -79,11 +79,11 @@ Completed:
 - Initial technology taxonomy
 - Public MVP and `hzense.com` production deployment
 - PostgreSQL 18 / pgvector physical Schema and independently verified Topic projection
-- Runtime Reader repository boundary and initial Neon governance preparation
+- Runtime Reader least-privilege Neon/Vercel production rollout, bounded read acceptance and hourly health gate
 
 Next milestone:
 
-> **Merge Runtime Reader → finish least-privilege production configuration → verify health, bounded read and monitoring**
+> **Rotate the Runtime credential → add detailed database alerting → activate Continuous Daily publication**
 
 ---
 

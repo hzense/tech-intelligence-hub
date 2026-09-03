@@ -102,12 +102,14 @@ system role catalog.
 ## Evidence boundary
 
 No connection URL, endpoint, password, token, provider project/branch ID,
-session identifier or raw object name is recorded here. The credential was
-read only from the user's protected saved value and was not written to the
-repository or command output.
+session identifier or raw object name is recorded here. The preflight commands
+read the credential only from the user's protected saved value and did not
+write it to the repository, the captured preflight command output or this
+evidence file.
 
 This evidence proves the Runtime credential and database preflight contract at
 the time of the runs. It does not prove that Vercel Production contains the
 five Runtime variables, that a Runtime-configured deployment is `READY`, or
 that the public health endpoint and runtime logs have passed acceptance. Those
-remain separate rollout gates.
+were separate rollout gates and later passed the independent
+[production acceptance](./2026-09-03-runtime-reader-production-acceptance.md).
