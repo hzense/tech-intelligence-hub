@@ -352,17 +352,19 @@ taxonomy_model:
 
 runtime_reader:
   status:
-    repository_implementation: merged_and_ci_verified
+    repository_implementation: merged_and_ci_verified_through_pr_36
     neon_baseline_governance: prepared_with_live_evidence
     target_database_acl: applied_and_bounded_read_only_verified_2026_09_01
     target_database_acl_evidence: docs/production-evidence/2026-09-01-runtime-reader-acl.md
     independent_runtime_credential: not_executed
     production_preflight: not_executed
     vercel_production_environment: not_executed
-    production_redeployment: not_executed
+    runtime_configured_production_redeployment: not_executed
     health_and_bounded_read_acceptance: not_executed
+    current_public_health_probe: fail_closed_503_unavailable_verified_2026_09_03
     safe_log_and_monitoring_acceptance: not_executed
-    scheduled_health_monitor: armed_disabled_until_live_acceptance
+    production_health_guard: merged_and_ci_verified_pr_36
+    scheduled_health_monitor: disabled_by_unset_repository_variable_until_live_acceptance
   role:
     name: hzense_runtime
     attributes:
@@ -451,7 +453,7 @@ runtime_reader:
     role_and_database_acl_inventory: complete
     runtime_read_only_default: complete
     ordinary_neondb_public_acl_isolation: complete
-    target_hzense_acl: pending
+    target_hzense_acl: applied_and_bounded_read_only_verified_2026_09_01
   migration_operations:
     role: hzense_migrator
     scope: maintenance_only
