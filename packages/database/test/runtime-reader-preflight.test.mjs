@@ -2,6 +2,7 @@ import console from 'node:console';
 import { Buffer } from 'node:buffer';
 import { URL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { inspectNeonReservedProviderObjects } from '../src/neon-reserved-provider-contract.mjs';
 import { expectedTableNames } from '../src/verify.mjs';
 import {
   inspectRuntimeReaderPreflight,
@@ -259,9 +260,96 @@ function withProductionTls(client, expectedHost) {
   return client;
 }
 
+const emptyFingerprint = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
+function providerInventoryRows(contract, overrides = {}) {
+  for (const [category, value] of Object.entries(overrides)) {
+    if (value === null) {
+      delete contract[category];
+    } else {
+      contract[category] = value;
+    }
+  }
+  return Object.entries(contract).map(([category, [rowCount, fingerprint]]) => ({
+    object_type: 'provider_contract',
+    object_name: category,
+    row_count: rowCount,
+    fingerprint,
+  }));
+}
+
+function neonPostgresProviderInventoryRows(overrides = {}) {
+  return providerInventoryRows(
+    {
+      access: [409, 'd4948e90513977f99858f0b79213a73cef5f0598aa050beff457d4285aeecf8e'],
+      access_method_path: [0, emptyFingerprint],
+      cast_path: [0, emptyFingerprint],
+      cluster_acl: [2, 'c48a047466094cdd6bfa63f77266b1b8f624a0ad504afc6f2845a1d62c164d27'],
+      collation: [1, 'f771a0e2041e68b74a33b558b9309ff1c0d12c303c777e64776ed58d90db8dc1'],
+      column: [88, 'e0ae0459cb58e864c69403679a975022c1516282be5606eca6b5e569a9921bac'],
+      conversion_path: [0, emptyFingerprint],
+      event_trigger_path: [0, emptyFingerprint],
+      extension: [3, 'ef00010ad1bc1a3ed5a7fa92f89d9440f087fa835db83fb7358609895e38956d'],
+      index: [4, 'bfcad804bf1f28525d07069a598b6f67a6f6e53a8632d3bb6854bc2572232ac4'],
+      inheritance: [0, emptyFingerprint],
+      language_path: [1, 'a6b7605342b9eee5d820cf4ee6b7851fa61da279b7de62044a16586cadb1b3b2'],
+      opclass_path: [3, 'b85a941022cd28c87400667036eb9c0fcfb41724b733562bf9284325de547557'],
+      operator_path: [0, emptyFingerprint],
+      relation: [11, '46d2eb1662f0bcf522af4924ac0a39ebb0627f594102dbb196ffc8d6d8fd71b2'],
+      routine: [32, 'e8196ad70dd9e1a92487b5f000228055f27e806fd181ecf113158ce9ba63c8d3'],
+      runtime_ownership: [0, emptyFingerprint],
+      schema: [3, 'b2e869dfd831d2dc0fdde3e5d794d8075c5537a06375bf207d377cce0465f27b'],
+      sequence: [1, 'b6faf55448ebcc9ec6fad504174863ce84876c9ac44628f95ddbc828ee717a4e'],
+      system_acl: [290, '1dbfec7d500d12305971a3f96b66aedfed49ac5e8970f71f20b4e94e687787b0'],
+      system_schema_access: [3, '3030c68ce68894ce1039d337c43df0cc348a162d57e843fa7dbd6679eefb6ac1'],
+      text_search_path: [0, emptyFingerprint],
+      type: [22, 'a24ad3b2cc81a9b4fce6ee6ddc0229d18170553d6e84db206eb504ce43f99f73'],
+    },
+    overrides,
+  );
+}
+
+function neonTemplate1ProviderInventoryRows(overrides = {}) {
+  return providerInventoryRows(
+    {
+      access: [298, 'e9fee8a89c81258c4af59ba9290c3da752d50924a35900b09eb5ab28a090de59'],
+      access_method_path: [0, emptyFingerprint],
+      cast_path: [0, emptyFingerprint],
+      cluster_acl: [2, 'c48a047466094cdd6bfa63f77266b1b8f624a0ad504afc6f2845a1d62c164d27'],
+      collation: [0, emptyFingerprint],
+      column: [0, emptyFingerprint],
+      conversion_path: [0, emptyFingerprint],
+      event_trigger_path: [0, emptyFingerprint],
+      extension: [1, '9f6cdae8e6afd79b270395fe92c29025d132abe418bc129bc3e5b15901a08028'],
+      index: [0, emptyFingerprint],
+      inheritance: [0, emptyFingerprint],
+      language_path: [1, 'a6b7605342b9eee5d820cf4ee6b7851fa61da279b7de62044a16586cadb1b3b2'],
+      opclass_path: [0, emptyFingerprint],
+      operator_path: [0, emptyFingerprint],
+      relation: [0, emptyFingerprint],
+      routine: [3, '99474588efacae6202672d9dc1eda67e67944e123110d078a6aaf254f6a5a90e'],
+      runtime_ownership: [0, emptyFingerprint],
+      schema: [1, '09728fda86962e16d49ecfb057c93d75ce0529678bbb68a0642ee3dd0aa016e9'],
+      sequence: [0, emptyFingerprint],
+      system_acl: [289, '07b165bf8182f1c3e3bccc3572eb4b9b5f11f969df4c75c30ca5ba0d5ebf1721'],
+      system_schema_access: [3, '3030c68ce68894ce1039d337c43df0cc348a162d57e843fa7dbd6679eefb6ac1'],
+      text_search_path: [0, emptyFingerprint],
+      type: [0, emptyFingerprint],
+    },
+    overrides,
+  );
+}
+
 function reservedDatabaseClient(
   name,
-  { identity = {}, loginTriggerCount = 0, objectAccess = [] } = {},
+  {
+    identity = {},
+    loginTriggerCount = 0,
+    objectAccess = [],
+    providerInventory = name === 'postgres'
+      ? neonPostgresProviderInventoryRows()
+      : neonTemplate1ProviderInventoryRows(),
+  } = {},
 ) {
   const postgres = name === 'postgres';
   const client = {
@@ -296,11 +384,12 @@ function reservedDatabaseClient(
           ],
         };
       }
-      if (sql.includes('FROM pg_event_trigger')) {
+      if (sql.includes('FROM pg_event_trigger') && !sql.includes('inventory_categories')) {
         return { rowCount: 1, rows: [{ count: loginTriggerCount }] };
       }
-      if (sql.includes('WITH runtime_role AS')) {
-        return { rowCount: objectAccess.length, rows: objectAccess };
+      if (sql.includes('inventory_categories')) {
+        const rows = [...providerInventory, ...objectAccess];
+        return { rowCount: rows.length, rows };
       }
       throw new Error(`Unexpected Neon reserved-database query: ${sql}`);
     }),
@@ -717,6 +806,88 @@ describe('Runtime reader least-privilege preflight', () => {
       ]);
       expect(clients.every(({ connect }) => connect.mock.calls.length === 1)).toBe(true);
       expect(clients.every(({ end }) => end.mock.calls.length === 1)).toBe(true);
+      const providerInventoryQuery = postgresClient.query.mock.calls
+        .map(([sql]) => sql)
+        .find((sql) => sql.includes('inventory_categories'));
+      expect(providerInventoryQuery).toContain("extension_dependency.deptype = 'e'");
+      expect(providerInventoryQuery).toContain('relation_info.reloptions');
+      expect(providerInventoryQuery).toContain('pg_get_triggerdef(trigger_info.oid, true)');
+      expect(providerInventoryQuery).toContain('pg_get_ruledef(rewrite_info.oid, true)');
+      expect(providerInventoryQuery).toContain('pg_get_constraintdef(constraint_info.oid, true)');
+      expect(providerInventoryQuery).toContain('pg_get_expr(default_info.adbin');
+      expect(providerInventoryQuery).toContain('collation_info.collname');
+      expect(providerInventoryQuery).toContain('pg_collation_actual_version(collation_info.oid)');
+      expect(providerInventoryQuery).toContain('pg_get_indexdef(index_relation.oid, 0, true)');
+      expect(providerInventoryQuery).toContain('index_info.indisvalid');
+      expect(providerInventoryQuery).toContain('sequence_data.seqincrement');
+      expect(providerInventoryQuery).toContain('routine_info.prosecdef');
+      expect(providerInventoryQuery).toContain('routine_info.prosupport');
+      expect(providerInventoryQuery).toContain('pg_get_functiondef(routine_info.oid)');
+      expect(providerInventoryQuery).toContain('LEFT JOIN pg_aggregate AS aggregate_info');
+      expect(providerInventoryQuery).toContain('aggregate_info.aggtransfn');
+      expect(providerInventoryQuery).toContain('type_info.typinput');
+      expect(providerInventoryQuery).toContain('type_info.typsubscript');
+      expect(providerInventoryQuery).toContain('FROM pg_enum AS enum_info');
+      expect(providerInventoryQuery).toContain('range_info.rngsubtype');
+      expect(providerInventoryQuery).toContain("'EXECUTE WITH GRANT OPTION'");
+      expect(providerInventoryQuery).toContain('FROM pg_operator AS operator_info');
+      expect(providerInventoryQuery).toContain('restriction_routine.pronamespace');
+      expect(providerInventoryQuery).toContain('join_routine.pronamespace');
+      expect(providerInventoryQuery).toContain('commutator_operator.oprnamespace');
+      expect(providerInventoryQuery).toContain('negator_operator.oprnamespace');
+      expect(providerInventoryQuery).toContain('permanent_namespaces AS');
+      expect(providerInventoryQuery).toContain('candidate_relations AS');
+      expect(providerInventoryQuery).toContain('candidate_routines AS');
+      expect(providerInventoryQuery).toContain('candidate_types AS');
+      expect(providerInventoryQuery).toContain('FROM pg_opclass AS opclass_info');
+      expect(providerInventoryQuery).toContain('FROM pg_amop AS operator_map');
+      expect(providerInventoryQuery).toContain('operator_map.oid >= 16384');
+      expect(providerInventoryQuery).toContain('FROM pg_amproc AS support_map');
+      expect(providerInventoryQuery).toContain('support_map.oid >= 16384');
+      expect(providerInventoryQuery).toContain('access_method.amhandler');
+      expect(providerInventoryQuery).toContain('FROM pg_cast AS cast_info');
+      expect(providerInventoryQuery).toContain('LEFT JOIN pg_proc AS routine_info');
+      expect(providerInventoryQuery).toContain('cast_info.castcontext');
+      expect(providerInventoryQuery).toContain('cast_info.castmethod');
+      expect(providerInventoryQuery).toContain('cast_info.oid >= 16384');
+      expect(providerInventoryQuery).toContain('FROM pg_conversion AS conversion_info');
+      expect(providerInventoryQuery).toContain('FROM pg_ts_config AS config_info');
+      expect(providerInventoryQuery).toContain('FROM pg_ts_dict AS dictionary_info');
+      expect(providerInventoryQuery).toContain('FROM pg_language AS language_info');
+      expect(providerInventoryQuery).toContain('FROM pg_transform AS transform_info');
+      expect(providerInventoryQuery).toContain("SELECT 'system_schema_access'");
+      expect(providerInventoryQuery).toContain("SELECT 'system_acl'");
+      expect(providerInventoryQuery).toContain("SELECT 'cluster_acl'");
+      expect(providerInventoryQuery).toContain('FROM pg_tablespace AS tablespace_info');
+      expect(providerInventoryQuery).toContain('FROM pg_parameter_acl AS parameter_acl');
+      expect(providerInventoryQuery).toContain(
+        "has_parameter_privilege(current_user, parameter_acl.parname, 'SET')",
+      );
+      expect(providerInventoryQuery).toContain("SELECT 'runtime_ownership'");
+      expect(providerInventoryQuery).toContain('FROM pg_database AS database_info');
+      expect(providerInventoryQuery).toContain(
+        'database_info.datdba = (SELECT oid FROM runtime_role)',
+      );
+      expect(providerInventoryQuery).toContain('FROM pg_subscription AS subscription_info');
+      expect(providerInventoryQuery).toContain('FROM pg_default_acl AS default_acl');
+      expect(providerInventoryQuery).toContain("SELECT 'access_method_path'");
+      expect(providerInventoryQuery).toContain('FROM pg_am AS access_method');
+      expect(providerInventoryQuery).toContain("SELECT 'event_trigger_path'");
+      expect(providerInventoryQuery).toContain('FROM pg_event_trigger AS event_trigger');
+      expect(providerInventoryQuery).toContain(
+        "WHERE current_database() IN ('postgres', 'template1')",
+      );
+      expect(providerInventoryQuery).toContain('LEFT JOIN pg_type AS result_type');
+      expect(providerInventoryQuery).toContain('LEFT JOIN pg_proc AS routine_info');
+      expect(providerInventoryQuery).toContain('WHEN operator_info.oprresult = 0 THEN NULL');
+      expect(providerInventoryQuery).toContain(
+        "relation_info.relkind IN ('r', 'p', 'v', 'm', 'f', 'c')",
+      );
+      expect(providerInventoryQuery).toContain(
+        "HAVING current_database() IN ('postgres', 'template1')",
+      );
+      expect(providerInventoryQuery).toContain('COLLATE "C"');
+      expect(providerInventoryQuery).toContain('sha256(');
       expect(JSON.stringify(result)).not.toContain(passwordMarker);
       expect(log.mock.calls.flat().join(' ')).not.toContain(passwordMarker);
     } finally {
@@ -724,7 +895,7 @@ describe('Runtime reader least-privilege preflight', () => {
     }
   });
 
-  it('fails closed when a reserved database exposes any non-system object', async () => {
+  it('fails closed without exposing object names when the provider inventory drifts', async () => {
     const expectedHost = 'ep-runtime-pooler.us-east-1.aws.neon.tech';
     const passwordMarker = 'runtime-reader-test-password-marker';
     const connectionString = `postgresql://hzense_runtime:${passwordMarker}@${expectedHost}:5432/hzense?sslmode=verify-full&channel_binding=prefer`;
@@ -743,6 +914,9 @@ describe('Runtime reader least-privilege preflight', () => {
     );
     const postgresClient = withProductionTls(
       reservedDatabaseClient('postgres', {
+        providerInventory: neonPostgresProviderInventoryRows({
+          relation: [11, '0000000000000000000000000000000000000000000000000000000000000000'],
+        }),
         objectAccess: [{ object_type: 'relation', object_name: 'public.exposed_data' }],
       }),
       expectedHost,
@@ -769,13 +943,217 @@ describe('Runtime reader least-privilege preflight', () => {
     }
 
     expect(failure).toBeInstanceOf(Error);
-    expect(failure.message).toContain(
-      'non-system object access in Neon reserved database postgres: relation:public.exposed_data',
-    );
+    expect(failure.message).toBe('Neon reserved postgres provider object contract changed');
+    expect(failure.message).not.toContain('public.exposed_data');
     expect(failure.message).not.toContain(passwordMarker);
     expect(createClient).toHaveBeenCalledTimes(2);
     expect(targetClient.end).toHaveBeenCalledOnce();
     expect(postgresClient.end).toHaveBeenCalledOnce();
+  });
+
+  it('rejects missing and same-count substituted provider inventory categories', async () => {
+    const expectedHost = 'ep-runtime-pooler.us-east-1.aws.neon.tech';
+    const connectionString = `postgresql://hzense_runtime:runtime-reader-test-password-marker@${expectedHost}:5432/hzense?sslmode=verify-full&channel_binding=prefer`;
+
+    for (const providerInventory of [
+      neonPostgresProviderInventoryRows({ routine: null }),
+      neonPostgresProviderInventoryRows({
+        access: [409, 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'],
+      }),
+      neonPostgresProviderInventoryRows({
+        routine: [32, 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'],
+      }),
+    ]) {
+      const targetClient = withProductionTls(
+        {
+          ...preflightClient({
+            otherDatabasePrivileges: [
+              neonReservedDatabaseRow('postgres'),
+              neonReservedDatabaseRow('template1'),
+            ],
+          }),
+          connect: vi.fn(async () => undefined),
+          end: vi.fn(async () => undefined),
+        },
+        expectedHost,
+      );
+      const postgresClient = withProductionTls(
+        reservedDatabaseClient('postgres', { providerInventory }),
+        expectedHost,
+      );
+      const clients = [targetClient, postgresClient];
+      let nextClient = 0;
+
+      await expect(
+        runRuntimeReaderPreflight({
+          connectionString,
+          profile: 'production',
+          expectedHost,
+          expectedPort: '5432',
+          expectedDatabase: 'hzense',
+          expectedUser: 'hzense_runtime',
+          expectedPostgresMajor: 18,
+          expectedConnectionLimit: 20,
+          createClient: () => clients[nextClient++],
+        }),
+      ).rejects.toThrow('Neon reserved postgres provider object contract changed');
+    }
+  });
+
+  it('rejects duplicate and unknown provider inventory categories', async () => {
+    const exactRows = neonPostgresProviderInventoryRows();
+    const unknownRows = exactRows
+      .filter(({ object_name: objectName }) => objectName !== 'routine')
+      .concat({
+        object_type: 'provider_contract',
+        object_name: 'unreviewed_category',
+        row_count: 32,
+        fingerprint: 'e8196ad70dd9e1a92487b5f000228055f27e806fd181ecf113158ce9ba63c8d3',
+      });
+
+    for (const rows of [[...exactRows, exactRows[0]], unknownRows]) {
+      const client = { query: vi.fn(async () => ({ rowCount: rows.length, rows })) };
+      await expect(
+        inspectNeonReservedProviderObjects(client, {
+          expectedDatabase: 'postgres',
+          profile: 'production',
+        }),
+      ).rejects.toThrow('Neon reserved postgres provider object contract changed');
+    }
+  });
+
+  it('accepts the exact provider contract independently of summary row order', async () => {
+    const rows = neonPostgresProviderInventoryRows().reverse();
+    const client = { query: vi.fn(async () => ({ rowCount: rows.length, rows })) };
+
+    await expect(
+      inspectNeonReservedProviderObjects(client, {
+        expectedDatabase: 'postgres',
+        profile: 'production',
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('never discards raw access rows from otherwise exact provider summaries', async () => {
+    for (const objectType of [
+      'cluster_acl',
+      'relation',
+      'column',
+      'routine',
+      'runtime_ownership',
+      'type',
+    ]) {
+      const sensitiveObjectName = `unreviewed_${objectType}`;
+      const rows = [
+        ...neonPostgresProviderInventoryRows(),
+        {
+          object_type: objectType,
+          object_name: sensitiveObjectName,
+          row_count: null,
+          fingerprint: null,
+        },
+      ];
+      const client = { query: vi.fn(async () => ({ rowCount: rows.length, rows })) };
+
+      let failure;
+      try {
+        await inspectNeonReservedProviderObjects(client, {
+          expectedDatabase: 'postgres',
+          profile: 'production',
+        });
+      } catch (error) {
+        failure = error;
+      }
+
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure.message).toContain(`${objectType}(1)`);
+      expect(failure.message).not.toContain(sensitiveObjectName);
+    }
+  });
+
+  it('rejects a reserved provider contract outside the production reserved scope', async () => {
+    const rows = neonPostgresProviderInventoryRows();
+    const client = { query: vi.fn(async () => ({ rowCount: rows.length, rows })) };
+
+    await expect(
+      inspectNeonReservedProviderObjects(client, {
+        expectedDatabase: 'postgres',
+        profile: 'local-test',
+      }),
+    ).rejects.toThrow('Neon provider object exception escaped its production reserved scope');
+  });
+
+  it('reports only residual object categories and counts', async () => {
+    const sensitiveObjectName = 'private_operator_target';
+    const client = {
+      query: vi.fn(async () => {
+        const rows = [
+          ...neonPostgresProviderInventoryRows(),
+          {
+            object_type: 'foreign_server',
+            object_name: sensitiveObjectName,
+            row_count: null,
+            fingerprint: null,
+          },
+        ];
+        return { rowCount: rows.length, rows };
+      }),
+    };
+
+    let failure;
+    try {
+      await inspectNeonReservedProviderObjects(client, {
+        expectedDatabase: 'postgres',
+        profile: 'production',
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure.message).toContain('foreign_server(1)');
+    expect(failure.message).not.toContain(sensitiveObjectName);
+  });
+
+  it('never applies the postgres provider inventory contract to template1', async () => {
+    const expectedHost = 'ep-runtime-pooler.us-east-1.aws.neon.tech';
+    const connectionString = `postgresql://hzense_runtime:runtime-reader-test-password-marker@${expectedHost}:5432/hzense?sslmode=verify-full&channel_binding=prefer`;
+    const targetClient = withProductionTls(
+      {
+        ...preflightClient({
+          otherDatabasePrivileges: [
+            neonReservedDatabaseRow('postgres'),
+            neonReservedDatabaseRow('template1'),
+          ],
+        }),
+        connect: vi.fn(async () => undefined),
+        end: vi.fn(async () => undefined),
+      },
+      expectedHost,
+    );
+    const postgresClient = withProductionTls(reservedDatabaseClient('postgres'), expectedHost);
+    const template1Client = withProductionTls(
+      reservedDatabaseClient('template1', {
+        providerInventory: neonPostgresProviderInventoryRows(),
+      }),
+      expectedHost,
+    );
+    const clients = [targetClient, postgresClient, template1Client];
+    let nextClient = 0;
+
+    await expect(
+      runRuntimeReaderPreflight({
+        connectionString,
+        profile: 'production',
+        expectedHost,
+        expectedPort: '5432',
+        expectedDatabase: 'hzense',
+        expectedUser: 'hzense_runtime',
+        expectedPostgresMajor: 18,
+        expectedConnectionLimit: 20,
+        createClient: () => clients[nextClient++],
+      }),
+    ).rejects.toThrow('Neon reserved template1 provider object contract changed');
   });
 
   it('allows only non-grantable topic_status USAGE among application enum Types', async () => {
