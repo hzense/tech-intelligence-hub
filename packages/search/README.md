@@ -1,30 +1,38 @@
 # @hzense/search
 
-`@hzense/search` owns the HZense search contract. FTS-0 extracts the existing deterministic
-in-process ranking from the Web app and defines the canonical projection that a later PostgreSQL
-FTS migration must persist.
+`@hzense/search` owns the HZense search contract. FTS-0 extracted the deterministic in-process
+ranking and canonical projection. FTS-1 adds the database projection, fixed parameterized query,
+row validation and shared total-order comparator used by the PostgreSQL path.
 
 Server-side projection consumers should import `@hzense/search/projection`. Ranking-only consumers
 should import `@hzense/search/ranking`, which does not load the Node-only SHA-256 implementation.
 
-## Current boundary
+## FTS-1 database boundary
 
-Implemented in FTS-0:
+The repository implementation now includes:
 
 - the six public search source types: `daily`, `weekly`, `insight`, `topic`, `signal`, and
   `resource`;
 - the existing NFKC, whitespace-delimited substring matching and weighted ranking behavior;
 - an explicit publication-state input contract;
 - a canonical Search Document projection, serialization, and SHA-256 fingerprint;
-- a portable Chinese/English golden corpus for current Web parity and a future PostgreSQL FTS
-  cutover gate.
+- a portable Chinese/English golden corpus for current Web parity and the PostgreSQL cutover gate;
+- append-only migration `0003_search_documents_fts.sql`, including display fields, application-
+  normalized fields, a generated weighted `tsvector`, GIN index and integrity constraints;
+- transactional Search Document sync with dry-run, source/plan fingerprints, stale-row pruning,
+  a production backup declaration gate and locked post-write verification;
+- exact database scoring for the FTS-0 NFKC/substring contract, with the shared JavaScript
+  comparator retaining `zh-CN` title ordering;
+- `in-process`, `shadow` and fail-closed `database` Web modes sharing the existing one-connection
+  Runtime pool.
 
-Not implemented in FTS-0:
+Still outside FTS-1: embeddings, hybrid retrieval and RAG.
 
-- a database migration for the additional projection fields;
-- writes to `search_documents`, a PostgreSQL tokenizer/configuration, or query SQL;
-- a switch from the current in-process Web search to PostgreSQL;
-- embeddings, hybrid retrieval, or RAG.
+Repository delivery is not production cutover. Production remains `in-process` until `0003` is
+applied, the canonical projection is synced, the expanded Runtime column ACL passes preflight,
+shadow parity is accepted, and `HZENSE_SEARCH_MODE=database` is deployed and independently
+verified. The existing Runtime ACL recovery-evidence blocker applies before running the updated
+normalization script.
 
 ## Publication boundary
 
@@ -69,9 +77,9 @@ date. Projection IDs are derived as `searchdoc-${sourceType}-${sourceId}`. `toSe
 retains the legacy Web-facing `id`, `type`, and optional `date` shape, so extraction does not change
 routes, result keys, filters, labels, or ranking.
 
-The current physical `search_documents` table does not yet contain `summary`, `href`, or `keywords`.
-Those fields are part of this canonical pre-migration contract and must be added by a separately
-reviewed migration before database persistence or cutover.
+Migration `0003_search_documents_fts.sql` adds `summary`, `href`, `keywords`, four normalized text
+columns and the generated `search_vector`. It refuses a lossy implicit upgrade when legacy rows
+exist; the guarded synchronizer must rebuild the derived table from canonical sources.
 
 ## Stable serialization and fingerprint
 
@@ -94,8 +102,11 @@ remain independent of source iteration order.
 
 The golden corpus in `test/fixtures/search-ranking-golden.json` intentionally covers Chinese,
 English, full-width Unicode, punctuation, type filtering, title-versus-body weighting, and the final
-stable identity tie-breakers. A future PostgreSQL tokenizer may use different lexemes internally,
-but it must pass this user-visible corpus before production search can switch.
+stable identity tie-breakers. PostgreSQL uses the built-in `simple` configuration for the weighted
+`tsvector`. Because that tokenizer cannot exactly reproduce Chinese and arbitrary literal substring
+matching, the FTS-1 query calculates compatibility filtering and scores over application-normalized
+columns. The GIN index is available for later candidate retrieval, but cannot replace this parity
+path without a separately versioned ranking contract.
 
 ## Commands
 
@@ -104,4 +115,6 @@ pnpm --filter @hzense/search build
 pnpm --filter @hzense/search typecheck
 pnpm --filter @hzense/search lint
 pnpm --filter @hzense/search test
+pnpm db:sync:search:local:dry-run
+pnpm db:sync:search:local:apply
 ```

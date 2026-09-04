@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { URL } from 'node:url';
+import { databaseSearchQuery } from '@hzense/search/database';
 
 import {
   createLazyRuntimeTopicReader,
@@ -233,6 +234,60 @@ test('enforces the Topic query limit before creating a pool', async () => {
   });
   await assert.rejects(reader.readTopics(51), assertRuntimeError('invalid_limit'));
   assert.equal(poolCreations, 0);
+});
+
+test('uses the same lazy one-connection pool for fixed parameterized database search', async () => {
+  const queries = [];
+  const reader = createLazyRuntimeTopicReader({
+    createPool() {
+      return {
+        idleCount: 1,
+        totalCount: 1,
+        waitingCount: 0,
+        async query(queryText, values) {
+          queries.push({ queryText, values });
+          return {
+            rows: [
+              {
+                id: 'example',
+                type: 'insight',
+                title: 'AI 安全',
+                summary: '摘要',
+                href: '/insights/example',
+                date: '2026-09-04',
+                keywords: 'ai',
+                body: '',
+                score: 8,
+              },
+            ],
+          };
+        },
+      };
+    },
+    environment: () => runtimeEnvironment(),
+  });
+
+  assert.deepEqual(await reader.search('  ＡＩ  安全 ', 'insight'), [
+    {
+      id: 'example',
+      type: 'insight',
+      title: 'AI 安全',
+      summary: '摘要',
+      href: '/insights/example',
+      date: '2026-09-04',
+      keywords: 'ai',
+      body: '',
+      score: 8,
+    },
+  ]);
+  assert.deepEqual(queries, [
+    {
+      queryText: databaseSearchQuery,
+      values: ['ai 安全', ['ai', '安全'], 'insight'],
+    },
+  ]);
+  assert.equal(reader.poolStats().total, 1);
+  await assert.rejects(reader.search(''), assertRuntimeError('invalid_configuration'));
 });
 
 test('health returns only status ok, disables caching, and emits a bounded safe log', async () => {

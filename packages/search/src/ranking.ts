@@ -54,8 +54,18 @@ function countMatches(value: string, term: string): number {
   return count;
 }
 
-function compareOrdinal(left: string, right: string): number {
+export function compareOrdinal(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+export function compareSearchResults(left: SearchResult, right: SearchResult): number {
+  return (
+    right.score - left.score ||
+    (right.date ?? '').localeCompare(left.date ?? '') ||
+    left.title.localeCompare(right.title, 'zh-CN') ||
+    compareOrdinal(left.type, right.type) ||
+    compareOrdinal(left.id, right.id)
+  );
 }
 
 export function isSearchType(value: string): value is SearchType {
@@ -97,12 +107,5 @@ export function rankSearchDocuments(
 
       return [{ ...document, score: termScore + phraseScore }];
     })
-    .sort(
-      (left, right) =>
-        right.score - left.score ||
-        (right.date ?? '').localeCompare(left.date ?? '') ||
-        left.title.localeCompare(right.title, 'zh-CN') ||
-        compareOrdinal(left.type, right.type) ||
-        compareOrdinal(left.id, right.id),
-    );
+    .sort(compareSearchResults);
 }

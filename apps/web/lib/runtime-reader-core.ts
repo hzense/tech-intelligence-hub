@@ -1,3 +1,11 @@
+import {
+  databaseSearchQuery,
+  databaseSearchValues,
+  mapDatabaseSearchRows,
+  prepareDatabaseSearchInput,
+} from '@hzense/search/database';
+import type { SearchResult, SearchType } from '@hzense/search/ranking';
+
 const runtimeRole = 'hzense_runtime';
 const pooledHostPattern = /(^|[.-])pooler([.-]|$)/;
 const neonHostSuffix = '.neon.tech';
@@ -89,6 +97,7 @@ export interface RuntimeTopicReader {
   hasPool(): boolean;
   poolStats(): RuntimeReaderPoolStats;
   readTopics(limit?: number): Promise<RuntimeTopic[]>;
+  search(query: string, type?: SearchType): Promise<SearchResult[]>;
 }
 
 export interface RuntimeReaderHealthLog {
@@ -326,6 +335,21 @@ export function createLazyRuntimeTopicReader({
       const result = await getPool().query(runtimeTopicQuery, [boundedLimit]);
       if (!result || !Array.isArray(result.rows)) fail('invalid_result');
       return runtimeTopicRows(result.rows);
+    },
+    async search(query, type) {
+      let input;
+      try {
+        input = prepareDatabaseSearchInput(query, type);
+      } catch {
+        fail('invalid_configuration');
+      }
+      const result = await getPool().query(databaseSearchQuery, [...databaseSearchValues(input)]);
+      if (!result || !Array.isArray(result.rows)) fail('invalid_result');
+      try {
+        return mapDatabaseSearchRows(result.rows);
+      } catch {
+        fail('invalid_result');
+      }
     },
   };
 }

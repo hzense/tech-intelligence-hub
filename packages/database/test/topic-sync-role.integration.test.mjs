@@ -236,7 +236,7 @@ integrationSuite('PostgreSQL Topic sync role provisioning integration', () => {
       database: databaseName,
       user: syncRole,
       connectionLimit: 2,
-      migrationCount: 3,
+      migrationCount: 4,
       tlsEvidence: 'local',
     });
     await withClient(databaseUrl(syncRole, syncPassword), async (client) => {
@@ -298,6 +298,6 @@ integrationSuite('PostgreSQL Topic sync role provisioning integration', () => {
     expect(after.rows).toEqual(before.rows);
     await expect(
       withClient(databaseUrl(syncRole, syncPassword), strictSyncPreflight),
-    ).resolves.toMatchObject({ migrationCount: 3 });
+    ).resolves.toMatchObject({ migrationCount: 4 });
   }, 30_000);
 });

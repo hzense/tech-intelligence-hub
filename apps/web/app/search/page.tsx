@@ -2,13 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { SiteShell } from '@/components/site-shell';
 import { formatZhDate } from '@/lib/content-runtime';
-import {
-  isSearchType,
-  searchPublishedContent,
-  searchTypeLabels,
-  searchTypes,
-  type SearchType,
-} from '@/lib/search-runtime';
+import { isSearchType, searchTypeLabels, searchTypes, type SearchType } from '@/lib/search-runtime';
+import { searchPublishedContent } from '@/lib/server/search';
 
 export const metadata: Metadata = {
   title: '搜索',

@@ -1,5 +1,6 @@
 {
   "0000_foundation.sql": "a0a2285225ff14a62ee67aed18d8cceb01d12f2320f45c4bbd1f0d58adc20d30",
   "0001_radar_evidence.sql": "508139859e91cd5e3e7baf0cae28bf685a307679fc7d0e95729557f581946df3",
-  "0002_topic_projection.sql": "150bc65eaf878306a868c5cc4dee06fd39433a0aa65c301d3e8c702134ea57f6"
+  "0002_topic_projection.sql": "150bc65eaf878306a868c5cc4dee06fd39433a0aa65c301d3e8c702134ea57f6",
+  "0003_search_documents_fts.sql": "98fec22c9a74bf237d82172f77d3d2da4b1a6942678deca8f5b29a4c78907261"
 }
