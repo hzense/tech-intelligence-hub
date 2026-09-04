@@ -109,12 +109,20 @@ const expectedColumns = {
     source_id: ['text', true],
     source_type: ['text', true],
     title: ['text', true],
+    summary: ['text', true],
+    href: ['text', true],
+    keywords: ['text', true],
     body: ['text', true],
     importance: ['integer', true],
     document_date: ['date', false],
     topics: ['jsonb', true],
     entities: ['jsonb', true],
     embedding: ['vector(1536)', false],
+    normalized_title: ['text', true],
+    normalized_summary: ['text', true],
+    normalized_keywords: ['text', true],
+    normalized_body: ['text', true],
+    search_vector: ['tsvector', true],
   },
   hzense_schema_migrations: {
     name: ['text', true],
@@ -239,6 +247,22 @@ const expectedCheckExpressions = {
     ['lengthbtrimreasoning>0'],
   ],
   radar_snapshot_signals: [['position>=0', '"position">=0']],
+  search_documents: [
+    [
+      "source_type=anyarray['daily','weekly','insight','topic','signal','resource']",
+      "source_type=anyarray['daily'::text,'weekly'::text,'insight'::text,'topic'::text,'signal'::text,'resource'::text]",
+    ],
+    ['lengthbtrimtitle>0'],
+    ['lengthbtrimsummary>0'],
+    ["href~'^/'"],
+    ['importance>=1andimportance<=5', 'importancebetween1and5'],
+    ["jsonb_typeoftopics='array'"],
+    ["jsonb_typeofentities='array'"],
+    ['lengthnormalized_title>0andnormalized_title=btrimnormalized_title'],
+    ['lengthnormalized_summary>0andnormalized_summary=btrimnormalized_summary'],
+    ['normalized_keywords=btrimnormalized_keywords'],
+    ['normalized_body=btrimnormalized_body'],
+  ],
   hzense_schema_migrations: [['lengthchecksum=64']],
 };
 
@@ -269,6 +293,7 @@ const expectedUniqueIndexes = new Set([
   'radar_snapshots|topic_id,snapshot_date',
   'radar_snapshot_signals|snapshot_id,position',
   'content_registry|path',
+  'search_documents|source_type,source_id',
 ]);
 
 const requiredNonUniqueIndexes = new Set([
@@ -280,7 +305,11 @@ const requiredNonUniqueIndexes = new Set([
   'relations|target_id',
   'radar_snapshot_signals|signal_id',
   'search_documents|source_id',
+  'search_documents|document_date',
 ]);
+
+const requiredGinIndexes = new Set(['search_documents|search_vector']);
+const expectedGeneratedColumns = new Set(['search_documents.search_vector']);
 
 export const expectedTableNames = new Set(Object.keys(expectedColumns));
 
@@ -389,7 +418,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
             column_info.attname AS column_name,
             format_type(column_info.atttypid, column_info.atttypmod) AS data_type,
             column_info.attnotnull AS not_null,
-            pg_get_expr(default_info.adbin, default_info.adrelid, true) AS default_expression
+            pg_get_expr(default_info.adbin, default_info.adrelid, true) AS default_expression,
+            column_info.attgenerated AS generated_kind
      FROM pg_class AS table_info
      JOIN pg_namespace AS namespace_info ON namespace_info.oid = table_info.relnamespace
      JOIN pg_attribute AS column_info ON column_info.attrelid = table_info.oid
@@ -427,7 +457,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
   }
   const actualDefaults = new Map(
     columns.rows
-      .filter((row) => row.default_expression !== null)
+      .filter((row) => row.default_expression !== null && row.generated_kind === '')
       .map((row) => [
         `${row.table_name}.${row.column_name}`,
         canonicalCatalogExpression(row.default_expression),
@@ -442,6 +472,17 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
   for (const name of actualDefaults.keys()) {
     if (!expectedDefaults.has(name)) problems.push(`unexpected default expression: ${name}`);
   }
+  const actualGeneratedColumns = new Set(
+    columns.rows
+      .filter((row) => row.generated_kind === 's')
+      .map((row) => `${row.table_name}.${row.column_name}`),
+  );
+  addSetDifferences(
+    problems,
+    'stored generated column',
+    expectedGeneratedColumns,
+    actualGeneratedColumns,
+  );
 
   const enums = await client.query(
     `SELECT type_info.typname AS name,
@@ -652,6 +693,22 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
       )
     ) {
       problems.push(`missing valid non-unique btree index: ${index}`);
+    }
+  }
+  for (const index of requiredGinIndexes) {
+    if (
+      !indexes.rows.some(
+        (row) =>
+          row.is_unique === false &&
+          indexSignature(row) === index &&
+          row.access_method === 'gin' &&
+          row.predicate_free === true &&
+          row.expression_free === true &&
+          row.valid === true &&
+          row.ready === true,
+      )
+    ) {
+      problems.push(`missing valid non-unique gin index: ${index}`);
     }
   }
 

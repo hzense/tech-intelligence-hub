@@ -1,14 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { searchQueryError, searchQueryMaximumLength } from '@hzense/search/ranking';
 import { SiteShell } from '@/components/site-shell';
 import { formatZhDate } from '@/lib/content-runtime';
-import {
-  isSearchType,
-  searchPublishedContent,
-  searchTypeLabels,
-  searchTypes,
-  type SearchType,
-} from '@/lib/search-runtime';
+import { isSearchType, searchTypeLabels, searchTypes, type SearchType } from '@/lib/search-runtime';
+import { searchPublishedContent } from '@/lib/server/search';
 
 export const metadata: Metadata = {
   title: '搜索',
@@ -39,10 +35,11 @@ function filterHref(query: string, type?: SearchType): string {
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const parameters = await searchParams;
-  const query = firstValue(parameters.q).trim().slice(0, 120);
+  const query = firstValue(parameters.q).trim();
+  const inputError = searchQueryError(query);
   const requestedType = firstValue(parameters.type);
   const selectedType = isSearchType(requestedType) ? requestedType : undefined;
-  const results = query ? await searchPublishedContent(query, selectedType) : [];
+  const results = query && !inputError ? await searchPublishedContent(query, selectedType) : [];
 
   return (
     <SiteShell>
@@ -61,7 +58,9 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               name="q"
               type="search"
               defaultValue={query}
-              maxLength={120}
+              maxLength={searchQueryMaximumLength}
+              aria-invalid={Boolean(inputError)}
+              aria-describedby={inputError ? 'search-input-error' : undefined}
               placeholder="例如：AI 安全、OpenAI、基础设施"
               autoComplete="off"
             />
@@ -77,7 +76,11 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           </div>
         </form>
 
-        {query ? (
+        {inputError ? (
+          <p id="search-input-error" role="alert">
+            {inputError}
+          </p>
+        ) : query ? (
           <>
             <nav className="search-filters" aria-label="搜索结果类型">
               <Link className={!selectedType ? 'active' : undefined} href={filterHref(query)}>

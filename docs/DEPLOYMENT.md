@@ -244,6 +244,35 @@ PR #41 的最终 head `6ad92d87` 通过 [CI run 33857784633](https://github.com/
 
 回滚材料必须先于 destructive ACL normalization 建立。若步骤 5 失败，停止发布，不向 Vercel 写入变量；按受保护的 pre-change ACL 记录恢复授权，必要时从本次七天 provider 分支恢复。若步骤 6–8 失败，保持或恢复 `PRODUCTION_DATABASE_HEALTH_ENABLED=false`，先移除五个 Runtime Reader Production 变量并重部署上一已知健康 commit，再轮换 Runtime 凭据；若放弃本次接入，再恢复目标 ACL。七天备份到期前必须完成验收或明确执行恢复/重新备份，不能把已过期分支当作回滚证据。
 
+## FTS-1 数据库搜索上线顺序
+
+FTS-1 仓库实现默认保持 `HZENSE_SEARCH_MODE=in-process`，不会在构建或 Preview 中连接
+Production 数据库。生产上线是后续独立操作，并受现有 Runtime ACL 恢复证据门禁约束；门禁
+解除前不得执行更新后的 `configure_runtime_reader.sql`。
+
+1. 建立并独立验证新的 provider 备份，双重采集/评审当前 Runtime ACL baseline。
+2. 以维护连接执行 `pnpm db:preflight:production`、`pnpm db:migrate`、
+   `pnpm db:verify:production`；确认 `0003_search_documents_fts.sql` 已登记且 0 pending。
+   Migration 会在旧 `search_documents` 非空时拒绝无损依据不足的隐式回填。
+3. 运行 `pnpm db:sync:search:production:dry-run`，人工评审 projection/plan fingerprint；
+   Production Apply 还必须提供 `HZENSE_SEARCH_SYNC_EXPECTED_FINGERPRINT`、
+   `HZENSE_SEARCH_SYNC_EXPECTED_PLAN_FINGERPRINT` 与受保护的
+   `HZENSE_SEARCH_SYNC_BACKUP_ID`，再运行 `pnpm db:sync:search:production:apply`。
+4. 在已满足恢复门禁的同一冻结窗口，以 owner 执行更新后的 Runtime ACL 配置，再连续两次
+   运行 `pnpm db:preflight:runtime:production`。Runtime 只获得 Topic 五列和固定 FTS 查询所需
+   Search display/normalized 列的非 grantable Column `SELECT`，不获得表级权限或 embedding。
+5. 在 Vercel Production 设置 `HZENSE_SEARCH_MODE=shadow` 并重部署。基线结果继续由进程内
+   路径返回；结构化日志只记录双方数量和 `match` / `mismatch` / `unavailable`，不记录 query
+   或内容。使用 golden corpus 与真实生产样本确认连续一致。
+6. 通过评审后改为 `HZENSE_SEARCH_MODE=database` 并再次部署，验证搜索、类型过滤、数据库
+   health、池上限 1、错误窗口及回滚。Database 模式查询失败时 fail closed，不静默退回旧路径。
+   此模式下 `/api/health/database` 还通过同一连接池执行搜索十二列的 `LIMIT 1` 探测；
+   投影为空、表不存在、查询超时或任一必需列无读取权限时返回 503，现有健康告警链随之触发。
+   `in-process` / `shadow` 仍只以 Topic 为健康依赖。三种搜索模式共享 120 字符 / 24 个
+   归一化去重关键词上限；超限输入显示页面提示，不进入数据库查询或 shadow 日志。
+7. 回滚时把 `HZENSE_SEARCH_MODE` 恢复为 `in-process` 并重部署；数据库派生数据可以保留，
+   ACL 回退必须依据受保护 baseline，不能凭记忆重建。
+
 ## 首次上线顺序
 
 1. ✅ 已完成：导入 GitHub 仓库并按上表创建 Vercel 项目。

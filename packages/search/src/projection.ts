@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import type { DatabaseSearchDocument } from './database.js';
+import { normalizeSearchText } from './ranking.js';
 import type { SearchDocument, SearchType } from './ranking.js';
 
 export const SEARCH_DOCUMENT_PROJECTION_VERSION = 'search-document-v1' as const;
@@ -238,4 +240,22 @@ export function fingerprintCanonicalSearchDocuments(
   return `sha256:${createHash('sha256')
     .update(serializeCanonicalSearchDocuments(documents), 'utf8')
     .digest('hex')}`;
+}
+
+export function toDatabaseSearchDocument(
+  document: CanonicalSearchDocument,
+): DatabaseSearchDocument {
+  return {
+    ...document,
+    normalizedTitle: normalizeSearchText(document.title),
+    normalizedSummary: normalizeSearchText(document.summary),
+    normalizedKeywords: normalizeSearchText(document.keywords),
+    normalizedBody: normalizeSearchText(document.body),
+  };
+}
+
+export function toDatabaseSearchDocuments(
+  documents: readonly CanonicalSearchDocument[],
+): DatabaseSearchDocument[] {
+  return documents.map(toDatabaseSearchDocument);
 }

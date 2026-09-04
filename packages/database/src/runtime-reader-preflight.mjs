@@ -54,6 +54,26 @@ const expectedPhysicalTopicColumns = new Set([
   'metadata',
   'runtime_enabled',
 ]);
+const expectedPhysicalSearchColumns = new Set([
+  'id',
+  'source_id',
+  'source_type',
+  'title',
+  'summary',
+  'href',
+  'keywords',
+  'body',
+  'importance',
+  'document_date',
+  'topics',
+  'entities',
+  'embedding',
+  'normalized_title',
+  'normalized_summary',
+  'normalized_keywords',
+  'normalized_body',
+  'search_vector',
+]);
 
 export const runtimeReaderRoleName = 'hzense_runtime';
 // Neon grants its branch owner a cloud_admin-managed ADMIN-only membership for
@@ -86,6 +106,20 @@ export const runtimeReaderTopicColumns = Object.freeze([
   'parent_id',
   'status',
   'runtime_enabled',
+]);
+export const runtimeReaderSearchColumns = Object.freeze([
+  'source_id',
+  'source_type',
+  'title',
+  'summary',
+  'href',
+  'keywords',
+  'body',
+  'document_date',
+  'normalized_title',
+  'normalized_summary',
+  'normalized_keywords',
+  'normalized_body',
 ]);
 
 export function runtimeReaderProductionOptions(environment = process.env) {
@@ -278,9 +312,10 @@ async function effectiveColumnPrivileges(client) {
 }
 
 function requireExactRuntimeColumns(rows) {
-  const expected = new Set(
-    runtimeReaderTopicColumns.map((column) => `public.topics.${column}:SELECT`),
-  );
+  const expected = new Set([
+    ...runtimeReaderTopicColumns.map((column) => `public.topics.${column}:SELECT`),
+    ...runtimeReaderSearchColumns.map((column) => `public.search_documents.${column}:SELECT`),
+  ]);
   const actual = new Set(
     rows.map((row) => `${row.schema_name}.${row.table_name}.${row.column_name}:${row.privilege}`),
   );
@@ -758,6 +793,22 @@ async function inspectRuntimeReaderTarget(
       `Runtime reader topics column contract mismatch; missing [${missingTopicColumns.join(', ')}], unexpected [${unexpectedTopicColumns.join(', ')}]`,
     );
   }
+  const physicalSearchColumns = await client.query(
+    `SELECT column_info.attname AS name
+     FROM pg_attribute AS column_info
+     WHERE column_info.attrelid = 'public.search_documents'::regclass
+       AND column_info.attnum > 0
+       AND NOT column_info.attisdropped
+     ORDER BY column_info.attnum`,
+  );
+  const actualSearchColumns = new Set(physicalSearchColumns.rows.map((row) => row.name));
+  const missingSearchColumns = setDifference(expectedPhysicalSearchColumns, actualSearchColumns);
+  const unexpectedSearchColumns = setDifference(actualSearchColumns, expectedPhysicalSearchColumns);
+  if (missingSearchColumns.length > 0 || unexpectedSearchColumns.length > 0) {
+    throw new Error(
+      `Runtime reader search_documents column contract mismatch; missing [${missingSearchColumns.join(', ')}], unexpected [${unexpectedSearchColumns.join(', ')}]`,
+    );
+  }
 
   const relationPrivileges = await effectiveTablePrivileges(client);
   if (relationPrivileges.length > 0) {
@@ -1051,6 +1102,7 @@ async function inspectRuntimeReaderTarget(
     connectionLimit: target.rolconnlimit,
     defaultTransactionReadOnly: true,
     topicColumns: [...runtimeReaderTopicColumns],
+    searchColumns: [...runtimeReaderSearchColumns],
     tlsVersion: tls.version,
     tlsCipher: tls.cipher,
     tlsEvidence: tls.source,

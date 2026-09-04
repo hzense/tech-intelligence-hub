@@ -1222,8 +1222,9 @@ Daily / Weekly / Insight 只接受 `published`，Topic 只接受 `watching` / `a
 
 canonical projection 同时包含 UI 重建所需的 `summary`、`href`、`keywords`，并提供按稳定
 字段顺序、文档 ID 顺序和 `search-document-v1` 版本封装的 serialization / SHA-256
-fingerprint。当前物理 `search_documents` 表尚无这三个 UI 字段；FTS-0 不包含 Migration、
-数据库写入或生产搜索切换，物理持久化必须由后续独立 Migration 完成。
+fingerprint。FTS-1 仓库合约通过 `0003_search_documents_fts.sql` 增加这些字段、应用规范化列和
+generated `tsvector`，并提供受保护同步与三阶段查询模式；生产 Migration、回填和切换仍是
+独立运维动作。
 
 ---
 
@@ -1236,7 +1237,7 @@ fingerprint。当前物理 `search_documents` 表尚无这三个 UI 字段；FTS
 - 13 张持久表：12 张领域或派生数据表，以及 1 张 Migration 历史表。
 - 9 个 PostgreSQL Enum。
 - `vector` 扩展，以及 `search_documents.embedding vector(1536)`。
-- 仓库 Migration manifest 登记三个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql` 与 `0002_topic_projection.sql`；2026-08-31 的独立生产复核确认三者均已执行且 0 pending。
+- 仓库 Migration manifest 登记四个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql` 与 `0003_search_documents_fts.sql`；最后一次生产复核只确认前三者已执行且 0 pending，`0003` 尚未应用。
 
 物理结构的权威顺序如下：
 
@@ -1263,7 +1264,7 @@ Git / Markdown 仍是 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 
 | Radar              | `radar_snapshots`          | Topic 在指定日期的 Domain、Attention、Trend、Maturity、Strategic Value、Confidence 和人工 Reasoning | PK `id`；`topic_id` FK → `topics.id`；唯一 `(topic_id, snapshot_date)`                            |
 | Radar Evidence     | `radar_snapshot_signals`   | Radar Snapshot 的有序评分证据                                                                       | 复合 PK `(snapshot_id, signal_id)`；唯一 `(snapshot_id, position)`；Snapshot 删除时级联删除证据边 |
 | Content Metadata   | `content_registry`         | Markdown 内容的类型、仓库路径、发布状态和时间                                                       | PK `id`；`path` 唯一                                                                              |
-| Search / Embedding | `search_documents`         | 可重建搜索文档，包含正文副本、Topic / Entity JSONB 投影和可选 `vector(1536)`                        | PK `id`；`source_id` 是跨内容类型的逻辑引用，当前没有数据库外键                                   |
+| Search / Embedding | `search_documents`         | 可重建搜索文档，包含 UI/正文副本、规范化文本、generated `tsvector`、Topic / Entity JSONB 与可选向量 | PK `id`；唯一 `(source_type, source_id)`；逻辑引用不绑定数据库外键；`search_vector` 使用 GIN      |
 | Operations         | `hzense_schema_migrations` | 已执行 Migration 的文件名、64 字符 SHA-256 Checksum 和应用时间                                      | PK `name`                                                                                         |
 
 ## 40.3 核心关系
@@ -1309,6 +1310,7 @@ radar_snapshots N ───── N signals
 - `relations(source_id)` 与 `relations(target_id)`。
 - `radar_snapshot_signals(signal_id)`。
 - `search_documents(source_id)`。
+- `search_documents(document_date)`、唯一 `(source_type, source_id)` 与 GIN `(search_vector)`。
 
 当前物理基线没有 RLS、Policy 或用户 Trigger。未来引入这些机制必须通过单独评审的新 Migration，并同步更新 Verifier 和本节；仅当变更可由 Drizzle 表达且影响应用类型映射时，才同步更新 Drizzle Schema。
 

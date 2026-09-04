@@ -6,6 +6,7 @@ import {
   projectPublishedSearchDocuments,
   SEARCH_DOCUMENT_PROJECTION_VERSION,
   serializeCanonicalSearchDocuments,
+  toDatabaseSearchDocument,
   toSearchDocument,
   type SearchProjectionCandidate,
 } from '../src/projection.js';
@@ -180,6 +181,20 @@ describe('canonical Search Document projection', () => {
       body: '第一行\n\nSecond line',
     });
     expect(toSearchDocument(undated!)).not.toHaveProperty('date');
+  });
+
+  it('creates the database projection with the same NFKC normalization contract', () => {
+    const projected = projectPublishedSearchDocument({
+      ...publishedCandidates[0]!,
+      title: 'ＡＩ  安全',
+      keywords: 'Ｆｏｕｎｄａｔｉｏｎ  模型',
+    });
+    expect(projected).not.toBeNull();
+    expect(toDatabaseSearchDocument(projected!)).toMatchObject({
+      normalizedTitle: 'ai 安全',
+      normalizedKeywords: 'foundation 模型',
+      normalizedSummary: '中文与 english summary',
+    });
   });
 
   it('has an order-independent versioned canonical serialization and fingerprint', () => {

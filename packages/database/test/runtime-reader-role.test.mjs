@@ -14,7 +14,9 @@ describe('Runtime reader role configuration contract', () => {
     const sql = await roleSql();
     const executableSql = sql.replace(/^--.*$/gm, '');
 
-    expect(sql).toMatch(/^-- HZense Runtime Topic projection reader privilege contract\./);
+    expect(sql).toMatch(
+      /^-- HZense Runtime Topic and Search projection reader privilege contract\./,
+    );
     expect(sql).toMatch(/\nBEGIN;\n/);
     expect(sql).toMatch(/\nCOMMIT;\n?$/);
     expect(sql.indexOf('SET LOCAL search_path = pg_catalog, pg_temp;')).toBeLessThan(
@@ -75,7 +77,7 @@ describe('Runtime reader role configuration contract', () => {
     expect(sql).toContain(
       'Provider/cluster administrator must remove unsafe hzense_runtime privileges from every other connectable database',
     );
-    expect(sql).toContain("name = '0002_topic_projection.sql'");
+    expect(sql).toContain("name = '0003_search_documents_fts.sql'");
     expect(sql.match(/FROM pg_inherits AS inheritance_info/g)).toHaveLength(2);
     expect(sql).toContain(
       'Runtime reader forbids PostgreSQL table inheritance in application schemas',
@@ -97,7 +99,7 @@ describe('Runtime reader role configuration contract', () => {
     expect(sql).not.toContain("database_info.datname = 'neondb'");
   });
 
-  it('grants only the five reviewed Topic columns and no migration-history access', async () => {
+  it('grants only the reviewed Topic and Search columns and no migration-history access', async () => {
     const sql = await roleSql();
     const executableSql = sql.replace(/^--.*$/gm, '');
 
@@ -108,6 +110,9 @@ describe('Runtime reader role configuration contract', () => {
     expect(sql).toContain('REVOKE ALL PRIVILEGES (%s) ON TABLE %I.%I FROM PUBLIC');
     expect(sql).toMatch(
       /GRANT SELECT \(id, title, parent_id, status, runtime_enabled\)\n\s+ON TABLE public\.topics TO hzense_runtime;/,
+    );
+    expect(sql).toMatch(
+      /GRANT SELECT \([\s\S]*normalized_body\n\) ON TABLE public\.search_documents TO hzense_runtime;/,
     );
     expect(executableSql).not.toMatch(/GRANT\s+SELECT\s+ON\s+(?:TABLE\s+)?public\.topics/i);
     expect(executableSql).not.toMatch(/GRANT[^;]*hzense_schema_migrations/i);
@@ -138,7 +143,7 @@ describe('Runtime reader role configuration contract', () => {
       /AND \(\n\s+has_table_privilege\('hzense_runtime', table_info\.oid, privilege_info\.privilege\)\n\s+OR has_table_privilege\(/,
     );
     expect(sql).toContain(
-      'hzense_runtime has column privileges outside the five non-grantable Topic SELECT grants',
+      'hzense_runtime has column privileges outside the non-grantable Topic/Search SELECT grants',
     );
   });
 

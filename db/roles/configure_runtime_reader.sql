@@ -1,4 +1,4 @@
--- HZense Runtime Topic projection reader privilege contract.
+-- HZense Runtime Topic and Search projection reader privilege contract.
 --
 -- Preconditions:
 --   1. Connect to the intended database as its owner and the owner of the
@@ -7,7 +7,7 @@
 --      with the fixed attributes asserted below, a separate credential, and
 --      default_transaction_read_only=on. The restricted Migrator deliberately
 --      cannot and must not ALTER ROLE.
---   3. Migrations through 0002_topic_projection.sql have been applied and fully
+--   3. Migrations through 0003_search_documents_fts.sql have been applied and fully
 --      verified. Freeze owner/migrator DDL while configuring and verifying ACLs.
 --   4. Capture, protect and independently review a fresh Runtime ACL recovery
 --      baseline with `pnpm db:capture:runtime-acl:production`. This script does
@@ -20,8 +20,9 @@
 --      this session; provider backup existence/recoverability remains an
 --      independent operator gate.
 --
--- The only data grant is column-level SELECT on the five reviewed Topic
--- projection columns. Provider-owned SECURITY INVOKER extension routines (for
+-- The only data grants are column-level SELECT on the reviewed Topic projection
+-- and the display/normalized columns required by the fixed FTS-1 query.
+-- Provider-owned SECURITY INVOKER extension routines (for
 -- example pgvector) may retain their built-in PUBLIC EXECUTE privilege; they do
 -- not bypass the table ACL. Application routines, SECURITY DEFINER routines,
 -- direct routine grants and grant options remain forbidden.
@@ -270,6 +271,7 @@ BEGIN
 
   IF to_regclass('public.hzense_schema_migrations') IS NULL
      OR to_regclass('public.topics') IS NULL
+     OR to_regclass('public.search_documents') IS NULL
      OR to_regtype('public.topic_status') IS NULL THEN
     RAISE EXCEPTION
       'Required migration objects are missing in current_database(): public.hzense_schema_migrations, public.topics or public.topic_status';
@@ -277,7 +279,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1
     FROM public.hzense_schema_migrations
-    WHERE name = '0002_topic_projection.sql'
+    WHERE name = '0003_search_documents_fts.sql'
   ) OR (
     SELECT count(*)
     FROM pg_attribute AS column_info
@@ -287,9 +289,23 @@ BEGIN
       )
       AND column_info.attnum > 0
       AND NOT column_info.attisdropped
-  ) <> 5 THEN
+  ) <> 5 OR (
+    SELECT count(*)
+    FROM pg_attribute AS column_info
+    WHERE column_info.attrelid = 'public.search_documents'::regclass
+      AND column_info.attname = ANY (
+        ARRAY[
+          'id', 'source_id', 'source_type', 'title', 'summary', 'href', 'keywords',
+          'body', 'importance', 'document_date', 'topics', 'entities', 'embedding',
+          'normalized_title', 'normalized_summary', 'normalized_keywords',
+          'normalized_body', 'search_vector'
+        ]::name[]
+      )
+      AND column_info.attnum > 0
+      AND NOT column_info.attisdropped
+  ) <> 18 THEN
     RAISE EXCEPTION
-      '0002_topic_projection.sql and all five Runtime Topic columns must exist before role configuration';
+      '0003_search_documents_fts.sql and all five Runtime Topic columns must exist before role configuration';
   END IF;
 
   IF EXISTS (
@@ -556,6 +572,20 @@ $hzense_runtime_routines$;
 
 GRANT SELECT (id, title, parent_id, status, runtime_enabled)
   ON TABLE public.topics TO hzense_runtime;
+GRANT SELECT (
+  source_id,
+  source_type,
+  title,
+  summary,
+  href,
+  keywords,
+  body,
+  document_date,
+  normalized_title,
+  normalized_summary,
+  normalized_keywords,
+  normalized_body
+) ON TABLE public.search_documents TO hzense_runtime;
 
 ALTER DEFAULT PRIVILEGES
   REVOKE ALL PRIVILEGES ON TABLES FROM PUBLIC;
@@ -597,7 +627,12 @@ DECLARE
     SELECT oid FROM pg_database WHERE datname = current_database()
   );
   runtime_role_oid oid := (SELECT oid FROM pg_roles WHERE rolname = 'hzense_runtime');
-  readable_columns text[] := ARRAY['id', 'parent_id', 'runtime_enabled', 'status', 'title'];
+  topic_readable_columns text[] := ARRAY['id', 'parent_id', 'runtime_enabled', 'status', 'title'];
+  search_readable_columns text[] := ARRAY[
+    'body', 'document_date', 'href', 'keywords', 'normalized_body',
+    'normalized_keywords', 'normalized_summary', 'normalized_title',
+    'source_id', 'source_type', 'summary', 'title'
+  ];
   effective_readable_columns text[];
 BEGIN
   IF NOT has_database_privilege('hzense_runtime', target_database, 'CONNECT')
@@ -824,9 +859,26 @@ BEGIN
       column_info.attnum,
       'SELECT'
     );
-  IF effective_readable_columns IS DISTINCT FROM readable_columns THEN
+  IF effective_readable_columns IS DISTINCT FROM topic_readable_columns THEN
     RAISE EXCEPTION
       'hzense_runtime readable Topic columns differ from id/title/parent_id/status/runtime_enabled';
+  END IF;
+
+  SELECT array_agg(column_info.attname::text ORDER BY column_info.attname)
+    INTO effective_readable_columns
+  FROM pg_attribute AS column_info
+  WHERE column_info.attrelid = 'public.search_documents'::regclass
+    AND column_info.attnum > 0
+    AND NOT column_info.attisdropped
+    AND has_column_privilege(
+      'hzense_runtime',
+      column_info.attrelid,
+      column_info.attnum,
+      'SELECT'
+    );
+  IF effective_readable_columns IS DISTINCT FROM search_readable_columns THEN
+    RAISE EXCEPTION
+      'hzense_runtime readable Search columns differ from the FTS-1 allowlist';
   END IF;
 
   IF EXISTS (
@@ -858,8 +910,13 @@ BEGIN
       )
       AND NOT (
         namespace_info.nspname = 'public'
-        AND table_info.relname = 'topics'
-        AND column_info.attname::text = ANY (readable_columns)
+        AND (
+          (table_info.relname = 'topics'
+           AND column_info.attname::text = ANY (topic_readable_columns))
+          OR
+          (table_info.relname = 'search_documents'
+           AND column_info.attname::text = ANY (search_readable_columns))
+        )
         AND privilege_info.privilege = 'SELECT'
         AND NOT has_column_privilege(
           'hzense_runtime',
@@ -870,7 +927,7 @@ BEGIN
       )
   ) THEN
     RAISE EXCEPTION
-      'hzense_runtime has column privileges outside the five non-grantable Topic SELECT grants';
+      'hzense_runtime has column privileges outside the non-grantable Topic/Search SELECT grants';
   END IF;
 
   IF EXISTS (

@@ -12,6 +12,12 @@ import {
   runtimeAclBackupReference,
 } from '../src/runtime-acl-baseline.mjs';
 import { inspectRuntimeReaderPreflight } from '../src/runtime-reader-preflight.mjs';
+import {
+  databaseSearchQuery,
+  databaseSearchHealthQuery,
+  databaseSearchValues,
+  prepareDatabaseSearchInput,
+} from '../../search/src/database.js';
 
 const { Client } = pg;
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
@@ -276,6 +282,18 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
            (id, title, parent_id, status, metadata, runtime_enabled)
          VALUES
            ('runtime-reader-test', 'Runtime Reader Test', NULL, 'active', '{"secret":true}', true)`,
+      );
+      await client.query(
+        `INSERT INTO public.search_documents (
+           id, source_id, source_type, title, summary, href, keywords, body,
+           importance, document_date, topics, entities, normalized_title,
+           normalized_summary, normalized_keywords, normalized_body
+         ) VALUES (
+           'searchdoc-insight-runtime-reader-test', 'runtime-reader-test', 'insight',
+           'AI Security', 'Runtime search summary', '/insights/runtime-reader-test',
+           'ai security', 'bounded runtime body', 1, '2026-09-04', '[]', '[]',
+           'ai security', 'runtime search summary', 'ai security', 'bounded runtime body'
+         )`,
       );
       await client.query('CREATE SEQUENCE public.runtime_forbidden_sequence');
       await client.query(
@@ -688,6 +706,11 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
            WHERE id = 'runtime-reader-test'`,
         ),
       ).resolves.toMatchObject({ rowCount: 1 });
+      const searchInput = prepareDatabaseSearchInput('AI Security', 'insight');
+      await expect(client.query(databaseSearchHealthQuery)).resolves.toMatchObject({ rowCount: 1 });
+      await expect(
+        client.query(databaseSearchQuery, [...databaseSearchValues(searchInput)]),
+      ).resolves.toMatchObject({ rowCount: 1 });
 
       const allowedExtensionRoutines = await client.query(
         `SELECT count(*)::integer AS count
@@ -727,6 +750,8 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
         'SELECT * FROM public.topics',
         'SELECT name FROM public.hzense_schema_migrations',
         'SELECT id FROM public.sources',
+        'SELECT embedding FROM public.search_documents',
+        'SELECT * FROM public.search_documents',
         `INSERT INTO public.topics
            (id, title, parent_id, status, metadata, runtime_enabled)
          VALUES ('forbidden', 'Forbidden', NULL, 'watching', '{}', false)`,
