@@ -88,12 +88,14 @@ fingerprint.
 
 `SEARCH_RANKING_CONTRACT.version` is `nfkc-whitespace-substring-v1`. Query terms are split only at
 Unicode whitespace; Chinese text is not segmented. All terms must occur as normalized literal
-substrings. Scores and tie-breaking remain identical to the original Web implementation.
+substrings. Scores retain the original Web weighting. Results are ordered by score, date and
+`zh-CN` title as before, then by ordinal type and document ID so fully tied canonical identities
+remain independent of source iteration order.
 
 The golden corpus in `test/fixtures/search-ranking-golden.json` intentionally covers Chinese,
-English, full-width Unicode, punctuation, type filtering, and title-versus-body weighting. A future
-PostgreSQL tokenizer may use different lexemes internally, but it must pass this user-visible corpus
-before production search can switch.
+English, full-width Unicode, punctuation, type filtering, title-versus-body weighting, and the final
+stable identity tie-breakers. A future PostgreSQL tokenizer may use different lexemes internally,
+but it must pass this user-visible corpus before production search can switch.
 
 ## Commands
 

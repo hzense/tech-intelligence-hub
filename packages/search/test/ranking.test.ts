@@ -50,4 +50,39 @@ describe('in-process ranking parity corpus', () => {
     expect(rankSearchDocuments(goldenDocuments(), '   ')).toEqual([]);
     expect(rankSearchDocuments(goldenDocuments(), 'AI 不存在')).toEqual([]);
   });
+
+  it('keeps fully tied results independent of source iteration order', () => {
+    const expected = ['exact-tie-a', 'exact-tie-b'];
+    expect(
+      rankSearchDocuments(goldenDocuments(), 'equal-order-probe').map((result) => result.id),
+    ).toEqual(expected);
+    expect(
+      rankSearchDocuments(goldenDocuments().reverse(), 'equal-order-probe').map(
+        (result) => result.id,
+      ),
+    ).toEqual(expected);
+  });
+
+  it('uses type before ID to total-order canonical identities', () => {
+    const shared = {
+      id: 'shared-id',
+      title: 'Exact Cross-Type Tie',
+      summary: '',
+      href: '/shared',
+      date: '2024-12-04',
+      keywords: '',
+      body: 'cross-type-tie-token',
+    };
+    const documents: SearchDocument[] = [
+      { ...shared, type: 'topic' },
+      { ...shared, type: 'signal' },
+    ];
+    const identities = (source: readonly SearchDocument[]) =>
+      rankSearchDocuments(source, 'cross-type-tie-token').map(
+        (result) => `${result.type}:${result.id}`,
+      );
+
+    expect(identities(documents)).toEqual(['signal:shared-id', 'topic:shared-id']);
+    expect(identities([...documents].reverse())).toEqual(['signal:shared-id', 'topic:shared-id']);
+  });
 });

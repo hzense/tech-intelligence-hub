@@ -16,7 +16,8 @@ export const SEARCH_RANKING_CONTRACT = {
   normalization: 'NFKC, zh-CN locale lowercase, collapsed Unicode whitespace',
   queryTermBoundary: 'Unicode whitespace only; no Chinese word segmentation',
   matching: 'all normalized terms must occur as literal substrings',
-  ordering: 'score descending, date descending, zh-CN title ascending',
+  ordering:
+    'score descending, date descending, zh-CN title ascending, type ordinal ascending, id ordinal ascending',
 } as const;
 
 export interface SearchDocument {
@@ -51,6 +52,10 @@ function countMatches(value: string, term: string): number {
     start += term.length;
   }
   return count;
+}
+
+function compareOrdinal(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 export function isSearchType(value: string): value is SearchType {
@@ -96,6 +101,8 @@ export function rankSearchDocuments(
       (left, right) =>
         right.score - left.score ||
         (right.date ?? '').localeCompare(left.date ?? '') ||
-        left.title.localeCompare(right.title, 'zh-CN'),
+        left.title.localeCompare(right.title, 'zh-CN') ||
+        compareOrdinal(left.type, right.type) ||
+        compareOrdinal(left.id, right.id),
     );
 }

@@ -4,7 +4,7 @@
     "normalization": "NFKC, zh-CN locale lowercase, collapsed Unicode whitespace",
     "queryTermBoundary": "Unicode whitespace only; no Chinese word segmentation",
     "matching": "all normalized terms must occur as literal substrings",
-    "ordering": "score descending, date descending, zh-CN title ascending"
+    "ordering": "score descending, date descending, zh-CN title ascending, type ordinal ascending, id ordinal ascending"
   },
   "documents": [
     {
@@ -84,6 +84,26 @@
       "date": "2024-12-01",
       "keywords": "",
       "body": "tie-token"
+    },
+    {
+      "id": "exact-tie-b",
+      "type": "weekly",
+      "title": "Exact Tie",
+      "summary": "完全平局",
+      "href": "/weekly/exact-tie-b",
+      "date": "2024-12-03",
+      "keywords": "",
+      "body": "equal-order-probe"
+    },
+    {
+      "id": "exact-tie-a",
+      "type": "weekly",
+      "title": "Exact Tie",
+      "summary": "完全平局",
+      "href": "/weekly/exact-tie-a",
+      "date": "2024-12-03",
+      "keywords": "",
+      "body": "equal-order-probe"
     }
   ],
   "cases": [
@@ -122,6 +142,11 @@
       "name": "Equal scores use date and then zh-CN title tie breakers",
       "query": "tie-token",
       "expectedIds": ["tie-newer-alpha", "tie-newer-zulu", "tie-older"]
+    },
+    {
+      "name": "Fully equal rank fields use the ordinal ID tie breaker",
+      "query": "equal-order-probe",
+      "expectedIds": ["exact-tie-a", "exact-tie-b"]
     }
   ]
 }
