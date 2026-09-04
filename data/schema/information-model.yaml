@@ -233,8 +233,44 @@ radar_model:
 search_document:
   derived: true
   source_of_truth: false
-  required: [id, source_id, source_type, title, body, importance, date]
-  fields: [topics, entities, embedding_ref]
+  canonical_projection:
+    package: packages/search
+    version: search-document-v1
+    source_types: [daily, weekly, insight, topic, signal, resource]
+    required:
+      [
+        id,
+        source_id,
+        source_type,
+        title,
+        summary,
+        href,
+        keywords,
+        body,
+        importance,
+        document_date,
+        topics,
+        entities,
+      ]
+    nullable: [document_date]
+    optional_future_fields: [embedding_ref]
+    publication_contract:
+      content:
+        source_types: [daily, weekly, insight]
+        included_statuses: [published]
+      topic:
+        included_statuses: [watching, active, strategic]
+      signal:
+        included_statuses: [reviewed, accepted]
+      resource:
+        included_statuses: [active]
+    serialization: stable_versioned_json
+    fingerprint: sha256
+  physical_database:
+    current_table: search_documents
+    summary_href_keywords_migration: not_implemented
+    persistence: not_implemented
+  production_query_path: in_process_keyword_ranking
 
 taxonomy_model:
   source_of_truth: data/taxonomy/taxonomy.yaml

@@ -1,0 +1,127 @@
+{
+  "contract": {
+    "version": "nfkc-whitespace-substring-v1",
+    "normalization": "NFKC, zh-CN locale lowercase, collapsed Unicode whitespace",
+    "queryTermBoundary": "Unicode whitespace only; no Chinese word segmentation",
+    "matching": "all normalized terms must occur as literal substrings",
+    "ordering": "score descending, date descending, zh-CN title ascending"
+  },
+  "documents": [
+    {
+      "id": "zh-title",
+      "type": "insight",
+      "title": "AI 安全边界",
+      "summary": "智能体权限控制",
+      "href": "/insights/zh-title",
+      "date": "2024-06-22",
+      "keywords": "安全 AI",
+      "body": ""
+    },
+    {
+      "id": "zh-body",
+      "type": "daily",
+      "title": "每日简报",
+      "summary": "技术变化",
+      "href": "/daily/2024-06-20",
+      "date": "2024-06-20",
+      "keywords": "",
+      "body": "AI 安全边界正在扩大"
+    },
+    {
+      "id": "en-title",
+      "type": "signal",
+      "title": "Model Context Protocol",
+      "summary": "An open protocol for tool and data connections",
+      "href": "/signals/en-title",
+      "date": "2024-11-25",
+      "keywords": "MCP agent protocol foundation-model",
+      "body": ""
+    },
+    {
+      "id": "zh-no-segmentation",
+      "type": "topic",
+      "title": "基础模型",
+      "summary": "平台能力",
+      "href": "/topics/zh-no-segmentation",
+      "keywords": "模型平台",
+      "body": "模型平台正在形成"
+    },
+    {
+      "id": "unicode-width",
+      "type": "resource",
+      "title": "GPT-4o 模型",
+      "summary": "多模态模型资源",
+      "href": "/resources/unicode-width",
+      "keywords": "OpenAI",
+      "body": ""
+    },
+    {
+      "id": "tie-newer-alpha",
+      "type": "weekly",
+      "title": "Alpha 周报",
+      "summary": "排序样例",
+      "href": "/weekly/tie-newer-alpha",
+      "date": "2024-12-02",
+      "keywords": "",
+      "body": "tie-token"
+    },
+    {
+      "id": "tie-newer-zulu",
+      "type": "weekly",
+      "title": "Zulu 周报",
+      "summary": "排序样例",
+      "href": "/weekly/tie-newer-zulu",
+      "date": "2024-12-02",
+      "keywords": "",
+      "body": "tie-token"
+    },
+    {
+      "id": "tie-older",
+      "type": "weekly",
+      "title": "Aardvark 周报",
+      "summary": "排序样例",
+      "href": "/weekly/tie-older",
+      "date": "2024-12-01",
+      "keywords": "",
+      "body": "tie-token"
+    }
+  ],
+  "cases": [
+    {
+      "name": "Chinese and English terms keep current title weighting",
+      "query": "AI 安全",
+      "expectedIds": ["zh-title", "zh-body"]
+    },
+    {
+      "name": "NFKC width normalization and type filtering stay compatible",
+      "query": "ＡＩ 安全",
+      "type": "daily",
+      "expectedIds": ["zh-body"]
+    },
+    {
+      "name": "English matching remains case insensitive",
+      "query": "MODEL context",
+      "expectedIds": ["en-title"]
+    },
+    {
+      "name": "Chinese text is not implicitly segmented",
+      "query": "模型平台",
+      "expectedIds": ["zh-no-segmentation"]
+    },
+    {
+      "name": "Punctuation remains inside the whitespace-delimited term",
+      "query": "foundation-model",
+      "expectedIds": ["en-title"]
+    },
+    {
+      "name": "Full-width Latin input normalizes before matching",
+      "query": "ＧＰＴ－４Ｏ",
+      "expectedIds": ["unicode-width"]
+    },
+    {
+      "name": "Equal scores use date and then zh-CN title tie breakers",
+      "query": "tie-token",
+      "expectedIds": ["tie-newer-alpha", "tie-newer-zulu", "tie-older"]
+    }
+  ]
+}

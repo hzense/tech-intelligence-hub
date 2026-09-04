@@ -11,6 +11,14 @@ export const searchTypeLabels: Record<SearchType, string> = {
   resource: '资源',
 };
 
+export const SEARCH_RANKING_CONTRACT = {
+  version: 'nfkc-whitespace-substring-v1',
+  normalization: 'NFKC, zh-CN locale lowercase, collapsed Unicode whitespace',
+  queryTermBoundary: 'Unicode whitespace only; no Chinese word segmentation',
+  matching: 'all normalized terms must occur as literal substrings',
+  ordering: 'score descending, date descending, zh-CN title ascending',
+} as const;
+
 export interface SearchDocument {
   id: string;
   type: SearchType;
@@ -26,8 +34,12 @@ export interface SearchResult extends SearchDocument {
   score: number;
 }
 
-function normalize(value: string): string {
+export function normalizeSearchText(value: string): string {
   return value.normalize('NFKC').toLocaleLowerCase('zh-CN').replace(/\s+/g, ' ').trim();
+}
+
+export function tokenizeSearchQuery(query: string): string[] {
+  return [...new Set(normalizeSearchText(query).split(' ').filter(Boolean))];
 }
 
 function countMatches(value: string, term: string): number {
@@ -46,21 +58,21 @@ export function isSearchType(value: string): value is SearchType {
 }
 
 export function rankSearchDocuments(
-  documents: SearchDocument[],
+  documents: readonly SearchDocument[],
   query: string,
   type?: SearchType,
 ): SearchResult[] {
-  const normalizedQuery = normalize(query);
-  const terms = [...new Set(normalizedQuery.split(' ').filter(Boolean))];
+  const normalizedQuery = normalizeSearchText(query);
+  const terms = tokenizeSearchQuery(query);
   if (terms.length === 0) return [];
 
   return documents
     .filter((document) => !type || document.type === type)
     .flatMap((document) => {
-      const title = normalize(document.title);
-      const summary = normalize(document.summary);
-      const keywords = normalize(document.keywords);
-      const body = normalize(document.body);
+      const title = normalizeSearchText(document.title);
+      const summary = normalizeSearchText(document.summary);
+      const keywords = normalizeSearchText(document.keywords);
+      const body = normalizeSearchText(document.body);
       const searchable = `${title} ${summary} ${keywords} ${body}`;
       if (!terms.every((term) => searchable.includes(term))) return [];
 

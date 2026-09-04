@@ -4,17 +4,19 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "predev": "pnpm --filter @hzense/content build",
+    "predev": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build",
     "dev": "next dev",
     "start": "next start",
-    "prebuild": "pnpm --filter @hzense/content build",
+    "prebuild": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build",
     "build": "next build",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
+    "pretest": "pnpm --filter @hzense/search build",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@hzense/content": "workspace:*",
+    "@hzense/search": "workspace:*",
     "next": "16.3.3",
     "pg": "^8.23.0",
     "react": "19.2.8",

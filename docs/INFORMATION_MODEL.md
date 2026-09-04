@@ -1194,21 +1194,36 @@ importance: 4
 搜索索引统一生成 Search Document：
 
 ```yaml
-id: searchdoc-xxxx
-source_id: insight-agent-security-001
+id: searchdoc-insight-insight-agent-security-boundary
+source_id: insight-agent-security-boundary
 source_type: insight
 title: string
+summary: string
+href: /insights/insight-agent-security-boundary
+keywords: string
 body: string
 topics: []
 entities: []
 importance: 5
-date: 2026-08-18
+document_date: 2026-08-18 # date-only string or null
 embedding_ref: null
 ```
 
 Search Document 是派生数据，不是 Source of Truth。
 
 可以随时重新生成。
+
+FTS-0 在 [`@hzense/search`](../packages/search/) 中固定 canonical projection
+`search-document-v1`。六类来源为 Daily、Weekly、Insight、Topic、Signal 与 Resource；其中
+Daily / Weekly / Insight 只接受 `published`，Topic 只接受 `watching` / `active` /
+`strategic`，Signal 只接受 `reviewed` / `accepted`，Resource 只接受 `active`。候选状态是投影
+函数的显式输入，不能依赖调用方口头保证或事后查询过滤。Topic 与 Resource 没有业务日期时，
+`document_date` 保持 `null`，不合成虚假日期。
+
+canonical projection 同时包含 UI 重建所需的 `summary`、`href`、`keywords`，并提供按稳定
+字段顺序、文档 ID 顺序和 `search-document-v1` 版本封装的 serialization / SHA-256
+fingerprint。当前物理 `search_documents` 表尚无这三个 UI 字段；FTS-0 不包含 Migration、
+数据库写入或生产搜索切换，物理持久化必须由后续独立 Migration 完成。
 
 ---
 

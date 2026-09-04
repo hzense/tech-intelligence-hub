@@ -9,65 +9,105 @@ import {
   type InsightEntry,
   type TopicEntry,
   type WeeklyEntry,
-} from '@/lib/content-runtime';
-import { formatEntityType } from '@/lib/resource-presentation';
+} from './content-runtime.ts';
+import { formatEntityType } from './resource-presentation.ts';
 import {
   getResourceEntries,
   getSeedEntityMap,
   getSeedSourceMap,
   getSignalEntries,
-} from '@/lib/seed-runtime';
-import { formatSignalType } from '@/lib/signal-presentation';
+} from './seed-runtime.ts';
+import { formatSignalType } from './signal-presentation.ts';
+import {
+  projectPublishedSearchDocuments,
+  toSearchDocument,
+  type CanonicalSearchDocument,
+  type SearchProjectionCandidate,
+} from '@hzense/search/projection';
 import {
   rankSearchDocuments,
   type SearchDocument,
   type SearchResult,
   type SearchType,
-} from '@/lib/search-ranking';
+} from '@hzense/search/ranking';
 
-export { isSearchType, searchTypeLabels, searchTypes, type SearchType } from '@/lib/search-ranking';
+export {
+  isSearchType,
+  searchTypeLabels,
+  searchTypes,
+  type SearchType,
+} from '@hzense/search/ranking';
 
 function topicKeywords(ids: string[], topicTitleMap: Map<string, string>): string {
   return ids.map((id) => `${id} ${topicTitleMap.get(id) ?? ''}`).join(' ');
 }
 
-function contentDocument(
-  entry: DailyEntry | WeeklyEntry | InsightEntry | TopicEntry,
-  type: SearchType,
+function publishedContentCandidate(
+  entry: DailyEntry | WeeklyEntry | InsightEntry,
+  type: 'daily' | 'weekly' | 'insight',
   href: string,
-  date: string | undefined,
+  documentDate: string,
   topicIds: string[],
   topicTitleMap: Map<string, string>,
-): SearchDocument {
+  entityIds: string[] = [],
+): SearchProjectionCandidate {
   return {
-    id: entry.frontMatter.id,
-    type,
+    sourceId: entry.frontMatter.id,
+    sourceType: type,
+    publication: { kind: 'content', status: entry.frontMatter.status },
     title: entry.frontMatter.title,
     summary: entry.summary,
     href,
-    ...(date ? { date } : {}),
     keywords: [
       ...(entry.frontMatter.tags ?? []),
       topicKeywords(topicIds, topicTitleMap),
       entry.sections.map((section) => section.heading).join(' '),
     ].join(' '),
     body: entry.body,
+    importance: entry.frontMatter.importance ?? 1,
+    documentDate,
+    topics: topicIds,
+    entities: entityIds,
   };
 }
 
-function signalDocument(
+function topicCandidate(
+  entry: TopicEntry,
+  topicTitleMap: Map<string, string>,
+): SearchProjectionCandidate {
+  return {
+    sourceId: entry.frontMatter.id,
+    sourceType: 'topic',
+    publication: { kind: 'topic', status: entry.frontMatter.status },
+    title: entry.frontMatter.title,
+    summary: entry.summary,
+    href: `/topics/${entry.frontMatter.id}`,
+    keywords: [
+      ...(entry.frontMatter.tags ?? []),
+      topicKeywords([entry.frontMatter.id], topicTitleMap),
+      entry.sections.map((section) => section.heading).join(' '),
+    ].join(' '),
+    body: entry.body,
+    importance: 1,
+    documentDate: null,
+    topics: [entry.frontMatter.id],
+    entities: [],
+  };
+}
+
+function signalCandidate(
   signal: SeedSignal,
   topicTitleMap: Map<string, string>,
   entityMap: Map<string, SeedEntity>,
   sourceName: string,
-): SearchDocument {
+): SearchProjectionCandidate {
   return {
-    id: signal.id,
-    type: 'signal',
+    sourceId: signal.id,
+    sourceType: 'signal',
+    publication: { kind: 'signal', status: signal.status },
     title: signal.title,
     summary: signal.summary,
     href: `/signals/${signal.id}`,
-    date: signal.occurred_at.slice(0, 10),
     keywords: [
       formatSignalType(signal.type),
       sourceName,
@@ -75,23 +115,32 @@ function signalDocument(
       signal.entities.map((id) => `${id} ${entityMap.get(id)?.name ?? ''}`).join(' '),
     ].join(' '),
     body: '',
+    importance: signal.importance,
+    documentDate: signal.occurred_at.slice(0, 10),
+    topics: signal.topics,
+    entities: signal.entities,
   };
 }
 
-function resourceDocument(entity: SeedEntity): SearchDocument {
+function resourceCandidate(entity: SeedEntity): SearchProjectionCandidate {
   const typeLabel = formatEntityType(entity.type);
   return {
-    id: entity.id,
-    type: 'resource',
+    sourceId: entity.id,
+    sourceType: 'resource',
+    publication: { kind: 'resource', status: entity.status },
     title: entity.name,
     summary: `${typeLabel} · HZense 活跃资源`,
     href: `/resources/${entity.id}`,
     keywords: `${entity.id} ${entity.type} ${typeLabel}`,
     body: '',
+    importance: 1,
+    documentDate: null,
+    topics: [],
+    entities: [entity.id],
   };
 }
 
-export async function getSearchDocuments(): Promise<SearchDocument[]> {
+export async function getSearchDocumentProjections(): Promise<CanonicalSearchDocument[]> {
   const [
     dailyEntries,
     weeklyEntries,
@@ -114,9 +163,9 @@ export async function getSearchDocuments(): Promise<SearchDocument[]> {
     getSeedSourceMap(),
   ]);
 
-  return [
+  const candidates: SearchProjectionCandidate[] = [
     ...dailyEntries.map((entry) =>
-      contentDocument(
+      publishedContentCandidate(
         entry,
         'daily',
         `/daily/${entry.frontMatter.date}`,
@@ -126,7 +175,7 @@ export async function getSearchDocuments(): Promise<SearchDocument[]> {
       ),
     ),
     ...weeklyEntries.map((entry) =>
-      contentDocument(
+      publishedContentCandidate(
         entry,
         'weekly',
         `/weekly/${entry.frontMatter.week}`,
@@ -136,35 +185,33 @@ export async function getSearchDocuments(): Promise<SearchDocument[]> {
       ),
     ),
     ...insightEntries.map((entry) =>
-      contentDocument(
+      publishedContentCandidate(
         entry,
         'insight',
         `/insights/${entry.frontMatter.id}`,
         entry.frontMatter.date,
         entry.frontMatter.topics,
         topicTitleMap,
+        [...(entry.frontMatter.companies ?? []), ...(entry.frontMatter.technologies ?? [])],
       ),
     ),
-    ...topicEntries.map((entry) =>
-      contentDocument(
-        entry,
-        'topic',
-        `/topics/${entry.frontMatter.id}`,
-        undefined,
-        [entry.frontMatter.id],
-        topicTitleMap,
-      ),
-    ),
+    ...topicEntries.map((entry) => topicCandidate(entry, topicTitleMap)),
     ...signalEntries.map((signal) =>
-      signalDocument(
+      signalCandidate(
         signal,
         topicTitleMap,
         entityMap,
         sourceMap.get(signal.source_id)?.name ?? signal.source_id,
       ),
     ),
-    ...resourceEntries.map(resourceDocument),
+    ...resourceEntries.map(resourceCandidate),
   ];
+
+  return projectPublishedSearchDocuments(candidates);
+}
+
+export async function getSearchDocuments(): Promise<SearchDocument[]> {
+  return (await getSearchDocumentProjections()).map(toSearchDocument);
 }
 
 export async function searchPublishedContent(
