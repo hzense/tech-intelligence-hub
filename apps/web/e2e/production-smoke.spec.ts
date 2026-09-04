@@ -432,6 +432,7 @@ test('search finds and filters published intelligence', async ({ page }) => {
 test('search explains invalid queries without a server error and allows correction', async ({
   page,
 }) => {
+  const inputError = page.locator('#search-input-error');
   const tooManyTerms = Array.from({ length: 25 }, (_, i) => String.fromCharCode(97 + i)).join(' ');
   for (const [query, message] of [
     [tooManyTerms, '24 个不同关键词'],
@@ -439,7 +440,8 @@ test('search explains invalid queries without a server error and allows correcti
   ] as const) {
     const response = await page.goto(`/search?q=${encodeURIComponent(query)}`);
     expect(response?.status()).toBe(200);
-    await expect(page.getByRole('alert')).toContainText(message);
+    await expect(inputError).toContainText(message);
+    await expect(inputError).toHaveAttribute('role', 'alert');
     await expect(page.getByRole('searchbox', { name: '关键词' })).toHaveAttribute(
       'aria-invalid',
       'true',
@@ -448,6 +450,6 @@ test('search explains invalid queries without a server error and allows correcti
   }
   await page.getByRole('searchbox', { name: '关键词' }).fill('OpenAI');
   await page.getByRole('button', { name: '搜索' }).click();
-  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(inputError).toHaveCount(0);
   await expect(page.getByRole('list', { name: '搜索结果' })).toBeVisible();
 });
