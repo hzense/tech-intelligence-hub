@@ -9,6 +9,16 @@
 --      cannot and must not ALTER ROLE.
 --   3. Migrations through 0002_topic_projection.sql have been applied and fully
 --      verified. Freeze owner/migrator DDL while configuring and verifying ACLs.
+--   4. Capture, protect and independently review a fresh Runtime ACL recovery
+--      baseline with `pnpm db:capture:runtime-acl:production`. This script does
+--      not create that baseline and must not be used when the baseline is stale.
+--   5. In this same protected session, set
+--      hzense.runtime_acl_backup_reference to the capture's hashed backup
+--      reference and hzense.runtime_acl_reviewed_fingerprint to the reviewed
+--      top-level baseline fingerprint. Both are lowercase SHA-256 digests. The
+--      machine guard below proves only that the reviewed declarations reached
+--      this session; provider backup existence/recoverability remains an
+--      independent operator gate.
 --
 -- The only data grant is column-level SELECT on the five reviewed Topic
 -- projection columns. Provider-owned SECURITY INVOKER extension routines (for
@@ -38,6 +48,35 @@
 -- This file contains no role creation, ALTER ROLE, password, URL or secret.
 
 BEGIN;
+
+-- Resolve every unqualified catalog and built-in name against pg_catalog even
+-- when the authenticated owner has a hostile role/database search_path or
+-- same-session temporary relation/type shadow. Listing pg_temp explicitly
+-- after pg_catalog prevents PostgreSQL from implicitly searching it first.
+SET LOCAL search_path = pg_catalog, pg_temp;
+
+DO $hzense_runtime_recovery_declarations$
+DECLARE
+  backup_reference text := current_setting('hzense.runtime_acl_backup_reference', true);
+  reviewed_fingerprint text := current_setting(
+    'hzense.runtime_acl_reviewed_fingerprint',
+    true
+  );
+BEGIN
+  IF backup_reference IS NULL
+     OR backup_reference !~ '^[0-9a-f]{64}$'
+     OR backup_reference = repeat(substr(backup_reference, 1, 1), 64) THEN
+    RAISE EXCEPTION
+      'Set protected session GUC hzense.runtime_acl_backup_reference to the non-placeholder lowercase SHA-256 reference from the fresh baseline capture';
+  END IF;
+  IF reviewed_fingerprint IS NULL
+     OR reviewed_fingerprint !~ '^[0-9a-f]{64}$'
+     OR reviewed_fingerprint = repeat(substr(reviewed_fingerprint, 1, 1), 64) THEN
+    RAISE EXCEPTION
+      'Set protected session GUC hzense.runtime_acl_reviewed_fingerprint to the non-placeholder lowercase SHA-256 fingerprint of the reviewed baseline';
+  END IF;
+END
+$hzense_runtime_recovery_declarations$;
 
 DO $hzense_runtime_lock$
 BEGIN

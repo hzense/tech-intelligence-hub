@@ -6,6 +6,7 @@ import {
   topicSyncProductionOptions,
   validateConnectionTarget,
 } from '../packages/database/src/connection-policy.mjs';
+import { requireProtectedBackupIdentifier } from '../packages/database/src/backup-declaration.mjs';
 import {
   assertDirectTopicSyncEndpoint,
   inspectTopicSyncPreflight,
@@ -95,18 +96,10 @@ export function assertProductionApplyGuards(environment, fingerprint) {
       'HZENSE_TOPIC_SYNC_EXPECTED_PLAN_FINGERPRINT must be a lowercase SHA-256 digest',
     );
   }
-  const backupId = requireString(
-    environment.HZENSE_TOPIC_SYNC_BACKUP_ID,
-    'HZENSE_TOPIC_SYNC_BACKUP_ID',
-  );
-  if (
-    !/^[A-Za-z0-9][A-Za-z0-9._:/-]{7,255}$/.test(backupId) ||
-    /^(?:none|null|todo|pending|placeholder)$/i.test(backupId)
-  ) {
-    throw new Error(
-      'HZENSE_TOPIC_SYNC_BACKUP_ID must identify the new recoverable pre-sync backup',
-    );
-  }
+  const backupId = requireProtectedBackupIdentifier(environment.HZENSE_TOPIC_SYNC_BACKUP_ID, {
+    environmentName: 'HZENSE_TOPIC_SYNC_BACKUP_ID',
+    purpose: 'the new recoverable pre-sync backup',
+  });
   return { expectedProjectionFingerprint: expectedFingerprint, expectedPlanFingerprint, backupId };
 }
 

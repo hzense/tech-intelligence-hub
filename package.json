@@ -22,6 +22,7 @@
     "db:migrate:local": "pnpm --filter @hzense/database db:migrate:local",
     "db:preflight:production": "pnpm --filter @hzense/database db:preflight:production",
     "db:preflight:runtime:production": "pnpm --filter @hzense/database db:preflight:runtime:production",
+    "db:capture:runtime-acl:production": "pnpm --filter @hzense/database db:capture:runtime-acl:production",
     "db:verify:production": "pnpm --filter @hzense/database db:verify:production",
     "db:verify:topics:production": "pnpm --filter @hzense/database db:verify:topics:production",
     "db:sync:topics:local:dry-run": "pnpm --filter @hzense/content build && node scripts/sync-topics.mjs --profile=local-test",

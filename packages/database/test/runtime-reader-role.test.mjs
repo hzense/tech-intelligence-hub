@@ -17,6 +17,19 @@ describe('Runtime reader role configuration contract', () => {
     expect(sql).toMatch(/^-- HZense Runtime Topic projection reader privilege contract\./);
     expect(sql).toMatch(/\nBEGIN;\n/);
     expect(sql).toMatch(/\nCOMMIT;\n?$/);
+    expect(sql.indexOf('SET LOCAL search_path = pg_catalog, pg_temp;')).toBeLessThan(
+      sql.indexOf('pg_try_advisory_xact_lock'),
+    );
+    expect(
+      sql.indexOf("current_setting('hzense.runtime_acl_backup_reference', true)"),
+    ).toBeLessThan(sql.indexOf("'REVOKE CONNECT, CREATE, TEMPORARY ON DATABASE %I FROM PUBLIC'"));
+    expect(sql.indexOf("'hzense.runtime_acl_reviewed_fingerprint'")).toBeLessThan(
+      sql.indexOf("'REVOKE CONNECT, CREATE, TEMPORARY ON DATABASE %I FROM PUBLIC'"),
+    );
+    expect(sql).toContain("backup_reference !~ '^[0-9a-f]{64}$'");
+    expect(sql).toContain("reviewed_fingerprint !~ '^[0-9a-f]{64}$'");
+    expect(sql).toContain('backup_reference = repeat(substr(backup_reference, 1, 1), 64)');
+    expect(sql).toContain('reviewed_fingerprint = repeat(substr(reviewed_fingerprint, 1, 1), 64)');
     expect(sql).toContain('target_database name := current_database()');
     expect(sql).toContain('pg_try_advisory_xact_lock(1215921955, 1298498925)');
     expect(executableSql).not.toMatch(/^\s*CREATE\s+ROLE\b/im);

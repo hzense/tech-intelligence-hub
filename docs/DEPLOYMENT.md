@@ -174,6 +174,22 @@ Runtime Reader 仓库边界已通过 PR #32–#35 合并并由 CI 验证，PR #3
 
 Runtime ACL 脚本包含目标数据库范围的 destructive ACL normalization：它撤销 `PUBLIC` 的数据库 `CONNECT` / `CREATE` / `TEMPORARY`、`public` Schema、现有应用 Table / Column / Sequence 权限，并从所有非系统应用 enum types 撤销 `PUBLIC USAGE`；随后只给 `hzense_runtime` 恢复本文 allowlist。额外的跨数据库隔离也可能要求集群管理员撤销其他数据库的 `PUBLIC CONNECT` / `CREATE` / `TEMPORARY`。所有依赖 ambient `PUBLIC` 权限的非 owner 登录都可能受影响。执行前必须创建并独立验证新的 provider 分支备份，盘点整个 cluster 中每个可连接数据库的现有非 owner 有效权限并记录可回滚 ACL，为仍需工作的角色准备经过评审的直接授权；不得假设前一次 Topic 备份足以代表当前状态，也不得把目标数据库备份当作其他数据库 ACL 的回滚证据。
 
+### Runtime ACL 恢复基线
+
+以后每次重新运行 Runtime ACL normalization 前，都必须先创建并在 provider 侧独立验证一个新的可恢复备份，把其真实 ID 只写入受保护环境变量 `HZENSE_RUNTIME_ACL_BACKUP_ID`，再用数据库 owner 的受保护 direct 连接执行 `pnpm db:capture:runtime-acl:production`，并把标准输出保存到访问受控、不会提交到仓库的证据位置。命令还只从现有 `DATABASE_DIRECT_URL` 与 `HZENSE_DATABASE_EXPECTED_*` 环境读取连接配置，拒绝命令行参数。Backup ID 必须通过与生产 Topic Apply 共用的严格格式与 placeholder 检查；成功输出不包含原始 ID，而只包含以 `hzense-runtime-acl-backup-reference/v1` 域分隔计算的 SHA-256 reference。输出同样不包含 URL、host、port、密码、Token、`rolpassword`、业务行或 Routine 定义。不要在命令行展开 URL，也不要把完整 JSON 粘贴进 Issue、PR、聊天或公开日志。
+
+采集器验证 direct target 后进入有超时保护的 `REPEATABLE READ READ ONLY` 事务，并在任何 TLS/catalog 查询前把事务 `search_path` 显式固定为 `pg_catalog, pg_temp`。把 `pg_temp` 明确放在第二位可阻止 PostgreSQL 将同一 session 的临时 Relation/Type 隐式置于 catalog 之前；随后采集器验证数据库 owner 身份、无 `SET ROLE`、PostgreSQL major 与 Production TLS。它记录以下可回滚元数据，并在成功或失败后都执行 `ROLLBACK`：
+
+- `hzense_runtime` 的非敏感属性、只读默认值及所有 incoming/outgoing membership，以及完整的 cluster role-membership graph；
+- cluster 内每个数据库的 owner、连接状态、完整展开 ACL，以及每个登录角色的有效 `CONNECT` / `CREATE` / `TEMPORARY` 与 grant-option 矩阵；
+- 当前目标数据库全部非系统 Schema、Table/View/Materialized View/Foreign Table/Sequence、Column、enum Type、Routine 和默认权限的 owner、ACL 默认/显式状态与展开授权；显式空的 Column ACL 会由 preserving lateral join 保留为 `aclState: "explicit"`，不会与 `NULL`/default Column ACL 混同，显式空的默认 ACL 也不会与完全不存在的默认权限行混同。
+
+JSON 顶层和每个类别都带 SHA-256。类别记录先按字段与记录的字节序规范化；顶层状态指纹包括目标身份、全部类别及备份 reference，但有意排除 `capturedAt` 和 TLS transport evidence。因此，只有使用同一个已验证备份声明且 catalog 状态一致的第二次独立采集才会得到同一顶层指纹；更换备份声明会有意改变顶层指纹。完整 JSON 仍属于受保护运维材料；仓库最多记录经人工脱敏的时间、备份 reference、各类别数量/指纹、顶层指纹与独立复核结论。
+
+该工具是**证据采集器，不是恢复器**：输出明确标记 `restoration: manual-review-required`、`executableSqlIncluded: false` 与 `providerApiVerified: false`，不会调用 Neon/provider API 验证备份存在或可恢复，也不会生成或执行 `GRANT`、`REVOKE`、`ALTER` 或其他恢复 SQL。Backup reference 只把操作者声明机器绑定到这份基线；provider 侧的创建、列出与恢复验证仍是独立人工门禁。操作者必须在冻结 DDL 的维护窗口中，先独立验证新的 provider 备份，再用同一 ID 采集两次并比对指纹，然后由人工根据受保护 JSON 编写、评审恢复 SQL。目标数据库快照不能证明其他数据库中的对象 ACL；本工具只从 cluster catalog 记录那些数据库自身的 ACL。任何恢复仍需在隔离副本演练，并由新的只读采集与 Runtime preflight 双重验证。
+
+这项能力只能为**未来**维护窗口建立新基线，不能倒推出 2026-09-01 ACL normalization 之前已经缺失的历史授权。当前文档中的历史恢复材料边界仍然存在；只有找到 mutation 前仍可用的 provider branch/PITR 并独立提取，或正式接受该历史缺口并建立新的当前态基线后，才能关闭步骤 2。
+
 首次 Runtime Reader 上线必须严格按以下顺序执行。状态以 2026-09-03 的现场证据为准；生产接入及功能验收已完成，步骤 2 的恢复材料复核仍是已知证据边界，后续重新配置必须保持同一顺序：
 
 1. ✅ `hzense_runtime` 固定属性、上述唯一 Neon control-plane membership 形态与 `default_transaction_read_only = on` 已盘点；独立 Runtime 凭据已在受保护流程中生成并保存，且未写入 SQL history、仓库或本验收文档。
@@ -181,12 +197,27 @@ Runtime ACL 脚本包含目标数据库范围的 destructive ACL normalization�
 3. ✅ 普通 `neondb` 的 ambient 访问已隔离；生产 preflight 已用 Runtime 身份逐库确认 `postgres` 与 `template1` 各自独立的精确 provider-object 合约。以后无法匹配或发现其他可连接数据库时，上线仍会阻断。
 4. ✅ 目标 ACL 当前状态已由两组独立、只读的 catalog 查询确认：数据库/Schema/type 直接 allowlist、五列 Column `SELECT`、grant option 与 `PUBLIC`/额外权限 denylist 均匹配，且没有数据库写入。该证据证明当前 ACL 状态，不声称恢复历史 mutation transaction 的时间或操作者；完整生产 preflight 仍属于步骤 5。
 
-   经评审的配置脚本入口保留如下，只有新的受控维护窗口才允许再次执行：
+   经评审的配置脚本入口保留如下，只有新的受控维护窗口才允许再次执行。先从同一份已双重采集并人工评审的 JSON 读取 `backup.reference` 和顶层 `fingerprint`，分别置入受保护环境变量；`psql` 使用 `\getenv` 将它们参数化写入同一 session 的两个 custom GUC，再执行脚本：
 
    ```bash
-   psql -X "$DATABASE_DIRECT_URL" -v ON_ERROR_STOP=1 \
-     -f db/roles/configure_runtime_reader.sql
+   psql -X "$DATABASE_DIRECT_URL" -v ON_ERROR_STOP=1 <<'SQL'
+   \getenv runtime_acl_backup_reference HZENSE_RUNTIME_ACL_BACKUP_REFERENCE
+   \getenv runtime_acl_reviewed_fingerprint HZENSE_RUNTIME_ACL_REVIEWED_FINGERPRINT
+   SELECT pg_catalog.set_config(
+     'hzense.runtime_acl_backup_reference',
+     :'runtime_acl_backup_reference',
+     false
+   );
+   SELECT pg_catalog.set_config(
+     'hzense.runtime_acl_reviewed_fingerprint',
+     :'runtime_acl_reviewed_fingerprint',
+     false
+   );
+   \i db/roles/configure_runtime_reader.sql
+   SQL
    ```
+
+   脚本在任何 ACL mutation 前把 `search_path` 显式固定为 `pg_catalog, pg_temp`，避免当前 session 的临时 Relation/Type 遮蔽 catalog，并要求两个 GUC 都是非 placeholder 的 lowercase 64-hex SHA-256；缺失或不合格式会让整个事务 fail closed。该 guard 不重新调用 provider API，也不自动证明 JSON 已由人审阅；它只防止未携带本次备份 reference 与 reviewed baseline fingerprint 的误执行。
 
 5. ✅ 已使用 `hzense_runtime` 的受保护 pooled 连接连续两次运行独立生产 preflight；它从 `HZENSE_RUNTIME_*` 映射 URL、expected host / port / database / user，以及固定的 PostgreSQL major 18 / connection limit 20，并以 `profile: "production"` 复核 TLS、角色属性、目标 ACL、session 只读默认值及跨数据库隔离，同时连接并深检精确允许的 Neon 保留库。两次均通过且未把环境变量展开到命令行或日志；见[脱敏证据](./production-evidence/2026-09-03-runtime-reader-preflight.md)。
 
