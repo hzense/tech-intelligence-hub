@@ -246,7 +246,7 @@ integrationSuite('PostgreSQL Topic sync role provisioning integration', () => {
       await expect(client.query('DELETE FROM topics')).rejects.toThrow(/permission denied/);
       await expect(
         client.query('SELECT name FROM hzense_schema_migrations ORDER BY name'),
-      ).resolves.toMatchObject({ rowCount: 3 });
+      ).resolves.toMatchObject({ rowCount: 4 });
     });
   }, 30_000);
 
