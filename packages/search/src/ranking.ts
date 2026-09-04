@@ -2,6 +2,31 @@ export const searchTypes = ['daily', 'weekly', 'insight', 'topic', 'signal', 're
 
 export type SearchType = (typeof searchTypes)[number];
 
+export const searchQueryMaximumLength = 120;
+export const searchQueryMaximumTerms = 24;
+
+export class SearchQueryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SearchQueryError';
+  }
+}
+
+export function searchQueryError(query: string): string | undefined {
+  if (typeof query !== 'string' || query.length > searchQueryMaximumLength) {
+    return `搜索内容最多 ${searchQueryMaximumLength} 个字符，请缩短后重试。`;
+  }
+  if (tokenizeSearchQuery(query).length > searchQueryMaximumTerms) {
+    return `搜索最多支持 ${searchQueryMaximumTerms} 个不同关键词（以空格分隔），请减少关键词后重试。`;
+  }
+  return undefined;
+}
+
+export function assertSearchQuery(query: string): void {
+  const error = searchQueryError(query);
+  if (error) throw new SearchQueryError(error);
+}
+
 export const searchTypeLabels: Record<SearchType, string> = {
   daily: '每日简报',
   weekly: '周报',
@@ -77,6 +102,7 @@ export function rankSearchDocuments(
   query: string,
   type?: SearchType,
 ): SearchResult[] {
+  assertSearchQuery(query);
   const normalizedQuery = normalizeSearchText(query);
   const terms = tokenizeSearchQuery(query);
   if (terms.length === 0) return [];

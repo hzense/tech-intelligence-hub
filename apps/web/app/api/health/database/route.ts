@@ -2,7 +2,13 @@ import {
   createRuntimeReaderHealthHandler,
   type RuntimeReaderHealthLog,
 } from '@/lib/runtime-reader-core';
-import { readRuntimeTopics, runtimeReaderPoolStats } from '@/lib/server/runtime-reader';
+import process from 'node:process';
+import { readSearchMode } from '@/lib/search-mode';
+import {
+  readRuntimeTopics,
+  runtimeReaderPoolStats,
+  probeRuntimeSearch,
+} from '@/lib/server/runtime-reader';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,6 +27,8 @@ const handleHealthRequest = createRuntimeReaderHealthHandler({
   log: writeHealthLog,
   poolStats: runtimeReaderPoolStats,
   readTopics: readRuntimeTopics,
+  searchMode: () => readSearchMode(process.env),
+  probeSearch: probeRuntimeSearch,
 });
 
 export async function GET(request: Request): Promise<Response> {

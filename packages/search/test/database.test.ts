@@ -6,7 +6,7 @@ import {
   mapDatabaseSearchRows,
   prepareDatabaseSearchInput,
 } from '../src/database.js';
-import { rankSearchDocuments, type SearchDocument } from '../src/ranking.js';
+import { rankSearchDocuments, SearchQueryError, type SearchDocument } from '../src/ranking.js';
 
 const documents: SearchDocument[] = [
   {
@@ -36,7 +36,23 @@ describe('PostgreSQL search contract', () => {
     expect(input).toEqual({ normalizedQuery: 'ai 安全', terms: ['ai', '安全'], type: 'daily' });
     expect(databaseSearchValues(input)).toEqual(['ai 安全', ['ai', '安全'], 'daily']);
     expect(() => prepareDatabaseSearchInput('')).toThrow('must not be empty');
-    expect(() => prepareDatabaseSearchInput('x'.repeat(121))).toThrow('at most 120');
+    expect(() => prepareDatabaseSearchInput('x'.repeat(121))).toThrow('120');
+  });
+
+  it('shares length and normalized distinct-term limits with in-process ranking', () => {
+    const terms = Array.from({ length: 25 }, (_, i) => String.fromCharCode(97 + i));
+    for (const query of [terms.join(' '), 'x'.repeat(121)]) {
+      expect(() => prepareDatabaseSearchInput(query)).toThrow(SearchQueryError);
+      expect(() => rankSearchDocuments(documents, query)).toThrow(SearchQueryError);
+    }
+    for (const query of [
+      terms.slice(0, 24).join(' '),
+      'x'.repeat(120),
+      'ＡＩ ai '.repeat(10).trim(),
+    ]) {
+      expect(() => prepareDatabaseSearchInput(query)).not.toThrow();
+      expect(() => rankSearchDocuments(documents, query)).not.toThrow();
+    }
   });
 
   it('keeps all user values out of the fixed SQL text and preserves exact scoring math', () => {

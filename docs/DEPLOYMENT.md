@@ -266,6 +266,10 @@ Production 数据库。生产上线是后续独立操作，并受现有 Runtime 
    或内容。使用 golden corpus 与真实生产样本确认连续一致。
 6. 通过评审后改为 `HZENSE_SEARCH_MODE=database` 并再次部署，验证搜索、类型过滤、数据库
    health、池上限 1、错误窗口及回滚。Database 模式查询失败时 fail closed，不静默退回旧路径。
+   此模式下 `/api/health/database` 还通过同一连接池执行搜索十二列的 `LIMIT 1` 探测；
+   投影为空、表不存在、查询超时或任一必需列无读取权限时返回 503，现有健康告警链随之触发。
+   `in-process` / `shadow` 仍只以 Topic 为健康依赖。三种搜索模式共享 120 字符 / 24 个
+   归一化去重关键词上限；超限输入显示页面提示，不进入数据库查询或 shadow 日志。
 7. 回滚时把 `HZENSE_SEARCH_MODE` 恢复为 `in-process` 并重部署；数据库派生数据可以保留，
    ACL 回退必须依据受保护 baseline，不能凭记忆重建。
 

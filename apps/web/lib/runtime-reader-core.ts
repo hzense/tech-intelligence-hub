@@ -1,10 +1,18 @@
 import {
+  databaseSearchHealthQuery,
   databaseSearchQuery,
   databaseSearchValues,
   mapDatabaseSearchRows,
   prepareDatabaseSearchInput,
 } from '@hzense/search/database';
-import type { SearchResult, SearchType } from '@hzense/search/ranking';
+import {
+  assertSearchQuery,
+  normalizeSearchText,
+  SearchQueryError,
+  type SearchResult,
+  type SearchType,
+} from '@hzense/search/ranking';
+import type { SearchMode } from './search-mode';
 
 const runtimeRole = 'hzense_runtime';
 const pooledHostPattern = /(^|[.-])pooler([.-]|$)/;
@@ -28,8 +36,10 @@ LIMIT $1::integer`;
 export type RuntimeReaderErrorCode =
   | 'connection_capacity'
   | 'empty_projection'
+  | 'empty_search_projection'
   | 'health_duration_exceeded'
   | 'invalid_configuration'
+  | 'invalid_query'
   | 'invalid_limit'
   | 'invalid_result'
   | 'missing_configuration'
@@ -98,6 +108,7 @@ export interface RuntimeTopicReader {
   poolStats(): RuntimeReaderPoolStats;
   readTopics(limit?: number): Promise<RuntimeTopic[]>;
   search(query: string, type?: SearchType): Promise<SearchResult[]>;
+  probeSearch(): Promise<void>;
 }
 
 export interface RuntimeReaderHealthLog {
@@ -337,11 +348,13 @@ export function createLazyRuntimeTopicReader({
       return runtimeTopicRows(result.rows);
     },
     async search(query, type) {
+      assertSearchQuery(query);
+      if (!normalizeSearchText(query)) return [];
       let input;
       try {
         input = prepareDatabaseSearchInput(query, type);
       } catch {
-        fail('invalid_configuration');
+        fail('invalid_query');
       }
       const result = await getPool().query(databaseSearchQuery, [...databaseSearchValues(input)]);
       if (!result || !Array.isArray(result.rows)) fail('invalid_result');
@@ -350,6 +363,11 @@ export function createLazyRuntimeTopicReader({
       } catch {
         fail('invalid_result');
       }
+    },
+    async probeSearch() {
+      const result = await getPool().query(databaseSearchHealthQuery, []);
+      if (!result || !Array.isArray(result.rows)) fail('invalid_result');
+      if (result.rows.length === 0) fail('empty_search_projection');
     },
   };
 }
@@ -361,6 +379,7 @@ export function extractPostgresSqlState(error: unknown): string | undefined {
 }
 
 export function classifyRuntimeReaderError(error: unknown): RuntimeReaderErrorCode {
+  if (error instanceof SearchQueryError) return 'invalid_query';
   if (error instanceof RuntimeReaderError) return error.code;
   switch (extractPostgresSqlState(error)) {
     case '53300':
@@ -398,11 +417,15 @@ export function createRuntimeReaderHealthHandler({
   log,
   poolStats: readPoolStats,
   readTopics,
+  searchMode = () => 'in-process',
+  probeSearch,
 }: {
   clock?: () => number;
   log: (record: RuntimeReaderHealthLog) => void;
   poolStats: () => RuntimeReaderPoolStats;
   readTopics: (limit: number) => Promise<RuntimeTopic[]>;
+  searchMode?: () => SearchMode;
+  probeSearch?: () => Promise<void>;
 }): (request?: Pick<Request, 'headers'>) => Promise<Response> {
   return async (request) => {
     const startedAt = clock();
@@ -413,6 +436,12 @@ export function createRuntimeReaderHealthHandler({
     try {
       const topics = await readTopics(1);
       if (topics.length === 0) fail('empty_projection');
+      // Shadow still serves the in-process provider. Require the search projection
+      // only once database search becomes a serving dependency.
+      if (searchMode() === 'database') {
+        if (!probeSearch) fail('invalid_configuration');
+        await probeSearch();
+      }
     } catch (error) {
       outcome = 'unavailable';
       errorCode = classifyRuntimeReaderError(error);

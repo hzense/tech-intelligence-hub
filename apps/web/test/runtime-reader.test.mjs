@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { URL } from 'node:url';
-import { databaseSearchQuery } from '@hzense/search/database';
+import { databaseSearchQuery, databaseSearchHealthQuery } from '@hzense/search/database';
+import { SearchQueryError } from '@hzense/search/ranking';
 
 import {
   createLazyRuntimeTopicReader,
@@ -287,7 +288,72 @@ test('uses the same lazy one-connection pool for fixed parameterized database se
     },
   ]);
   assert.equal(reader.poolStats().total, 1);
-  await assert.rejects(reader.search(''), assertRuntimeError('invalid_configuration'));
+  assert.deepEqual(await reader.search(''), []);
+  await assert.rejects(reader.search('x'.repeat(121)), SearchQueryError);
+  assert.equal(queries.length, 1);
+});
+
+test('database health probes search through the existing bounded pool and fails on missing data or ACL', async () => {
+  for (const scenario of ['ok', 'empty', 'permission', 'missing-table', 'timeout']) {
+    let pools = 0;
+    const queries = [];
+    const logs = [];
+    const reader = createLazyRuntimeTopicReader({
+      environment: () => runtimeEnvironment(),
+      createPool: (options) => {
+        pools++;
+        assert.equal(options.max, 1);
+        return {
+          idleCount: 1,
+          totalCount: 1,
+          waitingCount: 0,
+          async query(sql, values) {
+            queries.push(sql);
+            if (sql === runtimeTopicQuery) return { rows: [topic()] };
+            assert.equal(sql, databaseSearchHealthQuery);
+            assert.deepEqual(values, []);
+            if (scenario === 'empty') return { rows: [] };
+            if (scenario !== 'ok')
+              throw Object.assign(new Error('sensitive search failure'), {
+                code: { permission: '42501', 'missing-table': '42P01', timeout: '57014' }[scenario],
+              });
+            return { rows: [{ source_id: 'example' }] };
+          },
+        };
+      },
+    });
+    const handler = createRuntimeReaderHealthHandler({
+      searchMode: () => 'database',
+      probeSearch: reader.probeSearch,
+      readTopics: reader.readTopics,
+      poolStats: reader.poolStats,
+      log: (record) => logs.push(record),
+    });
+    const response = await handler();
+    assert.equal(response.status, scenario === 'ok' ? 200 : 503);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(JSON.parse(await response.text()), {
+      status: scenario === 'ok' ? 'ok' : 'unavailable',
+    });
+    assert.deepEqual(queries, [runtimeTopicQuery, databaseSearchHealthQuery]);
+    assert.equal(pools, 1);
+    if (scenario === 'empty') assert.equal(logs[0].error_code, 'empty_search_projection');
+    if (scenario === 'permission') assert.equal(logs[0].sqlstate, '42501');
+    assert.doesNotMatch(JSON.stringify(logs), /sensitive search failure/);
+  }
+});
+
+test('in-process and shadow health do not require a search rollout', async () => {
+  for (const mode of ['in-process', 'shadow']) {
+    const handler = createRuntimeReaderHealthHandler({
+      searchMode: () => mode,
+      probeSearch: async () => assert.fail('inactive dependency was probed'),
+      readTopics: async () => [topic()],
+      poolStats: () => ({ idle: 1, total: 1, waiting: 0 }),
+      log: () => {},
+    });
+    assert.equal((await handler()).status, 200);
+  }
 });
 
 test('health returns only status ok, disables caching, and emits a bounded safe log', async () => {

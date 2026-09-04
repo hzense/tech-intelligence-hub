@@ -8,6 +8,7 @@ import { searchRuntimeDocuments } from './runtime-reader';
 
 export function searchPublishedContent(query: string, type?: SearchType) {
   return searchWithMode({
+    query,
     mode: readSearchMode(process.env),
     inProcess: () => searchInProcess(query, type),
     database: () => searchRuntimeDocuments(query, type),

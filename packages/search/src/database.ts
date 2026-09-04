@@ -1,4 +1,5 @@
 import {
+  assertSearchQuery,
   compareSearchResults,
   isSearchType,
   normalizeSearchText,
@@ -8,8 +9,15 @@ import {
 } from './ranking.js';
 
 export const SEARCH_DATABASE_PROJECTION_VERSION = 'search-database-v1' as const;
-export const searchQueryMaximumLength = 120;
-export const searchQueryMaximumTerms = 24;
+export { searchQueryMaximumLength, searchQueryMaximumTerms } from './ranking.js';
+
+// Read every column used by the search query, even when the projection is empty.
+// LIMIT 1 bounds the probe without requiring table-level SELECT or index privileges.
+export const databaseSearchHealthQuery = `SELECT source_id, source_type, title, summary,
+       href, document_date, keywords, body, normalized_title, normalized_summary,
+       normalized_keywords, normalized_body
+FROM ONLY public.search_documents
+LIMIT 1`;
 
 export interface DatabaseSearchDocument {
   id: string;
@@ -94,15 +102,10 @@ function requireString(value: unknown, field: string, allowEmpty = false): strin
 }
 
 export function prepareDatabaseSearchInput(query: string, type?: SearchType): DatabaseSearchInput {
-  if (typeof query !== 'string' || query.length > searchQueryMaximumLength) {
-    throw new Error(`Search query must contain at most ${searchQueryMaximumLength} characters`);
-  }
+  assertSearchQuery(query);
   const normalizedQuery = normalizeSearchText(query);
   const terms = tokenizeSearchQuery(query);
   if (terms.length === 0) throw new Error('Search query must not be empty');
-  if (terms.length > searchQueryMaximumTerms) {
-    throw new Error(`Search query must contain at most ${searchQueryMaximumTerms} terms`);
-  }
   if (type !== undefined && !isSearchType(type)) throw new Error('Search type is invalid');
   return { normalizedQuery, terms, type: type ?? null };
 }

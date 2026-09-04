@@ -94,6 +94,10 @@ fingerprint.
 
 ## Ranking compatibility
 
+All serving modes share a 120-character / 24 distinct normalized-term query limit. The page
+shows a validation message before selecting a provider; invalid input never enters shadow
+comparison or creates a database connection. Empty queries return no results without a query.
+
 `SEARCH_RANKING_CONTRACT.version` is `nfkc-whitespace-substring-v1`. Query terms are split only at
 Unicode whitespace; Chinese text is not segmented. All terms must occur as normalized literal
 substrings. Scores retain the original Web weighting. Results are ordered by score, date and

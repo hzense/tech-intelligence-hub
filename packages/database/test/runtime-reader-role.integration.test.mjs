@@ -14,6 +14,7 @@ import {
 import { inspectRuntimeReaderPreflight } from '../src/runtime-reader-preflight.mjs';
 import {
   databaseSearchQuery,
+  databaseSearchHealthQuery,
   databaseSearchValues,
   prepareDatabaseSearchInput,
 } from '../../search/src/database.js';
@@ -706,6 +707,7 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
         ),
       ).resolves.toMatchObject({ rowCount: 1 });
       const searchInput = prepareDatabaseSearchInput('AI Security', 'insight');
+      await expect(client.query(databaseSearchHealthQuery)).resolves.toMatchObject({ rowCount: 1 });
       await expect(
         client.query(databaseSearchQuery, [...databaseSearchValues(searchInput)]),
       ).resolves.toMatchObject({ rowCount: 1 });

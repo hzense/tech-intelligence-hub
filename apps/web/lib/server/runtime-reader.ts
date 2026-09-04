@@ -46,3 +46,7 @@ export function runtimeReaderPoolStats() {
 export function searchRuntimeDocuments(query: string, type?: SearchType) {
   return runtimeTopicReader.search(query, type);
 }
+
+export function probeRuntimeSearch() {
+  return runtimeTopicReader.probeSearch();
+}

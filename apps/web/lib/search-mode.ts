@@ -1,4 +1,4 @@
-import type { SearchResult } from '@hzense/search/ranking';
+import { assertSearchQuery, normalizeSearchText, type SearchResult } from '@hzense/search/ranking';
 
 export type SearchMode = 'in-process' | 'shadow' | 'database';
 
@@ -32,16 +32,21 @@ function resultContract(results: readonly SearchResult[]) {
 }
 
 export async function searchWithMode({
+  query,
   mode,
   inProcess,
   database,
   log = (record) => console.info(JSON.stringify(record)),
 }: {
+  query: string;
   mode: SearchMode;
   inProcess: () => Promise<SearchResult[]>;
   database: () => Promise<SearchResult[]>;
   log?: (record: SearchParityLog) => void;
 }): Promise<SearchResult[]> {
+  // Validate before choosing a provider so invalid input cannot become a shadow outage.
+  assertSearchQuery(query);
+  if (!normalizeSearchText(query)) return [];
   if (mode === 'in-process') return inProcess();
   if (mode === 'database') return database();
 
