@@ -7,6 +7,10 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { runMigrations } from '../src/migrate.mjs';
+import {
+  runRuntimeAclBaselineCapture,
+  runtimeAclBackupReference,
+} from '../src/runtime-acl-baseline.mjs';
 import { inspectRuntimeReaderPreflight } from '../src/runtime-reader-preflight.mjs';
 
 const { Client } = pg;
@@ -20,6 +24,7 @@ const runtimeRole = 'hzense_runtime';
 const ownerPassword = `owner-${suffix}`;
 const runtimePassword = `runtime-${suffix}`;
 const sentinelDatabaseName = `hzense_runtime_sentinel_${suffix}`;
+const runtimeAclBackupId = `runtime-acl-integration-backup-${suffix}`;
 const roleSqlPath = resolve(process.cwd(), '../../db/roles/configure_runtime_reader.sql');
 
 function quotedIdentifier(value) {
@@ -49,6 +54,21 @@ async function withClient(connectionString, callback) {
   } finally {
     await client.end();
   }
+}
+
+async function createTemporaryCatalogShadows(client) {
+  await client.query('CREATE TEMP TABLE pg_database (poison text)');
+  await client.query('CREATE TEMP TABLE pg_roles (poison text)');
+}
+
+async function resolveUnqualifiedCatalogs(client) {
+  const result = await client.query(
+    `SELECT 'pg_database'::regclass = 'pg_catalog.pg_database'::regclass
+              AS "databaseIsCatalog",
+            'pg_roles'::regclass = 'pg_catalog.pg_roles'::regclass
+              AS "rolesIsCatalog"`,
+  );
+  return result.rows[0];
 }
 
 async function readProvisioningState() {
@@ -110,6 +130,42 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
   let otherDatabasesIsolated = false;
   let originalPublicDatabasePrivileges = [];
   let roleSql;
+  let reviewedBaseline;
+
+  function baselineCaptureOptions() {
+    return {
+      connectionString: databaseUrl(ownerRole, ownerPassword),
+      profile: 'local-test',
+      expectedDatabase: databaseName,
+      expectedUser: ownerRole,
+      expectedPostgresMajor: 18,
+      backupId: runtimeAclBackupId,
+    };
+  }
+
+  async function setRuntimeAclGuards(
+    client,
+    {
+      backupReference = reviewedBaseline.backup.reference,
+      reviewedFingerprint = reviewedBaseline.fingerprint,
+    } = {},
+  ) {
+    await client.query(
+      `SELECT set_config('hzense.runtime_acl_backup_reference', $1, false),
+              set_config('hzense.runtime_acl_reviewed_fingerprint', $2, false)`,
+      [backupReference, reviewedFingerprint],
+    );
+  }
+
+  async function configureRuntimeReader(connectionString = databaseUrl(ownerRole, ownerPassword)) {
+    // The integration suite treats this fresh deterministic capture as the
+    // reviewed current-state input for each attempted normalization.
+    reviewedBaseline = await runRuntimeAclBaselineCapture(baselineCaptureOptions());
+    return withClient(connectionString, async (client) => {
+      await setRuntimeAclGuards(client);
+      return client.query(roleSql);
+    });
+  }
 
   async function isolateOtherDatabases() {
     if (process.env.RUNTIME_READER_TEST_ISOLATED_CLUSTER !== '1') {
@@ -255,6 +311,7 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
          )`,
       );
     });
+    reviewedBaseline = await runRuntimeAclBaselineCapture(baselineCaptureOptions());
   }, 30_000);
 
   afterAll(async () => {
@@ -278,12 +335,235 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
     await adminClient.end();
   }, 30_000);
 
+  it('captures a stable credential-free recovery baseline before ACL normalization', async () => {
+    const options = baselineCaptureOptions();
+    const first = await runRuntimeAclBaselineCapture(options);
+    const second = await runRuntimeAclBaselineCapture(options);
+
+    expect(first.fingerprint).toBe(reviewedBaseline.fingerprint);
+    expect(second.fingerprint).toBe(first.fingerprint);
+    expect(first).toMatchObject({
+      mode: 'catalog-only-read-only',
+      restoration: 'manual-review-required',
+      executableSqlIncluded: false,
+      identity: {
+        database: databaseName,
+        databaseOwner: ownerRole,
+        currentUser: ownerRole,
+        transactionReadOnly: true,
+        transactionIsolation: 'repeatable read',
+      },
+      transport: { profile: 'local-test', tlsEvidence: 'local-test' },
+      backup: {
+        reference: runtimeAclBackupReference(runtimeAclBackupId),
+        provenance: 'operator-declared-provider-backup',
+        providerApiVerified: false,
+      },
+    });
+    expect(first.categories.databases.rowCount).toBeGreaterThan(0);
+    expect(first.categories.relations.rowCount).toBeGreaterThan(0);
+    expect(first.categories.columns.rowCount).toBeGreaterThan(0);
+    expect(
+      first.categories.columns.records.find(
+        (record) => record.relation === 'topics' && record.column === 'id',
+      ),
+    ).toMatchObject({
+      aclState: 'default',
+      grantee: null,
+      grantor: null,
+      privilege: null,
+      grantable: null,
+    });
+    expect(
+      first.categories.columns.records.find(
+        (record) => record.relation === 'topics' && record.column === 'metadata',
+      ),
+    ).toMatchObject({
+      aclState: 'default',
+      grantee: null,
+      grantor: null,
+      privilege: null,
+      grantable: null,
+    });
+    expect(first.categories.runtimeRole.records).toHaveLength(1);
+    expect(JSON.stringify(first)).not.toContain(ownerPassword);
+    expect(JSON.stringify(first)).not.toContain(runtimeAclBackupId);
+  }, 30_000);
+
+  it('preserves NULL column ACLs and expands a real non-empty one-dimensional ACL', async () => {
+    const ownerUrl = databaseUrl(ownerRole, ownerPassword);
+    await withClient(ownerUrl, (client) =>
+      client.query('GRANT SELECT (metadata) ON public.topics TO hzense_runtime'),
+    );
+    try {
+      const captured = await runRuntimeAclBaselineCapture(baselineCaptureOptions());
+      expect(
+        captured.categories.columns.records.find(
+          (record) => record.relation === 'topics' && record.column === 'id',
+        ),
+      ).toMatchObject({
+        aclState: 'default',
+        grantee: null,
+        grantor: null,
+        privilege: null,
+        grantable: null,
+      });
+      expect(
+        captured.categories.columns.records.filter(
+          (record) => record.relation === 'topics' && record.column === 'metadata',
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          aclState: 'explicit',
+          grantee: runtimeRole,
+          grantor: ownerRole,
+          privilege: 'SELECT',
+          grantable: false,
+        }),
+      ]);
+
+      const physicalAcl = await withClient(ownerUrl, async (client) => {
+        const result = await client.query(
+          `SELECT array_ndims(column_info.attacl) AS dimensions,
+                  cardinality(column_info.attacl) AS count
+           FROM pg_attribute AS column_info
+           WHERE column_info.attrelid = 'public.topics'::regclass
+             AND column_info.attname = 'metadata'`,
+        );
+        return result.rows[0];
+      });
+      expect(physicalAcl).toEqual({ dimensions: 1, count: 1 });
+    } finally {
+      await withClient(ownerUrl, (client) =>
+        client.query('REVOKE SELECT (metadata) ON public.topics FROM hzense_runtime'),
+      );
+    }
+
+    const cleaned = await runRuntimeAclBaselineCapture(baselineCaptureOptions());
+    expect(
+      cleaned.categories.columns.records.find(
+        (record) => record.relation === 'topics' && record.column === 'metadata',
+      ),
+    ).toMatchObject({ aclState: 'default', grantee: null, privilege: null });
+    expect(cleaned.fingerprint).toBe(reviewedBaseline.fingerprint);
+  }, 30_000);
+
+  it('pins pg_catalog before catalog inspection despite a malicious owner search_path', async () => {
+    const ownerUrl = databaseUrl(ownerRole, ownerPassword);
+    await withClient(ownerUrl, async (client) => {
+      await client.query('CREATE SCHEMA runtime_shadow');
+      await client.query('CREATE TABLE runtime_shadow.pg_database (datname name, datdba oid)');
+    });
+    const expected = await runRuntimeAclBaselineCapture(baselineCaptureOptions());
+    await adminClient.query(
+      `ALTER ROLE ${quotedIdentifier(ownerRole)} IN DATABASE ${quotedIdentifier(databaseName)}
+       SET search_path = runtime_shadow, public, pg_catalog`,
+    );
+    try {
+      await withClient(ownerUrl, async (client) => {
+        const resolution = await client.query(
+          `SELECT 'pg_database'::regclass = 'runtime_shadow.pg_database'::regclass
+                    AS "databaseIsShadow",
+                  'pg_database'::regclass = 'pg_catalog.pg_database'::regclass
+                    AS "databaseIsCatalog"`,
+        );
+        expect(resolution.rows[0]).toEqual({
+          databaseIsShadow: true,
+          databaseIsCatalog: false,
+        });
+      });
+      const captured = await runRuntimeAclBaselineCapture(baselineCaptureOptions());
+      expect(captured.fingerprint).toBe(expected.fingerprint);
+      expect(captured.categories.databases.rowCount).toBeGreaterThan(0);
+    } finally {
+      await adminClient.query(
+        `ALTER ROLE ${quotedIdentifier(ownerRole)} IN DATABASE ${quotedIdentifier(databaseName)}
+         RESET search_path`,
+      );
+      await withClient(ownerUrl, (client) => client.query('DROP SCHEMA runtime_shadow CASCADE'));
+    }
+  }, 30_000);
+
+  it('keeps pg_catalog ahead of same-session temporary catalog shadows during capture', async () => {
+    let beforePinnedPath;
+    let afterPinnedPath;
+    const createClient = (options) => {
+      const client = new Client(options);
+      return {
+        connect: async () => {
+          await client.connect();
+          await createTemporaryCatalogShadows(client);
+          beforePinnedPath = await resolveUnqualifiedCatalogs(client);
+        },
+        query: async (sql, parameters) => {
+          const result = await client.query(sql, parameters);
+          if (sql === 'SET LOCAL search_path = pg_catalog, pg_temp') {
+            afterPinnedPath = await resolveUnqualifiedCatalogs(client);
+          }
+          return result;
+        },
+        end: () => client.end(),
+      };
+    };
+
+    const captured = await runRuntimeAclBaselineCapture({
+      ...baselineCaptureOptions(),
+      createClient,
+    });
+
+    expect(beforePinnedPath).toEqual({ databaseIsCatalog: false, rolesIsCatalog: false });
+    expect(afterPinnedPath).toEqual({ databaseIsCatalog: true, rolesIsCatalog: true });
+    expect(captured.fingerprint).toBe(reviewedBaseline.fingerprint);
+  }, 30_000);
+
+  it('fails before every ACL mutation when protected session guards are missing', async () => {
+    const before = await readProvisioningState();
+    await expect(
+      withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql)),
+    ).rejects.toThrow(/hzense\.runtime_acl_backup_reference/);
+    await expect(readProvisioningState()).resolves.toEqual(before);
+
+    await expect(
+      withClient(databaseUrl(ownerRole, ownerPassword), async (client) => {
+        await client.query(`SELECT set_config('hzense.runtime_acl_backup_reference', $1, false)`, [
+          reviewedBaseline.backup.reference,
+        ]);
+        return client.query(roleSql);
+      }),
+    ).rejects.toThrow(/hzense\.runtime_acl_reviewed_fingerprint/);
+    await expect(readProvisioningState()).resolves.toEqual(before);
+
+    await expect(
+      withClient(databaseUrl(ownerRole, ownerPassword), async (client) => {
+        await setRuntimeAclGuards(client, { backupReference: '0'.repeat(64) });
+        return client.query(roleSql);
+      }),
+    ).rejects.toThrow(/non-placeholder lowercase SHA-256 reference/);
+    await expect(readProvisioningState()).resolves.toEqual(before);
+
+    await expect(
+      withClient(databaseUrl(ownerRole, ownerPassword), async (client) => {
+        await setRuntimeAclGuards(client, { reviewedFingerprint: 'f'.repeat(64) });
+        return client.query(roleSql);
+      }),
+    ).rejects.toThrow(/non-placeholder lowercase SHA-256 fingerprint/);
+    await expect(readProvisioningState()).resolves.toEqual(before);
+
+    await expect(
+      withClient(databaseUrl(ownerRole, ownerPassword), async (client) => {
+        await setRuntimeAclGuards(client, {
+          reviewedFingerprint: reviewedBaseline.fingerprint.toUpperCase(),
+        });
+        return client.query(roleSql);
+      }),
+    ).rejects.toThrow(/lowercase SHA-256 fingerprint/);
+    await expect(readProvisioningState()).resolves.toEqual(before);
+  }, 30_000);
+
   it('fails closed until a cluster administrator isolates every other database', async () => {
     const before = await readProvisioningState();
     try {
-      await expect(
-        withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql)),
-      ).rejects.toThrow(
+      await expect(configureRuntimeReader()).rejects.toThrow(
         /remove unsafe hzense_runtime privileges from every other connectable database/,
       );
       await expect(readProvisioningState()).resolves.toEqual(before);
@@ -294,7 +574,7 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
 
   it('fails closed for a non-owner and a missing provider read-only setting', async () => {
     const beforeNonOwner = await readProvisioningState();
-    await expect(withClient(adminDatabaseUrl(), (client) => client.query(roleSql))).rejects.toThrow(
+    await expect(configureRuntimeReader(adminDatabaseUrl())).rejects.toThrow(
       /Run as owner of current_database/,
     );
     await expect(readProvisioningState()).resolves.toEqual(beforeNonOwner);
@@ -304,9 +584,9 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
     );
     const beforeMissingSetting = await readProvisioningState();
     try {
-      await expect(
-        withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql)),
-      ).rejects.toThrow(/must set default_transaction_read_only=on/);
+      await expect(configureRuntimeReader()).rejects.toThrow(
+        /must set default_transaction_read_only=on/,
+      );
       await expect(readProvisioningState()).resolves.toEqual(beforeMissingSetting);
     } finally {
       await adminClient.query(
@@ -319,9 +599,9 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
        SET default_transaction_read_only = off`,
     );
     try {
-      await expect(
-        withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql)),
-      ).rejects.toThrow(/must set default_transaction_read_only=on/);
+      await expect(configureRuntimeReader()).rejects.toThrow(
+        /must set default_transaction_read_only=on/,
+      );
     } finally {
       await adminClient.query(
         `ALTER ROLE ${quotedIdentifier(runtimeRole)} IN DATABASE ${quotedIdentifier(databaseName)}
@@ -336,9 +616,9 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
       );
     });
     try {
-      await expect(
-        withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql)),
-      ).rejects.toThrow(/forbids PostgreSQL table inheritance/);
+      await expect(configureRuntimeReader()).rejects.toThrow(
+        /forbids PostgreSQL table inheritance/,
+      );
     } finally {
       await withClient(databaseUrl(ownerRole, ownerPassword), (client) =>
         client.query('DROP SCHEMA runtime_guard_inheritance CASCADE'),
@@ -352,9 +632,9 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
       `GRANT ${quotedIdentifier(runtimeRole)} TO ${quotedIdentifier(adminRole)} WITH ADMIN OPTION`,
     );
     try {
-      await expect(
-        withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql)),
-      ).rejects.toThrow(/unsafe incoming or outgoing role membership/);
+      await expect(configureRuntimeReader()).rejects.toThrow(
+        /unsafe incoming or outgoing role membership/,
+      );
       await expect(readProvisioningState()).resolves.toEqual(before);
     } finally {
       await adminClient.query(
@@ -363,8 +643,26 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
     }
   }, 30_000);
 
-  it('provisions the exact five-column projection and allows safe extension invokers', async () => {
-    await withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql));
+  it('provisions through temporary catalog shadows and allows safe extension invokers', async () => {
+    reviewedBaseline = await runRuntimeAclBaselineCapture(baselineCaptureOptions());
+    await withClient(databaseUrl(ownerRole, ownerPassword), async (client) => {
+      await setRuntimeAclGuards(client);
+      await createTemporaryCatalogShadows(client);
+      await expect(resolveUnqualifiedCatalogs(client)).resolves.toEqual({
+        databaseIsCatalog: false,
+        rolesIsCatalog: false,
+      });
+
+      await client.query('BEGIN');
+      await client.query('SET LOCAL search_path = pg_catalog, pg_temp');
+      await expect(resolveUnqualifiedCatalogs(client)).resolves.toEqual({
+        databaseIsCatalog: true,
+        rolesIsCatalog: true,
+      });
+      await client.query('ROLLBACK');
+
+      await client.query(roleSql);
+    });
 
     await expect(
       withClient(databaseUrl(runtimeRole, runtimePassword), strictRuntimePreflight),
@@ -452,9 +750,7 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
     );
     const before = await readProvisioningState();
     try {
-      await expect(
-        withClient(databaseUrl(ownerRole, ownerPassword), (client) => client.query(roleSql)),
-      ).rejects.toThrow(
+      await expect(configureRuntimeReader()).rejects.toThrow(
         /remove unsafe hzense_runtime privileges from every other connectable database/,
       );
       await expect(readProvisioningState()).resolves.toEqual(before);
@@ -518,7 +814,7 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
       );
     }
 
-    await withClient(ownerUrl, (client) => client.query(roleSql));
+    await configureRuntimeReader(ownerUrl);
     await expect(
       withClient(databaseUrl(runtimeRole, runtimePassword), strictRuntimePreflight),
     ).resolves.toMatchObject({ user: runtimeRole });
