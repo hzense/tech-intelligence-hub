@@ -1,0 +1,30 @@
+{
+  "name": "@hzense/search",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./projection": {
+      "types": "./src/projection.ts",
+      "default": "./dist/src/projection.js"
+    },
+    "./ranking": {
+      "types": "./src/ranking.ts",
+      "default": "./dist/src/ranking.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.10"
+  }
+}

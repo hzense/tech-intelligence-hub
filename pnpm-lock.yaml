@@ -44,6 +44,9 @@ importers:
       '@hzense/content':
         specifier: workspace:*
         version: link:../../packages/content
+      '@hzense/search':
+        specifier: workspace:*
+        version: link:../../packages/search
       next:
         specifier: 16.3.3
         version: 16.3.3(@babel/core@7.29.7(supports-color@7.2.0))(@playwright/test@1.62.1)(@types/node@24.13.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -110,6 +113,18 @@ importers:
         specifier: ^8.23.0
         version: 8.23.0
     devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)(yaml@2.9.0))
+
+  packages/search:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
       typescript:
         specifier: ^5.9.2
         version: 5.9.3

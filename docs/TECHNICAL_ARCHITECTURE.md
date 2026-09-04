@@ -168,7 +168,17 @@ Web 只在 `VERCEL_ENV=production` 的请求时读取 `HZENSE_RUNTIME_DATABASE_U
 
 ## 8. Search 与 Vector
 
-当前 V1 使用基于已验证 Markdown/Seed 数据的确定性进程内关键词匹配与加权排序。PostgreSQL Full Text Search 尚未实现，是下一步；其后再升级 Hybrid Search：Keyword + Vector + Entity + Recency + Importance。
+当前 V1 仍使用基于已验证 Markdown/Seed 数据的确定性进程内关键词匹配与加权排序。FTS-0
+已把六类公开来源的 Search 类型、现有排序和 canonical database projection 抽到可构建的
+[`@hzense/search`](../packages/search/) 边界，并用中英文 golden corpus 固定 NFKC、空白分词、
+substring AND 匹配、权重与排序语义。投影输入显式绑定发布状态，`documentDate` 可空，并包含
+UI 重建所需的 `summary`、`href` 与 `keywords`；稳定 serialization / fingerprint 可用于后续
+重建与 parity 门禁。
+
+FTS-0 没有增加 Migration、写入 Neon、配置 PostgreSQL tokenizer，也没有把生产查询切到
+PostgreSQL。当前物理 `search_documents` 仍是既有结构；下一阶段必须先经独立 Migration
+补齐 projection 字段并建立 FTS 索引、回填与查询 parity，验收后才能切换。其后再升级
+Hybrid Search：Keyword + Vector + Entity + Recency + Importance。
 
 向量首版直接使用 pgvector，不引入独立 Vector DB，除非规模与性能证明有必要。
 

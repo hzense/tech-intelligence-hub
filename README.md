@@ -37,7 +37,7 @@ Daily candidates are generated deterministically from reviewed Signals, validate
 - Markdown / MDX as formal content source of truth
 - PostgreSQL + Drizzle ORM for structured intelligence
 - pgvector for semantic retrieval
-- Current in-process keyword ranking → PostgreSQL FTS → Hybrid Search
+- Current in-process keyword ranking + FTS-0 canonical projection → PostgreSQL FTS → Hybrid Search
 - Vercel for the web application
 - Cloudflare R2 / S3-compatible storage for large media
 
