@@ -79,11 +79,15 @@ Completed:
 - Initial technology taxonomy
 - Public MVP and `hzense.com` production deployment
 - PostgreSQL 18 / pgvector physical Schema and independently verified Topic projection
-- Runtime Reader least-privilege Neon/Vercel production rollout, bounded read acceptance and hourly health gate
+- Runtime Reader least-privilege Neon/Vercel production rollout, bounded read acceptance, hourly health gate and production-verified singleton incident/recovery alerting
+- Forward-only Runtime ACL baseline/session guard merged and deployment-verified without production capture, provider-backup verification or database mutation
+- FTS-0 canonical Search Document projection, deterministic in-process ranking contract and exact-commit production compatibility acceptance
 
 Next milestone:
 
-> **Rotate the Runtime credential → add detailed database alerting → activate Continuous Daily publication**
+> **Use the merged PR #42 tooling to close the still-unresolved Runtime ACL recovery-evidence gap in a future protected window → add provider-side database-capacity telemetry beyond the accepted PR #40 application alert → deliver FTS-1 database persistence, indexing, parity and production cutover after the accepted PR #41 FTS-0 contract → unblock Continuous Daily at organization level → retire the public Hosted Alpha after explicit authorization**
+
+An existing credential-handling exposure risk had already created the normal rotation trigger. On 2026-09-04, the operator knowingly chose to defer that rotation for this work cycle without reading or changing the credential/configuration. This is a recorded acceptance of the residual, not a completed rotation or a lower classification: the credential remains highly sensitive and the protected rotation obligation remains open. The sanitized state is recorded in the [operations checkpoint](./production-evidence/2026-09-04-operations-checkpoint.md).
 
 ---
 

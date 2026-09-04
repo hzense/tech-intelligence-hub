@@ -1,7 +1,7 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-09-03
-**当前阶段：** Runtime Reader 最小权限生产接入与功能验收已完成（生产凭据轮换和细粒度数据库告警仍待建设）
+**最后更新：** 2026-09-04
+**当前阶段：** Runtime Reader 最小权限生产接入与功能验收已完成；当前进入证据缺口、外部策略阻塞与上线后监控收尾
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
 > 本看板区分“工程基础完成度”和“用户可用网站完成度”。百分比是基于下方验收清单的人工估算，不以文档数量或提交数量代替产品进展。
@@ -12,7 +12,7 @@
 | ------------ | -------: | ------------- | ------------------------------------------------------------------------------------ |
 | 开发基础建设 |     100% | ✅ 完成       | 架构、Monorepo、数据模型、冻结依赖安装和内容交叉引用校验均已通过 CI                  |
 | 网站 MVP     |     100% | ✅ 验收完成   | Home、Daily、Weekly、Insights、Topics、Signals、Resources 与基础搜索均由验证内容驱动 |
-| 生产就绪度   |      98% | 🟡 运维收尾中 | Topic 投影与 Runtime 线上路径已验收；凭据轮换、细粒度告警与旧 Alpha 收尾仍待完成     |
+| 生产就绪度   |      98% | 🟡 运维收尾中 | 线上路径及有界告警已验收；Runtime ACL 恢复证据、provider 指标和旧 Alpha 仍未关闭     |
 
 ## 阶段看板
 
@@ -23,7 +23,7 @@
 | 2. Development Foundation | ✅ 完成   |   100% | Monorepo、Schema、Migration、Validation、Seed、锁文件与冻结安装均已验证              |
 | 3. Web Application Shell  | ✅ 完成   |   100% | Next.js、Tailwind、App Router、主题、全局布局和导航可运行                            |
 | 4. MVP 内容与功能         | ✅ 完成   |   100% | Home、Daily、Weekly、Insights、Topics、Signals、Resources、基础搜索和独立 Radar 可用 |
-| 5. Production Release     | 🟡 进行中 |    98% | 域名、Schema、Topic 投影及 Runtime 上线已验收；凭据轮换与细粒度告警仍待完成          |
+| 5. Production Release     | 🟡 进行中 |    98% | 域名、Schema、Topic 投影、Runtime 及有界告警已验收；证据、provider 指标与访问待收尾  |
 
 ## 已完成
 
@@ -54,9 +54,10 @@
 - [x] 独立 Radar 页面、类型化快照、可分享筛选、评分级 Signal 证据与原始来源链接
 - [x] 经过 Schema 与交叉引用校验的 Markdown/MDX Web runtime
 - [x] Continuous Daily 确定性候选生成、完整 dry-run、人工发布门禁与回滚手册
-- [ ] Continuous Daily 自动 Draft PR（仓库当前不允许 Actions 创建/批准 PR，且发布变量未设置；组织级策略仍待有权限的管理员复核）
+- [ ] Continuous Daily 自动 Draft PR（2026-09-04 保持默认 token `read` 的 repository enable 请求被组织策略以 HTTP 409 拒绝；`can_approve_pull_request_reviews=false`、发布变量缺失，未 dispatch/建分支/PR）
 - [x] HZense 品牌 Logo、Open Graph 分享图和基础 metadata
-- [x] [Hosted Alpha 检查点](https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site)
+- [x] [Hosted Alpha 历史检查点](https://hzense-technology-intelligence.zhenghu-tte.chatgpt.site)（2026-09-04 只读审计为 active v6 / public、匿名 HTTP 200）
+- [ ] 经显式授权后将 Hosted Alpha 收紧为 owner-only，并验证匿名访问拒绝及正式站不受影响
 - [x] [Vercel Production Deployment](https://tech-intelligence-hub-web.vercel.app/)
 - [x] GitHub PR Preview 与 `main` Production 自动部署
 - [x] [正式生产域名](https://hzense.com/)与 HTTPS
@@ -111,7 +112,8 @@
 - [x] 配置 `www.hzense.com` → `hzense.com` 重定向
 - [x] 验证 HTTPS 与 HTTP → HTTPS 跳转
 - [x] 验证错误页与基本安全响应头
-- [x] 验证生产安全日志并启用小时级基础健康监控
+- [x] 验证生产安全日志并启用小时级基础健康监控；2026-09-04 受控手工 run 33854492063 再次通过有界合约，此前的 scheduled-record 间隙仅记作调度延迟观察而非故障
+- [x] PR #40 于 2026-09-04 合并为 `main@0012871`；精确 commit 的 Production 部署与直接健康检查通过，受控 run 33855492933 按预期在真实探针成功后触发单例 Issue #43，恢复 run 33855536113 仅追加一条恢复评论并关闭同一 Issue
 
 ### P1 — Git / YAML → PostgreSQL Topic 投影
 
@@ -127,10 +129,15 @@
 - [x] PR #36 合并小时级生产健康检查的 fail-closed 变量门禁，并固定允许的触发器与 cron
 - [x] 在受保护流程中生成并保存独立 Runtime 凭据；候选 provider-object 合约连续两次通过目标库及精确允许的 Neon `postgres` / `template1` 完整生产 preflight
 - [x] 仅向 Vercel Production 注入 pooled 连接与 expected identity，触发 Runtime-configured 重部署并独立验证健康检查、真实五列读取与安全日志
-- [ ] 轮换 Production Runtime 凭据，并重复完整 preflight 与有界线上验收
-- [ ] 建立数据库连接数、池等待、查询延迟、超时和错误告警
+- [x] 记录 2026-09-04 操作者决定：知情接受既有 handling-exposure risk 并将 Production Runtime 轮换延期到本轮之外；本轮未读取或修改凭据/配置，轮换义务仍开放
+- [x] PR #42 修复早期 CI 暴露的空 ACL 数组 SQLSTATE `22023`，完整 CI 通过并 squash 合并为 `main@0806e349`；精确 Production 部署和线上健康合约通过，且未执行生产 ACL 捕获或数据库 mutation
+- [ ] 核验 mutation 前 provider backup/PITR；若无法找回，则正式接受历史缺口。PR #42 已交付 forward-only hashed backup reference / baseline fingerprint / session guard，但没有核验生产备份、采集生产 baseline 或重建历史 ACL，禁止据此再次 normalization
+- [x] 建立应用层有界数据库健康告警：安全分类 `53300` / `57014` / 通用查询错误 / 五秒总耗时，记录脱敏池计数，并经单例 Issue 创建与恢复关闭演练验收
+- [ ] 补充 Neon PgBouncer client-capacity 与独立 provider 侧连接、池和数据库阈值监控；PR #40 不声称覆盖该边界
+- [x] PR #41 的 FTS-0 canonical projection、排序器抽取、稳定 fingerprint 与完全平局 total-order 已通过最终评审、完整 CI、合并及 Production 兼容性验收
+- [ ] FTS-1 数据库落地：独立 Migration、Search Document 持久化、PostgreSQL tokenizer/index、回填、查询 parity 与生产 cutover 均未执行
 
-2026-08-31 的生产维护窗口已有现场证据：新分支备份确认可恢复，`0002` 已执行，3 个 Migration / 0 pending，`hzense_topic_sync` 与最小 ACL 已复核，dry run → Apply → 独立 verifier → no-op 全部完成，最终 62 个 Topics、0 个未知行且 reviewed fingerprint 匹配。随后完成了 Runtime Reader 的新七天回滚分支、角色/ACL 盘点、`hzense_runtime` read-only 默认值、`neondb` ambient ACL 隔离与 Migrator 连接容量治理；PR #32–#35 已把仓库实现与 Neon provider 合约合并到 `main`。2026-09-01 又以两组 catalog-only `SELECT` 独立确认目标 `hzense` ACL 的有效权限和直接授权来源，[脱敏结果](./production-evidence/2026-09-01-runtime-reader-acl.md)仅保留布尔值、计数与指纹。PR #36 于 2026-09-02 合并健康监控门禁，PR #38 于 2026-09-03 固定现场验收的 provider catalog 合约。同日，独立 Runtime 凭据与目标/保留库完整 preflight 通过；五个 server-only 值仅配置到 Vercel Production，Runtime-configured 部署、线上 health、真实五列读取、安全日志与小时级工作流首次手工运行均通过[功能/配置生产验收](./production-evidence/2026-09-03-runtime-reader-production-acceptance.md)。生产就绪度据此提高至 98%；凭据轮换与完整指标告警体系仍待建设。
+2026-08-31 的生产维护窗口已有现场证据：新分支备份确认可恢复，`0002` 已执行，3 个 Migration / 0 pending，`hzense_topic_sync` 与最小 ACL 已复核，dry run → Apply → 独立 verifier → no-op 全部完成，最终 62 个 Topics、0 个未知行且 reviewed fingerprint 匹配。随后完成了 Runtime Reader 的新七天回滚分支、角色/ACL 盘点、`hzense_runtime` read-only 默认值、`neondb` ambient ACL 隔离与 Migrator 连接容量治理；PR #32–#35 已把仓库实现与 Neon provider 合约合并到 `main`。2026-09-01 又以两组 catalog-only `SELECT` 独立确认目标 `hzense` ACL 的有效权限和直接授权来源，[脱敏结果](./production-evidence/2026-09-01-runtime-reader-acl.md)仅保留布尔值、计数与指纹。PR #36 于 2026-09-02 合并健康监控门禁，PR #38 于 2026-09-03 固定现场验收的 provider catalog 合约。同日，独立 Runtime 凭据与目标/保留库完整 preflight 通过；五个 server-only 值仅配置到 Vercel Production，Runtime-configured 部署、线上 health、真实五列读取、安全日志与小时级工作流首次手工运行均通过[功能/配置生产验收](./production-evidence/2026-09-03-runtime-reader-production-acceptance.md)。生产就绪度据此提高至 98%。2026-09-04，PR #40 的精确 Production 部署、健康合约、受控 incident 创建与无重复 recovery 关闭均通过；PR #42 随后修复 `22023`、通过完整 CI、合并并完成精确 Production 部署兼容性验收，但没有执行生产 ACL 捕获、provider backup/PITR 核验或数据库 mutation。PR #41 随后完成 FTS-0：完全平局以 ordinal type/ID 建立 total-order，最终评审无 Blocker/High/Medium，CI、Search `23/23`、Web 定向 `3/3`、精确 Production 部署、线上五结果搜索、数据库 health 和所选路由错误窗口均通过；FTS-1 数据库 Migration/持久化/index/回填/cutover 仍未执行。[脱敏运维检查点](./production-evidence/2026-09-04-operations-checkpoint.md)同时保留四项未闭环状态：操作者知情接受既有凭据处理暴露风险并将轮换延期到本轮之外，轮换义务仍开放；历史 ACL 恢复材料不足且 provider backup/PITR 未核验；Continuous Daily 被确认的组织策略阻断；Hosted Alpha 仍公开且 owner-only 尚待显式授权。
 
 ## MVP 验收状态
 
@@ -151,12 +158,14 @@
 
 ## 当前风险与阻塞
 
-| 优先级 | 风险                                           | 处理方式                                                                                                       |
-| ------ | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| P1     | 样例内容主要来自 2024 年，无法代表日常更新能力 | 启用 Continuous Daily 自动 Draft PR，并接入当前内容源                                                          |
-| P1     | Production Runtime 凭据尚待轮换                | 在受保护流程中轮换，仅更新 Vercel Production，并重复 preflight、重部署、健康、日志与工作流验收                 |
-| P1     | Neon 保留数据库依赖 provider-owned 默认 ACL    | 当前精确 provider-object 指纹已通过；持续逐库复核，任何 owner、模板标志、ACL、对象定义或间接路径漂移都阻断上线 |
-| P1     | 细粒度数据库指标告警尚未落地                   | 建立连接容量、池等待、查询延迟、超时和错误阈值告警，并验证通知链路                                             |
+| 优先级             | 风险                                               | 处理方式                                                                                                                                     |
+| ------------------ | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0（ACL 变更门禁） | Runtime ACL 历史恢复证据不足                       | PR #42 工具与 CI 已验收，但禁止再次 normalization；forward-only guard 不替代 provider 备份/恢复核验、生产双 baseline、人工恢复计划或隔离演练 |
+| P1                 | 样例内容主要来自 2024 年，无法代表日常更新能力     | 由 organization owner 解除 Actions PR 策略阻塞，再启用变量并验证自动 Draft PR；机器人仍不得 ready/approve/merge                              |
+| P1                 | 本轮延期轮换的 Production Runtime 凭据仍属高敏感值 | 既有 handling-exposure risk 已触发但被知情延期，义务仍开放；任何新增暴露/疑似滥用、异常认证或权限主体变化必须升级处理                        |
+| P1                 | Neon 保留数据库依赖 provider-owned 默认 ACL        | 当前精确 provider-object 指纹已通过；持续逐库复核，任何 owner、模板标志、ACL、对象定义或间接路径漂移都阻断上线                               |
+| P1                 | Provider 侧数据库容量与阈值可观测性仍有限          | PR #40 的有界应用告警已验收；另行建立 Neon PgBouncer client-capacity 及 provider 侧连接、池与数据库阈值监控                                  |
+| P2                 | 历史 Hosted Alpha 仍公开                           | 保持 `hzense.com` 为唯一正式站；得到显式授权后改为 owner-only，并验证匿名拒绝。永久删除需另行 destructive 授权                               |
 
 ## 进度更新规则
 
@@ -171,6 +180,10 @@
 
 | 日期       | 更新                                                                                                                                                                                                     |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-04 | PR #41 FTS-0 通过最终评审、CI、Search `23/23`、Web `3/3` 并合并为 `main@83654c48`；精确 Production 部署、五结果搜索、DB health 与路由日志通过；FTS-1 数据库落地仍待执行                                  |
+| 2026-09-04 | PR #42 修复空 ACL 数组 `22023` 后完整 CI 全绿并合并为 `main@0806e349`；精确 Production 部署/health 通过，未执行生产 ACL 捕获、provider backup 核验或数据库 mutation                                      |
+| 2026-09-04 | PR #40 合并为 `main@0012871`，精确 Production 部署、直接 health、受控单例 incident 与恢复关闭通过；其他检查点风险不变                                                                                    |
+| 2026-09-04 | [运维检查点](./production-evidence/2026-09-04-operations-checkpoint.md)：Continuous Daily 受组织策略 409 阻断；Alpha 仍 public；ACL 恢复证据不足；本轮保留高敏感 Runtime 凭据                            |
 | 2026-09-03 | Runtime Reader 完成 Production-only 配置与 `READY` 重部署；health、真实五列读取、安全日志和小时级工作流首次手工运行均通过；凭据轮换仍待完成，生产就绪度更新为 98%                                        |
 | 2026-09-03 | 验收前检查点：PR #36 已合并并通过 main CI；当时健康任务因仓库变量未设置而按设计跳过，公开探针仍为 HTTP 503，不能视作数据库健康证据                                                                       |
 | 2026-09-02 | PR #36 合并显式 schedule/变量门禁、触发器与 cron 防漂移校验，并保留受控手工验证入口                                                                                                                      |
