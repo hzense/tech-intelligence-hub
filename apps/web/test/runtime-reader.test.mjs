@@ -7,6 +7,7 @@ import {
   createLazyRuntimeTopicReader,
   createRuntimeReaderHealthHandler,
   readRuntimeReaderConfig,
+  runtimeHealthDurationLimitMs,
   runtimeTopicLimit,
   runtimeTopicQuery,
 } from '../lib/runtime-reader-core.ts';
@@ -322,6 +323,106 @@ test('health treats an empty runtime projection as unavailable', async () => {
   assert.equal(logs[0].error_code, 'empty_projection');
 });
 
+test('health logs local pool pressure without using it as the public availability signal', async () => {
+  const logs = [];
+  const handler = createRuntimeReaderHealthHandler({
+    clock: () => 0,
+    log: (record) => logs.push(record),
+    poolStats: () => ({ idle: 0, total: 2, waiting: 3 }),
+    readTopics: async () => [topic()],
+  });
+
+  const response = await handler();
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), '{"status":"ok"}');
+  assert.deepEqual(logs, [
+    {
+      duration_ms: 0,
+      event: 'runtime_reader_health',
+      outcome: 'ok',
+      pool_idle: 0,
+      pool_total: 2,
+      pool_waiting: 3,
+    },
+  ]);
+});
+
+test('health fails closed when total duration reaches five seconds', async () => {
+  const logs = [];
+  const clockValues = [0, runtimeHealthDurationLimitMs];
+  const handler = createRuntimeReaderHealthHandler({
+    clock: () => clockValues.shift(),
+    log: (record) => logs.push(record),
+    poolStats: () => ({ idle: 1, total: 1, waiting: 0 }),
+    readTopics: async () => [topic()],
+  });
+
+  const response = await handler();
+  assert.equal(response.status, 503);
+  assert.equal(await response.text(), '{"status":"unavailable"}');
+  assert.equal(logs[0].duration_ms, runtimeHealthDurationLimitMs);
+  assert.equal(logs[0].error_code, 'health_duration_exceeded');
+});
+
+test('health safely classifies PostgreSQL capacity and query cancellation SQLSTATEs', async (t) => {
+  for (const { sqlstate, expectedCode } of [
+    { sqlstate: '53300', expectedCode: 'connection_capacity' },
+    { sqlstate: '57014', expectedCode: 'query_cancelled' },
+  ]) {
+    await t.test(sqlstate, async () => {
+      const logs = [];
+      const databaseError = Object.assign(new Error('sensitive database detail'), {
+        code: sqlstate,
+      });
+      const handler = createRuntimeReaderHealthHandler({
+        clock: () => 0,
+        log: (record) => logs.push(record),
+        poolStats: () => ({ idle: 0, total: 0, waiting: 0 }),
+        readTopics: async () => {
+          throw databaseError;
+        },
+      });
+
+      const response = await handler();
+      assert.equal(response.status, 503);
+      assert.equal(await response.text(), '{"status":"unavailable"}');
+      assert.deepEqual(logs, [
+        {
+          duration_ms: 0,
+          error_code: expectedCode,
+          event: 'runtime_reader_health',
+          outcome: 'unavailable',
+          pool_idle: 0,
+          pool_total: 0,
+          pool_waiting: 0,
+          sqlstate,
+        },
+      ]);
+      assert.doesNotMatch(JSON.stringify(logs), /sensitive database detail/);
+    });
+  }
+});
+
+test('pg client query_timeout ordinary Error remains query_failed and returns generic 503', async () => {
+  const logs = [];
+  const handler = createRuntimeReaderHealthHandler({
+    clock: () => 0,
+    log: (record) => logs.push(record),
+    poolStats: () => ({ idle: 0, total: 1, waiting: 0 }),
+    readTopics: async () => {
+      throw new Error('Query read timeout');
+    },
+  });
+
+  const response = await handler();
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('retry-after'), '5');
+  assert.equal(await response.text(), '{"status":"unavailable"}');
+  assert.equal(logs[0].error_code, 'query_failed');
+  assert.equal(logs[0].sqlstate, undefined);
+  assert.doesNotMatch(JSON.stringify(logs), /Query read timeout/);
+});
+
 test('route and server module preserve the Node-only, request-time deployment boundary', async () => {
   const routeSource = await readFile(
     new URL('../app/api/health/database/route.ts', import.meta.url),
@@ -347,6 +448,7 @@ test('route and server module preserve the Node-only, request-time deployment bo
   });
   assert.match(serverSource, /import 'server-only'/);
   assert.match(serverSource, /new Pool\(options\)/);
+  assert.match(serverSource, /classifyRuntimeReaderError/);
   assert.match(serverSource, /console\.error\(JSON\.stringify\(record\)\)/);
   assert.doesNotMatch(serverSource, /console\.warn/);
   assert.doesNotMatch(serverSource, /DATABASE_DIRECT_URL|DATABASE_URL|NEXT_PUBLIC_/);

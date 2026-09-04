@@ -5,6 +5,7 @@ const allowedConnectionParameters = new Set(['channel_binding', 'sslmode']);
 
 export const runtimeTopicLimitMinimum = 1;
 export const runtimeTopicLimitMaximum = 50;
+export const runtimeHealthDurationLimitMs = 5_000;
 
 export const runtimeTopicQuery = `SELECT id,
        title,
@@ -17,13 +18,16 @@ ORDER BY id
 LIMIT $1::integer`;
 
 export type RuntimeReaderErrorCode =
+  | 'connection_capacity'
   | 'empty_projection'
+  | 'health_duration_exceeded'
   | 'invalid_configuration'
   | 'invalid_limit'
   | 'invalid_result'
   | 'missing_configuration'
   | 'not_production'
   | 'pooled_endpoint_required'
+  | 'query_cancelled'
   | 'query_failed'
   | 'runtime_role_required'
   | 'target_mismatch'
@@ -332,6 +336,18 @@ export function extractPostgresSqlState(error: unknown): string | undefined {
   return typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code) ? code : undefined;
 }
 
+export function classifyRuntimeReaderError(error: unknown): RuntimeReaderErrorCode {
+  if (error instanceof RuntimeReaderError) return error.code;
+  switch (extractPostgresSqlState(error)) {
+    case '53300':
+      return 'connection_capacity';
+    case '57014':
+      return 'query_cancelled';
+    default:
+      return 'query_failed';
+  }
+}
+
 function safeRequestId(request: Pick<Request, 'headers'> | undefined): string | undefined {
   const value = request?.headers.get('x-vercel-id');
   return value && value.length <= 128 && /^[A-Za-z0-9:_.-]+$/.test(value) ? value : undefined;
@@ -375,7 +391,7 @@ export function createRuntimeReaderHealthHandler({
       if (topics.length === 0) fail('empty_projection');
     } catch (error) {
       outcome = 'unavailable';
-      errorCode = error instanceof RuntimeReaderError ? error.code : 'query_failed';
+      errorCode = classifyRuntimeReaderError(error);
       sqlstate = extractPostgresSqlState(error);
     }
 
@@ -386,9 +402,15 @@ export function createRuntimeReaderHealthHandler({
       // Health reporting must never replace the database outcome with an instrumentation error.
     }
 
+    const duration = elapsedMilliseconds(startedAt, clock());
+    if (outcome === 'ok' && duration >= runtimeHealthDurationLimitMs) {
+      outcome = 'unavailable';
+      errorCode = 'health_duration_exceeded';
+    }
+
     const requestId = safeRequestId(request);
     const record: RuntimeReaderHealthLog = {
-      duration_ms: elapsedMilliseconds(startedAt, clock()),
+      duration_ms: duration,
       event: 'runtime_reader_health',
       outcome,
       pool_idle: stats.idle,
