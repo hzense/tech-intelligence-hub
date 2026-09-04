@@ -11,6 +11,7 @@ const issues = [];
 let pinnedActions = 0;
 const allowedWritePermissions = new Map([
   ['continuous-daily.yml:publish', ['actions', 'contents', 'pull-requests']],
+  ['production-health.yml:health-incident', ['issues']],
 ]);
 
 function validateUses(file, location, uses) {
@@ -100,6 +101,7 @@ for (const jobId of ['foundation', 'database-migrations', 'daily-publication-gat
 const productionHealth = parse(await readFile(join(workflowRoot, 'production-health.yml'), 'utf8'));
 const productionHealthCondition =
   "github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && vars.PRODUCTION_DATABASE_HEALTH_ENABLED == 'true')";
+const productionHealthIncidentCondition = `always() && (${productionHealthCondition})`;
 if (productionHealth.jobs?.['database-health']?.if !== productionHealthCondition) {
   issues.push(
     'production-health.yml: keep the reviewed schedule/manual condition in sync with the workflow validator',
@@ -131,6 +133,86 @@ if (
 if (!Object.prototype.hasOwnProperty.call(productionHealthTriggers ?? {}, 'workflow_dispatch')) {
   issues.push(
     'production-health.yml: workflow_dispatch must remain available for controlled checks',
+  );
+}
+
+const productionHealthDispatch = productionHealthTriggers?.workflow_dispatch;
+const testAlertInput = productionHealthDispatch?.inputs?.test_alert;
+if (
+  !testAlertInput ||
+  testAlertInput.type !== 'boolean' ||
+  testAlertInput.required !== false ||
+  testAlertInput.default !== false
+) {
+  issues.push(
+    'production-health.yml: workflow_dispatch.test_alert must remain an optional boolean defaulting to false',
+  );
+}
+
+const productionHealthSteps = productionHealth.jobs?.['database-health']?.steps ?? [];
+const productionProbeStep = productionHealthSteps.find(
+  (step) => step?.name === 'Verify production database health contract',
+);
+if (
+  productionProbeStep?.id !== 'production_probe' ||
+  typeof productionProbeStep?.run !== 'string' ||
+  !productionProbeStep.run.includes(`echo 'succeeded=true' >> "$GITHUB_OUTPUT"`) ||
+  productionHealth.jobs?.['database-health']?.outputs?.probe_succeeded !==
+    '${{ steps.production_probe.outputs.succeeded }}'
+) {
+  issues.push(
+    'production-health.yml: database-health must expose success only after the real probe passes',
+  );
+}
+const controlledAlertStep = productionHealthSteps.find(
+  (step) => step?.name === 'Exercise controlled alert path',
+);
+if (
+  controlledAlertStep?.if !== 'inputs.test_alert == true' ||
+  typeof controlledAlertStep?.run !== 'string' ||
+  !controlledAlertStep.run.includes('exit 1')
+) {
+  issues.push('production-health.yml: the controlled alert step must run only for test_alert=true');
+}
+
+const productionHealthIncident = productionHealth.jobs?.['health-incident'];
+if (productionHealthIncident?.needs !== 'database-health') {
+  issues.push('production-health.yml: health-incident must depend on database-health');
+}
+if (productionHealthIncident?.if !== productionHealthIncidentCondition) {
+  issues.push(
+    'production-health.yml: health-incident must always reconcile the reviewed enabled health run',
+  );
+}
+const incidentPermissionNames = Object.keys(productionHealthIncident?.permissions ?? {}).sort();
+if (
+  incidentPermissionNames.join('\0') !== ['contents', 'issues'].join('\0') ||
+  productionHealthIncident?.permissions?.contents !== 'read' ||
+  productionHealthIncident?.permissions?.issues !== 'write'
+) {
+  issues.push(
+    'production-health.yml: health-incident permissions must be exactly contents: read and issues: write',
+  );
+}
+const reconcileIncidentStep = (productionHealthIncident?.steps ?? []).find(
+  (step) => step?.name === 'Reconcile production health incident',
+);
+if (reconcileIncidentStep?.env?.GH_TOKEN !== '${{ github.token }}') {
+  issues.push('production-health.yml: health-incident must use the scoped github.token');
+}
+if (
+  typeof reconcileIncidentStep?.run !== 'string' ||
+  !reconcileIncidentStep.run.includes('<!-- hzense-production-database-health -->') ||
+  reconcileIncidentStep?.env?.PROBE_SUCCEEDED !==
+    '${{ needs.database-health.outputs.probe_succeeded }}' ||
+  !reconcileIncidentStep.run.includes(
+    `[[ "$TEST_ALERT" == 'true' && "$PROBE_SUCCEEDED" == 'true' ]]`,
+  ) ||
+  !reconcileIncidentStep.run.includes('cancelled | skipped)') ||
+  !reconcileIncidentStep.run.includes('Unsupported database-health result')
+) {
+  issues.push(
+    'production-health.yml: health-incident must preserve its singleton marker and distinguish probe, test, and non-terminal results',
   );
 }
 

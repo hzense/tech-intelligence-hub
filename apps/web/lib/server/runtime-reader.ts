@@ -3,6 +3,7 @@ import 'server-only';
 import process from 'node:process';
 import pg from 'pg';
 import {
+  classifyRuntimeReaderError,
   createLazyRuntimeTopicReader,
   extractPostgresSqlState,
   type RuntimeReaderPoolOptions,
@@ -11,9 +12,10 @@ import {
 const { Pool } = pg;
 
 function writeIdlePoolError(error: unknown): void {
+  const errorCode = classifyRuntimeReaderError(error);
   const sqlstate = extractPostgresSqlState(error);
   const record = {
-    error_code: 'pool_error',
+    error_code: errorCode === 'query_failed' ? 'pool_error' : errorCode,
     event: 'runtime_reader_pool_error',
     outcome: 'unavailable',
     ...(sqlstate ? { sqlstate } : {}),

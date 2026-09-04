@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
+    inputs:
+      test_alert:
+        description: Exercise the incident path after a successful production health probe
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -15,10 +21,13 @@ concurrency:
 jobs:
   database-health:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && vars.PRODUCTION_DATABASE_HEALTH_ENABLED == 'true')
+    outputs:
+      probe_succeeded: ${{ steps.production_probe.outputs.succeeded }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Verify production database health contract
+        id: production_probe
         shell: bash
         env:
           HEALTH_URL: https://hzense.com/api/health/database
@@ -100,3 +109,93 @@ jobs:
             echo "- Total time: ${total_seconds}s"
             echo '- Contract: exact body and no-store cache policy verified'
           } >> "$GITHUB_STEP_SUMMARY"
+          echo 'succeeded=true' >> "$GITHUB_OUTPUT"
+
+      - name: Exercise controlled alert path
+        if: inputs.test_alert == true
+        shell: bash
+        run: |
+          echo 'Controlled production health alert test requested.' >&2
+          exit 1
+
+  health-incident:
+    needs: database-health
+    if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && vars.PRODUCTION_DATABASE_HEALTH_ENABLED == 'true'))
+    permissions:
+      contents: read
+      issues: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reconcile production health incident
+        shell: bash
+        env:
+          ALERT_ACTOR: ${{ github.actor }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          HEALTH_RESULT: ${{ needs.database-health.result }}
+          PROBE_SUCCEEDED: ${{ needs.database-health.outputs.probe_succeeded }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TEST_ALERT: ${{ inputs.test_alert || false }}
+        run: |
+          set -euo pipefail
+
+          case "$HEALTH_RESULT" in
+            failure | success)
+              ;;
+            cancelled | skipped)
+              echo "No incident transition for database-health result: $HEALTH_RESULT." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+              ;;
+            *)
+              echo "Unsupported database-health result: $HEALTH_RESULT." >&2
+              exit 1
+              ;;
+          esac
+
+          incident_title='Production database health monitor incident'
+          incident_marker='<!-- hzense-production-database-health -->'
+          incident="$(
+            gh api \
+              --paginate \
+              "repos/$GH_REPO/issues?state=all&per_page=100" \
+              --jq '.[] | select((has("pull_request") | not) and .user.login == "github-actions[bot]" and .title == "Production database health monitor incident" and ((.body // "") | contains("<!-- hzense-production-database-health -->"))) | [.number, .state] | @tsv' \
+              | awk 'NR == 1 { print }'
+          )"
+          IFS=$'\t' read -r incident_number incident_state <<< "$incident"
+
+          if [[ "$HEALTH_RESULT" == 'failure' ]]; then
+            if [[ "$TEST_ALERT" == 'true' && "$PROBE_SUCCEEDED" == 'true' ]]; then
+              incident_summary='A controlled alert-path test was requested after a successful production health probe.'
+            else
+              incident_summary='The production database health workflow reported a failed probe.'
+            fi
+            issue_body="$(
+              printf '%s\n\n%s\n\nLatest workflow run: %s\n\nNotification: @%s' \
+                "$incident_marker" \
+                "$incident_summary" \
+                "$RUN_URL" \
+                "$ALERT_ACTOR"
+            )"
+
+            if [[ -z "$incident_number" ]]; then
+              gh issue create \
+                --repo "$GH_REPO" \
+                --title "$incident_title" \
+                --body "$issue_body"
+              exit 0
+            fi
+
+            if [[ "${incident_state,,}" == 'closed' ]]; then
+              gh issue reopen "$incident_number" --repo "$GH_REPO"
+            fi
+            gh issue edit "$incident_number" --repo "$GH_REPO" --body "$issue_body"
+            exit 0
+          fi
+
+          if [[ "$HEALTH_RESULT" == 'success' && -n "$incident_number" && "${incident_state,,}" == 'open' ]]; then
+            gh issue comment "$incident_number" \
+              --repo "$GH_REPO" \
+              --body "Production database health recovered. Workflow run: $RUN_URL"
+            gh issue close "$incident_number" --repo "$GH_REPO" --reason completed
+          fi
