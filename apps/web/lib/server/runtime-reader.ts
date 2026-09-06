@@ -2,6 +2,7 @@ import 'server-only';
 
 import process from 'node:process';
 import pg from 'pg';
+import type { SearchType } from '@hzense/search';
 import {
   classifyRuntimeReaderError,
   createLazyRuntimeTopicReader,
@@ -40,4 +41,12 @@ export function readRuntimeTopics(limit = 1) {
 
 export function runtimeReaderPoolStats() {
   return runtimeTopicReader.poolStats();
+}
+
+export function searchRuntimeDocuments(query: string, type?: SearchType) {
+  return runtimeTopicReader.search(query, type);
+}
+
+export function probeRuntimeSearch() {
+  return runtimeTopicReader.probeSearch();
 }

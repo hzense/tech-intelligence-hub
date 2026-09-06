@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  customType,
   date,
   doublePrecision,
   index,
@@ -15,6 +16,12 @@ import {
   uniqueIndex,
   vector,
 } from 'drizzle-orm/pg-core';
+
+const tsvector = customType<{ data: string }>({
+  dataType() {
+    return 'tsvector';
+  },
+});
 
 export const entityType = pgEnum('entity_type', [
   'person',
@@ -284,12 +291,55 @@ export const searchDocuments = pgTable(
     sourceId: text('source_id').notNull(),
     sourceType: text('source_type').notNull(),
     title: text('title').notNull(),
+    summary: text('summary').notNull(),
+    href: text('href').notNull(),
+    keywords: text('keywords').notNull(),
     body: text('body').notNull(),
     importance: integer('importance').notNull().default(1),
     documentDate: date('document_date'),
     topics: jsonb('topics').notNull().default([]),
     entities: jsonb('entities').notNull().default([]),
     embedding: vector('embedding', { dimensions: 1536 }),
+    normalizedTitle: text('normalized_title').notNull(),
+    normalizedSummary: text('normalized_summary').notNull(),
+    normalizedKeywords: text('normalized_keywords').notNull(),
+    normalizedBody: text('normalized_body').notNull(),
+    searchVector: tsvector('search_vector')
+      .generatedAlwaysAs(
+        sql`setweight(to_tsvector('pg_catalog.simple'::regconfig, ${sql.raw('normalized_title')}), 'A') || setweight(to_tsvector('pg_catalog.simple'::regconfig, ${sql.raw('normalized_summary')}), 'B') || setweight(to_tsvector('pg_catalog.simple'::regconfig, ${sql.raw('normalized_keywords')}), 'C') || setweight(to_tsvector('pg_catalog.simple'::regconfig, ${sql.raw('normalized_body')}), 'D')`,
+      )
+      .notNull(),
   },
-  (t) => [index('search_source_idx').on(t.sourceId)],
+  (t) => [
+    index('search_source_idx').on(t.sourceId),
+    uniqueIndex('search_documents_source_identity_uq').on(t.sourceType, t.sourceId),
+    index('search_documents_date_idx').on(t.documentDate),
+    index('search_documents_fts_idx').using('gin', t.searchVector),
+    check(
+      'search_documents_source_type_ck',
+      sql`${t.sourceType} IN ('daily', 'weekly', 'insight', 'topic', 'signal', 'resource')`,
+    ),
+    check('search_documents_title_ck', sql`length(btrim(${t.title})) > 0`),
+    check('search_documents_summary_ck', sql`length(btrim(${t.summary})) > 0`),
+    check('search_documents_href_ck', sql`${t.href} ~ '^/'`),
+    check('search_documents_importance_ck', sql`${t.importance} between 1 and 5`),
+    check('search_documents_topics_array_ck', sql`jsonb_typeof(${t.topics}) = 'array'`),
+    check('search_documents_entities_array_ck', sql`jsonb_typeof(${t.entities}) = 'array'`),
+    check(
+      'search_documents_normalized_title_ck',
+      sql`length(${t.normalizedTitle}) > 0 AND ${t.normalizedTitle} = btrim(${t.normalizedTitle})`,
+    ),
+    check(
+      'search_documents_normalized_summary_ck',
+      sql`length(${t.normalizedSummary}) > 0 AND ${t.normalizedSummary} = btrim(${t.normalizedSummary})`,
+    ),
+    check(
+      'search_documents_normalized_keywords_ck',
+      sql`${t.normalizedKeywords} = btrim(${t.normalizedKeywords})`,
+    ),
+    check(
+      'search_documents_normalized_body_ck',
+      sql`${t.normalizedBody} = btrim(${t.normalizedBody})`,
+    ),
+  ],
 );

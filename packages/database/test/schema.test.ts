@@ -2,7 +2,14 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import { radarSnapshots, radarSnapshotSignals, signals, sources, topics } from '../src/schema.js';
+import {
+  radarSnapshots,
+  radarSnapshotSignals,
+  searchDocuments,
+  signals,
+  sources,
+  topics,
+} from '../src/schema.js';
 
 function columnNames(table: Parameters<typeof getTableConfig>[0]): string[] {
   return getTableConfig(table).columns.map((column) => column.name);
@@ -70,5 +77,52 @@ describe('Topic runtime projection schema', () => {
     expect(migration).toContain('ADD COLUMN runtime_enabled boolean NOT NULL DEFAULT false;');
     expect(migration).toContain("SET runtime_enabled = status IN ('active', 'strategic');");
     expect(migration).toContain("CHECK (NOT runtime_enabled OR status <> 'archived');");
+  });
+});
+
+describe('FTS-1 Search Document schema', () => {
+  it('models the persisted display, normalized and generated search fields', () => {
+    expect(columnNames(searchDocuments)).toEqual([
+      'id',
+      'source_id',
+      'source_type',
+      'title',
+      'summary',
+      'href',
+      'keywords',
+      'body',
+      'importance',
+      'document_date',
+      'topics',
+      'entities',
+      'embedding',
+      'normalized_title',
+      'normalized_summary',
+      'normalized_keywords',
+      'normalized_body',
+      'search_vector',
+    ]);
+    const config = getTableConfig(searchDocuments);
+    expect(config.indexes.map((index) => index.config.name)).toEqual(
+      expect.arrayContaining([
+        'search_source_idx',
+        'search_documents_source_identity_uq',
+        'search_documents_date_idx',
+        'search_documents_fts_idx',
+      ]),
+    );
+  });
+
+  it('ships an append-only guarded persistence and GIN-index migration', async () => {
+    const migration = await readFile(
+      resolve(process.cwd(), '../../db/migrations/0003_search_documents_fts.sql'),
+      'utf8',
+    );
+
+    expect(migration).toContain('requires an empty derived search_documents table');
+    expect(migration).toContain('ADD COLUMN summary text NOT NULL');
+    expect(migration).toContain('ADD COLUMN search_vector tsvector GENERATED ALWAYS AS');
+    expect(migration).toContain("to_tsvector('pg_catalog.simple'::regconfig");
+    expect(migration).toContain('USING gin(search_vector)');
   });
 });

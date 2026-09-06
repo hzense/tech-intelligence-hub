@@ -8,6 +8,14 @@ import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { loadMigrations, migrationLockKeys, runMigrations } from '../src/migrate.mjs';
 import { inspectDatabasePreflight, runDatabasePreflight } from '../src/preflight.mjs';
 import { expectedTableNames, verifyDatabaseContract } from '../src/verify.mjs';
+import { syncSearchDocuments } from '../src/search-sync.mjs';
+import {
+  databaseSearchQuery,
+  databaseSearchValues,
+  mapDatabaseSearchRows,
+  prepareDatabaseSearchInput,
+} from '../../search/src/database.js';
+import { normalizeSearchText, rankSearchDocuments } from '../../search/src/ranking.js';
 
 const { Client } = pg;
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
@@ -149,6 +157,7 @@ integrationSuite('PostgreSQL migration integration', () => {
         '0000_foundation.sql',
         '0001_radar_evidence.sql',
         '0002_topic_projection.sql',
+        '0003_search_documents_fts.sql',
       ],
       pgvectorVersion: '0.8.6',
     });
@@ -175,6 +184,11 @@ integrationSuite('PostgreSQL migration integration', () => {
       await expect(
         client.query('SELECT position FROM radar_snapshot_signals LIMIT 0'),
       ).resolves.toBeDefined();
+      await expect(
+        client.query(
+          'SELECT summary, href, keywords, normalized_title, search_vector FROM search_documents LIMIT 0',
+        ),
+      ).resolves.toBeDefined();
 
       const ownership = await client.query(
         `SELECT DISTINCT tableowner
@@ -191,7 +205,7 @@ integrationSuite('PostgreSQL migration integration', () => {
     await expect(
       verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
     ).resolves.toMatchObject({
-      migrationCount: 3,
+      migrationCount: 4,
       tableCount: 13,
     });
   }, 30_000);
@@ -209,6 +223,58 @@ integrationSuite('PostgreSQL migration integration', () => {
         `REVOKE ${quotedRoleName(inheritedRole)} FROM ${quotedRoleName(migrationRole)}`,
       );
     }
+  }, 30_000);
+
+  it('persists the FTS-1 projection and preserves the golden ranking contract in PostgreSQL', async () => {
+    const golden = JSON.parse(
+      await readFile(
+        resolve(process.cwd(), '../search/test/fixtures/search-ranking-golden.json'),
+        'utf8',
+      ),
+    );
+    const rankingDocuments = golden.documents.map((document) => ({
+      ...document,
+      summary: document.summary || '∅',
+    }));
+    const desiredDocuments = rankingDocuments.map((document) => ({
+      id: `searchdoc-${document.type}-${document.id}`,
+      sourceId: document.id,
+      sourceType: document.type,
+      title: document.title,
+      summary: document.summary,
+      href: document.href,
+      keywords: document.keywords,
+      body: document.body,
+      importance: 1,
+      documentDate: document.date ?? null,
+      topics: [],
+      entities: [],
+      normalizedTitle: normalizeSearchText(document.title),
+      normalizedSummary: normalizeSearchText(document.summary),
+      normalizedKeywords: normalizeSearchText(document.keywords),
+      normalizedBody: normalizeSearchText(document.body),
+    }));
+    const databaseUrl = connectionUrl(databaseNames.fresh);
+    await withClient(databaseUrl, async (client) => {
+      const sync = await syncSearchDocuments(client, desiredDocuments, { dryRun: false });
+      expect(sync).toMatchObject({
+        committed: true,
+        inserted: desiredDocuments.length,
+        updated: 0,
+        deleted: 0,
+      });
+      for (const goldenCase of golden.cases) {
+        const input = prepareDatabaseSearchInput(goldenCase.query, goldenCase.type);
+        const rows = await client.query(databaseSearchQuery, [...databaseSearchValues(input)]);
+        expect(mapDatabaseSearchRows(rows.rows)).toEqual(
+          rankSearchDocuments(rankingDocuments, goldenCase.query, goldenCase.type),
+        );
+      }
+      const vectors = await client.query(
+        "SELECT count(*)::integer AS count FROM search_documents WHERE search_vector <> ''::tsvector",
+      );
+      expect(vectors.rows[0].count).toBeGreaterThan(0);
+    });
   }, 30_000);
 
   it('fails fast under migration lock contention without changing history', async () => {

@@ -175,10 +175,13 @@ substring AND 匹配、权重与排序语义。投影输入显式绑定发布状
 UI 重建所需的 `summary`、`href` 与 `keywords`；稳定 serialization / fingerprint 可用于后续
 重建与 parity 门禁。
 
-FTS-0 没有增加 Migration、写入 Neon、配置 PostgreSQL tokenizer，也没有把生产查询切到
-PostgreSQL。当前物理 `search_documents` 仍是既有结构；下一阶段必须先经独立 Migration
-补齐 projection 字段并建立 FTS 索引、回填与查询 parity，验收后才能切换。其后再升级
-Hybrid Search：Keyword + Vector + Entity + Recency + Importance。
+FTS-1 仓库实现增加 append-only `0003_search_documents_fts.sql`、确定性同步器、加权
+`simple` `tsvector` / GIN、参数化数据库查询与 `in-process → shadow → database` 切换模式。
+由于 PostgreSQL 默认 tokenizer 不能无损表达中文和任意 literal substring，用户可见 parity
+仍由 application-normalized 列上的数据库内 AND/计分公式保证，并复用 JavaScript total-order。
+生产当前仍保持 `in-process`；`0003`、回填、Runtime ACL、shadow parity 与 cutover 必须在恢复
+证据门禁解除后的独立维护/部署窗口逐项验收。其后再升级 Hybrid Search：Keyword + Vector +
+Entity + Recency + Importance。
 
 向量首版直接使用 pgvector，不引入独立 Vector DB，除非规模与性能证明有必要。
 
@@ -355,9 +358,9 @@ Local         http://localhost:3000
 6. ✅ 已完成本阶段：PR #40 的应用层连接容量/查询取消/总耗时/通用错误安全分类、脱敏池计数与单例 Issue incident/recovery 告警链已在精确 Production commit 上演练通过。
 7. ⏳ 未执行：补充 Neon PgBouncer client-capacity 与独立 provider 侧连接、池、数据库阈值监控；PR #40 不覆盖该 provider 边界。
 8. ✅ 已完成 FTS-0：PR #41 的 canonical projection、确定性进程内排序器、完全平局 total-order 与稳定 fingerprint 已通过最终评审、CI、合并及精确 Production compatibility 验收。
-9. ⏳ 未执行 FTS-1：通过独立 Migration 落地 Search Document 持久化与 tokenizer/index，完成回填和 PostgreSQL query parity 后再切生产查询；其后再继续 Hybrid Search 与 Ask HZense / RAG。
+9. 🚧 FTS-1 仓库开发已完成：独立 Migration、Search Document 同步、tokenizer/index、精确 parity 查询与分阶段切换代码已落地；生产 Migration、回填、ACL、shadow 与 cutover 仍受步骤 5 门禁约束，其后再继续 Hybrid Search 与 Ask HZense / RAG。
 
-截至 2026-09-04，步骤 1–3、6 与 8 已完成并有独立生产证据，步骤 4 已作为明确的风险保留决定记录；步骤 5 的 forward-only 工具已交付但外部恢复证据仍阻塞，步骤 7 与 9 仍待完成。小时级有界健康与 Issue 告警链不能替代 ACL 恢复证据、事件触发的凭据轮换或 provider 级指标监控；FTS-0 的本地/CI 测试与生产兼容性验收也不能替代 FTS-1 的数据库 Migration、持久化、回填、查询 parity 和独立 cutover 验收。
+截至 2026-09-04，步骤 1–3、6 与 8 已完成并有独立生产证据，步骤 4 已作为明确的风险保留决定记录；步骤 5 的 forward-only 工具已交付但外部恢复证据仍阻塞，步骤 7 待完成，步骤 9 处于“仓库实现完成、生产落地未开始”。小时级有界健康与 Issue 告警链不能替代 ACL 恢复证据、事件触发的凭据轮换或 provider 级指标监控；本地/CI 契约也不能替代 FTS-1 的生产 Migration、回填、shadow parity 和独立 cutover 验收。
 
 ---
 

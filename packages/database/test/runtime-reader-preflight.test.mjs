@@ -11,6 +11,7 @@ import {
   runRuntimeReaderPreflight,
   runtimeReaderPreflightFailureMessage,
   runtimeReaderProductionOptions,
+  runtimeReaderSearchColumns,
   runtimeReaderTopicColumns,
 } from '../src/runtime-reader-preflight.mjs';
 
@@ -91,14 +92,24 @@ function neonVectorSplitRoutineRow(overrides = {}) {
 }
 
 function expectedColumnRows() {
-  return runtimeReaderTopicColumns.map((columnName) => ({
-    schema_name: 'public',
-    table_name: 'topics',
-    column_name: columnName,
-    privilege: 'SELECT',
-    granted: true,
-    grantable: false,
-  }));
+  return [
+    ...runtimeReaderTopicColumns.map((columnName) => ({
+      schema_name: 'public',
+      table_name: 'topics',
+      column_name: columnName,
+      privilege: 'SELECT',
+      granted: true,
+      grantable: false,
+    })),
+    ...runtimeReaderSearchColumns.map((columnName) => ({
+      schema_name: 'public',
+      table_name: 'search_documents',
+      column_name: columnName,
+      privilege: 'SELECT',
+      granted: true,
+      grantable: false,
+    })),
+  ];
 }
 
 function preflightClient({
@@ -118,6 +129,26 @@ function preflightClient({
   inheritanceEdges = [],
   rewriteRuleCount = 0,
   physicalTopicColumns = ['id', 'title', 'parent_id', 'status', 'metadata', 'runtime_enabled'],
+  physicalSearchColumns = [
+    'id',
+    'source_id',
+    'source_type',
+    'title',
+    'summary',
+    'href',
+    'keywords',
+    'body',
+    'importance',
+    'document_date',
+    'topics',
+    'entities',
+    'embedding',
+    'normalized_title',
+    'normalized_summary',
+    'normalized_keywords',
+    'normalized_body',
+    'search_vector',
+  ],
   tablePrivilegeRows = [],
   columnPrivilegeRows = expectedColumnRows(),
   ownedObjects = [],
@@ -199,6 +230,13 @@ function preflightClient({
       !sql.includes('has_column_privilege')
     ) {
       const rows = physicalTopicColumns.map((name) => ({ name }));
+      return { rowCount: rows.length, rows };
+    }
+    if (
+      sql.includes("column_info.attrelid = 'public.search_documents'::regclass") &&
+      !sql.includes('has_column_privilege')
+    ) {
+      const rows = physicalSearchColumns.map((name) => ({ name }));
       return { rowCount: rows.length, rows };
     }
     if (sql.includes('has_table_privilege(current_user')) {
@@ -529,7 +567,7 @@ describe('Runtime reader least-privilege preflight', () => {
     ).rejects.toThrow(/must authenticate as hzense_runtime/);
   });
 
-  it('accepts exactly the five-column read-only Topic projection', async () => {
+  it('accepts exactly the least-privilege Topic and Search projections', async () => {
     await expect(inspectRuntimeReaderPreflight(preflightClient(), expected)).resolves.toEqual({
       database: 'hzense',
       user: 'hzense_runtime',
@@ -537,6 +575,7 @@ describe('Runtime reader least-privilege preflight', () => {
       connectionLimit: 20,
       defaultTransactionReadOnly: true,
       topicColumns: ['id', 'title', 'parent_id', 'status', 'runtime_enabled'],
+      searchColumns: runtimeReaderSearchColumns,
       tlsVersion: 'local plaintext',
       tlsCipher: 'none',
       tlsEvidence: 'local',

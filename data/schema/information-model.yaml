@@ -268,9 +268,13 @@ search_document:
     fingerprint: sha256
   physical_database:
     current_table: search_documents
-    summary_href_keywords_migration: not_implemented
-    persistence: not_implemented
-  production_query_path: in_process_keyword_ranking
+    migration: implemented_0003_not_applied_in_production
+    persistence: guarded_transactional_sync_not_run_in_production
+    tokenizer: pg_catalog_simple
+    index: generated_weighted_tsvector_gin
+    parity_query: normalized_literal_substring_and_weighted_score
+  query_modes: [in_process, shadow, database]
+  production_query_path: in_process_pending_fts1_rollout
 
 taxonomy_model:
   source_of_truth: data/taxonomy/taxonomy.yaml

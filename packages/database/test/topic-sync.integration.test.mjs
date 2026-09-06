@@ -159,7 +159,7 @@ integrationSuite('PostgreSQL Topic sync integration', () => {
   it('applies, preserves unrelated metadata and reruns as a physical no-op', async () => {
     await expect(
       withClient(databaseUrl(syncRole, syncPassword), syncPreflight),
-    ).resolves.toMatchObject({ connectionLimit: 2, migrationCount: 3 });
+    ).resolves.toMatchObject({ connectionLimit: 2, migrationCount: 4 });
 
     const reviewed = await runRestrictedSync(desiredTopics, true);
     expect(reviewed).toMatchObject({ committed: false, inserted: 3, updated: 0 });

@@ -29,6 +29,10 @@
     "db:sync:topics:local:apply": "pnpm --filter @hzense/content build && node scripts/sync-topics.mjs --profile=local-test --apply",
     "db:sync:topics:production:dry-run": "pnpm --filter @hzense/content build && node scripts/sync-topics.mjs --profile=production",
     "db:sync:topics:production:apply": "pnpm --filter @hzense/content build && node scripts/sync-topics.mjs --profile=production --apply",
+    "db:sync:search:local:dry-run": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build && pnpm --dir apps/web exec node ../../scripts/sync-search-documents.mjs --profile=local-test",
+    "db:sync:search:local:apply": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build && pnpm --dir apps/web exec node ../../scripts/sync-search-documents.mjs --profile=local-test --apply",
+    "db:sync:search:production:dry-run": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build && pnpm --dir apps/web exec node ../../scripts/sync-search-documents.mjs --profile=production",
+    "db:sync:search:production:apply": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build && pnpm --dir apps/web exec node ../../scripts/sync-search-documents.mjs --profile=production --apply",
     "test:e2e": "playwright test"
   },
   "devDependencies": {

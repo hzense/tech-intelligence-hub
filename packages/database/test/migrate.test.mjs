@@ -19,6 +19,7 @@ describe('database migration runner', () => {
       '0000_foundation.sql',
       '0001_radar_evidence.sql',
       '0002_topic_projection.sql',
+      '0003_search_documents_fts.sql',
     ]);
     expect(migrations.every((migration) => migration.checksum.length === 64)).toBe(true);
     await expect(verifyMigrationManifest(migrations)).resolves.toBeUndefined();
