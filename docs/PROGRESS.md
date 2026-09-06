@@ -1,18 +1,88 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-09-04
-**当前阶段：** Runtime Reader 最小权限生产接入与功能验收已完成；当前进入证据缺口、外部策略阻塞与上线后监控收尾
+**最后更新：** 2026-09-06
+**当前阶段：** 网站 MVP 已验收；FTS-1 开发与合并完成，下一阶段是数据库搜索生产上线、持续内容运营与智能情报能力扩展，同时完成运维收尾
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
-> 本看板区分“工程基础完成度”和“用户可用网站完成度”。百分比是基于下方验收清单的人工估算，不以文档数量或提交数量代替产品进展。
+> 本看板区分“工程基础”“网站 MVP”“MVP 生产就绪度”和“完整科技情报平台”。百分比是人工估算，不以文档数量或提交数量代替产品进展；MVP 已完成不代表完整产品已完成。
 
 ## 总览
 
-| 进度轴       | 当前进度 | 状态          | 判断                                                                                 |
-| ------------ | -------: | ------------- | ------------------------------------------------------------------------------------ |
-| 开发基础建设 |     100% | ✅ 完成       | 架构、Monorepo、数据模型、冻结依赖安装和内容交叉引用校验均已通过 CI                  |
-| 网站 MVP     |     100% | ✅ 验收完成   | Home、Daily、Weekly、Insights、Topics、Signals、Resources 与基础搜索均由验证内容驱动 |
-| 生产就绪度   |      98% | 🟡 运维收尾中 | 线上路径及有界告警已验收；Runtime ACL 恢复证据、provider 指标和旧 Alpha 仍未关闭     |
+| 进度轴           | 当前进度 | 状态          | 判断                                                                                 |
+| ---------------- | -------: | ------------- | ------------------------------------------------------------------------------------ |
+| 开发基础建设     |     100% | ✅ 完成       | 架构、Monorepo、数据模型、冻结依赖安装和内容交叉引用校验均已通过 CI                  |
+| 网站 MVP         |     100% | ✅ 验收完成   | Home、Daily、Weekly、Insights、Topics、Signals、Resources 与基础搜索均由验证内容驱动 |
+| 生产就绪度       |      98% | 🟡 运维收尾中 | 线上路径及有界告警已验收；Runtime ACL 恢复证据、provider 指标和旧 Alpha 仍未关闭     |
+| 完整科技情报平台 |  55%–65% | 🟡 扩展阶段   | 按整体开发量和复杂度粗估，剩余约 35%–45%；详见下方剩余工作清单                       |
+
+### 整体估算口径（2026-09-06）
+
+完整平台范围包括网站展示、持续内容运营、数据库与混合搜索、时间线、知识图谱、自动采集处理和带引用的智能问答。按这些能力的开发量与复杂度，当前粗估已完成 **55%–65%**，剩余 **35%–45%**。该区间不是按任务数量计算的精确统计，也不是工期或上线日期承诺；拆分和验收后应重新估算。
+
+网站页面、工程基础和既定 MVP 已完成，剩余工作主要集中在持续获取信息、组织知识和生成可靠回答。上表 **98% 仅沿用此前 MVP 生产运维口径**，不表示完整平台只剩 2%，也不代表 FTS-1 已完成生产切换。
+
+## 完整平台剩余工作
+
+以下为待办记录与后续规划，不表示生产变更已执行，也不替代现有上线门禁。
+
+### 1. FTS-1 数据库搜索生产上线
+
+- [x] PR #45 已于 2026-09-06 squash 合并为 `main@a5a4bca`；统一三种模式输入校验、页面错误提示和数据库搜索健康探测均已交付，PR 与合并后 main CI 通过。
+- [ ] 解除 Runtime ACL 恢复证据门禁，核验新的可恢复备份与当前权限 baseline。
+- [ ] 在生产应用并验证 `0003_search_documents_fts.sql`。
+- [ ] 完成 Search Document 受保护回填、指纹校验和无变更重跑。
+- [ ] 更新 Runtime 搜索列权限并通过生产 preflight。
+- [ ] 完成 shadow 新旧结果对账，再切换 database 模式并验收搜索、过滤、健康告警和回滚。
+
+完成标准：按 [FTS-1 上线顺序](./DEPLOYMENT.md#fts-1-数据库搜索上线顺序) 留存生产执行与验收证据；代码合并不计作生产上线。
+
+### 2. 持续内容运营
+
+- [x] 已实现确定性 Daily 候选生成、dry-run 和人工发布门禁。
+- [ ] 由组织管理员解除 Actions 创建 PR 的策略阻塞，再启用并验证自动 Draft PR。
+- [ ] 建立真实、近期信息驱动的日报与周报发布流程，完成审核、发布和回滚闭环。
+- [ ] 约定并持续验证更新频率与内容质量要求，逐步补充洞察和专题内容。
+
+完成标准：有连续发布的真实内容与审核记录；当前日报、周报仍以历史样例为主，样例页面可用不代表日常更新能力已完成。
+
+### 3. 自动采集与处理
+
+- [ ] 分批接入 RSS、arXiv、GitHub、博客、公司来源与 Newsletter。
+- [ ] 实现去重、分类、实体提取和候选排序，保留原始来源与采集时间。
+- [ ] 建立 Signal Inbox 与人工审核流程，验证采集失败重试及重复运行不会重复入库。
+
+完成标准：来源 → 候选 → 审核 → 发布全流程可追溯；采集结果不得绕过审核直接进入正式知识库。
+
+### 4. 知识呈现
+
+- [ ] 实现实体时间线与基于 Signal 的事件时间线。
+- [ ] 基于已有实体关系模型与数据，补齐关系图谱可视化和实体、信号、内容之间的导航。
+
+完成标准：用户能从时间线或图谱追溯到具体事件、内容与证据来源；已有关系模型不等于图谱产品已交付。
+
+### 5. 智能检索与问答
+
+- [ ] 实现内容分块、Embedding 生成、pgvector 写入与内容更新后的重建机制。
+- [ ] 实现关键词与向量混合检索，并用评测集验证召回与排序效果。
+- [ ] 实现 Ask HZense / RAG 与可核查的来源引用。
+- [ ] 建立回答质量、引用准确性、证据不足处理、延迟与成本评估。
+
+完成标准：回答由可追溯证据支撑，检索与问答质量达到事先约定的验收标准；安装 pgvector 不代表语义检索或 RAG 已完成。
+
+### 6. 运维收尾
+
+- [ ] 补齐备份恢复验证与 Runtime ACL 恢复证据，记录恢复流程及演练结果。
+- [ ] 建立 Neon provider 侧连接、PgBouncer 池容量及数据库阈值监控。
+- [ ] 经授权收紧旧 Hosted Alpha 的访问并验证正式站不受影响。
+- [ ] 跟踪已明确延期的凭据轮换事项，保留现有操作者决定与风险记录。
+
+完成标准：恢复能力有证据、容量异常可告警、旧站访问边界明确；具体约束见“当前风险与阻塞”。
+
+### 建议执行顺序
+
+先完成 FTS-1 所依赖的备份与 ACL 恢复门禁，再推进 **FTS-1 生产上线 → 持续发布真实内容 → 自动采集与审核 → 混合搜索 / RAG**。时间线与图谱可在实体和 Signal 数据积累后分批交付；其余运维收尾持续跟进。
+
+进度证据：[PR #45](https://github.com/hzense/tech-intelligence-hub/pull/45)、[合并后 main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34057251891)。2026-09-06 的只读检查中，正式站首页、`/search?q=OpenAI` 与 `/api/health/database` 均返回 HTTP 200，健康正文为 `{"status":"ok"}`；该观察不证明 FTS-1 生产迁移或 database 模式已启用。
 
 ## 阶段看板
 
@@ -138,7 +208,7 @@
 - [x] FTS-1 仓库开发：独立 `0003`、Search Document 同步、加权 `tsvector`/GIN、精确 parity 查询、shadow 与 fail-closed database 模式已实现
 - [ ] FTS-1 生产落地：恢复证据门禁解除后执行 Migration、受保护回填、Runtime ACL/preflight、shadow parity、cutover 与回滚验收
 
-2026-08-31 的生产维护窗口已有现场证据：新分支备份确认可恢复，`0002` 已执行，3 个 Migration / 0 pending，`hzense_topic_sync` 与最小 ACL 已复核，dry run → Apply → 独立 verifier → no-op 全部完成，最终 62 个 Topics、0 个未知行且 reviewed fingerprint 匹配。随后完成了 Runtime Reader 的新七天回滚分支、角色/ACL 盘点、`hzense_runtime` read-only 默认值、`neondb` ambient ACL 隔离与 Migrator 连接容量治理；PR #32–#35 已把仓库实现与 Neon provider 合约合并到 `main`。2026-09-01 又以两组 catalog-only `SELECT` 独立确认目标 `hzense` ACL 的有效权限和直接授权来源，[脱敏结果](./production-evidence/2026-09-01-runtime-reader-acl.md)仅保留布尔值、计数与指纹。PR #36 于 2026-09-02 合并健康监控门禁，PR #38 于 2026-09-03 固定现场验收的 provider catalog 合约。同日，独立 Runtime 凭据与目标/保留库完整 preflight 通过；五个 server-only 值仅配置到 Vercel Production，Runtime-configured 部署、线上 health、真实五列读取、安全日志与小时级工作流首次手工运行均通过[功能/配置生产验收](./production-evidence/2026-09-03-runtime-reader-production-acceptance.md)。生产就绪度据此提高至 98%。2026-09-04，PR #40 的精确 Production 部署、健康合约、受控单例 incident 创建与恢复关闭均通过；PR #42 修复 `22023`、通过完整 CI、合并并完成部署兼容性验收，但没有执行生产 ACL 捕获、provider backup/PITR 核验或数据库 mutation。PR #41 随后完成 FTS-0 和生产兼容性验收。当时 FTS-1 尚未执行；当前分支已完成其仓库代码，但生产仍是三 Migration、旧 Runtime ACL 与 in-process 查询，尚未执行 `0003`、回填、shadow 或 cutover。[脱敏运维检查点](./production-evidence/2026-09-04-operations-checkpoint.md)同时保留四项未闭环状态：操作者知情接受既有凭据处理暴露风险并将轮换延期到本轮之外，轮换义务仍开放；历史 ACL 恢复材料不足且 provider backup/PITR 未核验；Continuous Daily 被确认的组织策略阻断；Hosted Alpha 仍公开且 owner-only 尚待显式授权。
+2026-08-31 的生产维护窗口已有现场证据：新分支备份确认可恢复，`0002` 已执行，3 个 Migration / 0 pending，`hzense_topic_sync` 与最小 ACL 已复核，dry run → Apply → 独立 verifier → no-op 全部完成，最终 62 个 Topics、0 个未知行且 reviewed fingerprint 匹配。随后完成了 Runtime Reader 的新七天回滚分支、角色/ACL 盘点、`hzense_runtime` read-only 默认值、`neondb` ambient ACL 隔离与 Migrator 连接容量治理；PR #32–#35 已把仓库实现与 Neon provider 合约合并到 `main`。2026-09-01 又以两组 catalog-only `SELECT` 独立确认目标 `hzense` ACL 的有效权限和直接授权来源，[脱敏结果](./production-evidence/2026-09-01-runtime-reader-acl.md)仅保留布尔值、计数与指纹。PR #36 于 2026-09-02 合并健康监控门禁，PR #38 于 2026-09-03 固定现场验收的 provider catalog 合约。同日，独立 Runtime 凭据与目标/保留库完整 preflight 通过；五个 server-only 值仅配置到 Vercel Production，Runtime-configured 部署、线上 health、真实五列读取、安全日志与小时级工作流首次手工运行均通过[功能/配置生产验收](./production-evidence/2026-09-03-runtime-reader-production-acceptance.md)。生产就绪度据此提高至 98%。2026-09-04，PR #40 的精确 Production 部署、健康合约、受控单例 incident 创建与恢复关闭均通过；PR #42 修复 `22023`、通过完整 CI、合并并完成部署兼容性验收，但没有执行生产 ACL 捕获、provider backup/PITR 核验或数据库 mutation。PR #41 随后完成 FTS-0 和生产兼容性验收。当时 FTS-1 尚未执行；2026-09-06，PR #45 已合并为 `main@a5a4bca` 并通过合并后 CI。生产最近已验收的基线仍是三 Migration、旧 Runtime ACL 与 in-process 查询，`0003`、回填、shadow 和 cutover 尚无完成记录。[脱敏运维检查点](./production-evidence/2026-09-04-operations-checkpoint.md)同时保留四项未闭环状态：操作者知情接受既有凭据处理暴露风险并将轮换延期到本轮之外，轮换义务仍开放；历史 ACL 恢复材料不足且 provider backup/PITR 未核验；Continuous Daily 被确认的组织策略阻断；Hosted Alpha 仍公开且 owner-only 尚待显式授权。
 
 ## MVP 验收状态
 
@@ -181,6 +251,7 @@
 
 | 日期       | 更新                                                                                                                                                                                                     |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-06 | PR #45 合并为 `main@a5a4bca`，合并后 CI 通过、本地 main 已同步；记录完整平台已完成约 55%–65%、剩余约 35%–45% 的粗估口径，补齐六类剩余工作、完成标准和建议顺序；FTS-1 生产上线仍待执行                    |
 | 2026-09-04 | PR #41 FTS-0 通过最终评审、CI、Search `23/23`、Web `3/3` 并合并为 `main@83654c48`；精确 Production 部署、五结果搜索、DB health 与路由日志通过；FTS-1 数据库落地仍待执行                                  |
 | 2026-09-04 | PR #42 修复空 ACL 数组 `22023` 后完整 CI 全绿并合并为 `main@0806e349`；精确 Production 部署/health 通过，未执行生产 ACL 捕获、provider backup 核验或数据库 mutation                                      |
 | 2026-09-04 | PR #40 合并为 `main@0012871`，精确 Production 部署、直接 health、受控单例 incident 与恢复关闭通过；其他检查点风险不变                                                                                    |
