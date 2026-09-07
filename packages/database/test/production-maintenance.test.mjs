@@ -1,4 +1,5 @@
 import console from 'node:console';
+import process from 'node:process';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
@@ -10,6 +11,7 @@ import {
   publicMaintenanceResult,
   runMaintenance,
   validateMaintenanceRequest,
+  verifyMaintenanceFreshness,
 } from '../../../.github/scripts/production-maintenance.mjs';
 import { maintenanceWorkflowProblems } from '../../../.github/scripts/maintenance-workflow-contract.mjs';
 
@@ -24,7 +26,32 @@ const env = {
   GITHUB_RUN_ID: '123',
   GITHUB_RUN_ATTEMPT: '1',
   MAINTENANCE_OPERATION: 'preflight',
+  GH_TOKEN: 'test-only-read-token',
 };
+const reference = {
+  ref: 'refs/heads/main',
+  object: { type: 'commit', sha: env.GITHUB_SHA },
+};
+const ciRun = {
+  id: 42,
+  path: '.github/workflows/ci.yml',
+  repository: { full_name: env.GITHUB_REPOSITORY },
+  head_sha: env.GITHUB_SHA,
+  head_branch: 'main',
+  event: 'push',
+  status: 'completed',
+  conclusion: 'success',
+};
+function response(body, status = 200) {
+  return { status, json: async () => body };
+}
+function successfulFetch() {
+  return vi
+    .fn()
+    .mockResolvedValueOnce(response(reference))
+    .mockResolvedValueOnce(response({ workflow_runs: [ciRun] }))
+    .mockResolvedValueOnce(response(reference));
+}
 function writeEnvironment(operation = 'migrate', changes = {}) {
   return {
     ...env,
@@ -154,21 +181,220 @@ describe('hosted production maintenance guards', () => {
   it('suppresses legacy logs and restores logging after success and failure', async () => {
     const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {
-      await runMaintenance(env, async () => {
-        console.log('private details');
-        return { pendingMigrations: ['private-name'] };
-      });
+      await runMaintenance(
+        env,
+        async () => {
+          console.log('private details');
+          return { pendingMigrations: ['private-name'] };
+        },
+        { fetchImpl: successfulFetch() },
+      );
       expect(spy).not.toHaveBeenCalled();
       await expect(
-        runMaintenance(env, async () => {
-          console.log('private details');
-          throw new Error('private database failure');
-        }),
+        runMaintenance(
+          env,
+          async () => {
+            console.log('private details');
+            throw new Error('private database failure');
+          },
+          { fetchImpl: successfulFetch() },
+        ),
       ).rejects.toThrow();
       expect(console.log).toBe(spy);
       expect(spy).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
+    }
+  });
+});
+
+describe('execution-time GitHub freshness check', () => {
+  it('checks main, the latest push CI, then main again against fixed GitHub endpoints', async () => {
+    const fetchImpl = successfulFetch();
+    await verifyMaintenanceFreshness(env, { fetchImpl });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    const urls = fetchImpl.mock.calls.map(([url]) => url);
+    expect(urls).toEqual([
+      'https://api.github.com/repos/hzense/tech-intelligence-hub/git/ref/heads/main',
+      `https://api.github.com/repos/hzense/tech-intelligence-hub/actions/workflows/ci.yml/runs?branch=main&event=push&head_sha=${env.GITHUB_SHA}&per_page=1`,
+      'https://api.github.com/repos/hzense/tech-intelligence-hub/git/ref/heads/main',
+    ]);
+    expect(urls[1]).not.toContain('status=success');
+    for (const [, options] of fetchImpl.mock.calls) {
+      expect(options).toMatchObject({
+        method: 'GET',
+        redirect: 'error',
+        cache: 'no-store',
+        headers: {
+          Authorization: `Bearer ${env.GH_TOKEN}`,
+          'X-GitHub-Api-Version': '2026-03-10',
+        },
+      });
+      expect(options.signal).toBeInstanceOf(globalThis.AbortSignal);
+    }
+  });
+  it.each([
+    { GH_TOKEN: '' },
+    { GH_TOKEN: '  ' },
+    { GITHUB_REPOSITORY: 'someone/fork' },
+    { GITHUB_REF: 'refs/tags/main' },
+    { GITHUB_SHA: 'bad/sha' },
+    { GITHUB_API_URL: 'https://untrusted.invalid' },
+  ])('refuses unsafe API configuration without a network call %j', async (changes) => {
+    const fetchImpl = vi.fn();
+    await expect(
+      verifyMaintenanceFreshness({ ...env, ...changes }, { fetchImpl }),
+    ).rejects.toThrow();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it.each([301, 401, 403, 404, 429, 500, 503])(
+    'blocks on HTTP %i without reading or logging the response body',
+    async (status) => {
+      const json = vi.fn(() => ({ message: 'private-api-error' }));
+      const fetchImpl = vi.fn().mockResolvedValue({ status, json });
+      await expect(verifyMaintenanceFreshness(env, { fetchImpl })).rejects.toThrow(
+        'github-preflight-unavailable',
+      );
+      expect(json).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    null,
+    {},
+    { ...reference, ref: 'refs/tags/main' },
+    { ...reference, object: { type: 'tag', sha: env.GITHUB_SHA } },
+    { ...reference, object: { type: 'commit', sha: 'f'.repeat(40) } },
+  ])('blocks on a missing, malformed or stale main reference %j', async (body) => {
+    const fetchImpl = vi.fn().mockResolvedValue(response(body));
+    await expect(verifyMaintenanceFreshness(env, { fetchImpl })).rejects.toThrow(
+      'github-main-head-changed',
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    { id: '42' },
+    { path: '.github/workflows/other.yml' },
+    { repository: { full_name: 'someone/fork' } },
+    { head_sha: 'f'.repeat(40) },
+    { head_branch: 'feature' },
+    { event: 'workflow_dispatch' },
+    { status: 'in_progress' },
+    { status: 'queued', conclusion: null },
+    { conclusion: 'failure' },
+    { conclusion: 'cancelled' },
+    { conclusion: 'skipped' },
+    { conclusion: 'neutral' },
+    { conclusion: null },
+  ])('rejects CI from the wrong identity or an unsuccessful latest run %j', async (changes) => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(response(reference))
+      .mockResolvedValueOnce(response({ workflow_runs: [{ ...ciRun, ...changes }] }));
+    await expect(verifyMaintenanceFreshness(env, { fetchImpl })).rejects.toThrow(
+      'github-main-ci-not-successful',
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+  it.each([null, {}, { workflow_runs: [] }, { workflow_runs: [ciRun, ciRun] }])(
+    'rejects missing or malformed CI results %j',
+    async (body) => {
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(response(reference))
+        .mockResolvedValueOnce(response(body));
+      await expect(verifyMaintenanceFreshness(env, { fetchImpl })).rejects.toThrow(
+        'github-main-ci-not-successful',
+      );
+    },
+  );
+  it('detects main advancing during the CI lookup', async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(response(reference))
+      .mockResolvedValueOnce(response({ workflow_runs: [ciRun] }))
+      .mockResolvedValueOnce(
+        response({
+          ...reference,
+          object: { type: 'commit', sha: 'f'.repeat(40) },
+        }),
+      );
+    await expect(verifyMaintenanceFreshness(env, { fetchImpl })).rejects.toThrow(
+      'github-main-head-changed',
+    );
+  });
+  it.each(['network', 'timeout', 'json'])(
+    'sanitizes %s failures and never starts database execution',
+    async (failure) => {
+      const error = new Error(`private-${failure}-detail ${env.GH_TOKEN}`);
+      error.name = failure === 'timeout' ? 'TimeoutError' : 'Error';
+      const fetchImpl =
+        failure === 'json'
+          ? vi.fn().mockResolvedValue({
+              status: 200,
+              json: async () => {
+                throw error;
+              },
+            })
+          : vi.fn().mockRejectedValue(error);
+      const execute = vi.fn();
+      const result = await runMaintenance(env, execute, { fetchImpl }).catch(
+        publicMaintenanceFailure,
+      );
+      expect(result).toEqual({ status: 'blocked', gate: 'github-preflight-unavailable' });
+      expect(execute).not.toHaveBeenCalled();
+      expect(JSON.stringify(result)).not.toContain('private-');
+      expect(JSON.stringify(result)).not.toContain(env.GH_TOKEN);
+    },
+  );
+  it.each(maintenanceOperations)('gates %s before calling database code', async (operation) => {
+    const request = ['migrate', 'search-apply'].includes(operation)
+      ? writeEnvironment(operation)
+      : { ...env, MAINTENANCE_OPERATION: operation };
+    const execute = vi.fn();
+    const fetchImpl = vi.fn().mockResolvedValue(response(null));
+    await expect(runMaintenance(request, execute, { fetchImpl, now: () => now })).rejects.toThrow(
+      'github-main-head-changed',
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it('revalidates an approval that expires during the API calls', async () => {
+    const execute = vi.fn();
+    const clock = vi
+      .fn()
+      .mockReturnValueOnce(now)
+      .mockReturnValueOnce(now + 60 * 60 * 1000);
+    await expect(
+      runMaintenance(writeEnvironment(), execute, {
+        fetchImpl: successfulFetch(),
+        now: clock,
+      }),
+    ).rejects.toThrow('approval-expired-or-too-long');
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it('removes the GitHub token from the dependency-facing environment', async () => {
+    const execute = vi.fn(async (executionEnv) => {
+      expect(executionEnv.GH_TOKEN).toBeUndefined();
+      expect(executionEnv.DATABASE_DIRECT_URL).toBe('test-only-database-url');
+      return {};
+    });
+    const fetchImpl = successfulFetch();
+    await runMaintenance({ ...env, DATABASE_DIRECT_URL: 'test-only-database-url' }, execute, {
+      fetchImpl,
+    });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(fetchImpl.mock.calls)).not.toContain('test-only-database-url');
+  });
+  it('also removes the token from process.env before importing database dependencies', async () => {
+    try {
+      for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+      const execute = vi.fn(async () => {
+        expect(process.env.GH_TOKEN).toBeUndefined();
+        return {};
+      });
+      await runMaintenance(process.env, execute, { fetchImpl: successfulFetch() });
+      expect(execute).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 });
@@ -196,6 +422,8 @@ describe('production maintenance workflow contract', () => {
     (w) => (w.jobs.maintenance.steps[3].run = 'true'),
     (w) => (w.jobs.maintenance.steps[3]['continue-on-error'] = true),
     (w) => (w.jobs.maintenance.steps[4].env.MAINTENANCE_APPROVAL = ''),
+    (w) => delete w.jobs.maintenance.steps[4].env.GH_TOKEN,
+    (w) => (w.jobs.maintenance.steps[4].env.GH_TOKEN = '${{ secrets.PERSONAL_TOKEN }}'),
     (w) => (w.jobs.maintenance.steps[4].run = 'node arbitrary-script.mjs'),
     (w) => w.jobs.maintenance.steps.push({ uses: 'actions/upload-artifact@unreviewed' }),
   ])('rejects weakened workflow boundaries %#', (mutate) => {
