@@ -1,7 +1,9 @@
 import { readdir, readFile } from 'node:fs/promises';
+import console from 'node:console';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import { parse } from 'yaml';
+import { maintenanceWorkflowProblems } from '../.github/scripts/maintenance-workflow-contract.mjs';
 
 const workflowRoot = fileURLToPath(new URL('../.github/workflows/', import.meta.url));
 const workflowFiles = (await readdir(workflowRoot))
@@ -215,6 +217,12 @@ if (
     'production-health.yml: health-incident must preserve its singleton marker and distinguish probe, test, and non-terminal results',
   );
 }
+
+issues.push(
+  ...maintenanceWorkflowProblems(
+    parse(await readFile(join(workflowRoot, 'production-maintenance.yml'), 'utf8')),
+  ),
+);
 
 if (issues.length > 0) {
   throw new Error(`Workflow validation failed:\n${issues.map((issue) => `- ${issue}`).join('\n')}`);

@@ -1,0 +1,80 @@
+name: Production maintenance
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Reviewed production operation (writes need a run-bound recovery approval)
+        required: true
+        type: choice
+        default: preflight
+        options:
+          - preflight
+          - migrate
+          - verify
+          - search-dry-run
+          - search-apply
+          - runtime-preflight
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: production-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintenance:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment: production-maintenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout approved commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+      - name: Prepare runner without production credentials
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.21.0 --activate
+          pnpm install --frozen-lockfile
+          pnpm --filter @hzense/content build
+          pnpm --filter @hzense/search build
+          pnpm workflow:validate
+      - name: Require current main and successful main CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          head="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          test "$head" = "$GITHUB_SHA"
+          conclusion="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&head_sha=$GITHUB_SHA&per_page=1" --jq '.workflow_runs[0].conclusion')"
+          test "$conclusion" = success
+      - name: Execute bounded maintenance
+        working-directory: apps/web
+        env:
+          MAINTENANCE_OPERATION: ${{ inputs.operation }}
+          DATABASE_DIRECT_URL: ${{ inputs.operation != 'runtime-preflight' && secrets.DATABASE_DIRECT_URL || '' }}
+          HZENSE_RUNTIME_DATABASE_URL: ${{ inputs.operation == 'runtime-preflight' && secrets.HZENSE_RUNTIME_DATABASE_URL || '' }}
+          MAINTENANCE_APPROVAL: ${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply') && secrets.MAINTENANCE_APPROVAL || '' }}
+          MAINTENANCE_BACKUP_ID: ${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply') && secrets.MAINTENANCE_BACKUP_ID || '' }}
+          HZENSE_DATABASE_EXPECTED_HOST: ${{ vars.HZENSE_DATABASE_EXPECTED_HOST }}
+          HZENSE_DATABASE_EXPECTED_PORT: ${{ vars.HZENSE_DATABASE_EXPECTED_PORT }}
+          HZENSE_DATABASE_EXPECTED_NAME: ${{ vars.HZENSE_DATABASE_EXPECTED_NAME }}
+          HZENSE_DATABASE_EXPECTED_USER: ${{ vars.HZENSE_DATABASE_EXPECTED_USER }}
+          HZENSE_DATABASE_EXPECTED_PGVECTOR_VERSION: ${{ vars.HZENSE_DATABASE_EXPECTED_PGVECTOR_VERSION }}
+          HZENSE_DATABASE_EXPECTED_POSTGRES_MAJOR: '18'
+          HZENSE_RUNTIME_EXPECTED_HOST: ${{ vars.HZENSE_RUNTIME_EXPECTED_HOST }}
+          HZENSE_RUNTIME_EXPECTED_PORT: ${{ vars.HZENSE_RUNTIME_EXPECTED_PORT }}
+          HZENSE_RUNTIME_EXPECTED_NAME: ${{ vars.HZENSE_RUNTIME_EXPECTED_NAME }}
+          HZENSE_RUNTIME_EXPECTED_USER: hzense_runtime
+          HZENSE_RUNTIME_EXPECTED_POSTGRES_MAJOR: '18'
+          HZENSE_RUNTIME_EXPECTED_CONNECTION_LIMIT: '20'
+        run: node ../../.github/scripts/production-maintenance.mjs
