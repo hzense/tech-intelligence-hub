@@ -47,7 +47,9 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
       - name: Validate workflow security contracts
-        run: pnpm workflow:validate
+        run: |
+          pnpm workflow:validate
+          pnpm exec eslint .github/scripts scripts/validate-workflows.mjs
       - name: Check repository formatting
         run: pnpm format:check
       - name: Audit production dependencies

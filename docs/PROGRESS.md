@@ -28,6 +28,9 @@
 ### 1. FTS-1 数据库搜索生产上线
 
 - [x] PR #45 已于 2026-09-06 squash 合并为 `main@a5a4bca`；统一三种模式输入校验、页面错误提示和数据库搜索健康探测均已交付，PR 与合并后 main CI 通过。
+- [x] 2026-09-06 已开始生产准备：新建七天分支备份，生产与备份只读计数一致；正式站当前部署与健康基线通过。详见[上线准备记录](./production-evidence/2026-09-06-fts1-preparation.md)。这不代表恢复演练通过；现阶段等待受保护维护连接和 ACL 恢复门禁闭环。
+- [x] 2026-09-07 操作者批准 GitHub Actions + Neon + Vercel 全线上维护方案，保留共享实现/CI 测试；本地临时密码入口、专用测试、说明和配置文件已移除。专用 `production-maintenance` 环境已创建并回读确认：仅 main branch、人工审批、禁止管理员绕过，八项非密码参数已配置。
+- [ ] 受保护维护工作流代码及防误操作测试随本次 PR 交付，仍待审核、合并及线上验证。需在 Environment secrets 添加现有连接凭据，并完成在线 ACL 受控归档与恢复门禁后才能执行写操作；当前不代表 FTS-1 已上线。入口、审批边界及剩余工作见[全线上维护手册](./ONLINE_MAINTENANCE.md)。
 - [ ] 解除 Runtime ACL 恢复证据门禁，核验新的可恢复备份与当前权限 baseline。
 - [ ] 在生产应用并验证 `0003_search_documents_fts.sql`。
 - [ ] 完成 Search Document 受保护回填、指纹校验和无变更重跑。

@@ -1,5 +1,10 @@
 # HZense 部署手册
 
+> 2026-09-07 操作者已批准改为全线上生产维护，入口与剩余门禁见
+> [全线上维护手册](./ONLINE_MAINTENANCE.md)。下文保留的 CLI 命令是共享实现说明，
+> 不再要求操作者在本机运行或保存生产环境文件。线上入口未覆盖的步骤仍保持阻断，
+> 不以本地执行绕过；已记录的历史验收不因此改变。
+
 ## 目标
 
 GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正式源码。Pull Request 生成 Preview Deployment；合并到 `main` 后生成 Production Deployment。旧 Hosted Alpha 仅用于历史对照，不是正式生产站；截至 2026-09-04 它仍为 active v6 / public，收紧访问尚待显式授权。
