@@ -11,8 +11,11 @@
 - 必须由 `zhenghu` 审批，禁止管理员绕过。允许发起人审批，适配当前单操作者流程；
   **这不是双人独立审批**，也不会自动审批。多人运维时应增加独立审核者并禁止自审。
 - 八个非密码目标校验变量已配置；原有 `Production` / `Preview` 环境未改动。
-- 工作流和测试随本次 PR 交付，仍待审核、合并到默认分支及线上验证，尚无维护执行记录。
-- 生产凭据未上传，迁移、回填、ACL 修改、搜索切换均未执行。
+- 基础工作流与测试已通过 [PR #47](https://github.com/hzense/tech-intelligence-hub/pull/47)
+  合并为 `main@88b7570`，对应 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34121384366)
+  已成功。这不等于生产维护已执行。
+- 后续的执行入口复核加固随本次 PR 交付，仍待审核、合并及线上验证。
+- 初始环境配置检查点未上传生产凭据；后续配置与生产执行需单独记录，不能从代码交付推断。
 
 ## 网页配置
 
@@ -43,7 +46,9 @@
 2. 任务停在 Environment 审批。核对 commit、operation、运行编号和尝试编号。
    写操作必须先完成恢复审核，并在审批前更新 `MAINTENANCE_APPROVAL`。
 3. 审批后由 GitHub hosted runner 执行。若等待期间 `main` 前进或最新 push CI
-   不是 success，任务拒绝使用生产凭据；需针对新的 `main` 重新发起、审核。
+   不是 success，初检失败，不进入持密执行步骤；需针对新的 `main` 重新发起、审核。
+   新增的执行入口复核会在数据库模块加载前再次检查 main、最新 push CI，再回读 main，
+   并重验写操作审批有效期。复核失败不会调用数据库代码。
 4. 查看最终 JSON 和任务结论。公开输出仅保留计数、指纹和有界错误分类，
    不输出完整 catalog、文档 ID、URL、角色详情、备份 ID、原始错误或堆栈。
    失败时在 Neon 受控页面继续诊断，不开启原始数据库调试日志。
@@ -61,6 +66,25 @@
 GitHub concurrency 不是持久 FIFO 队列，不要同时提交多次请求。
 不要在迁移中手动 Cancel；多条迁移可能已部分提交，中断后先只读核验再决定重跑。
 没有任意 SQL、任意 shell、任意 ref、自动 ACL normalization 或自动切换搜索的入口。
+
+## 执行入口复核边界
+
+复核仅使用 Node 内置 API 向固定的 `api.github.com` 仓库路径发起只读请求，
+按 GitHub 官方 [Git reference](https://docs.github.com/en/rest/git/refs#get-a-reference)
+及 [workflow runs](https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-workflow)
+接口检查返回的 ref、提交、仓库、工作流路径、触发事件、分支和执行状态。
+不通过 `status=success` 筛选来跳过更新的失败或运行中记录。
+
+执行步骤的 `GH_TOKEN` 来自已有只读 `github.token`，不要求新增个人 Token 或权限。
+每次请求超时 10 秒，禁止重定向和缓存；缺少 Token、HTTP 错误、限流、超时、JSON 异常、
+身份不匹配或无成功 CI 都会阻断。公开失败记录仅给出固定 gate 名，不输出 API 原始正文。
+Token 不传给数据库执行函数，并在真实入口从 `process.env` 删除后才加载数据库依赖。
+
+这项加固**缩小而非消除**检查与执行之间的时间窗：末次 main 回读后仍可能发生 Git 更新或
+CI 重跑，GitHub 检查与数据库事务无法由此形成原子操作。维护期间的 DDL/发布冻结仍然必要。
+审批有效期在数据库执行入口检查，不表示整个长事务内持续检查或到期自动回滚。
+代码和依赖在同一 runner 上准备、执行的供应链风险也仍存在；仅拆 job、传递原有依赖
+artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须单独设计与验证该边界。
 
 ## 写操作恢复审核
 

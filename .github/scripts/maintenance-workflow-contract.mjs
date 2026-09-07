@@ -64,8 +64,9 @@ export function maintenanceWorkflowProblems(workflow) {
   check(
     steps[4]?.run === 'node ../../.github/scripts/production-maintenance.mjs' &&
       steps[4]?.['working-directory'] === 'apps/web' &&
+      steps[4]?.env?.GH_TOKEN === '${{ github.token }}' &&
       steps[4]?.env?.MAINTENANCE_OPERATION === '${{ inputs.operation }}',
-    'only the bounded runner may consume credentials',
+    'only the bounded runner with its read-only freshness token may consume credentials',
   );
   const secretBindings = {
     DATABASE_DIRECT_URL:

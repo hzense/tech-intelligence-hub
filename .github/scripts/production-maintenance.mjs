@@ -127,6 +127,73 @@ export function publicMaintenanceFailure(error) {
   };
 }
 
+// Only Node built-ins run before this check. Never follow a redirect with the token,
+// accept an older successful run, or expose GitHub response bodies in public logs.
+export async function verifyMaintenanceFreshness(env, { fetchImpl = globalThis.fetch } = {}) {
+  requireGate(
+    env.GITHUB_REPOSITORY === 'hzense/tech-intelligence-hub' &&
+      env.GITHUB_REF === 'refs/heads/main' &&
+      /^[a-f0-9]{40}$/.test(env.GITHUB_SHA ?? '') &&
+      (!env.GITHUB_API_URL || env.GITHUB_API_URL === 'https://api.github.com'),
+    'github-preflight-target-invalid',
+  );
+  requireGate(
+    typeof env.GH_TOKEN === 'string' && env.GH_TOKEN.trim().length > 0,
+    'github-preflight-token-required',
+  );
+  const root = 'https://api.github.com/repos/hzense/tech-intelligence-hub';
+  async function readJson(path) {
+    try {
+      const response = await fetchImpl(`${root}/${path}`, {
+        method: 'GET',
+        redirect: 'error',
+        cache: 'no-store',
+        signal: globalThis.AbortSignal.timeout(10_000),
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${env.GH_TOKEN}`,
+          'X-GitHub-Api-Version': '2026-03-10',
+        },
+      });
+      requireGate(response.status === 200, 'github-preflight-unavailable');
+      return await response.json();
+    } catch {
+      throw new MaintenanceGateError('github-preflight-unavailable');
+    }
+  }
+  async function checkHead() {
+    const reference = await readJson('git/ref/heads/main');
+    requireGate(
+      reference?.ref === 'refs/heads/main' &&
+        reference?.object?.type === 'commit' &&
+        reference?.object?.sha === env.GITHUB_SHA,
+      'github-main-head-changed',
+    );
+  }
+  await checkHead();
+  const runs = await readJson(
+    `actions/workflows/ci.yml/runs?branch=main&event=push&head_sha=${env.GITHUB_SHA}&per_page=1`,
+  );
+  const run = runs?.workflow_runs?.[0];
+  requireGate(
+    Array.isArray(runs?.workflow_runs) &&
+      runs.workflow_runs.length === 1 &&
+      Number.isSafeInteger(run?.id) &&
+      run.id > 0 &&
+      run.path === '.github/workflows/ci.yml' &&
+      run.repository?.full_name === env.GITHUB_REPOSITORY &&
+      run.head_sha === env.GITHUB_SHA &&
+      run.head_branch === 'main' &&
+      run.event === 'push' &&
+      run.status === 'completed' &&
+      run.conclusion === 'success',
+    'github-main-ci-not-successful',
+  );
+  // Catch main advancing while the CI lookup was in flight. This narrows, but
+  // cannot atomically eliminate, the race between GitHub and a separate database.
+  await checkHead();
+}
+
 async function executeOperation(env, { operation, approval }) {
   if (operation === 'runtime-preflight') {
     const { runRuntimeReaderPreflight, runtimeReaderProductionOptions } =
@@ -166,14 +233,26 @@ async function executeOperation(env, { operation, approval }) {
   });
 }
 
-export async function runMaintenance(env, execute = executeOperation) {
-  const request = validateMaintenanceRequest(env);
+export async function runMaintenance(
+  env,
+  execute = executeOperation,
+  { fetchImpl = globalThis.fetch, now = Date.now } = {},
+) {
+  const snapshot = { ...env };
+  validateMaintenanceRequest(snapshot, now());
+  const executionEnv = { ...snapshot };
+  delete executionEnv.GH_TOKEN;
+  // Do not leave the read-only GitHub token available to imported DB dependencies.
+  if (env === process.env) delete process.env.GH_TOKEN;
   // Shared CLIs print catalog details and changed IDs; hosted logs are public.
   const methods = ['log', 'info', 'warn', 'error', 'debug', 'dir', 'table'];
   const originals = new Map(methods.map((method) => [method, console[method]]));
   try {
     for (const method of methods) console[method] = () => {};
-    return publicMaintenanceResult(request.operation, await execute(env, request));
+    await verifyMaintenanceFreshness(snapshot, { fetchImpl });
+    // A short-lived write approval may expire during the GitHub requests.
+    const request = validateMaintenanceRequest(executionEnv, now());
+    return publicMaintenanceResult(request.operation, await execute(executionEnv, request));
   } finally {
     for (const [method, original] of originals) console[method] = original;
   }

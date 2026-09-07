@@ -60,6 +60,7 @@ jobs:
       - name: Execute bounded maintenance
         working-directory: apps/web
         env:
+          GH_TOKEN: ${{ github.token }}
           MAINTENANCE_OPERATION: ${{ inputs.operation }}
           DATABASE_DIRECT_URL: ${{ inputs.operation != 'runtime-preflight' && secrets.DATABASE_DIRECT_URL || '' }}
           HZENSE_RUNTIME_DATABASE_URL: ${{ inputs.operation == 'runtime-preflight' && secrets.HZENSE_RUNTIME_DATABASE_URL || '' }}
