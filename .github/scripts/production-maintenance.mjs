@@ -20,6 +20,20 @@ function requireGate(condition, gate) {
   if (!condition) throw new MaintenanceGateError(gate);
 }
 
+// An operator-reviewed retention declaration, not a provider API verification.
+// Never infer non-expiration from a missing/invalid date or accept both modes.
+function backupCoversApproval(approval, expiry) {
+  if (approval.backupNeverExpires === true) {
+    return !Object.hasOwn(approval, 'backupExpiresAt');
+  }
+  if (Object.hasOwn(approval, 'backupNeverExpires') && approval.backupNeverExpires !== false) {
+    return false;
+  }
+  return (
+    typeof approval.backupExpiresAt === 'string' && Date.parse(approval.backupExpiresAt) > expiry
+  );
+}
+
 export class MaintenanceGateError extends Error {
   constructor(gate) {
     super(gate);
@@ -66,7 +80,7 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
   requireGate(
     approval.backupVerified === true &&
       approval.ddlFreezeConfirmed === true &&
-      Date.parse(approval.backupExpiresAt) > expiry,
+      backupCoversApproval(approval, expiry),
     'recovery-evidence-required',
   );
   if (operation === 'acl-capture') {

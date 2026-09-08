@@ -22,7 +22,8 @@
   经操作者手动审批后成功，脱敏结果为 `pendingMigrationCount: 1`。
   Migrator 直连与预检合约已验证；Runtime Secret 尚未通过自身凭据实跑验证。
   操作者已知情批准将完整 ACL/恢复材料归档到当前公开仓库，不创建私有仓库。
-  新增 `acl-capture` 的工作区实现尚未提交、合并或线上运行；备份恢复复核仍待完成，
+  `acl-capture` 已通过 [PR #49](https://github.com/hzense/tech-intelligence-hub/pull/49)
+  合并为 `main@8ed8e87` 且 main CI 成功，尚未线上运行；备份恢复复核仍待完成，
   详见[当日门禁记录](./production-evidence/2026-09-08-fts1-gates.md)。
 
 ## 网页配置
@@ -129,6 +130,27 @@ artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须�
 数据库状态改变导致计划不同，apply 拒绝执行。提交、operation、运行或尝试编号改变，
 以及审核过期，均需重新审核；不要用 Re-run jobs 复用旧批准。
 
+### 备份保留方式（二选一）
+
+以下规则同时适用于 `migrate`、`search-apply` 与 `acl-capture`：
+
+- 有过期时间：保留上例 `backupExpiresAt`，填写真实日期字符串且严格晚于
+  `expiresAt`；`backupNeverExpires` 可省略或为布尔值 `false`，兼容已有审批格式。
+- Provider 明确显示不自动过期：**删除整个 `backupExpiresAt` 字段**，改为
+  `"backupNeverExpires": true`。不得同时填写两个字段，也不能用 `null`、空字符串、
+  `"never"` 或虚构日期代替。`"true"` 字符串不是布尔值 `true`。
+
+不自动过期是针对 `MAINTENANCE_BACKUP_ID` 对应真实备份的人工复核声明，
+不是系统自动查询 Neon 的结果，也不保证备份不会被手动删除。审批人仍须确认
+备份覆盖目标、在整个维护窗口内可恢复且不会被删除；记录 provider 保留设置
+的复核证据和后续清理安排。不能仅凭该字段认定 `backupVerified` 或恢复演练通过。
+
+此选项**不会延长审批有效期**：`expiresAt` 仍必须在未来且不超过 24 小时，
+执行入口仍重查 main、最新 CI、运行绑定及有效期；备份 ID 摘要、冻结、公开授权、
+写操作恢复审核及回填计划指纹等原有门禁保持不变。
+
+不自动过期支持须经过本次 PR 审核、合并与 main CI 后才可线上使用。
+
 这些字段是审核声明和防误用门禁，**不是**程序自动验证 Neon 备份、恢复证据或人工审核真实性。
 `backupIdSha256` 是未加域前缀的 ID 摘要，与 ACL 工具的域分隔 `backupReference` 不同，
 不可混用；审批人必须核对受保护原件。摘要应在线上受控证据处理环节生成，不使用公开哈希网站。
@@ -178,7 +200,7 @@ artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须�
 ## 尚未完成的线上闭环
 
 - 当前工作流覆盖 FTS-1 预检/迁移/回填/验证，不宣称全部生产运维功能已迁移完毕。
-- ACL 双采集和授权公开附件入口已实现于工作区，尚未合并、实跑或完成永久入库。
+- ACL 双采集和授权公开附件入口已随 PR #49 合并，尚未实跑或完成永久入库。
   完整 catalog **不得直接放进公共 Actions 日志**。
   实际归档、人工复核及隔离恢复演练完成前，不执行新的 ACL normalization 或生产写入，
   不以本地执行替代。不得上传数据库备份到 Actions artifact。
