@@ -188,6 +188,14 @@ Runtime ACL 脚本包含目标数据库范围的 destructive ACL normalization�
 
 ### Runtime ACL 恢复基线
 
+**2026-09-08 归档边界变更：** 操作者已知情批准在当前公开仓库存放完整 ACL 基线及
+无凭据恢复材料，不再要求私有归档。此明确授权仅覆盖
+[`docs/production-evidence/acl/`](./production-evidence/acl/README.md) 约定的材料，
+不包括密码、连接配置、原始备份 ID 或业务数据，也不允许完整 JSON 进入公开执行日志。
+以下旧流程中“完整 JSON 不入仓库/仅存摘要”的默认限制由这一限定例外替代；
+采集、备份验证、冻结、双重复核和恢复演练门禁不变。线上入口及当前交付状态见
+[全线上维护手册](./ONLINE_MAINTENANCE.md#当前仓库-acl-公开归档)。
+
 以后每次重新运行 Runtime ACL normalization 前，都必须先创建并在 provider 侧独立验证一个新的可恢复备份，把其真实 ID 只写入受保护环境变量 `HZENSE_RUNTIME_ACL_BACKUP_ID`，再用数据库 owner 的受保护 direct 连接执行 `pnpm db:capture:runtime-acl:production`，并把标准输出保存到访问受控、不会提交到仓库的证据位置。命令还只从现有 `DATABASE_DIRECT_URL` 与 `HZENSE_DATABASE_EXPECTED_*` 环境读取连接配置，拒绝命令行参数。Backup ID 必须通过与生产 Topic Apply 共用的严格格式与 placeholder 检查；成功输出不包含原始 ID，而只包含以 `hzense-runtime-acl-backup-reference/v1` 域分隔计算的 SHA-256 reference。输出同样不包含 URL、host、port、密码、Token、`rolpassword`、业务行或 Routine 定义。不要在命令行展开 URL，也不要把完整 JSON 粘贴进 Issue、PR、聊天或公开日志。
 
 采集器验证 direct target 后进入有超时保护的 `REPEATABLE READ READ ONLY` 事务，并在任何 TLS/catalog 查询前把事务 `search_path` 显式固定为 `pg_catalog, pg_temp`。把 `pg_temp` 明确放在第二位可阻止 PostgreSQL 将同一 session 的临时 Relation/Type 隐式置于 catalog 之前；随后采集器验证数据库 owner 身份、无 `SET ROLE`、PostgreSQL major 与 Production TLS。它记录以下可回滚元数据，并在成功或失败后都执行 `ROLLBACK`：

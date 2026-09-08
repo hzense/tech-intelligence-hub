@@ -79,6 +79,41 @@ function writeEnvironment(operation = 'migrate', changes = {}) {
 }
 
 describe('hosted production maintenance guards', () => {
+  it('requires separate public disclosure consent but not a completed restore for capture', () => {
+    const request = writeEnvironment('acl-capture', {
+      publicArchiveApproved: true,
+      archiveRepository: 'hzense/tech-intelligence-hub',
+      restoreRehearsed: false,
+      aclRecoveryReviewed: false,
+      aclFingerprint: undefined,
+      restoreEvidenceFingerprint: undefined,
+    });
+    expect(validateMaintenanceRequest(request, now).operation).toBe('acl-capture');
+    expect(() => validateMaintenanceRequest(writeEnvironment('acl-capture'), now)).toThrow(
+      'public-acl-archive-approval-required',
+    );
+  });
+  it.each([
+    { publicArchiveApproved: false },
+    { archiveRepository: 'someone/other' },
+    { backupVerified: false },
+    { ddlFreezeConfirmed: false },
+    { runId: 'other' },
+    { backupIdSha256: 'f'.repeat(64) },
+    { expiresAt: '2026-09-07T09:00:00Z' },
+    { backupExpiresAt: '2026-09-07T10:30:00Z' },
+  ])('blocks unsafe ACL capture approval %j', (changes) => {
+    expect(() =>
+      validateMaintenanceRequest(
+        writeEnvironment('acl-capture', {
+          publicArchiveApproved: true,
+          archiveRepository: 'hzense/tech-intelligence-hub',
+          ...changes,
+        }),
+        now,
+      ),
+    ).toThrow();
+  });
   it.each(['preflight', 'verify', 'search-dry-run', 'runtime-preflight'])(
     'allows reviewed read operation %s without write approval',
     (operation) => {
@@ -347,8 +382,11 @@ describe('execution-time GitHub freshness check', () => {
     },
   );
   it.each(maintenanceOperations)('gates %s before calling database code', async (operation) => {
-    const request = ['migrate', 'search-apply'].includes(operation)
-      ? writeEnvironment(operation)
+    const request = ['migrate', 'search-apply', 'acl-capture'].includes(operation)
+      ? writeEnvironment(operation, {
+          publicArchiveApproved: true,
+          archiveRepository: 'hzense/tech-intelligence-hub',
+        })
       : { ...env, MAINTENANCE_OPERATION: operation };
     const execute = vi.fn();
     const fetchImpl = vi.fn().mockResolvedValue(response(null));
@@ -426,6 +464,13 @@ describe('production maintenance workflow contract', () => {
     (w) => (w.jobs.maintenance.steps[4].env.GH_TOKEN = '${{ secrets.PERSONAL_TOKEN }}'),
     (w) => (w.jobs.maintenance.steps[4].run = 'node arbitrary-script.mjs'),
     (w) => w.jobs.maintenance.steps.push({ uses: 'actions/upload-artifact@unreviewed' }),
+    (w) => (w.jobs.maintenance.steps[5].if = 'always()'),
+    (w) => (w.jobs.maintenance.steps[5].with.path = '${{ runner.temp }}/**'),
+    (w) => (w.jobs.maintenance.steps[5].with['if-no-files-found'] = 'warn'),
+    (w) =>
+      (w.jobs.maintenance.steps[5].env = {
+        DATABASE_DIRECT_URL: '${{ secrets.DATABASE_DIRECT_URL }}',
+      }),
   ])('rejects weakened workflow boundaries %#', (mutate) => {
     const copy = globalThis.structuredClone(workflow);
     mutate(copy);
