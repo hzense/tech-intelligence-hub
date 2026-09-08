@@ -78,6 +78,102 @@ function writeEnvironment(operation = 'migrate', changes = {}) {
   };
 }
 
+describe.each(['migrate', 'search-apply', 'acl-capture'])(
+  '%s backup retention declarations',
+  (operation) => {
+    const request = (changes = {}) =>
+      writeEnvironment(operation, {
+        publicArchiveApproved: true,
+        archiveRepository: 'hzense/tech-intelligence-hub',
+        ...changes,
+      });
+    it.each([
+      {},
+      { backupNeverExpires: false },
+      { backupNeverExpires: true, backupExpiresAt: undefined },
+    ])('accepts an explicit valid retention mode %j', (changes) => {
+      expect(validateMaintenanceRequest(request(changes), now).operation).toBe(operation);
+    });
+    it.each([
+      { backupExpiresAt: undefined },
+      { backupExpiresAt: null },
+      { backupExpiresAt: '' },
+      { backupExpiresAt: 'never' },
+      { backupExpiresAt: 'not-a-date' },
+      { backupExpiresAt: ['2026-09-08T11:00:00Z'] },
+      { backupExpiresAt: '2026-09-07T11:00:00Z' },
+      { backupExpiresAt: '2026-09-07T10:30:00Z' },
+      { backupNeverExpires: true },
+      { backupNeverExpires: true, backupExpiresAt: null },
+      { backupNeverExpires: true, backupExpiresAt: '' },
+      { backupNeverExpires: true, backupExpiresAt: 'expired-or-invalid' },
+      { backupNeverExpires: false, backupExpiresAt: undefined },
+      { backupNeverExpires: 'true', backupExpiresAt: undefined },
+      { backupNeverExpires: 'false' },
+      { backupNeverExpires: 1 },
+      { backupNeverExpires: null },
+    ])('fails closed for missing, malformed or conflicting retention %j', (changes) => {
+      expect(() => validateMaintenanceRequest(request(changes), now)).toThrow(
+        'recovery-evidence-required',
+      );
+    });
+    it.each([
+      { backupVerified: false },
+      { ddlFreezeConfirmed: false },
+      { backupIdSha256: 'f'.repeat(64) },
+      { sha: 'f'.repeat(40) },
+      { runId: '124' },
+      { runAttempt: '2' },
+      { operation: 'preflight' },
+      { expiresAt: '2026-09-07T10:00:00Z' },
+      { expiresAt: '2026-09-09T10:00:00Z' },
+      { expiresAt: 'invalid' },
+      ...(operation === 'acl-capture'
+        ? [{ publicArchiveApproved: false }, { archiveRepository: 'someone/other' }]
+        : [
+            { restoreRehearsed: false },
+            { aclRecoveryReviewed: false },
+            { aclFingerprint: '' },
+            { restoreEvidenceFingerprint: '' },
+          ]),
+      ...(operation === 'search-apply'
+        ? [{ projectionFingerprint: '' }, { planFingerprint: '' }]
+        : []),
+    ])('does not bypass other gates with non-expiring backup %j', (changes) => {
+      expect(() =>
+        validateMaintenanceRequest(
+          request({ backupNeverExpires: true, backupExpiresAt: undefined, ...changes }),
+          now,
+        ),
+      ).toThrow();
+    });
+    it('blocks execution if approval expires during GitHub checks despite non-expiring backup', async () => {
+      const execute = vi.fn();
+      const clock = vi
+        .fn()
+        .mockReturnValueOnce(now)
+        .mockReturnValueOnce(now + 60 * 60 * 1000);
+      await expect(
+        runMaintenance(request({ backupNeverExpires: true, backupExpiresAt: undefined }), execute, {
+          fetchImpl: successfulFetch(),
+          now: clock,
+        }),
+      ).rejects.toThrow('approval-expired-or-too-long');
+      expect(execute).not.toHaveBeenCalled();
+    });
+    it('still checks main before database execution for a non-expiring backup', async () => {
+      const execute = vi.fn();
+      await expect(
+        runMaintenance(request({ backupNeverExpires: true, backupExpiresAt: undefined }), execute, {
+          fetchImpl: vi.fn().mockResolvedValue(response(null)),
+          now: () => now,
+        }),
+      ).rejects.toThrow('github-main-head-changed');
+      expect(execute).not.toHaveBeenCalled();
+    });
+  },
+);
+
 describe('hosted production maintenance guards', () => {
   it('requires separate public disclosure consent but not a completed restore for capture', () => {
     const request = writeEnvironment('acl-capture', {
