@@ -41,12 +41,13 @@ export function maintenanceWorkflowProblems(workflow) {
   );
   const steps = job?.steps ?? [];
   check(
-    steps.length === 5 &&
+    steps.length === 6 &&
       steps[0]?.name === 'Checkout approved commit' &&
       steps[1]?.name === 'Set up Node.js' &&
       steps[2]?.name === 'Prepare runner without production credentials' &&
       steps[3]?.name === 'Require current main and successful main CI' &&
-      steps[4]?.name === 'Execute bounded maintenance',
+      steps[4]?.name === 'Execute bounded maintenance' &&
+      steps[5]?.name === 'Archive approved public ACL evidence',
     'step order must preserve preparation, CI guard, then secret-bearing execution',
   );
   check(
@@ -74,15 +75,32 @@ export function maintenanceWorkflowProblems(workflow) {
     HZENSE_RUNTIME_DATABASE_URL:
       "${{ inputs.operation == 'runtime-preflight' && secrets.HZENSE_RUNTIME_DATABASE_URL || '' }}",
     MAINTENANCE_APPROVAL:
-      "${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply') && secrets.MAINTENANCE_APPROVAL || '' }}",
+      "${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture') && secrets.MAINTENANCE_APPROVAL || '' }}",
     MAINTENANCE_BACKUP_ID:
-      "${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply') && secrets.MAINTENANCE_BACKUP_ID || '' }}",
+      "${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture') && secrets.MAINTENANCE_BACKUP_ID || '' }}",
   };
   for (const [name, expression] of Object.entries(secretBindings)) {
     check(steps[4]?.env?.[name] === expression, `keep the scoped ${name} binding`);
   }
+  check(
+    steps[5]?.if === "success() && inputs.operation == 'acl-capture'" &&
+      steps[5]?.uses === 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' &&
+      !steps[5]?.env &&
+      !steps[5]?.run &&
+      JSON.stringify(steps[5]?.with) ===
+        JSON.stringify({
+          name: 'acl-evidence-${{ github.run_id }}-${{ github.run_attempt }}',
+          path: '${{ runner.temp }}/hzense-acl-evidence.json',
+          'if-no-files-found': 'error',
+          'retention-days': 30,
+        }),
+    'archive only the approved ACL file after successful capture; never upload dumps or directories',
+  );
   for (const [index, step] of steps.entries()) {
-    check(!step.if && !step['continue-on-error'], 'required steps must not be skipped or ignored');
+    check(
+      (index === 5 || !step.if) && !step['continue-on-error'],
+      'required steps must not be skipped or ignored',
+    );
     check(!step.run?.includes('${{'), 'never interpolate expressions into shell commands');
     if (index !== 4) {
       check(!JSON.stringify(step).includes('secrets.'), 'preparation must not receive secrets');

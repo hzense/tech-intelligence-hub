@@ -11,6 +11,7 @@ export const maintenanceOperations = Object.freeze([
   'search-dry-run',
   'search-apply',
   'runtime-preflight',
+  'acl-capture',
 ]);
 const writes = new Set(['migrate', 'search-apply']);
 const digest = /^[a-f0-9]{64}$/;
@@ -41,7 +42,7 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
   const operation = env.MAINTENANCE_OPERATION;
   requireGate(maintenanceOperations.includes(operation), 'unsupported-operation');
   requireGate(!env.HZENSE_DATABASE_BASELINE_CHECKSUM, 'baseline-adoption-forbidden');
-  if (!writes.has(operation)) return { operation };
+  if (!writes.has(operation) && operation !== 'acl-capture') return { operation };
 
   let approval;
   try {
@@ -64,14 +65,25 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
   );
   requireGate(
     approval.backupVerified === true &&
-      approval.restoreRehearsed === true &&
-      approval.aclRecoveryReviewed === true &&
       approval.ddlFreezeConfirmed === true &&
-      digest.test(approval.aclFingerprint ?? '') &&
-      digest.test(approval.restoreEvidenceFingerprint ?? '') &&
       Date.parse(approval.backupExpiresAt) > expiry,
     'recovery-evidence-required',
   );
+  if (operation === 'acl-capture') {
+    requireGate(
+      approval.publicArchiveApproved === true &&
+        approval.archiveRepository === 'hzense/tech-intelligence-hub',
+      'public-acl-archive-approval-required',
+    );
+  } else {
+    requireGate(
+      approval.restoreRehearsed === true &&
+        approval.aclRecoveryReviewed === true &&
+        digest.test(approval.aclFingerprint ?? '') &&
+        digest.test(approval.restoreEvidenceFingerprint ?? ''),
+      'recovery-evidence-required',
+    );
+  }
   const backupId = env.MAINTENANCE_BACKUP_ID;
   requireGate(
     typeof backupId === 'string' &&
@@ -195,6 +207,12 @@ export async function verifyMaintenanceFreshness(env, { fetchImpl = globalThis.f
 }
 
 async function executeOperation(env, { operation, approval }) {
+  if (operation === 'acl-capture') {
+    const { capturePublicAclEvidence } = await import('./public-acl-evidence.mjs');
+    return capturePublicAclEvidence(env, {
+      checkApproval: () => validateMaintenanceRequest(env),
+    });
+  }
   if (operation === 'runtime-preflight') {
     const { runRuntimeReaderPreflight, runtimeReaderProductionOptions } =
       await import('../../packages/database/src/runtime-reader-preflight.mjs');

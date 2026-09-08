@@ -14,8 +14,16 @@
 - 基础工作流与测试已通过 [PR #47](https://github.com/hzense/tech-intelligence-hub/pull/47)
   合并为 `main@88b7570`，对应 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34121384366)
   已成功。这不等于生产维护已执行。
-- 后续的执行入口复核加固随本次 PR 交付，仍待审核、合并及线上验证。
-- 初始环境配置检查点未上传生产凭据；后续配置与生产执行需单独记录，不能从代码交付推断。
+- 执行入口复核加固已通过 [PR #48](https://github.com/hzense/tech-intelligence-hub/pull/48)
+  合并为 `main@333245f`，合并后 [CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34141929106)
+  成功；2026-09-08 只读 preflight 已实跑成功，写操作尚未执行。
+- 2026-09-08 操作者保存凭据后，回读确认两个连接 Secret 名称存在；未读取其值。
+  只读 [preflight #34212653428](https://github.com/hzense/tech-intelligence-hub/actions/runs/34212653428)
+  经操作者手动审批后成功，脱敏结果为 `pendingMigrationCount: 1`。
+  Migrator 直连与预检合约已验证；Runtime Secret 尚未通过自身凭据实跑验证。
+  操作者已知情批准将完整 ACL/恢复材料归档到当前公开仓库，不创建私有仓库。
+  新增 `acl-capture` 的工作区实现尚未提交、合并或线上运行；备份恢复复核仍待完成，
+  详见[当日门禁记录](./production-evidence/2026-09-08-fts1-gates.md)。
 
 ## 网页配置
 
@@ -27,8 +35,8 @@
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_DIRECT_URL`         | `hzense_migrator` 的生产 direct 连接，带显式端口，使用 `sslmode=verify-full`                                    |
 | `HZENSE_RUNTIME_DATABASE_URL` | 现有 `hzense_runtime` pooler 连接，带显式端口，只使用 `sslmode=verify-full&channel_binding=prefer` 两个查询参数 |
-| `MAINTENANCE_BACKUP_ID`       | 独立验证的恢复备份真实 ID，仅写操作注入                                                                         |
-| `MAINTENANCE_APPROVAL`        | 针对一次写操作的受保护 JSON 审核记录，格式见下文                                                                |
+| `MAINTENANCE_BACKUP_ID`       | 独立验证的恢复备份真实 ID，仅写操作及 `acl-capture` 注入                                                        |
+| `MAINTENANCE_APPROVAL`        | 针对一次写操作或 ACL 公开采集的受保护 JSON 审核记录，格式见下文                                                 |
 
 不重置或轮换现有密码。直连与 Runtime 凭据不会在一个执行步骤同时注入。
 安装依赖、构建投影、检查源码及 CI 的步骤不接收生产凭据。
@@ -53,14 +61,15 @@
    不输出完整 catalog、文档 ID、URL、角色详情、备份 ID、原始错误或堆栈。
    失败时在 Neon 受控页面继续诊断，不开启原始数据库调试日志。
 
-| operation           | 执行内容                                      | 写数据库             |
-| ------------------- | --------------------------------------------- | -------------------- |
-| `preflight`         | direct 目标、TLS、版本和迁移历史检查          | 否                   |
-| `migrate`           | preflight → 校验清单中的迁移 → schema verify  | 是，需恢复审核       |
-| `verify`            | preflight + 完整 schema 合约检查              | 否                   |
-| `search-dry-run`    | 检查迁移/schema 后计算回填计划，回滚事务      | 不提交变更           |
-| `search-apply`      | 加锁后重核投影/计划指纹，回填并验证无残留漂移 | 是，需恢复及计划审核 |
-| `runtime-preflight` | Runtime 自身凭据的 TLS、跨库与最小权限检查    | 否                   |
+| operation           | 执行内容                                                 | 写数据库                 |
+| ------------------- | -------------------------------------------------------- | ------------------------ |
+| `preflight`         | direct 目标、TLS、版本和迁移历史检查                     | 否                       |
+| `migrate`           | preflight → 校验清单中的迁移 → schema verify             | 是，需恢复审核           |
+| `verify`            | preflight + 完整 schema 合约检查                         | 否                       |
+| `search-dry-run`    | 检查迁移/schema 后计算回填计划，回滚事务                 | 不提交变更               |
+| `search-apply`      | 加锁后重核投影/计划指纹，回填并验证无残留漂移            | 是，需恢复及计划审核     |
+| `runtime-preflight` | Runtime 自身凭据的 TLS、跨库与最小权限检查               | 否                       |
+| `acl-capture`       | 两个独立只读连接采集 ACL，一致后生成已授权的公开证据附件 | 否，需备份/冻结/公开授权 |
 
 所有维护使用固定 concurrency group，不会自动取消正在执行的维护。
 GitHub concurrency 不是持久 FIFO 队列，不要同时提交多次请求。
@@ -124,12 +133,54 @@ artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须�
 `backupIdSha256` 是未加域前缀的 ID 摘要，与 ACL 工具的域分隔 `backupReference` 不同，
 不可混用；审批人必须核对受保护原件。摘要应在线上受控证据处理环节生成，不使用公开哈希网站。
 
+## 当前仓库 ACL 公开归档
+
+2026-09-08 操作者在获知当前仓库公开、角色关系/对象名称/详细权限和恢复脚本可能
+被长期保留后，明确回答“允许”。本次归档位置为 `hzense/tech-intelligence-hub`，
+不再要求新建私有仓库。范围见[归档约定](./production-evidence/acl/README.md)。
+此决定只改变材料可见性，不表示备份验证、历史缺口接受或恢复演练已完成。
+
+新增入口须先经过 PR 审核、合并及 main CI。之后独立验证本次 provider 备份并冻结 DDL，
+发起 `acl-capture`，在人工审批前将 `MAINTENANCE_APPROVAL` 更新为以下实际记录：
+
+```json
+{
+  "operation": "acl-capture",
+  "sha": "本次运行的40位提交SHA",
+  "runId": "运行编号字符串",
+  "runAttempt": "尝试编号字符串",
+  "expiresAt": "审核有效期ISO时间，未来且最多24小时",
+  "backupExpiresAt": "备份真实过期ISO时间，晚于审核有效期",
+  "backupIdSha256": "MAINTENANCE_BACKUP_ID原始UTF-8文本的SHA-256",
+  "backupVerified": false,
+  "ddlFreezeConfirmed": false,
+  "publicArchiveApproved": true,
+  "archiveRepository": "hzense/tech-intelligence-hub"
+}
+```
+
+占位符和 `false` 不能通过。采集不要求预先声称 ACL 恢复演练已完成，避免循环依赖；
+但 `migrate` / `search-apply` 的完整恢复门禁保持不变，不接受采集审批冒充写操作审批。
+两次独立采集各自只读并关闭连接，重建校验指纹且比较一致；开始、两次采集之间及写出
+证据文件前重验审批。发现不一致或失败时不归档部分结果。
+
+公开日志仍仅包含摘要。唯一允许的附件文件为 hosted runner 临时目录中的
+`hzense-acl-evidence.json`，附件名 `acl-evidence-<runId>-<runAttempt>`，保留 30 天。
+该文件不是数据库备份：仅包含两份 catalog 基线和运行标识，不包含业务行或原始备份 ID。
+归档步骤不注入生产凭据；不上传目录、配置文件或任意路径，不自动向 main 写入文件。
+附件应视为公开材料。审核并在过期前通过 GitHub 网页将其归档到
+`docs/production-evidence/acl/<runId>-<runAttempt>/baseline.json`，经 PR 复核后合并；
+未完成此步不得称为“代码仓永久归档已完成”。无需本地密码配置或本地采集工具。
+
+附件审查应核对来源 run/attempt/SHA、两份基线及分类指纹、排除内容，再按真实权限
+编写和评审恢复 SQL；SQL 不包含凭据，不自动执行。隔离恢复后的独立采集和验证仍必须完成。
+
 ## 尚未完成的线上闭环
 
 - 当前工作流覆盖 FTS-1 预检/迁移/回填/验证，不宣称全部生产运维功能已迁移完毕。
-- 完整 ACL baseline 的在线受控归档、双重复核与隔离恢复演练仍未接入。
-  现有 capture 组件保留，但**不得直接放进公共 Actions 日志**。
-  受控线上证据路径及复核流程完成前，不执行新的 ACL normalization 或生产写入，
+- ACL 双采集和授权公开附件入口已实现于工作区，尚未合并、实跑或完成永久入库。
+  完整 catalog **不得直接放进公共 Actions 日志**。
+  实际归档、人工复核及隔离恢复演练完成前，不执行新的 ACL normalization 或生产写入，
   不以本地执行替代。不得上传数据库备份到 Actions artifact。
 - Topic 专用角色维护入口尚未纳入本工作流，共享实现和 CI 测试不删除。
 - Vercel shadow 配置、重新部署、对账、database 切换与回滚仍在线上逐步执行，
