@@ -252,8 +252,10 @@ SELECT encode(sha256(convert_to(summary::text, 'UTF8')), 'hex') AS fingerprint,
   summary INTO actual_fingerprint, category_summary
 FROM state;
     -- END SHARED ACL STATE QUERY
+    -- Parenthesize CASE so PL/pgSQL does not terminate the IF expression
+    -- at the CASE's first THEN token.
     IF actual_fingerprint IS DISTINCT FROM
-      CASE WHEN pass = 1 THEN before_fingerprint ELSE after_fingerprint END THEN
+      (CASE WHEN pass = 1 THEN before_fingerprint ELSE after_fingerprint END) THEN
       RAISE EXCEPTION 'ACL recovery catalog fingerprint mismatch at pass %', pass;
     END IF;
     IF pass = 1 THEN

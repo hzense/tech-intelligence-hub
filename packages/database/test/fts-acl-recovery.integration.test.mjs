@@ -178,6 +178,18 @@ suite('FTS ACL recovery PostgreSQL core integration (not Neon target acceptance)
     );
   });
 
+  it('reproduces the unparenthesized CASE syntax regression without changing ACLs', async () => {
+    await declarations();
+    const invalidSql = coreSql.replace(
+      '(CASE WHEN pass = 1 THEN before_fingerprint ELSE after_fingerprint END)',
+      'CASE WHEN pass = 1 THEN before_fingerprint ELSE after_fingerprint END',
+    );
+    expect(invalidSql).not.toBe(coreSql);
+    await expect(owner.query(invalidSql)).rejects.toMatchObject({ code: '42601' });
+    await owner.query('ROLLBACK');
+    expect(await fingerprint()).toBe(beforeFingerprint);
+  });
+
   it('rolls back a completed REVOKE when the after-state fingerprint is wrong', async () => {
     await failCore('catalog fingerprint mismatch at pass 2', {
       after_fingerprint: '12'.repeat(32),

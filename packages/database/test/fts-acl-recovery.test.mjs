@@ -21,6 +21,13 @@ const shared = (text) =>
     .replace(' INTO actual_fingerprint, category_summary', '');
 
 describe('restricted FTS ACL recovery SQL contract (static, not a rehearsal)', () => {
+  it('parenthesizes CASE inside the PL/pgSQL IF condition', () => {
+    expect(sql).toMatch(
+      /IF actual_fingerprint IS DISTINCT FROM\s+\(CASE WHEN pass = 1 THEN before_fingerprint ELSE after_fingerprint END\) THEN/,
+    );
+    expect(sql).not.toMatch(/IF actual_fingerprint IS DISTINCT FROM\s+CASE\b/);
+  });
+
   it('uses exactly the forward reader allowlist for its only mutation', () => {
     const revokes = [
       ...executable.matchAll(/REVOKE SELECT \(([\s\S]*?)\) ON TABLE ([\w.]+) FROM (\w+) (\w+);/g),
