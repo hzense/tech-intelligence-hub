@@ -1,6 +1,6 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-09-08
+**最后更新：** 2026-09-09
 **当前阶段：** 网站 MVP 已验收；FTS-1 开发与合并完成，下一阶段是数据库搜索生产上线、持续内容运营与智能情报能力扩展，同时完成运维收尾
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
@@ -36,7 +36,9 @@
 - [x] 2026-09-08 操作者知情批准在当前公开仓库保存完整 ACL 与无凭据恢复材料，不创建私有仓库；范围见[归档约定](./production-evidence/acl/README.md)。密码、连接串、Token、原始备份 ID 与业务数据仍不得公开。
 - [x] `acl-capture` 线上双采集及公开附件入口已通过 [PR #49](https://github.com/hzense/tech-intelligence-hub/pull/49) 合并为 `main@8ed8e87`，合并后 CI 成功；尚未实跑，实际证据永久入库、恢复 SQL 审核与隔离演练仍待完成。
 - [ ] 2026-09-08 [搜索上线验收检查点](./production-evidence/2026-09-08-fts1-release-checkpoint.md)：DDL/发布冻结已确认；新增恢复基线和隔离副本，经明确授权执行副本 Reset from parent，恢复后计数与 Topic、迁移记录指纹与基线一致。完整 ACL 恢复审核/演练仍未完成，尚未发起采集或执行生产写入。
-- [ ] 不自动过期备份审批兼容修复：本次变更增加明确的 `backupNeverExpires: true` 模式，拒绝与过期时间混填，不放宽运行绑定、审批有效期与恢复门禁；待 PR 审核、合并与 main CI，尚未线上使用。
+- [x] 不自动过期备份审批兼容修复已通过 PR #50 合并为 `main@b4619e6`，合并后 CI 成功；2026-09-09 已用于只读 `acl-capture` 审批，不放宽写操作恢复门禁。
+- [x] 2026-09-09 [ACL 双采集](https://github.com/hzense/tech-intelligence-hub/actions/runs/34326646837) 经操作者审批后成功；两份基线独立重建校验通过，11 类目录与总指纹一致。详见[采集检查点](./production-evidence/2026-09-09-fts1-acl-capture.md)。
+- [ ] 真实 ACL 基线与审核记录已准备归档 PR；永久入库、恢复 SQL 审核、隔离演练和历史 ACL 缺口处理仍未完成，生产迁移、回填与搜索切换尚未执行。
 - [ ] 2026-09-08 [上线门禁复核](./production-evidence/2026-09-08-fts1-gates.md)：Neon 网页连接已恢复，确认现有 FTS 备份分支仍存在、9 月 13 日 23:26（柏林时间）到期；快照额度已满，分支为 3/10。独立恢复演练仍待完成；只读预检成功和分支存在不替代恢复门禁，尚未迁移、回填或切换搜索。
 - [ ] 完成 Environment secrets 现有凭据配置核验，以及在线 ACL 受控归档与恢复门禁后才能执行写操作；当前不代表 FTS-1 已上线。入口、审批边界及剩余工作见[全线上维护手册](./ONLINE_MAINTENANCE.md)。
 - [ ] 解除 Runtime ACL 恢复证据门禁，核验新的可恢复备份与当前权限 baseline。
