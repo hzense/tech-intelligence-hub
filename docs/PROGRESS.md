@@ -40,7 +40,8 @@
 - [x] 2026-09-09 [ACL 双采集](https://github.com/hzense/tech-intelligence-hub/actions/runs/34326646837) 经操作者审批后成功；两份基线独立重建校验通过，11 类目录与总指纹一致。详见[采集检查点](./production-evidence/2026-09-09-fts1-acl-capture.md)。
 - [x] 真实 ACL 基线与审核记录已随 PR #51 永久入库；详见[恢复方案](./production-evidence/acl/34326646837-1/recovery-plan.md)。
 - [x] 2026-09-09 开发受限 FTS 十二列 ACL 恢复候选、只读目录指纹与测试，并完成静态自审；不代表提交、CI 通过、独立审批或线上执行。
-- [ ] 恢复候选的 PostgreSQL CI 实跑、真实 R1/R2 适配和独立审核、线上恢复态验证入口、隔离演练与历史 ACL 缺口处理；操作者已决定不延长原演练分支，未新建或延长分支，生产迁移、回填与搜索切换尚未执行。
+- [x] PR #53 修复提交 `bd8f8c3` 的 [CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34363934742) 全部通过，恢复 SQL PostgreSQL 集成测试 14 项通过；修复后本地数据库包 378 passed / 49 skipped（新增静态测试 7 项，集成测试 14 项本地跳过）。证据见[验证与评审更新](./production-evidence/acl/34326646837-1/recovery-sql-review.md#修复后验证与评审更新)，不代表后续提交或合并后的 CI 通过。
+- [ ] 恢复候选真实 Neon R1/R2 适配和独立审核、线上恢复态验证入口、隔离演练与历史 ACL 缺口处理；当前作者 `COMMENTED` 评价不等于正式批准。操作者已决定不延长原演练分支，未新建或延长分支，生产迁移、回填与搜索切换尚未执行。
 - [ ] 2026-09-08 [上线门禁复核](./production-evidence/2026-09-08-fts1-gates.md)：Neon 网页连接已恢复，确认现有 FTS 备份分支仍存在、9 月 13 日 23:26（柏林时间）到期；快照额度已满，分支为 3/10。独立恢复演练仍待完成；只读预检成功和分支存在不替代恢复门禁，尚未迁移、回填或切换搜索。
 - [ ] 完成 Environment secrets 现有凭据配置核验，以及在线 ACL 受控归档与恢复门禁后才能执行写操作；当前不代表 FTS-1 已上线。入口、审批边界及剩余工作见[全线上维护手册](./ONLINE_MAINTENANCE.md)。
 - [ ] 解除 Runtime ACL 恢复证据门禁，核验新的可恢复备份与当前权限 baseline。

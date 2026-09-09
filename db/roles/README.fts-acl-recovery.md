@@ -1,6 +1,10 @@
 # FTS 列权限恢复候选 SQL
 
-状态：**开发候选；已做代码静态自审，未完成独立审核、PostgreSQL CI 实跑或 Neon 隔离演练。**
+状态：**开发候选；代码静态自审与 PostgreSQL CI 已通过，独立审核和 Neon 隔离演练仍未完成。**
+已核验的代码提交为 `bd8f8c3`，其 [CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34363934742)
+全部通过，恢复 SQL 集成测试 14 项通过。证据及测试边界见
+[验证记录](../../docs/production-evidence/acl/34326646837-1/recovery-sql-review.md#修复后验证与评审更新)。
+该记录绑定上述提交，不自动证明后续提交或合并后的 CI 通过。
 不允许根据本文件设置 `aclRecoveryReviewed` / `restoreRehearsed`，不接入生产自动执行。
 没有新建本地维护 CLI，也不需要 `.env`。实际执行仍只能走获批的线上维护流程。
 

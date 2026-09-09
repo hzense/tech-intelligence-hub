@@ -2,10 +2,12 @@
 
 ## 状态与已验证事实
 
-**恢复 SQL 候选已开发并静态自审，独立审核、PostgreSQL CI 实跑与隔离演练未完成。**
+**恢复 SQL 候选已开发并静态自审，`bd8f8c3` 的 PostgreSQL CI 已通过；独立审核与隔离演练未完成。**
 实现见[受限恢复 SQL](../../../../db/roles/restore_fts_reader_acl.sql)及
 [设计与限制](../../../../db/roles/README.fts-acl-recovery.md)。它不是本目录旧基线的通用恢复器。
 本次测试与审核范围见[代码自审记录](./recovery-sql-review.md)。
+修复后 [CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34363934742) 的三项任务均成功，
+恢复 SQL 集成测试 14 项通过；作者账号的 `COMMENTED` 评价不等于正式批准或独立审核。
 本文件不能作为 `restoreEvidenceFingerprint`，不能据此设置
 `aclRecoveryReviewed`、`restoreRehearsed` 或历史缺口接受声明。
 
@@ -111,7 +113,8 @@
 - [x] 恢复浏览器连接并完成初步历史目录取证、复核演练分支期限；完整历史覆盖仍未证明。
 - [x] 遵照操作者决定，不延长演练分支；到期后不得复用旧目标授权。
 - [x] 开发十二列受限恢复候选、同事务前后指纹核验及静态测试，并完成代码自审。
-- [ ] CI PostgreSQL 集成测试实跑、真实 R1/R2 适用性验证与独立审核。
+- [x] `bd8f8c3` 的 CI PostgreSQL 集成测试实跑通过：恢复 SQL 14 项；完整 CI 成功。
+- [ ] 真实 Neon R1/R2 适用性验证与独立审核；CI fixture 不替代真实恢复证据。
 - [ ] 完成历史缺口处理及受保护的线上恢复态验证入口。
 - [ ] 获得准确目标的执行授权，执行隔离演练并归档真实结果。
 - [ ] 解除生产写操作门禁；本次未进行迁移、回填或搜索切换。
