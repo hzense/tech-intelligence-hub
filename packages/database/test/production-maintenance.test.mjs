@@ -93,11 +93,18 @@ function riskEnvironment(operation = 'migrate', changes = {}) {
       historicalAclGapAccepted: true,
       acknowledgement: 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
     },
+    ...(operation === 'acl-capture'
+      ? {
+          publicArchiveApproved: true,
+          archiveRepository: env.GITHUB_REPOSITORY,
+          aclFingerprint: undefined,
+        }
+      : {}),
     ...changes,
   });
 }
 
-describe.each(['migrate', 'search-apply'])(
+describe.each(['migrate', 'search-apply', 'acl-capture'])(
   '%s explicit unverified recovery acceptance',
   (operation) => {
     it('accepts only a complete run-bound declaration without fabricated restore evidence', () => {
@@ -120,7 +127,15 @@ describe.each(['migrate', 'search-apply'])(
       { riskAcceptance: undefined },
       { riskAcceptance: null },
       { riskAcceptance: {} },
-      { aclFingerprint: '' },
+      ...(operation === 'acl-capture'
+        ? [
+            { publicArchiveApproved: false },
+            { publicArchiveApproved: 'true' },
+            { publicArchiveApproved: undefined },
+            { archiveRepository: 'other/repository' },
+            { archiveRepository: undefined },
+          ]
+        : [{ aclFingerprint: '' }]),
       { backupExpiresAt: undefined },
       { backupExpiresAt: '2026-09-07T10:30:00Z' },
       { backupNeverExpires: true },
@@ -249,16 +264,35 @@ describe('FTS-1 exception scope', () => {
     expect(() =>
       validateMaintenanceRequest(
         riskEnvironment('acl-capture', {
-          backupVerified: true,
-          publicArchiveApproved: true,
-          archiveRepository: env.GITHUB_REPOSITORY,
+          publicArchiveApproved: false,
         }),
         now,
       ),
-    ).toThrow('risk-acceptance-write-only');
+    ).toThrow('public-acl-archive-approval-required');
     expect(() => validateMaintenanceRequest(riskEnvironment('arbitrary-sql'), now)).toThrow(
       'unsupported-operation',
     );
+  });
+  it('captures before an ACL fingerprint exists, without authorizing either write operation', () => {
+    const capture = riskEnvironment('acl-capture');
+    const { approval } = validateMaintenanceRequest(capture, now);
+    expect(approval).not.toHaveProperty('aclFingerprint');
+    expect(approval).not.toHaveProperty('restoreEvidenceFingerprint');
+    for (const operation of ['migrate', 'search-apply']) {
+      expect(() =>
+        validateMaintenanceRequest({ ...capture, MAINTENANCE_OPERATION: operation }, now),
+      ).toThrow('approval-run-mismatch');
+      expect(() =>
+        validateMaintenanceRequest(
+          {
+            ...capture,
+            MAINTENANCE_OPERATION: operation,
+            MAINTENANCE_APPROVAL: JSON.stringify({ ...approval, operation }),
+          },
+          now,
+        ),
+      ).toThrow('recovery-evidence-required');
+    }
   });
 });
 

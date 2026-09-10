@@ -7,7 +7,9 @@
 ## 当前落地状态
 
 - 2026-09-10 操作者决定本轮不再验证恢复能力，并同意新增显式风险接受审批路径。
-  该路径的代码与审批格式见下文；须经本次 PR 审核、合并及 main CI 成功才可使用。
+  写操作路径已随 PR #56 合并为 `9220df0`，对应 main CI 与受保护只读 preflight 成功。
+  本次补齐前置 ACL 只读采集路径，须经 PR 审核、合并及 main CI 成功才可使用，
+  详见[检查点](./production-evidence/2026-09-10-fts1-preflight.md)。
   恢复能力和历史 ACL 缺口仍为未验证，不因风险接受而变为已通过。本记录不是生产执行证据。
 
 - GitHub Environment `production-maintenance` 已创建并通过 API 回读确认。
@@ -42,7 +44,7 @@
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `DATABASE_DIRECT_URL`         | `hzense_migrator` 的生产 direct 连接，带显式端口，使用 `sslmode=verify-full`                                    |
 | `HZENSE_RUNTIME_DATABASE_URL` | 现有 `hzense_runtime` pooler 连接，带显式端口，只使用 `sslmode=verify-full&channel_binding=prefer` 两个查询参数 |
-| `MAINTENANCE_BACKUP_ID`       | 独立验证的恢复备份真实 ID，仅写操作及 `acl-capture` 注入                                                        |
+| `MAINTENANCE_BACKUP_ID`       | 本次审核的真实备份 ID；严格路径验证恢复，风险路径核验存在性/目标/期限，仅写操作及 `acl-capture` 注入            |
 | `MAINTENANCE_APPROVAL`        | 针对一次写操作或 ACL 公开采集的受保护 JSON 审核记录，格式见下文                                                 |
 
 不重置或轮换现有密码。直连与 Runtime 凭据不会在一个执行步骤同时注入。
@@ -111,9 +113,9 @@ artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须�
 
 原有 [FTS-1 上线顺序](./DEPLOYMENT.md#fts-1-数据库搜索上线顺序) 与
 [ACL 恢复门禁](./DEPLOYMENT.md#runtime-acl-恢复基线) 保留为默认严格路径。
-本轮仅 `migrate` / `search-apply` 可以显式选择下一节的风险接受路径；
+本轮 `migrate` / `search-apply` 及其前置只读 `acl-capture` 可以显式选择下一节的风险接受路径；
 这不授权执行恢复 SQL、重置分支或 destructive ACL normalization。
-先在 Neon 完成备份独立恢复验证、冻结 DDL、双重 ACL baseline 采集复核、
+默认严格路径先在 Neon 完成备份独立恢复验证、冻结 DDL、双重 ACL baseline 采集复核、
 恢复方案审查及隔离演练，并处理历史证据缺口。备份必须覆盖当前目标和维护时间窗；
 分支存在或行数一致不能代替恢复验证。
 
@@ -155,7 +157,8 @@ artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须�
 
 不自动过期是针对 `MAINTENANCE_BACKUP_ID` 对应真实备份的人工复核声明，
 不是系统自动查询 Neon 的结果，也不保证备份不会被手动删除。审批人仍须确认
-备份覆盖目标、在整个维护窗口内可恢复且不会被删除；记录 provider 保留设置
+备份覆盖目标、在整个维护窗口内保留且不会被删除；严格路径还须验证可恢复性，风险路径
+明确保留恢复能力未验证的状态。记录 provider 保留设置
 的复核证据和后续清理安排。不能仅凭该字段认定 `backupVerified` 或恢复演练通过。
 
 此选项**不会延长审批有效期**：`expiresAt` 仍必须在未来且不超过 24 小时，
@@ -211,8 +214,10 @@ artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须�
 长时间不可用、历史 ACL 缺口仍未补齐的风险后，才将两项风险确认设为 `true`。
 这些都是人工声明，不是程序对 provider 或审批者身份的独立证明。
 
-真实备份 ID、保留期限（二选一规则不变）、当前 ACL 指纹、main/CI、SHA/run/attempt/
-operation、审批时限和 Environment 人工审批仍然必需。`search-apply` 还必须提供
+真实备份 ID、保留期限（二选一规则不变）、main/CI、SHA/run/attempt/operation、审批时限
+和 Environment 人工审批仍然必需。写操作仍要求当前完整 ACL 双采集指纹；前置的
+`acl-capture` 不要求尚未产生的 `aclFingerprint`，但必须单独批准公开归档，格式见下节。
+`search-apply` 还必须提供
 同 SHA dry-run 的 `projectionFingerprint` / `planFingerprint`，实际 Apply 仍重算并拒绝漂移。
 风险路径的迁移预检只接受 pending 为 `0003_search_documents_fts.sql` 或空列表（no-op）；
 其它迁移一律停止；持有迁移锁后，执行迁移 SQL 前再核验实际 pending 清单。
@@ -221,9 +226,10 @@ operation、审批时限和 Environment 人工审批仍然必需。`search-apply
 成功摘要固定标记 `recoveryPolicy: "accept-unverified-fts1"`、`recoveryVerified: false`，
 并记录原始审批 UTF-8 字节的 `riskAcceptanceSha256`；不输出原始审批、备份 ID 或凭据。
 此摘要不是签名或独立审核证明，须关联相应 GitHub run / Environment 人工审批记录。
-失败不会输出成功摘要。ACL 公开采集不接受这个例外，继续使用原有单独采集审批。
+失败不会输出成功摘要。只读 ACL 采集采用同样的风险声明，仍使用绑定 `acl-capture`
+的独立采集审批；不能复用迁移审批，也不能用采集审批执行迁移或回填。
 
-本次只调整两项 hosted 写操作的审批方式；不增加任意 SQL、自动授权、自动切换或
+本次只调整两项 hosted 写操作及前置只读 ACL 采集的审批方式；不增加任意 SQL、自动授权、自动切换或
 关闭预检的开关。Runtime 前向最小授权须另行评审，不能据此重新执行 destructive
 normalization；生产 Runtime preflight、shadow 对账、切换和功能验收也不豁免。
 
@@ -234,8 +240,9 @@ normalization；生产 Runtime preflight、shadow 对账、切换和功能验收
 不再要求新建私有仓库。范围见[归档约定](./production-evidence/acl/README.md)。
 此决定只改变材料可见性，不表示备份验证、历史缺口接受或恢复演练已完成。
 
-新增入口须先经过 PR 审核、合并及 main CI。之后独立验证本次 provider 备份并冻结 DDL，
-发起 `acl-capture`，在人工审批前将 `MAINTENANCE_APPROVAL` 更新为以下实际记录：
+入口变更须先经过 PR 审核、合并及 main CI。之后按所选路径核验本次 provider 备份，
+冻结发布与 DDL/ACL，发起 `acl-capture`，在人工审批前更新 `MAINTENANCE_APPROVAL`。
+以下为默认严格采集格式，只有真实验证后才能将 `backupVerified` 设为 `true`：
 
 ```json
 {
@@ -253,21 +260,59 @@ normalization；生产 Runtime preflight、shadow 对账、切换和功能验收
 }
 ```
 
-占位符和 `false` 不能通过。采集不要求预先声称 ACL 恢复演练已完成，避免循环依赖；
-但 `migrate` / `search-apply` 的完整恢复门禁保持不变，不接受采集审批冒充写操作审批。
+上述严格格式中的占位符和 `false` 不能通过。若本轮按操作者决定不验证恢复能力，
+使用以下显式风险采集格式；不能把 `backupVerified` 改成 `true` 来绕过检查：
+
+```json
+{
+  "operation": "acl-capture",
+  "sha": "本次main完整SHA",
+  "runId": "本次运行编号",
+  "runAttempt": "本次尝试编号",
+  "expiresAt": "未来最多24小时的UTC时间",
+  "backupExpiresAt": "晚于审批到期的真实备份过期时间",
+  "backupIdSha256": "受保护MAINTENANCE_BACKUP_ID原始文本的SHA256",
+  "backupVerified": false,
+  "backupPresenceReviewed": false,
+  "restoreRehearsed": false,
+  "aclRecoveryReviewed": false,
+  "ddlFreezeConfirmed": false,
+  "publicArchiveApproved": false,
+  "archiveRepository": "hzense/tech-intelligence-hub",
+  "recoveryPolicy": "accept-unverified-fts1",
+  "riskAcceptance": {
+    "scope": "fts1-production-launch",
+    "accepted": false,
+    "historicalAclGapAccepted": false,
+    "acknowledgement": "recovery-unverified-data-loss-or-prolonged-outage-accepted"
+  }
+}
+```
+
+模板仍不可执行。核验真实备份的存在性、生产目标与维护窗口/保留期限，确认发布与 DDL/ACL
+冻结、公开归档范围及两项风险接受后，才将对应确认字段设为 `true`。三项恢复通过字段
+必须保持 `false`，不填写 `restoreEvidenceFingerprint`。不自动过期备份仍按上文二选一规则
+删除 `backupExpiresAt` 并声明 `backupNeverExpires: true`。采集不要求 `aclFingerprint`，
+避免先有基线才能采集基线的循环依赖；后续写操作仍须单独审核实际双采集基线与相应计划。
+任何采集审批都不授权 `migrate` / `search-apply`，其它门禁保持不变。
 两次独立采集各自只读并关闭连接，重建校验指纹且比较一致；开始、两次采集之间及写出
 证据文件前重验审批。发现不一致或失败时不归档部分结果。
 
 公开日志仍仅包含摘要。唯一允许的附件文件为 hosted runner 临时目录中的
 `hzense-acl-evidence.json`，附件名 `acl-evidence-<runId>-<runAttempt>`，保留 30 天。
-该文件不是数据库备份：仅包含两份 catalog 基线和运行标识，不包含业务行或原始备份 ID。
+该文件不是数据库备份：包含两份 catalog 基线、运行标识及固定审批状态，不包含业务行、
+原始审批或原始备份 ID。风险路径的附件顶层固定记录 `restoration: "unverified-risk-accepted"`、
+`recoveryPolicy: "accept-unverified-fts1"`、`recoveryVerified: false` 和与日志一致的
+`riskAcceptanceSha256`。内层基线格式、内容及指纹算法不变；旧路径保留原有顶层格式。
+双采集一致只证明当时 catalog 一致，不证明备份可恢复或历史缺口已补齐。
 归档步骤不注入生产凭据；不上传目录、配置文件或任意路径，不自动向 main 写入文件。
 附件应视为公开材料。审核并在过期前通过 GitHub 网页将其归档到
 `docs/production-evidence/acl/<runId>-<runAttempt>/baseline.json`，经 PR 复核后合并；
 未完成此步不得称为“代码仓永久归档已完成”。无需本地密码配置或本地采集工具。
 
 附件审查应核对来源 run/attempt/SHA、两份基线及分类指纹、排除内容，再按真实权限
-编写和评审恢复 SQL；SQL 不包含凭据，不自动执行。隔离恢复后的独立采集和验证仍必须完成。
+编写和评审恢复 SQL；SQL 不包含凭据，不自动执行。默认严格恢复路径仍须独立采集和演练验证；
+本轮显式风险路径不新增演练，但必须保留恢复能力未验证的事实。
 
 ## 尚未完成的线上闭环
 

@@ -114,7 +114,7 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
     Number.isFinite(expiry) && expiry > now && expiry <= now + 24 * 60 * 60 * 1000,
     'approval-expired-or-too-long',
   );
-  const recoveryPolicy = writes.has(operation) ? validateRecoveryPolicy(approval) : undefined;
+  const recoveryPolicy = validateRecoveryPolicy(approval);
   requireGate(
     (recoveryPolicy === unverifiedRecoveryPolicy || approval.backupVerified === true) &&
       approval.ddlFreezeConfirmed === true &&
@@ -122,10 +122,6 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
     'recovery-evidence-required',
   );
   if (operation === 'acl-capture') {
-    requireGate(
-      !Object.hasOwn(approval, 'recoveryPolicy') && !Object.hasOwn(approval, 'riskAcceptance'),
-      'risk-acceptance-write-only',
-    );
     requireGate(
       approval.publicArchiveApproved === true &&
         approval.archiveRepository === 'hzense/tech-intelligence-hub',
@@ -160,6 +156,22 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
     );
   }
   return { operation, approval };
+}
+
+// Called only with a validated request. Keep artifact and log declarations equal;
+// never accept recovery status or arbitrary fields from a database executor.
+export function publicRecoveryAcceptance(request, rawApproval) {
+  if (
+    (writes.has(request.operation) || request.operation === 'acl-capture') &&
+    request.approval?.recoveryPolicy === unverifiedRecoveryPolicy
+  ) {
+    return {
+      recoveryPolicy: unverifiedRecoveryPolicy,
+      recoveryVerified: false,
+      riskAcceptanceSha256: createHash('sha256').update(rawApproval).digest('hex'),
+    };
+  }
+  return {};
 }
 
 // Allowlist types too: a database error or document ID must never become a log.
@@ -343,17 +355,7 @@ export async function runMaintenance(
       request.operation,
       await execute(executionEnv, request),
     );
-    if (
-      writes.has(request.operation) &&
-      request.approval.recoveryPolicy === unverifiedRecoveryPolicy
-    ) {
-      summary.recoveryPolicy = unverifiedRecoveryPolicy;
-      summary.recoveryVerified = false;
-      // Only a digest of the protected, run-bound approval; never raw declarations.
-      summary.riskAcceptanceSha256 = createHash('sha256')
-        .update(snapshot.MAINTENANCE_APPROVAL)
-        .digest('hex');
-    }
+    Object.assign(summary, publicRecoveryAcceptance(request, snapshot.MAINTENANCE_APPROVAL));
     return summary;
   } finally {
     for (const [method, original] of originals) console[method] = original;

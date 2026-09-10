@@ -1,6 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { URL } from 'node:url';
+import { publicRecoveryAcceptance } from './production-maintenance.mjs';
 import {
   buildRuntimeAclBaseline,
   runRuntimeAclBaselineCapture,
@@ -36,6 +37,7 @@ export function assertPublicAclEvidenceSafe(serialized, env) {
     env.DATABASE_DIRECT_URL,
     env.HZENSE_RUNTIME_DATABASE_URL,
     env.MAINTENANCE_BACKUP_ID,
+    env.MAINTENANCE_APPROVAL,
     env.GH_TOKEN,
     url.hostname,
     url.password,
@@ -61,13 +63,21 @@ export async function capturePublicAclEvidence(
   if (typeof checkApproval !== 'function' || !isAbsolute(env.RUNNER_TEMP ?? '')) {
     throw new Error('Hosted ACL evidence context required');
   }
-  checkApproval();
+  const requireCaptureApproval = () => {
+    const request = checkApproval();
+    if (request?.operation !== 'acl-capture' || request.approval?.operation !== 'acl-capture') {
+      throw new Error('Validated ACL capture approval required');
+    }
+    return request;
+  };
+  const request = requireCaptureApproval();
+  const recovery = publicRecoveryAcceptance(request, env.MAINTENANCE_APPROVAL);
   const options = runtimeAclBaselineProductionOptions({
     ...env,
     HZENSE_RUNTIME_ACL_BACKUP_ID: env.MAINTENANCE_BACKUP_ID,
   });
   const first = reviewedBaseline(await capture(options), env.MAINTENANCE_BACKUP_ID);
-  checkApproval();
+  requireCaptureApproval();
   const second = reviewedBaseline(await capture(options), env.MAINTENANCE_BACKUP_ID);
   if (first.fingerprint !== second.fingerprint) {
     throw new Error('Independent ACL captures differ');
@@ -80,12 +90,16 @@ export async function capturePublicAclEvidence(
     runAttempt: env.GITHUB_RUN_ATTEMPT,
     disclosureDecision: '2026-09-08-public-acl-archive',
     independentCapturesMatch: true,
-    restoration: 'manual-review-and-isolated-rehearsal-required',
+    restoration:
+      recovery.recoveryVerified === false
+        ? 'unverified-risk-accepted'
+        : 'manual-review-and-isolated-rehearsal-required',
+    ...recovery,
     captures: [first, second],
   };
   const serialized = `${JSON.stringify(evidence, null, 2)}\n`;
   assertPublicAclEvidenceSafe(serialized, env);
-  checkApproval();
+  requireCaptureApproval();
   // Exact single file, exclusive creation, no shell redirection or env output.
   await save(join(env.RUNNER_TEMP, publicAclEvidenceFilename), serialized, {
     encoding: 'utf8',
