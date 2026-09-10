@@ -23,6 +23,8 @@
 可读列必须为空（物理结构仍须有 FTS 18 列），Topic 五列保持可读，所有其它表/列权限、
 grant option、sequence、routine、owner、membership 和跨数据库检查不放宽。
 同一受检分支上的 Neon 保留数据库仍逐库连接验证，不把 provider 例外删除来获取绿灯。
+目录采集使用 `pg_catalog, pg_temp`；Runtime 合约检查使用 `pg_catalog, public, pg_temp`，
+保持 catalog 优先，同时保留已有 provider 类型/函数签名指纹所依赖的 public 类型可见性。
 
 实际权限探测使用 `SELECT ... LIMIT 0`：Topic 五列成功、Topic metadata 和 Search title
 必须返回 `42501`，使用 savepoint 恢复错误状态。不会执行测试 DML；写权限由完整有效权限

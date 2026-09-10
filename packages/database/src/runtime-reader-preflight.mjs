@@ -1310,7 +1310,12 @@ async function runReaderPreflight(
   let targetResult;
   try {
     await client.connect();
-    if (recoveryGuard) await recoveryGuard(client, policy.database);
+    if (recoveryGuard) {
+      await recoveryGuard(client, policy.database);
+      // Keep catalogs first while preserving public type visibility used by
+      // the existing provider routine-definition/fingerprint contract.
+      await client.query('SET LOCAL search_path = pg_catalog, public, pg_temp');
+    }
     targetResult = await inspectRuntimeReaderTarget(
       client,
       {
@@ -1351,7 +1356,10 @@ async function runReaderPreflight(
     );
     try {
       await reservedClient.connect();
-      if (recoveryGuard) await recoveryGuard(reservedClient, reservedDatabase);
+      if (recoveryGuard) {
+        await recoveryGuard(reservedClient, reservedDatabase);
+        await reservedClient.query('SET LOCAL search_path = pg_catalog, public, pg_temp');
+      }
       await inspectNeonReservedDatabase(reservedClient, {
         expectedDatabase: reservedDatabase,
         expectedHost: policy.host,
