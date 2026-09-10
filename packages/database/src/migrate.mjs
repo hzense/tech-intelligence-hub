@@ -350,6 +350,7 @@ export async function runMigrations({
   connectionTimeoutMillis = 10_000,
   manifestPath = directory === migrationDirectory ? migrationManifestPath : undefined,
   beforeMigrate,
+  beforeApply,
 } = {}) {
   if (!connectionString) {
     throw new Error('DATABASE_URL is required');
@@ -395,6 +396,8 @@ export async function runMigrations({
     appliedRows = await adoptFoundationIfNeeded(client, migrations, appliedRows, baselineChecksum);
 
     const pending = planPendingMigrations(migrations, appliedRows);
+    // Revalidate operation scope against the actual plan while holding the lock.
+    if (beforeApply) await beforeApply(pending.map((migration) => migration.name));
     for (const migration of pending) {
       console.log(`[db:migrate] applying ${migration.name}`);
       await client.query('BEGIN');
