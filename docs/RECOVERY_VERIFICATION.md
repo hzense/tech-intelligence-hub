@@ -31,6 +31,15 @@ grant option、sequence、routine、owner、membership 和跨数据库检查不�
 必须返回 `42501`，使用 savepoint 恢复错误状态。不会执行测试 DML；写权限由完整有效权限
 矩阵检查，`25006` 只读事务错误不算 ACL 拒绝。没有读取、保存业务行。
 
+结果中的 `runtimeAuthenticated` / `negativeReadsDenied` 是完整 preflight 成功返回后的
+断言结论，不是独立采集的原始 SQL 行；`verificationBasis` 明确标记为
+`completed-runtime-preflight-assertions`。计数来自 preflight 返回值。身份、有效权限、
+实际读取/拒绝、保留库验证或清理中任一步失败，都不输出成功结论。
+
+采集与 Runtime 检查共享清理规则：连接成功后尝试 ROLLBACK，随后始终尝试关闭。
+连接/检查已有错误时保留该原始错误；无原始错误但回滚或关闭失败时仍判为失败，
+不发布成功附件。连接未成功不发 ROLLBACK，以免覆盖真实连接失败。
+
 生产 `runRuntimeReaderPreflight` 和 CLI 不接受恢复模式参数；即使传入 `restoredAcl`，
 原生产合约仍要求十二列 Search 权限。恢复检查只有独立函数和受限 hosted 入口。
 
@@ -77,6 +86,8 @@ grant option、sequence、routine、owner、membership 和跨数据库检查不�
 ```
 
 若恢复源有期限，使用 `sourceNeverExpires: false` 加 `sourceExpiresAt`，并确保覆盖审批窗口；
+所有时间字段仅接受 `YYYY-MM-DDTHH:mm:ssZ` 或 `YYYY-MM-DDTHH:mm:ss.sssZ`，
+校验真实日历日期；拒绝本地时间、时区偏移、宽松文本格式或自动归一化的无效日期。
 不允许同时声明永不过期和日期。`capture-r3` / `verify-restored` 还必须提供
 `r1Fingerprint`，来源为同一目标真实 R1 的 `state.fingerprint`，不是原 `baseline.json` 指纹。
 
@@ -112,9 +123,21 @@ Neon 参数；项目/分支须匹配审批，项目/分支/timeline 的组合摘
 原始 `baseline.json` 不覆盖。附件含完整 catalog，不能归档密码、Token、原始分支/备份 ID、
 主机、连接串或业务行。失败运行不发布附件，不开启数据库原始错误日志。
 
+附件的 `approval` 保存固定白名单的脱敏审批摘要：operation/SHA/run/attempt、时限、
+保留期声明、三类目标摘要、适用时的 R1 指纹、冻结/拓扑/公开许可声明，
+以及原始 `RECOVERY_APPROVAL` UTF-8 文本的 `recordSha256`。不复制未知字段，
+不保存原始项目/分支 ID、主机或审批 JSON 本体。
+`recordSha256` 绑定提交给本次运行的原始字节（包括空白），用于持有原始受保护记录时比对；
+它不是数字签名，也不能从摘要恢复原文或证明审批者身份。信任根仍是 Environment 审批者，
+复核时还须关联对应 GitHub run 的审批记录；不能用摘要取代人工审批。
+
 ## 明确保留的风险与未完成事项
 
 - 同 runner 的依赖供应链风险仍存在，步骤级 secret 隔离不等于进程安全隔离。
+- 恢复验证与生产写工作流共享 `production-maintenance` Environment，技术上同属该环境的
+  工作流可引用其中任一 secret。目前互斥注入和禁止生产回退是代码/流程约束，不是
+  平台级凭据隔离；文档不能保证恶意工作流或依赖无法接触这些凭据。本轮不更改线上
+  Environment；拆独立环境、迁移 secret 和重新配置保护规则须另行授权、实施并验收。
 - GitHub 复核与数据库不是原子操作，仍需冻结发布和 DDL/ACL；采集一致不代表全局冻结成立。
 - 本入口只读，不运行恢复 SQL，不重置分支，不提供任意 SQL/shell/ref；线上写操作仍需单独授权。
 - 历史分支只证明 pre-Topic-0002 状态，没有证明旧分叉点到后续 Runtime normalization

@@ -3,6 +3,7 @@ import process from 'node:process';
 import { resolve, isAbsolute, join } from 'node:path';
 import { pathToFileURL, URL } from 'node:url';
 import { writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import {
   MaintenanceGateError,
   publicMaintenanceFailure,
@@ -23,6 +24,22 @@ const validDigest = (value) =>
   typeof value === 'string' && digest.test(value) && new Set(value).size > 1;
 function gate(condition, label) {
   if (!condition) throw new MaintenanceGateError(label);
+}
+
+// UTC only, seconds or exactly three fractional digits. Round-trip validation
+// rejects Date.parse normalization of impossible calendar dates (e.g. Feb 30).
+export function recoveryUtcTimestamp(value) {
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
+  ) {
+    return NaN;
+  }
+  const timestamp = Date.parse(value);
+  const normalized = value.length === 20 ? value.replace('Z', '.000Z') : value;
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === normalized
+    ? timestamp
+    : NaN;
 }
 
 export function validateRecoveryRequest(env, now = Date.now()) {
@@ -61,7 +78,7 @@ export function validateRecoveryRequest(env, now = Date.now()) {
       approval.runAttempt === env.GITHUB_RUN_ATTEMPT,
     'recovery-approval-run-mismatch',
   );
-  const expiry = Date.parse(approval.expiresAt);
+  const expiry = recoveryUtcTimestamp(approval.expiresAt);
   gate(
     typeof approval.expiresAt === 'string' &&
       Number.isFinite(expiry) &&
@@ -99,11 +116,11 @@ export function validateRecoveryRequest(env, now = Date.now()) {
   );
   gate(
     typeof approval.targetExpiresAt === 'string' &&
-      Date.parse(approval.targetExpiresAt) > expiry &&
+      recoveryUtcTimestamp(approval.targetExpiresAt) > expiry &&
       ((approval.sourceNeverExpires === true && !Object.hasOwn(approval, 'sourceExpiresAt')) ||
         (approval.sourceNeverExpires === false &&
           typeof approval.sourceExpiresAt === 'string' &&
-          Date.parse(approval.sourceExpiresAt) > expiry)),
+          recoveryUtcTimestamp(approval.sourceExpiresAt) > expiry)),
     'recovery-retention-required',
   );
   gate(
@@ -125,6 +142,37 @@ export function validateRecoveryRequest(env, now = Date.now()) {
   );
   gate(isAbsolute(env.RUNNER_TEMP ?? ''), 'recovery-runner-temp-required');
   return approval;
+}
+
+// Called only after validateRecoveryRequest. Never spread the secret JSON:
+// raw project/branch IDs, endpoints and unrecognized fields are not public.
+export function publicRecoveryApproval(approval, rawApproval) {
+  const summary = {
+    format: 'hzense-recovery-approval-summary/v1',
+    trust: 'protected-environment-reviewer-declaration',
+    recordSha256: createHash('sha256').update(rawApproval, 'utf8').digest('hex'),
+  };
+  for (const key of [
+    'operation',
+    'sha',
+    'runId',
+    'runAttempt',
+    'expiresAt',
+    'targetExpiresAt',
+    'sourceNeverExpires',
+    'targetFingerprint',
+    'sourceFingerprint',
+    'productionFingerprint',
+    'topologyReviewed',
+    'ddlFreezeConfirmed',
+    'publicArchiveApproved',
+    'archiveRepository',
+  ])
+    summary[key] = approval[key];
+  if (!approval.sourceNeverExpires) summary.sourceExpiresAt = approval.sourceExpiresAt;
+  if (['capture-r3', 'verify-restored'].includes(approval.operation))
+    summary.r1Fingerprint = approval.r1Fingerprint;
+  return summary;
 }
 
 export function assertRecoveryEvidenceSafe(serialized, env, approval) {
@@ -188,6 +236,7 @@ export async function runRecoveryVerification(
       capturedAt: new Date(now()).toISOString(),
       topology: 'operator-reviewed-not-provider-api-verified',
       restoration: 'not-an-execution-approval-or-complete-rehearsal',
+      approval: publicRecoveryApproval(approval, snapshot.RECOVERY_APPROVAL),
       result,
     };
     const serialized = JSON.stringify(evidence, null, 2) + '\n';

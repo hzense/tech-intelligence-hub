@@ -5,6 +5,7 @@ import { validateConnectionTarget } from './connection-policy.mjs';
 import { inspectProductionTls } from './preflight.mjs';
 import { inspectRuntimeAclBaseline, runtimeAclBackupReference } from './runtime-acl-baseline.mjs';
 import { runRestoredRuntimeReaderPreflight } from './runtime-reader-preflight.mjs';
+import { withRecoveryReadClient } from './recovery-read-client.mjs';
 
 const captureSql = await readFile(
   new URL('../../../db/roles/fts_acl_recovery_state.sql', import.meta.url),
@@ -89,7 +90,10 @@ export async function collectRecoveryVerification(env, approval, guard) {
           throw new Error('Recovery R1 state mismatch');
       }
     });
+    // These are successful assertion outcomes, not raw query rows or a separate
+    // attestation: preflight must complete identity, ACL, read probes and cleanup.
     return {
+      verificationBasis: 'completed-runtime-preflight-assertions',
       targetFingerprint: approval.targetFingerprint,
       r1Fingerprint: approval.r1Fingerprint,
       runtimeAuthenticated: true,
@@ -109,8 +113,7 @@ export async function collectRecoveryVerification(env, approval, guard) {
       query_timeout: 35_000,
       enableChannelBinding: true,
     });
-    try {
-      await client.connect();
+    return withRecoveryReadClient(client, async () => {
       await beginRecoveryRead(client);
       await inspectProductionTls(client, options.expectedHost);
       await inspectRecoveryIdentity(client, approval, 'hzense_migrator');
@@ -130,13 +133,7 @@ export async function collectRecoveryVerification(env, approval, guard) {
       }
       await guard();
       return { baseline, state };
-    } finally {
-      try {
-        await client.query('ROLLBACK');
-      } finally {
-        await client.end();
-      }
-    }
+    });
   }
   const first = await capture();
   const second = await capture();

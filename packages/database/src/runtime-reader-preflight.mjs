@@ -7,6 +7,7 @@ import { validateConnectionTarget } from './connection-policy.mjs';
 import { inspectNeonReservedProviderObjects } from './neon-reserved-provider-contract.mjs';
 import { inspectProductionTls } from './preflight.mjs';
 import { expectedTableNames } from './verify.mjs';
+import { withRecoveryReadClient } from './recovery-read-client.mjs';
 
 const { Client } = pg;
 const pooledHostPattern = /(^|[.-])pooler([.-]|$)/;
@@ -1307,16 +1308,25 @@ async function runReaderPreflight(
     clientOptions(connectionString, 'hzense-runtime-reader-preflight'),
   );
 
-  let targetResult;
-  try {
-    await client.connect();
+  // Preserve the original production cleanup behavior. The recovery path uses
+  // fail-closed cleanup for both the target and every reserved database.
+  async function inspectConnected(checkedClient, inspect) {
+    if (recoveryGuard) return withRecoveryReadClient(checkedClient, inspect);
+    try {
+      await checkedClient.connect();
+      return await inspect();
+    } finally {
+      await checkedClient.end().catch(() => undefined);
+    }
+  }
+  const targetResult = await inspectConnected(client, async () => {
     if (recoveryGuard) {
       await recoveryGuard(client, policy.database);
       // Keep catalogs first while preserving public type visibility used by
       // the existing provider routine-definition/fingerprint contract.
       await client.query('SET LOCAL search_path = pg_catalog, public, pg_temp');
     }
-    targetResult = await inspectRuntimeReaderTarget(
+    const inspected = await inspectRuntimeReaderTarget(
       client,
       {
         expectedHost: policy.host,
@@ -1334,17 +1344,8 @@ async function runReaderPreflight(
       },
     );
     if (recoveryGuard) await probeRestoredRuntimeReads(client);
-  } finally {
-    if (recoveryGuard) {
-      try {
-        await client.query('ROLLBACK');
-      } finally {
-        await client.end();
-      }
-    } else {
-      await client.end().catch(() => undefined);
-    }
-  }
+    return inspected;
+  });
 
   const verifiedNeonReservedDatabases = [];
   for (const reservedDatabase of targetResult.neonReservedDatabasesToVerify) {
@@ -1354,8 +1355,7 @@ async function runReaderPreflight(
         'hzense-runtime-reader-reserved-preflight',
       ),
     );
-    try {
-      await reservedClient.connect();
+    await inspectConnected(reservedClient, async () => {
       if (recoveryGuard) {
         await recoveryGuard(reservedClient, reservedDatabase);
         await reservedClient.query('SET LOCAL search_path = pg_catalog, public, pg_temp');
@@ -1367,18 +1367,8 @@ async function runReaderPreflight(
         expectedUser: expectedUser ?? policy.user,
         profile,
       });
-      verifiedNeonReservedDatabases.push(reservedDatabase);
-    } finally {
-      if (recoveryGuard) {
-        try {
-          await reservedClient.query('ROLLBACK');
-        } finally {
-          await reservedClient.end();
-        }
-      } else {
-        await reservedClient.end().catch(() => undefined);
-      }
-    }
+    });
+    verifiedNeonReservedDatabases.push(reservedDatabase);
   }
 
   const result = { ...targetResult };

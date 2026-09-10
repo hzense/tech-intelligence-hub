@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import { describe, it, expect, vi } from 'vitest';
 import { parse } from 'yaml';
@@ -6,6 +7,8 @@ import {
   validateRecoveryRequest,
   runRecoveryVerification,
   assertRecoveryEvidenceSafe,
+  publicRecoveryApproval,
+  recoveryUtcTimestamp,
 } from '../../../.github/scripts/recovery-verification.mjs';
 import { recoveryWorkflowProblems } from '../../../.github/scripts/recovery-workflow-contract.mjs';
 import { beginRecoveryRead, inspectRecoveryIdentity } from '../src/recovery-verification.mjs';
@@ -79,6 +82,48 @@ function githubFetch() {
 }
 
 describe('protected hosted read-only recovery request', () => {
+  it.each(['2026-09-10T10:30:00Z', '2026-09-10T10:30:00.123Z'])(
+    'accepts canonical UTC %s',
+    (expiresAt) => {
+      expect(validateRecoveryRequest(request({ expiresAt }), now).expiresAt).toBe(expiresAt);
+    },
+  );
+  it.each([
+    'September 10, 2026 10:30:00 GMT',
+    '2026-09-10 10:30:00Z',
+    '2026-09-10T10:30:00',
+    '2026-09-10T12:30:00+02:00',
+    '2026-09-10T10:30:00+00:00',
+    '2026-09-10T10:30:00.1Z',
+    '2026-09-10T10:30:00.1234Z',
+    '2026-09-10t10:30:00z',
+    ' 2026-09-10T10:30:00Z',
+    '2026-02-30T10:30:00Z',
+    '2026-02-29T10:30:00Z',
+    '2026-09-10T24:00:00Z',
+    '2026-09-10T10:30:60Z',
+    null,
+    123,
+    [],
+  ])('rejects noncanonical or impossible UTC %j', (value) => {
+    expect(recoveryUtcTimestamp(value)).toBeNaN();
+    for (const field of ['expiresAt', 'targetExpiresAt', 'sourceExpiresAt']) {
+      const changes =
+        field === 'sourceExpiresAt'
+          ? { sourceNeverExpires: false, [field]: value }
+          : { [field]: value };
+      expect(() => validateRecoveryRequest(request(changes), now)).toThrow();
+    }
+  });
+  it('validates actual leap dates and expiring-source canonical UTC', () => {
+    expect(recoveryUtcTimestamp('2028-02-29T10:30:00Z')).toBe(Date.parse('2028-02-29T10:30:00Z'));
+    expect(
+      validateRecoveryRequest(
+        request({ sourceNeverExpires: false, sourceExpiresAt: '2026-09-12T00:00:00.000Z' }),
+        now,
+      ),
+    ).toBeTruthy();
+  });
   it('accepts a fresh bound capture without claiming completed recovery', () => {
     expect(validateRecoveryRequest(env, now)).toEqual(approval);
   });
@@ -166,6 +211,11 @@ describe('protected hosted read-only recovery request', () => {
       expect.any(String),
       { encoding: 'utf8', flag: 'wx', mode: 0o600 },
     );
+    const artifact = JSON.parse(save.mock.calls[0][1]);
+    expect(artifact.approval).toEqual(publicRecoveryApproval(approval, env.RECOVERY_APPROVAL));
+    expect(artifact.approval.recordSha256).toBe(
+      createHash('sha256').update(env.RECOVERY_APPROVAL).digest('hex'),
+    );
   });
   it('fails closed on GitHub API failure before connecting', async () => {
     const collect = vi.fn();
@@ -204,6 +254,68 @@ describe('protected hosted read-only recovery request', () => {
     expect(() => assertRecoveryEvidenceSafe(JSON.stringify({ secret }), env, approval)).toThrow(
       'recovery-evidence-unsafe',
     );
+  });
+});
+
+describe('public approval provenance', () => {
+  it('archives only allowlisted fields and a digest of the exact secret bytes, not a signature', () => {
+    const extra = { ...approval, arbitrarySecret: 'do-not-archive', password: 'private-password' };
+    const raw = JSON.stringify(extra);
+    const checked = validateRecoveryRequest({ ...env, RECOVERY_APPROVAL: raw }, now);
+    const summary = publicRecoveryApproval(checked, raw);
+    expect(Object.keys(summary).sort()).toEqual(
+      [
+        'format',
+        'trust',
+        'recordSha256',
+        'operation',
+        'sha',
+        'runId',
+        'runAttempt',
+        'expiresAt',
+        'targetExpiresAt',
+        'sourceNeverExpires',
+        'targetFingerprint',
+        'sourceFingerprint',
+        'productionFingerprint',
+        'topologyReviewed',
+        'ddlFreezeConfirmed',
+        'publicArchiveApproved',
+        'archiveRepository',
+      ].sort(),
+    );
+    const serialized = JSON.stringify(summary);
+    for (const secret of [
+      approval.projectId,
+      approval.targetBranchId,
+      approval.sourceBranchId,
+      approval.productionBranchId,
+      approval.directHost,
+      approval.runtimeHost,
+      extra.arbitrarySecret,
+      extra.password,
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(summary.trust).toBe('protected-environment-reviewer-declaration');
+    expect(summary.recordSha256).toBe(createHash('sha256').update(raw).digest('hex'));
+    expect(publicRecoveryApproval(checked, raw + '\n').recordSha256).not.toBe(summary.recordSha256);
+  });
+  it('retains reviewed R1 and expiring-source dates only when applicable', () => {
+    const r3 = {
+      ...approval,
+      operation: 'capture-r3',
+      r1Fingerprint: '78'.repeat(32),
+      sourceNeverExpires: false,
+      sourceExpiresAt: '2026-09-12T00:00:00Z',
+    };
+    expect(publicRecoveryApproval(r3, JSON.stringify(r3))).toMatchObject({
+      r1Fingerprint: r3.r1Fingerprint,
+      sourceExpiresAt: r3.sourceExpiresAt,
+    });
+    const r0 = publicRecoveryApproval(approval, env.RECOVERY_APPROVAL);
+    expect(r0).not.toHaveProperty('sourceExpiresAt');
+    expect(r0).not.toHaveProperty('r1Fingerprint');
   });
 });
 
