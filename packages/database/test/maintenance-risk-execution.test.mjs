@@ -1,12 +1,27 @@
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { runMaintenance } from '../../../.github/scripts/production-maintenance.mjs';
+import {
+  buildRuntimeAclBaseline,
+  runtimeAclBaselineCategoryNames,
+  runtimeAclBackupReference,
+} from '../src/runtime-acl-baseline.mjs';
 
 const mocks = vi.hoisted(() => ({
   preflight: vi.fn(),
   migrate: vi.fn(),
   verify: vi.fn(),
   apply: vi.fn(),
+  capture: vi.fn(),
+  save: vi.fn(),
+}));
+vi.mock('node:fs/promises', async (importOriginal) => ({
+  ...(await importOriginal()),
+  writeFile: mocks.save,
+}));
+vi.mock('../src/runtime-acl-baseline.mjs', async (importOriginal) => ({
+  ...(await importOriginal()),
+  runRuntimeAclBaselineCapture: mocks.capture,
 }));
 vi.mock('../src/connection-policy.mjs', () => ({
   productionDatabaseOptions: () => ({ connectionString: 'test-only' }),
@@ -145,4 +160,65 @@ describe('real hosted executor FTS-1 risk boundary (database adapters mocked)', 
     );
     expect(mocks.migrate.mock.calls[0][0].beforeApply).toBeUndefined();
   });
+  it.each(['success', 'expired-between-captures'])(
+    'routes the real hosted capture through risk validation and evidence serialization: %s',
+    async (outcome) => {
+      const env = {
+        ...environment({
+          operation: 'acl-capture',
+          aclFingerprint: undefined,
+          publicArchiveApproved: true,
+          archiveRepository: 'hzense/tech-intelligence-hub',
+        }),
+        MAINTENANCE_OPERATION: 'acl-capture',
+        DATABASE_DIRECT_URL:
+          'postgresql://hzense_migrator:test-password@ep-fixture.neon.tech/hzense',
+        RUNNER_TEMP: '/tmp/test-hosted-evidence',
+      };
+      const baseline = buildRuntimeAclBaseline({
+        identity: { database: 'hzense', currentUser: 'hzense_migrator' },
+        categories: Object.fromEntries(runtimeAclBaselineCategoryNames.map((name) => [name, []])),
+        capturedAt: '2026-09-10T10:00:00.000Z',
+        backupReference: runtimeAclBackupReference(env.MAINTENANCE_BACKUP_ID),
+      });
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+      mocks.capture.mockImplementation(async () => {
+        if (outcome !== 'success') clock.mockReturnValue(now + 3600000);
+        return baseline;
+      });
+      try {
+        if (outcome === 'success') {
+          const result = await runMaintenance(env, undefined, options());
+          const evidence = JSON.parse(mocks.save.mock.calls[0][1]);
+          expect(result).toEqual({
+            operation: 'acl-capture',
+            status: 'succeeded',
+            fingerprint: baseline.fingerprint,
+            recoveryPolicy: 'accept-unverified-fts1',
+            recoveryVerified: false,
+            riskAcceptanceSha256: createHash('sha256')
+              .update(env.MAINTENANCE_APPROVAL)
+              .digest('hex'),
+          });
+          for (const key of ['recoveryPolicy', 'recoveryVerified', 'riskAcceptanceSha256']) {
+            expect(evidence[key]).toBe(result[key]);
+          }
+          expect(evidence.restoration).toBe('unverified-risk-accepted');
+          expect(evidence.captures).toEqual([baseline, baseline]);
+          expect(mocks.capture).toHaveBeenCalledTimes(2);
+          expect(mocks.save).toHaveBeenCalledOnce();
+        } else {
+          await expect(runMaintenance(env, undefined, options())).rejects.toThrow(
+            'approval-expired-or-too-long',
+          );
+          expect(mocks.capture).toHaveBeenCalledOnce();
+          expect(mocks.save).not.toHaveBeenCalled();
+        }
+        expect(mocks.apply).not.toHaveBeenCalled();
+        expect(mocks.migrate).not.toHaveBeenCalled();
+      } finally {
+        clock.mockRestore();
+      }
+    },
+  );
 });

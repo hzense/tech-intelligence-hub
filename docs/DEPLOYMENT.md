@@ -266,6 +266,8 @@ Production 数据库。生产上线是后续独立操作，并受现有 Runtime 
 [显式风险接受审批](./ONLINE_MAINTENANCE.md#fts-1-显式接受恢复未验证风险)。
 它保留备份存在性/目标/期限、当前 ACL 基线、main CI、人工审批与回填指纹要求，
 不把恢复标为通过，不豁免 destructive ACL normalization 的门禁。
+前置只读 `acl-capture` 的对应审批格式见[线上归档说明](./ONLINE_MAINTENANCE.md#当前仓库-acl-公开归档)：
+保留独立双采集与公开授权，不要求尚未生成的 ACL 指纹；采集批准不授权后续写操作。
 以下恢复相关要求适用于默认严格路径；风险路径不重复安排演练，但 Runtime 最小授权
 必须单独审核，不直接运行全量 normalization，后续生产检查、shadow 和功能验收不变。
 

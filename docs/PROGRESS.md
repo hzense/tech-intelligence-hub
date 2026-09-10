@@ -30,10 +30,17 @@
 **2026-09-10 最新决策：** PR #55 已合并为 `22a4201`，对应 main CI 成功。
 操作者明确取消本轮恢复验证/隔离演练，并同意开发
 [显式风险接受审批路径](./ONLINE_MAINTENANCE.md#fts-1-显式接受恢复未验证风险)。
-当前正在提交该变更供评审，尚未合并或用于生产；备份存在性与目标/期限、当前 ACL 基线、
-main CI、人工审批和回填指纹仍保留。恢复能力与历史 ACL 缺口保持“未验证”，
+[PR #56](https://github.com/hzense/tech-intelligence-hub/pull/56) 已合并为 `9220df0`，
+[main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34497860991) 成功；
+经人工审批的 [production preflight](https://github.com/hzense/tech-intelligence-hub/actions/runs/34498279486)
+成功，仍有 1 个 pending migration。随后发现只读 `acl-capture` 尚未支持该路径，
+本次补齐其独立风险审批与明确标记“恢复未验证”的证据输出，待 PR 评审/合并后线上执行。
+备份存在性与目标/期限、当前完整 ACL 基线、main CI、人工审批和回填指纹仍保留。
+现场只读状态摘要不替代独立双采集，详见[9 月 10 日检查点](./production-evidence/2026-09-10-fts1-preflight.md)。
+恢复能力与历史 ACL 缺口保持“未验证”，
 不再作为本轮新增演练待办，也不标记为已验证。下列带日期记录保留历史事实；
-本轮后续顺序为例外审批入口评审合并 → 生产预检/备份与 ACL 复核 → 迁移/回填 →
+本轮后续顺序为 ACL 采集入口修复评审合并 → 复核最新 main/CI、备份与冻结窗口 →
+受保护独立 ACL 双采集及归档审核 → 迁移/回填 →
 单独审核 Runtime 最小授权 → shadow → 搜索切换验收；不重跑全量 ACL normalization。
 
 - [x] PR #45 已于 2026-09-06 squash 合并为 `main@a5a4bca`；统一三种模式输入校验、页面错误提示和数据库搜索健康探测均已交付，PR 与合并后 main CI 通过。
