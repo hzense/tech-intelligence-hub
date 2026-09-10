@@ -1,7 +1,7 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-09-10
-**当前阶段：** 网站 MVP 已验收；FTS-1 开发与合并完成，下一阶段是数据库搜索生产上线、持续内容运营与智能情报能力扩展，同时完成运维收尾
+**最后更新：** 2026-09-11
+**当前阶段：** 网站 MVP 已验收；FTS-1 数据库搜索已完成生产切换与功能验收，下一阶段是持续内容运营、智能情报能力扩展与运维收尾
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
 > 本看板区分“工程基础”“网站 MVP”“MVP 生产就绪度”和“完整科技情报平台”。百分比是人工估算，不以文档数量或提交数量代替产品进展；MVP 已完成不代表完整产品已完成。
@@ -27,7 +27,16 @@
 
 ### 1. FTS-1 数据库搜索生产上线
 
-**2026-09-10 最新决策：** PR #55 已合并为 `22a4201`，对应 main CI 成功。
+**2026-09-11 最新状态：已上线。** `main@f72ccb9` 的正式部署
+`dpl_DV9WMCgbHpd3ScNCwAMXzd2hAFGo` 已 READY，`hzense.com` 使用
+`HZENSE_SEARCH_MODE=database`。迁移 `0003`、38 条回填、零变更复核、
+十二列最小授权、连续两次 Runtime 预检、21/21 shadow 比对与正式搜索/六类过滤均通过；
+[云端健康验收](https://github.com/hzense/tech-intelligence-hub/actions/runs/34540048804) 成功。
+详见[生产切换记录](./production-evidence/acl/34535908960-1/cutover.md)。
+本轮没有执行恢复演练；恢复能力与历史 ACL 缺口仍未验证，应用回滚路径仅复核、未实切演练。
+本次提交包含新证据；待 PR 审核合并后才计为 main 归档。
+
+**2026-09-10 历史决策：** PR #55 已合并为 `22a4201`，对应 main CI 成功。
 操作者明确取消本轮恢复验证/隔离演练，并同意开发
 [显式风险接受审批路径](./ONLINE_MAINTENANCE.md#fts-1-显式接受恢复未验证风险)。
 [PR #56](https://github.com/hzense/tech-intelligence-hub/pull/56) 已合并为 `9220df0`，
@@ -59,14 +68,15 @@
 - [x] PR #53 修复提交 `bd8f8c3` 的 [CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34363934742) 全部通过，恢复 SQL PostgreSQL 集成测试 14 项通过；修复后本地数据库包 378 passed / 49 skipped（新增静态测试 7 项，集成测试 14 项本地跳过）。证据见[验证与评审更新](./production-evidence/acl/34326646837-1/recovery-sql-review.md#修复后验证与评审更新)，不代表后续提交或合并后的 CI 通过。
 - [x] PR #53 已合并为 `main@23ed839`，同 SHA 的 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34368875223) 三项任务全部成功。恢复源的三项可信 Neon 身份参数已通过浏览器只读实测，Search 仍为 10 列、启用事件触发器为 0；详见[身份核验检查点](./production-evidence/acl/34326646837-1/neon-identity-checkpoint.md)。这不是 R1/R2 或恢复演练证据。
 - [x] 2026-09-10 开发[隔离恢复线上只读验证入口](./RECOVERY_VERIFICATION.md)：R0–R3 双采集、run-bound 审批与目标摘要约束、独立 Runtime 恢复态权限检查；生产 FTS 预检不放宽。代码和本地测试完成不代表入口已合并、线上实跑或演练通过。
-- [ ] 恢复候选真实 Neon R1/R2 适配和独立审核、线上恢复态入口的评审/合并/配置/实跑、隔离演练与历史 ACL 缺口处理；当前作者 `COMMENTED` 评价不等于正式批准。原演练分支已不在 Neon 列表中，需取得新准确目标授权；遵照操作者决定，未新建或延长分支，生产迁移、回填与搜索切换尚未执行。
-- [ ] 2026-09-08 [上线门禁复核](./production-evidence/2026-09-08-fts1-gates.md)：Neon 网页连接已恢复，确认现有 FTS 备份分支仍存在、9 月 13 日 23:26（柏林时间）到期；快照额度已满，分支为 3/10。独立恢复演练仍待完成；只读预检成功和分支存在不替代恢复门禁，尚未迁移、回填或切换搜索。
-- [ ] 完成 Environment secrets 现有凭据配置核验，以及在线 ACL 受控归档与恢复门禁后才能执行写操作；当前不代表 FTS-1 已上线。入口、审批边界及剩余工作见[全线上维护手册](./ONLINE_MAINTENANCE.md)。
-- [ ] 解除 Runtime ACL 恢复证据门禁，核验新的可恢复备份与当前权限 baseline。
-- [ ] 在生产应用并验证 `0003_search_documents_fts.sql`。
-- [ ] 完成 Search Document 受保护回填、指纹校验和无变更重跑。
-- [ ] 更新 Runtime 搜索列权限并通过生产 preflight。
-- [ ] 完成 shadow 新旧结果对账，再切换 database 模式并验收搜索、过滤、健康告警和回滚。
+- 历史边界：R1/R2 适配、隔离恢复演练与历史 ACL 缺口没有获得恢复成功证据；操作者取消本轮恢复验证，未新建或延长演练分支。该风险不因搜索上线而消失，也不重新列为本轮演练待办。
+- 历史检查：[2026-09-08 上线门禁复核](./production-evidence/2026-09-08-fts1-gates.md) 记录当时尚未迁移/回填/切换及当时的分支期限；它不是当前状态。最新备份存在性/期限与双采集记录以本轮 [review](./production-evidence/acl/34535908960-1/review.md) 为准，仍不证明可恢复性。
+- [x] 通过受保护线上执行验证现有维护/Runtime 凭据，完成最新独立 ACL 双采集及 artifact 归档；未读取或轮换密码。写操作采用单独 run-bound 风险接受审批，见[线上手册](./ONLINE_MAINTENANCE.md)。
+- 全量 destructive Runtime ACL normalization 的恢复门禁未解除；本轮只执行另行批准的十二列 GRANT。
+- [x] 在生产应用并验证 `0003_search_documents_fts.sql`（2026-09-11，柏林时间）。
+- [x] 完成 Search Document 受保护回填、指纹校验和无变更重跑：38 条，独立复核 0 增删改。
+- [x] 更新 Runtime 搜索十二列最小读取权限，连续两次生产 preflight 成功；未运行全量 normalization。
+- [x] 完成 21/21 shadow 对账并切换 database 模式；搜索、六类过滤、健康与早期错误日志验收通过。
+- [ ] 审核合并本轮生产证据归档 PR；应用回滚已复核但未实切演练，恢复能力仍按操作者决定保持未验证。
 
 完成标准：按 [FTS-1 上线顺序](./DEPLOYMENT.md#fts-1-数据库搜索上线顺序) 留存生产执行与验收证据；代码合并不计作生产上线。
 
@@ -114,7 +124,7 @@
 
 ### 建议执行顺序
 
-先完成 FTS-1 所依赖的备份与 ACL 恢复门禁，再推进 **FTS-1 生产上线 → 持续发布真实内容 → 自动采集与审核 → 混合搜索 / RAG**。时间线与图谱可在实体和 Signal 数据积累后分批交付；其余运维收尾持续跟进。
+FTS-1 已完成生产切换，先提交本轮验收证据，再推进 **持续发布真实内容 → 自动采集与审核 → 混合搜索 / RAG**。时间线与图谱可在实体和 Signal 数据积累后分批交付；其余运维收尾持续跟进。恢复未验证风险保持记录，不重启操作者已取消的演练。
 
 进度证据：[PR #45](https://github.com/hzense/tech-intelligence-hub/pull/45)、[合并后 main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34057251891)。2026-09-06 的只读检查中，正式站首页、`/search?q=OpenAI` 与 `/api/health/database` 均返回 HTTP 200，健康正文为 `{"status":"ok"}`；该观察不证明 FTS-1 生产迁移或 database 模式已启用。
 
@@ -240,7 +250,7 @@
 - [ ] 补充 Neon PgBouncer client-capacity 与独立 provider 侧连接、池和数据库阈值监控；PR #40 不声称覆盖该边界
 - [x] PR #41 的 FTS-0 canonical projection、排序器抽取、稳定 fingerprint 与完全平局 total-order 已通过最终评审、完整 CI、合并及 Production 兼容性验收
 - [x] FTS-1 仓库开发：独立 `0003`、Search Document 同步、加权 `tsvector`/GIN、精确 parity 查询、shadow 与 fail-closed database 模式已实现
-- [ ] FTS-1 生产落地：恢复证据门禁解除后执行 Migration、受保护回填、Runtime ACL/preflight、shadow parity、cutover 与回滚验收
+- [x] FTS-1 生产切换：2026-09-11 已按风险接受路径完成 Migration、受保护回填、最小 Runtime ACL/双 preflight、shadow parity、cutover 与功能/健康验收；应用回滚仅复核未实切，恢复能力未验证，详见本页最新记录。
 
 2026-08-31 的生产维护窗口已有现场证据：新分支备份确认可恢复，`0002` 已执行，3 个 Migration / 0 pending，`hzense_topic_sync` 与最小 ACL 已复核，dry run → Apply → 独立 verifier → no-op 全部完成，最终 62 个 Topics、0 个未知行且 reviewed fingerprint 匹配。随后完成了 Runtime Reader 的新七天回滚分支、角色/ACL 盘点、`hzense_runtime` read-only 默认值、`neondb` ambient ACL 隔离与 Migrator 连接容量治理；PR #32–#35 已把仓库实现与 Neon provider 合约合并到 `main`。2026-09-01 又以两组 catalog-only `SELECT` 独立确认目标 `hzense` ACL 的有效权限和直接授权来源，[脱敏结果](./production-evidence/2026-09-01-runtime-reader-acl.md)仅保留布尔值、计数与指纹。PR #36 于 2026-09-02 合并健康监控门禁，PR #38 于 2026-09-03 固定现场验收的 provider catalog 合约。同日，独立 Runtime 凭据与目标/保留库完整 preflight 通过；五个 server-only 值仅配置到 Vercel Production，Runtime-configured 部署、线上 health、真实五列读取、安全日志与小时级工作流首次手工运行均通过[功能/配置生产验收](./production-evidence/2026-09-03-runtime-reader-production-acceptance.md)。生产就绪度据此提高至 98%。2026-09-04，PR #40 的精确 Production 部署、健康合约、受控单例 incident 创建与恢复关闭均通过；PR #42 修复 `22023`、通过完整 CI、合并并完成部署兼容性验收，但没有执行生产 ACL 捕获、provider backup/PITR 核验或数据库 mutation。PR #41 随后完成 FTS-0 和生产兼容性验收。当时 FTS-1 尚未执行；2026-09-06，PR #45 已合并为 `main@a5a4bca` 并通过合并后 CI。生产最近已验收的基线仍是三 Migration、旧 Runtime ACL 与 in-process 查询，`0003`、回填、shadow 和 cutover 尚无完成记录。[脱敏运维检查点](./production-evidence/2026-09-04-operations-checkpoint.md)同时保留四项未闭环状态：操作者知情接受既有凭据处理暴露风险并将轮换延期到本轮之外，轮换义务仍开放；历史 ACL 恢复材料不足且 provider backup/PITR 未核验；Continuous Daily 被确认的组织策略阻断；Hosted Alpha 仍公开且 owner-only 尚待显式授权。
 

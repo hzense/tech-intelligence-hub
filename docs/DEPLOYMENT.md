@@ -259,6 +259,12 @@ PR #41 的最终 head `6ad92d87` 通过 [CI run 33857784633](https://github.com/
 
 ## FTS-1 数据库搜索上线顺序
 
+**2026-09-11 生产状态：** 已按显式风险接受路径完成迁移、38 条回填、十二列最小授权、
+两次 Runtime 预检、21/21 shadow 比对和 `database` 模式切换。
+正式部署 `dpl_DV9WMCgbHpd3ScNCwAMXzd2hAFGo` 已 READY；搜索与云端健康验收通过。
+详见[切换证据](./production-evidence/acl/34535908960-1/cutover.md)。
+恢复能力仍未验证，未执行全量 ACL normalization 或恢复演练；以下保留后续发布操作顺序。
+
 FTS-1 仓库实现默认保持 `HZENSE_SEARCH_MODE=in-process`，不会在构建或 Preview 中连接
 Production 数据库。生产上线是后续独立操作，并受现有 Runtime ACL 恢复证据门禁约束；门禁
 解除前不得执行更新后的 `configure_runtime_reader.sql`。
