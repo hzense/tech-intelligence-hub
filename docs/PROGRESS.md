@@ -1,6 +1,6 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-09-09
+**最后更新：** 2026-09-10
 **当前阶段：** 网站 MVP 已验收；FTS-1 开发与合并完成，下一阶段是数据库搜索生产上线、持续内容运营与智能情报能力扩展，同时完成运维收尾
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
@@ -42,7 +42,8 @@
 - [x] 2026-09-09 开发受限 FTS 十二列 ACL 恢复候选、只读目录指纹与测试，并完成静态自审；不代表提交、CI 通过、独立审批或线上执行。
 - [x] PR #53 修复提交 `bd8f8c3` 的 [CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34363934742) 全部通过，恢复 SQL PostgreSQL 集成测试 14 项通过；修复后本地数据库包 378 passed / 49 skipped（新增静态测试 7 项，集成测试 14 项本地跳过）。证据见[验证与评审更新](./production-evidence/acl/34326646837-1/recovery-sql-review.md#修复后验证与评审更新)，不代表后续提交或合并后的 CI 通过。
 - [x] PR #53 已合并为 `main@23ed839`，同 SHA 的 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34368875223) 三项任务全部成功。恢复源的三项可信 Neon 身份参数已通过浏览器只读实测，Search 仍为 10 列、启用事件触发器为 0；详见[身份核验检查点](./production-evidence/acl/34326646837-1/neon-identity-checkpoint.md)。这不是 R1/R2 或恢复演练证据。
-- [ ] 恢复候选真实 Neon R1/R2 适配和独立审核、线上恢复态验证入口、隔离演练与历史 ACL 缺口处理；当前作者 `COMMENTED` 评价不等于正式批准。原演练分支已不在 Neon 列表中，需取得新准确目标授权；遵照操作者决定，未新建或延长分支，生产迁移、回填与搜索切换尚未执行。
+- [x] 2026-09-10 开发[隔离恢复线上只读验证入口](./RECOVERY_VERIFICATION.md)：R0–R3 双采集、run-bound 审批与目标摘要约束、独立 Runtime 恢复态权限检查；生产 FTS 预检不放宽。代码和本地测试完成不代表入口已合并、线上实跑或演练通过。
+- [ ] 恢复候选真实 Neon R1/R2 适配和独立审核、线上恢复态入口的评审/合并/配置/实跑、隔离演练与历史 ACL 缺口处理；当前作者 `COMMENTED` 评价不等于正式批准。原演练分支已不在 Neon 列表中，需取得新准确目标授权；遵照操作者决定，未新建或延长分支，生产迁移、回填与搜索切换尚未执行。
 - [ ] 2026-09-08 [上线门禁复核](./production-evidence/2026-09-08-fts1-gates.md)：Neon 网页连接已恢复，确认现有 FTS 备份分支仍存在、9 月 13 日 23:26（柏林时间）到期；快照额度已满，分支为 3/10。独立恢复演练仍待完成；只读预检成功和分支存在不替代恢复门禁，尚未迁移、回填或切换搜索。
 - [ ] 完成 Environment secrets 现有凭据配置核验，以及在线 ACL 受控归档与恢复门禁后才能执行写操作；当前不代表 FTS-1 已上线。入口、审批边界及剩余工作见[全线上维护手册](./ONLINE_MAINTENANCE.md)。
 - [ ] 解除 Runtime ACL 恢复证据门禁，核验新的可恢复备份与当前权限 baseline。

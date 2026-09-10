@@ -7,6 +7,7 @@ import { validateConnectionTarget } from './connection-policy.mjs';
 import { inspectNeonReservedProviderObjects } from './neon-reserved-provider-contract.mjs';
 import { inspectProductionTls } from './preflight.mjs';
 import { expectedTableNames } from './verify.mjs';
+import { withRecoveryReadClient } from './recovery-read-client.mjs';
 
 const { Client } = pg;
 const pooledHostPattern = /(^|[.-])pooler([.-]|$)/;
@@ -311,10 +312,12 @@ async function effectiveColumnPrivileges(client) {
   ).rows.filter((row) => row.granted === true || row.grantable === true);
 }
 
-function requireExactRuntimeColumns(rows) {
+function requireExactRuntimeColumns(rows, restoredAcl = false) {
   const expected = new Set([
     ...runtimeReaderTopicColumns.map((column) => `public.topics.${column}:SELECT`),
-    ...runtimeReaderSearchColumns.map((column) => `public.search_documents.${column}:SELECT`),
+    ...(restoredAcl ? [] : runtimeReaderSearchColumns).map(
+      (column) => `public.search_documents.${column}:SELECT`,
+    ),
   ]);
   const actual = new Set(
     rows.map((row) => `${row.schema_name}.${row.table_name}.${row.column_name}:${row.privilege}`),
@@ -346,6 +349,7 @@ async function inspectRuntimeReaderTarget(
     allowNeonReservedDatabases = false,
     allowNeonRuntimeAdminMembership = false,
     allowNeonVectorOwnershipSplit = false,
+    restoredAcl = false,
   } = {},
 ) {
   const databaseName = requireString(expectedDatabase, 'HZENSE_RUNTIME_EXPECTED_NAME');
@@ -440,8 +444,10 @@ async function inspectRuntimeReaderTarget(
       `Runtime reader target mismatch; expected ${databaseName}/${userName}, found ${target.database_name}/${target.authenticated_role}/${target.effective_role}`,
     );
   }
-  if (target.schema_name !== 'public') {
-    throw new Error('Runtime reader current_schema must be public');
+  if (target.schema_name !== (restoredAcl ? 'pg_catalog' : 'public')) {
+    throw new Error(
+      `Runtime reader current_schema must be ${restoredAcl ? 'pg_catalog' : 'public'}`,
+    );
   }
   const postgresMajor = Math.floor(target.server_version_num / 10_000);
   if (postgresMajor !== expectedPostgresMajor) {
@@ -818,7 +824,7 @@ async function inspectRuntimeReaderTarget(
         .join(', ')}`,
     );
   }
-  requireExactRuntimeColumns(await effectiveColumnPrivileges(client));
+  requireExactRuntimeColumns(await effectiveColumnPrivileges(client), restoredAcl);
 
   const ownedObjects = await client.query(
     `SELECT 'schema' AS object_type,
@@ -1102,7 +1108,7 @@ async function inspectRuntimeReaderTarget(
     connectionLimit: target.rolconnlimit,
     defaultTransactionReadOnly: true,
     topicColumns: [...runtimeReaderTopicColumns],
-    searchColumns: [...runtimeReaderSearchColumns],
+    searchColumns: restoredAcl ? [] : [...runtimeReaderSearchColumns],
     tlsVersion: tls.version,
     tlsCipher: tls.cipher,
     tlsEvidence: tls.source,
@@ -1114,6 +1120,12 @@ export async function inspectRuntimeReaderPreflight(client, options) {
   const result = { ...(await inspectRuntimeReaderTarget(client, options)) };
   delete result.neonReservedDatabasesToVerify;
   return result;
+}
+
+// Separate recovery-state contract. Production preflight never selects this
+// mode from caller options or environment variables.
+export async function inspectRestoredRuntimeReader(client, options) {
+  return inspectRuntimeReaderTarget(client, options, { restoredAcl: true });
 }
 
 async function inspectNeonReservedDatabase(
@@ -1236,19 +1248,22 @@ function reservedDatabaseConnectionString(connectionString, databaseName) {
   return url.toString();
 }
 
-export async function runRuntimeReaderPreflight({
-  connectionString,
-  profile,
-  expectedHost,
-  expectedPort,
-  expectedDatabase,
-  expectedUser,
-  nodeTlsRejectUnauthorized,
-  expectedPostgresMajor = 18,
-  expectedConnectionLimit = 20,
-  connectionTimeoutMillis = 10_000,
-  createClient,
-} = {}) {
+async function runReaderPreflight(
+  {
+    connectionString,
+    profile,
+    expectedHost,
+    expectedPort,
+    expectedDatabase,
+    expectedUser,
+    nodeTlsRejectUnauthorized,
+    expectedPostgresMajor = 18,
+    expectedConnectionLimit = 20,
+    connectionTimeoutMillis = 10_000,
+    createClient,
+  } = {},
+  recoveryGuard,
+) {
   const policy = validateConnectionTarget({
     connectionString,
     profile,
@@ -1293,10 +1308,25 @@ export async function runRuntimeReaderPreflight({
     clientOptions(connectionString, 'hzense-runtime-reader-preflight'),
   );
 
-  let targetResult;
-  try {
-    await client.connect();
-    targetResult = await inspectRuntimeReaderTarget(
+  // Preserve the original production cleanup behavior. The recovery path uses
+  // fail-closed cleanup for both the target and every reserved database.
+  async function inspectConnected(checkedClient, inspect) {
+    if (recoveryGuard) return withRecoveryReadClient(checkedClient, inspect);
+    try {
+      await checkedClient.connect();
+      return await inspect();
+    } finally {
+      await checkedClient.end().catch(() => undefined);
+    }
+  }
+  const targetResult = await inspectConnected(client, async () => {
+    if (recoveryGuard) {
+      await recoveryGuard(client, policy.database);
+      // Keep catalogs first while preserving public type visibility used by
+      // the existing provider routine-definition/fingerprint contract.
+      await client.query('SET LOCAL search_path = pg_catalog, public, pg_temp');
+    }
+    const inspected = await inspectRuntimeReaderTarget(
       client,
       {
         expectedHost: policy.host,
@@ -1310,11 +1340,12 @@ export async function runRuntimeReaderPreflight({
         allowNeonReservedDatabases: true,
         allowNeonRuntimeAdminMembership: true,
         allowNeonVectorOwnershipSplit: profile === 'production',
+        restoredAcl: Boolean(recoveryGuard),
       },
     );
-  } finally {
-    await client.end().catch(() => undefined);
-  }
+    if (recoveryGuard) await probeRestoredRuntimeReads(client);
+    return inspected;
+  });
 
   const verifiedNeonReservedDatabases = [];
   for (const reservedDatabase of targetResult.neonReservedDatabasesToVerify) {
@@ -1324,8 +1355,11 @@ export async function runRuntimeReaderPreflight({
         'hzense-runtime-reader-reserved-preflight',
       ),
     );
-    try {
-      await reservedClient.connect();
+    await inspectConnected(reservedClient, async () => {
+      if (recoveryGuard) {
+        await recoveryGuard(reservedClient, reservedDatabase);
+        await reservedClient.query('SET LOCAL search_path = pg_catalog, public, pg_temp');
+      }
       await inspectNeonReservedDatabase(reservedClient, {
         expectedDatabase: reservedDatabase,
         expectedHost: policy.host,
@@ -1333,10 +1367,8 @@ export async function runRuntimeReaderPreflight({
         expectedUser: expectedUser ?? policy.user,
         profile,
       });
-      verifiedNeonReservedDatabases.push(reservedDatabase);
-    } finally {
-      await reservedClient.end().catch(() => undefined);
-    }
+    });
+    verifiedNeonReservedDatabases.push(reservedDatabase);
   }
 
   const result = { ...targetResult };
@@ -1346,6 +1378,40 @@ export async function runRuntimeReaderPreflight({
     `[db:runtime-reader-preflight] verified PostgreSQL ${result.postgresMajor}, connection limit ${result.connectionLimit}, ${result.topicColumns.length} Topic columns, ${verifiedNeonReservedDatabases.length} Neon reserved databases, ${result.tlsVersion}/${result.tlsCipher} (${result.tlsEvidence} evidence)`,
   );
   return verifiedResult;
+}
+
+export function runRuntimeReaderPreflight(options) {
+  return runReaderPreflight(options);
+}
+
+export function runRestoredRuntimeReaderPreflight(options, guard) {
+  if (typeof guard !== 'function') throw new Error('Recovery target guard required');
+  return runReaderPreflight(options, guard);
+}
+
+export async function probeRestoredRuntimeReads(client) {
+  // LIMIT 0 exercises authorization without returning business rows. No test
+  // DML is issued: read-only transaction errors must not masquerade as ACL denial.
+  await client.query(
+    'SELECT id, title, parent_id, status, runtime_enabled FROM public.topics LIMIT 0',
+  );
+  for (const sql of [
+    'SELECT metadata FROM public.topics LIMIT 0',
+    'SELECT title FROM public.search_documents LIMIT 0',
+  ]) {
+    await client.query('SAVEPOINT denied_read');
+    let denied = false;
+    try {
+      await client.query(sql);
+    } catch (error) {
+      if (error?.code !== '42501') throw error;
+      denied = true;
+    } finally {
+      await client.query('ROLLBACK TO SAVEPOINT denied_read');
+      await client.query('RELEASE SAVEPOINT denied_read');
+    }
+    if (!denied) throw new Error('Recovery Runtime read unexpectedly allowed');
+  }
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : undefined;

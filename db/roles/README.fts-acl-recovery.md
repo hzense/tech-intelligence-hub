@@ -8,6 +8,11 @@
 不允许根据本文件设置 `aclRecoveryReviewed` / `restoreRehearsed`，不接入生产自动执行。
 没有新建本地维护 CLI，也不需要 `.env`。实际执行仍只能走获批的线上维护流程。
 
+2026-09-10 已开发独立的[线上只读验证入口](../../docs/RECOVERY_VERIFICATION.md)，
+用于 R0–R3 双采集和 Runtime 恢复态验证；它不执行本恢复 SQL，未声明合并或线上实跑。
+恢复源的真实 Neon 参数可读性已在[只读检查点](../../docs/production-evidence/acl/34326646837-1/neon-identity-checkpoint.md)
+得到限定范围验证，不代表新的隔离目标已经核验。
+
 ## 范围与不支持的情况
 
 - [restore_fts_reader_acl.sql](./restore_fts_reader_acl.sql) 只有一个权限修改语句：

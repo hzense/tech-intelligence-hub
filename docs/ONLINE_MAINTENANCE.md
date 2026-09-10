@@ -100,6 +100,10 @@ artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须�
 
 ## 写操作恢复审核
 
+隔离恢复的只读采集与恢复态 Runtime 检查有单独的
+[线上验证入口](./RECOVERY_VERIFICATION.md)。它不复用生产连接，不执行迁移、授权或恢复 SQL，
+也不替代下述生产写操作门禁；入口上线状态以对应 PR/CI 与实际 run 为准。
+
 原有 [FTS-1 上线顺序](./DEPLOYMENT.md#fts-1-数据库搜索上线顺序) 与
 [ACL 恢复门禁](./DEPLOYMENT.md#runtime-acl-恢复基线) 不变。
 先在 Neon 完成备份独立恢复验证、冻结 DDL、双重 ACL baseline 采集复核、

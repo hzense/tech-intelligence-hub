@@ -11,7 +11,12 @@ import {
   runRuntimeAclBaselineCapture,
   runtimeAclBackupReference,
 } from '../src/runtime-acl-baseline.mjs';
-import { inspectRuntimeReaderPreflight } from '../src/runtime-reader-preflight.mjs';
+import {
+  inspectRuntimeReaderPreflight,
+  runRestoredRuntimeReaderPreflight,
+  runtimeReaderSearchColumns,
+} from '../src/runtime-reader-preflight.mjs';
+import { beginRecoveryRead } from '../src/recovery-verification.mjs';
 import {
   databaseSearchQuery,
   databaseSearchHealthQuery,
@@ -738,6 +743,35 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
       expect(accessibleEnums.rows).toEqual([{ name: 'topic_status' }]);
     });
   }, 30_000);
+
+  it('verifies restored ACL with an independent Runtime login without weakening production preflight', async () => {
+    const columns = runtimeReaderSearchColumns.join(', ');
+    await withClient(databaseUrl(ownerRole, ownerPassword), (client) =>
+      client.query(
+        `REVOKE SELECT (${columns}) ON public.search_documents FROM hzense_runtime RESTRICT`,
+      ),
+    );
+    try {
+      const result = await runRestoredRuntimeReaderPreflight(
+        {
+          connectionString: databaseUrl(runtimeRole, runtimePassword),
+          profile: 'local-test',
+          expectedDatabase: databaseName,
+          expectedUser: runtimeRole,
+        },
+        beginRecoveryRead,
+      );
+      expect(result.topicColumns).toHaveLength(5);
+      expect(result.searchColumns).toEqual([]);
+      await expect(
+        withClient(databaseUrl(runtimeRole, runtimePassword), strictRuntimePreflight),
+      ).rejects.toThrow('column privileges are invalid');
+    } finally {
+      await withClient(databaseUrl(ownerRole, ownerPassword), (client) =>
+        client.query(`GRANT SELECT (${columns}) ON public.search_documents TO hzense_runtime`),
+      );
+    }
+  });
 
   it('denies metadata, migration history, other tables, writes, DDL, TEMP, sequences and routines', async () => {
     await withClient(databaseUrl(runtimeRole, runtimePassword), async (client) => {
