@@ -34,6 +34,11 @@
 
 ## 对现有 SQL 与基线的审查
 
+最新[只读身份核验](./neon-identity-checkpoint.md)确认：PR #53 已合并且 main CI 成功，
+恢复源可读三项可信 Neon 身份参数；原隔离分支已不在列表中。此前的“仍列在项目中”
+是历史检查点，不代表当前目标可用。本次没有创建替代分支或执行恢复写操作，
+R1/R2、独立审核、受保护恢复态入口及历史缺口仍待闭环。
+
 审查对象为当前主分支的 `db/migrations/0003_search_documents_fts.sql`、
 `db/roles/configure_runtime_reader.sql`、`packages/database/src/runtime-reader-preflight.mjs`
 及本目录原始基线。
