@@ -1,0 +1,62 @@
+name: Isolated recovery verification
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Read-only isolated recovery evidence (never executes restore SQL)
+        required: true
+        type: choice
+        default: capture-r0
+        options:
+          - capture-r0
+          - capture-r1
+          - capture-r2
+          - capture-r3
+          - verify-restored
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: production-maintenance
+  cancel-in-progress: false
+
+jobs:
+  verification:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment: production-maintenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout approved commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+      - name: Prepare without database credentials
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.21.0 --activate
+          pnpm install --frozen-lockfile
+          pnpm workflow:validate
+      - name: Verify isolated recovery state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECOVERY_OPERATION: ${{ inputs.operation }}
+          RECOVERY_APPROVAL: ${{ secrets.RECOVERY_APPROVAL }}
+          RECOVERY_OWNER_URL: ${{ inputs.operation != 'verify-restored' && secrets.RECOVERY_OWNER_URL || '' }}
+          RECOVERY_RUNTIME_URL: ${{ inputs.operation == 'verify-restored' && secrets.RECOVERY_RUNTIME_URL || '' }}
+        run: node .github/scripts/recovery-verification.mjs
+      - name: Archive reviewed recovery evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: recovery-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/hzense-recovery-verification.json
+          if-no-files-found: error
+          retention-days: 30

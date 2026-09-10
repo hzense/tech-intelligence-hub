@@ -6,6 +6,8 @@ import { inspectNeonReservedProviderObjects } from '../src/neon-reserved-provide
 import { expectedTableNames } from '../src/verify.mjs';
 import {
   inspectRuntimeReaderPreflight,
+  inspectRestoredRuntimeReader,
+  probeRestoredRuntimeReads,
   isApprovedNeonReservedDatabaseException,
   isApprovedNeonRuntimeAdminMembership,
   runRuntimeReaderPreflight,
@@ -436,6 +438,58 @@ function reservedDatabaseClient(
 }
 
 describe('Runtime reader least-privilege preflight', () => {
+  it('keeps restored ACL separate from production and rejects residual Search privileges', async () => {
+    const restored = () =>
+      preflightClient({
+        identity: { schema_name: 'pg_catalog' },
+        columnPrivilegeRows: expectedColumnRows().filter((row) => row.table_name === 'topics'),
+      });
+    const result = await inspectRestoredRuntimeReader(restored(), expected);
+    expect(result.searchColumns).toEqual([]);
+    await expect(
+      inspectRestoredRuntimeReader(
+        preflightClient({ identity: { schema_name: 'pg_catalog' } }),
+        expected,
+      ),
+    ).rejects.toThrow('column privileges are invalid');
+    await expect(
+      inspectRuntimeReaderPreflight(
+        preflightClient({
+          columnPrivilegeRows: expectedColumnRows().filter((row) => row.table_name === 'topics'),
+        }),
+        { ...expected, restoredAcl: true },
+      ),
+    ).rejects.toThrow('column privileges are invalid');
+  });
+
+  it.each(['25006', '42P01', '57014', undefined])(
+    'does not mistake %s for ACL denial',
+    async (code) => {
+      const client = {
+        query: vi.fn(async (sql) => {
+          if (sql.includes('SELECT metadata'))
+            throw Object.assign(new Error('probe failed'), { code });
+          return { rows: [] };
+        }),
+      };
+      await expect(probeRestoredRuntimeReads(client)).rejects.toThrow();
+    },
+  );
+
+  it('requires actual permission denial for both negative reads', async () => {
+    const client = {
+      query: vi.fn(async (sql) => {
+        if (sql.includes('SELECT metadata') || sql.includes('SELECT title'))
+          throw Object.assign(new Error('denied'), { code: '42501' });
+        return { rows: [] };
+      }),
+    };
+    await expect(probeRestoredRuntimeReads(client)).resolves.toBeUndefined();
+    await expect(
+      probeRestoredRuntimeReads({ query: vi.fn().mockResolvedValue({ rows: [] }) }),
+    ).rejects.toThrow('unexpectedly allowed');
+  });
+
   it('maps the protected production environment without generic database fallbacks', () => {
     expect(
       runtimeReaderProductionOptions({

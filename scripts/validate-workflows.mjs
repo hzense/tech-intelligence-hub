@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath, URL } from 'node:url';
 import { parse } from 'yaml';
 import { maintenanceWorkflowProblems } from '../.github/scripts/maintenance-workflow-contract.mjs';
+import { recoveryWorkflowProblems } from '../.github/scripts/recovery-workflow-contract.mjs';
 
 const workflowRoot = fileURLToPath(new URL('../.github/workflows/', import.meta.url));
 const workflowFiles = (await readdir(workflowRoot))
@@ -221,6 +222,12 @@ if (
 issues.push(
   ...maintenanceWorkflowProblems(
     parse(await readFile(join(workflowRoot, 'production-maintenance.yml'), 'utf8')),
+  ),
+);
+
+issues.push(
+  ...recoveryWorkflowProblems(
+    parse(await readFile(join(workflowRoot, 'recovery-verification.yml'), 'utf8')),
   ),
 );
 
