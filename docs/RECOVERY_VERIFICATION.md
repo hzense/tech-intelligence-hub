@@ -1,7 +1,10 @@
 # 隔离恢复的线上只读验证
 
-状态：入口代码与测试已开发并提交 [PR #55](https://github.com/hzense/tech-intelligence-hub/pull/55)，
-**尚未合并或线上实跑**。这不是恢复演练完成记录。
+状态：[PR #55](https://github.com/hzense/tech-intelligence-hub/pull/55) 已合并为 `main@22a4201`，
+对应 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34493959540) 成功，
+**尚未线上实跑**。2026-09-10 操作者决定本轮不再验证恢复能力，此入口保留但不安排运行；
+恢复能力仍为未验证。这不是恢复演练完成记录。FTS-1 替代审批方式见
+[显式风险接受路径](./ONLINE_MAINTENANCE.md#fts-1-显式接受恢复未验证风险)。
 操作入口为 `.github/workflows/recovery-verification.yml`，不增加本地维护 CLI 或 `.env`，
 不改变 `production-maintenance.yml` 和既有生产写审批规则。
 

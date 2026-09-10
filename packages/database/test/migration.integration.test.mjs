@@ -162,6 +162,24 @@ integrationSuite('PostgreSQL migration integration', () => {
       pgvectorVersion: '0.8.6',
     });
 
+    // The final plan guard runs under the migration lock, before migration SQL.
+    // A rejected plan must leave the ledger empty and release the lock for retry.
+    await expect(
+      runMigrations({
+        connectionString: databaseUrl,
+        beforeApply: (pending) => {
+          expect(pending).toContain('0000_foundation.sql');
+          throw new Error('test-only-unapproved-plan');
+        },
+      }),
+    ).rejects.toThrow('test-only-unapproved-plan');
+    await withClient(databaseUrl, async (client) => {
+      expect((await client.query('SELECT name FROM hzense_schema_migrations')).rows).toEqual([]);
+      expect(
+        (await client.query("SELECT to_regclass('public.search_documents') AS relation")).rows[0]
+          .relation,
+      ).toBeNull();
+    });
     await runGuardedMigrations(databaseNames.fresh);
     const firstHistory = await withClient(databaseUrl, (client) =>
       client.query('SELECT name, checksum, applied_at FROM hzense_schema_migrations ORDER BY name'),

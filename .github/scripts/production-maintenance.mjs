@@ -15,6 +15,43 @@ export const maintenanceOperations = Object.freeze([
 ]);
 const writes = new Set(['migrate', 'search-apply']);
 const digest = /^[a-f0-9]{64}$/;
+const unverifiedRecoveryPolicy = 'accept-unverified-fts1';
+
+// Explicit exception, not fabricated evidence of a successful restore. The
+// protected Environment review remains the authority; these are declarations.
+function validateRecoveryPolicy(approval) {
+  const policy = Object.hasOwn(approval, 'recoveryPolicy') ? approval.recoveryPolicy : 'verified';
+  requireGate(
+    policy === 'verified' || policy === unverifiedRecoveryPolicy,
+    'unsupported-recovery-policy',
+  );
+  if (policy === 'verified') {
+    requireGate(!Object.hasOwn(approval, 'riskAcceptance'), 'conflicting-recovery-approval');
+    return policy;
+  }
+  const acceptance = approval.riskAcceptance;
+  requireGate(
+    approval.backupVerified === false &&
+      approval.backupPresenceReviewed === true &&
+      approval.restoreRehearsed === false &&
+      approval.aclRecoveryReviewed === false &&
+      !Object.hasOwn(approval, 'restoreEvidenceFingerprint') &&
+      acceptance?.scope === 'fts1-production-launch' &&
+      acceptance.accepted === true &&
+      acceptance.historicalAclGapAccepted === true &&
+      acceptance.acknowledgement === 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
+    'explicit-recovery-risk-acceptance-required',
+  );
+  return policy;
+}
+
+export function requireFts1MigrationScope(preflight) {
+  requireGate(
+    Array.isArray(preflight?.pendingMigrations) &&
+      preflight.pendingMigrations.every((name) => name === '0003_search_documents_fts.sql'),
+    'fts1-migration-scope-required',
+  );
+}
 
 function requireGate(condition, gate) {
   if (!condition) throw new MaintenanceGateError(gate);
@@ -77,18 +114,25 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
     Number.isFinite(expiry) && expiry > now && expiry <= now + 24 * 60 * 60 * 1000,
     'approval-expired-or-too-long',
   );
+  const recoveryPolicy = writes.has(operation) ? validateRecoveryPolicy(approval) : undefined;
   requireGate(
-    approval.backupVerified === true &&
+    (recoveryPolicy === unverifiedRecoveryPolicy || approval.backupVerified === true) &&
       approval.ddlFreezeConfirmed === true &&
       backupCoversApproval(approval, expiry),
     'recovery-evidence-required',
   );
   if (operation === 'acl-capture') {
     requireGate(
+      !Object.hasOwn(approval, 'recoveryPolicy') && !Object.hasOwn(approval, 'riskAcceptance'),
+      'risk-acceptance-write-only',
+    );
+    requireGate(
       approval.publicArchiveApproved === true &&
         approval.archiveRepository === 'hzense/tech-intelligence-hub',
       'public-acl-archive-approval-required',
     );
+  } else if (recoveryPolicy === unverifiedRecoveryPolicy) {
+    requireGate(digest.test(approval.aclFingerprint ?? ''), 'recovery-evidence-required');
   } else {
     requireGate(
       approval.restoreRehearsed === true &&
@@ -244,8 +288,19 @@ async function executeOperation(env, { operation, approval }) {
     const { runMigrations } = await import('../../packages/database/src/migrate.mjs');
     await runMigrations({
       connectionString: options.connectionString,
-      beforeMigrate: (client) =>
-        inspectDatabasePreflight(client, { ...options, expectedHost: policy.host }),
+      beforeMigrate: async (client) => {
+        const preflight = await inspectDatabasePreflight(client, {
+          ...options,
+          expectedHost: policy.host,
+        });
+        if (approval?.recoveryPolicy === unverifiedRecoveryPolicy) {
+          requireFts1MigrationScope(preflight);
+        }
+      },
+      beforeApply:
+        approval?.recoveryPolicy === unverifiedRecoveryPolicy
+          ? (pendingMigrations) => requireFts1MigrationScope({ pendingMigrations })
+          : undefined,
     });
     return verifyDatabaseContract(options);
   }
@@ -284,7 +339,22 @@ export async function runMaintenance(
     await verifyMaintenanceFreshness(snapshot, { fetchImpl });
     // A short-lived write approval may expire during the GitHub requests.
     const request = validateMaintenanceRequest(executionEnv, now());
-    return publicMaintenanceResult(request.operation, await execute(executionEnv, request));
+    const summary = publicMaintenanceResult(
+      request.operation,
+      await execute(executionEnv, request),
+    );
+    if (
+      writes.has(request.operation) &&
+      request.approval.recoveryPolicy === unverifiedRecoveryPolicy
+    ) {
+      summary.recoveryPolicy = unverifiedRecoveryPolicy;
+      summary.recoveryVerified = false;
+      // Only a digest of the protected, run-bound approval; never raw declarations.
+      summary.riskAcceptanceSha256 = createHash('sha256')
+        .update(snapshot.MAINTENANCE_APPROVAL)
+        .digest('hex');
+    }
+    return summary;
   } finally {
     for (const [method, original] of originals) console[method] = original;
   }

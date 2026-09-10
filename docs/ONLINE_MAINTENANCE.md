@@ -6,6 +6,10 @@
 
 ## 当前落地状态
 
+- 2026-09-10 操作者决定本轮不再验证恢复能力，并同意新增显式风险接受审批路径。
+  该路径的代码与审批格式见下文；须经本次 PR 审核、合并及 main CI 成功才可使用。
+  恢复能力和历史 ACL 缺口仍为未验证，不因风险接受而变为已通过。本记录不是生产执行证据。
+
 - GitHub Environment `production-maintenance` 已创建并通过 API 回读确认。
 - 仅允许名为 `main` 的 **branch**，同名 tag 和其他分支不在允许范围内。
 - 必须由 `zhenghu` 审批，禁止管理员绕过。允许发起人审批，适配当前单操作者流程；
@@ -55,7 +59,8 @@
 1. 在 [Actions](https://github.com/hzense/tech-intelligence-hub/actions) 选择
    **Production maintenance → Run workflow → main**，每次只选一个 operation。
 2. 任务停在 Environment 审批。核对 commit、operation、运行编号和尝试编号。
-   写操作必须先完成恢复审核，并在审批前更新 `MAINTENANCE_APPROVAL`。
+   写操作必须完成严格恢复审核，或明确选择下述 FTS-1 风险接受路径；
+   两种路径均须在审批前更新 `MAINTENANCE_APPROVAL`，不可复用旧 run 的审批。
 3. 审批后由 GitHub hosted runner 执行。若等待期间 `main` 前进或最新 push CI
    不是 success，初检失败，不进入持密执行步骤；需针对新的 `main` 重新发起、审核。
    新增的执行入口复核会在数据库模块加载前再次检查 main、最新 push CI，再回读 main，
@@ -105,7 +110,9 @@ artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须�
 也不替代下述生产写操作门禁；入口上线状态以对应 PR/CI 与实际 run 为准。
 
 原有 [FTS-1 上线顺序](./DEPLOYMENT.md#fts-1-数据库搜索上线顺序) 与
-[ACL 恢复门禁](./DEPLOYMENT.md#runtime-acl-恢复基线) 不变。
+[ACL 恢复门禁](./DEPLOYMENT.md#runtime-acl-恢复基线) 保留为默认严格路径。
+本轮仅 `migrate` / `search-apply` 可以显式选择下一节的风险接受路径；
+这不授权执行恢复 SQL、重置分支或 destructive ACL normalization。
 先在 Neon 完成备份独立恢复验证、冻结 DDL、双重 ACL baseline 采集复核、
 恢复方案审查及隔离演练，并处理历史证据缺口。备份必须覆盖当前目标和维护时间窗；
 分支存在或行数一致不能代替恢复验证。
@@ -162,6 +169,64 @@ artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须�
 `backupIdSha256` 是未加域前缀的 ID 摘要，与 ACL 工具的域分隔 `backupReference` 不同，
 不可混用；审批人必须核对受保护原件。摘要应在线上受控证据处理环节生成，不使用公开哈希网站。
 
+### FTS-1 显式接受恢复未验证风险
+
+这是操作者于 2026-09-10 选择的替代审批路径，不是恢复验证成功记录。
+默认省略 `recoveryPolicy` 或使用 `"verified"` 时，原严格恢复门禁不变；未知值、
+`null`、严格路径混入 `riskAcceptance`、风险路径伪造恢复通过字段均拒绝。
+
+仅在针对本次 run 的受保护 `MAINTENANCE_APPROVAL` 中选择
+`"recoveryPolicy": "accept-unverified-fts1"`，并逐项确认以下声明：
+
+```json
+{
+  "operation": "migrate",
+  "sha": "本次main完整SHA",
+  "runId": "本次运行编号",
+  "runAttempt": "本次尝试编号",
+  "expiresAt": "未来最多24小时的UTC时间",
+  "backupExpiresAt": "晚于审批到期的真实备份过期时间",
+  "backupIdSha256": "受保护MAINTENANCE_BACKUP_ID原始文本的SHA256",
+  "backupVerified": false,
+  "backupPresenceReviewed": false,
+  "restoreRehearsed": false,
+  "aclRecoveryReviewed": false,
+  "ddlFreezeConfirmed": false,
+  "aclFingerprint": "本次冻结窗口双采集并审核一致的ACL摘要",
+  "recoveryPolicy": "accept-unverified-fts1",
+  "riskAcceptance": {
+    "scope": "fts1-production-launch",
+    "accepted": false,
+    "historicalAclGapAccepted": false,
+    "acknowledgement": "recovery-unverified-data-loss-or-prolonged-outage-accepted"
+  }
+}
+```
+
+模板不可执行。审批人核验 provider 上备份存在、对应准确生产目标、覆盖维护时间窗后，
+才将 `backupPresenceReviewed` 设为 `true`；它不表示恢复能力已测试。
+`backupVerified`、`restoreRehearsed`、`aclRecoveryReviewed` 必须明确保持 `false`，
+整个 `restoreEvidenceFingerprint` 字段必须删除，不能填伪造证据、空串或 `null`。
+冻结发布和 DDL 后设置 `ddlFreezeConfirmed: true`，明确接受故障时可能数据丢失或
+长时间不可用、历史 ACL 缺口仍未补齐的风险后，才将两项风险确认设为 `true`。
+这些都是人工声明，不是程序对 provider 或审批者身份的独立证明。
+
+真实备份 ID、保留期限（二选一规则不变）、当前 ACL 指纹、main/CI、SHA/run/attempt/
+operation、审批时限和 Environment 人工审批仍然必需。`search-apply` 还必须提供
+同 SHA dry-run 的 `projectionFingerprint` / `planFingerprint`，实际 Apply 仍重算并拒绝漂移。
+风险路径的迁移预检只接受 pending 为 `0003_search_documents_fts.sql` 或空列表（no-op）；
+其它迁移一律停止；持有迁移锁后，执行迁移 SQL 前再核验实际 pending 清单。
+仍须保持冻结窗口，GitHub 检查与数据库操作并非原子事务。
+
+成功摘要固定标记 `recoveryPolicy: "accept-unverified-fts1"`、`recoveryVerified: false`，
+并记录原始审批 UTF-8 字节的 `riskAcceptanceSha256`；不输出原始审批、备份 ID 或凭据。
+此摘要不是签名或独立审核证明，须关联相应 GitHub run / Environment 人工审批记录。
+失败不会输出成功摘要。ACL 公开采集不接受这个例外，继续使用原有单独采集审批。
+
+本次只调整两项 hosted 写操作的审批方式；不增加任意 SQL、自动授权、自动切换或
+关闭预检的开关。Runtime 前向最小授权须另行评审，不能据此重新执行 destructive
+normalization；生产 Runtime preflight、shadow 对账、切换和功能验收也不豁免。
+
 ## 当前仓库 ACL 公开归档
 
 2026-09-08 操作者在获知当前仓库公开、角色关系/对象名称/详细权限和恢复脚本可能
@@ -210,8 +275,8 @@ artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须�
 - ACL 双采集和授权公开附件入口已随 PR #49 合并；2026-09-09 首次实跑成功，
   两份基线独立重建校验通过，永久入库仍待归档 PR 审核合并。
   完整 catalog **不得直接放进公共 Actions 日志**。
-  实际归档、人工复核及隔离恢复演练完成前，不执行新的 ACL normalization 或生产写入，
-  不以本地执行替代。不得上传数据库备份到 Actions artifact。
+  新的 ACL normalization 仍需原恢复门禁；本轮 FTS-1 迁移/回填可以使用上述显式
+  风险接受路径，不以本地执行替代。不得上传数据库备份到 Actions artifact。
 - Topic 专用角色维护入口尚未纳入本工作流，共享实现和 CI 测试不删除。
 - Vercel shadow 配置、重新部署、对账、database 切换与回滚仍在线上逐步执行，
   分别留存验收结果；数据库维护成功不会自动触发这些变更。

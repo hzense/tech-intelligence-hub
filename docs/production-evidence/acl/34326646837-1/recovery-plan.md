@@ -38,8 +38,11 @@
 恢复源可读三项可信 Neon 身份参数；原隔离分支已不在列表中。此前的“仍列在项目中”
 是历史检查点，不代表当前目标可用。本次没有创建替代分支或执行恢复写操作，
 该段为 2026-09-09 检查点。2026-09-10 已开发受保护恢复态只读入口并提交
-[PR #55](https://github.com/hzense/tech-intelligence-hub/pull/55)；入口仍待评审闭环、合并、配置与实跑，
-真实 R1/R2、独立恢复审核、隔离演练及历史缺口仍未完成。
+[PR #55](https://github.com/hzense/tech-intelligence-hub/pull/55)；现已合并为 `22a4201` 且 main CI 成功，
+尚未配置与实跑。操作者于 2026-09-10 决定本轮不再验证恢复能力，另行开发
+[显式风险接受路径](../../../ONLINE_MAINTENANCE.md#fts-1-显式接受恢复未验证风险)。
+以下恢复方案保留为未执行设计，不继续安排演练；真实 R1/R2、独立恢复审核及历史缺口
+仍未完成，不以风险接受或代码合并冒充恢复成功。
 
 审查对象为当前主分支的 `db/migrations/0003_search_documents_fts.sql`、
 `db/roles/configure_runtime_reader.sql`、`packages/database/src/runtime-reader-preflight.mjs`

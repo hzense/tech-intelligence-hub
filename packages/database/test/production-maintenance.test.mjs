@@ -10,6 +10,7 @@ import {
   publicMaintenanceFailure,
   publicMaintenanceResult,
   runMaintenance,
+  requireFts1MigrationScope,
   validateMaintenanceRequest,
   verifyMaintenanceFreshness,
 } from '../../../.github/scripts/production-maintenance.mjs';
@@ -77,6 +78,189 @@ function writeEnvironment(operation = 'migrate', changes = {}) {
     }),
   };
 }
+
+function riskEnvironment(operation = 'migrate', changes = {}) {
+  return writeEnvironment(operation, {
+    recoveryPolicy: 'accept-unverified-fts1',
+    backupVerified: false,
+    backupPresenceReviewed: true,
+    restoreRehearsed: false,
+    aclRecoveryReviewed: false,
+    restoreEvidenceFingerprint: undefined,
+    riskAcceptance: {
+      scope: 'fts1-production-launch',
+      accepted: true,
+      historicalAclGapAccepted: true,
+      acknowledgement: 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
+    },
+    ...changes,
+  });
+}
+
+describe.each(['migrate', 'search-apply'])(
+  '%s explicit unverified recovery acceptance',
+  (operation) => {
+    it('accepts only a complete run-bound declaration without fabricated restore evidence', () => {
+      expect(validateMaintenanceRequest(riskEnvironment(operation), now).operation).toBe(operation);
+    });
+    it.each([
+      { recoveryPolicy: undefined },
+      { recoveryPolicy: null },
+      { recoveryPolicy: 'typo' },
+      { recoveryPolicy: 'verified' },
+      { backupVerified: true },
+      { backupVerified: undefined },
+      { backupPresenceReviewed: false },
+      { backupPresenceReviewed: 'true' },
+      { restoreRehearsed: true },
+      { restoreRehearsed: undefined },
+      { aclRecoveryReviewed: true },
+      { restoreEvidenceFingerprint: 'c'.repeat(64) },
+      { restoreEvidenceFingerprint: null },
+      { riskAcceptance: undefined },
+      { riskAcceptance: null },
+      { riskAcceptance: {} },
+      { aclFingerprint: '' },
+      { backupExpiresAt: undefined },
+      { backupExpiresAt: '2026-09-07T10:30:00Z' },
+      { backupNeverExpires: true },
+      { backupIdSha256: 'f'.repeat(64) },
+      { ddlFreezeConfirmed: false },
+      { operation: 'preflight' },
+      { sha: 'f'.repeat(40) },
+      { runId: '456' },
+      { runAttempt: '2' },
+      { expiresAt: '2026-09-07T09:00:00Z' },
+      { expiresAt: '2026-09-09T11:00:00Z' },
+      ...(operation === 'search-apply'
+        ? [{ projectionFingerprint: '' }, { planFingerprint: '' }]
+        : []),
+    ])('rejects incomplete, conflicting or stale acceptance %j', (changes) => {
+      expect(() => validateMaintenanceRequest(riskEnvironment(operation, changes), now)).toThrow();
+    });
+    it.each([
+      ['scope', 'all-maintenance'],
+      ['accepted', false],
+      ['accepted', 'true'],
+      ['historicalAclGapAccepted', false],
+      ['historicalAclGapAccepted', undefined],
+      ['acknowledgement', 'accepted'],
+    ])('rejects incorrect risk acknowledgement %s=%s', (key, value) => {
+      const request = riskEnvironment(operation);
+      const approval = JSON.parse(request.MAINTENANCE_APPROVAL);
+      approval.riskAcceptance[key] = value;
+      request.MAINTENANCE_APPROVAL = JSON.stringify(approval);
+      expect(() => validateMaintenanceRequest(request, now)).toThrow(
+        'explicit-recovery-risk-acceptance-required',
+      );
+    });
+    it('preserves explicit non-expiring backup support without claiming restore verification', () => {
+      expect(
+        validateMaintenanceRequest(
+          riskEnvironment(operation, {
+            backupNeverExpires: true,
+            backupExpiresAt: undefined,
+          }),
+          now,
+        ).operation,
+      ).toBe(operation);
+    });
+    it('emits only fixed risk status and the exact protected approval digest after success', async () => {
+      const request = riskEnvironment(operation);
+      const execute = vi.fn(async () => ({
+        recoveryVerified: true,
+        riskAcceptance: 'private',
+        inserted: 1,
+      }));
+      const summary = await runMaintenance(request, execute, {
+        fetchImpl: successfulFetch(),
+        now: () => now,
+      });
+      expect(summary).toEqual({
+        operation,
+        status: 'succeeded',
+        inserted: 1,
+        recoveryPolicy: 'accept-unverified-fts1',
+        recoveryVerified: false,
+        riskAcceptanceSha256: createHash('sha256')
+          .update(request.MAINTENANCE_APPROVAL)
+          .digest('hex'),
+      });
+      expect(JSON.stringify(summary)).not.toContain('private');
+      expect(execute).toHaveBeenCalledOnce();
+    });
+    it('does not execute if latest main CI failed', async () => {
+      const execute = vi.fn();
+      const fetchImpl = vi
+        .fn()
+        .mockResolvedValueOnce(response(reference))
+        .mockResolvedValueOnce(response({ workflow_runs: [{ ...ciRun, conclusion: 'failure' }] }));
+      await expect(
+        runMaintenance(riskEnvironment(operation), execute, { fetchImpl, now: () => now }),
+      ).rejects.toThrow('github-main-ci-not-successful');
+      expect(execute).not.toHaveBeenCalled();
+    });
+    it('rechecks expiry after freshness checks and never executes an expired acceptance', async () => {
+      const execute = vi.fn();
+      const clock = vi
+        .fn()
+        .mockReturnValueOnce(now)
+        .mockReturnValueOnce(now + 60 * 60 * 1000);
+      await expect(
+        runMaintenance(riskEnvironment(operation), execute, {
+          fetchImpl: successfulFetch(),
+          now: clock,
+        }),
+      ).rejects.toThrow('approval-expired-or-too-long');
+      expect(execute).not.toHaveBeenCalled();
+    });
+    it('does not turn an executor failure into a successful risk acceptance result', async () => {
+      await expect(
+        runMaintenance(
+          riskEnvironment(operation),
+          async () => {
+            throw new Error('failure');
+          },
+          { fetchImpl: successfulFetch(), now: () => now },
+        ),
+      ).rejects.toThrow('failure');
+    });
+  },
+);
+
+describe('FTS-1 exception scope', () => {
+  it.each([{ pendingMigrations: [] }, { pendingMigrations: ['0003_search_documents_fts.sql'] }])(
+    'accepts only FTS-1 or no-op pending migrations %j',
+    (preflight) => {
+      expect(() => requireFts1MigrationScope(preflight)).not.toThrow();
+    },
+  );
+  it.each([
+    undefined,
+    null,
+    {},
+    { pendingMigrations: '0003_search_documents_fts.sql' },
+    { pendingMigrations: ['0002_topic_projection.sql'] },
+    { pendingMigrations: ['0003_search_documents_fts.sql', '0004_future.sql'] },
+  ])('rejects missing or broader migration plans %j', (preflight) => {
+    expect(() => requireFts1MigrationScope(preflight)).toThrow('fts1-migration-scope-required');
+  });
+  it('cannot replace ACL public archive consent or grant an additional operation', () => {
+    expect(() =>
+      validateMaintenanceRequest(
+        riskEnvironment('acl-capture', {
+          backupVerified: true,
+          publicArchiveApproved: true,
+          archiveRepository: env.GITHUB_REPOSITORY,
+        }),
+        now,
+      ),
+    ).toThrow('risk-acceptance-write-only');
+    expect(() => validateMaintenanceRequest(riskEnvironment('arbitrary-sql'), now)).toThrow(
+      'unsupported-operation',
+    );
+  });
+});
 
 describe.each(['migrate', 'search-apply', 'acl-capture'])(
   '%s backup retention declarations',
