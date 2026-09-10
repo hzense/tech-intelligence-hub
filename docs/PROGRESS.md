@@ -1,6 +1,6 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-09-09
+**最后更新：** 2026-09-10
 **当前阶段：** 网站 MVP 已验收；FTS-1 开发与合并完成，下一阶段是数据库搜索生产上线、持续内容运营与智能情报能力扩展，同时完成运维收尾
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 

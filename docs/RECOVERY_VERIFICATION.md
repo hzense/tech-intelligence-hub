@@ -1,6 +1,7 @@
 # 隔离恢复的线上只读验证
 
-状态：入口代码与测试已开发，**尚未合并或线上实跑**。这不是恢复演练完成记录。
+状态：入口代码与测试已开发并提交 [PR #55](https://github.com/hzense/tech-intelligence-hub/pull/55)，
+**尚未合并或线上实跑**。这不是恢复演练完成记录。
 操作入口为 `.github/workflows/recovery-verification.yml`，不增加本地维护 CLI 或 `.env`，
 不改变 `production-maintenance.yml` 和既有生产写审批规则。
 
