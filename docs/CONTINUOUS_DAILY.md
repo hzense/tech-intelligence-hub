@@ -14,10 +14,12 @@ reviewed / accepted Signals
 
 Automation never marks a pull request ready, approves it, merges it, or writes `status: published`.
 
-## Daily v1 contract
+## Daily v2 contract
 
 - The edition date and selection window are explicit. The regular window is `(previous day 07:00, current day 07:00]` in `Europe/Berlin`; stored timestamps include their UTC offset, including DST transitions.
-- Eligible Signals are `reviewed` or `accepted`, have importance at least 3, were captured inside the window, occurred no later than the cutoff, use an active Source, and reference a non-archived Topic in the validated Seed projection of the authoritative Taxonomy.
+- Eligible Signals are `reviewed` or `accepted`, have importance at least 3, were captured inside the window, occurred within `[cutoff − 72 hours, cutoff]`, use an active Source, and reference a non-archived Topic in the validated Seed projection of the authoritative Taxonomy. The event window is exactly 72 elapsed hours, including DST transitions; both event boundaries are inclusive.
+- `occurred_at` is the source-backed event or announcement timestamp, never the intake or approval timestamp. Historical backfills outside the event window remain in Signals and search but cannot become current Daily news. Do not change dates to manufacture eligibility. Date-only source records retain their documented timestamp convention; the selector does not invent a more precise event time or expand the window to whole calendar days.
+- Draft sections show the event/announcement date from the source record. The generator logs otherwise-eligible stale Signal IDs even on a no-op, and includes them with the policy version and occurrence boundary in the manifest when a candidate is written.
 - Signals already referenced by any Daily are not selected again.
 - Tracking parameters are removed before source-URL deduplication. Ranking is a total order: accepted status, importance, strength, confidence, novelty, occurrence, capture, then stable ID.
 - Selection takes the strongest Signal from each primary Topic first, then fills the remaining positions, with at most two Signals per Topic and five overall.
@@ -25,7 +27,9 @@ Automation never marks a pull request ready, approves it, merges it, or writes `
 - No eligible Signal is a successful no-op. The generator never creates an empty Daily.
 - The target path is `content/daily/YYYY/YYYY-MM-DD.md`. Existing same-day content is never overwritten, including content edited by a reviewer.
 
-`edition: historical_example` identifies retrospective sample content. It must still obey occurrence-date and evidence-integrity rules, but later catalog backfills do not pretend that the Signal was captured on the historical publication date. `edition: live` requires the complete generation provenance and capture window.
+`edition: historical_example` identifies retrospective sample content. It must still obey occurrence-date and evidence-integrity rules, but later catalog backfills do not pretend that the Signal was captured on the historical publication date. `edition: live` requires the complete generation provenance, capture window and `occurrence_start_at` (canonical UTC timestamp, 72 hours before cutoff), with `generator_version: daily-v2`. Both windows and the version are bound into the input fingerprint and independently recomputed by publication validation.
+
+Older `daily-v1` live candidates must be regenerated and reviewed under v2; merely editing their version, dates or fingerprint is not a migration. Existing same-day content remains protected from overwrite: close an obsolete candidate PR and explicitly handle its old automation branch before regenerating. Historical samples are unchanged and are not relabeled as live editions.
 
 ## Local deterministic generation
 
@@ -70,7 +74,7 @@ GitHub references: [timezone-aware schedules](https://docs.github.com/en/actions
 Before marking the Draft PR ready:
 
 1. Open every linked Signal and original source; verify title, dates, claims and source ownership.
-2. Confirm the cutoff, unique references, Signal count, development count and rising Topics.
+2. Confirm the cutoff, capture window, 72-hour event window, source-backed event/announcement dates, unique references, Signal count, development count and rising Topics. Recent collection alone does not make an old event current news.
 3. Replace all automated English summaries and every `待人工研判` placeholder with original Chinese analysis.
 4. Remove `HZENSE_DAILY_CANDIDATE` and any human-review placeholder.
 5. Do not hand-edit the window, Signal references or input fingerprint. If the selected evidence is wrong, close the candidate and correct the source Signal before regenerating it.
@@ -83,7 +87,7 @@ Because the repository currently has one write-capable human, a self-authored ch
 
 ## Recovery and rollback
 
-- **No candidates:** inspect the Job Summary, then review Signal statuses, capture timestamps, Sources and Topics. Do not create an empty Daily.
+- **No candidates:** inspect the Job Summary and generator log (including stale Signal exclusions), then review Signal statuses, event and capture timestamps, Sources and Topics. Do not create an empty Daily or refresh historical timestamps to fill it.
 - **Open PR already exists:** continue the human review on that PR. Reruns do not replace it.
 - **Orphan automation branch:** if its only diff and checksum match, the workflow may recreate the Draft PR. Any mismatch fails closed and requires a human decision.
 - **Base branch advanced:** artifact publication fails; rerun from the latest default branch.

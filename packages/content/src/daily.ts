@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import type { ContentEntry } from './loader.js';
 import type { SeedCatalog, SeedSignal, SeedTopic } from './seed.js';
 
-export const DAILY_POLICY_VERSION = 'daily-v1' as const;
+export const DAILY_POLICY_VERSION = 'daily-v2' as const;
+export const DAILY_EVENT_MAX_AGE_HOURS = 72;
 export const DAILY_TIMEZONE = 'Europe/Berlin' as const;
 
 export interface DailyDraftRequest {
@@ -11,6 +12,7 @@ export interface DailyDraftRequest {
   maxPerTopic: number;
   maxSignals: number;
   minImportance: number;
+  occurrenceStartAt: string;
   policyVersion: typeof DAILY_POLICY_VERSION;
   timezone: typeof DAILY_TIMEZONE;
   windowStartAt: string;
@@ -20,6 +22,7 @@ export interface DailySelection {
   diagnostics: {
     duplicateSignalIds: string[];
     eligibleSignals: number;
+    staleSignalIds: string[];
   };
   primaryTopicBySignal: Map<string, SeedTopic>;
   request: DailyDraftRequest;
@@ -92,12 +95,16 @@ function dateInTimezone(value: string, timezone: string): string {
 
 export function buildDailyDraftRequest(date: string): DailyDraftRequest {
   assertCalendarDate(date);
+  const cutoffAt = localTime(date, 7, DAILY_TIMEZONE);
   return {
-    cutoffAt: localTime(date, 7, DAILY_TIMEZONE),
+    cutoffAt,
     date,
     maxPerTopic: 2,
     maxSignals: 5,
     minImportance: 3,
+    occurrenceStartAt: new Date(
+      Date.parse(cutoffAt) - DAILY_EVENT_MAX_AGE_HOURS * 3_600_000,
+    ).toISOString(),
     policyVersion: DAILY_POLICY_VERSION,
     timezone: DAILY_TIMEZONE,
     windowStartAt: localTime(previousDate(date), 7, DAILY_TIMEZONE),
@@ -127,6 +134,9 @@ export function validateDailyDraftRequest(request: DailyDraftRequest): void {
   }
   if (dateInTimezone(request.cutoffAt, request.timezone) !== request.date) {
     throw new Error('Daily cutoff must fall on the Daily date in Europe/Berlin');
+  }
+  if (Date.parse(request.occurrenceStartAt) !== cutoff - DAILY_EVENT_MAX_AGE_HOURS * 3_600_000) {
+    throw new Error('Daily occurrence window must be exactly 72 hours before cutoff');
   }
 }
 
@@ -163,6 +173,8 @@ export function selectDailyCandidates(
   const sourceById = new Map(catalog.sources.map((source) => [source.id, source]));
   const topicById = new Map(catalog.topics.map((topic) => [topic.id, topic]));
   const primaryTopicBySignal = new Map<string, SeedTopic>();
+  const staleSignalIds: string[] = [];
+  const occurrenceStart = Date.parse(request.occurrenceStartAt);
   const windowStart = Date.parse(request.windowStartAt);
   const cutoff = Date.parse(request.cutoffAt);
 
@@ -171,14 +183,19 @@ export function selectDailyCandidates(
       if (usedSignalIds.has(signal.id)) return false;
       if (signal.status !== 'accepted' && signal.status !== 'reviewed') return false;
       if (signal.importance < request.minImportance) return false;
-      if (Date.parse(signal.captured_at) <= windowStart || Date.parse(signal.captured_at) > cutoff)
-        return false;
-      if (Date.parse(signal.occurred_at) > cutoff) return false;
+      const captured = Date.parse(signal.captured_at);
+      const occurred = Date.parse(signal.occurred_at);
+      if (!(captured > windowStart && captured <= cutoff)) return false;
+      if (!Number.isFinite(occurred) || occurred > cutoff) return false;
       if (!sourceById.get(signal.source_id)?.active) return false;
       const primaryTopic = signal.topics
         .map((topicId) => topicById.get(topicId))
         .find((topic): topic is SeedTopic => Boolean(topic && topic.status !== 'archived'));
       if (!primaryTopic) return false;
+      if (occurred < occurrenceStart) {
+        staleSignalIds.push(signal.id);
+        return false;
+      }
       primaryTopicBySignal.set(signal.id, primaryTopic);
       return true;
     })
@@ -228,7 +245,11 @@ export function selectDailyCandidates(
   selected.sort(compareSignals);
 
   return {
-    diagnostics: { duplicateSignalIds, eligibleSignals: eligible.length },
+    diagnostics: {
+      duplicateSignalIds,
+      eligibleSignals: eligible.length,
+      staleSignalIds: staleSignalIds.sort(),
+    },
     primaryTopicBySignal,
     request,
     signals: selected,
@@ -293,7 +314,7 @@ export function renderDailyDraft(selection: DailySelection): string {
   const sections = selection.signals.map((signal) => {
     const topic = selection.primaryTopicBySignal.get(signal.id);
     if (!topic) throw new Error(`Missing primary topic for ${signal.id}`);
-    return `## ${topic.title}｜${signal.title}\n\n${signal.summary}\n\n为什么重要：待人工研判。\n\n证据：[查看 Signal](/signals/${signal.id}) · [原始来源](${normalizedSourceUrl(signal.source_url)})`;
+    return `## ${topic.title}｜${signal.title}\n\n事件／公告日期：${signal.occurred_at.slice(0, 10)}（来源记录）\n\n${signal.summary}\n\n为什么重要：待人工研判。\n\n证据：[查看 Signal](/signals/${signal.id}) · [原始来源](${normalizedSourceUrl(signal.source_url)})`;
   });
 
   return `---
@@ -306,6 +327,7 @@ date: ${selection.request.date}
 language: zh-CN
 timezone: ${selection.request.timezone}
 window_start_at: ${yamlString(selection.request.windowStartAt)}
+occurrence_start_at: ${yamlString(selection.request.occurrenceStartAt)}
 cutoff_at: ${yamlString(selection.request.cutoffAt)}
 generator_version: ${selection.request.policyVersion}
 input_fingerprint: ${fingerprint}
@@ -412,6 +434,7 @@ export function validateDailyIntegrity(entries: ContentEntry[], catalog: SeedCat
         issues.push(`${entry.relativePath}: live Daily exceeds 5 Signals`);
       if (
         !daily.window_start_at ||
+        !daily.occurrence_start_at ||
         !daily.cutoff_at ||
         !daily.timezone ||
         !daily.generator_version ||
@@ -423,11 +446,14 @@ export function validateDailyIntegrity(entries: ContentEntry[], catalog: SeedCat
           const expectedRequest = buildDailyDraftRequest(daily.date);
           if (
             daily.window_start_at !== expectedRequest.windowStartAt ||
+            daily.occurrence_start_at !== expectedRequest.occurrenceStartAt ||
             daily.cutoff_at !== expectedRequest.cutoffAt ||
             daily.timezone !== expectedRequest.timezone ||
             daily.generator_version !== expectedRequest.policyVersion
           ) {
-            issues.push(`${entry.relativePath}: live generation window must match daily-v1`);
+            issues.push(
+              `${entry.relativePath}: live generation window must match ${DAILY_POLICY_VERSION}`,
+            );
           }
           const usedSignalIds = new Set(
             entries.flatMap((other) =>
@@ -440,7 +466,7 @@ export function validateDailyIntegrity(entries: ContentEntry[], catalog: SeedCat
           const expectedSignalIds = expectedSelection.signals.map((signal) => signal.id);
           if (expectedSignalIds.join('\0') !== daily.signal_refs.join('\0')) {
             issues.push(
-              `${entry.relativePath}: signal_refs must match daily-v1 selection in order (expected ${expectedSignalIds.join(', ') || 'none'})`,
+              `${entry.relativePath}: signal_refs must match ${DAILY_POLICY_VERSION} selection in order (expected ${expectedSignalIds.join(', ') || 'none'})`,
             );
           }
         } catch (error) {
@@ -490,6 +516,12 @@ export function validateDailyIntegrity(entries: ContentEntry[], catalog: SeedCat
         }
         if (Date.parse(signal.occurred_at) > Date.parse(daily.cutoff_at)) {
           issues.push(`${entry.relativePath}: Signal ${signalId} occurred after cutoff`);
+        }
+        const canonicalRequest = buildDailyDraftRequest(daily.date);
+        if (Date.parse(signal.occurred_at) < Date.parse(canonicalRequest.occurrenceStartAt)) {
+          issues.push(
+            `${entry.relativePath}: Signal ${signalId} exceeds the 72-hour event freshness limit`,
+          );
         }
       }
     }

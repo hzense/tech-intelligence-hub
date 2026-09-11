@@ -6,6 +6,7 @@ import {
   dailyInputFingerprint,
   renderDailyDraft,
   selectDailyCandidates,
+  validateDailyDraftRequest,
   validateDailyIntegrity,
 } from '../src/daily.js';
 import type { ContentEntry } from '../src/loader.js';
@@ -66,7 +67,7 @@ function dailyEntry(
   const inputTopic = catalog([inputSignal]).topics[0];
   if (!inputTopic) throw new Error('Expected a Topic fixture');
   const inputFingerprint = dailyInputFingerprint({
-    diagnostics: { duplicateSignalIds: [], eligibleSignals: 1 },
+    diagnostics: { duplicateSignalIds: [], eligibleSignals: 1, staleSignalIds: [] },
     primaryTopicBySignal: new Map([[inputSignal.id, inputTopic]]),
     request,
     signals: [inputSignal],
@@ -75,7 +76,8 @@ function dailyEntry(
     cutoff_at: request.cutoffAt,
     date: '2026-08-20',
     edition: 'live',
-    generator_version: 'daily-v1',
+    generator_version: request.policyVersion,
+    occurrence_start_at: request.occurrenceStartAt,
     id: 'daily-2026-08-20',
     input_fingerprint: inputFingerprint,
     language: 'zh-CN',
@@ -110,6 +112,67 @@ function dailyEntry(
 }
 
 describe('Daily generation policy', () => {
+  it('excludes historical backfills regardless of priority without changing source dates', () => {
+    const signals = [
+      signal({ id: 'signal-old-z', importance: 5, occurred_at: '2024-06-20T00:00:00Z' }),
+      signal({ id: 'signal-old-a', importance: 5, occurred_at: '2026-08-01T00:00:00Z' }),
+      signal(),
+    ];
+    const before = structuredClone(signals);
+    const request = buildDailyDraftRequest('2026-08-20');
+    const selection = selectDailyCandidates(catalog(signals), request);
+    expect(selection.signals.map((entry) => entry.id)).toEqual(['signal-example']);
+    expect(selection.diagnostics).toMatchObject({
+      eligibleSignals: 1,
+      staleSignalIds: ['signal-old-a', 'signal-old-z'],
+    });
+    expect(selectDailyCandidates(catalog([...signals].reverse()), request).diagnostics).toEqual(
+      selection.diagnostics,
+    );
+    expect(signals).toEqual(before);
+    const empty = selectDailyCandidates(catalog(signals.slice(0, 2)), request);
+    expect(empty.signals).toEqual([]);
+    expect(() => renderDailyDraft(empty)).toThrow('Cannot render an empty Daily candidate');
+  });
+
+  it.each([
+    ['2026-08-17T05:00:00Z', true],
+    ['2026-08-17T07:00:00+02:00', true],
+    ['2026-08-17T04:59:59.999Z', false],
+    ['2026-08-20T05:00:00Z', true],
+    ['2026-08-20T05:00:00.001Z', false],
+    ['2026-08-18T00:00:00Z', true],
+    ['2026-08-17T00:00:00Z', false],
+    ['invalid', false],
+  ])('checks the inclusive 72-hour occurrence window for %s', (occurred_at, eligible) => {
+    const selection = selectDailyCandidates(
+      catalog([signal({ occurred_at })]),
+      buildDailyDraftRequest('2026-08-20'),
+    );
+    expect(selection.signals).toHaveLength(eligible ? 1 : 0);
+  });
+
+  it.each(['2026-03-29', '2026-10-25'])(
+    'keeps a rolling 72-hour event window across DST: %s',
+    (date) => {
+      const request = buildDailyDraftRequest(date);
+      expect(Date.parse(request.cutoffAt) - Date.parse(request.occurrenceStartAt)).toBe(
+        72 * 3_600_000,
+      );
+      expect(() => validateDailyDraftRequest(request)).not.toThrow();
+    },
+  );
+
+  it.each(['2026-08-16T05:00:00Z', '2026-08-18T05:00:00Z', 'invalid', undefined])(
+    'rejects a missing or altered event window: %s',
+    (occurrenceStartAt) => {
+      const request = { ...buildDailyDraftRequest('2026-08-20'), occurrenceStartAt };
+      expect(() =>
+        validateDailyDraftRequest(request as ReturnType<typeof buildDailyDraftRequest>),
+      ).toThrow('Daily occurrence window must be exactly 72 hours');
+    },
+  );
+
   it('builds DST-aware, reproducible Europe/Berlin windows', () => {
     expect(buildDailyDraftRequest('2026-03-29')).toMatchObject({
       cutoffAt: '2026-03-29T07:00:00+02:00',
@@ -240,7 +303,9 @@ describe('Daily generation policy', () => {
       ),
     ).toBe(first);
     expect(first).toContain('status: draft');
-    expect(first).toContain('generator_version: daily-v1');
+    expect(first).toContain('generator_version: daily-v2');
+    expect(first).toContain("occurrence_start_at: '2026-08-17T05:00:00.000Z'");
+    expect(first).toContain('事件／公告日期：2026-08-19');
     expect(first).toMatch(/input_fingerprint: sha256:[a-f0-9]{64}/);
     expect(first).toContain('[原始来源](https://example.com/signal)');
   });
@@ -255,6 +320,7 @@ describe('Daily generation policy', () => {
     expect(frontMatter.type).toBe('daily');
     if (frontMatter.type !== 'daily') throw new Error('Expected Daily front matter');
     expect(typeof frontMatter.window_start_at).toBe('string');
+    expect(frontMatter.occurrence_start_at).toBe(selection.request.occurrenceStartAt);
     expect(typeof frontMatter.cutoff_at).toBe('string');
 
     const entry: ContentEntry = {
@@ -289,6 +355,51 @@ describe('Daily generation policy', () => {
 });
 
 describe('Daily integrity and publication gates', () => {
+  it('rejects hand-inserted stale Signals even with a matching forged input fingerprint', () => {
+    const input = catalog([signal({ occurred_at: '2024-06-20T00:00:00Z' })]);
+    const selected = selectDailyCandidates(input, buildDailyDraftRequest('2026-08-20'));
+    const topic = input.topics[0]!;
+    const fingerprint = dailyInputFingerprint({
+      ...selected,
+      primaryTopicBySignal: new Map([['signal-example', topic]]),
+      signals: input.signals,
+    });
+    expect(() =>
+      validateDailyIntegrity([dailyEntry({ input_fingerprint: fingerprint })], input),
+    ).toThrow('exceeds the 72-hour event freshness limit');
+  });
+
+  it('requires v2 provenance and rejects widened occurrence bounds', () => {
+    expect(() =>
+      validateDailyIntegrity([dailyEntry({ occurrence_start_at: undefined })], catalog([signal()])),
+    ).toThrow('requires generation provenance fields');
+    for (const overrides of [
+      { occurrence_start_at: '2024-01-01T00:00:00Z' },
+      { generator_version: 'daily-v1' },
+    ]) {
+      expect(() => validateDailyIntegrity([dailyEntry(overrides)], catalog([signal()]))).toThrow(
+        'live generation window must match daily-v2',
+      );
+    }
+  });
+
+  it('preserves retrospective historical examples without v2 provenance', () => {
+    const historical = dailyEntry({
+      edition: 'historical_example',
+      generator_version: undefined,
+      occurrence_start_at: undefined,
+      window_start_at: undefined,
+      cutoff_at: undefined,
+      input_fingerprint: undefined,
+    });
+    expect(() =>
+      validateDailyIntegrity(
+        [historical],
+        catalog([signal({ occurred_at: '2024-06-20T00:00:00Z' })]),
+      ),
+    ).not.toThrow();
+  });
+
   it('accepts a complete live Daily', () => {
     expect(() => validateDailyIntegrity([dailyEntry()], catalog([signal()]))).not.toThrow();
   });
@@ -345,13 +456,13 @@ describe('Daily integrity and publication gates', () => {
     );
   });
 
-  it('verifies the fixed daily-v1 window and recomputed input fingerprint', () => {
+  it('verifies the fixed daily-v2 window and recomputed input fingerprint', () => {
     expect(() =>
       validateDailyIntegrity(
         [dailyEntry({ window_start_at: '2026-08-18T07:00:00+02:00' })],
         catalog([signal()]),
       ),
-    ).toThrow('live generation window must match daily-v1');
+    ).toThrow('live generation window must match daily-v2');
     expect(() =>
       validateDailyIntegrity(
         [dailyEntry({ input_fingerprint: `sha256:${'a'.repeat(64)}` })],
@@ -360,7 +471,7 @@ describe('Daily integrity and publication gates', () => {
     ).toThrow('input_fingerprint does not match Daily inputs');
   });
 
-  it('reruns the complete daily-v1 selection against the current catalog', () => {
+  it('reruns the complete daily-v2 selection against the current catalog', () => {
     expect(() =>
       validateDailyIntegrity(
         [dailyEntry()],
@@ -373,7 +484,7 @@ describe('Daily integrity and publication gates', () => {
           }),
         ]),
       ),
-    ).toThrow('signal_refs must match daily-v1 selection in order');
+    ).toThrow('signal_refs must match daily-v2 selection in order');
   });
 
   it('blocks draft and review content while allowing published or archived rollback states', () => {
