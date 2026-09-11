@@ -55,6 +55,21 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 ## 发布门禁
 
+### 内容构建缓存
+
+`turbo.json` 的 `globalDependencies` 显式覆盖 `content/**`、`data/seed/**` 和
+`data/taxonomy/**`。这些文件位于 workspace package 之外，既影响静态页面，也影响跨包
+内容校验；修改、新增或删除它们必须使构建和测试缓存失效。保留默认 package 输入，
+不将凭据文件加入全局依赖，也不关闭全部缓存。
+
+2026-09-11 排查发现 `main@ba15b87` 的 Production 部署虽为 READY，却复用了旧的
+`@hzense/web#build` 缓存，导致 `/signals` 仍只有 11 条。新增的隔离缓存回归测试用真实
+Turbo dry-run 验证 Seed、Taxonomy、正文修改和正文新增/删除均改变任务哈希。
+重新部署后须核对正式域名的 Signal 列表、详情和 sitemap；绿色 CI 或 READY 不替代内容验收。
+数据库搜索投影更新属于独立维护步骤，本修复不执行数据库写入。
+
+### 必需检查
+
 每次 PR 必须通过：
 
 1. frozen pnpm install
