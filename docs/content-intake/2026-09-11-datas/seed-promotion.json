@@ -1,0 +1,1611 @@
+{
+  "schema_version": "hzense-seed-promotion-v1",
+  "recorded_at": "2026-09-11T22:09:03Z",
+  "authorization": "操作者要求加入正式 signals，并使用事件发生时间而非采集时间",
+  "scope": "local_seed_only",
+  "input_candidate_count": 102,
+  "imported_count": 66,
+  "deferred_count": 36,
+  "date_convention": "day_precision_stored_as_utc_midnight_not_exact_event_instant",
+  "production_executed": false,
+  "decisions": [
+    {
+      "candidate_id": "candidate-datas-tsmc-arizona-expansion",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-china-compute-robot-statistics",
+      "status": "deferred",
+      "reason": "机器人统计原文已定位；算力数据另见 8 月 5 日报道，不能据此证明 7 月 20 日已经披露同一算力数据。"
+    },
+    {
+      "candidate_id": "candidate-datas-kimi-k3-subscription-pause",
+      "status": "imported",
+      "signal_id": "signal-20260719-kimi-k3-subscription-pause",
+      "occurred_at": "2026-07-19T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "event_date",
+      "date_note": "7 月 20 日 Reuters 转载正文明确为 Sunday 公告，对应 7 月 19 日，不使用报道日。",
+      "date_evidence_urls": [
+        "https://www.investing.com/news/stock-market-news/chinas-moonshot-pauses-kimi-subscriptions-amid-hot-demand-ipo-push-4800006"
+      ],
+      "source_id": "source-investing",
+      "source_url": "https://www.investing.com/news/stock-market-news/chinas-moonshot-pauses-kimi-subscriptions-amid-hot-demand-ipo-push-4800006",
+      "scores": {
+        "importance": 4,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.7
+      },
+      "score_basis": "attributed_secondary_report"
+    },
+    {
+      "candidate_id": "candidate-datas-hut8-beacon-point-lease",
+      "status": "imported",
+      "signal_id": "signal-20260720-hut8-beacon-point-lease",
+      "occurred_at": "2026-07-20T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://www.hut8.com/news-insights/press-releases/hut-8-fully-commercializes-1-gw-beacon-point-ai-data-center-campus-with-second-352-mw-it-lease"
+      ],
+      "source_id": "source-hut8",
+      "source_url": "https://www.hut8.com/news-insights/press-releases/hut-8-fully-commercializes-1-gw-beacon-point-ai-data-center-campus-with-second-352-mw-it-lease",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-openai-huggingface-evaluation-incident",
+      "status": "imported",
+      "signal_id": "signal-20260721-openai-huggingface-evaluation-incident",
+      "occurred_at": "2026-07-21T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "记录公开事故通报日；不把通报日等同于事故中所有行为的发生日。",
+      "date_evidence_urls": [
+        "https://openai.com/index/hugging-face-model-evaluation-security-incident/"
+      ],
+      "source_id": "source-openai",
+      "source_url": "https://openai.com/index/hugging-face-model-evaluation-security-incident/",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-us-china-ai-talks-planning-july",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-alphabet-q2-results",
+      "status": "imported",
+      "signal_id": "signal-20260722-alphabet-q2-results",
+      "occurred_at": "2026-07-22T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://s206.q4cdn.com/479360582/files/doc_financials/2026/q2/2026q2-alphabet-earnings-release.pdf"
+      ],
+      "source_id": "source-alphabet",
+      "source_url": "https://s206.q4cdn.com/479360582/files/doc_financials/2026/q2/2026q2-alphabet-earnings-release.pdf",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-amd-anthropic-mi450-partnership",
+      "status": "imported",
+      "signal_id": "signal-20260722-amd-anthropic-mi450-partnership",
+      "occurred_at": "2026-07-22T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://ir.amd.com/news-events/press-releases/detail/1292/amd-and-anthropic-announce-strategic-partnership-to-deploy-up-to-2-gigawatts-of-amd-instinct-mi450-series-gpus"
+      ],
+      "source_id": "source-amd",
+      "source_url": "https://ir.amd.com/news-events/press-releases/detail/1292/amd-and-anthropic-announce-strategic-partnership-to-deploy-up-to-2-gigawatts-of-amd-instinct-mi450-series-gpus",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-intel-q2-results",
+      "status": "imported",
+      "signal_id": "signal-20260723-intel-q2-results",
+      "occurred_at": "2026-07-23T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用财报公告日期；页面另给出发布时刻，本批统一保留日精度。",
+      "date_evidence_urls": [
+        "https://www.nasdaq.com/press-release/intel-reports-second-quarter-2026-financial-results-2026-07-23"
+      ],
+      "source_id": "source-nasdaq",
+      "source_url": "https://www.nasdaq.com/press-release/intel-reports-second-quarter-2026-financial-results-2026-07-23",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-us-datacenter-ratepayer-pledge",
+      "status": "imported",
+      "signal_id": "signal-20260723-us-datacenter-ratepayer-pledge",
+      "occurred_at": "2026-07-23T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://www.whitehouse.gov/releases/2026/07/president-trumps-ratepayer-protection-pledge-secures-american-ai-dominance-protects-consumers/"
+      ],
+      "source_id": "source-white-house",
+      "source_url": "https://www.whitehouse.gov/releases/2026/07/president-trumps-ratepayer-protection-pledge-secures-american-ai-dominance-protects-consumers/",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-open-weight-industry-letter",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-ai-kill-switch-bill",
+      "status": "imported",
+      "signal_id": "signal-20260723-ai-kill-switch-bill",
+      "occurred_at": "2026-07-23T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "议员提案新闻稿署期 7 月 23 日；不是法律生效日期。",
+      "date_evidence_urls": [
+        "https://lieu.house.gov/media-center/press-releases/reps-lieu-and-moran-introduce-bill-require-kill-switch-ai-systems-can"
+      ],
+      "source_id": "source-ted-lieu",
+      "source_url": "https://lieu.house.gov/media-center/press-releases/reps-lieu-and-moran-introduce-bill-require-kill-switch-ai-systems-can",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-nvidia-sk-ai-memory-partnership",
+      "status": "imported",
+      "signal_id": "signal-20260724-nvidia-sk-ai-memory-partnership",
+      "occurred_at": "2026-07-24T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://nvidianews.nvidia.com/news/sk-group-and-nvidia-expand-strategic-partnership-across-ai-factories-and-next-generation-memory"
+      ],
+      "source_id": "source-nvidia",
+      "source_url": "https://nvidianews.nvidia.com/news/sk-group-and-nvidia-expand-strategic-partnership-across-ai-factories-and-next-generation-memory",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-samsung-broadcom-chip-partnership",
+      "status": "imported",
+      "signal_id": "signal-20260725-samsung-broadcom-chip-partnership",
+      "occurred_at": "2026-07-25T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://news.samsung.com/global/samsung-electronics-and-broadcom-expand-strategic-collaboration-across-memory-and-foundry-technologies"
+      ],
+      "source_id": "source-samsung",
+      "source_url": "https://news.samsung.com/global/samsung-electronics-and-broadcom-expand-strategic-collaboration-across-memory-and-foundry-technologies",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-nvidia-openai-guarantee-july-report",
+      "status": "deferred",
+      "reason": "目前只定位 7 月 27 日转载，材料称 26 日首报；原始披露时间及传闻交易阶段未核清。"
+    },
+    {
+      "candidate_id": "candidate-datas-cxmt-ipo",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-china-us-distillation-response-july",
+      "status": "imported",
+      "signal_id": "signal-20260727-china-us-distillation-response-july",
+      "occurred_at": "2026-07-27T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://www.ndtv.com/world-news/kimi-k3-moonshot-ai-us-and-china-relations-china-accuses-us-of-ai-hegemonism-amid-tech-theft-allegations-11828406"
+      ],
+      "source_id": "source-ndtv",
+      "source_url": "https://www.ndtv.com/world-news/kimi-k3-moonshot-ai-us-and-china-relations-china-accuses-us-of-ai-hegemonism-amid-tech-theft-allegations-11828406",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.7
+      },
+      "score_basis": "attributed_secondary_report"
+    },
+    {
+      "candidate_id": "candidate-datas-china-duv-manufacturing-report",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-skhynix-q2-results",
+      "status": "imported",
+      "signal_id": "signal-20260729-skhynix-q2-results",
+      "occurred_at": "2026-07-29T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "SK hynix 季度财报署期 7 月 29 日，填补候选缺失日期。",
+      "date_evidence_urls": ["https://news.skhynix.com/en/q2-2026-business-results/"],
+      "source_id": "source-sk-hynix",
+      "source_url": "https://news.skhynix.com/en/q2-2026-business-results/",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-fcc-robot-inverter-restrictions",
+      "status": "imported",
+      "signal_id": "signal-20260728-fcc-robot-inverter-restrictions",
+      "occurred_at": "2026-07-28T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "event_date",
+      "date_note": "报道明确 FCC 于 Tuesday 公布措施，对应 7 月 28 日；页面欧洲时区显示次日。",
+      "date_evidence_urls": [
+        "https://www.theguardian.com/us-news/2026/jul/28/fcc-ban-humanoid-robots-china"
+      ],
+      "source_id": "source-guardian",
+      "source_url": "https://www.theguardian.com/us-news/2026/jul/28/fcc-ban-humanoid-robots-china",
+      "scores": {
+        "importance": 4,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.7
+      },
+      "score_basis": "attributed_secondary_report"
+    },
+    {
+      "candidate_id": "candidate-datas-microsoft-fy26-q4-results",
+      "status": "imported",
+      "signal_id": "signal-20260729-microsoft-fy26-q4-results",
+      "occurred_at": "2026-07-29T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://www.microsoft.com/en-us/Investor/earnings/FY-2026-Q4/press-release-webcast"
+      ],
+      "source_id": "source-microsoft",
+      "source_url": "https://www.microsoft.com/en-us/Investor/earnings/FY-2026-Q4/press-release-webcast",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-meta-q2-results",
+      "status": "imported",
+      "signal_id": "signal-20260729-meta-q2-results",
+      "occurred_at": "2026-07-29T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://investor.atmeta.com/investor-news/press-release-details/2026/Meta-Reports-Second-Quarter-2026-Results/default.aspx"
+      ],
+      "source_id": "source-meta",
+      "source_url": "https://investor.atmeta.com/investor-news/press-release-details/2026/Meta-Reports-Second-Quarter-2026-Results/default.aspx",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-germany-ai-act-implementation",
+      "status": "imported",
+      "signal_id": "signal-20260729-germany-ai-act-implementation",
+      "occurred_at": "2026-07-29T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "effective_date",
+      "date_note": "政府页面正文明确国内执行法于 7 月 29 日生效；不套用其他条款的 8 月日期。",
+      "date_evidence_urls": [
+        "https://www.bundesregierung.de/breg-de/aktuelles/gesetzliche-neuregelungen-2448548"
+      ],
+      "source_id": "source-german-federal-government",
+      "source_url": "https://www.bundesregierung.de/breg-de/aktuelles/gesetzliche-neuregelungen-2448548",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-china-ai-plus-policy-july",
+      "status": "imported",
+      "signal_id": "signal-20260730-china-ai-plus-policy-july",
+      "occurred_at": "2026-07-30T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://www.news.cn/20260730/13ecbfd4cd9b455281a0649232b98ad0/c.html"
+      ],
+      "source_id": "source-xinhua",
+      "source_url": "https://www.news.cn/20260730/13ecbfd4cd9b455281a0649232b98ad0/c.html",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-china-robot-restriction-response",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-amazon-q2-ai-capex",
+      "status": "imported",
+      "signal_id": "signal-20260730-amazon-q2-ai-capex",
+      "occurred_at": "2026-07-30T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://ir.aboutamazon.com/news-release/news-release-details/2026/Amazon-com-Announces-Second-Quarter-Results/"
+      ],
+      "source_id": "source-amazon",
+      "source_url": "https://ir.aboutamazon.com/news-release/news-release-details/2026/Amazon-com-Announces-Second-Quarter-Results/",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-amazon-openai-investment-completion-report",
+      "status": "deferred",
+      "reason": "原 FT 链接本次无法读取；已定位 Amazon 季报，但不能据此自动认定该笔投资完成，到账条件和金额待核实。"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-lego-datacenters",
+      "status": "imported",
+      "signal_id": "signal-20260729-semianalysis-lego-datacenters",
+      "occurred_at": "2026-07-29T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/the-wild-wild-west-of-lego-datacenters"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/the-wild-wild-west-of-lego-datacenters",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-eu-ai-act-transparency",
+      "status": "imported",
+      "signal_id": "signal-20260802-eu-ai-act-transparency",
+      "occurred_at": "2026-08-02T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "effective_date",
+      "date_note": "7 月 20 日发布的指南明确义务从 8 月 2 日适用；使用适用日而非指南发布日。",
+      "date_evidence_urls": [
+        "https://digital-strategy.ec.europa.eu/en/news/commission-publishes-guidelines-transparency-obligations-providers-and-deployers-certain-ai-systems"
+      ],
+      "source_id": "source-european-commission",
+      "source_url": "https://digital-strategy.ec.europa.eu/en/news/commission-publishes-guidelines-transparency-obligations-providers-and-deployers-certain-ai-systems",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-us-voluntary-ai-cyber-testing",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-kimi-k3-architecture",
+      "status": "imported",
+      "signal_id": "signal-20260803-semianalysis-kimi-k3-architecture",
+      "occurred_at": "2026-08-03T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/kimi-k3-the-manos-the-mythos-the"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/kimi-k3-the-manos-the-mythos-the",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-china-ic-layout-regulation",
+      "status": "imported",
+      "signal_id": "signal-20260803-china-ic-layout-regulation",
+      "occurred_at": "2026-08-03T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "disclosure_date",
+      "date_note": "记录 8 月 3 日条例公布报道；原文称日前签署，未把报道日冒充签署日或 10 月 15 日施行日。",
+      "date_evidence_urls": [
+        "https://www.news.cn/politics/leaders/20260803/ec0d219a3eff49249e43add1de54b139/c.html"
+      ],
+      "source_id": "source-xinhua",
+      "source_url": "https://www.news.cn/politics/leaders/20260803/ec0d219a3eff49249e43add1de54b139/c.html",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-aisi-agent-cyber-evaluation",
+      "status": "imported",
+      "signal_id": "signal-20260804-aisi-agent-cyber-evaluation",
+      "occurred_at": "2026-08-04T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "AISI 原文界定评估条件，Axios 8 月 4 日报道确认当天披露；原始行为在 7 月，不使用 8 月 5 日转述日期。",
+      "date_evidence_urls": [
+        "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
+        "https://www.axios.com/2026/08/04/anthropic-openai-uk-ai-security-institute"
+      ],
+      "source_id": "source-aisi",
+      "source_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-amd-q2-results",
+      "status": "imported",
+      "signal_id": "signal-20260804-amd-q2-results",
+      "occurred_at": "2026-08-04T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://ir.amd.com/news-events/press-releases/detail/1295/amd-reports-second-quarter-2026-financial-results"
+      ],
+      "source_id": "source-amd",
+      "source_url": "https://ir.amd.com/news-events/press-releases/detail/1295/amd-reports-second-quarter-2026-financial-results",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-unitree-ipo-valuation-report",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-anthropic-custom-chip-team",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-amd-taalas-acquisition",
+      "status": "imported",
+      "signal_id": "signal-20260806-amd-taalas-acquisition",
+      "occurred_at": "2026-08-06T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://ir.amd.com/news-events/press-releases/detail/1296/amd-acquires-taalas-to-advance-compute-solutions-for-rapidly-growing-ai-inference-market"
+      ],
+      "source_id": "source-amd",
+      "source_url": "https://ir.amd.com/news-events/press-releases/detail/1296/amd-acquires-taalas-to-advance-compute-solutions-for-rapidly-growing-ai-inference-market",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-amd-cuda",
+      "status": "imported",
+      "signal_id": "signal-20260725-semianalysis-amd-cuda",
+      "occurred_at": "2026-07-25T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/can-amd-break-the-cuda-moat-amd-advancing"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/can-amd-break-the-cuda-moat-amd-advancing",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-allianz-ai-it-retirement",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-datacenter-cancellation",
+      "status": "imported",
+      "signal_id": "signal-20260618-semianalysis-datacenter-cancellation",
+      "occurred_at": "2026-06-18T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/stop-saying-half-of-2026-us-datacenter"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/stop-saying-half-of-2026-us-datacenter",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-softbank-quarterly-ai-investments",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-china-ai-video-funding-report",
+      "status": "deferred",
+      "reason": "一条候选汇总多笔融资，不能用 8 月 7 日综述发布日期充当每笔融资发生时间，待拆分。"
+    },
+    {
+      "candidate_id": "candidate-datas-china-autonomous-driving-safety-standard",
+      "status": "deferred",
+      "reason": "原文仅称近日获批，精确国标发布日期不明；不能用 8 月 7 日报道日替代。"
+    },
+    {
+      "candidate_id": "candidate-datas-apple-qwen-china-documentation",
+      "status": "deferred",
+      "reason": "备用报道支持接入指南线索，但未核实原指南撤下过程及发布时间，不能证明现时可用。"
+    },
+    {
+      "candidate_id": "candidate-datas-china-ai-patent-statistics",
+      "status": "deferred",
+      "reason": "汇总统计期与多项指标混合，披露事件需拆分确认，不能强行给统一发生日。"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-spacex-10gw",
+      "status": "deferred",
+      "reason": "页面已返回，但标题/正文所列收入模型口径不一致；须确认版本，不将研究预测当作实际收入。"
+    },
+    {
+      "candidate_id": "candidate-datas-nvidia-openai-guarantee-revision-report",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-tilert",
+      "status": "imported",
+      "signal_id": "signal-20260810-semianalysis-tilert",
+      "occurred_at": "2026-08-10T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/ultra-high-interactivity-on-nvidia"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/ultra-high-interactivity-on-nvidia",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-nvidia-sb-energy-investment-report",
+      "status": "deferred",
+      "reason": "本轮未取得可确认的原文发布日期及充分正文，传闻日期待核对。"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-pjm-load-forecast",
+      "status": "imported",
+      "signal_id": "signal-20260303-semianalysis-pjm-load-forecast",
+      "occurred_at": "2026-03-03T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "原研究页署期 3 月 3 日，属于历史研究，不使用八月简报日期。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/are-ai-datacenters-increasing-electric"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/are-ai-datacenters-increasing-electric",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-ports-pike-announcement",
+      "status": "imported",
+      "signal_id": "signal-20260817-ports-pike-announcement",
+      "occurred_at": "2026-08-17T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": ["https://openai.com/index/openai-joins-ports-pike-project/"],
+      "source_id": "source-openai",
+      "source_url": "https://openai.com/index/openai-joins-ports-pike-project/",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-ecb-ai-equity-risk-analysis",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-unitree-world-model-comments",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-nvidia-china-lpu-denial",
+      "status": "imported",
+      "signal_id": "signal-20260820-nvidia-china-lpu-denial",
+      "occurred_at": "2026-08-20T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "event_date",
+      "date_note": "中央社署名为圣克拉拉 20 日，网页为 21 日；使用声明发生地日期。",
+      "date_evidence_urls": ["https://money.udn.com/money/amp/story/123398/9704989"],
+      "source_id": "source-udn",
+      "source_url": "https://money.udn.com/money/amp/story/123398/9704989",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.7
+      },
+      "score_basis": "attributed_secondary_report"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-cerebras-cs4",
+      "status": "imported",
+      "signal_id": "signal-20260819-semianalysis-cerebras-cs4",
+      "occurred_at": "2026-08-19T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/cerebrass-next-generation-cs-4-fast"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/cerebrass-next-generation-cs-4-fast",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-nvidia-cloverleaf-investment",
+      "status": "imported",
+      "signal_id": "signal-20260821-nvidia-cloverleaf-investment",
+      "occurred_at": "2026-08-21T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://www.cloverleafinfra.com/newsroom/cloverleaf-infrastructure-forms-strategic-partnership-with-nvidia-to-accelerate-data-center-infrastructure-development"
+      ],
+      "source_id": "source-cloverleaf",
+      "source_url": "https://www.cloverleafinfra.com/newsroom/cloverleaf-infrastructure-forms-strategic-partnership-with-nvidia-to-accelerate-data-center-infrastructure-development",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-us-grid-btm",
+      "status": "imported",
+      "signal_id": "signal-20260625-semianalysis-us-grid-btm",
+      "occurred_at": "2026-06-25T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/us-grid-constraints-towards-40gw?triedRedirect=true"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/us-grid-constraints-towards-40gw?triedRedirect=true",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-nvidia-server-price-report",
+      "status": "imported",
+      "signal_id": "signal-20260822-nvidia-server-price-report",
+      "occurred_at": "2026-08-22T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "记录 8 月 22 日 Bloomberg / Fortune 报道发布；不表示涨价已经实施。",
+      "date_evidence_urls": [
+        "https://fortune.com/2026/08/22/nvidia-customers-ai-related-price-hikes-15-percent-vera-rubin-grace-blackwell-chips/"
+      ],
+      "source_id": "source-fortune",
+      "source_url": "https://fortune.com/2026/08/22/nvidia-customers-ai-related-price-hikes-15-percent-vera-rubin-grace-blackwell-chips/",
+      "scores": {
+        "importance": 3,
+        "strength": 1,
+        "confidence": 0.6,
+        "novelty": 0.7
+      },
+      "score_basis": "attributed_secondary_report"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-open-models",
+      "status": "imported",
+      "signal_id": "signal-20260821-semianalysis-open-models",
+      "occurred_at": "2026-08-21T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": ["https://newsletter.semianalysis.com/p/are-open-models-catching-up"],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/are-open-models-catching-up",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-china-next-generation-network-policy",
+      "status": "imported",
+      "signal_id": "signal-20260821-china-next-generation-network-policy",
+      "occurred_at": "2026-08-21T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "event_date",
+      "date_note": "8 月 22 日转载正文明确国务院会议于 8 月 21 日举行。",
+      "date_evidence_urls": ["https://cpc.people.com.cn/n1/2026/0822/c64094-40784195.html"],
+      "source_id": "source-people",
+      "source_url": "https://cpc.people.com.cn/n1/2026/0822/c64094-40784195.html",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-alibaba-ai-share-placement",
+      "status": "deferred",
+      "reason": "转载说明配售及股价变化，但协议签署、公告及交割日期未区分核定。"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-agentx",
+      "status": "imported",
+      "signal_id": "signal-20260824-semianalysis-agentx",
+      "occurred_at": "2026-08-24T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/agentx-inferencexv3-does-cuda-moat"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/agentx-inferencexv3-does-cuda-moat",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-taiwan-b300-indictment",
+      "status": "deferred",
+      "reason": "正文称日前起诉，没有给出精确起诉日，不使用 8 月 24 日报道日冒充。"
+    },
+    {
+      "candidate_id": "candidate-datas-openai-jalapeno-results",
+      "status": "imported",
+      "signal_id": "signal-20260825-openai-jalapeno-results",
+      "occurred_at": "2026-08-25T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": ["https://openai.com/index/jalapeno-first-results/"],
+      "source_id": "source-openai",
+      "source_url": "https://openai.com/index/jalapeno-first-results/",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-miit-ai-standards-6g",
+      "status": "deferred",
+      "reason": "已定位 6G 相关报道；AI 标准化数量与计划仍需单独的精确公告，不能用同段背景链接代替。"
+    },
+    {
+      "candidate_id": "candidate-datas-waymo-munich-testing",
+      "status": "imported",
+      "signal_id": "signal-20260825-waymo-munich-testing",
+      "occurred_at": "2026-08-25T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "Waymo 公司原文署期 8 月 25 日；道路测试和商业上线时间不是本条日期。",
+      "date_evidence_urls": ["https://waymo.com/blog/2026/08/waymo-in-munich"],
+      "source_id": "source-waymo",
+      "source_url": "https://waymo.com/blog/2026/08/waymo-in-munich",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-jalapeno",
+      "status": "imported",
+      "signal_id": "signal-20260825-semianalysis-jalapeno",
+      "occurred_at": "2026-08-25T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/openai-jalapeno-better-than-nvidia"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/openai-jalapeno-better-than-nvidia",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-nvidia-fy27-q2-results",
+      "status": "imported",
+      "signal_id": "signal-20260826-nvidia-fy27-q2-results",
+      "occurred_at": "2026-08-26T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-second-quarter-fiscal-2027"
+      ],
+      "source_id": "source-nvidia",
+      "source_url": "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-second-quarter-fiscal-2027",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-skhynix-indiana-groundbreaking",
+      "status": "imported",
+      "signal_id": "signal-20260827-skhynix-indiana-groundbreaking",
+      "occurred_at": "2026-08-27T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "event_date",
+      "date_note": "韩国 8 月 28 日公告明确仪式发生于美国当地 27 日。",
+      "date_evidence_urls": ["https://news.skhynix.com/en/groundbreaking-ceremony-in-indiana/"],
+      "source_id": "source-sk-hynix",
+      "source_url": "https://news.skhynix.com/en/groundbreaking-ceremony-in-indiana/",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-pjm-modeling",
+      "status": "imported",
+      "signal_id": "signal-20260816-semianalysis-pjm-modeling",
+      "occurred_at": "2026-08-16T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/12b-of-us-ratepayers-money-wasted"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/12b-of-us-ratepayers-money-wasted",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-ndrc-robotics-development",
+      "status": "imported",
+      "signal_id": "signal-20260828-ndrc-robotics-development",
+      "occurred_at": "2026-08-28T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": ["https://www.yicai.com/news/103338113.html"],
+      "source_id": "source-yicai",
+      "source_url": "https://www.yicai.com/news/103338113.html",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.7
+      },
+      "score_basis": "attributed_secondary_report"
+    },
+    {
+      "candidate_id": "candidate-datas-openai-cursor-service-termination-plan",
+      "status": "imported",
+      "signal_id": "signal-20260828-openai-cursor-service-termination-plan",
+      "occurred_at": "2026-08-28T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "使用宣布终止计划的日期，不是拟定的 11 月停止服务日期。",
+      "date_evidence_urls": [
+        "https://openai.com/index/our-decision-on-cursor-following-its-acquisition-by-spacex/"
+      ],
+      "source_id": "source-openai",
+      "source_url": "https://openai.com/index/our-decision-on-cursor-following-its-acquisition-by-spacex/",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-cxmt-lpddr6-production",
+      "status": "imported",
+      "signal_id": "signal-20260829-cxmt-lpddr6-production",
+      "occurred_at": "2026-08-29T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": ["https://www.stcn.com/article/detail/4161405.html"],
+      "source_id": "source-securities-times",
+      "source_url": "https://www.stcn.com/article/detail/4161405.html",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.7
+      },
+      "score_basis": "attributed_secondary_report"
+    },
+    {
+      "candidate_id": "candidate-datas-cursor-anthropic-followup",
+      "status": "deferred",
+      "reason": "备用报道可定位模型供应争议；Cursor 与 Anthropic 各自声明及适用范围仍待核对。"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-gcp-model-economics",
+      "status": "imported",
+      "signal_id": "signal-20260807-semianalysis-gcp-model-economics",
+      "occurred_at": "2026-08-07T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/gemini-is-cooked-but-gcp-is-cooking"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/gemini-is-cooked-but-gcp-is-cooking",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-nda-compute-capacity-july",
+      "status": "imported",
+      "signal_id": "signal-20260829-nda-compute-capacity-july",
+      "occurred_at": "2026-08-29T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "disclosure_date",
+      "date_note": "8 月 29 日活动披露截至 7 月底统计；不把统计期末当成披露日。",
+      "date_evidence_urls": [
+        "https://www.nda.gov.cn/sjj/jgsz/jld/llh/llhldhd/0829/20260829150055779816795_pc.html"
+      ],
+      "source_id": "source-national-data-administration",
+      "source_url": "https://www.nda.gov.cn/sjj/jgsz/jld/llh/llhldhd/0829/20260829150055779816795_pc.html",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-fsb-frontier-ai-letter",
+      "status": "imported",
+      "signal_id": "signal-20260831-fsb-frontier-ai-letter",
+      "occurred_at": "2026-08-31T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://www.fsb.org/2026/08/fsb-chairs-letter-to-g20-finance-ministers-and-central-bank-governors-august-2026/"
+      ],
+      "source_id": "source-fsb",
+      "source_url": "https://www.fsb.org/2026/08/fsb-chairs-letter-to-g20-finance-ministers-and-central-bank-governors-august-2026/",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-neocloud-security",
+      "status": "imported",
+      "signal_id": "signal-20260830-semianalysis-neocloud-security",
+      "occurred_at": "2026-08-30T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/most-neoclouds-suck-at-security"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/most-neoclouds-suck-at-security",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-nvidia-mediatek-partnership",
+      "status": "imported",
+      "signal_id": "signal-20260831-nvidia-mediatek-partnership",
+      "occurred_at": "2026-08-31T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://nvidianews.nvidia.com/news/nvidia-and-mediatek-deepen-long-standing-partnership-to-build-ai-edge-to-cloud-computing-platforms"
+      ],
+      "source_id": "source-nvidia",
+      "source_url": "https://nvidianews.nvidia.com/news/nvidia-and-mediatek-deepen-long-standing-partnership-to-build-ai-edge-to-cloud-computing-platforms",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-openai-astra-critical-cyber",
+      "status": "imported",
+      "signal_id": "signal-20260901-openai-astra-critical-cyber",
+      "occurred_at": "2026-09-01T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": ["https://openai.com/index/path-to-astra/"],
+      "source_id": "source-openai",
+      "source_url": "https://openai.com/index/path-to-astra/",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-korea-sovereign-ai",
+      "status": "imported",
+      "signal_id": "signal-20260901-semianalysis-korea-sovereign-ai",
+      "occurred_at": "2026-09-01T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/koreas-trillion-dollar-sovereign"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/koreas-trillion-dollar-sovereign",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-openai-autoshutdown-letter-report",
+      "status": "deferred",
+      "reason": "本次检索无法读取首选链接；这是访问限制或检索错误，不等于已经证明事件为假。"
+    },
+    {
+      "candidate_id": "candidate-datas-enflame-ipo-subscription",
+      "status": "imported",
+      "signal_id": "signal-20260903-enflame-ipo-subscription",
+      "occurred_at": "2026-09-03T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "申购及中签率公告署期 9 月 3 日，与上市交易事件分开。",
+      "date_evidence_urls": [
+        "https://vip.stock.finance.sina.com.cn/corp/view/vCB_AllBulletinDetail.php?CompanyCode=81112134&gather=1&id=12581361"
+      ],
+      "source_id": "source-sina-disclosures",
+      "source_url": "https://vip.stock.finance.sina.com.cn/corp/view/vCB_AllBulletinDetail.php?CompanyCode=81112134&gather=1&id=12581361",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-china-ic-production-statistics",
+      "status": "imported",
+      "signal_id": "signal-20260902-china-ic-production-statistics",
+      "occurred_at": "2026-09-02T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "记录 9 月 2 日统计报道，不将其当成全部芯片的生产或出口日期。",
+      "date_evidence_urls": [
+        "https://www.news.cn/tech/20260902/4aa4d250a48847df83f12ab0e4901392/c.html"
+      ],
+      "source_id": "source-xinhua",
+      "source_url": "https://www.news.cn/tech/20260902/4aa4d250a48847df83f12ab0e4901392/c.html",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-openai-gpt6-astra-launch",
+      "status": "imported",
+      "signal_id": "signal-20260903-openai-gpt6-astra-launch",
+      "occurred_at": "2026-09-03T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "同日官方 Safety overview 明确 Today releasing，署期 9 月 3 日，补足发布页日期依据。",
+      "date_evidence_urls": [
+        "https://openai.com/index/gpt-6-astra/",
+        "https://openai.com/index/safety-overview-gpt-6-astra/"
+      ],
+      "source_id": "source-openai",
+      "source_url": "https://openai.com/index/gpt-6-astra/",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-nvidia-huggingface-acquisition-agreement",
+      "status": "imported",
+      "signal_id": "signal-20260903-nvidia-huggingface-acquisition-agreement",
+      "occurred_at": "2026-09-03T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": ["https://blogs.nvidia.com/blog/nvidia-to-acquire-hugging-face/"],
+      "source_id": "source-nvidia",
+      "source_url": "https://blogs.nvidia.com/blog/nvidia-to-acquire-hugging-face/",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-us-china-ai-talks-september-report",
+      "status": "imported",
+      "signal_id": "signal-20260905-us-china-ai-talks-september-report",
+      "occurred_at": "2026-09-05T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "正式条目记录联合报 9 月 5 日的转述更新；不是会谈举行日，也不是无法读取的 Reuters 原稿首发时刻。",
+      "date_evidence_urls": ["https://udn.com/news/story/6809/9735837"],
+      "source_id": "source-udn",
+      "source_url": "https://udn.com/news/story/6809/9735837",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.7
+      },
+      "score_basis": "attributed_secondary_report"
+    },
+    {
+      "candidate_id": "candidate-datas-foxconn-august-ai-server-sales",
+      "status": "deferred",
+      "reason": "原 Reuters 链接无法读取；材料附带的鸿海链接对应季度财报而非八月营收，未采用为替代来源。"
+    },
+    {
+      "candidate_id": "candidate-datas-inferencex-deepseek-v4-rankings",
+      "status": "deferred",
+      "reason": "可访问动态榜单，但没有取得 2026-09-03 的冻结版本与测试配置，不能证明历史排名。"
+    },
+    {
+      "candidate_id": "candidate-datas-tcs-hypervault-hyderabad",
+      "status": "deferred",
+      "reason": "TCS 页面本次未返回可确认的公告日期，不以材料日期填充。"
+    },
+    {
+      "candidate_id": "candidate-datas-isar-spectrum-orbit",
+      "status": "deferred",
+      "reason": "已读报道未明确起飞日期，不能用 9 月 6 日更新时刻或材料中的 9 月 5 日推定。"
+    },
+    {
+      "candidate_id": "candidate-datas-openai-research-acceleration",
+      "status": "imported",
+      "signal_id": "signal-20260906-openai-research-acceleration",
+      "occurred_at": "2026-09-06T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": ["https://openai.com/index/research-acceleration-view-inside-openai/"],
+      "source_id": "source-openai",
+      "source_url": "https://openai.com/index/research-acceleration-view-inside-openai/",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-openai-safety-threshold-essay",
+      "status": "imported",
+      "signal_id": "signal-20260906-openai-safety-threshold-essay",
+      "occurred_at": "2026-09-06T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": ["https://openai.com/index/an-alien-mind/"],
+      "source_id": "source-openai",
+      "source_url": "https://openai.com/index/an-alien-mind/",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-mistral-funding",
+      "status": "deferred",
+      "reason": "原 Reuters 链接无法读取；另有官方基础设施页面，但未证明本轮融资金额、估值和交割。"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-tpu-inferencex",
+      "status": "imported",
+      "signal_id": "signal-20260907-semianalysis-tpu-inferencex",
+      "occurred_at": "2026-09-07T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": ["https://newsletter.semianalysis.com/p/tpu-inferencex-full-steam"],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/tpu-inferencex-full-steam",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-openai-navier-stokes-candidate",
+      "status": "imported",
+      "signal_id": "signal-20260908-openai-navier-stokes-candidate",
+      "occurred_at": "2026-09-08T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "使用证明材料公开披露日 9 月 8 日；内部工作完成日期不同，且不代表学界验收。",
+      "date_evidence_urls": ["https://openai.com/index/navier-stokes-solution/"],
+      "source_id": "source-openai",
+      "source_url": "https://openai.com/index/navier-stokes-solution/",
+      "scores": {
+        "importance": 3,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-amazon-qualcomm-ai-chips",
+      "status": "imported",
+      "signal_id": "signal-20260908-amazon-qualcomm-ai-chips",
+      "occurred_at": "2026-09-08T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://www.qualcomm.com/news/releases/2026/09/qualcomm-announces-multi-generational-product-collaboration-with"
+      ],
+      "source_id": "source-qualcomm",
+      "source_url": "https://www.qualcomm.com/news/releases/2026/09/qualcomm-announces-multi-generational-product-collaboration-with",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-us-agencies-distillation-advisory",
+      "status": "deferred",
+      "reason": "已定位美方公告；属于发布方指控，不是独立裁定；中方回应须补对应独立原文。"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-robot-inference",
+      "status": "deferred",
+      "reason": "直接打开失败（初次返回 404），搜索索引返回同一文章内容；未取得可实时读取原文，不视为全文核验完成。"
+    },
+    {
+      "candidate_id": "candidate-datas-chatgpt-financial-services",
+      "status": "imported",
+      "signal_id": "signal-20260910-chatgpt-financial-services",
+      "occurred_at": "2026-09-10T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "announcement_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": ["https://openai.com/index/introducing-chatgpt-financial-services/"],
+      "source_id": "source-openai",
+      "source_url": "https://openai.com/index/introducing-chatgpt-financial-services/",
+      "scores": {
+        "importance": 4,
+        "strength": 3,
+        "confidence": 0.85,
+        "novelty": 0.7
+      },
+      "score_basis": "primary_or_official_disclosure"
+    },
+    {
+      "candidate_id": "candidate-datas-semianalysis-btm-power",
+      "status": "imported",
+      "signal_id": "signal-20260910-semianalysis-btm-power",
+      "occurred_at": "2026-09-10T00:00:00Z",
+      "captured_at": "2026-09-11T21:15:59Z",
+      "date_precision": "day",
+      "date_basis": "publication_date",
+      "date_note": "采用来源中明确的公告、财报或研究发表日期；不使用资料采集日或简报文件名。",
+      "date_evidence_urls": [
+        "https://newsletter.semianalysis.com/p/what-is-so-hard-about-behind-the"
+      ],
+      "source_id": "source-semianalysis",
+      "source_url": "https://newsletter.semianalysis.com/p/what-is-so-hard-about-behind-the",
+      "scores": {
+        "importance": 3,
+        "strength": 2,
+        "confidence": 0.75,
+        "novelty": 0.6
+      },
+      "score_basis": "research_estimate"
+    },
+    {
+      "candidate_id": "candidate-datas-enflame-stock-market-debut",
+      "status": "deferred",
+      "reason": "原 Reuters 首日交易报道无法读取；上市公告转载只能补计划上市信息，首日交易情况仍待核实。"
+    }
+  ]
+}

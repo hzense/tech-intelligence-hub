@@ -41,9 +41,9 @@ describe('Topic database projection', () => {
     const projection = buildTopicDatabaseProjection(seed.taxonomy, seed.topics);
 
     expect(seed.taxonomy.topics).toHaveLength(62);
-    expect(seed.topics).toHaveLength(5);
+    expect(seed.topics).toHaveLength(6);
     expect(projection).toHaveLength(seed.taxonomy.topics.length);
-    expect(projection.filter((topic) => topic.runtimeEnabled)).toHaveLength(5);
+    expect(projection.filter((topic) => topic.runtimeEnabled)).toHaveLength(6);
     expect(new Set(projection.map((topic) => topic.id))).toEqual(seed.taxonomy.topicIds);
   });
 

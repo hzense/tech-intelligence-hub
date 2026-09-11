@@ -13,3 +13,6 @@
 - id: topic-humanoid-robotics
   title: Humanoid Robotics
   status: active
+- id: 'topic-autonomous-systems'
+  title: 'Autonomous Systems'
+  status: 'watching'
