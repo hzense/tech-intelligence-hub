@@ -163,3 +163,87 @@
   novelty: 0.9
   topics: [topic-ai-agents, topic-ai-security]
   entities: [company-anthropic, standard-model-context-protocol]
+
+# Collected from primary sources on 2026-09-11; accepted by the operator on 2026-09-11.
+# Date-only announcements use 00:00:00Z as a storage convention, not an exact event time.
+# Source/date evidence and provisional score rationale: docs/content-intake/2026-09-11-signals.md
+- id: signal-20260901-claude-fable-mythos-51
+  event_key: event-20260901-claude-fable-mythos-51
+  title: Anthropic 发布 Claude Fable 5.1 与 Mythos 5.1，并区分开放访问与受信访问
+  type: product
+  occurred_at: 2026-09-01T00:00:00Z
+  captured_at: 2026-09-11T17:34:32Z
+  status: accepted
+  source_id: source-anthropic
+  source_url: https://www.anthropic.com/claude-fable-and-mythos-5-1
+  summary: Anthropic 宣布 Claude Fable 5.1 与 Mythos 5.1 使用相同底层模型、采用不同防护配置；Fable 5.1 面向一般用户提供，Mythos 5.1 仅通过受信访问计划提供。公告聚焦编程、知识工作和科研能力，相关性能结论属于厂商自报，尚未在本项目独立复测。
+  importance: 4
+  strength: 3
+  confidence: 0.9
+  novelty: 0.8
+  topics: [topic-foundation-models, topic-ai-security]
+  entities: [company-anthropic]
+- id: signal-20260909-nvidia-australia-ai-capacity
+  event_key: event-20260909-nvidia-australia-ai-capacity
+  title: NVIDIA 宣布与澳大利亚基础设施伙伴扩大 AI 数据中心容量
+  type: partnership
+  occurred_at: 2026-09-09T00:00:00Z
+  captured_at: 2026-09-11T17:34:32Z
+  status: accepted
+  source_id: source-nvidia
+  source_url: https://nvidianews.nvidia.com/news/nvidia-expands-ai-infrastructure-capacity-in-partnership-with-australias-data-center-ecosystem
+  summary: NVIDIA 宣布与澳大利亚云和基础设施伙伴合作，扩展用于承载 DSX AI 基础设施的土地、电力与厂房容量，提出到 2027 年最高 2 吉瓦的建设目标。公告称设施由参与伙伴运营；这一数字是未来建设目标，不是已经投运的算力或容量。
+  importance: 4
+  strength: 3
+  confidence: 0.9
+  novelty: 0.7
+  topics: [topic-ai-infrastructure]
+  entities: [company-nvidia]
+- id: signal-20260910-dmatrix-nvlink-fusion
+  event_key: event-20260910-dmatrix-nvlink-fusion
+  title: d-Matrix 计划通过 NVIDIA NVLink Fusion 接入 Raptor XPU
+  type: partnership
+  occurred_at: 2026-09-10T00:00:00Z
+  captured_at: 2026-09-11T17:34:32Z
+  status: accepted
+  source_id: source-nvidia
+  source_url: https://blogs.nvidia.com/blog/d-matrix-nvlink-fusion/
+  summary: NVIDIA 披露 d-Matrix 将使用 NVLink Fusion，把下一代 Raptor XPU 接入 NVIDIA AI 基础设施，并计划结合 MGX 机架与相关网络组件部署推理系统。此信号记录合作与集成计划，不代表产品已经完成交付，也不把厂商的性能和成本主张视为独立实测结果。
+  importance: 4
+  strength: 3
+  confidence: 0.9
+  novelty: 0.8
+  topics: [topic-ai-infrastructure]
+  entities: [company-nvidia, company-d-matrix]
+- id: signal-20260910-skild-nvidia-physical-ai
+  event_key: event-20260910-skild-nvidia-physical-ai
+  title: NVIDIA 披露 Skild S1 机器人模型的训练、仿真与部署技术合作
+  type: technology
+  occurred_at: 2026-09-10T00:00:00Z
+  captured_at: 2026-09-11T17:34:32Z
+  status: accepted
+  source_id: source-nvidia
+  source_url: https://blogs.nvidia.com/blog/skild-ai-s1-physical-ai/
+  summary: NVIDIA 介绍 Skild S1 利用视频示范进行上下文学习，并披露双方在合成数据、训练、仿真和实体机器人部署方面的合作，包括 Cosmos、Isaac Sim 与 Isaac Lab。文中的任务表现来自厂商描述和测试；本条记录该技术披露，不把文章日期当作 S1 首次发布日期。
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.8
+  topics: [topic-foundation-models]
+  entities: [company-nvidia, company-skild-ai]
+- id: signal-20260910-anthropic-threat-report
+  event_key: event-20260910-anthropic-threat-report
+  title: Anthropic 发布 2026 年 9 月 AI 滥用威胁情报报告
+  type: security
+  occurred_at: 2026-09-10T00:00:00Z
+  captured_at: 2026-09-11T17:34:32Z
+  status: accepted
+  source_id: source-anthropic
+  source_url: https://www.anthropic.com/threat-intelligence-report-september-2026
+  summary: Anthropic 发布报告，披露其在 2025 年 12 月至 2026 年 8 月期间识别并阻断的 Claude 滥用案例，涉及网络攻击、影响行动、监控、诈骗等七类领域。本条记录报告发布，而非把历史案例记为当天发生；案例与归因为 Anthropic 的调查结论，未由本项目独立验证。
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.8
+  topics: [topic-ai-security]
+  entities: [company-anthropic]

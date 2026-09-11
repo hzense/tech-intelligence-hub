@@ -6,6 +6,8 @@
 - { id: company-apple, type: company, name: Apple, status: active }
 - { id: company-figure-ai, type: company, name: Figure AI, status: active }
 - { id: company-boston-dynamics, type: company, name: Boston Dynamics, status: active }
+- { id: company-d-matrix, type: company, name: d-Matrix, status: active }
+- { id: company-skild-ai, type: company, name: Skild AI, status: active }
 - { id: product-chatgpt, type: product, name: ChatGPT, status: active }
 - { id: model-gpt-4, type: model, name: GPT-4, status: active }
 - { id: model-gpt-4o, type: model, name: GPT-4o, status: active }
