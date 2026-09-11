@@ -247,3 +247,1158 @@
   novelty: 0.8
   topics: [topic-ai-security]
   entities: [company-anthropic]
+- id: 'signal-20260719-kimi-k3-subscription-pause'
+  event_key: 'event-kimi-k3-subscription-pause'
+  title: 'Moonshot 暂停新增 Kimi 订阅'
+  type: 'product'
+  occurred_at: '2026-07-19T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-investing'
+  source_url: 'https://www.investing.com/news/stock-market-news/chinas-moonshot-pauses-kimi-subscriptions-amid-hot-demand-ipo-push-4800006'
+  summary: 'Moonshot 宣布因 Kimi K3 带来的请求压力暂停新增消费者订阅，优先保障现有用户；该决定不等于 API 或全部产品停止服务。'
+  importance: 4
+  strength: 2
+  confidence: 0.75
+  novelty: 0.7
+  topics:
+    - 'topic-foundation-models'
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260720-hut8-beacon-point-lease'
+  event_key: 'event-hut8-beacon-point-lease'
+  title: 'Hut 8 披露 Beacon Point 第二份数据中心租约'
+  type: 'partnership'
+  occurred_at: '2026-07-20T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-hut8'
+  source_url: 'https://www.hut8.com/news-insights/press-releases/hut-8-fully-commercializes-1-gw-beacon-point-ai-data-center-campus-with-second-352-mw-it-lease'
+  summary: 'Hut 8 宣布 Beacon Point 的第二份数据中心租约；合同容量和长期合同价值属于未来交付安排，不是当期已投运容量或收入。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260721-openai-huggingface-evaluation-incident'
+  event_key: 'event-openai-huggingface-evaluation-incident'
+  title: 'OpenAI 披露涉及 Hugging Face 的模型评估安全事故'
+  type: 'security'
+  occurred_at: '2026-07-21T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-openai'
+  source_url: 'https://openai.com/index/hugging-face-model-evaluation-security-incident/'
+  summary: 'OpenAI 发布涉及 Hugging Face 的模型评估安全事故通报；这是事故披露日，不是所有相关行为的发生日，不能外推为所有模型或服务均不安全。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-security'
+  entities:
+    - 'company-openai'
+- id: 'signal-20260722-alphabet-q2-results'
+  event_key: 'event-alphabet-q2-results'
+  title: 'Alphabet 二季度云收入与资本开支披露'
+  type: 'market'
+  occurred_at: '2026-07-22T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-alphabet'
+  source_url: 'https://s206.q4cdn.com/479360582/files/doc_financials/2026/q2/2026q2-alphabet-earnings-release.pdf'
+  summary: 'Alphabet 发布二季度财报，披露 Google Cloud 收入、资本支出、投资收益和现金流；不以云收入增长直接证明 AI 投资回报。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-google'
+- id: 'signal-20260722-amd-anthropic-mi450-partnership'
+  event_key: 'event-amd-anthropic-mi450-partnership'
+  title: 'AMD 与 Anthropic 宣布 MI450 算力合作'
+  type: 'partnership'
+  occurred_at: '2026-07-22T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-amd'
+  source_url: 'https://ir.amd.com/news-events/press-releases/detail/1292/amd-and-anthropic-announce-strategic-partnership-to-deploy-up-to-2-gigawatts-of-amd-instinct-mi450-series-gpus'
+  summary: 'AMD 与 Anthropic 宣布 MI450 系列算力合作，计划部署最多 2GW；容量目标和投资安排不代表已经交付或到账。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-anthropic'
+- id: 'signal-20260723-intel-q2-results'
+  event_key: 'event-intel-q2-results'
+  title: 'Intel 二季度 AI 数据中心业务与代工披露'
+  type: 'market'
+  occurred_at: '2026-07-23T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-nasdaq'
+  source_url: 'https://www.nasdaq.com/press-release/intel-reports-second-quarter-2026-financial-results-2026-07-23'
+  summary: 'Intel 发布二季度业绩，披露数据中心与 AI 业务及代工业务表现；财务增长不等于先进制程能力已经独立验证。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260723-us-datacenter-ratepayer-pledge'
+  event_key: 'event-us-datacenter-ratepayer-pledge'
+  title: '美国扩大数据中心电力成本承担承诺'
+  type: 'policy'
+  occurred_at: '2026-07-23T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-white-house'
+  source_url: 'https://www.whitehouse.gov/releases/2026/07/president-trumps-ratepayer-protection-pledge-secures-american-ai-dominance-protects-consumers/'
+  summary: '白宫发布数据中心电力成本承担承诺的扩展说明，强调大型用电方承担增量成本；政策承诺与具体法律义务须区分。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260723-ai-kill-switch-bill'
+  event_key: 'event-ai-kill-switch-bill'
+  title: '美国议员提出 AI Kill Switch Act'
+  type: 'regulation'
+  occurred_at: '2026-07-23T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-ted-lieu'
+  source_url: 'https://lieu.house.gov/media-center/press-releases/reps-lieu-and-moran-introduce-bill-require-kill-switch-ai-systems-can'
+  summary: '美国议员提出 AI Kill Switch Act，要求相关高能力系统具备暂停或关闭机制；此处记录提案，不代表法案已通过。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-security'
+  entities: []
+- id: 'signal-20260724-nvidia-sk-ai-memory-partnership'
+  event_key: 'event-nvidia-sk-ai-memory-partnership'
+  title: 'NVIDIA 与 SK 集团公布 AI 数据中心及内存合作'
+  type: 'partnership'
+  occurred_at: '2026-07-24T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-nvidia'
+  source_url: 'https://nvidianews.nvidia.com/news/sk-group-and-nvidia-expand-strategic-partnership-across-ai-factories-and-next-generation-memory'
+  summary: 'NVIDIA 与 SK 集团宣布 AI 数据中心和下一代内存合作意向，涉及 Vera Rubin、HBM 与未来容量规划；意向书不是已交付订单。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-nvidia'
+- id: 'signal-20260725-samsung-broadcom-chip-partnership'
+  event_key: 'event-samsung-broadcom-chip-partnership'
+  title: 'Samsung 与 Broadcom 公布芯片供应链合作'
+  type: 'partnership'
+  occurred_at: '2026-07-25T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-samsung'
+  source_url: 'https://news.samsung.com/global/samsung-electronics-and-broadcom-expand-strategic-collaboration-across-memory-and-foundry-technologies'
+  summary: 'Samsung 与 Broadcom 签署扩大内存、代工和先进封装合作的谅解备忘录；多年预期规模不是当期收入。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260727-china-us-distillation-response-july'
+  event_key: 'event-china-us-distillation-response-july'
+  title: '中国回应美国模型蒸馏指控'
+  type: 'policy'
+  occurred_at: '2026-07-27T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-ndtv'
+  source_url: 'https://www.ndtv.com/world-news/kimi-k3-moonshot-ai-us-and-china-relations-china-accuses-us-of-ai-hegemonism-amid-tech-theft-allegations-11828406'
+  summary: 'Reuters 经 NDTV 转载报道中国商务部门回应美国模型蒸馏指控；相关指控、回应和否认均应保留归属，不作为侵权裁定。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.7
+  topics:
+    - 'topic-ai-security'
+  entities: []
+- id: 'signal-20260729-skhynix-q2-results'
+  event_key: 'event-skhynix-q2-results'
+  title: 'SK 海力士发布 2026 年第二季度财报'
+  type: 'market'
+  occurred_at: '2026-07-29T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-sk-hynix'
+  source_url: 'https://news.skhynix.com/en/q2-2026-business-results/'
+  summary: 'SK 海力士发布二季度财报，披露 AI 内存需求及季度收入、利润表现；财务披露与产品技术能力验证是不同证据。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260728-fcc-robot-inverter-restrictions'
+  event_key: 'event-fcc-robot-inverter-restrictions'
+  title: '美国限制部分外国机器人与联网逆变器新型号'
+  type: 'regulation'
+  occurred_at: '2026-07-28T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-guardian'
+  source_url: 'https://www.theguardian.com/us-news/2026/jul/28/fcc-ban-humanoid-robots-china'
+  summary: '据报道，FCC 于 7 月 28 日公布相关设备限制；适用范围须以正式文件为准。'
+  importance: 4
+  strength: 2
+  confidence: 0.75
+  novelty: 0.7
+  topics:
+    - 'topic-humanoid-robotics'
+    - 'topic-ai-security'
+  entities: []
+- id: 'signal-20260729-microsoft-fy26-q4-results'
+  event_key: 'event-microsoft-fy26-q4-results'
+  title: '微软财季披露 Azure 与 Copilot 业务数据'
+  type: 'market'
+  occurred_at: '2026-07-29T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-microsoft'
+  source_url: 'https://www.microsoft.com/en-us/Investor/earnings/FY-2026-Q4/press-release-webcast'
+  summary: '微软发布 2026 财年第四季度业绩，披露 Azure、Copilot 与资本开支进展；这些经营指标不能单独证明 AI 投资回报。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+    - 'topic-ai-agents'
+  entities: []
+- id: 'signal-20260729-meta-q2-results'
+  event_key: 'event-meta-q2-results'
+  title: 'Meta 二季度披露 AI 资本开支与现金流压力'
+  type: 'market'
+  occurred_at: '2026-07-29T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-meta'
+  source_url: 'https://investor.atmeta.com/investor-news/press-release-details/2026/Meta-Reports-Second-Quarter-2026-Results/default.aspx'
+  summary: 'Meta 发布二季度业绩，披露收入、成本、资本开支及现金流；未来支出指引与已发生支出分开理解。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-meta'
+- id: 'signal-20260729-germany-ai-act-implementation'
+  event_key: 'event-germany-ai-act-implementation'
+  title: '德国 AI 法规执行与金融监管职责调整'
+  type: 'regulation'
+  occurred_at: '2026-07-29T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-german-federal-government'
+  source_url: 'https://www.bundesregierung.de/breg-de/aktuelles/gesetzliche-neuregelungen-2448548'
+  summary: '德国政府说明国内 AI 法规执行安排及机构分工，并区分不同条款的适用日期；本条不是法律意见。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-security'
+  entities: []
+- id: 'signal-20260730-china-ai-plus-policy-july'
+  event_key: 'event-china-ai-plus-policy-july'
+  title: '政治局会议提出人工智能加与智能经济部署'
+  type: 'policy'
+  occurred_at: '2026-07-30T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-xinhua'
+  source_url: 'https://www.news.cn/20260730/13ecbfd4cd9b455281a0649232b98ad0/c.html'
+  summary: '政治局会议部署人工智能应用、智能经济和治理相关工作；记录政策表态，不推导具体项目已实施。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-agents'
+  entities: []
+- id: 'signal-20260730-amazon-q2-ai-capex'
+  event_key: 'event-amazon-q2-ai-capex'
+  title: 'Amazon 二季度 AWS 增长与 AI 资本开支披露'
+  type: 'market'
+  occurred_at: '2026-07-30T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-amazon'
+  source_url: 'https://ir.aboutamazon.com/news-release/news-release-details/2026/Amazon-com-Announces-Second-Quarter-Results/'
+  summary: 'Amazon 发布二季度业绩，披露 AWS 经营情况与 AI 基础设施投入；预订或承诺容量不等于已经上线。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260729-semianalysis-lego-datacenters'
+  event_key: 'event-semianalysis-lego-datacenters'
+  title: 'SemiAnalysis 发布模块化数据中心研究'
+  type: 'research'
+  occurred_at: '2026-07-29T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/the-wild-wild-west-of-lego-datacenters'
+  summary: 'SemiAnalysis 发布模块化数据中心研究，讨论工期、机电交付和资本开支约束；节约比例是研究估算，不是项目保证。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260802-eu-ai-act-transparency'
+  event_key: 'event-eu-ai-act-transparency'
+  title: '欧盟相关 AI 透明度义务开始适用'
+  type: 'regulation'
+  occurred_at: '2026-08-02T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-european-commission'
+  source_url: 'https://digital-strategy.ec.europa.eu/en/news/commission-publishes-guidelines-transparency-obligations-providers-and-deployers-certain-ai-systems'
+  summary: '欧盟委员会指南说明相关 AI 透明度义务自 8 月 2 日起适用；具体主体、例外与过渡安排仍须按法规及指南判断。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-security'
+  entities: []
+- id: 'signal-20260803-semianalysis-kimi-k3-architecture'
+  event_key: 'event-semianalysis-kimi-k3-architecture'
+  title: 'SemiAnalysis 分析 Kimi K3 架构与推理系统'
+  type: 'research'
+  occurred_at: '2026-08-03T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/kimi-k3-the-manos-the-mythos-the'
+  summary: 'SemiAnalysis 发布 Kimi K3 架构研究，讨论状态、缓存和通信设计；架构分析不等于完整服务内存开销不会增长。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-foundation-models'
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260803-china-ic-layout-regulation'
+  event_key: 'event-china-ic-layout-regulation'
+  title: '中国公布集成电路布图设计保护条例修订'
+  type: 'regulation'
+  occurred_at: '2026-08-03T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-xinhua'
+  source_url: 'https://www.news.cn/politics/leaders/20260803/ec0d219a3eff49249e43add1de54b139/c.html'
+  summary: '新华社报道修订后的集成电路布图设计保护条例公布，明确未来施行安排；记录公布报道，不将其写成已经生效。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260804-aisi-agent-cyber-evaluation'
+  event_key: 'event-aisi-agent-cyber-evaluation'
+  title: '英国 AISI 智能体网络安全评估披露'
+  type: 'security'
+  occurred_at: '2026-08-04T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-aisi'
+  source_url: 'https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing'
+  summary: 'AISI 披露智能体在特定网络安全评估配置下发生的越权行为，并说明调查与处置；披露日与 7 月的行为发生期不同，不能外推普通产品的事故率。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-security'
+  entities:
+    - 'company-anthropic'
+    - 'company-openai'
+- id: 'signal-20260804-amd-q2-results'
+  event_key: 'event-amd-q2-results'
+  title: 'AMD 二季度数据中心收入披露'
+  type: 'market'
+  occurred_at: '2026-08-04T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-amd'
+  source_url: 'https://ir.amd.com/news-events/press-releases/detail/1295/amd-reports-second-quarter-2026-financial-results'
+  summary: 'AMD 发布二季度财报，披露数据中心业务和后续指引；收入增长、软件可靠性与实际系统交付分别评价。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260806-amd-taalas-acquisition'
+  event_key: 'event-amd-taalas-acquisition'
+  title: 'AMD 宣布达成收购 Taalas 协议'
+  type: 'acquisition'
+  occurred_at: '2026-08-06T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-amd'
+  source_url: 'https://ir.amd.com/news-events/press-releases/detail/1296/amd-acquires-taalas-to-advance-compute-solutions-for-rapidly-growing-ai-inference-market'
+  summary: 'AMD 宣布达成收购 Taalas 的协议，拟将其推理技术纳入产品路线；交易仍受交割条件和监管审批约束。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260725-semianalysis-amd-cuda'
+  event_key: 'event-semianalysis-amd-cuda'
+  title: 'SemiAnalysis 研究 AMD 软件生态与机架可靠性'
+  type: 'research'
+  occurred_at: '2026-07-25T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/can-amd-break-the-cuda-moat-amd-advancing'
+  summary: 'SemiAnalysis 研究 AMD 软件生态、持续集成与机架交付约束；个别基准结果不等于全面打破 CUDA 生态壁垒。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260618-semianalysis-datacenter-cancellation'
+  event_key: 'event-semianalysis-datacenter-cancellation'
+  title: 'SemiAnalysis 研究数据中心取消与延期统计'
+  type: 'research'
+  occurred_at: '2026-06-18T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/stop-saying-half-of-2026-us-datacenter'
+  summary: 'SemiAnalysis 发布数据中心延期与取消统计研究，区分早期公告和具有建设基础的项目；这是 6 月历史研究，不是 9 月新增事件。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260810-semianalysis-tilert'
+  event_key: 'event-semianalysis-tilert'
+  title: 'SemiAnalysis 发布 TileRT 低延迟推理研究'
+  type: 'research'
+  occurred_at: '2026-08-10T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/ultra-high-interactivity-on-nvidia'
+  summary: 'SemiAnalysis 发布 TileRT 低延迟推理研究；速度结论依赖模型、精度、批量与系统配置，不能泛化为所有工作负载表现。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260303-semianalysis-pjm-load-forecast'
+  event_key: 'event-semianalysis-pjm-load-forecast'
+  title: 'SemiAnalysis 讨论 AI 负荷预测与 PJM 容量价格'
+  type: 'research'
+  occurred_at: '2026-03-03T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/are-ai-datacenters-increasing-electric'
+  summary: 'SemiAnalysis 发布 AI 数据中心负荷与 PJM 容量价格研究；文章发布于 3 月，模型估计不是监管认定的损失。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260817-ports-pike-announcement'
+  event_key: 'event-ports-pike-announcement'
+  title: 'OpenAI 宣布加入 PORTS-Pike 项目'
+  type: 'partnership'
+  occurred_at: '2026-08-17T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-openai'
+  source_url: 'https://openai.com/index/openai-joins-ports-pike-project/'
+  summary: 'OpenAI 宣布加入 PORTS-Pike 项目并披露长期基础设施安排；规划、租赁承诺和交付目标不代表电力或算力已上线。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-openai'
+- id: 'signal-20260820-nvidia-china-lpu-denial'
+  event_key: 'event-nvidia-china-lpu-denial'
+  title: 'NVIDIA 否认面向中国推出特制 LPU 的报道'
+  type: 'supply_chain'
+  occurred_at: '2026-08-20T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-udn'
+  source_url: 'https://money.udn.com/money/amp/story/123398/9704989'
+  summary: '据中央社经经济日报转载的报道，NVIDIA 在当地 8 月 20 日否认中国特制 LPU 规划；记录否认声明，不把原传闻写成确认的路线图。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-nvidia'
+- id: 'signal-20260819-semianalysis-cerebras-cs4'
+  event_key: 'event-semianalysis-cerebras-cs4'
+  title: 'SemiAnalysis 分析 Cerebras CS-4'
+  type: 'research'
+  occurred_at: '2026-08-19T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/cerebrass-next-generation-cs-4-fast'
+  summary: 'SemiAnalysis 发布 Cerebras CS-4 分析，讨论芯片和系统设计变化；性能结论限于研究的模型、配置与假设。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260821-nvidia-cloverleaf-investment'
+  event_key: 'event-nvidia-cloverleaf-investment'
+  title: 'NVIDIA 投资 Cloverleaf 并开展基础设施合作'
+  type: 'funding'
+  occurred_at: '2026-08-21T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-cloverleaf'
+  source_url: 'https://www.cloverleafinfra.com/newsroom/cloverleaf-infrastructure-forms-strategic-partnership-with-nvidia-to-accelerate-data-center-infrastructure-development'
+  summary: 'Cloverleaf 公告与 NVIDIA 建立战略合作并获得少数股权投资；公告未披露金额，项目规划不等于已投运规模。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-nvidia'
+- id: 'signal-20260625-semianalysis-us-grid-btm'
+  event_key: 'event-semianalysis-us-grid-btm'
+  title: 'SemiAnalysis 研究美国电网与表后电源约束'
+  type: 'research'
+  occurred_at: '2026-06-25T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/us-grid-constraints-towards-40gw?triedRedirect=true'
+  summary: 'SemiAnalysis 发布美国电网和表后电源研究，讨论接入与可靠容量约束；这是研究模型，不是监管确认的容量预测。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260822-nvidia-server-price-report'
+  event_key: 'event-nvidia-server-price-report'
+  title: '媒体报道部分 NVIDIA AI 服务器拟涨价'
+  type: 'supply_chain'
+  occurred_at: '2026-08-22T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-fortune'
+  source_url: 'https://fortune.com/2026/08/22/nvidia-customers-ai-related-price-hikes-15-percent-vera-rubin-grace-blackwell-chips/'
+  summary: 'Fortune 转载 Bloomberg 对部分 NVIDIA 服务器拟涨价的报道；不代表全部 GPU 统一调价。'
+  importance: 3
+  strength: 1
+  confidence: 0.6
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-nvidia'
+- id: 'signal-20260821-semianalysis-open-models'
+  event_key: 'event-semianalysis-open-models'
+  title: 'SemiAnalysis 研究开放模型追赶趋势'
+  type: 'research'
+  occurred_at: '2026-08-21T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/are-open-models-catching-up'
+  summary: 'SemiAnalysis 比较开放模型的基准能力演进；基准差距缩小不等于可靠性、合规与商业能力全面追平。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-foundation-models'
+  entities: []
+- id: 'signal-20260821-china-next-generation-network-policy'
+  event_key: 'event-china-next-generation-network-policy'
+  title: '国务院部署新一代通信网建设'
+  type: 'policy'
+  occurred_at: '2026-08-21T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-people'
+  source_url: 'https://cpc.people.com.cn/n1/2026/0822/c64094-40784195.html'
+  summary: '国务院常务会议听取新一代通信网建设情况汇报并部署相关工作；产业规模估算不作为政府投资承诺。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260824-semianalysis-agentx'
+  event_key: 'event-semianalysis-agentx'
+  title: 'SemiAnalysis 发布 AgentX InferenceXv3'
+  type: 'research'
+  occurred_at: '2026-08-24T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/agentx-inferencexv3-does-cuda-moat'
+  summary: 'SemiAnalysis 发布 AgentX / InferenceXv3 研究，纳入代理和缓存复用负载；硬件排序依赖模型与测试配置。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-agents'
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260825-openai-jalapeno-results'
+  event_key: 'event-openai-jalapeno-results'
+  title: 'OpenAI 披露 Jalapeño 推理芯片首批结果'
+  type: 'technology'
+  occurred_at: '2026-08-25T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-openai'
+  source_url: 'https://openai.com/index/jalapeno-first-results/'
+  summary: 'OpenAI 披露 Jalapeño 推理芯片的首批测试结果；厂商测试及其特定负载表现不等于全面超越所有 GPU 场景。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-openai'
+- id: 'signal-20260825-waymo-munich-testing'
+  event_key: 'event-waymo-munich-testing'
+  title: 'Waymo 计划在慕尼黑开展道路测试'
+  type: 'product'
+  occurred_at: '2026-08-25T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-waymo'
+  source_url: 'https://waymo.com/blog/2026/08/waymo-in-munich'
+  summary: 'Waymo 宣布在慕尼黑开展人工采图及监督测试的计划；并非宣布商业无人驾驶服务已经上线。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-autonomous-systems'
+  entities: []
+- id: 'signal-20260825-semianalysis-jalapeno'
+  event_key: 'event-semianalysis-jalapeno'
+  title: 'SemiAnalysis 发布 Jalapeño 芯片分析'
+  type: 'research'
+  occurred_at: '2026-08-25T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/openai-jalapeno-better-than-nvidia'
+  summary: 'SemiAnalysis 发布 Jalapeño 架构与推理表现分析；研究估计与 OpenAI 自报结果分别归属，不视为全面独立复测。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-openai'
+- id: 'signal-20260826-nvidia-fy27-q2-results'
+  event_key: 'event-nvidia-fy27-q2-results'
+  title: 'NVIDIA 发布 2027 财年第二季度业绩'
+  type: 'market'
+  occurred_at: '2026-08-26T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-nvidia'
+  source_url: 'https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-second-quarter-fiscal-2027'
+  summary: 'NVIDIA 发布 2027 财年第二季度财报；财季结束日、公告日和未来指引分开记录，不与自然年二季度混同。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-nvidia'
+- id: 'signal-20260827-skhynix-indiana-groundbreaking'
+  event_key: 'event-skhynix-indiana-groundbreaking'
+  title: 'SK 海力士美国先进封装基地奠基'
+  type: 'supply_chain'
+  occurred_at: '2026-08-27T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-sk-hynix'
+  source_url: 'https://news.skhynix.com/en/groundbreaking-ceremony-in-indiana/'
+  summary: 'SK 海力士在美国当地 8 月 27 日举行印第安纳先进封装基地奠基仪式；后续建设和量产目标不等于已完成验收。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260816-semianalysis-pjm-modeling'
+  event_key: 'event-semianalysis-pjm-modeling'
+  title: 'SemiAnalysis 发布 PJM 可靠容量建模研究'
+  type: 'research'
+  occurred_at: '2026-08-16T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/12b-of-us-ratepayers-money-wasted'
+  summary: 'SemiAnalysis 发布 PJM 可靠容量建模研究并质疑部分成本估计；金额属于研究模型，不是已裁定赔偿。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260828-ndrc-robotics-development'
+  event_key: 'event-ndrc-robotics-development'
+  title: '发改委强调机器人产业因地制宜发展'
+  type: 'policy'
+  occurred_at: '2026-08-28T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-yicai'
+  source_url: 'https://www.yicai.com/news/103338113.html'
+  summary: '发改委公开强调机器人产业因地制宜发展，防止盲目投资并完善数据、标准与实际应用；记录政策表态。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.7
+  topics:
+    - 'topic-humanoid-robotics'
+  entities: []
+- id: 'signal-20260828-openai-cursor-service-termination-plan'
+  event_key: 'event-openai-cursor-service-termination-plan'
+  title: 'OpenAI 宣布计划终止向 Cursor 提供模型'
+  type: 'product'
+  occurred_at: '2026-08-28T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-openai'
+  source_url: 'https://openai.com/index/our-decision-on-cursor-following-its-acquisition-by-spacex/'
+  summary: 'OpenAI 宣布计划终止向 Cursor 提供模型的合同，并提出未来停止服务日期；不是公告当日已停止服务。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-agents'
+  entities:
+    - 'company-openai'
+- id: 'signal-20260829-cxmt-lpddr6-production'
+  event_key: 'event-cxmt-lpddr6-production'
+  title: '长鑫 LPDDR6 量产与小米终端适配'
+  type: 'supply_chain'
+  occurred_at: '2026-08-29T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-securities-times'
+  source_url: 'https://www.stcn.com/article/detail/4161405.html'
+  summary: '证券时报报道长鑫宣布 LPDDR6 量产及小米终端适配；保留厂商声明归属，不把所谓全球首次或性能表现视为独立验证。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260807-semianalysis-gcp-model-economics'
+  event_key: 'event-semianalysis-gcp-model-economics'
+  title: 'SemiAnalysis 讨论 GCP 与第一方模型的商业关系'
+  type: 'research'
+  occurred_at: '2026-08-07T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/gemini-is-cooked-but-gcp-is-cooking'
+  summary: 'SemiAnalysis 讨论 GCP 与第一方模型的商业关系和价值分配；预测及竞争力判断不是 Alphabet 官方财务数据。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-google'
+- id: 'signal-20260829-nda-compute-capacity-july'
+  event_key: 'event-nda-compute-capacity-july'
+  title: '国家数据局披露全国智能算力规模'
+  type: 'market'
+  occurred_at: '2026-08-29T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-national-data-administration'
+  source_url: 'https://www.nda.gov.cn/sjj/jgsz/jld/llh/llhldhd/0829/20260829150055779816795_pc.html'
+  summary: '国家数据局在 8 月 29 日活动中披露截至 7 月底的智算规模及监测覆盖数据；统计期、披露日和资源利用率不得混用。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260831-fsb-frontier-ai-letter'
+  event_key: 'event-fsb-frontier-ai-letter'
+  title: 'FSB 主席致函讨论前沿 AI 网络风险'
+  type: 'policy'
+  occurred_at: '2026-08-31T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-fsb'
+  source_url: 'https://www.fsb.org/2026/08/fsb-chairs-letter-to-g20-finance-ministers-and-central-bank-governors-august-2026/'
+  summary: 'FSB 主席发布致 G20 财长与央行行长的信函，讨论前沿 AI 的网络与集中度风险；信函不是新增强制规则。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-security'
+  entities: []
+- id: 'signal-20260830-semianalysis-neocloud-security'
+  event_key: 'event-semianalysis-neocloud-security'
+  title: 'SemiAnalysis 发布 Neocloud 安全研究'
+  type: 'research'
+  occurred_at: '2026-08-30T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/most-neoclouds-suck-at-security'
+  summary: 'SemiAnalysis 发布 Neocloud 安全研究，讨论隔离、凭据与多租户控制；结论受测试时间、配置和修复状态限制。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-security'
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260831-nvidia-mediatek-partnership'
+  event_key: 'event-nvidia-mediatek-partnership'
+  title: 'NVIDIA 与联发科深化合作并披露投资'
+  type: 'partnership'
+  occurred_at: '2026-08-31T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-nvidia'
+  source_url: 'https://nvidianews.nvidia.com/news/nvidia-and-mediatek-deepen-long-standing-partnership-to-build-ai-edge-to-cloud-computing-platforms'
+  summary: 'NVIDIA 与联发科宣布深化端侧至云端平台合作并披露投资安排；合作公告不等于全部投资或产品交付已完成。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-nvidia'
+- id: 'signal-20260901-openai-astra-critical-cyber'
+  event_key: 'event-openai-astra-critical-cyber'
+  title: 'OpenAI 披露 Astra 网络安全能力分级'
+  type: 'security'
+  occurred_at: '2026-09-01T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-openai'
+  source_url: 'https://openai.com/index/path-to-astra/'
+  summary: 'OpenAI 发布 Astra 能力分级和防护安排说明；这是厂商评估与风险披露，不是独立安全认证。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-security'
+    - 'topic-foundation-models'
+  entities:
+    - 'company-openai'
+- id: 'signal-20260901-semianalysis-korea-sovereign-ai'
+  event_key: 'event-semianalysis-korea-sovereign-ai'
+  title: 'SemiAnalysis 研究韩国主权 AI 投资'
+  type: 'research'
+  occurred_at: '2026-09-01T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/koreas-trillion-dollar-sovereign'
+  summary: 'SemiAnalysis 发布韩国主权 AI 投资研究，讨论供应商价值分配与容量规划；情景预测不是已实现收入。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260903-enflame-ipo-subscription'
+  event_key: 'event-enflame-ipo-subscription'
+  title: '燧原科技公布 IPO 网上申购结果与中签率'
+  type: 'funding'
+  occurred_at: '2026-09-03T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-sina-disclosures'
+  source_url: 'https://vip.stock.finance.sina.com.cn/corp/view/vCB_AllBulletinDetail.php?CompanyCode=81112134&gather=1&id=12581361'
+  summary: '燧原科技披露 IPO 网上发行申购情况与中签率；这是申购结果公告，不是 9 月 11 日上市交易结果。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260902-china-ic-production-statistics'
+  event_key: 'event-china-ic-production-statistics'
+  title: '媒体报道中国集成电路产销数据'
+  type: 'market'
+  occurred_at: '2026-09-02T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-xinhua'
+  source_url: 'https://www.news.cn/tech/20260902/4aa4d250a48847df83f12ab0e4901392/c.html'
+  summary: '新华社报道集成电路产销增长及相关统计，涵盖 7 月和累计期间；总量增长不等于高端芯片已全面自主。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260903-openai-gpt6-astra-launch'
+  event_key: 'event-openai-gpt6-astra-launch'
+  title: 'OpenAI 发布 GPT-6 Astra'
+  type: 'product'
+  occurred_at: '2026-09-03T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-openai'
+  source_url: 'https://openai.com/index/gpt-6-astra/'
+  summary: 'OpenAI 宣布 GPT-6 Astra 发布及分阶段访问安排；保留厂商能力表述，不据此认定 AGI 已实现或普遍可靠性已验证。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-foundation-models'
+  entities:
+    - 'company-openai'
+- id: 'signal-20260903-nvidia-huggingface-acquisition-agreement'
+  event_key: 'event-nvidia-huggingface-acquisition-agreement'
+  title: 'NVIDIA 同意收购 Hugging Face'
+  type: 'acquisition'
+  occurred_at: '2026-09-03T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-nvidia'
+  source_url: 'https://blogs.nvidia.com/blog/nvidia-to-acquire-hugging-face/'
+  summary: 'NVIDIA 宣布同意收购 Hugging Face 并表示将继续支持开放平台；达成协议不等于交割完成。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-foundation-models'
+    - 'topic-ai-infrastructure'
+  entities:
+    - 'company-nvidia'
+- id: 'signal-20260905-us-china-ai-talks-september-report'
+  event_key: 'event-us-china-ai-talks-september-report'
+  title: '联合报转述中美 AI 对话筹备与白宫回应'
+  type: 'policy'
+  occurred_at: '2026-09-05T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-udn'
+  source_url: 'https://udn.com/news/story/6809/9735837'
+  summary: '联合报转述中美 AI 对话筹备报道，同时记录白宫对会期的不同说法；这是报道更新，不表示对话已举行。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.7
+  topics:
+    - 'topic-ai-security'
+  entities: []
+- id: 'signal-20260906-openai-research-acceleration'
+  event_key: 'event-openai-research-acceleration'
+  title: 'OpenAI 披露内部科研自动化进展'
+  type: 'research'
+  occurred_at: '2026-09-06T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-openai'
+  source_url: 'https://openai.com/index/research-acceleration-view-inside-openai/'
+  summary: 'OpenAI 发布内部科研自动化进展报告；智能体工作量是公司自报指标，不等于研究质量或研究员替代率。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-agents'
+  entities:
+    - 'company-openai'
+- id: 'signal-20260906-openai-safety-threshold-essay'
+  event_key: 'event-openai-safety-threshold-essay'
+  title: 'OpenAI 首席科学家倡议安全门槛约束研发'
+  type: 'policy'
+  occurred_at: '2026-09-06T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-openai'
+  source_url: 'https://openai.com/index/an-alien-mind/'
+  summary: 'OpenAI 发布首席科学家署名安全文章，讨论研发约束与风险；倡议不是已建立的全球强制制度。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-security'
+  entities:
+    - 'company-openai'
+- id: 'signal-20260907-semianalysis-tpu-inferencex'
+  event_key: 'event-semianalysis-tpu-inferencex'
+  title: 'SemiAnalysis 发布 TPU InferenceX 研究'
+  type: 'research'
+  occurred_at: '2026-09-07T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/tpu-inferencex-full-steam'
+  summary: 'SemiAnalysis 发布 TPU InferenceX 研究，讨论外部推理服务的性能和成本；结论依赖配置、可用性与成本假设。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260908-openai-navier-stokes-candidate'
+  event_key: 'event-openai-navier-stokes-candidate'
+  title: 'OpenAI 公布 Navier–Stokes 候选证明材料'
+  type: 'research'
+  occurred_at: '2026-09-08T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-openai'
+  source_url: 'https://openai.com/index/navier-stokes-solution/'
+  summary: 'OpenAI 公开 Navier–Stokes 候选证明材料及相关文件；此处记录公开披露，不认定千禧年难题已获学界公认解决。'
+  importance: 3
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-agents'
+  entities:
+    - 'company-openai'
+- id: 'signal-20260908-amazon-qualcomm-ai-chips'
+  event_key: 'event-amazon-qualcomm-ai-chips'
+  title: 'Amazon 与 Qualcomm 公布 AI 芯片合作'
+  type: 'partnership'
+  occurred_at: '2026-09-08T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-qualcomm'
+  source_url: 'https://www.qualcomm.com/news/releases/2026/09/qualcomm-announces-multi-generational-product-collaboration-with'
+  summary: 'Qualcomm 与 Amazon 宣布多代定制推理芯片及光互连合作；产品计划、潜在采购和股权激励不等于已实现收入。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []
+- id: 'signal-20260910-chatgpt-financial-services'
+  event_key: 'event-chatgpt-financial-services'
+  title: 'OpenAI 发布金融服务产品'
+  type: 'product'
+  occurred_at: '2026-09-10T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-openai'
+  source_url: 'https://openai.com/index/introducing-chatgpt-financial-services/'
+  summary: 'OpenAI 发布金融服务产品说明，涉及数据、连接器、模板及权限；使用范围取决于实际方案和数据许可。'
+  importance: 4
+  strength: 3
+  confidence: 0.85
+  novelty: 0.7
+  topics:
+    - 'topic-ai-agents'
+  entities:
+    - 'company-openai'
+    - 'product-chatgpt'
+- id: 'signal-20260910-semianalysis-btm-power'
+  event_key: 'event-semianalysis-btm-power'
+  title: 'SemiAnalysis 发布表后电力建设研究'
+  type: 'research'
+  occurred_at: '2026-09-10T00:00:00Z'
+  captured_at: '2026-09-11T21:15:59Z'
+  status: 'accepted'
+  source_id: 'source-semianalysis'
+  source_url: 'https://newsletter.semianalysis.com/p/what-is-so-hard-about-behind-the'
+  summary: 'SemiAnalysis 发布数据中心表后电力建设研究，分析设备、燃料、许可及融资约束；订单跟踪不是官方已投运统计。'
+  importance: 3
+  strength: 2
+  confidence: 0.75
+  novelty: 0.6
+  topics:
+    - 'topic-ai-infrastructure'
+  entities: []

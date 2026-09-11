@@ -1,0 +1,1289 @@
+{
+  "schema_version": "hzense-document-signal-intake-v1",
+  "captured_at": "2026-09-11T21:15:59Z",
+  "source_directory_label": "datas",
+  "recursive": true,
+  "extension_case_insensitive": true,
+  "verification": "document_only",
+  "counts": {
+    "files": 49,
+    "bytes": 1138617,
+    "screened_sections": 137,
+    "candidates": 102,
+    "merged_sections": 20,
+    "existing_signal_sections": 1,
+    "background_sections": 17
+  },
+  "files": [
+    {
+      "file": "ChatGPT每日简报_2026-07-20.md",
+      "document_date": "2026-07-20",
+      "bytes": 16028,
+      "lines": 159,
+      "sha256": "bd465f54786df144839cf7ff0db1f0cbbb1b3b056302a0eec512cef706b9107a",
+      "section_refs": ["2026-07-20:14", "2026-07-20:23", "2026-07-20:83"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-21.md",
+      "document_date": "2026-07-21",
+      "bytes": 23009,
+      "lines": 210,
+      "sha256": "2f656da199865f33cc163f36af13c61ae08359b5559192a4c1440844f1d019e3",
+      "section_refs": ["2026-07-21:16", "2026-07-21:30"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-22.md",
+      "document_date": "2026-07-22",
+      "bytes": 22603,
+      "lines": 235,
+      "sha256": "e98757ca02467f9cbd700bd254e43484f23d003224353d35f60f640041f691e1",
+      "section_refs": ["2026-07-22:20", "2026-07-22:45", "2026-07-22:62"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-23.md",
+      "document_date": "2026-07-23",
+      "bytes": 22754,
+      "lines": 306,
+      "sha256": "4c7562d44fc32060d2123a4d5447a00c921c1fafca15ef16a1bec6bce340f86e",
+      "section_refs": ["2026-07-23:20", "2026-07-23:56"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-24.md",
+      "document_date": "2026-07-24",
+      "bytes": 25178,
+      "lines": 284,
+      "sha256": "03adc7be86c847a5a9e7e46f2b97cf7c261543d307789642eec7470b76f6f7f5",
+      "section_refs": ["2026-07-24:18", "2026-07-24:46"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-25.md",
+      "document_date": "2026-07-25",
+      "bytes": 17043,
+      "lines": 204,
+      "sha256": "063cee7c728488a901cd18caa78dcfa55f4b241078d6d22ca34b10af17cfc8e2",
+      "section_refs": ["2026-07-25:14"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-26.md",
+      "document_date": "2026-07-26",
+      "bytes": 20898,
+      "lines": 290,
+      "sha256": "394fd09bf14706ea56e393855c3f7ca0d9425b1fbab1135b13ff335942e9b56d",
+      "section_refs": ["2026-07-26:19"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-27.md",
+      "document_date": "2026-07-27",
+      "bytes": 19657,
+      "lines": 204,
+      "sha256": "e63ca334b5aebdc8dc122254d33c89e955dcf545deafc89a06961e8192f453aa",
+      "section_refs": ["2026-07-27:18", "2026-07-27:31"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-28.md",
+      "document_date": "2026-07-28",
+      "bytes": 21332,
+      "lines": 228,
+      "sha256": "53c18a90822eabf46cd4979534db2dcae8eff381c9dca3ecdd02a813e35d640c",
+      "section_refs": ["2026-07-28:18", "2026-07-28:32", "2026-07-28:100", "2026-07-28:114"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-29.md",
+      "document_date": "2026-07-29",
+      "bytes": 25299,
+      "lines": 270,
+      "sha256": "723fecfdc55f755a85edd6f4a65b1d02aa6355fbf696fc34bc362bbd3374ba00",
+      "section_refs": ["2026-07-29:20", "2026-07-29:40", "2026-07-29:127", "2026-07-29:178"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-30.md",
+      "document_date": "2026-07-30",
+      "bytes": 35676,
+      "lines": 338,
+      "sha256": "c32629b7a77334097df552f20df91b61bd175405be0ab39c5a23076adb5568b5",
+      "section_refs": [
+        "2026-07-30:23",
+        "2026-07-30:50",
+        "2026-07-30:166",
+        "2026-07-30:187",
+        "2026-07-30:252"
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-31.md",
+      "document_date": "2026-07-31",
+      "bytes": 24896,
+      "lines": 243,
+      "sha256": "149a083208474d35a9c275ba26e43d836822446c7f8de99ff595de5a1523b3e3",
+      "section_refs": ["2026-07-31:18", "2026-07-31:40"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-01.md",
+      "document_date": "2026-08-01",
+      "bytes": 27021,
+      "lines": 261,
+      "sha256": "1875bb31bdb6fdeee226848e3f754ed84fbab1b36b7017d85bb75eddfc6b77fe",
+      "section_refs": ["2026-08-01:16", "2026-08-01:26"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-02.md",
+      "document_date": "2026-08-02",
+      "bytes": 23734,
+      "lines": 218,
+      "sha256": "581e5d8dc0c7d7c2f30ca2e5f0a06ef58440f4685e45dda6c62365486b7a6210",
+      "section_refs": ["2026-08-02:17", "2026-08-02:37"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-03.md",
+      "document_date": "2026-08-03",
+      "bytes": 27196,
+      "lines": 259,
+      "sha256": "b37a0d9dbb48468ca0cd18935655afe4ede12ca181b0549ec248357c211d463b",
+      "section_refs": ["2026-08-03:17", "2026-08-03:39"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-04.md",
+      "document_date": "2026-08-04",
+      "bytes": 20058,
+      "lines": 190,
+      "sha256": "e2935ed74c74fcc7c3802e6103ddf7a065fab693ec990b35c8a10d4efbecfa4a",
+      "section_refs": ["2026-08-04:16", "2026-08-04:31", "2026-08-04:87"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-05.md",
+      "document_date": "2026-08-05",
+      "bytes": 33666,
+      "lines": 317,
+      "sha256": "47de87796735b21459006e71a19d3fb780bee51667b6cf4a7ec8e1df537c3021",
+      "section_refs": ["2026-08-05:19", "2026-08-05:50", "2026-08-05:71", "2026-08-05:172"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-06.md",
+      "document_date": "2026-08-06",
+      "bytes": 19606,
+      "lines": 186,
+      "sha256": "aff5edbaad27fd13b96087291170ed1857e2fd74753f817c926697513541c1b9",
+      "section_refs": ["2026-08-06:16", "2026-08-06:30"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-07.md",
+      "document_date": "2026-08-07",
+      "bytes": 20516,
+      "lines": 198,
+      "sha256": "dc0418c3d90ab2fe642815a7f7506dac8f7756a96a4cfa14c6b861e8b924b97f",
+      "section_refs": ["2026-08-07:18", "2026-08-07:35", "2026-08-07:120"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-08.md",
+      "document_date": "2026-08-08",
+      "bytes": 23926,
+      "lines": 234,
+      "sha256": "3388bbd017fd81b16a549f733ae47a231fe483eaae498e9e48f3931bcbf68f94",
+      "section_refs": ["2026-08-08:15", "2026-08-08:30", "2026-08-08:45"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-09.md",
+      "document_date": "2026-08-09",
+      "bytes": 26534,
+      "lines": 245,
+      "sha256": "e639893a630c7d9971b8b4a2d564b8a535ec522c1aa4722f5d5220a189cb12c1",
+      "section_refs": ["2026-08-09:15", "2026-08-09:27", "2026-08-09:39"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-10.md",
+      "document_date": "2026-08-10",
+      "bytes": 25072,
+      "lines": 233,
+      "sha256": "7b9fda0f3f56f71b57a9a76ff7144493af103a8bfb6a950d73118a7d200c2e48",
+      "section_refs": ["2026-08-10:19", "2026-08-10:33", "2026-08-10:47"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-15.md",
+      "document_date": "2026-08-15",
+      "bytes": 18224,
+      "lines": 200,
+      "sha256": "eda94726b9d4cf9061de2b5084c0d4fe3abe5581f3d791e5bdb75776835e2b77",
+      "section_refs": ["2026-08-15:16", "2026-08-15:36"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-16.md",
+      "document_date": "2026-08-16",
+      "bytes": 18092,
+      "lines": 210,
+      "sha256": "4a1f0b1c529f22a48ee72c7347eb3ffecb7390b8ef68c520de20201a9d323b52",
+      "section_refs": ["2026-08-16:20", "2026-08-16:42"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-17.md",
+      "document_date": "2026-08-17",
+      "bytes": 13644,
+      "lines": 278,
+      "sha256": "db3c1c7f1d8c1d975920f4243908f62810eff58893915184dcd5b1d6f3e0f676",
+      "section_refs": ["2026-08-17:32", "2026-08-17:53", "2026-08-17:73"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-18.md",
+      "document_date": "2026-08-18",
+      "bytes": 12304,
+      "lines": 221,
+      "sha256": "e447e93baf4db9da7ebb2cea9ec125fbe2b89bec6d5fc2d260c99039f546d9b4",
+      "section_refs": ["2026-08-18:20", "2026-08-18:44", "2026-08-18:136"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-20.md",
+      "document_date": "2026-08-20",
+      "bytes": 13903,
+      "lines": 193,
+      "sha256": "f30dd43c50d5b2f9251ca59c7735cedab1e4be40dc05e393749cee24fc7cafa9",
+      "section_refs": ["2026-08-20:11", "2026-08-20:31"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-21.md",
+      "document_date": "2026-08-21",
+      "bytes": 17585,
+      "lines": 314,
+      "sha256": "47a05cb5150c3179ce1b8348ced4a82ed314d00155c9b71a7f810af43dbf9007",
+      "section_refs": ["2026-08-21:24", "2026-08-21:47"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-22.md",
+      "document_date": "2026-08-22",
+      "bytes": 12005,
+      "lines": 221,
+      "sha256": "55455e1042c1368742926e330f6429cdc963b0a0657677567f6a277e63b25660",
+      "section_refs": ["2026-08-22:18", "2026-08-22:54"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-23.md",
+      "document_date": "2026-08-23",
+      "bytes": 17210,
+      "lines": 242,
+      "sha256": "ab2d1a8b7c710dcacc128d26635deb365d342e6d4ac6755a1374d9fceffcd5d4",
+      "section_refs": ["2026-08-23:26", "2026-08-23:46", "2026-08-23:114"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-24.md",
+      "document_date": "2026-08-24",
+      "bytes": 9713,
+      "lines": 206,
+      "sha256": "6b34b11238761066017bd873ee363133242abd2474e0e623581d76c4216bac4e",
+      "section_refs": ["2026-08-24:16", "2026-08-24:32"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-25.md",
+      "document_date": "2026-08-25",
+      "bytes": 23816,
+      "lines": 517,
+      "sha256": "5f3297d41be9ff307e437327df095032f5352ffd5160eafd694ed4d47d01da0b",
+      "section_refs": ["2026-08-25:25", "2026-08-25:74", "2026-08-25:124"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-26.md",
+      "document_date": "2026-08-26",
+      "bytes": 24692,
+      "lines": 296,
+      "sha256": "9b909582671c394e7b0204adc1328015229030b65092607a14af490a35b93949",
+      "section_refs": [
+        "2026-08-26:18",
+        "2026-08-26:52",
+        "2026-08-26:133",
+        "2026-08-26:176",
+        "2026-08-26:197"
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-27.md",
+      "document_date": "2026-08-27",
+      "bytes": 21110,
+      "lines": 521,
+      "sha256": "76af3c9ed694b260e822f516f7eca0d0fee88e98499d7114f70f3088ac4a413a",
+      "section_refs": ["2026-08-27:25", "2026-08-27:90", "2026-08-27:411"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-28.md",
+      "document_date": "2026-08-28",
+      "bytes": 25522,
+      "lines": 601,
+      "sha256": "3524126cdc959ef97b7cfd9e5d5b785bbe7cfc0e263dc1f617d1d95cc470b5b3",
+      "section_refs": [
+        "2026-08-28:25",
+        "2026-08-28:98",
+        "2026-08-28:477",
+        "2026-08-28:507",
+        "2026-08-28:300"
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-29.md",
+      "document_date": "2026-08-29",
+      "bytes": 24826,
+      "lines": 568,
+      "sha256": "da72e98f09b891260f7f346bb8ec66e0636dc523208b4c154e5ca2d765004504",
+      "section_refs": ["2026-08-29:25", "2026-08-29:89", "2026-08-29:440", "2026-08-29:289"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-30.md",
+      "document_date": "2026-08-30",
+      "bytes": 22245,
+      "lines": 487,
+      "sha256": "b0c195e577cf6c3df6e7408c2adbcc692175c4e6aca8d212e5c7e3661aad836d",
+      "section_refs": ["2026-08-30:27", "2026-08-30:75", "2026-08-30:222"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-31.md",
+      "document_date": "2026-08-31",
+      "bytes": 12214,
+      "lines": 233,
+      "sha256": "0a5a3ce9f9eb382d7682abedc415b78c3e1f1df8415fffffd0c3bca2f8a6d733",
+      "section_refs": ["2026-08-31:20", "2026-08-31:36"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-01.md",
+      "document_date": "2026-09-01",
+      "bytes": 21917,
+      "lines": 413,
+      "sha256": "be3d2e9eae44869a4b53f53212a41353f52224dd0302c6355013734396ecff0b",
+      "section_refs": ["2026-09-01:21", "2026-09-01:71"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-02.md",
+      "document_date": "2026-09-02",
+      "bytes": 29849,
+      "lines": 415,
+      "sha256": "593ffe3411d7080f1b1079dd251f7d8dd00062e4177c6ed02f4acc7f87e04e60",
+      "section_refs": ["2026-09-02:23", "2026-09-02:50", "2026-09-02:79"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-03.md",
+      "document_date": "2026-09-03",
+      "bytes": 24422,
+      "lines": 294,
+      "sha256": "9648e4c946c42beadfa30fabcff979a8fd7c0aa75152c61f4e3ebdd1c8836414",
+      "section_refs": ["2026-09-03:19", "2026-09-03:48", "2026-09-03:142", "2026-09-03:199"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-04.md",
+      "document_date": "2026-09-04",
+      "bytes": 31495,
+      "lines": 638,
+      "sha256": "c78ff5ded627499be16bacdcbdeba286a2662f5c93e025225790c9857d859d55",
+      "section_refs": ["2026-09-04:23", "2026-09-04:76", "2026-09-04:146"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-05.md",
+      "document_date": "2026-09-05",
+      "bytes": 20866,
+      "lines": 260,
+      "sha256": "b082c0b5988ca79899fc77b4f26f98154a5e51195bb1193a8cc78fd50fd48831",
+      "section_refs": ["2026-09-05:14", "2026-09-05:30", "2026-09-05:175"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-06.md",
+      "document_date": "2026-09-06",
+      "bytes": 27587,
+      "lines": 356,
+      "sha256": "34bc63573ed827eeb08a91a4f91afa60ce51e2afad005c719b3b6dbdf5ae3259",
+      "section_refs": ["2026-09-06:27", "2026-09-06:50", "2026-09-06:223", "2026-09-06:184"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-07.md",
+      "document_date": "2026-09-07",
+      "bytes": 31900,
+      "lines": 200,
+      "sha256": "917a6721b7ef13f254ec58a5d0f9a737e137711e2163bce2fd54ba9461928128",
+      "section_refs": ["2026-09-07:63", "2026-09-07:88", "2026-09-07:96", "2026-09-07:104"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-08.md",
+      "document_date": "2026-09-08",
+      "bytes": 29773,
+      "lines": 676,
+      "sha256": "038ed902e42bcaf66e15caa572fac747c4679734311f2a427dd05f4f4216326a",
+      "section_refs": ["2026-09-08:21", "2026-09-08:86"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-09.md",
+      "document_date": "2026-09-09",
+      "bytes": 39267,
+      "lines": 824,
+      "sha256": "64fdcbf0854caa5f4304c370a09cf3d9ea25826b9af3a86e145fc49ddba1404a",
+      "section_refs": ["2026-09-09:21", "2026-09-09:129", "2026-09-09:202"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-10.md",
+      "document_date": "2026-09-10",
+      "bytes": 36256,
+      "lines": 987,
+      "sha256": "dc0bc4dd816a5d26f1b71fea68e12d68f1fee216351bc190b46c8d5efef71908",
+      "section_refs": ["2026-09-10:22", "2026-09-10:163"]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-11.md",
+      "document_date": "2026-09-11",
+      "bytes": 36478,
+      "lines": 928,
+      "sha256": "27f0aaa52632a317957216c79529f55d1ad148cf942f09e251c3b4ad99be56d9",
+      "section_refs": ["2026-09-11:22", "2026-09-11:122", "2026-09-11:545"]
+    }
+  ],
+  "section_dispositions": [
+    {
+      "ref": "2026-07-20:14",
+      "heading": "1. 台积电重申AI芯片“多年强劲需求”，美国扩产规模继续上调",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-tsmc-arizona-expansion"]
+    },
+    {
+      "ref": "2026-07-20:23",
+      "heading": "2. 油价和收益率上升正在给“AI交易”提高盈利门槛",
+      "disposition": "background_only",
+      "reason": "宏观利率与估值分析，不作为技术事件。"
+    },
+    {
+      "ref": "2026-07-20:83",
+      "heading": "2. 中国算力与机器人产业继续扩容，但官方口径需结合商业化指标观察",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-china-compute-robot-statistics"]
+    },
+    {
+      "ref": "2026-07-21:16",
+      "heading": "1. Kimi K3需求压过现有算力，Moonshot暂停新订阅",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-kimi-k3-subscription-pause"]
+    },
+    {
+      "ref": "2026-07-21:30",
+      "heading": "2. Hut 8签下98亿美元AI数据中心租约，电力成为核心资产",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-hut8-beacon-point-lease"]
+    },
+    {
+      "ref": "2026-07-22:20",
+      "heading": "1. OpenAI网络能力评估突破隔离，Hugging Face生产基础设施遭入侵",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-openai-huggingface-evaluation-incident"]
+    },
+    {
+      "ref": "2026-07-22:45",
+      "heading": "2. 据Reuters：中美拟于9月举行本届美国政府首次正式AI对话",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-us-china-ai-talks-planning-july"]
+    },
+    {
+      "ref": "2026-07-22:62",
+      "heading": "3. 美欧芯片股同步反弹，市场把焦点重新押向科技财报",
+      "disposition": "background_only",
+      "reason": "每日市场涨跌，不作为独立技术信号。"
+    },
+    {
+      "ref": "2026-07-23:20",
+      "heading": "1. Alphabet云业务增长82%，但AI资本开支令自由现金流转负",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-alphabet-q2-results"]
+    },
+    {
+      "ref": "2026-07-23:56",
+      "heading": "2. AMD最高投资Anthropic 50亿美元，锁定最多2吉瓦AI算力部署",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-amd-anthropic-mi450-partnership"]
+    },
+    {
+      "ref": "2026-07-24:18",
+      "heading": "1. Intel第二季度营收增长25%，AI代理带动服务器CPU需求，但代工业务仍未盈利",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-intel-q2-results"]
+    },
+    {
+      "ref": "2026-07-24:46",
+      "heading": "2. 美国扩大“数据中心自付电力增量成本”承诺，AI竞争开始进入电价分配政治",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-us-datacenter-ratepayer-pledge"]
+    },
+    {
+      "ref": "2026-07-25:14",
+      "heading": "1. 科技企业集体为开放权重模型辩护，美国同时推进AI“紧急关停”立法",
+      "disposition": "extracted",
+      "candidate_ids": [
+        "candidate-datas-open-weight-industry-letter",
+        "candidate-datas-ai-kill-switch-bill"
+      ]
+    },
+    {
+      "ref": "2026-07-26:19",
+      "heading": "1. 韩国企业与美国科技公司签署约9500亿美元AI合作意向，算力竞争转向“芯片—内存—电力”一体化",
+      "disposition": "extracted",
+      "candidate_ids": [
+        "candidate-datas-nvidia-sk-ai-memory-partnership",
+        "candidate-datas-samsung-broadcom-chip-partnership"
+      ]
+    },
+    {
+      "ref": "2026-07-27:18",
+      "heading": "1. 英伟达据报拟为OpenAI俄亥俄州数据中心提供约2,500亿美元融资担保",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-nvidia-openai-guarantee-july-report"]
+    },
+    {
+      "ref": "2026-07-27:31",
+      "heading": "2. 长鑫科技上市首日上涨466%，AI存储需求与国产替代叙事共振",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-cxmt-ipo"]
+    },
+    {
+      "ref": "2026-07-28:18",
+      "heading": "1. AI融资担忧引发全球芯片股抛售",
+      "disposition": "background_only",
+      "reason": "市场反应；融资传闻已单独保留。"
+    },
+    {
+      "ref": "2026-07-28:32",
+      "heading": "2. 中美围绕模型“蒸馏”与知识产权的争议升级",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-china-us-distillation-response-july"]
+    },
+    {
+      "ref": "2026-07-28:100",
+      "heading": "1. 中国据报开始制造国产浸没式DUV光刻设备",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-china-duv-manufacturing-report"]
+    },
+    {
+      "ref": "2026-07-28:114",
+      "heading": "2. 长鑫科技上市后的估值波动体现国产芯片资产稀缺性",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-cxmt-ipo"
+    },
+    {
+      "ref": "2026-07-29:20",
+      "heading": "1. 芯片抛售进入高波动阶段：利润暴增也无法满足AI预期",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-skhynix-q2-results"]
+    },
+    {
+      "ref": "2026-07-29:40",
+      "heading": "2. 美国限制新的外国人形机器人和联网逆变器，主要指向中国供应链",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-fcc-robot-inverter-restrictions"]
+    },
+    {
+      "ref": "2026-07-29:127",
+      "heading": "1. 美国机器人禁令将中美竞争推向“具身智能＋电力基础设施”",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-fcc-robot-inverter-restrictions"
+    },
+    {
+      "ref": "2026-07-29:178",
+      "heading": "2. 欧洲芯片股下跌，战略自主与盈利现实发生碰撞",
+      "disposition": "background_only",
+      "reason": "股价与估值评论；DUV 报道已有独立候选。"
+    },
+    {
+      "ref": "2026-07-30:23",
+      "heading": "1. 微软与Meta财报分化：市场开始区分“AI收入兑现”与“AI现金消耗”",
+      "disposition": "extracted",
+      "candidate_ids": [
+        "candidate-datas-microsoft-fy26-q4-results",
+        "candidate-datas-meta-q2-results"
+      ]
+    },
+    {
+      "ref": "2026-07-30:50",
+      "heading": "2. 德国把欧盟AI规则落到国内执行，金融业AI应用进入可抽查阶段",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-germany-ai-act-implementation"]
+    },
+    {
+      "ref": "2026-07-30:166",
+      "heading": "7. 政治局会议定调下半年：扩内需、稳风险、反“内卷”与“人工智能+”并行",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-china-ai-plus-policy-july"]
+    },
+    {
+      "ref": "2026-07-30:187",
+      "heading": "8. 中国警告反制美国机器人与电力逆变器禁令，技术竞争进一步延伸到实体设备",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-china-robot-restriction-response"]
+    },
+    {
+      "ref": "2026-07-30:252",
+      "heading": "2. “国家安全”正重塑实体供应链，而不再局限于芯片",
+      "disposition": "background_only",
+      "reason": "综合评论，不是独立事件。"
+    },
+    {
+      "ref": "2026-07-31:18",
+      "heading": "1. AWS 增长再加速，亚马逊把 2026 年资本开支提高至约 2,200 亿美元",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-amazon-q2-ai-capex"]
+    },
+    {
+      "ref": "2026-07-31:40",
+      "heading": "2. 苹果业绩超预期，但供应约束和服务增速令市场降温",
+      "disposition": "background_only",
+      "reason": "一般消费硬件季度表现；本批不扩展至全部公司财报。"
+    },
+    {
+      "ref": "2026-08-01:16",
+      "heading": "一、AI／科技",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-amazon-openai-investment-completion-report"]
+    },
+    {
+      "ref": "2026-08-01:26",
+      "heading": "SemiAnalysis 固定洞察：模块化数据中心是“交付速度”的资本化",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-lego-datacenters"
+    },
+    {
+      "ref": "2026-08-02:17",
+      "heading": "1. 欧盟 AI 法案第 50 条开始适用：生成式 AI 进入“必须被识别”的阶段",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-eu-ai-act-transparency"]
+    },
+    {
+      "ref": "2026-08-02:37",
+      "heading": "2. SemiAnalysis 固定观察：AI 数据中心开始“乐高化”，但真正稀缺的是机电交付能力",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-lego-datacenters"]
+    },
+    {
+      "ref": "2026-08-03:17",
+      "heading": "1. 欧盟扩大执行 AI 法案：第 50 条透明度义务正式适用",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-eu-ai-act-transparency"
+    },
+    {
+      "ref": "2026-08-03:39",
+      "heading": "2. SemiAnalysis 固定洞察：模块化数据中心能缩短工期，但无法制造电网容量",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-lego-datacenters"
+    },
+    {
+      "ref": "2026-08-04:16",
+      "heading": "1. 美国拟启动前沿AI模型的自愿网络安全测试框架",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-us-voluntary-ai-cyber-testing"]
+    },
+    {
+      "ref": "2026-08-04:31",
+      "heading": "2. SemiAnalysis最新洞察：Kimi K3的效率来自系统协同，而非单一“线性注意力”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-kimi-k3-architecture"]
+    },
+    {
+      "ref": "2026-08-04:87",
+      "heading": "5. 中国修订集成电路布图设计保护条例，扩大保护范围并提高侵权代价",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-china-ic-layout-regulation"]
+    },
+    {
+      "ref": "2026-08-05:19",
+      "heading": "1. 英国测试发现前沿AI智能体越权；美国拟议框架排除开放权重模型",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-aisi-agent-cyber-evaluation"]
+    },
+    {
+      "ref": "2026-08-05:50",
+      "heading": "2. AMD数据中心收入翻倍，AI竞争转向“芯片—网络—软件—机架”整套系统",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-amd-q2-results"]
+    },
+    {
+      "ref": "2026-08-05:71",
+      "heading": "3. SemiAnalysis固定洞察：Kimi K3的价值在推理系统协同设计",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-kimi-k3-architecture"
+    },
+    {
+      "ref": "2026-08-06:16",
+      "heading": "1. Anthropic确认组建Claude自研芯片团队：战略重点是软硬协同，而非立即“摆脱英伟达”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-anthropic-custom-chip-team"]
+    },
+    {
+      "ref": "2026-08-06:30",
+      "heading": "2. SemiAnalysis固定观察：Kimi K3的架构创新，不等于线上推理“内存问题消失”",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-kimi-k3-architecture"
+    },
+    {
+      "ref": "2026-08-07:18",
+      "heading": "1. AMD收购Taalas：AI推理进入“异构计算+专用化”阶段",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-amd-taalas-acquisition"]
+    },
+    {
+      "ref": "2026-08-07:35",
+      "heading": "2. SemiAnalysis固定观察：AMD的机会不只在芯片，真正短板仍是软件和机架级可靠性",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-amd-cuda"]
+    },
+    {
+      "ref": "2026-08-08:15",
+      "heading": "1. Intel 复苏叙事升温：从单一芯片公司变成美国 AI 供应链安全资产",
+      "disposition": "background_only",
+      "reason": "历史背景综述，未拆为当日新事件。"
+    },
+    {
+      "ref": "2026-08-08:30",
+      "heading": "2. SemiAnalysis 固定观察：数据中心不是“取消一半”，而是早期项目被筛掉",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-datacenter-cancellation"]
+    },
+    {
+      "ref": "2026-08-08:45",
+      "heading": "3. SoftBank 的 AI 押注进入融资与资产重估阶段",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-softbank-quarterly-ai-investments"]
+    },
+    {
+      "ref": "2026-08-09:15",
+      "heading": "1. AI视频大模型融资和商业化加速，但行业开始进入分化阶段",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-china-ai-video-funding-report"]
+    },
+    {
+      "ref": "2026-08-09:27",
+      "heading": "2. SemiAnalysis固定观察：AI数据中心的瓶颈在真实可交付容量",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-datacenter-cancellation"
+    },
+    {
+      "ref": "2026-08-09:39",
+      "heading": "3. 自动驾驶监管进入“安全准入门槛”阶段",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-china-autonomous-driving-safety-standard"]
+    },
+    {
+      "ref": "2026-08-10:19",
+      "heading": "1. 苹果中国版AI选择“本地模型嵌入系统”：千问接入Mac，但产品状态仍需持续核实",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-apple-qwen-china-documentation"]
+    },
+    {
+      "ref": "2026-08-10:33",
+      "heading": "2. 中国AI专利与先进制造投资保持高增，但“数量领先”仍要转化为产品收入",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-china-ai-patent-statistics"]
+    },
+    {
+      "ref": "2026-08-10:47",
+      "heading": "3. SemiAnalysis洞察：AI扩张的真正瓶颈正从“芯片”变成“可兑现的吉瓦级系统”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-spacex-10gw"]
+    },
+    {
+      "ref": "2026-08-15:16",
+      "heading": "1. 英伟达据报缩减对 OpenAI 俄亥俄数据中心的担保敞口",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-nvidia-openai-guarantee-revision-report"]
+    },
+    {
+      "ref": "2026-08-15:36",
+      "heading": "2. SemiAnalysis 最新洞察：推理竞争从“专用芯片”转向“通用 GPU 的极速档”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-tilert"]
+    },
+    {
+      "ref": "2026-08-16:20",
+      "heading": "1. 英伟达据报洽谈向 SB Energy 投资最高 30 亿美元",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-nvidia-sb-energy-investment-report"]
+    },
+    {
+      "ref": "2026-08-16:42",
+      "heading": "2. SemiAnalysis 最新洞察：低延迟推理开始成为独立的产品层",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-tilert"
+    },
+    {
+      "ref": "2026-08-17:32",
+      "heading": "1. AI 投资进入“资本效率”阶段",
+      "disposition": "background_only",
+      "reason": "投资指标和趋势分析，不是独立事件。"
+    },
+    {
+      "ref": "2026-08-17:53",
+      "heading": "2. 开源 / 开放权重模型竞争继续加剧",
+      "disposition": "background_only",
+      "reason": "趋势综述，缺少可识别的单次发布或决策。"
+    },
+    {
+      "ref": "2026-08-17:73",
+      "heading": "三、SemiAnalysis 固定观察",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-pjm-load-forecast"]
+    },
+    {
+      "ref": "2026-08-18:20",
+      "heading": "1. OpenAI、NVIDIA、SB Energy把AI数据中心融资推到新量级",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-ports-pike-announcement"]
+    },
+    {
+      "ref": "2026-08-18:44",
+      "heading": "2. SemiAnalysis固定观察：结构性背景",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-lego-datacenters"
+    },
+    {
+      "ref": "2026-08-20:11",
+      "heading": "一、AI / 科技：机器人正在接近“ChatGPT时刻”，但商业化仍看世界模型",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-unitree-world-model-comments"]
+    },
+    {
+      "ref": "2026-08-20:31",
+      "heading": "SemiAnalysis固定观察：低延迟推理成为可单独收费的产品层",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-tilert"
+    },
+    {
+      "ref": "2026-08-21:24",
+      "heading": "1. 英伟达否认“年底向中国推出特制LPU”：AI芯片传闻需要更高验证门槛",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-nvidia-china-lpu-denial"]
+    },
+    {
+      "ref": "2026-08-21:47",
+      "heading": "2. SemiAnalysis全站扫描：最新文章是Cerebras CS-4，而不是TileRT",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-cerebras-cs4"]
+    },
+    {
+      "ref": "2026-08-22:18",
+      "heading": "一、AI / 科技：英伟达投资Cloverleaf，AI竞争进入“电力+土地+机房”阶段",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-nvidia-cloverleaf-investment"]
+    },
+    {
+      "ref": "2026-08-22:54",
+      "heading": "SemiAnalysis固定观察：本期转向“美国电网约束”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-us-grid-btm"]
+    },
+    {
+      "ref": "2026-08-23:26",
+      "heading": "1. 英伟达AI服务器被传涨价超过15%：关键是内存和整机BOM，而非“GPU单价”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-nvidia-server-price-report"]
+    },
+    {
+      "ref": "2026-08-23:46",
+      "heading": "2. SemiAnalysis固定观察：开放模型是否正在追平闭源前沿",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-open-models"]
+    },
+    {
+      "ref": "2026-08-24:16",
+      "heading": "一、AI / 科技",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-alibaba-ai-share-placement"]
+    },
+    {
+      "ref": "2026-08-24:32",
+      "heading": "SemiAnalysis最新：AgentX正式发布",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-agentx"]
+    },
+    {
+      "ref": "2026-08-25:25",
+      "heading": "1. 英伟达财报前夕：AI交易从“需求叙事”进入“盈利质量验证”",
+      "disposition": "background_only",
+      "reason": "财报预告与市场预期；实际业绩另有候选。"
+    },
+    {
+      "ref": "2026-08-25:74",
+      "heading": "2. 台湾起诉9人涉B300 AI服务器非法转售中国：出口管制进入“整机与最终用户”时代",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-taiwan-b300-indictment"]
+    },
+    {
+      "ref": "2026-08-25:124",
+      "heading": "3. SemiAnalysis固定观察：开放模型追赶周期缩短，但“benchmark追上”不等于“商业产品追上”",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-open-models"
+    },
+    {
+      "ref": "2026-08-26:18",
+      "heading": "1. OpenAI 公布 Jalapeño 推理芯片首批结果：能效亮眼，但“全面超越”仍需更真实负载验证",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-openai-jalapeno-results"]
+    },
+    {
+      "ref": "2026-08-26:52",
+      "heading": "2. NVIDIA 财报前的焦点从“增长”转向“增长质量与融资闭环”",
+      "disposition": "background_only",
+      "reason": "未公布财报的预期，不作为真实业绩。"
+    },
+    {
+      "ref": "2026-08-26:133",
+      "heading": "5. 工信部释放“AI 标准化 + 6G 预商用准备”政策信号",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-miit-ai-standards-6g"]
+    },
+    {
+      "ref": "2026-08-26:176",
+      "heading": "7. Waymo 选择慕尼黑作为德国商业化落点，初期仍是人工驾驶采图与安全员测试",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-waymo-munich-testing"]
+    },
+    {
+      "ref": "2026-08-26:197",
+      "heading": "六、SemiAnalysis 固定观察",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-jalapeno"]
+    },
+    {
+      "ref": "2026-08-27:25",
+      "heading": "1. 英伟达Q2营收962亿美元：AI基础设施需求仍然高速增长",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-nvidia-fy27-q2-results"]
+    },
+    {
+      "ref": "2026-08-27:90",
+      "heading": "2. SemiAnalysis固定观察：本期不重复Jalapeño，选择Cerebras CS-4作为结构性背景",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-cerebras-cs4"
+    },
+    {
+      "ref": "2026-08-27:411",
+      "heading": "AI",
+      "disposition": "background_only",
+      "reason": "图示标签，不是事件。"
+    },
+    {
+      "ref": "2026-08-28:25",
+      "heading": "1. SK海力士美国HBM基地奠基：AI“内存瓶颈”开始成为长期产能战略",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-skhynix-indiana-groundbreaking"]
+    },
+    {
+      "ref": "2026-08-28:98",
+      "heading": "2. SemiAnalysis固定观察：全站最新仍是Jalapeño，本期转向电网瓶颈",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-pjm-modeling"]
+    },
+    {
+      "ref": "2026-08-28:477",
+      "heading": "SemiAnalysis / PJM",
+      "disposition": "background_only",
+      "reason": "总结标签，不是事件。"
+    },
+    {
+      "ref": "2026-08-28:507",
+      "heading": "AI / 半导体",
+      "disposition": "background_only",
+      "reason": "未来观察清单，不是已发生事件。"
+    },
+    {
+      "ref": "2026-08-29:25",
+      "heading": "1. OpenAI将停止向Cursor提供模型：AI竞争开始争夺“分发权”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-openai-cursor-service-termination-plan"]
+    },
+    {
+      "ref": "2026-08-29:89",
+      "heading": "2. SemiAnalysis固定观察：过去24小时无新公开文章，本期看“10GW AI数据中心”资本与电力模型",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-spacex-10gw"
+    },
+    {
+      "ref": "2026-08-29:440",
+      "heading": "SemiAnalysis × SpaceX 10GW",
+      "disposition": "background_only",
+      "reason": "跨领域分析标签，不是事件。"
+    },
+    {
+      "ref": "2026-08-30:27",
+      "heading": "1. OpenAI—Cursor争议：Coding Agent进入“分发权战争”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-cursor-anthropic-followup"]
+    },
+    {
+      "ref": "2026-08-30:75",
+      "heading": "2. SemiAnalysis固定观察：最新仍为Jalapeño，本期看“模型实验室 vs 云平台”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-gcp-model-economics"]
+    },
+    {
+      "ref": "2026-08-31:20",
+      "heading": "一、AI / 科技",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-fsb-frontier-ai-letter"]
+    },
+    {
+      "ref": "2026-08-31:36",
+      "heading": "SemiAnalysis固定观察：Most Neoclouds Suck At Security",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-neocloud-security"]
+    },
+    {
+      "ref": "2026-09-01:21",
+      "heading": "1. 英伟达向联发科投资35亿美元：NVLink正在从“英伟达内部互连”变成AI基础设施标准入口",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-nvidia-mediatek-partnership"]
+    },
+    {
+      "ref": "2026-09-01:71",
+      "heading": "二、SemiAnalysis固定观察",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-neocloud-security"
+    },
+    {
+      "ref": "2026-09-02:23",
+      "heading": "1. Anthropic发布Claude Fable 5.1与Mythos 5.1：高能力模型开始明显分层",
+      "disposition": "existing_signal",
+      "signal_id": "signal-20260901-claude-fable-mythos-51",
+      "reason": "精确原文 URL 与已有 Signal 相同；不重复添加或改写已接受条目。"
+    },
+    {
+      "ref": "2026-09-02:50",
+      "heading": "2. OpenAI确认Astra达到“关键级”网络安全能力：首次触发更严格发布门槛",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-openai-astra-critical-cyber"]
+    },
+    {
+      "ref": "2026-09-02:79",
+      "heading": "二、SemiAnalysis固定观察",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-korea-sovereign-ai"]
+    },
+    {
+      "ref": "2026-09-03:19",
+      "heading": "1. OpenAI为Astra建设自动停机与受限访问：AI安全进入“运行时控制”阶段",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-openai-autoshutdown-letter-report"]
+    },
+    {
+      "ref": "2026-09-03:48",
+      "heading": "2. 燧原科技IPO申购约6109倍：国产算力资产获得高估值溢价",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-enflame-ipo-subscription"]
+    },
+    {
+      "ref": "2026-09-03:142",
+      "heading": "6. 集成电路产销上行，但“产量增长”不等于高端自主率同步提升",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-china-ic-production-statistics"]
+    },
+    {
+      "ref": "2026-09-03:199",
+      "heading": "七、SemiAnalysis固定观察",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-korea-sovereign-ai"
+    },
+    {
+      "ref": "2026-09-04:23",
+      "heading": "1. OpenAI正式发布GPT‑6 Astra：模型能力跃升，但“AGI”仍是公司判断而非外部共识",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-openai-gpt6-astra-launch"]
+    },
+    {
+      "ref": "2026-09-04:76",
+      "heading": "2. 英伟达129.303亿美元收购Hugging Face：从“卖算力”进一步向“控制AI分发入口”延伸",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-nvidia-huggingface-acquisition-agreement"]
+    },
+    {
+      "ref": "2026-09-04:146",
+      "heading": "二、SemiAnalysis固定观察",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-jalapeno"
+    },
+    {
+      "ref": "2026-09-05:14",
+      "heading": "1. 中美拟于 9 月中旬举行 AI 安全对话，重点可能转向“事故沟通机制”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-us-china-ai-talks-september-report"]
+    },
+    {
+      "ref": "2026-09-05:30",
+      "heading": "2. 鸿海称第三季度表现有望优于市场预期，AI 服务器继续成为主要增量",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-foxconn-august-ai-server-sales"]
+    },
+    {
+      "ref": "2026-09-05:175",
+      "heading": "六、SemiAnalysis 固定观察",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-inferencex-deepseek-v4-rankings"]
+    },
+    {
+      "ref": "2026-09-06:27",
+      "heading": "1. TCS旗下HyperVault规划海得拉巴1GW AI数据中心园区",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-tcs-hypervault-hyderabad"]
+    },
+    {
+      "ref": "2026-09-06:50",
+      "heading": "2. AI数据中心竞争的下一阶段：算力、电力与客户合同绑定",
+      "disposition": "background_only",
+      "reason": "分析框架；HyperVault 项目已有候选。"
+    },
+    {
+      "ref": "2026-09-06:223",
+      "heading": "SemiAnalysis 固定观察",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-spacex-10gw"
+    },
+    {
+      "ref": "2026-09-07:63",
+      "heading": "1．日韩芯片股带动上涨：AI需求交易延续，但不能直接外推至整个亚洲市场",
+      "disposition": "background_only",
+      "reason": "日度市场涨跌，不作为独立技术事件。"
+    },
+    {
+      "ref": "2026-09-07:88",
+      "heading": "1．OpenAI公布科研自动化数据：工作量在增长，“研究员被替代”尚无证据",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-openai-research-acceleration"]
+    },
+    {
+      "ref": "2026-09-07:96",
+      "heading": "2．OpenAI首席科学家呼吁安全约束研发速度：倡议已经清楚，制度尚未落地",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-openai-safety-threshold-essay"]
+    },
+    {
+      "ref": "2026-09-07:104",
+      "heading": "SemiAnalysis每日深读：电网缺口里，有多少是工程问题，有多少是模型与市场规则？",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-pjm-modeling"
+    },
+    {
+      "ref": "2026-09-08:21",
+      "heading": "1. Mistral完成30亿欧元融资：欧洲AI竞争开始从“模型追赶”走向“模型 + 算力 + 基础设施”一体化",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-mistral-funding"]
+    },
+    {
+      "ref": "2026-09-08:86",
+      "heading": "二、SemiAnalysis固定观察",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-tpu-inferencex"]
+    },
+    {
+      "ref": "2026-09-09:21",
+      "heading": "1. OpenAI公开Navier–Stokes候选解决方案：真正的突破可能不只是数学，而是“万级Agent科研组织”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-openai-navier-stokes-candidate"]
+    },
+    {
+      "ref": "2026-09-09:129",
+      "heading": "2. Amazon与Qualcomm签下最高600亿美元AI芯片合作：推理芯片竞争进入“采购绑定 + 股权绑定 + 光互联绑定”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-amazon-qualcomm-ai-chips"]
+    },
+    {
+      "ref": "2026-09-09:202",
+      "heading": "二、SemiAnalysis固定观察",
+      "disposition": "merged",
+      "candidate_id": "candidate-datas-semianalysis-neocloud-security"
+    },
+    {
+      "ref": "2026-09-10:22",
+      "heading": "1. 美国三大安全机构指责中国AI公司“工业规模蒸馏”，中方反驳：AI能力转移正式进入国家安全争议区",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-us-agencies-distillation-advisory"]
+    },
+    {
+      "ref": "2026-09-10:163",
+      "heading": "二、SemiAnalysis固定观察",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-robot-inference"]
+    },
+    {
+      "ref": "2026-09-11:22",
+      "heading": "1. OpenAI推出ChatGPT for Financial Services：金融AI进入“数据授权与工作流”阶段",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-chatgpt-financial-services"]
+    },
+    {
+      "ref": "2026-09-11:122",
+      "heading": "二、SemiAnalysis固定观察",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-semianalysis-btm-power"]
+    },
+    {
+      "ref": "2026-09-11:545",
+      "heading": "1. 燧原科技科创板首日一度涨约200%：国产AI芯片进入“资本充足、基本面待验证”的新阶段",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-enflame-stock-market-debut"]
+    },
+    {
+      "ref": "2026-08-05:172",
+      "heading": "7. 宇树科技IPO进入定价讨论阶段，保荐机构给出506亿至559亿元估值区间",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-unitree-ipo-valuation-report"]
+    },
+    {
+      "ref": "2026-08-07:120",
+      "heading": "1. 安联二季度净利润下降8.7%：AI转型开始通过旧IT资产注销进入财务报表",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-allianz-ai-it-retirement"]
+    },
+    {
+      "ref": "2026-08-18:136",
+      "heading": "欧洲央行研究人员警告：AI科技股估值修正可能外溢至欧元区",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-ecb-ai-equity-risk-analysis"]
+    },
+    {
+      "ref": "2026-08-23:114",
+      "heading": "新一代通信网：重点不只是5G，而是“网络 × AI × 空间通信 × 智能终端”",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-china-next-generation-network-policy"]
+    },
+    {
+      "ref": "2026-08-28:300",
+      "heading": "国家发改委给机器人热“降温”：从展示能力转向数据、标准与真实应用闭环",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-ndrc-robotics-development"]
+    },
+    {
+      "ref": "2026-08-29:289",
+      "heading": "长鑫LPDDR6正式量产，小米18 Fold首发：国产DRAM进入“同步商用”验证期",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-cxmt-lpddr6-production"]
+    },
+    {
+      "ref": "2026-08-30:222",
+      "heading": "全国智算规模升至245万PFLOPS：政策重心从“继续堆算力”转向利用率",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-nda-compute-capacity-july"]
+    },
+    {
+      "ref": "2026-09-06:184",
+      "heading": "1. 德国Isar Aerospace的Spectrum火箭首次成功入轨",
+      "disposition": "extracted",
+      "candidate_ids": ["candidate-datas-isar-spectrum-orbit"]
+    }
+  ],
+  "source_review": {
+    "checked_at": "2026-09-11T21:54:20Z",
+    "scope": "source_registration_and_article_location_only",
+    "checked_candidates": 102,
+    "mapped_source_ids": 102,
+    "replaced_preferred_urls": 13,
+    "status_counts": {
+      "access_blocked": 18,
+      "partial_support": 6,
+      "alternate_page_located": 14,
+      "page_located": 61,
+      "version_conflict": 1,
+      "snapshot_required": 1,
+      "indexed_only": 1
+    },
+    "claim_verification_complete": false,
+    "report": "sources-review.md"
+  },
+  "seed_promotion": {
+    "recorded_at": "2026-09-11T22:09:03Z",
+    "scope": "local_seed_only",
+    "imported_count": 66,
+    "deferred_count": 36,
+    "ledger": "seed-promotion.json",
+    "production_executed": false
+  }
+}
