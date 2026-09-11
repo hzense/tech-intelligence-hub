@@ -174,8 +174,9 @@ date: 2026-08-18
 language: zh-CN
 timezone: Europe/Berlin
 window_start_at: 2026-08-17T07:00:00+02:00
+occurrence_start_at: '2026-08-15T05:00:00.000Z'
 cutoff_at: 2026-08-18T07:00:00+02:00
-generator_version: daily-v1
+generator_version: daily-v2
 input_fingerprint: sha256:...
 summary: 本期经人工审核的科技情报摘要。
 signal_count: 5

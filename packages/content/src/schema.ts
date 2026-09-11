@@ -39,8 +39,9 @@ export const dailySchema = common.extend({
   importance: importance.optional(),
   timezone: z.literal('Europe/Berlin').optional(),
   window_start_at: dateTime.optional(),
+  occurrence_start_at: dateTime.optional(),
   cutoff_at: dateTime.optional(),
-  generator_version: z.literal('daily-v1').optional(),
+  generator_version: z.enum(['daily-v1', 'daily-v2']).optional(),
   input_fingerprint: z
     .string()
     .regex(/^sha256:[a-f0-9]{64}$/)

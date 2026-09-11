@@ -231,7 +231,7 @@ Signals Today → Cluster by Topic → Rank → Select Important Events
 → Draft HZense Daily → Human Review → Publish Markdown → Git Commit
 ```
 
-Continuous Daily 的当前实现采用 `daily-v1` 确定性契约：以 Europe/Berlin 07:00 为每日 cutoff，从已审核 Signal 生成带证据和输入指纹的 `status: draft`，再由 Draft PR 承载人工事实核验、原创研判和发布状态切换。生成与发布分属只读/最小写权限 Job；机器人不得 mark ready、approve 或 merge。完整运行与回滚手册见 [`CONTINUOUS_DAILY.md`](./CONTINUOUS_DAILY.md)。
+Continuous Daily 的当前实现采用 `daily-v2` 确定性契约：以 Europe/Berlin 07:00 为每日 cutoff，要求已审核 Signal 同时满足前一天 07:00 至 cutoff 的采集窗口和 `[cutoff − 72 小时, cutoff]` 的事件／公告发生窗口；历史补录不因近期采集而成为当日新闻。生成带证据、双窗口和输入指纹的 `status: draft`，再由 Draft PR 承载人工事实核验、原创研判和发布状态切换。发布校验重算相同选材规则；生成与发布分属只读/最小写权限 Job，机器人不得 mark ready、approve 或 merge。完整运行与回滚手册见 [`CONTINUOUS_DAILY.md`](./CONTINUOUS_DAILY.md)。
 
 ## 13. GitHub / Monorepo
 

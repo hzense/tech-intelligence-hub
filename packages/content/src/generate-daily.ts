@@ -60,11 +60,15 @@ async function main(): Promise<void> {
     ),
   );
   const selection = selectDailyCandidates(catalog, request, usedSignalIds);
+  console.log(
+    `${request.policyVersion}: event window [${request.occurrenceStartAt}, ${request.cutoffAt}]; excluded ${selection.diagnostics.staleSignalIds.length} stale signals: ${selection.diagnostics.staleSignalIds.join(', ') || 'none'}.`,
+  );
   if (selection.signals.length === 0) {
     await writeOutputs({
       changed: 'false',
       date,
       eligible_signals: String(selection.diagnostics.eligibleSignals),
+      stale_signals: String(selection.diagnostics.staleSignalIds.length),
       reason: 'no_candidates',
     });
     console.log(`No eligible Daily signals for ${date}; no candidate was written.`);
@@ -99,8 +103,11 @@ async function main(): Promise<void> {
           base_sha: baseSha,
           cutoff_at: request.cutoffAt,
           date,
+          generator_version: request.policyVersion,
+          occurrence_start_at: request.occurrenceStartAt,
           relative_path: relativePath,
           selected_signal_ids: selection.signals.map((signal) => signal.id),
+          stale_signal_ids: selection.diagnostics.staleSignalIds,
           sha256,
           version: 1,
           window_start_at: request.windowStartAt,
@@ -115,6 +122,7 @@ async function main(): Promise<void> {
     changed: 'true',
     date,
     eligible_signals: String(selection.diagnostics.eligibleSignals),
+    stale_signals: String(selection.diagnostics.staleSignalIds.length),
     relative_path: relativePath,
     selected_signals: String(selection.signals.length),
     sha256,
