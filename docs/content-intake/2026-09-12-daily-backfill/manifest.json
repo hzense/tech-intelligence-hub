@@ -1,0 +1,1151 @@
+{
+  "schema_version": 1,
+  "batch_id": "2026-09-12-daily-backfill",
+  "source_snapshot": {
+    "git_commit": "dfb4b5baa6a0a1804f99fed0679865a23f498c4d",
+    "seed_path": "data/seed/signals.yaml",
+    "seed_sha256": "c04c769197733055374c48e92d3b9157baeed243e701d36a51af117d3e9e8d71"
+  },
+  "generation_policy": {
+    "mode": "historical_event_date_backfill",
+    "date_field": "occurred_at",
+    "new_status": "published",
+    "new_edition": "historical_example",
+    "source_verification": "existing_catalog_only_not_independently_reverified",
+    "human_publication_review": "approved_by_user",
+    "existing_daily_content": "preserved_without_modification",
+    "initial_status": "draft"
+  },
+  "totals": {
+    "accepted_signals": 82,
+    "existing_dailies": 2,
+    "existing_signal_refs": 8,
+    "generated_dailies": 50,
+    "generated_signal_refs": 74,
+    "covered_unique_signals": 82,
+    "uncovered_signals": 0,
+    "duplicate_signal_refs": 0
+  },
+  "review_flags": [
+    {
+      "signal_id": "signal-20240620-claude35",
+      "kind": "event_date_needs_verification",
+      "details": "Signal ID contains 20240620, while occurred_at is 2024-06-21. User approved the batch with the caveat already disclosed. Date discrepancy is retained and is not independently verified; no Signal date or release capability scope has been silently changed.",
+      "status": "retained_unverified_after_content_approval"
+    }
+  ],
+  "generated_files": [
+    {
+      "date": "2017-06-12",
+      "path": "content/daily/2017/2017-06-12.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20170612-transformer"],
+      "sha256": "c173a097c531c021ce201b9011885dcf6493bfa4cdfe3adc9586a2e96091dc37",
+      "reviewed_draft_sha256": "cdd42263415dfecc4f911f8a42f330692cdefe771bb27f723f7b22fe04769066"
+    },
+    {
+      "date": "2022-11-30",
+      "path": "content/daily/2022/2022-11-30.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20221130-chatgpt"],
+      "sha256": "23d1ee480709819165ad94059b6ff93a45d1a3c57c7867e9806b0a6722c2af28",
+      "reviewed_draft_sha256": "e6cb7528011564817b001e7f8b0caca2a23484328212445e97cdecaf9dffdf29"
+    },
+    {
+      "date": "2023-03-14",
+      "path": "content/daily/2023/2023-03-14.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20230314-gpt4"],
+      "sha256": "9b1d9078fff1f59b57178e2029a3f8c476f182aa8c39a5ce5012b110d14213e4",
+      "reviewed_draft_sha256": "1b21aee3779d43faa1f4383271f94ba68071550d61c85e591d111044030fed87"
+    },
+    {
+      "date": "2024-02-29",
+      "path": "content/daily/2024/2024-02-29.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20240229-figure-openai"],
+      "sha256": "4c0252d4f2ff6fd9470b658cf406777bd61f3f3c50eb1c8d9bcb30ef1218ee04",
+      "reviewed_draft_sha256": "4217865925e027d08ea1ea1f49e08712bb32e16290d552078004a620d57ee0cb"
+    },
+    {
+      "date": "2024-04-17",
+      "path": "content/daily/2024/2024-04-17.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20240417-electric-atlas"],
+      "sha256": "3bc5587ff92b28d6a3e3134e9fd612504b24b71dbb8eb465dee1752fb251771c",
+      "reviewed_draft_sha256": "186c6296a25e192c5b96404d726a22f0595ed7a9e2849ebb1fc56dcd31673d49"
+    },
+    {
+      "date": "2024-04-18",
+      "path": "content/daily/2024/2024-04-18.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20240418-llama3"],
+      "sha256": "329480e69dd51295b498175295e6e60071d15fb1363b9572560d952f576f697a",
+      "reviewed_draft_sha256": "b96947b42faf0eefe5acfb9af1262240d98e4ff908b17ea243b36bb1bda7a338"
+    },
+    {
+      "date": "2024-06-21",
+      "path": "content/daily/2024/2024-06-21.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20240620-claude35"],
+      "sha256": "9af4ebc73aec6970cd9a395347363aa112b0a1f045c7c5adbaaa357b7c6e3629",
+      "reviewed_draft_sha256": "c993ecfd4d1914babae9a38bbcd1f0e2b3f1baf14f4da4ea5569a1f02400d320"
+    },
+    {
+      "date": "2024-11-25",
+      "path": "content/daily/2024/2024-11-25.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20241125-mcp"],
+      "sha256": "4525e07b21ac478cb83f118646a3a4b90e8c3669f96b05821cd6aefb2b627ff8",
+      "reviewed_draft_sha256": "fcda3dce2ce321e0e69c3ccfe0878c620347376ef6d7cb4abee6159b7e4b3876"
+    },
+    {
+      "date": "2026-03-03",
+      "path": "content/daily/2026/2026-03-03.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260303-semianalysis-pjm-load-forecast"],
+      "sha256": "1c65a62adf3468a97bc8a55892bf6c7891d709077fc990903d77452290ed0081",
+      "reviewed_draft_sha256": "b7fb728e21637ff76956517516eddf940d2141484a0cb98a776f7801739cf786"
+    },
+    {
+      "date": "2026-06-18",
+      "path": "content/daily/2026/2026-06-18.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260618-semianalysis-datacenter-cancellation"],
+      "sha256": "393965eb15d86b26a30a66db3df640e857480c32fc1604f084e228048bb2a07d",
+      "reviewed_draft_sha256": "f7ad8073332ea22dbb6425a94404fb813dfa4e3ffbd135e9c6fb019f56f39940"
+    },
+    {
+      "date": "2026-06-25",
+      "path": "content/daily/2026/2026-06-25.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260625-semianalysis-us-grid-btm"],
+      "sha256": "934345037ff1e27cddd0a4bd6454f33c93ba5e7aba85172941aaaef95e3ec0cf",
+      "reviewed_draft_sha256": "a169de71da9d5c9f1aa87a7d7e8fa4a7f4b196fc93e2b581f537c2bfd8766a0a"
+    },
+    {
+      "date": "2026-07-19",
+      "path": "content/daily/2026/2026-07-19.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260719-kimi-k3-subscription-pause"],
+      "sha256": "a012d7c98f6b0cbe15b8728463c165879724e2379d6197b625296a0b91013172",
+      "reviewed_draft_sha256": "b1346711d9d98239e45ef49de2de6570303f86be4ad3f1f1381af67eb33eeb8e"
+    },
+    {
+      "date": "2026-07-20",
+      "path": "content/daily/2026/2026-07-20.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260720-hut8-beacon-point-lease"],
+      "sha256": "50f8fef13683db7fc6999b4c0da02be65058fb8b235c656aa3aa314ef8b40448",
+      "reviewed_draft_sha256": "e2c9460010a1a1d5d02d3815faea9f59561756c180808a82e3984aa136924c49"
+    },
+    {
+      "date": "2026-07-21",
+      "path": "content/daily/2026/2026-07-21.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260721-openai-huggingface-evaluation-incident"],
+      "sha256": "0f16b6f269b8236c5f6a5ea7570d3f6c82f4730f4418f3e3986adecaa50a7dc4",
+      "reviewed_draft_sha256": "8b08b972b6ee6faa81b7597ba251cf36f2d376e5997576b5974151152452e575"
+    },
+    {
+      "date": "2026-07-22",
+      "path": "content/daily/2026/2026-07-22.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 2,
+      "signal_refs": [
+        "signal-20260722-alphabet-q2-results",
+        "signal-20260722-amd-anthropic-mi450-partnership"
+      ],
+      "sha256": "95c14fdb4b589d2b67ed3038d18eba87d2562939805f46de35531f5753fe49d5",
+      "reviewed_draft_sha256": "b7f4c6bf417d277580388c35a5523b4e7803991a2419df38c175d8b5d7d38ba4"
+    },
+    {
+      "date": "2026-07-23",
+      "path": "content/daily/2026/2026-07-23.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 3,
+      "signal_refs": [
+        "signal-20260723-intel-q2-results",
+        "signal-20260723-us-datacenter-ratepayer-pledge",
+        "signal-20260723-ai-kill-switch-bill"
+      ],
+      "sha256": "196f2712b3bd98c3b25440c01203a2512e9d5f4a1e34954f1107412017ecfb91",
+      "reviewed_draft_sha256": "ac945371b065729556e683f6f620b47a3dfde233c1936e68282d55264c600ba8"
+    },
+    {
+      "date": "2026-07-24",
+      "path": "content/daily/2026/2026-07-24.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260724-nvidia-sk-ai-memory-partnership"],
+      "sha256": "2ba71002bacdbdb228a969bd3fbbda861e545813f52303f55bfe170f6204bfa4",
+      "reviewed_draft_sha256": "6f40f8a8728a461da317c0b6578683c82bcc033663e03719fb9ba57b4f8d0b6f"
+    },
+    {
+      "date": "2026-07-25",
+      "path": "content/daily/2026/2026-07-25.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 2,
+      "signal_refs": [
+        "signal-20260725-samsung-broadcom-chip-partnership",
+        "signal-20260725-semianalysis-amd-cuda"
+      ],
+      "sha256": "4f15cb88c62423ed01b07ed7f1173a61892be28fe672dc226cbebbd3f440ba8b",
+      "reviewed_draft_sha256": "9ccfc310a958d98e1dfe17e75e1aeba90b287a7b06c8e7d8fccbe0b4fbe74302"
+    },
+    {
+      "date": "2026-07-27",
+      "path": "content/daily/2026/2026-07-27.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260727-china-us-distillation-response-july"],
+      "sha256": "579cce0b3b0787403339a4d8658f95552a2d4476d90674496d19be8c6f2ca5d4",
+      "reviewed_draft_sha256": "912dba032f33e4371923cec20c2a9f2bd08fdc9e76f3fbde339c284680a875c9"
+    },
+    {
+      "date": "2026-07-28",
+      "path": "content/daily/2026/2026-07-28.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260728-fcc-robot-inverter-restrictions"],
+      "sha256": "69338ea2ba52c9a31469c12e958608c20064177911797b685b968e9e18008d3b",
+      "reviewed_draft_sha256": "6d92776980be632b5201b6237f8a31e4358f689918126f8f078222a009886fbe"
+    },
+    {
+      "date": "2026-07-29",
+      "path": "content/daily/2026/2026-07-29.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 5,
+      "signal_refs": [
+        "signal-20260729-skhynix-q2-results",
+        "signal-20260729-microsoft-fy26-q4-results",
+        "signal-20260729-meta-q2-results",
+        "signal-20260729-germany-ai-act-implementation",
+        "signal-20260729-semianalysis-lego-datacenters"
+      ],
+      "sha256": "45c799c52770efa8ffe77d310fea8c64aff82b526028e59aa53c5d4f5ea8eac9",
+      "reviewed_draft_sha256": "ee720bda7c13098e20d52d88532a8bc0b2675e04ba74dc1a99651e517e8c7bbc"
+    },
+    {
+      "date": "2026-07-30",
+      "path": "content/daily/2026/2026-07-30.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 2,
+      "signal_refs": [
+        "signal-20260730-china-ai-plus-policy-july",
+        "signal-20260730-amazon-q2-ai-capex"
+      ],
+      "sha256": "b3963fe60f05cad2a52c1c8e34c3af72d3eeec03cd11d81ee3ec6e770c40840f",
+      "reviewed_draft_sha256": "dc37c97e16277e89eb85b3e273472e817994b55f206fe5a84783a29a9c4540d8"
+    },
+    {
+      "date": "2026-08-02",
+      "path": "content/daily/2026/2026-08-02.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260802-eu-ai-act-transparency"],
+      "sha256": "562a865f6ff67f3f0358fe0b9608ed9b7d8431ac3e8520e398a333bfd4fc8a08",
+      "reviewed_draft_sha256": "f3d9c01f90108b4bba307dfe7104cff7fb41e32af58e8f3f43fe36eb831fecd2"
+    },
+    {
+      "date": "2026-08-03",
+      "path": "content/daily/2026/2026-08-03.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 2,
+      "signal_refs": [
+        "signal-20260803-semianalysis-kimi-k3-architecture",
+        "signal-20260803-china-ic-layout-regulation"
+      ],
+      "sha256": "4033328076155549c7f87ca6084574c4a2baf3ef3077f4ec2276d814d78e16ad",
+      "reviewed_draft_sha256": "9f2f665e2c0432acef4f67535a9ae0d13c8a1d900943ce35dd742bf86b8aac21"
+    },
+    {
+      "date": "2026-08-04",
+      "path": "content/daily/2026/2026-08-04.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 2,
+      "signal_refs": [
+        "signal-20260804-aisi-agent-cyber-evaluation",
+        "signal-20260804-amd-q2-results"
+      ],
+      "sha256": "d9e24e353ded2ec838e60a4cc60289828a0495b063c0faa002e9f5ca849873cb",
+      "reviewed_draft_sha256": "fadaccbaa9e6720d7597d2bdedb17063ac0e1e4a38d9f4fb003cf97ecb462f53"
+    },
+    {
+      "date": "2026-08-06",
+      "path": "content/daily/2026/2026-08-06.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260806-amd-taalas-acquisition"],
+      "sha256": "fc97e4627cc69759c1f5e0b2678f7504818c4f9053d394afd066b136907e3917",
+      "reviewed_draft_sha256": "16bf3cba25addbc63302544e6063fba712ccba5c9619504a19b1abdab13a8d96"
+    },
+    {
+      "date": "2026-08-07",
+      "path": "content/daily/2026/2026-08-07.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260807-semianalysis-gcp-model-economics"],
+      "sha256": "f36968c247ad9d081830c0987ae4d781c18ae2e1bd9c80099e88f641a90a1ec5",
+      "reviewed_draft_sha256": "18491b59b38f79289c74fb78b806fe0585e4d506ffdb167130daf2740b58eaba"
+    },
+    {
+      "date": "2026-08-10",
+      "path": "content/daily/2026/2026-08-10.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260810-semianalysis-tilert"],
+      "sha256": "d9d6ab0a47aa7050218271877695b51de2d10622a66d0d0da6320f5084bd3559",
+      "reviewed_draft_sha256": "3a363c78cf829c7713d6f409e9ae08706a5bb05e0aa9fe5a281fa78e6c248df8"
+    },
+    {
+      "date": "2026-08-16",
+      "path": "content/daily/2026/2026-08-16.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260816-semianalysis-pjm-modeling"],
+      "sha256": "9aec80eeb13e36da6e830e201bef5e57eee8d23fbdaf706834c400f7a712e0eb",
+      "reviewed_draft_sha256": "369e6630a43689cfe4d7e3921ffa73f8be3f19b0b57d8db7cc3c3c631c99fcd8"
+    },
+    {
+      "date": "2026-08-17",
+      "path": "content/daily/2026/2026-08-17.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260817-ports-pike-announcement"],
+      "sha256": "5128f1c81ec47aff66ddeb78cb92d062a612c2743f05a40774bb552a1dd4e230",
+      "reviewed_draft_sha256": "6b3453b372f15f38a9925e9ad90a15cd15f79dfc20b614644023280032b152ee"
+    },
+    {
+      "date": "2026-08-19",
+      "path": "content/daily/2026/2026-08-19.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260819-semianalysis-cerebras-cs4"],
+      "sha256": "799dc852198c4ed388bb4f3cbc4ff2618c7af95782fd023ab2de451e4505395f",
+      "reviewed_draft_sha256": "a5d50284d217fa4a33903f3926eba0f8dfcdc0260756ca11a4571de2de0f76c9"
+    },
+    {
+      "date": "2026-08-20",
+      "path": "content/daily/2026/2026-08-20.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260820-nvidia-china-lpu-denial"],
+      "sha256": "9c8ca0af57c0fc648dee4f28a53eab1b7f83fb7f17a13200a6730801bf728bd6",
+      "reviewed_draft_sha256": "e06c9b9775569a22e349f02bf23a51bbdd16ceb6c3269c5c5636d6acf5b27e2f"
+    },
+    {
+      "date": "2026-08-21",
+      "path": "content/daily/2026/2026-08-21.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 3,
+      "signal_refs": [
+        "signal-20260821-nvidia-cloverleaf-investment",
+        "signal-20260821-semianalysis-open-models",
+        "signal-20260821-china-next-generation-network-policy"
+      ],
+      "sha256": "709a2d7717c0f2c9fcdf97ec41651345febb4bf605a5f8876d298a8114ecc358",
+      "reviewed_draft_sha256": "ef27d2f030e3de868c69f075e53044eaa1e2ab8add52809b5b0d0f5e6baf19ae"
+    },
+    {
+      "date": "2026-08-22",
+      "path": "content/daily/2026/2026-08-22.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260822-nvidia-server-price-report"],
+      "sha256": "7621011833d17ab38a733380319c30a20100be7342edd7cab7c430f1fd852827",
+      "reviewed_draft_sha256": "bae4fd8f6b84967e8f94a3fef733430b93053c37575d510856da62d31d900bc9"
+    },
+    {
+      "date": "2026-08-24",
+      "path": "content/daily/2026/2026-08-24.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260824-semianalysis-agentx"],
+      "sha256": "e155a8f3ec43fbdda98ab08371878f9e177382574b0e8697bc42bd17cfdbd911",
+      "reviewed_draft_sha256": "f761ea7879c13d7b134f9b399fea572cb4b594bb7c821de456d6a0626edab507"
+    },
+    {
+      "date": "2026-08-25",
+      "path": "content/daily/2026/2026-08-25.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 3,
+      "signal_refs": [
+        "signal-20260825-openai-jalapeno-results",
+        "signal-20260825-waymo-munich-testing",
+        "signal-20260825-semianalysis-jalapeno"
+      ],
+      "sha256": "957ef844988d1e0e6057b852a1c718fe12cc879cdb348b8a040adce236c686c4",
+      "reviewed_draft_sha256": "dbc0abb6898712354612209a83c460ad4e03051d16ff369c9764ad136fe8cf2e"
+    },
+    {
+      "date": "2026-08-26",
+      "path": "content/daily/2026/2026-08-26.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260826-nvidia-fy27-q2-results"],
+      "sha256": "3a8c8ed405a26df37479f2fac6fe0114a9611fe7192f7837e505e4f19f4f52e2",
+      "reviewed_draft_sha256": "381f41bdbb28bbab8883605ba85b01e0c26b9b8a5999da6ba8dc910957e52c28"
+    },
+    {
+      "date": "2026-08-27",
+      "path": "content/daily/2026/2026-08-27.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260827-skhynix-indiana-groundbreaking"],
+      "sha256": "1d5256a3623ad99f3ef4c95c864f6c9c80cf0cb84a6200fcd62622d380f3ce5e",
+      "reviewed_draft_sha256": "66972321a4cd886d1ea5defd3eafe09be2139a71e188ca031aac179a27c1fe31"
+    },
+    {
+      "date": "2026-08-28",
+      "path": "content/daily/2026/2026-08-28.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 2,
+      "signal_refs": [
+        "signal-20260828-ndrc-robotics-development",
+        "signal-20260828-openai-cursor-service-termination-plan"
+      ],
+      "sha256": "51c3a684d5193cc979b3a9cf07d417d8c30a86d3d0151c987c56fa2f6069f9a5",
+      "reviewed_draft_sha256": "7151204fa32e2c4b8589a6fba77c8a5f394d796a23d3f69d71c1b6927184f515"
+    },
+    {
+      "date": "2026-08-29",
+      "path": "content/daily/2026/2026-08-29.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 2,
+      "signal_refs": [
+        "signal-20260829-cxmt-lpddr6-production",
+        "signal-20260829-nda-compute-capacity-july"
+      ],
+      "sha256": "561c383f9d098ba0ccec792aa532da4f5ae48b2d2d3b703cd52038fe49c554fe",
+      "reviewed_draft_sha256": "9c314c5442928f6bc6cc5fd16030d71a2e266a35ef702b4208d6f46289767817"
+    },
+    {
+      "date": "2026-08-30",
+      "path": "content/daily/2026/2026-08-30.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260830-semianalysis-neocloud-security"],
+      "sha256": "27f663b9628c18274ab9dbb8b71f6a95c76097823d98c2dc5f368a37b28f3a7a",
+      "reviewed_draft_sha256": "0913237470f8dbfb45443f9ae57ee534d125e3a8f188076afd236cf6c4f2070d"
+    },
+    {
+      "date": "2026-08-31",
+      "path": "content/daily/2026/2026-08-31.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 2,
+      "signal_refs": [
+        "signal-20260831-fsb-frontier-ai-letter",
+        "signal-20260831-nvidia-mediatek-partnership"
+      ],
+      "sha256": "74340210a83741edc81afdaec4db395d730e68fe19a55ac51a10a38e7fb3e1e0",
+      "reviewed_draft_sha256": "9388d3de4366e8cb059859acb54db8583c6635b77e934756753bc61546f1264e"
+    },
+    {
+      "date": "2026-09-01",
+      "path": "content/daily/2026/2026-09-01.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 3,
+      "signal_refs": [
+        "signal-20260901-claude-fable-mythos-51",
+        "signal-20260901-openai-astra-critical-cyber",
+        "signal-20260901-semianalysis-korea-sovereign-ai"
+      ],
+      "sha256": "2c558a3365d05ef876cd4188cefa55565d16bdd9d4a88cc10d431cee4a3f5bd7",
+      "reviewed_draft_sha256": "b94d612fc23157220913aa42d561223d33f816b05a3259b2f47320995947d83e"
+    },
+    {
+      "date": "2026-09-02",
+      "path": "content/daily/2026/2026-09-02.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260902-china-ic-production-statistics"],
+      "sha256": "09e251bd2818b5c603b446384f7af5fe3a70ae622845a00f307f8eb4062fec3c",
+      "reviewed_draft_sha256": "93112e05c91c099843332f271410eaba968ffe3d7524ca98d95d0790b252a54b"
+    },
+    {
+      "date": "2026-09-03",
+      "path": "content/daily/2026/2026-09-03.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 3,
+      "signal_refs": [
+        "signal-20260903-enflame-ipo-subscription",
+        "signal-20260903-openai-gpt6-astra-launch",
+        "signal-20260903-nvidia-huggingface-acquisition-agreement"
+      ],
+      "sha256": "f1ba098fab970d163ce692b4bf4602b61c68e84d1085bc5b6c9492c314fd7d21",
+      "reviewed_draft_sha256": "7c12529002bfd93d5122843d98a858c43683714c63a4b50d22c00e4faf4a074b"
+    },
+    {
+      "date": "2026-09-05",
+      "path": "content/daily/2026/2026-09-05.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260905-us-china-ai-talks-september-report"],
+      "sha256": "d3c99ba8e277c741d08b98f0918a74907a39b1e185f83962fb1c7ed827e2883e",
+      "reviewed_draft_sha256": "ec752f83691710527ab3469658470c3e8fc672d803103e768622fee6424a7d55"
+    },
+    {
+      "date": "2026-09-06",
+      "path": "content/daily/2026/2026-09-06.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 2,
+      "signal_refs": [
+        "signal-20260906-openai-research-acceleration",
+        "signal-20260906-openai-safety-threshold-essay"
+      ],
+      "sha256": "2b8e3e4d5fcd5727210dc256462332ecd99e6fbe3b0372ece03d4f25f4ea02c3",
+      "reviewed_draft_sha256": "c02ae468402fd8ce3acacb26a9c4e28b488296c37ae19c8f5f9ba9e0573f10cf"
+    },
+    {
+      "date": "2026-09-07",
+      "path": "content/daily/2026/2026-09-07.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260907-semianalysis-tpu-inferencex"],
+      "sha256": "9130314a6f7ed57a9fc05de72ccf6a768ef0e55ffedb0a130a1226bf3d1b9cf3",
+      "reviewed_draft_sha256": "761b9e66a54bbf1d8dfddeb4624a7b95967a00f9dcba7e57e79e6761abf1ea4d"
+    },
+    {
+      "date": "2026-09-08",
+      "path": "content/daily/2026/2026-09-08.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 2,
+      "signal_refs": [
+        "signal-20260908-openai-navier-stokes-candidate",
+        "signal-20260908-amazon-qualcomm-ai-chips"
+      ],
+      "sha256": "67c06d1a7967807322f4edb633f69b1e33002bc4434401691e00f5ad9d523fbe",
+      "reviewed_draft_sha256": "38b5067c332815f802d9a587b198604ece8da082531caf499faffe110bab5317"
+    },
+    {
+      "date": "2026-09-09",
+      "path": "content/daily/2026/2026-09-09.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 1,
+      "signal_refs": ["signal-20260909-nvidia-australia-ai-capacity"],
+      "sha256": "97db742ea68630c64e06bb496caafc1b2ffe839dda14a3c8eea712cf3993e3b4",
+      "reviewed_draft_sha256": "b9b313e70bf81c207c21b2da865d33c196f17ed8b38312cd6e413e5e8b472519"
+    }
+  ],
+  "existing_files": [
+    {
+      "date": "2024-06-20",
+      "path": "content/daily/2024/2024-06-20.md",
+      "status": "published",
+      "edition": "historical_example",
+      "signal_count": 3,
+      "signal_refs": [
+        "signal-20240610-apple-intelligence",
+        "signal-20240513-gpt4o",
+        "signal-20240318-blackwell"
+      ],
+      "sha256": "8d341737c177097f2aeec2d1ca58a2ed3ac70933ef8a2252c2154d2a19d44556"
+    },
+    {
+      "date": "2026-09-12",
+      "path": "content/daily/2026/2026-09-12.md",
+      "status": "published",
+      "edition": "live",
+      "signal_count": 5,
+      "signal_refs": [
+        "signal-20260910-dmatrix-nvlink-fusion",
+        "signal-20260910-anthropic-threat-report",
+        "signal-20260910-skild-nvidia-physical-ai",
+        "signal-20260910-chatgpt-financial-services",
+        "signal-20260910-semianalysis-btm-power"
+      ],
+      "sha256": "385b9b1f83d00b6ef90dc7adb6ba5868844d4a46e32bdae8897276a229bea382"
+    }
+  ],
+  "signal_assignments": [
+    {
+      "signal_id": "signal-20170612-transformer",
+      "occurred_at": "2017-06-12T00:00:00Z",
+      "daily_path": "content/daily/2017/2017-06-12.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20221130-chatgpt",
+      "occurred_at": "2022-11-30T00:00:00Z",
+      "daily_path": "content/daily/2022/2022-11-30.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20230314-gpt4",
+      "occurred_at": "2023-03-14T00:00:00Z",
+      "daily_path": "content/daily/2023/2023-03-14.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20240229-figure-openai",
+      "occurred_at": "2024-02-29T00:00:00Z",
+      "daily_path": "content/daily/2024/2024-02-29.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20240318-blackwell",
+      "occurred_at": "2024-03-18T00:00:00Z",
+      "daily_path": "content/daily/2024/2024-06-20.md",
+      "disposition": "existing_preserved"
+    },
+    {
+      "signal_id": "signal-20240417-electric-atlas",
+      "occurred_at": "2024-04-17T00:00:00Z",
+      "daily_path": "content/daily/2024/2024-04-17.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20240418-llama3",
+      "occurred_at": "2024-04-18T00:00:00Z",
+      "daily_path": "content/daily/2024/2024-04-18.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20240513-gpt4o",
+      "occurred_at": "2024-05-13T00:00:00Z",
+      "daily_path": "content/daily/2024/2024-06-20.md",
+      "disposition": "existing_preserved"
+    },
+    {
+      "signal_id": "signal-20240610-apple-intelligence",
+      "occurred_at": "2024-06-10T00:00:00Z",
+      "daily_path": "content/daily/2024/2024-06-20.md",
+      "disposition": "existing_preserved"
+    },
+    {
+      "signal_id": "signal-20240620-claude35",
+      "occurred_at": "2024-06-21T00:00:00Z",
+      "daily_path": "content/daily/2024/2024-06-21.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20241125-mcp",
+      "occurred_at": "2024-11-25T00:00:00Z",
+      "daily_path": "content/daily/2024/2024-11-25.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260303-semianalysis-pjm-load-forecast",
+      "occurred_at": "2026-03-03T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-03-03.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260618-semianalysis-datacenter-cancellation",
+      "occurred_at": "2026-06-18T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-06-18.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260625-semianalysis-us-grid-btm",
+      "occurred_at": "2026-06-25T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-06-25.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260719-kimi-k3-subscription-pause",
+      "occurred_at": "2026-07-19T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-19.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260720-hut8-beacon-point-lease",
+      "occurred_at": "2026-07-20T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-20.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260721-openai-huggingface-evaluation-incident",
+      "occurred_at": "2026-07-21T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-21.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260722-alphabet-q2-results",
+      "occurred_at": "2026-07-22T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-22.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260722-amd-anthropic-mi450-partnership",
+      "occurred_at": "2026-07-22T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-22.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260723-ai-kill-switch-bill",
+      "occurred_at": "2026-07-23T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-23.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260723-intel-q2-results",
+      "occurred_at": "2026-07-23T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-23.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260723-us-datacenter-ratepayer-pledge",
+      "occurred_at": "2026-07-23T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-23.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260724-nvidia-sk-ai-memory-partnership",
+      "occurred_at": "2026-07-24T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-24.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260725-samsung-broadcom-chip-partnership",
+      "occurred_at": "2026-07-25T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-25.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260725-semianalysis-amd-cuda",
+      "occurred_at": "2026-07-25T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-25.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260727-china-us-distillation-response-july",
+      "occurred_at": "2026-07-27T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-27.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260728-fcc-robot-inverter-restrictions",
+      "occurred_at": "2026-07-28T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-28.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260729-germany-ai-act-implementation",
+      "occurred_at": "2026-07-29T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-29.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260729-meta-q2-results",
+      "occurred_at": "2026-07-29T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-29.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260729-microsoft-fy26-q4-results",
+      "occurred_at": "2026-07-29T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-29.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260729-semianalysis-lego-datacenters",
+      "occurred_at": "2026-07-29T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-29.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260729-skhynix-q2-results",
+      "occurred_at": "2026-07-29T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-29.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260730-amazon-q2-ai-capex",
+      "occurred_at": "2026-07-30T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-30.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260730-china-ai-plus-policy-july",
+      "occurred_at": "2026-07-30T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-07-30.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260802-eu-ai-act-transparency",
+      "occurred_at": "2026-08-02T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-02.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260803-china-ic-layout-regulation",
+      "occurred_at": "2026-08-03T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-03.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260803-semianalysis-kimi-k3-architecture",
+      "occurred_at": "2026-08-03T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-03.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260804-aisi-agent-cyber-evaluation",
+      "occurred_at": "2026-08-04T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-04.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260804-amd-q2-results",
+      "occurred_at": "2026-08-04T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-04.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260806-amd-taalas-acquisition",
+      "occurred_at": "2026-08-06T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-06.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260807-semianalysis-gcp-model-economics",
+      "occurred_at": "2026-08-07T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-07.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260810-semianalysis-tilert",
+      "occurred_at": "2026-08-10T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-10.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260816-semianalysis-pjm-modeling",
+      "occurred_at": "2026-08-16T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-16.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260817-ports-pike-announcement",
+      "occurred_at": "2026-08-17T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-17.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260819-semianalysis-cerebras-cs4",
+      "occurred_at": "2026-08-19T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-19.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260820-nvidia-china-lpu-denial",
+      "occurred_at": "2026-08-20T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-20.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260821-china-next-generation-network-policy",
+      "occurred_at": "2026-08-21T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-21.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260821-nvidia-cloverleaf-investment",
+      "occurred_at": "2026-08-21T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-21.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260821-semianalysis-open-models",
+      "occurred_at": "2026-08-21T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-21.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260822-nvidia-server-price-report",
+      "occurred_at": "2026-08-22T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-22.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260824-semianalysis-agentx",
+      "occurred_at": "2026-08-24T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-24.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260825-openai-jalapeno-results",
+      "occurred_at": "2026-08-25T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-25.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260825-semianalysis-jalapeno",
+      "occurred_at": "2026-08-25T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-25.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260825-waymo-munich-testing",
+      "occurred_at": "2026-08-25T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-25.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260826-nvidia-fy27-q2-results",
+      "occurred_at": "2026-08-26T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-26.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260827-skhynix-indiana-groundbreaking",
+      "occurred_at": "2026-08-27T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-27.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260828-ndrc-robotics-development",
+      "occurred_at": "2026-08-28T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-28.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260828-openai-cursor-service-termination-plan",
+      "occurred_at": "2026-08-28T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-28.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260829-cxmt-lpddr6-production",
+      "occurred_at": "2026-08-29T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-29.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260829-nda-compute-capacity-july",
+      "occurred_at": "2026-08-29T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-29.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260830-semianalysis-neocloud-security",
+      "occurred_at": "2026-08-30T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-30.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260831-fsb-frontier-ai-letter",
+      "occurred_at": "2026-08-31T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-31.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260831-nvidia-mediatek-partnership",
+      "occurred_at": "2026-08-31T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-08-31.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260901-claude-fable-mythos-51",
+      "occurred_at": "2026-09-01T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-01.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260901-openai-astra-critical-cyber",
+      "occurred_at": "2026-09-01T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-01.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260901-semianalysis-korea-sovereign-ai",
+      "occurred_at": "2026-09-01T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-01.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260902-china-ic-production-statistics",
+      "occurred_at": "2026-09-02T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-02.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260903-enflame-ipo-subscription",
+      "occurred_at": "2026-09-03T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-03.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260903-nvidia-huggingface-acquisition-agreement",
+      "occurred_at": "2026-09-03T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-03.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260903-openai-gpt6-astra-launch",
+      "occurred_at": "2026-09-03T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-03.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260905-us-china-ai-talks-september-report",
+      "occurred_at": "2026-09-05T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-05.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260906-openai-research-acceleration",
+      "occurred_at": "2026-09-06T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-06.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260906-openai-safety-threshold-essay",
+      "occurred_at": "2026-09-06T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-06.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260907-semianalysis-tpu-inferencex",
+      "occurred_at": "2026-09-07T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-07.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260908-amazon-qualcomm-ai-chips",
+      "occurred_at": "2026-09-08T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-08.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260908-openai-navier-stokes-candidate",
+      "occurred_at": "2026-09-08T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-08.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260909-nvidia-australia-ai-capacity",
+      "occurred_at": "2026-09-09T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-09.md",
+      "disposition": "new_reviewed"
+    },
+    {
+      "signal_id": "signal-20260910-anthropic-threat-report",
+      "occurred_at": "2026-09-10T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-12.md",
+      "disposition": "existing_preserved"
+    },
+    {
+      "signal_id": "signal-20260910-chatgpt-financial-services",
+      "occurred_at": "2026-09-10T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-12.md",
+      "disposition": "existing_preserved"
+    },
+    {
+      "signal_id": "signal-20260910-dmatrix-nvlink-fusion",
+      "occurred_at": "2026-09-10T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-12.md",
+      "disposition": "existing_preserved"
+    },
+    {
+      "signal_id": "signal-20260910-semianalysis-btm-power",
+      "occurred_at": "2026-09-10T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-12.md",
+      "disposition": "existing_preserved"
+    },
+    {
+      "signal_id": "signal-20260910-skild-nvidia-physical-ai",
+      "occurred_at": "2026-09-10T00:00:00Z",
+      "daily_path": "content/daily/2026/2026-09-12.md",
+      "disposition": "existing_preserved"
+    }
+  ],
+  "validation": {
+    "content_files_validated": 62,
+    "content_tests_passed": 84,
+    "coverage_audit": "passed",
+    "sample_review": {
+      "dailies": 8,
+      "signals": 20,
+      "scope": "existing_catalog_consistency_no_external_reverification",
+      "blocking_findings": 0
+    },
+    "seed_and_existing_dailies_unchanged": true,
+    "publication_gate": {
+      "outcome": "passed_locally_after_human_approval",
+      "draft_dailies": 0,
+      "published_dailies": 52
+    },
+    "reviewed_draft_hashes_verified_before_changes": true,
+    "remote_ci": "not_run"
+  },
+  "human_review": {
+    "decision": "approved",
+    "recorded_at": "2026-09-12T16:24:30.264Z",
+    "evidence": "User explicitly stated: 全部通过审核",
+    "scope": {
+      "generated_dailies": 50,
+      "signal_refs": 74
+    },
+    "effect": "local_content_ready_for_publication",
+    "external_source_verification": "not_claimed",
+    "date_correction": "not_performed",
+    "remote_operations_performed": false
+  }
+}
