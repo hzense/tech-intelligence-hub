@@ -6,7 +6,7 @@ import { URL } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
-import { runMigrations } from '../src/migrate.mjs';
+import { loadMigrations, runMigrations } from '../src/migrate.mjs';
 import { inspectTopicSyncPreflight } from '../src/topic-sync-preflight.mjs';
 
 const { Client } = pg;
@@ -101,8 +101,10 @@ integrationSuite('PostgreSQL Topic sync role provisioning integration', () => {
   let ownerRoleCreated = false;
   let syncRoleCreated = false;
   let roleSql;
+  let expectedMigrations;
 
   beforeAll(async () => {
+    expectedMigrations = await loadMigrations();
     adminClient = new Client({ connectionString: adminUrl });
     await adminClient.connect();
     const preexistingSyncRole = await adminClient.query(
@@ -236,7 +238,7 @@ integrationSuite('PostgreSQL Topic sync role provisioning integration', () => {
       database: databaseName,
       user: syncRole,
       connectionLimit: 2,
-      migrationCount: 5,
+      migrationCount: expectedMigrations.length,
       tlsEvidence: 'local',
     });
     await withClient(databaseUrl(syncRole, syncPassword), async (client) => {
@@ -245,8 +247,11 @@ integrationSuite('PostgreSQL Topic sync role provisioning integration', () => {
       );
       await expect(client.query('DELETE FROM topics')).rejects.toThrow(/permission denied/);
       await expect(
-        client.query('SELECT name FROM hzense_schema_migrations ORDER BY name'),
-      ).resolves.toMatchObject({ rowCount: 4 });
+        client.query('SELECT name, checksum FROM hzense_schema_migrations ORDER BY name'),
+      ).resolves.toMatchObject({
+        rowCount: expectedMigrations.length,
+        rows: expectedMigrations.map(({ name, checksum }) => ({ name, checksum })),
+      });
     });
   }, 30_000);
 
@@ -298,6 +303,6 @@ integrationSuite('PostgreSQL Topic sync role provisioning integration', () => {
     expect(after.rows).toEqual(before.rows);
     await expect(
       withClient(databaseUrl(syncRole, syncPassword), strictSyncPreflight),
-    ).resolves.toMatchObject({ migrationCount: 5 });
+    ).resolves.toMatchObject({ migrationCount: expectedMigrations.length });
   }, 30_000);
 });
