@@ -1,4 +1,49 @@
+import { fileURLToPath } from 'node:url';
+import { loadContent, type ContentEntry, type FrontMatter } from '@hzense/content';
 import { expect, test, type Page } from '@playwright/test';
+
+type DailyEntry = ContentEntry<Extract<FrontMatter, { type: 'daily' }>>;
+
+async function getPublishedDailyEntries(): Promise<DailyEntry[]> {
+  const entries = await loadContent({
+    contentRoot: fileURLToPath(new URL('../../../content/', import.meta.url)),
+    seedRoot: fileURLToPath(new URL('../../../data/seed/', import.meta.url)),
+    taxonomyFile: fileURLToPath(new URL('../../../data/taxonomy/taxonomy.yaml', import.meta.url)),
+  });
+  return entries
+    .filter(
+      (entry): entry is DailyEntry =>
+        entry.frontMatter.type === 'daily' && entry.frontMatter.status === 'published',
+    )
+    .sort((left, right) => right.frontMatter.date.localeCompare(left.frontMatter.date));
+}
+
+function expectedDailyLabel(entry: DailyEntry): string {
+  return entry.frontMatter.edition === 'live' ? '正式简报' : '历史回顾样例';
+}
+
+async function expectDailyDetail(page: Page, entry: DailyEntry): Promise<void> {
+  const detailHref = `/daily/${entry.frontMatter.date}`;
+  await page.goto(detailHref);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(entry.frontMatter.title);
+  await expect(page.locator('.article-meta')).toContainText(expectedDailyLabel(entry));
+  const evidence = page.locator('.daily-evidence');
+  await expect(evidence.locator('article')).toHaveCount(entry.frontMatter.signal_refs.length);
+  for (const [index, signalId] of entry.frontMatter.signal_refs.entries()) {
+    const card = evidence.locator('article').nth(index);
+    await expect(card.locator('a[href^="/signals/"]')).toHaveAttribute(
+      'href',
+      `/signals/${signalId}`,
+    );
+    const sourceLink = card.locator('a[target="_blank"]');
+    await expect(sourceLink).toHaveAttribute('href', /^https:\/\//);
+    await expect(sourceLink).toHaveAttribute('rel', 'noopener noreferrer');
+  }
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+    'href',
+    `https://hzense.com${detailHref}`,
+  );
+}
 
 async function getFirstDailyHref(page: Page): Promise<string> {
   const href = await page.locator('a.daily-list-feature').first().getAttribute('href');
@@ -7,6 +52,9 @@ async function getFirstDailyHref(page: Page): Promise<string> {
 }
 
 test('home and Daily routes render with canonical metadata', async ({ page }) => {
+  const dailyEntries = await getPublishedDailyEntries();
+  const latest = dailyEntries[0];
+  if (!latest) throw new Error('Daily smoke tests require published content');
   await page.goto('/');
   await expect(page).toHaveTitle('HZense — 科技情报');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('感知科技的变化');
@@ -28,20 +76,25 @@ test('home and Daily routes render with canonical metadata', async ({ page }) =>
     'href',
     'https://hzense.com/daily',
   );
-  await expect(page.locator('.archive-label').first()).toHaveText('历史回顾样例');
+  await expect(page.locator('a.daily-list-feature')).toHaveCount(dailyEntries.length);
+  await expect(page.locator('a.daily-list-feature').first().locator('.archive-label')).toHaveText(
+    expectedDailyLabel(latest),
+  );
 
   const detailHref = await getFirstDailyHref(page);
-  await page.goto(detailHref);
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  const evidence = page.locator('.daily-evidence');
-  const firstSourceLink = evidence.locator('a[target="_blank"]').first();
-  await expect(evidence.locator('article')).toHaveCount(3);
-  await expect(firstSourceLink).toHaveAttribute('href', /^https:\/\//);
-  await expect(firstSourceLink).toHaveAttribute('target', '_blank');
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-    'href',
-    `https://hzense.com${detailHref}`,
+  expect(detailHref).toBe(`/daily/${latest.frontMatter.date}`);
+  await expectDailyDetail(page, latest);
+});
+
+test('historical Daily examples retain their edition label and evidence', async ({ page }) => {
+  const historical = (await getPublishedDailyEntries()).find(
+    (entry) => entry.frontMatter.edition === 'historical_example',
   );
+  if (!historical) throw new Error('Daily smoke tests require a published historical example');
+  await page.goto('/daily');
+  const card = page.locator(`a.daily-list-feature[href="/daily/${historical.frontMatter.date}"]`);
+  await expect(card.locator('.archive-label')).toHaveText('历史回顾样例');
+  await expectDailyDetail(page, historical);
 });
 
 test('metadata routes and custom 404 are available', async ({ page, request }) => {
