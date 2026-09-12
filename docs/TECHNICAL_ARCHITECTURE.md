@@ -2,9 +2,12 @@
 
 ## HZense · Technology Intelligence — Technical Architecture
 
-**版本：** v1.1  
-**日期：** 2026-08-19  
-**状态：** Architecture Baseline  
+**版本：** v2.0 目标架构整合稿
+
+**日期：** 2026-09-12
+
+**状态：** 目标设计待实施；现行物理与权限契约另有明确标注
+
 **品牌：** HZense  
 **品牌标语：** Sense what matters in technology.  
 **官方域名：** `hzense.com`  
@@ -12,20 +15,24 @@
 
 ---
 
+> **文档职责：** [DESIGN](DESIGN.md) 是产品总纲，[Signal-first v2](SIGNAL_FIRST_REDESIGN.md) 定义页面、人物、评分与迁移，[AI 自主 Signal 专项设计](AUTONOMOUS_SIGNAL_PIPELINE.md) 保留并整合 PR #64 的完整 AI／来源／导入／任务／发布契约。本页描述其目标架构；所有目标功能均待实施。第 7.1–7.2 节保留既有数据库投影／权限基线，不能因新设计而放宽；已实现物理结构以 [Information Model 第 40 节](INFORMATION_MODEL.md#40-postgresql-物理数据库设计) 为准。
+
 ## 1. 架构目标
 
-HZense 采用“Git/Markdown 为知识资产源，PostgreSQL 为索引与关系层，Next.js 为应用层”的混合架构。目标是保证内容长期可移植，同时支持 Search、Radar、Knowledge Graph、RAG 和自动技术情报处理。
+目标是“PostgreSQL 保存版本化 Signal／人物／组织／证据／专题洞察，Git 保存代码、Taxonomy、历史内容与导出，Next.js 提供公开页面和后台，Worker 执行 AI 生产”。数据库权威与自动发表尚未切换，当前 Seed／Markdown 读取继续按既有契约运行。
 
 > **Architecture-ready, not infrastructure-heavy.**
 
-## 2. 首版冻结技术栈
+## 2. 技术栈基线与目标能力
+
+继续使用现有 TypeScript、Next.js、PostgreSQL、Drizzle 和 Vercel Web。下表中的 AI／Auth／对象存储／Worker 选型不是已开通资源，实施前按专项能力测试确定，不因文档整合切换平台。
 
 | 层                | 技术                                                               |
 | ----------------- | ------------------------------------------------------------------ |
 | Language          | TypeScript                                                         |
 | Web               | Next.js + React + App Router                                       |
 | UI                | Tailwind CSS + lightweight headless components                     |
-| Content           | Markdown / MDX + YAML Front Matter                                 |
+| Content           | 新版数据库不可变正文／证据版本；Markdown / MDX 历史档案与导出      |
 | Database          | PostgreSQL                                                         |
 | ORM               | Drizzle ORM                                                        |
 | Vector            | pgvector                                                           |
@@ -44,60 +51,44 @@ HZense 采用“Git/Markdown 为知识资产源，PostgreSQL 为索引与关系�
 
 ## 3. Source of Truth
 
+- **切换前**：公开 Signal 使用 Seed，现有正文使用 Git／Markdown；不得在后台启用第二套正式写入源。
 - **Taxonomy YAML** = Topic ID、英文规范名、primary parent 与跨域关系的 Source of Truth。
 - **Seed Topics** = Taxonomy 的受控运行时子集，并拥有 Topic `status`。
-- **Git / Markdown** = 正式内容正文与本地化 Topic 页面的 Source of Truth。
-- **PostgreSQL** = Entity / Relation / Index / Radar / operational data 的 Source of Truth；`topics` 是完整 Taxonomy 的派生投影，首次生产同步已于 2026-08-31 完成并独立验证。
+- **切换后的 PostgreSQL 业务层** = Signal、人物／组织、证据关系、专题洞察正文版本与运行配置的权威；搜索、趋势和活跃度为可重建投影，不是第二套事实源。
+- **Git / Markdown** = 代码、迁移、Taxonomy、旧 Daily／Weekly／Insight 档案和可移植导出；本地化 Topic 内容在其适配迁移前仍依现行契约，不由 AI 随意改写。
+- **PostgreSQL `topics`** = Taxonomy 的派生投影，既有投影规则继续生效；新洞察版本不自行创建不受控 Topic 身份。
 - 网站 = Presentation + Intelligence Application Layer。
 
-不把所有关系塞进 YAML，也不把所有正式正文锁进数据库或 CMS。
+新正文在数据库版本化保存，但提供可移植导出；不能继续把“所有正式正文只能在 Git”作为新产品约束。Source of Truth 变化需按 Information Model 第 42 节单独升级模型主版本、迁移和验证，不把产品代号 v2 等同于现行信息模型版本。
 
 ## 4. 总体架构
 
 ```text
-External Sources
-Web / RSS / Papers / GitHub / Newsletters
-        ↓
-Ingestion Pipeline
-fetch / parse / dedup / classify / entities
-        ↓
-Knowledge Layer
-├── Git + Markdown / MDX
-│   ├── Insights
-│   ├── Daily
-│   ├── Weekly
-│   ├── Topics
-│   ├── Briefings
-│   └── Paper Notes
-└── PostgreSQL
-    ├── Entities
-    ├── Relations
-    ├── Signals Index
-    ├── Radar History
-    ├── Search Metadata
-    └── Embeddings / pgvector
-        ↓
-Intelligence Layer
-Search / Hybrid Retrieval / RAG / Entity Resolution
-Topic Detection / Trend Analysis / Radar Calculation
-        ↓
-Next.js App
-Home / HZense Daily / Topics / Insights / Weekly
-Signals / Resources / Radar / Ask HZense
-        ↓
-Production
-https://hzense.com
+管理后台：来源配置 / 文件与 OCR 批量导入 / 链接提交 / AI Profile
+                         ↓
+持久化任务与 Worker：抓取 / 解析 / 去重 / 人物消歧 / 证据核验 / 研判
+                         ↓
+当前权限与机器发布规则 → 不可变 Signal 版本 + 事务 Outbox
+                         ↓
+公开信号 / 自动搜索投影 / 人物与组织 / 活跃度 / 趋势 / 热点 TOP 10
+                         ↓
+周度或手动专题分析 → 固定输入证据 → 洞察版本 → 按专题策略发布
+                         ↓
+Next.js：雷达首页 / 信号 / 专题洞察 / 资源 / 搜索
+
+Git Taxonomy → 受控 Topic 投影；Git 旧内容 → 历史只读路由
+原始上传材料 → 私有对象存储；公开视图不暴露原件或任务秘密
 ```
 
 ## 5. Web 与 UI
 
-采用 Next.js + TypeScript + App Router。内容页面优先静态生成/缓存，Signals、Radar、Search 为动态数据，Ask HZense 为 AI Dynamic。
+采用 Next.js + TypeScript + App Router。公开读服务在服务器端获取当前有效版本，客户端负责筛选和图表交互；后台写接口独立鉴权。缓存有明确版本、失效与有界过期，不能长期保留被撤回的正文。长时采集和模型调用由后台 Worker 处理，访客读取已保存结果，不在访问时重新生成。
 
 UI 使用 Tailwind CSS 和自建 Design System，可少量采用 Radix UI / shadcn/ui，但避免网站变成通用 SaaS 后台视觉。
 
-## 6. 内容层
+## 6. 内容层与历史兼容
 
-默认 Markdown，复杂交互才使用 MDX。正式内容目录：
+新版 Signal 研判和专题洞察正文保存为数据库不可变版本，关联运行、模型、费用和证据版本；导出 Markdown 便于迁移，但不是平行写入源。现行 Git 内容目录保留：
 
 ```text
 content/
@@ -109,7 +100,7 @@ content/
 └── papers/
 ```
 
-所有内容使用统一 YAML Front Matter 和稳定唯一 ID。
+历史内容继续使用既有 Front Matter 校验及稳定 ID。Daily／Weekly 在新版切换后停止新增；旧 Insight 逐条映射到专题洞察版本或保留只读原页，不因导航合并丢失正文。
 
 ## 7. PostgreSQL 数据域
 
@@ -119,13 +110,15 @@ Topic 作为受控分类与知识组织单元独立管理，不与 Entity 类型
 
 Relations 示例：Person → works_at → Company；Company → develops → Technology；Model → trained_on → Dataset；Model → evaluated_on → Dataset；Product → uses → Model；Technology → implements → Standard / Protocol；Paper → presented_at → Event；Signal → mentions → Company；Insight → supports → Topic。
 
-Operational Data：Signals、Radar snapshots、Search metadata、Ingestion jobs、Source status、Admin settings。
+目标 Operational Data 包括 Signal／洞察版本、来源证据、人物任职、导入批次、AI 配置、任务／步骤／用量、Outbox 与评分投影；未实现对象清单见专项设计，不能从此列表推断已建表。
 
 Paper 是客观论文 Entity；HZense 对论文的解读正文以 PaperNote Content 保存。
 
 Drizzle Schema 描述当前物理模型；实际变更只通过 `db/migrations/` 中经过评审的顺序 SQL 执行。`pnpm db:migrate` 是生产安全入口，会先校验 direct endpoint、TLS、受限角色、pgvector 与迁移历史；本地开发必须显式使用 `pnpm db:migrate:local`。两者共享 PostgreSQL advisory lock、逐文件事务、不可变 checksum manifest 与 SHA-256 历史记录；已执行迁移不可修改。生产入口拒绝采纳未跟踪的旧 `0000` Schema；此类遗留库只能进入单独评审的 break-glass 流程，未知数据必须先补齐来源与证据字段。
 
 ### 7.1 Topic 派生投影
+
+以下保留现行投影契约，新版适配迁移前继续生效。
 
 ```text
 data/taxonomy/taxonomy.yaml ─┐
@@ -145,6 +138,8 @@ content/topics/**/*.{md,mdx} ─┘                 ↓
 `runtime_enabled` 及其状态约束由 `0002_topic_projection.sql` 引入。2026-08-31 的生产维护窗口已完成新可恢复分支备份、`0002`、3 个 Migration / 0 pending、最小权限 `hzense_topic_sync`、dry run、受保护 Apply、独立只读验证与 0 变更 no-op 重跑。最终投影为 62 个 Topics、0 个未知行并匹配 reviewed fingerprint；仓库不记录实际备份标识、连接目标或凭据。
 
 ### 7.2 Runtime Reader 权限边界
+
+以下为既有 Topic Reader 的权限基线／历史验收记录，不是新增 AI 写角色的授权清单，也不替代后来 FTS-1 的独立列权限契约。新版角色须在实现时同步迁移、verifier 与 ACL；不能直接复制 Reader 或 Migrator 为 Worker 写入身份。
 
 Runtime Reader 使用固定角色 `hzense_runtime`，与 Migrator 和 Topic Sync Writer 完全分离。provider / 集群管理员负责预创建 `LOGIN NOINHERIT CONNECTION LIMIT 20 NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS` 的角色，并预置 `default_transaction_read_only = on`。仓库 [`configure_runtime_reader.sql`](../db/roles/configure_runtime_reader.sql) 不创建角色、不设置密码，也不会由受限数据库 owner 越权修改另一个角色的 session 默认值；[`runtime-reader-preflight.mjs`](../packages/database/src/runtime-reader-preflight.mjs) 只验证并 fail closed。
 
@@ -179,9 +174,7 @@ FTS-1 仓库实现增加 append-only `0003_search_documents_fts.sql`、确定性
 `simple` `tsvector` / GIN、参数化数据库查询与 `in-process → shadow → database` 切换模式。
 由于 PostgreSQL 默认 tokenizer 不能无损表达中文和任意 literal substring，用户可见 parity
 仍由 application-normalized 列上的数据库内 AND/计分公式保证，并复用 JavaScript total-order。
-生产当前仍保持 `in-process`；`0003`、回填、Runtime ACL、shadow parity 与 cutover 必须在恢复
-证据门禁解除后的独立维护/部署窗口逐项验收。其后再升级 Hybrid Search：Keyword + Vector +
-Entity + Recency + Importance。
+上述为 FTS-1 仓库实现背景；历史生产切换记录见 [进度看板](PROGRESS.md)，本轮整合不重新执行或证明生产状态。新版保留该搜索实现，改为按数据归属和公开版本消费 Outbox，避免旧 Seed 全量同步覆盖数据库内容；Hybrid Search：Keyword + Vector + Entity + Recency + Importance 仍为后续能力。
 
 向量首版直接使用 pgvector，不引入独立 Vector DB，除非规模与性能证明有必要。
 
@@ -213,17 +206,19 @@ Answer + Citations
 
 AI 层采用 Provider Abstraction，首版 OpenAI first，未来可扩展其他云端或本地模型。
 
-## 11. AI 自主 Signal 采集（目标架构，待实施）
+## 11. AI 自主 Signal 生产（目标架构）
 
-产品入口见 [DESIGN 第 19 节](DESIGN.md#19-ai-自主采集与研判)，详细契约见 [专项设计](AUTONOMOUS_SIGNAL_PIPELINE.md)。
+三类入口和必需细节统一采用 [AI 自主 Signal 专项设计](AUTONOMOUS_SIGNAL_PIPELINE.md)：来源采集、文件／OCR、批量链接 → 队列 → AI 提取、去重、人物补证、核验与研判 → 发布资格 → Signal 版本与 Outbox → 搜索、页面及派生视图。
 
-目标流程：定时或手动触发 → 来源/文件/链接统一队列 → 提取与去重 → AI 证据核验 → 中文研判 → 自动规则检查 → Signal 数据库发布 → 搜索与缓存。证据不足自动补查、重试或暂缓，无必经人工审核。此目标取代旧 Signal Inbox → Human Review 设计。
+Signal 默认 `auto_publish`，合格内容无需逐条人工审核；可显式选择预览或可选审核，但不能绕过事实、人物、时间与隐私规则。机器证据不足自动补查／暂缓。当前 Seed Reader 和旧状态校验到切换前仍生效，不在设计阶段改成自动发表。
 
-管理员网页配置的 AI 连接、来源、任务和策略在数据库版本化保存；凭据服务端加密。Signal 切换数据库权威后，Git Seed 只作为迁移输入；事务 Outbox 保障派生更新，禁止现有 Seed 同步器覆盖新数据。公共 Reader、管理后台和 Worker 权限分别设计，不能复用迁移身份。
+保留完整模型配置、能力测试、密钥信封加密、分阶段 Profile、兼容故障切换；来源有游标／ETag／有界回看和受控临时准入；文档首版包括 CSV／XLSX、扫描 PDF、PNG／JPEG OCR。后台 Worker 有租约、取消、预算、恢复点及自动来源更正扫描，所有生成先创建记录再调用模型，费用与结果可检索。
 
-当前生产实现尚未完成上述迁移；本节是设计，不声明数据库、角色、后台或自动发布已上线。其他章节的 Git 正文原则继续适用于现有 Daily/Weekly/Insights；Signal 的目标权威变更以本节和专项设计为准。
+新旧关系变更、人物证据失效、原文撤稿均触发重新核验和派生更新。仅链接失效不是事实撤回依据。当前新发表开关优先于旧任务配置；独立授权的屏蔽／撤回不能被暂停采集的开关误封。
 
-## 12. HZense Daily 自动化
+## 12. HZense Daily 自动化（现行兼容，切换后停产）
+
+本节仅保留已有实现契约；不是新增开发路线。新版周度分析直接消费合格 Signal，输出专题洞察版本，不生成新的 Daily／Weekly。新版验收后再明确停用旧定时任务、自动 Draft PR 和相关产品断言，同时保留历史渲染及必要通用门禁。
 
 ```text
 Signals Today → Cluster by Topic → Rank → Select Important Events
@@ -235,11 +230,12 @@ Continuous Daily 的当前实现采用 `daily-v2` 确定性契约：以 Europe/B
 
 ## 13. GitHub / Monorepo
 
-推荐结构：
+现有仓库与待新增边界（注释标明拟议目录，不代表已创建）：
 
 ```text
 tech-intelligence-hub/
 ├── apps/web/
+├── apps/worker/             # 拟议：后台分步任务执行
 ├── content/
 │   ├── insights/
 │   ├── daily/
@@ -252,6 +248,8 @@ tech-intelligence-hub/
 │   ├── database/
 │   ├── search/
 │   ├── intelligence/
+│   ├── ai/                  # 拟议：模型配置、适配与用量
+│   ├── ingestion/           # 拟议：三类入口与安全解析
 │   └── ui/
 ├── data/
 │   ├── schema/
@@ -262,6 +260,8 @@ tech-intelligence-hub/
 │   └── migrate/
 ├── docs/
 │   ├── DESIGN.md
+│   ├── SIGNAL_FIRST_REDESIGN.md
+│   ├── AUTONOMOUS_SIGNAL_PIPELINE.md
 │   ├── TECHNICAL_ARCHITECTURE.md
 │   ├── INFORMATION_MODEL.md
 │   └── adr/
@@ -271,11 +271,14 @@ tech-intelligence-hub/
 
 ## 14. 部署
 
+以下是目标部署边界，已有环境不因本文自动增加服务、权限或付费资源。Worker／模型／OCR／私有对象存储需独立配置及验收，工程部署与日常内容发表分开。
+
 ```text
 GitHub
 ├── Vercel → Next.js → hzense.com
-├── Supabase / Neon → PostgreSQL + pgvector
-└── Cloudflare R2 → Images / Attachments
+├── Neon → PostgreSQL + pgvector
+├── 托管 Worker / 受保护调度 → 分步持久化任务
+└── 私有对象存储 → 上传原件与解析产物（不得公开任务附件）
 ```
 
 首版采用 Public Read + Admin Auth，不建设复杂多用户系统。
@@ -297,19 +300,18 @@ https://hzense.com
 - 强制 HTTPS，并启用 HSTS 前先完成域名、证书和回滚验证。
 - DNS 供应商不在架构阶段强制锁定；首个部署可直接使用注册商 DNS，生产稳定前可评估迁移至 Cloudflare DNS。
 
-公共路由基线：
+新版路由目标：
 
 ```text
-/             Home
-/daily        HZense Daily
-/weekly       HZense Weekly
-/signals      HZense Signals
-/insights     HZense Insights
-/topics       HZense Topics
-/radar        HZense Radar
-/resources    HZense Resources
-/ask          Ask HZense
+/             雷达首页
+/signals      信号与多维探索
+/topics       专题洞察（固定专题与历史洞察版本）
+/resources    组织与人物等资源
+/search       全站搜索（档案通过显式选项进入）
+/admin        受保护管理后台，含 imports / runs / ai / sources / topics
 ```
+
+旧 `/daily`、`/weekly` 与详情保留只读；`/insights/[id]` 逐条映射或保留，`/radar` 在新首页验收后重定向 `/`。完整迁移表见 [新版设计第 11 节](SIGNAL_FIRST_REDESIGN.md#11-历史迁移与旧功能退场)。
 
 环境域名策略：
 
@@ -323,7 +325,7 @@ Local         http://localhost:3000
 
 ## 15. CMS 策略
 
-不采用 Contentful、Strapi、Sanity 等传统 CMS 作为核心内容源。后续自建轻量 Intelligence Editor，最终写入 Markdown + Database。
+不额外引入独立 CMS；后台编辑与 AI 生产统一调用版本化发布服务，写入数据库业务版本。Markdown 是历史档案或导出，不再与数据库双向同步为两个正文权威。
 
 ## 16. 明确不在首版引入
 
@@ -342,13 +344,17 @@ Local         http://localhost:3000
 
 **V1 — Knowledge Hub**：Markdown + Next.js + PostgreSQL + Search。
 
-**V2 — Intelligence Platform**：Signals + HZense Daily + Radar + Hybrid Search + Ask HZense / RAG。
+**Signal-first v2 — 当前目标**：三入口自动 Signal + 有据人物／组织 + 雷达首页 + 专题洞察 + 资源活跃度；停止新增 Daily／Weekly。
 
-**V3 — Intelligence Engine**：Automation + Graph + Trend Detection + Emerging Topic Detection + Recommendation。
+**后续 Intelligence Engine**：Hybrid Search / RAG、完整图谱、推荐与更深入的趋势研究；不替代本轮 V2-0 至 V2-6 的主路线。
 
 **V4 — Personal Technology Intelligence OS**：Discover → Understand → Connect → Track → Predict。
 
-## 18. 下一步
+## 18. 当前开发顺序与历史检查点
+
+当前按 [V2 实施顺序](SIGNAL_FIRST_REDESIGN.md#13-实施顺序与验收) 推进：数据／人物／证据 → 后台与三入口自动生产 → 信号／资源及自动搜索同步 → 雷达 → 专题洞察 → 迁移上线。专项 A–E 是该路线中的技术分解，不是另一份竞争计划。
+
+以下保留旧阶段检查点，不构成本轮现况核验或新增操作授权；尤其恢复演练按操作者后续决定保持未验证，不因文档整合自动重启：
 
 1. ✅ 已完成：PR #30 完成 Topic 全量投影同步器的最终评审、CI 与合并。
 2. ✅ 已完成：以经人工验证的新可恢复分支备份应用并验证生产 `0002`，配置独立 `hzense_topic_sync` 与 ACL，完成双 fingerprint dry run、受保护 Apply、独立验证与 no-op 重跑。
@@ -363,6 +369,14 @@ Local         http://localhost:3000
 截至 2026-09-04，步骤 1–3、6 与 8 已完成并有独立生产证据，步骤 4 已作为明确的风险保留决定记录；步骤 5 的 forward-only 工具已交付但外部恢复证据仍阻塞，步骤 7 待完成，步骤 9 处于“仓库实现完成、生产落地未开始”。小时级有界健康与 Issue 告警链不能替代 ACL 恢复证据、事件触发的凭据轮换或 provider 级指标监控；本地/CI 契约也不能替代 FTS-1 的生产 Migration、回填、shadow parity 和独立 cutover 验收。
 
 ---
+
+## v2.0 Signal-first 设计整合
+
+- 产品总纲、Signal-first 详细设计和 PR #64 AI 生产专项按职责整合。
+- 三入口默认自动发表、完整文档／表格／OCR、AI 配置、增量来源、调度和自动更正为目标能力。
+- 新 Signal／洞察版本采用数据库权威与 Outbox；Taxonomy 和历史档案保留原权威。
+- 明确人物证据、legacy 兼容、后台与公开读取边界，保留现行权限契约直至新迁移评审。
+- 停止新增 Daily／Weekly 的方向进入统一 V2 路线；文档更新不代表工程实施、迁移或生产切换。
 
 ## v1.1 域名与模型同步
 

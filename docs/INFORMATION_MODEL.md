@@ -12,6 +12,10 @@
 
 本次修订将既有的 Taxonomy 权威规则固化为 Taxonomy → Seed → Content 可执行门禁，并定义其完整 PostgreSQL 派生投影；Source of Truth 未改变，因此保持 v2.0.0。
 
+> **2026-09-12 重构设计提示：** 新产品方向见 [Signal-first v2](SIGNAL_FIRST_REDESIGN.md)，包括人物必需关系、信号与洞察版本、多来源证据、自动采集和派生评分。它将取代下文中的新增 Daily／Weekly 产品链；新逻辑模型尚待迁移实现。**第 40 节继续只记录当前已实现物理结构**，本次不把拟议表写成现有数据库，也不提前放宽现有校验／ACL。
+
+> **整合边界：** [产品总纲](DESIGN.md) 和 [AI 生产技术契约](AUTONOMOUS_SIGNAL_PIPELINE.md) 已统一新设计，但本文件下述生命周期、Source URL、Markdown 权威及旧内容类型仍是现行／历史契约，不是新版流水线约束。产品名称“Signal-first v2”不等于信息模型版本 v2.0.0；Signal 与新洞察正文的权威改为数据库属于第 42 节所定义的 **major 变更**，须在 V2-1 冻结下一主版本与迁移方案。本次不修改机器 Schema、历史数据或数据库权限。第 40 节的日期化运维记录也不是最新部署证明，部署状态以进度与对应验收证据为准。
+
 ---
 
 # 1. 目标
@@ -24,7 +28,7 @@ HZense 的 Information Model 定义系统中的内容、实体、关系、信号
 2. **人物、公司、技术、论文、Topic 等对象如何关联？**
 3. **Signals 如何逐步演化为 Daily、Weekly、Insights 与 Radar？**
 
-HZense 的核心知识流：
+现行模型的既有知识流（新版切换后 Daily／Weekly 仅保留历史归档）：
 
 > **Sources → Signals → Daily Intelligence → Weekly Intelligence → Topics → Insights → Radar**
 
@@ -789,6 +793,8 @@ V1 不做复杂 ML 评分，采用透明指标。
 
 # 24. Signal 生命周期
 
+本节是现行 Seed／Daily 契约，保留到迁移切换。新版三个采集入口默认 `auto_publish`，候选处理状态与正式公开状态分离，并要求至少一位有据人物；具体规则见 [AI 流水线](AUTONOMOUS_SIGNAL_PIPELINE.md#7-数据模型与状态)。旧 `reviewed`／`accepted` 不直接等同新版合格 `published`，本次也不改动现有校验器。
+
 ```text
 captured
    ↓
@@ -820,6 +826,8 @@ archived
 ---
 
 # 25. Source Model
+
+下文 URL／`allowed_hosts` 规则属于当前公开 Seed 来源契约。新版将区分私有导入文档、文档版本、公开证据与来源身份；未知域名走机器临时准入和统一网络安全检查，私有文档不伪造为公开 HTTPS 证据。其类型化引用在下一主版本定义，不能通过全局放宽本节 URL 校验来实现上传功能。详见 [三类采集入口](AUTONOMOUS_SIGNAL_PIPELINE.md#5-三类采集入口)。
 
 每条 Signal 必须关联 Source。
 
@@ -1419,6 +1427,8 @@ Web 只在 Production 请求时通过 pooled TLS 连接以 `FROM ONLY public.top
 
 # 41. 数据一致性规则
 
+以下为现行模型一致性约束，含 Daily／Seed／Markdown 的旧契约。新版一致性要求另见 [Signal-first 数据权威](SIGNAL_FIRST_REDESIGN.md#9-数据模型与权威边界) 与 [发布规则](AUTONOMOUS_SIGNAL_PIPELINE.md#9-发布搜索与自动更正)，实施时随主版本和消费者迁移逐项替换，不在设计整合时取消现有门禁。
+
 必须满足：
 
 1. 所有 ID 唯一。
@@ -1454,6 +1464,8 @@ v2.0
 - 修改 ID 规则：major
 - 删除字段：major
 - 改变 Source of Truth：major
+
+因此，Signal-first 产品 v2 的数据库权威切换必须发布信息模型的下一主版本，而不是复用当前 `v2.0.0` 表示兼容变更。具体版本号、旧状态映射、新引用类型和读写切换在 V2-1 一并评审；本文页首版本与当前机器 Schema 暂不升级。
 
 每个内容文件可保存：
 
@@ -1539,7 +1551,7 @@ HZense 的信息模型以三个原则为核心：
 > **Readable enough for humans.**  
 > **Stable enough for long-term knowledge accumulation.**
 
-最终形成：
+本版既有模型形成以下链路；它保留历史内容兼容，不再作为 Signal-first 新开发链路：
 
 ```text
 Sources
@@ -1561,4 +1573,4 @@ Radar
 Intelligence
 ```
 
-这套模型作为 HZense v2.0.0 的正式 Evidence Integrity Baseline。
+这套模型作为 HZense 信息模型 v2.0.0 的既有 Evidence Integrity Baseline。下一主版本改为“多入口资料 → 有据人物关联的 Signal → 雷达／信号／专题洞察／资源”，以整合设计为输入，经迁移和验收后生效。

@@ -13,13 +13,23 @@ HZense is a Technology Intelligence platform for turning fragmented technical in
 - GitHub Organization: **https://github.com/hzense**
 - Main Repository: **https://github.com/hzense/tech-intelligence-hub**
 
-## Intelligence pipeline
+## Next product direction: Signal-first v2
+
+The [product design](docs/DESIGN.md) and [v2 redesign](docs/SIGNAL_FIRST_REDESIGN.md) define four primary views: **Radar home, Signals, Topic Insights, and Resources**. New-version public Signals require evidence-backed industry-person links. Radar shows domain trends and TOP10 hot Signals; Signals support multidimensional filtering and aggregation; Topic Insights run weekly by default or on demand; organization Resources rank by recent distinct-event activity and show key people.
+
+The [AI production technical contract](docs/AUTONOMOUS_SIGNAL_PIPELINE.md) integrates PR #64's collection, model configuration, scheduling, budgets and automatic correction capabilities. Automatic collection, document upload and hyperlink submission share a default auto-publish pipeline with evidence and person checks. The admin batch center supports PDF, DOCX, Markdown, TXT, HTML, CSV, XLSX and scanned PDF / PNG / JPEG OCR, with per-item progress, partial success and retries. Preview and review-required are optional Signal policies; the default publication policy for Topic Insights remains a separate decision.
+
+Target flow: **Sources / batch documents / links → AI extraction and verification → versioned Signals → Radar, Signals, Topic Insights and Resources**. PostgreSQL will own new Signal and Insight versions; an Outbox will update search and other projections automatically. Git will retain code, Taxonomy, migrations, historical content and exports. Daily and Weekly will stop receiving new content after cutover, while historical URLs remain readable.
+
+This is a local design integration, not an implemented or deployed change, and it does not merge PR #64. V2 implementation and migration are tracked in [PROGRESS.md](docs/PROGRESS.md). The following MVP and historical sections must not be read as the new product roadmap or a fresh production audit.
+
+## Existing MVP pipeline — retained until cutover
 
 > **Sources → Signals → HZense Daily → HZense Weekly → Topics → Insights → Radar**
 
-Daily candidates are generated deterministically from reviewed Signals, validated as immutable artifacts and designed to open as Draft PRs; publication remains a human-only decision. Automatic PR creation is currently feature-gated by an organization policy: a repository-scoped enable request returned HTTP 409 on 2026-09-04, so no publication variable, dispatch, automation branch or Draft PR was created. See [Continuous Daily](docs/CONTINUOUS_DAILY.md) and the [sanitized operations checkpoint](docs/production-evidence/2026-09-04-operations-checkpoint.md).
+The legacy Daily workflow generates candidates deterministically from reviewed Signals, validates immutable artifacts and uses Draft PRs for human publication decisions. The [2026-09-04 operations checkpoint](docs/production-evidence/2026-09-04-operations-checkpoint.md) recorded an organization-policy blocker at that time, not a current permission diagnosis. [Continuous Daily](docs/CONTINUOUS_DAILY.md) remains the existing implementation contract until cutover; it is not a requirement to keep producing Daily / Weekly in v2.
 
-## Product modules
+## Existing MVP modules — historical compatibility
 
 - **HZense Daily** — daily technology intelligence brief
 - **HZense Weekly** — weekly synthesis
@@ -30,21 +40,20 @@ Daily candidates are generated deterministically from reviewed Signals, validate
 - **HZense Resources** — people, companies, institutions, technologies, products, models, datasets, standards/protocols, papers and events
 - **Ask HZense** — future AI-powered intelligence retrieval and analysis
 
-## Architecture baseline
+## Existing architecture baseline and target boundary
 
 - TypeScript
 - Next.js + React
-- Markdown / MDX as formal content source of truth
+- Markdown / MDX for existing editorial content; Seed YAML for current public Signals
 - PostgreSQL + Drizzle ORM for structured intelligence
-- pgvector for semantic retrieval
-- Current in-process keyword ranking + FTS-0 canonical projection → PostgreSQL FTS → Hybrid Search
+- pgvector schema support; this alone does not establish a semantic-retrieval feature
+- Canonical search projection and FTS-1 implementation; deployment evidence is tracked in [PROGRESS.md](docs/PROGRESS.md)
 - Vercel for the web application
-- Cloudflare R2 / S3-compatible storage for large media
+- Private object storage for v2 imports is a design requirement, not a provisioned-resource claim
 
-> **Git / Markdown = content Source of Truth**  
-> **PostgreSQL = entity / relation / signal / index Source of Truth**
+Existing public Signals are read from `data/seed/signals.yaml`; physical business tables existing in PostgreSQL does not prove they are populated or authoritative for the website. The v2 database-authority switch requires explicit migration and consumer cutover. Historical Markdown stays readable; new Signal and Topic Insight versions must not become a dual-write Git / database system.
 
-`data/taxonomy/taxonomy.yaml` is the Source of Truth for Topic IDs, canonical English names, primary-parent hierarchy and cross-domain relations. `data/seed/topics.yaml` is its validated operational subset and owns runtime status; Markdown/MDX files under `content/topics/` own localized Topic pages and body content only. PostgreSQL `topics` is a complete derived projection of the Taxonomy, populated only by the reviewed synchronizer and never edited as an independent Topic authority. The first production projection was completed and independently verified on 2026-08-31; PostgreSQL remains a derived projection rather than a Topic authority.
+`data/taxonomy/taxonomy.yaml` remains the Source of Truth for controlled Topic IDs, canonical English names, primary-parent hierarchy and cross-domain relations. In the existing implementation, `data/seed/topics.yaml` is its validated operational subset and owns runtime status; Markdown/MDX files under `content/topics/` own localized Topic pages and body content. PostgreSQL `topics` is a derived projection, not an independent Topic authority. V2 separates these controlled domains from AI-proposed thematic clusters and database-owned Insight editions; promotion into Taxonomy still requires its own controlled change.
 
 ## Repository structure
 
@@ -81,6 +90,8 @@ docs/
 ## Project baselines
 
 - [`docs/DESIGN.md`](docs/DESIGN.md) — product and information architecture
+- [`docs/SIGNAL_FIRST_REDESIGN.md`](docs/SIGNAL_FIRST_REDESIGN.md) — integrated v2 product contracts, migration and acceptance
+- [`docs/AUTONOMOUS_SIGNAL_PIPELINE.md`](docs/AUTONOMOUS_SIGNAL_PIPELINE.md) — PR #64 AI production technical contract integrated with v2
 - [`docs/TECHNICAL_ARCHITECTURE.md`](docs/TECHNICAL_ARCHITECTURE.md) — technical architecture
 - [`docs/INFORMATION_MODEL.md`](docs/INFORMATION_MODEL.md) — knowledge/data model
 - [`docs/DEVELOPMENT_FOUNDATION.md`](docs/DEVELOPMENT_FOUNDATION.md) — executable engineering foundation
@@ -91,9 +102,9 @@ docs/
 - [`data/schema/information-model.yaml`](data/schema/information-model.yaml) — machine-readable information model
 - [`data/taxonomy/taxonomy.yaml`](data/taxonomy/taxonomy.yaml) — controlled taxonomy
 
-## Current status
+## Historical engineering milestones
 
-**Production hardening — post-rollout monitoring**
+The ledger below preserves earlier engineering checkpoints. Its unchecked items and dated operations narrative are not a current to-do list, deployment audit or prerequisites added to v2. Use [PROGRESS.md](docs/PROGRESS.md) for the maintained roadmap and linked evidence; this design integration does not rerun production checks or restore drills.
 
 Completed:
 
@@ -114,7 +125,7 @@ Completed:
 - [x] Basic keyword search across published content
 - [x] Architecture Decision Records
 
-Next milestone:
+Original MVP milestone:
 
 - [x] Initialize the Next.js application in `apps/web`
 - [x] Build Home + HZense Daily first
@@ -126,10 +137,10 @@ Next milestone:
 - [x] Add basic search
 - [x] Publish the dedicated HZense Radar route
 
-Next phase:
+Historical production-hardening ledger:
 
 - [x] Connect deterministic Daily candidate generation and validate a real dry-run artifact
-- [ ] Have an organization owner allow Actions pull-request creation, then enable and verify the repository permission and publication variable for automatic Continuous Daily Draft PR creation
+- [ ] Historical 2026-09-04 item: organization permission for Continuous Daily Draft PR creation; superseded as a v2 development direction by Signal-first production
 - [x] Provision managed PostgreSQL 18 / pgvector 0.8.6
 - [x] Complete and independently verify the initial production database migration (`0000`–`0001`)
 - [x] Enforce the Taxonomy → Seed → Content authority chain
@@ -197,7 +208,7 @@ Local Topic sync is equally strict: use a dedicated loopback database, pre-creat
 
 `packages/database/src/schema.ts` is the Drizzle physical-schema declaration. Executable migrations are reviewed, sequential `NNNN_name.sql` files in `db/migrations/`; their immutable SHA-256 values are recorded in `db/migrations/checksums.json`. The runner applies each file in a transaction, serializes concurrent runs, and records the checksum in `hzense_schema_migrations`. Applied files must never be edited.
 
-The repository Schema contains three Migrations. `0002_topic_projection.sql` adds `topics.runtime_enabled` and its status constraint. Production evidence from 2026-08-31 verifies all three Migrations with 0 pending and the completed first Topic projection.
+The 2026-08-31 checkpoint covered three Migrations through `0002_topic_projection.sql`, which added `topics.runtime_enabled` and its status constraint. That evidence verified zero pending Migrations at that time and the first Topic projection; the current repository migration inventory is defined by `db/migrations/checksums.json`, not by that historical count. V2 physical changes require new migrations and corresponding verifier updates.
 
 Local development uses only a literal loopback PostgreSQL URL:
 
