@@ -16,6 +16,8 @@
 
 > **整合边界：** [产品总纲](DESIGN.md) 和 [AI 生产技术契约](AUTONOMOUS_SIGNAL_PIPELINE.md) 已统一新设计，但本文件下述生命周期、Source URL、Markdown 权威及旧内容类型仍是现行／历史契约，不是新版流水线约束。产品名称“Signal-first v2”不等于信息模型版本 v2.0.0；Signal 与新洞察正文的权威改为数据库属于第 42 节所定义的 **major 变更**，须在 V2-1 冻结下一主版本与迁移方案。本次不修改机器 Schema、历史数据或数据库权限。第 40 节的日期化运维记录也不是最新部署证明，部署状态以进度与对应验收证据为准。
 
+> **2026-09-13 实施增量：** [V2-1a](SIGNAL_V3_FOUNDATION.md) 已新增独立的 Signal 快照机器契约 `3.0.0` 和 `0004` 迁移，旧 Seed／Markdown `2.0.0` 保持兼容。下文第 40 节按仓库 DDL 目标更新；没有执行生产迁移、不可变发表事务或读取权威切换。
+
 ---
 
 # 1. 目标
@@ -1241,24 +1243,24 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 
 ## 40.1 范围与权威来源
 
-本节描述当前已经实现并由自动校验保护的 PostgreSQL `public` Schema 基线，不把未来规划表述为现状。当前基线包含：
+本节描述仓库已实现、由自动校验保护的 PostgreSQL `public` Schema 目标，不把尚未执行的迁移表述为生产现状。当前仓库目标包含：
 
-- 13 张持久表：12 张领域或派生数据表，以及 1 张 Migration 历史表。
+- 21 张持久表：20 张领域或派生数据表，以及 1 张 Migration 历史表；其中 8 张来自尚未上线的 `0004`。
 - 9 个 PostgreSQL Enum。
 - `vector` 扩展，以及 `search_documents.embedding vector(1536)`。
-- 仓库 Migration manifest 登记四个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql` 与 `0003_search_documents_fts.sql`；最后一次生产复核只确认前三者已执行且 0 pending，`0003` 尚未应用。
+- 仓库 Migration manifest 登记五个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql`、`0003_search_documents_fts.sql` 和 `0004_signal_version_foundation.sql`。`0003` 的历史生产执行见 [FTS-1 切换记录](production-evidence/acl/34535908960-1/cutover.md)；本批未执行 `0004`，不声明生产已有 21 表。
 
 物理结构的权威顺序如下：
 
-1. [`db/migrations/*.sql`](../db/migrations/) 是 12 张应用 Schema 表的可执行 DDL 权威来源。
-2. [`packages/database/src/migrate.mjs`](../packages/database/src/migrate.mjs) 创建并维护第 13 张运维表 `hzense_schema_migrations`。
-3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts) 是 12 张应用 Schema 表的 Drizzle 类型映射；运维历史表不进入应用 ORM 映射。
-4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs) 独立校验完整 13 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史。
+1. [`db/migrations/*.sql`](../db/migrations/) 是 20 张应用 Schema 表的可执行 DDL 权威来源。
+2. [`packages/database/src/migrate.mjs`](../packages/database/src/migrate.mjs) 创建并维护运维表 `hzense_schema_migrations`。
+3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts) 是 20 张应用 Schema 表的 Drizzle 类型映射；运维历史表不进入应用 ORM 映射。
+4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs) 与 [V2-1a catalog 契约](../packages/database/src/signal-foundation-catalog.mjs) 独立校验完整 21 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史。
 5. 本节是上述可执行合约的设计说明，不能代替 Migration 或 Runner DDL。
 
-Git / Markdown 仍是 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文的 Source of Truth。PostgreSQL 保存结构化 Entity、Relation、Signal、Radar、内容登记和可重建搜索数据，不保存正式正文。
+Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文的 Source of Truth，公开 Signal 仍读 Seed。新增 `signal_versions` 可以保存完整快照，但本批未导入或发布正文，也未将其接入公开读取。
 
-## 40.2 已实现表清单
+## 40.2 仓库已实现表清单
 
 | 领域               | 表                         | 职责与关键字段                                                                                      | 主键、唯一约束与核心关系                                                                          |
 | ------------------ | -------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -1275,6 +1277,21 @@ Git / Markdown 仍是 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 
 | Content Metadata   | `content_registry`         | Markdown 内容的类型、仓库路径、发布状态和时间                                                       | PK `id`；`path` 唯一                                                                              |
 | Search / Embedding | `search_documents`         | 可重建搜索文档，包含 UI/正文副本、规范化文本、generated `tsvector`、Topic / Entity JSONB 与可选向量 | PK `id`；唯一 `(source_type, source_id)`；逻辑引用不绑定数据库外键；`search_vector` 使用 GIN      |
 | Operations         | `hzense_schema_migrations` | 已执行 Migration 的文件名、64 字符 SHA-256 Checksum 和应用时间                                      | PK `name`                                                                                         |
+
+`0004` 另增下列 8 表，均未向 Runtime 开放：
+
+| 表                             | 主键与约束                                                                                            |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `person_profiles`              | PK entity_id；entity_type 固定 person；复合 FK → entities(id,type)                                    |
+| `organization_profiles`        | PK entity_id；类型限 company/institution；复合 FK → entities(id,type)                                 |
+| `public_source_evidence`       | PK id；FK source_id → sources；公开原文 URL、定位、片段、内容指纹和核验状态，不能用 Seed 摘要伪造原文 |
+| `signal_versions`              | PK (signal_id,version)；FK → signals；3.0.0 完整快照，发生时间/精度/依据、评分、分析、修订和旧状态    |
+| `signal_version_evidence`      | PK (signal_id,version,evidence_id)；版本与证据外键，断言及支持/冲突/背景关系                          |
+| `signal_version_people`        | PK (signal_id,version,person_id,evidence_id)；人物档案 FK 与同版本证据复合 FK                         |
+| `signal_version_organizations` | PK (signal_id,version,organization_id,evidence_id)；组织档案 FK、同版本证据及事件角色                 |
+| `signal_version_topics`        | PK (signal_id,version,topic_id)；版本与规范 Topic 外键                                                |
+
+实体新增 `(id,type)` 唯一索引作为类型化外键目标；上述新增外键全部 NO ACTION，防止级联删除快照／证据。没有公开版本指针或发表状态，没有引入 Trigger/函数/权限放宽；跨表发表资格、数据库级版本不可变和人物任职关系仍待后续实施。详细字段与验收见 [V2-1a 契约](SIGNAL_V3_FOUNDATION.md)。
 
 ## 40.3 核心关系
 
@@ -1465,7 +1482,7 @@ v2.0
 - 删除字段：major
 - 改变 Source of Truth：major
 
-因此，Signal-first 产品 v2 的数据库权威切换必须发布信息模型的下一主版本，而不是复用当前 `v2.0.0` 表示兼容变更。具体版本号、旧状态映射、新引用类型和读写切换在 V2-1 一并评审；本文页首版本与当前机器 Schema 暂不升级。
+因此，Signal-first 产品 v2 的数据库权威切换不能复用 `v2.0.0` 表示兼容变更。V2-1a 已冻结独立快照契约 `3.0.0`，机器校验见 `packages/content/src/signal-v3.ts`；现有 `data/schema/information-model.yaml` 继续服务旧内容，不全局改号。完整发布、任职、候选及读取切换契约后续分批实施，不能将本批快照版本号解释成完整新版已上线。
 
 每个内容文件可保存：
 

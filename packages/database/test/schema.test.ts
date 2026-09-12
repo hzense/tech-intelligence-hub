@@ -1,12 +1,22 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { getTableConfig } from 'drizzle-orm/pg-core';
+import { getTableName } from 'drizzle-orm';
+import { getTableConfig, PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import {
+  entities,
+  organizationProfiles,
+  personProfiles,
+  publicSourceEvidence,
   radarSnapshots,
   radarSnapshotSignals,
   searchDocuments,
   signals,
+  signalVersionEvidence,
+  signalVersionOrganizations,
+  signalVersionPeople,
+  signalVersionTopics,
+  signalVersions,
   sources,
   topics,
 } from '../src/schema.js';
@@ -124,5 +134,179 @@ describe('FTS-1 Search Document schema', () => {
     expect(migration).toContain('ADD COLUMN search_vector tsvector GENERATED ALWAYS AS');
     expect(migration).toContain("to_tsvector('pg_catalog.simple'::regconfig");
     expect(migration).toContain('USING gin(search_vector)');
+  });
+});
+
+describe('Signal 3.0.0 private storage foundation', () => {
+  const foundationTables = [
+    personProfiles,
+    organizationProfiles,
+    publicSourceEvidence,
+    signalVersions,
+    signalVersionEvidence,
+    signalVersionPeople,
+    signalVersionOrganizations,
+    signalVersionTopics,
+  ];
+
+  it('stores the complete version snapshot without assigning public eligibility', () => {
+    expect(columnNames(signalVersions)).toEqual([
+      'signal_id',
+      'version',
+      'schema_version',
+      'title',
+      'type',
+      'occurred_at',
+      'date_precision',
+      'date_basis',
+      'captured_at',
+      'summary',
+      'analysis',
+      'importance',
+      'strength',
+      'confidence',
+      'novelty',
+      'revision_reason',
+      'origin',
+      'legacy_status',
+      'content_hash',
+      'created_at',
+    ]);
+    const config = getTableConfig(signalVersions);
+    expect(config.primaryKeys[0].columns.map((column) => column.name)).toEqual([
+      'signal_id',
+      'version',
+    ]);
+    expect(signalVersions.schemaVersion.default).toBe('3.0.0');
+    expect(signalVersions.analysis.notNull).toBe(false);
+    expect(signalVersions.legacyStatus.notNull).toBe(false);
+    expect(signalVersions.capturedAt.hasDefault).toBe(false);
+    expect(signalVersions.createdAt.hasDefault).toBe(true);
+    for (const field of ['published_at', 'publication_status', 'current_version']) {
+      expect(foundationTables.flatMap(columnNames)).not.toContain(field);
+    }
+  });
+
+  it('binds person and organization profiles to the matching entity identity and type', () => {
+    const identityIndex = getTableConfig(entities).indexes.find(
+      (index) => index.config.name === 'entities_id_type_uq',
+    );
+    expect(identityIndex?.config.unique).toBe(true);
+    expect(identityIndex?.config.columns.map((column) => 'name' in column && column.name)).toEqual([
+      'id',
+      'type',
+    ]);
+
+    for (const table of [personProfiles, organizationProfiles]) {
+      const reference = getTableConfig(table).foreignKeys[0].reference();
+      expect(reference.columns.map((column) => column.name)).toEqual(['entity_id', 'entity_type']);
+      expect(getTableName(reference.foreignTable)).toBe('entities');
+      expect(reference.foreignColumns.map((column) => column.name)).toEqual(['id', 'type']);
+    }
+  });
+
+  it('allows multiple evidence rows per person or organization only within the exact version', () => {
+    for (const [table, profile, entityColumn] of [
+      [signalVersionPeople, personProfiles, 'person_id'],
+      [signalVersionOrganizations, organizationProfiles, 'organization_id'],
+    ] as const) {
+      const config = getTableConfig(table);
+      expect(config.primaryKeys[0].columns.map((column) => column.name)).toEqual([
+        'signal_id',
+        'version',
+        entityColumn,
+        'evidence_id',
+      ]);
+      const references = config.foreignKeys.map((foreignKey) => foreignKey.reference());
+      expect(references.map((reference) => getTableName(reference.foreignTable))).toEqual([
+        getTableName(profile),
+        'signal_version_evidence',
+      ]);
+      const evidenceReference = references[1];
+      expect(evidenceReference.columns.map((column) => column.name)).toEqual([
+        'signal_id',
+        'version',
+        'evidence_id',
+      ]);
+      expect(evidenceReference.foreignColumns.map((column) => column.name)).toEqual([
+        'signal_id',
+        'version',
+        'evidence_id',
+      ]);
+    }
+  });
+
+  it('requires collected source evidence and preserves pending verification defaults', () => {
+    expect(columnNames(publicSourceEvidence)).toEqual([
+      'id',
+      'source_id',
+      'source_url',
+      'locator',
+      'excerpt',
+      'content_hash',
+      'captured_at',
+      'source_published_at',
+      'verification_status',
+    ]);
+    expect(publicSourceEvidence.sourcePublishedAt.notNull).toBe(false);
+    expect(publicSourceEvidence.capturedAt.hasDefault).toBe(false);
+    for (const table of [publicSourceEvidence, signalVersionPeople, signalVersionOrganizations]) {
+      expect(table.verificationStatus.default).toBe('pending');
+    }
+    for (const table of foundationTables) {
+      for (const foreignKey of getTableConfig(table).foreignKeys) {
+        expect(foreignKey.onDelete).toBe('no action');
+        expect(foreignKey.onUpdate).toBe('no action');
+      }
+    }
+  });
+
+  it('keeps SQL and Drizzle checks, foreign keys, keys and indexes identical', async () => {
+    const migration = await readFile(
+      resolve(process.cwd(), '../../db/migrations/0004_signal_version_foundation.sql'),
+      'utf8',
+    );
+    const normalizedMigration = migration.replace(/\s+/g, ' ');
+    const dialect = new PgDialect();
+    for (const table of foundationTables) {
+      const config = getTableConfig(table);
+      expect(migration).toContain(`CREATE TABLE ${config.name} (`);
+      for (const constraint of config.checks) {
+        const expression = dialect
+          .sqlToQuery(constraint.value)
+          .sql.replace(/"[a-z_]+"\."([a-z_]+)"/g, '$1')
+          .replace(/\s+/g, ' ');
+        expect(normalizedMigration).toContain(
+          `CONSTRAINT ${constraint.name} CHECK (${expression})`,
+        );
+        expect(constraint.name.length).toBeLessThanOrEqual(63);
+      }
+      for (const foreignKey of config.foreignKeys) {
+        const reference = foreignKey.reference();
+        const localColumns = reference.columns.map((column) => column.name).join(', ');
+        const foreignColumns = reference.foreignColumns.map((column) => column.name).join(', ');
+        expect(normalizedMigration).toContain(
+          `CONSTRAINT ${foreignKey.getName()} FOREIGN KEY (${localColumns}) REFERENCES ${getTableName(reference.foreignTable)}(${foreignColumns}) ON UPDATE NO ACTION ON DELETE NO ACTION`,
+        );
+        expect(foreignKey.getName().length).toBeLessThanOrEqual(63);
+      }
+      for (const primaryKey of config.primaryKeys) {
+        expect(normalizedMigration).toContain(
+          `CONSTRAINT ${primaryKey.getName()} PRIMARY KEY (${primaryKey.columns.map((column) => column.name).join(', ')})`,
+        );
+        expect(primaryKey.getName().length).toBeLessThanOrEqual(63);
+      }
+      for (const index of config.indexes) {
+        expect(normalizedMigration).toContain(
+          `CREATE INDEX ${index.config.name} ON ${config.name}(`,
+        );
+      }
+    }
+    const executableSql = migration.replace(/^--.*$/gm, '');
+    expect(executableSql).not.toMatch(
+      /\b(?:GRANT|TRIGGER|FUNCTION|VIEW|POLICY|ROW LEVEL SECURITY)\b/i,
+    );
+    expect(executableSql).not.toMatch(/\b(?:INSERT|UPDATE|DELETE)\s+(?:INTO|FROM|signals)\b/i);
+    expect(executableSql).not.toMatch(/\bALTER\s+TABLE\b/i);
   });
 });

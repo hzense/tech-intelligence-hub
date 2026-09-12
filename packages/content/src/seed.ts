@@ -135,6 +135,45 @@ export interface LoadedSeedCatalog extends SeedCatalog {
   taxonomy: TaxonomyCatalog;
 }
 
+/** Parse an in-memory Seed catalog without reading files or silently dropping fields. */
+export function parseSeedCatalog(input: unknown): SeedCatalog {
+  // z.url trims by default; reject nonliteral URLs first so this path never loses text.
+  const legacySourceUrl = z
+    .string()
+    .refine(
+      (value) =>
+        /^https:\/\//i.test(value) &&
+        !/\s/.test(value) &&
+        [...value].every((character) => {
+          const code = character.charCodeAt(0);
+          return code > 0x1f && code !== 0x7f;
+        }),
+      'Expected a literal HTTPS URL without whitespace or control characters',
+    )
+    .pipe(httpsUrl)
+    .refine((value) => {
+      const url = new URL(value);
+      return !url.username && !url.password;
+    }, 'Legacy source URL must not contain credentials');
+  const catalog = z
+    .strictObject({
+      entities: z.array(entitySchema.strict()),
+      radar: z.array(
+        radarSchema
+          .extend({
+            reasoning: z.string().refine((value) => value.trim().length > 0, 'Must not be blank'),
+          })
+          .strict(),
+      ),
+      relations: z.array(relationSchema.strict()),
+      signals: z.array(signalSchema.extend({ source_url: legacySourceUrl }).strict()),
+      sources: z.array(sourceSchema.strict()),
+      topics: z.array(topicSchema.strict()),
+    })
+    .parse(input);
+  return validateSeedCatalog(catalog);
+}
+
 async function loadSeedFile<T>(seedRoot: string, name: string, schema: z.ZodType<T>): Promise<T[]> {
   const input: unknown = parse(await readFile(join(seedRoot, name), 'utf8'));
   return z.array(schema).parse(input);

@@ -5,6 +5,7 @@ import {
   customType,
   date,
   doublePrecision,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -121,7 +122,11 @@ export const entities = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('entities_type_idx').on(t.type), index('entities_name_idx').on(t.name)],
+  (t) => [
+    index('entities_type_idx').on(t.type),
+    index('entities_name_idx').on(t.name),
+    uniqueIndex('entities_id_type_uq').on(t.id, t.type),
+  ],
 );
 export const sources = pgTable(
   'sources',
@@ -169,6 +174,308 @@ export const signals = pgTable(
     check('signals_novelty_ck', sql`${t.novelty} between 0 and 1`),
   ],
 );
+
+// Private 3.0.0 storage foundation. Publication and database-enforced snapshot
+// immutability require later services and are not supplied by these tables.
+export const personProfiles = pgTable(
+  'person_profiles',
+  {
+    entityId: text('entity_id').primaryKey(),
+    entityType: entityType('entity_type').$type<'person'>().notNull().default('person'),
+  },
+  (t) => [
+    check('person_profiles_entity_type_ck', sql`${t.entityType} = 'person'`),
+    foreignKey({
+      name: 'person_profiles_entity_fk',
+      columns: [t.entityId, t.entityType],
+      foreignColumns: [entities.id, entities.type],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+  ],
+);
+export const organizationProfiles = pgTable(
+  'organization_profiles',
+  {
+    entityId: text('entity_id').primaryKey(),
+    entityType: entityType('entity_type').$type<'company' | 'institution'>().notNull(),
+  },
+  (t) => [
+    check(
+      'organization_profiles_entity_type_ck',
+      sql`${t.entityType} IN ('company', 'institution')`,
+    ),
+    foreignKey({
+      name: 'organization_profiles_entity_fk',
+      columns: [t.entityId, t.entityType],
+      foreignColumns: [entities.id, entities.type],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+  ],
+);
+export const publicSourceEvidence = pgTable(
+  'public_source_evidence',
+  {
+    id: text('id').primaryKey(),
+    sourceId: text('source_id').notNull(),
+    sourceUrl: text('source_url').notNull(),
+    locator: text('locator').notNull(),
+    excerpt: text('excerpt').notNull(),
+    contentHash: text('content_hash').notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+    sourcePublishedAt: timestamp('source_published_at', { withTimezone: true }),
+    verificationStatus: text('verification_status')
+      .$type<'pending' | 'verified' | 'rejected'>()
+      .notNull()
+      .default('pending'),
+  },
+  (t) => [
+    foreignKey({
+      name: 'public_source_evidence_source_fk',
+      columns: [t.sourceId],
+      foreignColumns: [sources.id],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    index('public_source_evidence_source_idx').on(t.sourceId),
+    check('public_source_evidence_id_ck', sql`${t.id} ~ '[^[:space:]]'`),
+    check('public_source_evidence_source_url_ck', sql`${t.sourceUrl} ~ '^https://[^[:space:]]+$'`),
+    check('public_source_evidence_locator_ck', sql`${t.locator} ~ '[^[:space:]]'`),
+    check('public_source_evidence_excerpt_ck', sql`${t.excerpt} ~ '[^[:space:]]'`),
+    check('public_source_evidence_content_hash_ck', sql`${t.contentHash} ~ '^[a-f0-9]{64}$'`),
+    check('public_source_evidence_captured_at_ck', sql`isfinite(${t.capturedAt})`),
+    check(
+      'public_source_evidence_source_published_at_ck',
+      sql`${t.sourcePublishedAt} IS NULL OR isfinite(${t.sourcePublishedAt})`,
+    ),
+    check(
+      'public_source_evidence_verification_status_ck',
+      sql`${t.verificationStatus} IN ('pending', 'verified', 'rejected')`,
+    ),
+  ],
+);
+export const signalVersions = pgTable(
+  'signal_versions',
+  {
+    signalId: text('signal_id').notNull(),
+    version: integer('version').notNull(),
+    schemaVersion: text('schema_version').$type<'3.0.0'>().notNull().default('3.0.0'),
+    title: text('title').notNull(),
+    type: signalType('type').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    datePrecision: text('date_precision').$type<'day' | 'instant'>().notNull(),
+    dateBasis: text('date_basis').notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
+    summary: text('summary').notNull(),
+    analysis: text('analysis'),
+    importance: integer('importance').notNull(),
+    strength: integer('strength').notNull(),
+    confidence: doublePrecision('confidence').notNull(),
+    novelty: doublePrecision('novelty').notNull(),
+    revisionReason: text('revision_reason').notNull(),
+    origin: text('origin').$type<'legacy_seed' | 'pipeline' | 'manual'>().notNull(),
+    legacyStatus: signalStatus('legacy_status'),
+    contentHash: text('content_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'signal_versions_pkey', columns: [t.signalId, t.version] }),
+    foreignKey({
+      name: 'signal_versions_signal_fk',
+      columns: [t.signalId],
+      foreignColumns: [signals.id],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    index('signal_versions_occurred_idx').on(t.occurredAt),
+    check('signal_versions_version_ck', sql`${t.version} > 0`),
+    check('signal_versions_schema_version_ck', sql`${t.schemaVersion} = '3.0.0'`),
+    check('signal_versions_title_ck', sql`${t.title} ~ '[^[:space:]]'`),
+    check('signal_versions_occurred_at_ck', sql`isfinite(${t.occurredAt})`),
+    check('signal_versions_date_precision_ck', sql`${t.datePrecision} IN ('day', 'instant')`),
+    check(
+      'signal_versions_day_precision_ck',
+      sql`${t.datePrecision} <> 'day' OR date_trunc('day', ${t.occurredAt} AT TIME ZONE 'UTC') = ${t.occurredAt} AT TIME ZONE 'UTC'`,
+    ),
+    check('signal_versions_date_basis_ck', sql`${t.dateBasis} ~ '[^[:space:]]'`),
+    check('signal_versions_captured_at_ck', sql`isfinite(${t.capturedAt})`),
+    check('signal_versions_summary_ck', sql`${t.summary} ~ '[^[:space:]]'`),
+    check(
+      'signal_versions_analysis_ck',
+      sql`${t.analysis} IS NULL OR ${t.analysis} ~ '[^[:space:]]'`,
+    ),
+    check('signal_versions_importance_ck', sql`${t.importance} BETWEEN 1 AND 5`),
+    check('signal_versions_strength_ck', sql`${t.strength} BETWEEN 1 AND 5`),
+    check('signal_versions_confidence_ck', sql`${t.confidence} BETWEEN 0 AND 1`),
+    check('signal_versions_novelty_ck', sql`${t.novelty} BETWEEN 0 AND 1`),
+    check('signal_versions_revision_reason_ck', sql`${t.revisionReason} ~ '[^[:space:]]'`),
+    check('signal_versions_origin_ck', sql`${t.origin} IN ('legacy_seed', 'pipeline', 'manual')`),
+    check(
+      'signal_versions_legacy_status_ck',
+      sql`(${t.origin} = 'legacy_seed') = (${t.legacyStatus} IS NOT NULL)`,
+    ),
+    check('signal_versions_content_hash_ck', sql`${t.contentHash} ~ '^[a-f0-9]{64}$'`),
+    check('signal_versions_created_at_ck', sql`isfinite(${t.createdAt})`),
+  ],
+);
+export const signalVersionEvidence = pgTable(
+  'signal_version_evidence',
+  {
+    signalId: text('signal_id').notNull(),
+    version: integer('version').notNull(),
+    evidenceId: text('evidence_id').notNull(),
+    claim: text('claim').notNull(),
+    relation: text('relation').$type<'supports' | 'contradicts' | 'context'>().notNull(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'signal_version_evidence_pkey',
+      columns: [t.signalId, t.version, t.evidenceId],
+    }),
+    foreignKey({
+      name: 'signal_version_evidence_version_fk',
+      columns: [t.signalId, t.version],
+      foreignColumns: [signalVersions.signalId, signalVersions.version],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    foreignKey({
+      name: 'signal_version_evidence_evidence_fk',
+      columns: [t.evidenceId],
+      foreignColumns: [publicSourceEvidence.id],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    index('signal_version_evidence_evidence_idx').on(t.evidenceId),
+    check('signal_version_evidence_claim_ck', sql`${t.claim} ~ '[^[:space:]]'`),
+    check(
+      'signal_version_evidence_relation_ck',
+      sql`${t.relation} IN ('supports', 'contradicts', 'context')`,
+    ),
+  ],
+);
+export const signalVersionPeople = pgTable(
+  'signal_version_people',
+  {
+    signalId: text('signal_id').notNull(),
+    version: integer('version').notNull(),
+    personId: text('person_id').notNull(),
+    evidenceId: text('evidence_id').notNull(),
+    eventRole: text('event_role').notNull(),
+    verificationStatus: text('verification_status')
+      .$type<'pending' | 'verified' | 'rejected'>()
+      .notNull()
+      .default('pending'),
+  },
+  (t) => [
+    primaryKey({
+      name: 'signal_version_people_pkey',
+      columns: [t.signalId, t.version, t.personId, t.evidenceId],
+    }),
+    foreignKey({
+      name: 'signal_version_people_person_fk',
+      columns: [t.personId],
+      foreignColumns: [personProfiles.entityId],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    foreignKey({
+      name: 'signal_version_people_evidence_fk',
+      columns: [t.signalId, t.version, t.evidenceId],
+      foreignColumns: [
+        signalVersionEvidence.signalId,
+        signalVersionEvidence.version,
+        signalVersionEvidence.evidenceId,
+      ],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    index('signal_version_people_person_idx').on(t.personId),
+    check('signal_version_people_event_role_ck', sql`${t.eventRole} ~ '[^[:space:]]'`),
+    check(
+      'signal_version_people_verification_status_ck',
+      sql`${t.verificationStatus} IN ('pending', 'verified', 'rejected')`,
+    ),
+  ],
+);
+export const signalVersionOrganizations = pgTable(
+  'signal_version_organizations',
+  {
+    signalId: text('signal_id').notNull(),
+    version: integer('version').notNull(),
+    organizationId: text('organization_id').notNull(),
+    evidenceId: text('evidence_id').notNull(),
+    eventRole: text('event_role').$type<'subject' | 'participant' | 'background'>().notNull(),
+    verificationStatus: text('verification_status')
+      .$type<'pending' | 'verified' | 'rejected'>()
+      .notNull()
+      .default('pending'),
+  },
+  (t) => [
+    primaryKey({
+      name: 'signal_version_organizations_pkey',
+      columns: [t.signalId, t.version, t.organizationId, t.evidenceId],
+    }),
+    foreignKey({
+      name: 'signal_version_organizations_organization_fk',
+      columns: [t.organizationId],
+      foreignColumns: [organizationProfiles.entityId],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    foreignKey({
+      name: 'signal_version_organizations_evidence_fk',
+      columns: [t.signalId, t.version, t.evidenceId],
+      foreignColumns: [
+        signalVersionEvidence.signalId,
+        signalVersionEvidence.version,
+        signalVersionEvidence.evidenceId,
+      ],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    index('signal_version_organizations_organization_idx').on(t.organizationId),
+    check(
+      'signal_version_organizations_event_role_ck',
+      sql`${t.eventRole} IN ('subject', 'participant', 'background')`,
+    ),
+    check(
+      'signal_version_organizations_verification_status_ck',
+      sql`${t.verificationStatus} IN ('pending', 'verified', 'rejected')`,
+    ),
+  ],
+);
+export const signalVersionTopics = pgTable(
+  'signal_version_topics',
+  {
+    signalId: text('signal_id').notNull(),
+    version: integer('version').notNull(),
+    topicId: text('topic_id').notNull(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'signal_version_topics_pkey',
+      columns: [t.signalId, t.version, t.topicId],
+    }),
+    foreignKey({
+      name: 'signal_version_topics_version_fk',
+      columns: [t.signalId, t.version],
+      foreignColumns: [signalVersions.signalId, signalVersions.version],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    foreignKey({
+      name: 'signal_version_topics_topic_fk',
+      columns: [t.topicId],
+      foreignColumns: [topics.id],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    index('signal_version_topics_topic_idx').on(t.topicId),
+  ],
+);
+
 export const entityTopics = pgTable(
   'entity_topics',
   {
