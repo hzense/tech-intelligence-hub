@@ -1,9 +1,11 @@
 # HZense AI 自主 Signal 采集、研判与发布设计
 
-- 版本：1.0.0
+- 版本：1.0.1
 - 日期：2026-09-12
 - 状态：设计提案，待工程实施；文档提交不代表功能上线。
 - 范围：管理员网页配置 AI、自动/手动采集、定时任务、文件与链接导入、AI 研判、自动入库发布及更正。
+
+本文是 [主设计文档](DESIGN.md#19-ai-自主采集与研判) 的技术细化；产品范围以主设计为入口，当前实施状态见 [进度看板](PROGRESS.md)。
 
 ## 1. 目标与决策
 
@@ -244,7 +246,7 @@ Web 公共 Reader 只读取公开视图；后台配置、采集 Worker、发布�
 
 ## 13. 后续扩展与文档同步
 
-后续可接 Daily/Weekly 自动汇编、混合搜索、趋势分析和 RAG。Signal 首版不承诺同时完成这些模块。上线时同步 TECHNICAL_ARCHITECTURE、INFORMATION_MODEL、PROGRESS、部署手册和现有 Seed/搜索/Daily 契约，记录真实验证证据；本次仅新增设计文档。
+后续可接 Daily/Weekly 自动汇编、混合搜索、趋势分析和 RAG。Signal 首版不承诺同时完成这些模块。上线时同步 TECHNICAL_ARCHITECTURE、INFORMATION_MODEL、PROGRESS、部署手册和现有 Seed/搜索/Daily 契约，记录真实验证证据；本次同步主设计、架构入口和进度看板；没有执行应用代码、迁移或生产配置变更。
 
 参考实现依据：
 
