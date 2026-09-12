@@ -15,7 +15,7 @@
 
 ---
 
-> **文档职责：** [DESIGN](DESIGN.md) 是产品总纲，[Signal-first v2](SIGNAL_FIRST_REDESIGN.md) 定义页面、人物、评分与迁移，[AI 自主 Signal 专项设计](AUTONOMOUS_SIGNAL_PIPELINE.md) 保留并整合 PR #64 的完整 AI／来源／导入／任务／发布契约。本页描述其目标架构；所有目标功能均待实施。第 7.1–7.2 节保留既有数据库投影／权限基线，不能因新设计而放宽；已实现物理结构以 [Information Model 第 40 节](INFORMATION_MODEL.md#40-postgresql-物理数据库设计) 为准。
+> **文档职责：** [DESIGN](DESIGN.md) 是产品总纲，[Signal-first v2](SIGNAL_FIRST_REDESIGN.md) 定义页面、人物、评分与迁移，[AI 自主 Signal 专项设计](AUTONOMOUS_SIGNAL_PIPELINE.md) 保留并整合初版专项契约 `b5a0045` 的完整 AI／来源／导入／任务／发布能力。本页描述其目标架构；所有目标功能均待实施。第 7.1–7.2 节保留既有数据库投影／权限基线，不能因新设计而放宽；已实现物理结构以 [Information Model 第 40 节](INFORMATION_MODEL.md#40-postgresql-物理数据库设计) 为准。
 
 ## 1. 架构目标
 
@@ -372,7 +372,7 @@ Local         http://localhost:3000
 
 ## v2.0 Signal-first 设计整合
 
-- 产品总纲、Signal-first 详细设计和 PR #64 AI 生产专项按职责整合。
+- 产品总纲、Signal-first 详细设计和初版 AI 生产专项契约 `b5a0045` 按职责整合。
 - 三入口默认自动发表、完整文档／表格／OCR、AI 配置、增量来源、调度和自动更正为目标能力。
 - 新 Signal／洞察版本采用数据库权威与 Outbox；Taxonomy 和历史档案保留原权威。
 - 明确人物证据、legacy 兼容、后台与公开读取边界，保留现行权限契约直至新迁移评审。

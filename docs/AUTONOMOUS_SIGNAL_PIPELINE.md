@@ -4,13 +4,13 @@
 - 日期：2026-09-12
 - 状态：整合后的设计提案，待工程实施；文档提交不代表功能、迁移或生产开关已经上线。
 - 范围：管理员网页配置 AI、自动／手动采集、定时任务、文件与链接导入、AI 研判、人物证据、自动入库发布及更正。
-- 整合基线：[PR #64 的原专项设计](https://github.com/hzense/tech-intelligence-hub/blob/b5a0045f1c7e7591fe04d49409dd5148a10d87aa/docs/AUTONOMOUS_SIGNAL_PIPELINE.md)，来源提交 b5a0045f1c7e7591fe04d49409dd5148a10d87aa。
+- 整合基线：[初版专项契约（原 PR #64 初版）](https://github.com/hzense/tech-intelligence-hub/blob/b5a0045f1c7e7591fe04d49409dd5148a10d87aa/docs/AUTONOMOUS_SIGNAL_PIPELINE.md)，来源提交 b5a0045f1c7e7591fe04d49409dd5148a10d87aa。
 
 ## 0. 文档权威与整合范围
 
 [DESIGN.md](DESIGN.md) 是产品总纲；[SIGNAL_FIRST_REDESIGN.md](SIGNAL_FIRST_REDESIGN.md) 定义新版公开页面、人物硬约束、评分、专题洞察及历史迁移；本文定义生产流水线的专项技术契约。[PROGRESS.md](PROGRESS.md) 记录实施状态，[INFORMATION_MODEL.md 第 40 节](INFORMATION_MODEL.md#40-postgresql-物理数据库设计) 仍只描述已经实现的物理结构。
 
-本次保留 PR #64 的完整 AI 连接、能力测试、模型 Profile、增量采集、文件／OCR、调度、费用、自动更正与安全能力，并明确替换以下旧方向：
+整合设计保留初版专项契约的完整 AI 连接、能力测试、模型 Profile、增量采集、文件／OCR、调度、费用、自动更正与安全能力，并明确替换以下旧方向：
 
 | 原专项设计                                             | 本次整合后的契约                                                           |
 | ------------------------------------------------------ | -------------------------------------------------------------------------- |
@@ -304,7 +304,7 @@ Web 公共 Reader 只读取当前有效公开视图；后台配置、采集 Work
 
 混合搜索、向量检索与 RAG 可继续增强，但不以这些后续功能替代首版全文检索和证据核验。Daily／Weekly 自动汇编方向已由新版产品取消，不再列为后续开发项；专题洞察按主稿单独交付，默认发表策略未定。
 
-实施时同步 TECHNICAL_ARCHITECTURE、INFORMATION_MODEL、PROGRESS、部署手册和 Seed／搜索／历史归档契约，记录真实验证证据。本文作为 PR #64 的整合提交，将原专项技术设计与新版产品约束统一；提交不代表 PR 已合并，也不代表应用代码、迁移、付费调用或生产配置已执行变更。
+实施时同步 TECHNICAL_ARCHITECTURE、INFORMATION_MODEL、PROGRESS、部署手册和 Seed／搜索／历史归档契约，记录真实验证证据。本文将初版专项契约 `b5a0045` 与新版产品约束统一；设计采纳不等同于应用代码、迁移、付费调用或生产配置已执行变更，这些步骤须独立交付和验收。
 
 参考实现依据：
 

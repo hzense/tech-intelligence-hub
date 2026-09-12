@@ -17,11 +17,11 @@ HZense is a Technology Intelligence platform for turning fragmented technical in
 
 The [product design](docs/DESIGN.md) and [v2 redesign](docs/SIGNAL_FIRST_REDESIGN.md) define four primary views: **Radar home, Signals, Topic Insights, and Resources**. New-version public Signals require evidence-backed industry-person links. Radar shows domain trends and TOP10 hot Signals; Signals support multidimensional filtering and aggregation; Topic Insights run weekly by default or on demand; organization Resources rank by recent distinct-event activity and show key people.
 
-The [AI production technical contract](docs/AUTONOMOUS_SIGNAL_PIPELINE.md) integrates PR #64's collection, model configuration, scheduling, budgets and automatic correction capabilities. Automatic collection, document upload and hyperlink submission share a default auto-publish pipeline with evidence and person checks. The admin batch center supports PDF, DOCX, Markdown, TXT, HTML, CSV, XLSX and scanned PDF / PNG / JPEG OCR, with per-item progress, partial success and retries. Preview and review-required are optional Signal policies; the default publication policy for Topic Insights remains a separate decision.
+The [AI production technical contract](docs/AUTONOMOUS_SIGNAL_PIPELINE.md) builds on the initial contract ([b5a0045](https://github.com/hzense/tech-intelligence-hub/blob/b5a0045f1c7e7591fe04d49409dd5148a10d87aa/docs/AUTONOMOUS_SIGNAL_PIPELINE.md)), retaining collection, model configuration, scheduling, budgets and automatic correction capabilities. Automatic collection, document upload and hyperlink submission share a default auto-publish pipeline with evidence and person checks. The admin batch center supports PDF, DOCX, Markdown, TXT, HTML, CSV, XLSX and scanned PDF / PNG / JPEG OCR, with per-item progress, partial success and retries. Preview and review-required are optional Signal policies; the default publication policy for Topic Insights remains a separate decision.
 
 Target flow: **Sources / batch documents / links → AI extraction and verification → versioned Signals → Radar, Signals, Topic Insights and Resources**. PostgreSQL will own new Signal and Insight versions; an Outbox will update search and other projections automatically. Git will retain code, Taxonomy, migrations, historical content and exports. Daily and Weekly will stop receiving new content after cutover, while historical URLs remain readable.
 
-This is a local design integration, not an implemented or deployed change, and it does not merge PR #64. V2 implementation and migration are tracked in [PROGRESS.md](docs/PROGRESS.md). The following MVP and historical sections must not be read as the new product roadmap or a fresh production audit.
+This is an integrated design baseline. Adopting the design does not itself implement features, migrate data or switch production; these stages require separate delivery and acceptance tracked in [PROGRESS.md](docs/PROGRESS.md). The following MVP and historical sections must not be read as the new product roadmap or a fresh production audit.
 
 ## Existing MVP pipeline — retained until cutover
 
@@ -91,7 +91,7 @@ docs/
 
 - [`docs/DESIGN.md`](docs/DESIGN.md) — product and information architecture
 - [`docs/SIGNAL_FIRST_REDESIGN.md`](docs/SIGNAL_FIRST_REDESIGN.md) — integrated v2 product contracts, migration and acceptance
-- [`docs/AUTONOMOUS_SIGNAL_PIPELINE.md`](docs/AUTONOMOUS_SIGNAL_PIPELINE.md) — PR #64 AI production technical contract integrated with v2
+- [`docs/AUTONOMOUS_SIGNAL_PIPELINE.md`](docs/AUTONOMOUS_SIGNAL_PIPELINE.md) — AI production technical contract integrated with v2
 - [`docs/TECHNICAL_ARCHITECTURE.md`](docs/TECHNICAL_ARCHITECTURE.md) — technical architecture
 - [`docs/INFORMATION_MODEL.md`](docs/INFORMATION_MODEL.md) — knowledge/data model
 - [`docs/DEVELOPMENT_FOUNDATION.md`](docs/DEVELOPMENT_FOUNDATION.md) — executable engineering foundation
