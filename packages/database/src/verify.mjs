@@ -5,6 +5,14 @@ import { fileURLToPath, pathToFileURL, URL } from 'node:url';
 import pg from 'pg';
 import { productionDatabaseOptions, validateConnectionTarget } from './connection-policy.mjs';
 import { loadMigrations, planPendingMigrations, verifyMigrationManifest } from './migrate.mjs';
+import {
+  signalFoundationColumns,
+  signalFoundationPrimaryKeys,
+  signalFoundationForeignKeys,
+  signalFoundationChecks,
+  signalFoundationDefaults,
+  signalFoundationIndexes,
+} from './signal-foundation-catalog.mjs';
 
 const { Client } = pg;
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
@@ -129,6 +137,7 @@ const expectedColumns = {
     checksum: ['text', true],
     applied_at: ['timestamp with time zone', true],
   },
+  ...signalFoundationColumns,
 };
 
 const expectedEnums = {
@@ -183,6 +192,7 @@ const expectedEnums = {
 };
 
 const expectedPrimaryKeys = new Set([
+  ...signalFoundationPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -199,6 +209,7 @@ const expectedPrimaryKeys = new Set([
 ]);
 
 const expectedForeignKeys = new Set([
+  ...signalFoundationForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -214,6 +225,7 @@ const expectedForeignKeys = new Set([
 ]);
 
 const expectedCheckExpressions = {
+  ...signalFoundationChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -267,6 +279,7 @@ const expectedCheckExpressions = {
 };
 
 const expectedDefaults = new Map([
+  ...signalFoundationDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
   ['topics.runtime_enabled', new Set(['false'])],
@@ -290,6 +303,7 @@ const expectedDefaults = new Map([
 ]);
 
 const expectedUniqueIndexes = new Set([
+  'entities|id,type',
   'radar_snapshots|topic_id,snapshot_date',
   'radar_snapshot_signals|snapshot_id,position',
   'content_registry|path',
@@ -297,6 +311,7 @@ const expectedUniqueIndexes = new Set([
 ]);
 
 const requiredNonUniqueIndexes = new Set([
+  ...signalFoundationIndexes,
   'entities|type',
   'entities|name',
   'signals|occurred_at',

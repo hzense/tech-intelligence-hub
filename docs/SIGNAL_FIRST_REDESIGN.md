@@ -427,6 +427,8 @@ Activity(org) = Σ 2 ^ (-事件距截止时间的天数 / 14)
 
 ### 9.1 当前事实与目标的区别
 
+2026-09-13 已开始 [V2-1a 数据底座](SIGNAL_V3_FOUNDATION.md)：独立 `3.0.0` 快照契约、8 张私有表和历史导入预演已进入仓库实现，旧 Seed 仍是公开读取来源；完整 V2-1 与生产迁移尚未完成。
+
 当前公开 Signal 读取来自 [seed-runtime.ts](../apps/web/lib/seed-runtime.ts) 与 Seed YAML；现有 [Drizzle Schema](../packages/database/src/schema.ts) 已声明 `signals`、`entities`、`signal_entities`、`relations` 等表，但声明表不等于实现了业务写入和读取闭环。
 
 2026-09-12 本地 `main@9477ec9` 盘点：82 条 accepted Signals，19 个 Seed Entities，其中 Person 为 0；所以现有 82 条信号都不能直接声称满足新人物约束。这是仓库数据盘点，**不是本轮生产数据库查询结果**。

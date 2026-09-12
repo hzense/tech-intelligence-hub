@@ -158,6 +158,7 @@ integrationSuite('PostgreSQL migration integration', () => {
         '0001_radar_evidence.sql',
         '0002_topic_projection.sql',
         '0003_search_documents_fts.sql',
+        '0004_signal_version_foundation.sql',
       ],
       pgvectorVersion: '0.8.6',
     });
@@ -223,8 +224,164 @@ integrationSuite('PostgreSQL migration integration', () => {
     await expect(
       verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
     ).resolves.toMatchObject({
-      migrationCount: 4,
-      tableCount: 13,
+      migrationCount: 5,
+      tableCount: 21,
+    });
+  }, 30_000);
+
+  it('stores private v3 snapshots with typed people and same-version evidence', async () => {
+    await withClient(connectionUrl(databaseNames.fresh), async (client) => {
+      await client.query('BEGIN');
+      const rejected = async (sql, code) => {
+        await client.query('SAVEPOINT invalid_v3_input');
+        try {
+          await expect(client.query(sql)).rejects.toMatchObject({ code });
+        } finally {
+          await client.query('ROLLBACK TO SAVEPOINT invalid_v3_input');
+          await client.query('RELEASE SAVEPOINT invalid_v3_input');
+        }
+      };
+      try {
+        await client.query(`
+          INSERT INTO entities(id, type, name) VALUES
+            ('person-v3-fixture', 'person', 'Fixture Person'),
+            ('company-v3-fixture', 'company', 'Fixture Organization');
+          INSERT INTO person_profiles(entity_id) VALUES ('person-v3-fixture');
+          INSERT INTO organization_profiles(entity_id, entity_type)
+            VALUES ('company-v3-fixture', 'company');
+          INSERT INTO sources(id, name, type, trust_score, allowed_hosts)
+            VALUES ('source-v3-fixture', 'Test only', 'website', 80, ARRAY['example.com']);
+          INSERT INTO signals(id, title, type, occurred_at, captured_at, source_id,
+                              source_url, summary, importance, strength, confidence, novelty)
+            SELECT id, 'Fixture event', 'research', '2026-01-01T00:00:00Z',
+                   '2026-09-13T00:00:00Z', 'source-v3-fixture', 'https://example.com/event',
+                   'Fixture summary', 3, 3, 0.8, 0.6
+            FROM unnest(ARRAY['signal-v3-one','signal-v3-two']) AS id;
+          INSERT INTO signal_versions(signal_id, version, title, type, occurred_at,
+            date_precision, date_basis, captured_at, summary, importance, strength,
+            confidence, novelty, revision_reason, origin, legacy_status, content_hash)
+            SELECT signal_id, version, 'Fixture event', 'research', '2026-01-01T00:00:00Z',
+              'day', 'Fixture event date', '2026-09-13T00:00:00Z', 'Fixture summary',
+              3, 3, 0.8, 0.6, 'Fixture import', 'legacy_seed', 'accepted', repeat('a',64)
+            FROM (VALUES ('signal-v3-one',1),('signal-v3-one',2),('signal-v3-two',1))
+              AS input(signal_id,version);
+          INSERT INTO public_source_evidence(id, source_id, source_url, locator,
+              excerpt, content_hash, captured_at)
+            SELECT id, 'source-v3-fixture', 'https://example.com/event', 'paragraph 1',
+              'Fixture original excerpt', repeat('b',64), '2026-09-13T00:00:00Z'
+            FROM unnest(ARRAY['evidence-v3-one','evidence-v3-two']) AS id;
+          INSERT INTO signal_version_evidence(signal_id, version, evidence_id, claim, relation)
+            SELECT 'signal-v3-one', 1, id, 'Fixture claim', 'supports'
+            FROM unnest(ARRAY['evidence-v3-one','evidence-v3-two']) AS id;
+          INSERT INTO signal_version_people(signal_id, version, person_id, evidence_id, event_role)
+            SELECT 'signal-v3-one', 1, id, evidence_id, 'research_author'
+            FROM (VALUES ('person-v3-fixture','evidence-v3-one'),
+                         ('person-v3-fixture','evidence-v3-two')) AS input(id,evidence_id);
+          INSERT INTO signal_version_organizations(signal_id, version, organization_id,
+              evidence_id, event_role)
+            VALUES ('signal-v3-one',1,'company-v3-fixture','evidence-v3-one','participant');
+        `);
+        expect(
+          (await client.query('SELECT count(*)::integer AS count FROM signal_version_people'))
+            .rows[0].count,
+        ).toBe(2);
+        expect(
+          (
+            await client.query(
+              "SELECT verification_status FROM public_source_evidence WHERE id='evidence-v3-one'",
+            )
+          ).rows[0].verification_status,
+        ).toBe('pending');
+        await rejected(
+          "INSERT INTO person_profiles(entity_id) VALUES ('company-v3-fixture')",
+          '23503',
+        );
+        await rejected(
+          "INSERT INTO organization_profiles(entity_id,entity_type) VALUES ('person-v3-fixture','person')",
+          '23514',
+        );
+        await rejected("UPDATE entities SET type='company' WHERE id='person-v3-fixture'", '23503');
+        for (const [signalId, version] of [
+          ['signal-v3-two', 1],
+          ['signal-v3-one', 2],
+        ]) {
+          await rejected(
+            `INSERT INTO signal_version_people(signal_id,version,person_id,evidence_id,event_role)
+            VALUES ('${signalId}',${version},'person-v3-fixture','evidence-v3-one','research_author')`,
+            '23503',
+          );
+        }
+        await rejected("DELETE FROM public_source_evidence WHERE id='evidence-v3-one'", '23503');
+        await rejected(
+          "UPDATE signal_versions SET version=0 WHERE signal_id='signal-v3-two'",
+          '23514',
+        );
+        await rejected(
+          "UPDATE signal_versions SET content_hash='not-a-hash' WHERE signal_id='signal-v3-two'",
+          '23514',
+        );
+        await rejected(
+          "UPDATE signal_versions SET title='   ' WHERE signal_id='signal-v3-two'",
+          '23514',
+        );
+        for (const field of ['title', 'summary', 'analysis', 'date_basis', 'revision_reason']) {
+          await rejected(
+            `UPDATE signal_versions SET ${field}=chr(9)||chr(10) WHERE signal_id='signal-v3-two'`,
+            '23514',
+          );
+        }
+        await rejected(
+          "UPDATE public_source_evidence SET excerpt=chr(9)||chr(10) WHERE id='evidence-v3-one'",
+          '23514',
+        );
+        await rejected('UPDATE signal_version_evidence SET claim=chr(9)||chr(10)', '23514');
+        await rejected('UPDATE signal_version_people SET event_role=chr(9)||chr(10)', '23514');
+        await rejected(
+          "UPDATE signal_versions SET origin='pipeline' WHERE signal_id='signal-v3-two'",
+          '23514',
+        );
+        await rejected(
+          "UPDATE signal_versions SET occurred_at='infinity' WHERE signal_id='signal-v3-two'",
+          '23514',
+        );
+        await rejected(
+          "UPDATE signal_versions SET occurred_at='2026-01-01T12:00:00Z' WHERE signal_id='signal-v3-two'",
+          '23514',
+        );
+        await rejected(
+          "UPDATE signal_versions SET confidence='NaN' WHERE signal_id='signal-v3-two'",
+          '23514',
+        );
+        await rejected(
+          "UPDATE public_source_evidence SET source_url='http://example.com' WHERE id='evidence-v3-one'",
+          '23514',
+        );
+        await rejected(
+          "UPDATE signal_version_organizations SET event_role='guessed_employer'",
+          '23514',
+        );
+        // A new unrelated login must inherit no access from PUBLIC/default privileges.
+        const access = await client.query(
+          `SELECT bool_or(has_table_privilege($1, oid, 'SELECT,INSERT,UPDATE,DELETE')) AS allowed
+          FROM pg_class WHERE relnamespace='public'::regnamespace AND relname=ANY($2::text[])`,
+          [
+            inheritedRole,
+            [
+              'person_profiles',
+              'organization_profiles',
+              'public_source_evidence',
+              'signal_versions',
+              'signal_version_evidence',
+              'signal_version_people',
+              'signal_version_organizations',
+              'signal_version_topics',
+            ],
+          ],
+        );
+        expect(access.rows[0].allowed).toBe(false);
+      } finally {
+        await client.query('ROLLBACK');
+      }
     });
   }, 30_000);
 

@@ -11,6 +11,8 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 ## 当前部署
 
+> **2026-09-13 开发边界：** [V2-1a 数据底座](SIGNAL_V3_FOUNDATION.md) 在仓库追加 `0004_signal_version_foundation.sql`；本轮未执行生产迁移或授予新增业务权限。普通 Web 部署仍使用旧 Seed 读取。要求最新 schema 的维护预检会将未应用的 `0004` 视为 pending，不能自动跳过或直接应用来解除阻塞。正式迁移需另行审批并复核维护流程对该版本的支持；本批不开放新版自动发表，也不重跑已取消的恢复演练。
+
 - 正式生产域名：https://hzense.com/
 - Vercel Production：https://tech-intelligence-hub-web.vercel.app/
 - 域名策略：`www.hzense.com` 重定向到 `hzense.com`

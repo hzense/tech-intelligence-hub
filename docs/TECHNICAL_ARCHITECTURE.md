@@ -6,7 +6,7 @@
 
 **日期：** 2026-09-12
 
-**状态：** 目标设计待实施；现行物理与权限契约另有明确标注
+**状态：** 目标设计分批实施中；V2-1a 数据快照底座已开始，生产权威与权限未切换
 
 **品牌：** HZense  
 **品牌标语：** Sense what matters in technology.  
@@ -15,11 +15,13 @@
 
 ---
 
-> **文档职责：** [DESIGN](DESIGN.md) 是产品总纲，[Signal-first v2](SIGNAL_FIRST_REDESIGN.md) 定义页面、人物、评分与迁移，[AI 自主 Signal 专项设计](AUTONOMOUS_SIGNAL_PIPELINE.md) 保留并整合初版专项契约 `b5a0045` 的完整 AI／来源／导入／任务／发布能力。本页描述其目标架构；所有目标功能均待实施。第 7.1–7.2 节保留既有数据库投影／权限基线，不能因新设计而放宽；已实现物理结构以 [Information Model 第 40 节](INFORMATION_MODEL.md#40-postgresql-物理数据库设计) 为准。
+> **文档职责：** [DESIGN](DESIGN.md) 是产品总纲，[Signal-first v2](SIGNAL_FIRST_REDESIGN.md) 定义页面、人物、评分与迁移，[AI 自主 Signal 专项设计](AUTONOMOUS_SIGNAL_PIPELINE.md) 保留并整合初版专项契约 `b5a0045` 的完整 AI／来源／导入／任务／发布能力。本页描述其目标架构；未明确标注已实现的目标功能仍待实施。第 7.1–7.2 节保留既有数据库投影／权限基线，不能因新设计而放宽；已实现物理结构以 [Information Model 第 40 节](INFORMATION_MODEL.md#40-postgresql-物理数据库设计) 为准。
 
 ## 1. 架构目标
 
 目标是“PostgreSQL 保存版本化 Signal／人物／组织／证据／专题洞察，Git 保存代码、Taxonomy、历史内容与导出，Next.js 提供公开页面和后台，Worker 执行 AI 生产”。数据库权威与自动发表尚未切换，当前 Seed／Markdown 读取继续按既有契约运行。
+
+2026-09-13 首批实现见 [V2-1a](SIGNAL_V3_FOUNDATION.md)：8 张私有关系表、独立 Signal 3.0.0 快照校验、历史导入纯函数预演与精确数据库 verifier。仍使用当前 PostgreSQL／Drizzle／pg 驱动，不新增数据库或对象存储资源。人物任职、不可变发表事务、Outbox、Worker 和读取切换未完成，不能以 schema 存在认定功能已上线。
 
 > **Architecture-ready, not infrastructure-heavy.**
 
