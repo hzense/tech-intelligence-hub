@@ -112,6 +112,7 @@
 - [x] 2026-09-11 经操作者批准开启组织及仓库 Actions PR 权限，并回读确认 `CONTINUOUS_DAILY_PUBLISH_ENABLED=true`；默认 Token 只读权限与分支保护不变。
 - 已取代：将自动 Daily Draft PR 实跑作为下一阶段产品目标；新版切换后停止 Daily 新生产，旧结果按历史记录保留。
 - [x] 2026-09-11 完成[首批 5 条近期真实 Signals 录入](./content-intake/2026-09-11-signals.md)，附一手链接、日期依据和评分理由；操作者在会话中明确“全都接受”，5 条均已改为 `accepted`，本轮提交评审，尚未合并或用于生产 Daily。
+- 历史验收归档：[PR #61 的 Signals 页面抽样与搜索索引同步](./production-evidence/2026-09-12-signals-search-sync.md)。绑定历史提交 `3ada816`，新增 67 条搜索投影，最终复核 112 条 unchanged；不代表当前生产计数或业务 `signals` 表入库。归档时仅回读 GitHub 证据，未重跑生产维护，恢复能力仍未验证。
 - 已取消新增：日报／周报持续发布产品；已有内容与 URL 转为历史档案，不标为删除或已迁移。
 - 已转入 V2-2／V2-5：自动 Signal 生产、专题洞察的周度更新和内容质量验收。
 
