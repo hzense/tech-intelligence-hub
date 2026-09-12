@@ -213,15 +213,15 @@ Answer + Citations
 
 AI 层采用 Provider Abstraction，首版 OpenAI first，未来可扩展其他云端或本地模型。
 
-## 11. 自动采集
+## 11. AI 自主 Signal 采集（目标架构，待实施）
 
-```text
-Scheduler → Fetcher → Extractor → Normalizer → Deduplicator
-→ AI Classifier → Entity Extractor → Importance Scorer
-→ Signal Inbox → Human Review
-```
+产品入口见 [DESIGN 第 19 节](DESIGN.md#19-ai-自主采集与研判)，详细契约见 [专项设计](AUTONOMOUS_SIGNAL_PIPELINE.md)。
 
-自动采集内容不得直接进入正式知识库，必须先进入 Signal Inbox。
+目标流程：定时或手动触发 → 来源/文件/链接统一队列 → 提取与去重 → AI 证据核验 → 中文研判 → 自动规则检查 → Signal 数据库发布 → 搜索与缓存。证据不足自动补查、重试或暂缓，无必经人工审核。此目标取代旧 Signal Inbox → Human Review 设计。
+
+管理员网页配置的 AI 连接、来源、任务和策略在数据库版本化保存；凭据服务端加密。Signal 切换数据库权威后，Git Seed 只作为迁移输入；事务 Outbox 保障派生更新，禁止现有 Seed 同步器覆盖新数据。公共 Reader、管理后台和 Worker 权限分别设计，不能复用迁移身份。
+
+当前生产实现尚未完成上述迁移；本节是设计，不声明数据库、角色、后台或自动发布已上线。其他章节的 Git 正文原则继续适用于现有 Daily/Weekly/Insights；Signal 的目标权威变更以本节和专项设计为准。
 
 ## 12. HZense Daily 自动化
 
