@@ -2,8 +2,8 @@
 
 ## HZense · Technology Intelligence
 
-**版本：** v1.3  
-**日期：** 2026-08-19  
+**版本：** v1.4  
+**日期：** 2026-09-12  
 **品牌：** HZense  
 **品牌定位：** Technology Intelligence  
 **品牌标语：** Sense what matters in technology.  
@@ -33,21 +33,21 @@ HZense 不是传统博客，也不是简单的收藏网站，而是一套面向�
 
 ## 3. 信息生产链
 
-```text
-Sources
-  ↓
-Signals
-  ↓
-HZense Daily
-  ↓
-HZense Weekly
-  ↓
-HZense Topics
-  ↓
-HZense Insights
-  ↓
-HZense Radar
+目标生产链（AI 自主 Signal 功能待实施）：
+
+```mermaid
+flowchart TD
+    A["自动来源、文件上传、链接提交"] --> B["统一任务队列"]
+    B --> C["AI 提取、去重与证据核验"]
+    C --> D{"自动发布规则"}
+    D -->|通过| E["AI 中文研判与最终校验"]
+    D -->|不足| F["补查、重试或暂缓"]
+    F --> C
+    E --> G["数据库版本化发布"]
+    G --> H["Signals、专题、资源与搜索"]
 ```
+
+Signals 为 Daily、Weekly、Insights 和 Radar 提供证据，这些栏目不是依次自动生成的串行步骤。当前 Daily 仍采用确定性候选和人工发布流程；其他栏目自动生产另行实施。
 
 三层信息模型：Signals → Knowledge → Insights，最终形成 Intelligence。
 
@@ -127,7 +127,11 @@ Topic 页面包含 Overview、My View、Attention、Trend、Maturity、Strategic
 
 ## 11. HZense Signals
 
-Signal 是最小情报单元。类型包括 Research、Product、Funding、Acquisition、Hiring、Policy、Technology、Market、People、Open Source、Security、Patent。
+Signal 是最小情报单元。类型包括 Research、Product、Funding、Acquisition、Hiring、Policy、Technology、Market、People、Open Source、Security、Patent，实际枚举以信息模型为准。
+
+目标 Signal 保存事实摘要、证据、事件日期及精度、采集/发布时间、领域和实体关联，并提供“为什么重要、影响对象、历史关系、后续观察、不确定性”的 AI 中文研判。事实与推断分开呈现，公开版本可追溯到模型、配置和证据；更正与撤回保留修订记录。
+
+当前页面仍读取 Seed 中 reviewed/accepted 内容。目标版本采用数据库显式 published 状态；迁移保留原 ID 和引用，不把历史内容标为新 AI 已核验。
 
 ## 12. HZense Resources
 
@@ -153,17 +157,52 @@ Topic、Company、Technology、Person、Product、Model 和 Event 支持时间�
 
 ## 17. 内容与数据原则
 
-网站是 Presentation Layer，Knowledge Base 才是核心资产。正式正文使用 Markdown / MDX + YAML Front Matter；实体、关系、索引等结构化数据进入 PostgreSQL。
+网站是 Presentation Layer，Knowledge Base 才是核心资产。Daily、Weekly、Insights 等现有正文继续使用 Markdown / MDX + YAML Front Matter。
+
+AI 自主 Signal 的目标权威边界：PostgreSQL 保存 Signal、证据、研判、版本与任务；Git 保存代码、Taxonomy 和基线策略；管理员网页编辑的模型、来源及任务配置在数据库版本化保存。原始文件默认私有对象存储，Markdown/YAML 导出用于迁移和备份。实施前 Signal 仍以 Seed 为准，切换后停止双写。
+
+发布事务写入内容版本与 Outbox，再可靠更新搜索和缓存，无需逐条内容 PR 或重新部署。公共读取仅允许公开版本；索引延迟时仍须阻止撤回内容被返回。
 
 所有对象使用稳定唯一 ID，标题变化不能改变 ID。
 
 ## 18. 内容状态与重要度
 
-状态：Draft / Review / Published / Archived。Topic 增加 Watching / Active / Strategic。重要度统一 1–5 星。
+现有文章状态：Draft / Review / Published / Archived。Topic 增加 Watching / Active / Strategic。重要度统一 1–5 星。
 
-## 19. AI 辅助处理
+目标 Signal 状态：Unpublished / Published / Withdrawn / Archived；候选和任务另有处理状态、重试及暂缓原因。模型评分记录为估计，不单独决定发布。
 
-AI 可辅助 URL 读取、摘要、Topic 分类、Company / People / Technology 实体识别、Signal Type、Importance 和关联推荐；My View 和核心战略判断保留人工确认。
+## 19. AI 自主采集与研判
+
+本节是产品级设计入口，完整数据模型、接口建议、调度语义和验收见 [AI 自主 Signal 专项设计](AUTONOMOUS_SIGNAL_PIPELINE.md)。
+
+### 19.1 自动内容发布原则
+
+按用户 2026-09-12 的要求，Signal 不再以人工确认作为目标发布前置：系统自动采集、核验证据、研判、校验并发表。证据不足自动补查或暂缓，不进入必经人工审批队列；人工撤回是可选管理能力。此目标替代旧版 Signal 的人工审核原则，但不表示现有代码已切换，也不改变工程 PR、迁移权限和现有 Daily 发布门禁。
+
+所有核心事实有可定位证据，来源独立性按原始出处判断；官方公告可支持有归属的发布事实，不能直接证明性能或影响结论。争议事件补充独立来源及相关方立场。模型之间达成一致不等于事实成立。关键数字、日期、引用、隐私和事件身份由规则及 AI 核验共同检查。
+
+### 19.2 管理后台
+
+| 功能       | 产品要求                                                        |
+| ---------- | --------------------------------------------------------------- |
+| AI 配置    | 服务商/兼容协议、API 地址、密钥、模型列表或手填、连接及能力测试 |
+| 阶段模型   | 提取、核验、研判分别绑定模型、提示词与版本；配置预算和重试      |
+| 来源管理   | 十领域映射、语言、来源身份、采集方式、游标和频率                |
+| 任务管理   | 立即运行、定时、暂停/恢复、停止本次运行、失败重试               |
+| 文件与链接 | 批量导入、解析预览、逐项结果及可追溯位置                        |
+| 运行记录   | 进度、发布数、暂缓原因、token/费用、更正和审计                  |
+
+后台 owner-only，全部 API 服务端鉴权。密钥加密保存、仅后台使用、界面掩码展示。自定义 API 地址及采集链接实施出口校验；模型不可执行任意 SQL 或把输入资料当系统指令。
+
+### 19.3 三种入口与调度
+
+自动来源、文件上传和链接提交使用相同流水线。文件支持 PDF、DOCX、Markdown、TXT、HTML、CSV/XLSX，扫描件与图片走 OCR。保留文件页码/段落/单元格位置；一文多事件和多文同事件都须正确处理。原文件默认私有，自动补齐公开证据后发表可公开内容。
+
+手动和定时任务共用持久化执行器。支持间隔、每日、每周和 cron，默认 Europe/Berlin，显示后续运行时间并处理夏令时。关闭网页不影响执行；运行使用配置快照、租约与幂等键，停止任务不删除已发布内容。
+
+### 19.4 分阶段交付
+
+A：管理员认证、数据契约与 AI 配置；B：来源/文件/链接导入与手动运行；C：AI 核验研判；D：数据库发布及搜索/缓存；E：定时、预算、自动更正与监控。默认自动发布，可选择仅预览测试。上线验收需跑通三类入口的无人审核闭环；配置页面完成不等于整个系统已上线。
 
 ## 20. 视觉设计
 
@@ -230,7 +269,7 @@ AI 可辅助 URL 读取、摘要、Topic 分类、Company / People / Technology 
 
 ### Phase 6 — Ask HZense
 
-- [ ] FTS
+- [x] FTS（FTS-1 已完成生产切换，证据见进度看板）
 - [ ] Embeddings / pgvector
 - [ ] Hybrid Search
 - [ ] RAG
@@ -240,7 +279,12 @@ AI 可辅助 URL 读取、摘要、Topic 分类、Company / People / Technology 
 
 - [ ] RSS / arXiv / GitHub / Blogs / Company Sources / Newsletters
 - [ ] Dedup / Classification / Entity Extraction / Ranking
-- [ ] Signal Inbox + Human Review
+- [x] AI 自主 Signal 总体与专项设计（PR #64，待合并；不代表功能实现）
+- [ ] 管理员认证、AI 网页配置和版本化策略
+- [ ] 文件/OCR 与批量链接导入、手动任务
+- [ ] AI 证据核验、中文研判、机器发布规则
+- [ ] Signal 数据库迁移、自动发表、搜索/缓存同步
+- [ ] 时区调度、预算、重试、自动更正和监控
 
 ### Phase 8 — Intelligence Automation
 
@@ -253,11 +297,9 @@ AI 可辅助 URL 读取、摘要、Topic 分类、Company / People / Technology 
 
 ## 22. 推荐实施顺序
 
-```text
-Schema → Markdown Knowledge Base → Signals → HZense Daily → Website MVP
-→ Search → Topics → HZense Weekly → Radar → Timeline → Intelligence Graph
-→ Ask HZense / RAG → Automated Ingestion → Intelligence Automation
-```
+网站 MVP 与 FTS-1 已完成。下一阶段优先执行 **AI 自主 Signal：后台配置 → 三类采集入口 → AI 核验研判 → 数据库发布 → 定时及运营验收**，再扩展 Daily/Weekly 自动发表、混合搜索/RAG、时间线与图谱。
+
+上述为开发顺序，不按文档提交增加完成百分比。当前实现和生产证据以 [进度看板](PROGRESS.md) 为准。
 
 ## 23. 最终目标
 
@@ -266,6 +308,13 @@ HZense 最终不是“保存写过什么”的静态网站，而是能够持续�
 > **HZense — Sense what matters in technology.**
 
 ---
+
+## v1.4 AI 自主 Signal 整合（2026-09-12）
+
+- 整合网页 AI 配置、三类入口、手动与定时任务、自动核验研判及发布。
+- 明确 Signal 数据库权威、状态迁移、私有原件、公开证据及可追溯更正。
+- 以自动规则替代目标 Signal 的必经人工审核；保留当前 Daily 与工程发布边界。
+- 同步实施路线与进度入口，设计完成不计作功能上线。
 
 ## v1.3 域名基线更新
 
