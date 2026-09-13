@@ -390,7 +390,7 @@ integration('PostgreSQL private Signal snapshot writer role', () => {
       );
       await client.query(roleSql);
     });
-    expect(inspectSignalWriterGrants(await directGrants())).ok.toBe(true);
+    expect(inspectSignalWriterGrants(await directGrants())).toEqual({ ok: true, problems: [] });
     // This is the first successful configuration, so following tests exercise re-entry.
   });
 
