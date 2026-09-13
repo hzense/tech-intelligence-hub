@@ -231,24 +231,49 @@ integrationSuite('PostgreSQL Topic sync integration', () => {
          VALUES ('topic-unknown', 'Unknown', 'watching', false)`,
       ),
     );
-    const before = await withClient(ownerUrl, (client) =>
-      client.query(
-        "SELECT id, title, xmin::text FROM topics WHERE id <> 'topic-unknown' ORDER BY id",
-      ),
-    );
-    await expect(runRestrictedSync(desiredTopics)).rejects.toThrow(
-      /outside authoritative Taxonomy: topic-unknown/,
-    );
-    const after = await withClient(ownerUrl, (client) =>
-      client.query(
-        "SELECT id, title, xmin::text FROM topics WHERE id <> 'topic-unknown' ORDER BY id",
-      ),
-    );
-    expect(after.rows).toEqual(before.rows);
-    await withClient(ownerUrl, (client) =>
-      client.query("DELETE FROM topics WHERE id = 'topic-unknown'"),
-    );
+    try {
+      const before = await withClient(ownerUrl, (client) =>
+        client.query(
+          "SELECT id, title, xmin::text FROM topics WHERE id <> 'topic-unknown' ORDER BY id",
+        ),
+      );
+      await expect(runRestrictedSync(desiredTopics)).rejects.toThrow(
+        /outside authoritative Taxonomy: topic-unknown/,
+      );
+      const after = await withClient(ownerUrl, (client) =>
+        client.query(
+          "SELECT id, title, xmin::text FROM topics WHERE id <> 'topic-unknown' ORDER BY id",
+        ),
+      );
+      expect(after.rows).toEqual(before.rows);
+    } finally {
+      await withClient(ownerUrl, (client) =>
+        client.query("DELETE FROM topics WHERE id = 'topic-unknown'"),
+      );
+    }
   }, 30_000);
+
+  it('recognizes the fixed view but rejects barrier drift and grants no Topic read access', async () => {
+    const ownerUrl = databaseUrl(migratorRole, migratorPassword);
+    const syncUrl = databaseUrl(syncRole, syncPassword);
+    await expect(withClient(syncUrl, syncPreflight)).resolves.toBeDefined();
+    await expect(
+      withClient(syncUrl, (client) => client.query('SELECT * FROM public.current_public_signals')),
+    ).rejects.toMatchObject({ code: '42501' });
+    await withClient(ownerUrl, (client) =>
+      client.query('ALTER VIEW public.current_public_signals SET (security_barrier=false)'),
+    );
+    try {
+      await expect(withClient(syncUrl, syncPreflight)).rejects.toThrow(
+        /current public Signal view contract mismatch/,
+      );
+    } finally {
+      await withClient(ownerUrl, (client) =>
+        client.query('ALTER VIEW public.current_public_signals SET (security_barrier=true)'),
+      );
+    }
+    await expect(withClient(syncUrl, syncPreflight)).resolves.toBeDefined();
+  });
 
   it('shares the migration advisory lock and fails without waiting', async () => {
     const holder = new Client({

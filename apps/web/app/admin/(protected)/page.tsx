@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { AdminSignOutButton } from '@/components/admin-auth-buttons';
 import styles from '@/components/admin-auth.module.css';
 import { requireAdminSession } from '@/lib/server/admin-auth';
+import { isPublisherConfigured } from '@/lib/server/signal-publication';
+import { AdminPublicationForm } from '@/components/admin-publication-form';
 
 export const metadata: Metadata = {
   title: '管理后台',
@@ -21,7 +23,7 @@ export default async function AdminHomePage() {
           管理员身份已验证
         </h1>
         <p className={styles.copy}>
-          当前仅接通管理员认证入口。信号采集配置、文档与链接批量导入功能仍待实现，暂不提供执行入口。
+          已接通管理员认证与受限信号发布入口。信号采集配置、文档与链接批量导入功能仍待实现。
         </p>
         <dl className={styles.account}>
           <dt>当前登录账号</dt>
@@ -34,6 +36,10 @@ export default async function AdminHomePage() {
           </Link>
         </div>
       </section>
+      <AdminPublicationForm
+        configured={isPublisherConfigured()}
+        databaseMode={process.env.HZENSE_SIGNAL_READ_MODE === 'database'}
+      />
     </main>
   );
 }

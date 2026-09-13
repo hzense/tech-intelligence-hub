@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import process from 'node:process';
+import { readSignalReadMode } from '@/lib/public-signal-reader-core';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { SiteShell } from '@/components/site-shell';
@@ -21,6 +23,7 @@ interface TopicDetailProps {
 }
 
 export async function generateStaticParams() {
+  if (readSignalReadMode(process.env) === 'database') return [];
   return (await getTopicEntries()).map((entry) => ({ id: entry.frontMatter.id }));
 }
 

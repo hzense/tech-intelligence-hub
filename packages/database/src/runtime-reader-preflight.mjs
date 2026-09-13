@@ -8,6 +8,10 @@ import { inspectNeonReservedProviderObjects } from './neon-reserved-provider-con
 import { inspectProductionTls } from './preflight.mjs';
 import { expectedTableNames } from './verify.mjs';
 import {
+  collectCurrentPublicSignalViewProblems,
+  isExactCurrentPublicSignalRelation,
+} from './current-publication-view-contract.mjs';
+import {
   expectedSignalTriggerCount,
   collectSignalImmutabilityProblems,
 } from './signal-immutability-catalog.mjs';
@@ -725,7 +729,7 @@ async function inspectRuntimeReaderTarget(
        AND relation_info.relkind IN ('r', 'p', 'v', 'm', 'f')
      ORDER BY relation_info.relname`,
   );
-  const expectedRelations = new Set(expectedTableNames);
+  const expectedRelations = new Set([...expectedTableNames, 'current_public_signals']);
   const actualRelations = new Set(relations.rows.map((row) => row.name));
   const missingRelations = setDifference(expectedRelations, actualRelations);
   const unexpectedRelations = setDifference(actualRelations, expectedRelations);
@@ -735,6 +739,12 @@ async function inspectRuntimeReaderTarget(
     );
   }
   for (const relation of relations.rows) {
+    if (relation.name === 'current_public_signals') {
+      if (!isExactCurrentPublicSignalRelation(relation, target.database_owner)) {
+        throw new Error('Runtime reader current public Signal view relation contract mismatch');
+      }
+      continue;
+    }
     if (
       relation.relkind !== 'r' ||
       relation.relpersistence !== 'p' ||
@@ -752,6 +762,9 @@ async function inspectRuntimeReaderTarget(
       throw new Error(`Runtime reader must not own public relation ${relation.name}`);
     }
   }
+
+  const viewProblems = await collectCurrentPublicSignalViewProblems(client, target.database_owner);
+  if (viewProblems.length > 0) throw new Error(`Runtime reader ${viewProblems.join('; ')}`);
 
   const immutabilityProblems = await collectSignalImmutabilityProblems(
     client,

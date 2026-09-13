@@ -4,10 +4,12 @@ import {
 } from '@/lib/runtime-reader-core';
 import process from 'node:process';
 import { readSearchMode } from '@/lib/search-mode';
+import { readSignalReadMode } from '@/lib/public-signal-reader-core';
 import {
   readRuntimeTopics,
   runtimeReaderPoolStats,
   probeRuntimeSearch,
+  probeRuntimePublicSignals,
 } from '@/lib/server/runtime-reader';
 
 export const runtime = 'nodejs';
@@ -29,6 +31,8 @@ const handleHealthRequest = createRuntimeReaderHealthHandler({
   readTopics: readRuntimeTopics,
   searchMode: () => readSearchMode(process.env),
   probeSearch: probeRuntimeSearch,
+  signalReadMode: () => readSignalReadMode(process.env),
+  probePublicSignals: probeRuntimePublicSignals,
 });
 
 export async function GET(request: Request): Promise<Response> {

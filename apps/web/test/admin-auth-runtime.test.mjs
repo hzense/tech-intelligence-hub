@@ -139,6 +139,55 @@ test(
         401,
       );
     });
+    await t.test(
+      'publication routes authenticate before parsing or opening a database connection',
+      async () => {
+        for (const operation of ['publish', 'withdraw']) {
+          const response = await request(`/api/admin/signals/${operation}`, {
+            method: 'POST',
+            headers: { origin, 'content-type': 'application/json' },
+            body: '{}',
+          });
+          assert.equal(response.status, 401);
+          assert.deepEqual(await response.json(), { error: 'unauthorized' });
+          assert.match(response.headers.get('cache-control'), /no-store/);
+          const cookie = await encryptedCookie(token);
+          const crossSite = await request(`/api/admin/signals/${operation}`, {
+            method: 'POST',
+            headers: {
+              cookie,
+              origin: 'https://attacker.example',
+              'content-type': 'application/json',
+            },
+            body: '{}',
+          });
+          assert.equal(crossSite.status, 403);
+        }
+      },
+    );
+    await t.test(
+      'authenticated administrator sees disabled publication and cannot use absent Publisher credential',
+      async () => {
+        const cookie = await encryptedCookie(token);
+        const page = await request('/admin', { headers: { cookie } });
+        const html = await page.text();
+        assert.match(html, /受限信号发布/);
+        assert.match(html, /发布服务尚未配置/);
+        const response = await request('/api/admin/signals/withdraw', {
+          method: 'POST',
+          headers: { origin, cookie, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            request_key: 'synthetic-withdraw',
+            signal_id: 'test-signal',
+            target_version: 3,
+            expected_revision: 1,
+            reason_code: 'privacy',
+          }),
+        });
+        assert.equal(response.status, 503);
+        assert.deepEqual(await response.json(), { error: 'publisher_not_configured' });
+      },
+    );
     await t.test('cross-site or absent Origin cannot POST authentication actions', async () => {
       for (const originHeader of [undefined, 'https://attacker.example']) {
         const headers = originHeader ? { origin: originHeader } : {};

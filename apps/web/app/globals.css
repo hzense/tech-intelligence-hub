@@ -2682,6 +2682,48 @@ input {
   }
 }
 
+.admin-publication {
+  margin-top: 28px;
+  max-width: 800px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+.admin-publication fieldset {
+  display: grid;
+  gap: 16px;
+  border: 0;
+  padding: 0;
+}
+.admin-publication label {
+  display: grid;
+  gap: 6px;
+}
+.admin-publication input,
+.admin-publication select,
+.admin-publication button {
+  font: inherit;
+  padding: 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.admin-publication input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+}
+.admin-publication button {
+  cursor: pointer;
+}
+.admin-publication button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.admin-publication :focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+
 @media (max-width: 700px) {
   .radar-filters {
     grid-template-columns: 1fr;

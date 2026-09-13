@@ -1,10 +1,37 @@
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import {
+  currentPublicSignalColumns,
+  currentPublicSignalViewHashes,
+} from '../src/current-publication-catalog.mjs';
+import {
+  currentPublicSignalViewFixture,
+  signalImmutabilityQueryFixture,
+} from './signal-immutability-fixtures.mjs';
 import {
   canonicalCatalogExpression,
   canonicalCatalogExpressionWithLiterals,
 } from '../src/verify.mjs';
 
 describe('database catalog expression canonicalization', () => {
+  it('pins the independently captured public view columns and full fail-closed definition', () => {
+    const view = currentPublicSignalViewFixture();
+    const hash = (definition) => createHash('sha256').update(definition.trim()).digest('hex');
+    expect(view.columns).toEqual(currentPublicSignalColumns);
+    expect(currentPublicSignalViewHashes.has(hash(view.definition))).toBe(true);
+    expect(view.options).toEqual(['security_barrier=true']);
+    expect(signalImmutabilityQueryFixture('/* hzense:current-publication:views */').rows).toEqual([
+      view,
+    ]);
+    for (const changed of [
+      view.definition.replace('AND hzense_public_signal_is_current(head.event_id)', ''),
+      view.definition.replace("head.status = 'published'::text", 'true'),
+      view.definition.replace("'name', source.name", "'metadata', source.metadata"),
+      view.definition.replace("'name', entity.name", "'private_quote', entity.metadata"),
+      view.definition.replace("link.relation = 'supports'::text", 'true'),
+    ])
+      expect(currentPublicSignalViewHashes.has(hash(changed))).toBe(false);
+  });
   it('preserves regex grouping to detect canonical event-key constraint weakening', () => {
     const correct = `CHECK ((event_key COLLATE "C") ~ '^[a-z0-9]+(-[a-z0-9]+)*$'::text)`;
     const weakened = `CHECK ((event_key COLLATE "C") ~ '^([a-z0-9]+-)([a-z0-9]+)*$'::text)`;

@@ -28,6 +28,7 @@ describe('database migration runner', () => {
       '0009_signal_publication_controls.sql',
       '0010_qualified_signal_publication.sql',
       '0011_signal_candidate_verification.sql',
+      '0012_current_signal_publication.sql',
     ]);
     expect(migrations.every((migration) => migration.checksum.length === 64)).toBe(true);
     await expect(verifyMigrationManifest(migrations)).resolves.toBeUndefined();

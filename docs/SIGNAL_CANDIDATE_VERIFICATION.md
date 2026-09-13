@@ -18,6 +18,8 @@
 
 ## 2. 私有接口及信任边界
 
+**后续增量：** `0012` 已新增[受限公开发布契约](SIGNAL_PUBLIC_PUBLICATION.md)，在本模块之上绑定数据库依赖 seal、当前许可及独立撤回；本模块自身仍为私有核验／组装接口。新公开入口要求核验在发布提交时仍未过期，但不把该期限当作已公开内容的每日到期时间。下文 `0011` 的测试数字和未部署描述保留为历史检查点，不代表 `0012` 已在生产执行。
+
 实现位于 [signal-candidate-verification-store.mjs](../packages/database/src/signal-candidate-verification-store.mjs)，规则位于 [candidate-verification.mjs](../packages/database/src/candidate-verification.mjs)。均不从包根导出，不新增路由、命令或生产授权。
 
 | 接口                                       | 输入与结果                                                                                                            |

@@ -1,10 +1,11 @@
 import { resolve } from 'node:path';
+import process from 'node:process';
+import { readSignalReadMode, type SignalEntry } from './public-signal-reader-core.ts';
 import {
   loadSeedCatalog,
   type SeedEntity,
   type SeedRadarSnapshot,
   type SeedRelation,
-  type SeedSignal,
   type SeedSource,
 } from '@hzense/content';
 
@@ -18,7 +19,10 @@ function getSeedCatalog() {
   return seedPromise;
 }
 
-export async function getSignalEntries(): Promise<SeedSignal[]> {
+export async function getSignalEntries(): Promise<SignalEntry[]> {
+  if (readSignalReadMode(process.env) === 'database') {
+    return (await import('./server/public-signals.ts')).getPublicSignals();
+  }
   return (await getSeedCatalog()).signals
     .filter((signal) => signal.status === 'accepted' || signal.status === 'reviewed')
     .sort(
@@ -29,7 +33,10 @@ export async function getSignalEntries(): Promise<SeedSignal[]> {
     );
 }
 
-export async function getSignalEntryById(id: string): Promise<SeedSignal | undefined> {
+export async function getSignalEntryById(id: string): Promise<SignalEntry | undefined> {
+  if (readSignalReadMode(process.env) === 'database') {
+    return (await import('./server/public-signals.ts')).getPublicSignalById(id);
+  }
   return (await getSignalEntries()).find((signal) => signal.id === id);
 }
 
@@ -46,6 +53,12 @@ export async function getSeedRelations(): Promise<SeedRelation[]> {
 }
 
 export async function getRadarSnapshots(): Promise<SeedRadarSnapshot[]> {
+  if (readSignalReadMode(process.env) === 'database') {
+    await (await import('./server/public-signals.ts')).waitForPublicSignalRequest();
+    // Legacy scores lack immutable content-version/publication-revision bindings.
+    // Do not attach them to a new version of the same Signal or resurrect Seed.
+    return [];
+  }
   return [...(await getSeedCatalog()).radar].sort(
     (left, right) =>
       right.date.localeCompare(left.date) ||
@@ -66,7 +79,7 @@ export async function getResourceEntryById(id: string): Promise<SeedEntity | und
   return (await getResourceEntries()).find((entity) => entity.id === id);
 }
 
-export async function getSignalsForEntity(entityId: string): Promise<SeedSignal[]> {
+export async function getSignalsForEntity(entityId: string): Promise<SignalEntry[]> {
   return (await getSignalEntries()).filter((signal) => signal.entities.includes(entityId));
 }
 

@@ -35,6 +35,7 @@ export default async function SignalsPage() {
           <p>每条信号保留来源、时间、强度与置信度，为简报、专题和洞察提供可追溯证据。</p>
         </section>
         <section className="signals-index-grid" aria-label="信号列表">
+          {entries.length === 0 ? <p>暂无当前符合公开条件的信号。</p> : null}
           {entries.map((entry) => (
             <Link className="signal-index-card" href={`/signals/${entry.id}`} key={entry.id}>
               <div className="signal-index-meta">
@@ -46,12 +47,23 @@ export default async function SignalsPage() {
               <h2>{entry.title}</h2>
               <p>{entry.summary}</p>
               <div className="signal-index-source">
-                <span>{sourceMap.get(entry.source_id)?.name ?? entry.source_id}</span>
+                <span>
+                  {entry.public_sources?.[0]?.name ??
+                    sourceMap.get(entry.source_id)?.name ??
+                    entry.source_id}
+                </span>
                 <strong>置信度 {formatPercentage(entry.confidence)}</strong>
               </div>
+              {entry.public_people ? (
+                <p>关键人物：{entry.public_people.map((person) => person.name).join('、')}</p>
+              ) : null}
               <div className="topic-row">
                 {entry.topics.map((topic) => (
-                  <span key={topic}>{topicTitleMap.get(topic) ?? topic}</span>
+                  <span key={topic}>
+                    {entry.public_topics
+                      ? (entry.public_topics.find((item) => item.id === topic)?.title ?? topic)
+                      : (topicTitleMap.get(topic) ?? topic)}
+                  </span>
                 ))}
               </div>
             </Link>

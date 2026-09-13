@@ -57,18 +57,18 @@ async function transaction(pool, operation) {
   }
 }
 
-async function lockParents(client, route, claiming = false) {
+async function lockParents(client, route, claiming = false, locking = true) {
   // FOR SHARE (not KEY SHARE) conflicts with non-key safety-switch updates.
   // All future multi-row configuration mutations must use this same order.
   const control = one(
     await client.query(`SELECT publication_enabled FROM public.signal_publication_control
-      WHERE singleton = true FOR SHARE`),
+      WHERE singleton = true${locking ? ' FOR SHARE' : ''}`),
     'control_not_found',
   );
   const task = one(
     await client.query(
       `SELECT task_id, policy, publication_enabled
-      FROM public.signal_publication_tasks WHERE task_id = $1 ${claiming ? 'FOR UPDATE' : 'FOR SHARE'}`,
+      FROM public.signal_publication_tasks WHERE task_id = $1 ${locking ? (claiming ? 'FOR UPDATE' : 'FOR SHARE') : ''}`,
       [route.task_id],
     ),
     'task_not_found',
@@ -77,7 +77,7 @@ async function lockParents(client, route, claiming = false) {
     await client.query(
       `SELECT task_id, principal_id, can_publish
       FROM public.signal_publication_authorizations
-      WHERE task_id = $1 AND principal_id = $2 FOR SHARE`,
+      WHERE task_id = $1 AND principal_id = $2${locking ? ' FOR SHARE' : ''}`,
       [route.task_id, route.principal_id],
     ),
     'authorization_not_found',
@@ -85,7 +85,7 @@ async function lockParents(client, route, claiming = false) {
   return { control, task, authorization };
 }
 
-async function lockContext(client, runId, claiming = false) {
+async function lockContext(client, runId, claiming = false, locking = true) {
   // This routing read intentionally does not lock the run ahead of its parents.
   // The ALWAYS run guard makes both routing fields immutable and forbids DELETE.
   const route = one(
@@ -96,11 +96,11 @@ async function lockContext(client, runId, claiming = false) {
     ),
     'run_not_found',
   );
-  const parents = await lockParents(client, route, claiming);
+  const parents = await lockParents(client, route, claiming, locking);
   const run = one(
     await client.query(
       `SELECT ${runColumns}
-    FROM public.signal_publication_runs WHERE run_id = $1 FOR UPDATE`,
+    FROM public.signal_publication_runs WHERE run_id = $1${locking ? ' FOR UPDATE' : ''}`,
       [runId],
     ),
     'run_not_found',
@@ -276,7 +276,7 @@ export async function completePrivatePublicationRun({ pool, request }) {
  * Do not call this, commit, and then invoke recordPrivateSignalPublicationTransition.
  * No model/network work, arbitrary callbacks or user-controlled SQL belongs here.
  */
-export async function lockPrivatePublicationControls({ client, request }) {
+async function publicationControls({ client, request }, restricted) {
   const command = parsePublicationControlRequest(request, 'gate');
   if (!client || typeof client.query !== 'function')
     throw new TypeError('A transaction client is required');
@@ -292,7 +292,10 @@ export async function lockPrivatePublicationControls({ client, request }) {
       'invalid_control_state',
     );
     if (settings.isolation !== 'read committed') deny('unsupported_isolation');
-    const context = await lockContext(client, command.run_id);
+    if (restricted) {
+      await client.query('SELECT public.hzense_lock_publication_controls($1)', [command.run_id]);
+    }
+    const context = await lockContext(client, command.run_id, false, !restricted);
     assertPublicationPolicy(context);
     assertPublicationLease(context, command);
     await client.query('RELEASE SAVEPOINT hzense_publication_controls');
@@ -318,4 +321,13 @@ export async function lockPrivatePublicationControls({ client, request }) {
     }
     throw error;
   }
+}
+
+export async function lockPrivatePublicationControls(input) {
+  return publicationControls(input, false);
+}
+
+// Internal restricted service variant; callers cannot inject lock SQL or hooks.
+export async function lockPublicPublicationControls(input) {
+  return publicationControls(input, true);
 }
