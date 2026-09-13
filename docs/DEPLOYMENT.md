@@ -26,6 +26,18 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 - 独立 `hzense_runtime` 凭据与 Production pooled 连接已通过两次完整数据库 preflight；五个 server-only 值已仅配置在 Vercel Production，Runtime-configured 部署、真实五列读取、运行时日志和持续健康门禁均已完成功能验收；既有 handling-exposure risk 原本已触发轮换待办，2026-09-04 操作者知情选择本轮延期，本轮未读取或修改凭据/部署配置，凭据继续按高敏感值管理且轮换义务仍开放；历史 ACL 恢复证据边界见[同日脱敏运维检查点](./production-evidence/2026-09-04-operations-checkpoint.md)
 - 2026-09-04 `main@0b14a62` 的[受控手工 production-health](https://github.com/hzense/tech-intelligence-hub/actions/runs/33854492063)通过 exact body / `no-store` / `<8s` 合约；此前从 04:35:46Z 成功的最近 scheduled run 到 08:39:29Z 手工触发前未出现更新的 scheduled 记录，该状态只记作调度间隙/延迟观察，不等同于 workflow 或数据库故障
 
+## 管理员 Google 登录
+
+管理员入口为 `/admin/login`，只允许服务端配置的一个已验证 Gmail 账号。代码与配置方法见
+[管理员认证说明](ADMIN_AUTH.md)。Google OAuth Web 客户端的生产回调必须注册为
+`https://hzense.com/api/auth/callback/google`；在 Vercel 项目 **Production** 环境配置
+`GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`NEXTAUTH_SECRET`、`NEXTAUTH_URL=https://hzense.com`
+和 `HZENSE_ADMIN_EMAIL`。密钥与邮箱不写进仓库、不用 `NEXT_PUBLIC_`、不进入 Preview 或 PR 测试。
+配置后需要重新部署及真实账号验收；缺少／错误配置或 Preview 部署时认证关闭，公开页面不受影响。
+
+本轮只接通认证代码与自动化测试，未设置生产凭据、执行真实 Google 登录或部署。
+管理员身份不等于数据库写入角色，不自动授予 Publisher 权限，也不启用 AI 采集、批量导入或发布开关。
+
 ## Hosted Alpha 收尾
 
 2026-09-04 的只读访问审计确认历史 Hosted Alpha 仍为 `active`、版本 `6`、访问模式 `public`，仅有 1 个 owner，外部 visitor 与 workspace/tenant group 均为 0；匿名请求与正式站 `https://hzense.com/` 当时都返回 HTTP 200。审计不记录 owner 身份、Token 或 bypass material，也未修改任何权限。

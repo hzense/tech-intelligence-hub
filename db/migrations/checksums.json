@@ -9,5 +9,6 @@
   "0007_signal_version_immutability.sql": "d076f9da8dd979a2bca4f54d4ed686783323dde29aa9f94bf7adeaf7b8fdd0ef",
   "0008_signal_publication_outbox.sql": "a1117fda9894ba6590d66c25195af6c3db700c0a0653170fe975c8af4ad4a75a",
   "0009_signal_publication_controls.sql": "6234a3419df037c66986b441c594f605c2d907d5236f2101df0bb2ee8087286a",
-  "0010_qualified_signal_publication.sql": "6e56ba4f9706ea62b36235a7acfad1b546826386abdc2bc772c5332a457b069d"
+  "0010_qualified_signal_publication.sql": "6e56ba4f9706ea62b36235a7acfad1b546826386abdc2bc772c5332a457b069d",
+  "0011_signal_candidate_verification.sql": "6db9b93e6ee52b886331755ec58fb6659258ac983e1ab149245143b1ff6572c6"
 }

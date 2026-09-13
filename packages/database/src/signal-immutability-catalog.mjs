@@ -11,14 +11,25 @@ import {
   qualifiedPublicationFunctionHashes,
   qualifiedPublicationTriggers,
 } from './qualified-publication-catalog.mjs';
+import {
+  candidateVerificationFunctionHashes,
+  candidateVerificationTriggers,
+  candidateVerificationStampedTables,
+} from './candidate-verification-catalog.mjs';
 
-// Independent migration 0007 seal contract, with the narrowly enumerated 0008–0010
+// Independent migration 0007 seal contract, with the narrowly enumerated 0008–0011
 // publication guards. Never derive expected bodies from installed catalog or
 // migration SQL at runtime: both may have drifted.
 export const stampedSignalTables = Object.freeze([
   'signal_versions',
   'public_source_evidence',
   'signal_event_identities',
+]);
+// Additional stamped records have their own append-only guard. Do not add
+// them to the legacy 0007 guard's narrowly enumerated attachment set.
+export const allStampedSignalTables = Object.freeze([
+  ...stampedSignalTables,
+  ...candidateVerificationStampedTables,
 ]);
 export const sealedSignalEdgeTables = Object.freeze([
   'signal_version_evidence',
@@ -39,6 +50,7 @@ export const sealedSignalFunctionHashes = Object.freeze({
   ...signalPublicationFunctionHashes,
   ...signalPublicationControlFunctionHashes,
   ...qualifiedPublicationFunctionHashes,
+  ...candidateVerificationFunctionHashes,
 });
 
 export function expectedSignalTriggerCount(tableName) {
@@ -65,6 +77,7 @@ export const sealedSignalTriggers = Object.freeze([
   ...signalPublicationTriggers,
   ...signalPublicationControlTriggers,
   ...qualifiedPublicationTriggers,
+  ...candidateVerificationTriggers,
 ]);
 
 export function signalGuardSourceHash(source) {
@@ -145,7 +158,7 @@ export function inspectSignalImmutabilityCatalog({ triggers, routines, stamps },
     problems.push(`unexpected public application function: ${key}`);
 
   const actualStamps = new Map(stamps.map((row) => [row.table_name, row]));
-  for (const tableName of stampedSignalTables) {
+  for (const tableName of allStampedSignalTables) {
     const row = actualStamps.get(tableName);
     if (
       !row ||
@@ -220,7 +233,7 @@ export async function collectSignalImmutabilityProblems(client, expectedOwner) {
     LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
     WHERE n.nspname = 'public' AND a.attname = 'created_xid'
       AND c.relname = ANY($1::text[])`,
-    [stampedSignalTables],
+    [allStampedSignalTables],
   );
   return inspectSignalImmutabilityCatalog(
     { triggers: triggers.rows, routines: routines.rows, stamps: stamps.rows },

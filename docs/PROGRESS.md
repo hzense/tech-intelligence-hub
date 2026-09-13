@@ -1,7 +1,7 @@
 # HZense 开发进度看板
 
 **最后更新：** 2026-09-13
-**当前阶段：** 旧网站 MVP 已交付；Signal-first v2 快照、任职、事件身份、版本封存、私有 Outbox 及任务控制已合并；本地完成已记录资格检查与原子发表核心，应用和生产尚未按新版切换
+**当前阶段：** 旧网站 MVP 已交付；Signal-first v2 私有资格发表核心已合并，受控核验记录与新候选组装完成本地开发和隔离验证，待 PR 交付；应用和生产尚未按新版切换
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
 > 本看板区分“工程基础”“网站 MVP”“MVP 生产就绪度”和“完整科技情报平台”。百分比是人工估算，不以文档数量或提交数量代替产品进展；MVP 已完成不代表完整产品已完成。
@@ -28,9 +28,13 @@
     - [x] 控制交付后续核验：[PR #73](https://github.com/hzense/tech-intelligence-hub/pull/73) 已合并为 `f0fc283`；PR 与 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34763140875) 均通过，完整 260 项原生 PostgreSQL 集成通过；本地 main 已同步。上条保留提交前证据，未执行生产迁移。
     - [x] 当前增量本地开发：`0010` [已记录资格检查与原子发表](SIGNAL_QUALIFIED_PUBLICATION.md)克隆已封存且记录合格的候选，将当前依赖检查、完整新版本／四类边、head、Outbox 及运行绑定回执放进同一事务；失效与竞争回滚，永久幂等重试不恢复撤回内容。整仓 1624 项单元测试与构建／类型／lint／格式／内容／Seed／工作流校验通过；临时 PostgreSQL 18.4 / pgvector 0.8.6 的完整 318 项原生集成通过，其中新事务套件 46 项含 12 项真实锁等待场景。旧控制 TRUNCATE 测试显式补齐新外键依赖，未放宽断言／保护；测试实例已停止。本批通过独立 PR 交付，PR CI／评审／合并另行确认，不计为生产交付。
     - [x] 私有资格核心交付：[PR #74](https://github.com/hzense/tech-intelligence-hub/pull/74) 的 CI 通过，已合并为 `618c178` 并同步本地；随后 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34765438872) 数据库首组 157 项断言全部通过，但测试清理触发未捕获 `57P01`，整个任务失败，后续角色组未运行。已定位为 Pool 关闭与强制终止连接的竞争并本地修复：3 个套件等待真实零连接后清理，新增 10 项单元与 3 项原生回归；整仓 1634 项单元通过，完整 321 项原生回归连续三轮通过。不改业务 SQL／权限；修复通过独立 PR 交付，CI／评审／合并另行确认，不视为远端 main CI 已恢复。详见[失败与修复记录](SIGNAL_QUALIFIED_PUBLICATION.md#pr-74-合并后-ci-清理竞态2026-09-13)。
-    - [ ] 后续：受控核验产物与候选组装、真实认证及受限 Publisher、独立安全撤回和依赖失效协调、当前公开资格／真实消费者；再处理历史导入和读切换。记录的 verified、私有 published 或历史回执均不是可公开许可，本批不把 pending 候选自动升级或开放网站读取。
+    - [x] CI 清理修复交付：[PR #75](https://github.com/hzense/tech-intelligence-hub/pull/75) 已合并为 `3eef3f9`，对应 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34768195574) 成功。上条保留故障现场，不表示当前 main 仍失败。
+    - [x] 当前增量本地开发：`0011` [受控核验记录与候选组装](SIGNAL_CANDIDATE_VERIFICATION.md)。已核验原文和已封存候选的完整材料绑定可信记录，只在新版本确认人物／组织边，不更新共享 Evidence、不改历史、不写公开 head 或搜索。整仓 1807 项单元测试与构建／类型／lint 通过；独立 PostgreSQL 18.4 / pgvector 0.8.6 上完整 374 项原生集成通过，含本批 31 项候选链路原生回归和 Runtime／writer 各 11 项权限拒绝。12 迁移／33 表精确目录检查通过；材料指纹补齐姓名别名、来源性质和精确 JSONB 数值绑定。待独立 PR 交付，不计为生产迁移或 AI 核验执行器上线。
+    - [ ] 后续：管理员认证的真实部署验收及受限 Publisher、独立安全撤回和依赖失效协调、当前公开资格／真实消费者；再处理历史导入和读切换。认证入口本地实现见 V2-2；原文核验执行器、AI 任务和业务后台仍待接入，记录的 verified、私有 published 或历史回执均不是可公开许可。
   - [ ] V2-1c 历史导入事务、冲突／幂等核验、统一读取及权威切换。预演保留旧状态与引用，不自动补造人物、生成原文证据或提升为新版 published。
 - [ ] V2-2 AI 后台：管理员认证、模型列表／手填与分阶段 Profile、独立能力测试／兼容故障切换、密钥保护、来源增量及机器临时准入、预算、手动／定时任务与审计。
+  - [x] 管理员认证本地实现（2026-09-13）：按操作者选择接入 Google 单账号登录；服务端单 Gmail 白名单、已验证邮箱和 Google `sub` 绑定、PKCE／state／nonce、逐页面／API 独立鉴权、1 小时绝对会话时效及同源／CSRF 防护。`/admin/login`、`/admin` 和只读会话 API 已实现；缺配置和 Preview 均关闭认证。102 项新增单元回归、14 个构建后 HTTP 场景及全站 28 项桌面／移动端浏览器回归通过；HTTP 隔离回归接入 CI。见[认证与上线配置](ADMIN_AUTH.md)。与候选核验增量通过同一 PR 的独立提交交付，远端 CI／评审／合并另行确认；尚未部署，不含真实 Google 登录验收、生产 OAuth 配置、数据库写入授权或 AI／导入功能；真实账号只应放在服务端配置，不进仓库。
+  - [ ] 配置 Production Google OAuth 客户端和唯一管理员白名单，部署后验收真实授权／拒绝／退出链路；再接受限业务操作，不用登录结果替代 Publisher 的资格和任务授权。
   - [x] 批量导入设计：正式定义文档／链接／混合批次、AI 生成并发布、逐项结果、重试与隐私边界，见设计第 7.4 节；仅为设计完成。
   - [ ] 实现 `/admin/imports` 与批次详情、私有上传／链接接收、安全解析、来源溯源、跨文档事件去重和发布同步；首版含 CSV／XLSX、扫描 PDF、PNG／JPEG OCR，不以未配置跳过验收。
   - [ ] 验证全部文件类型、批量部分成功、一文多信号、多文同事件、失败重试、预算限制、取消竞争和私有材料防泄漏。
@@ -50,6 +54,8 @@
 和 Radar 输入触发构建缓存失效的回归。Web 48 项、内容包 377 项测试通过，网站构建通过。
 这不是重新评分、数据库迁移或 v2 上线；本批通过独立 PR 交付，远端 CI／评审／合并另行确认，
 尚未部署，也未进行浏览器页面验收。
+
+**交付后续核验：** 上述提交前状态已由 [PR #76](https://github.com/hzense/tech-intelligence-hub/pull/76) 交付，合并提交 `9b022ee`；[main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34769039522) 全部通过，含 26 项生产浏览器冒烟测试。本地 main 已同步；该提交的 Vercel Production 部署 `dpl_EAGqjVpdWsMJWnSLfzG4dzjDxntP` 已 READY 并绑定 `hzense.com`。生产浏览器确认专题列表、AI 安全详情、雷达均为 `55／上升／涌现期／中`。这是指标读取一致性修复，不代表重新评分或 v2 上线。
 
 ## 原 MVP 总览（历史口径）
 

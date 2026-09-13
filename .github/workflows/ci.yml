@@ -64,6 +64,11 @@ jobs:
         run: pnpm build
       - name: Run unit tests
         run: pnpm test
+      - name: Verify built administrator authentication with isolated fixtures
+        working-directory: apps/web
+        env:
+          HZENSE_ADMIN_AUTH_INTEGRATION: '1'
+        run: node --test test/admin-auth-runtime.test.mjs
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Run production browser smoke tests

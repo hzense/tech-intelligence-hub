@@ -7,6 +7,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { runMigrations } from '../src/migrate.mjs';
 import { waitForDatabaseDisconnects } from './database-disconnect.mjs';
+import {
+  readPrivateCandidateVerificationMaterial,
+  recordPrivateCandidateVerification,
+  assemblePrivateVerifiedSignalCandidate,
+} from '../src/signal-candidate-verification-store.mjs';
 
 const { Client, Pool } = pg;
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
@@ -689,5 +694,403 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
       pool.query(sql, sql.includes('$1') ? [f.request.request_key] : []),
     ).rejects.toMatchObject({ code: '55000' });
     expect((await state(f.id)).receipts).toHaveLength(1);
+  });
+
+  async function pendingCandidate() {
+    return fixture({
+      beforeSeal: async (client, id) => {
+        await client.query(
+          "UPDATE public.signal_version_people SET verification_status='pending' WHERE signal_id=$1",
+          [id],
+        );
+        await client.query(
+          "UPDATE public.signal_version_organizations SET verification_status='pending' WHERE signal_id=$1",
+          [id],
+        );
+      },
+    });
+  }
+  async function verificationRequest(f, overrides = {}) {
+    const material = await readPrivateCandidateVerificationMaterial({
+      pool,
+      request: { signal_id: f.id, source_version: 1 },
+    });
+    return {
+      verification_id: randomUUID(),
+      signal_id: f.id,
+      source_version: 1,
+      source_content_hash: material.bundle.snapshot.content_hash,
+      bundle_fingerprint: material.bundle_fingerprint,
+      verifier_id: randomUUID(),
+      policy_version: 'candidate-verification-v1',
+      decision: 'approved',
+      checks: {
+        claims_supported: true,
+        people_disambiguated: true,
+        people_are_participants: true,
+        organizations_supported: true,
+        public_sources_cleared: true,
+        contradictions_resolved: true,
+      },
+      valid_for_seconds: 60,
+      ...overrides,
+    };
+  }
+  const assemblyRequest = (f, verification) => ({
+    request_key: `assemble:${randomUUID()}`,
+    verification_id: verification.verification_id,
+    signal_id: f.id,
+    source_version: 1,
+    target_version: 2,
+  });
+  async function verifyCandidate(f, overrides) {
+    const request = await verificationRequest(f, overrides);
+    await recordPrivateCandidateVerification({ pool, request });
+    return { verification: request, request: assemblyRequest(f, request) };
+  }
+
+  it('assembles sealed pending people into a new candidate, then separately publishes it', async () => {
+    const f = await pendingCandidate();
+    await expect(publish({ pool, request: f.request })).rejects.toMatchObject({
+      code: 'unverified_entity_link',
+    });
+    const v = await verifyCandidate(f);
+    const result = await assemblePrivateVerifiedSignalCandidate({ pool, request: v.request });
+    expect(result).toMatchObject({ scope: 'private_verified_candidate', outcome: 'assembled' });
+    const people = await pool.query(
+      'SELECT version,verification_status FROM public.signal_version_people WHERE signal_id=$1 ORDER BY version',
+      [f.id],
+    );
+    expect(people.rows).toEqual([
+      { version: 1, verification_status: 'pending' },
+      { version: 2, verification_status: 'verified' },
+    ]);
+    const beforePublish = await state(f.id);
+    expect(beforePublish.heads).toEqual([]);
+    expect(beforePublish.events).toEqual([]);
+    const original = beforePublish.versions[0];
+    const candidate = beforePublish.versions[1];
+    for (const key of ['title', 'summary', 'analysis', 'occurred_at', 'captured_at', 'origin'])
+      expect(candidate[key]).toEqual(original[key]);
+    expect(candidate.content_hash).not.toBe(original.content_hash);
+    await expect(
+      publish({ pool, request: { ...f.request, source_version: 2, target_version: 3 } }),
+    ).resolves.toMatchObject({ scope: 'private_recorded_qualification', outcome: 'apply' });
+    expect((await state(f.id)).versions).toHaveLength(3);
+  });
+
+  it('records and assembles while publishing is disabled without writing head or outbox', async () => {
+    const f = await pendingCandidate();
+    await pool.query('UPDATE public.signal_publication_control SET publication_enabled=false');
+    const v = await verifyCandidate(f);
+    await assemblePrivateVerifiedSignalCandidate({ pool, request: v.request });
+    expect((await state(f.id)).heads).toEqual([]);
+    await expect(
+      publish({ pool, request: { ...f.request, source_version: 2, target_version: 3 } }),
+    ).rejects.toBeDefined();
+  });
+
+  it('records a rejected assessment but refuses to assemble it', async () => {
+    const f = await pendingCandidate();
+    const request = await verificationRequest(f);
+    request.decision = 'rejected';
+    request.checks.people_disambiguated = false;
+    await recordPrivateCandidateVerification({ pool, request });
+    await expect(
+      assemblePrivateVerifiedSignalCandidate({ pool, request: assemblyRequest(f, request) }),
+    ).rejects.toMatchObject({ code: 'verification_not_approved' });
+    await expectNoWrite(f);
+  });
+
+  it.each(['pending', 'rejected'])(
+    'never upgrades global %s Evidence as a side effect',
+    async (status) => {
+      const f = await pendingCandidate();
+      await pool.query(
+        'UPDATE public.public_source_evidence SET verification_status=$1 WHERE id=$2',
+        [status, `${f.id}-evidence`],
+      );
+      await expect(verificationRequest(f)).rejects.toMatchObject({ code: 'unverified_evidence' });
+      expect(
+        (
+          await pool.query(
+            'SELECT verification_status FROM public.public_source_evidence WHERE id=$1',
+            [`${f.id}-evidence`],
+          )
+        ).rows[0].verification_status,
+      ).toBe(status);
+      await expectNoWrite(f);
+    },
+  );
+
+  it('rejects material change between review reading and record ingestion', async () => {
+    const f = await pendingCandidate();
+    const request = await verificationRequest(f);
+    await pool.query(
+      "UPDATE public.sources SET allowed_hosts=ARRAY['example.com','new.example.com'] WHERE id=$1",
+      [`${f.id}-source`],
+    );
+    await expect(recordPrivateCandidateVerification({ pool, request })).rejects.toMatchObject({
+      code: 'verification_material_changed',
+    });
+    expect(
+      (
+        await pool.query(
+          'SELECT verification_id FROM public.signal_candidate_verifications WHERE signal_id=$1',
+          [f.id],
+        )
+      ).rows,
+    ).toEqual([]);
+  });
+
+  it('rejects dependency drift after recording even if the changed policy would still qualify', async () => {
+    const f = await pendingCandidate();
+    const v = await verifyCandidate(f);
+    await pool.query(
+      "UPDATE public.sources SET allowed_hosts=ARRAY['example.com','new.example.com'] WHERE id=$1",
+      [`${f.id}-source`],
+    );
+    await expect(
+      assemblePrivateVerifiedSignalCandidate({ pool, request: v.request }),
+    ).rejects.toMatchObject({ code: 'verification_material_changed' });
+    await expectNoWrite(f);
+  });
+
+  it('replays a verification ID only for the exact original report and duration', async () => {
+    const f = await pendingCandidate();
+    const v = await verifyCandidate(f);
+    await expect(
+      recordPrivateCandidateVerification({ pool, request: v.verification }),
+    ).resolves.toMatchObject({ outcome: 'replay', scope: 'private_historical_verification' });
+    for (const patch of [{ verifier_id: randomUUID() }, { valid_for_seconds: 10 }]) {
+      await expect(
+        recordPrivateCandidateVerification({ pool, request: { ...v.verification, ...patch } }),
+      ).rejects.toMatchObject({ code: 'verification_key_reused' });
+    }
+  });
+
+  it.each([
+    ["UPDATE public.entities SET name='Different Person' WHERE id=$1", '-person'],
+    ["UPDATE public.entities SET aliases=ARRAY['Different Alias'] WHERE id=$1", '-person'],
+    [
+      'UPDATE public.entities SET metadata=\'{"identity":"different"}\'::jsonb WHERE id=$1',
+      '-person',
+    ],
+    ["UPDATE public.sources SET name='Different Source' WHERE id=$1", '-source'],
+    ["UPDATE public.sources SET type='paper' WHERE id=$1", '-source'],
+    ['UPDATE public.sources SET trust_score=1 WHERE id=$1', '-source'],
+  ])('invalidates reviewed identity/source details on change: %s', async (sql, suffix) => {
+    const f = await pendingCandidate();
+    const v = await verifyCandidate(f);
+    await pool.query(sql, [`${f.id}${suffix}`]);
+    await expect(
+      assemblePrivateVerifiedSignalCandidate({ pool, request: v.request }),
+    ).rejects.toMatchObject({ code: 'verification_material_changed' });
+    await expectNoWrite(f);
+  });
+
+  it('rejects Evidence microseconds before the pg Date decoder can truncate them', async () => {
+    const f = await fixture({
+      beforeSeal: async (client, id) => {
+        await client.query(
+          "UPDATE public.public_source_evidence SET captured_at='2026-09-13T08:10:11.678901Z' WHERE id=$1",
+          [`${id}-evidence`],
+        );
+      },
+    });
+    await expect(verificationRequest(f)).rejects.toMatchObject({
+      code: 'invalid_material_timestamp',
+    });
+    await expectNoWrite(f);
+  });
+
+  it('binds exact JSONB text even when pg decodes two metadata numerics to the same JS value', async () => {
+    const f = await pendingCandidate();
+    await pool.query('UPDATE public.entities SET metadata=$1::jsonb WHERE id=$2', [
+      '{"identity":9007199254740992}',
+      `${f.id}-person`,
+    ]);
+    const v = await verifyCandidate(f);
+    await pool.query('UPDATE public.entities SET metadata=$1::jsonb WHERE id=$2', [
+      '{"identity":9007199254740993}',
+      `${f.id}-person`,
+    ]);
+    expect(
+      (await pool.query('SELECT metadata FROM public.entities WHERE id=$1', [`${f.id}-person`]))
+        .rows[0].metadata.identity,
+    ).toBe(9007199254740992);
+    await expect(
+      assemblePrivateVerifiedSignalCandidate({ pool, request: v.request }),
+    ).rejects.toMatchObject({ code: 'verification_material_changed' });
+    await expectNoWrite(f);
+  });
+
+  it('permits historical assembly replay but forbids record reuse and semantic key reuse', async () => {
+    const f = await pendingCandidate();
+    const v = await verifyCandidate(f);
+    await assemblePrivateVerifiedSignalCandidate({ pool, request: v.request });
+    await pool.query('UPDATE public.sources SET active=false WHERE id=$1', [`${f.id}-source`]);
+    await expect(
+      assemblePrivateVerifiedSignalCandidate({ pool, request: v.request }),
+    ).resolves.toMatchObject({ outcome: 'replay', scope: 'private_historical_assembly' });
+    await expect(
+      assemblePrivateVerifiedSignalCandidate({
+        pool,
+        request: { ...v.request, target_version: 3 },
+      }),
+    ).rejects.toMatchObject({ code: 'assembly_key_reused' });
+    await expect(
+      assemblePrivateVerifiedSignalCandidate({
+        pool,
+        request: { ...v.request, request_key: 'another-key', target_version: 3 },
+      }),
+    ).rejects.toMatchObject({ code: 'verification_already_consumed' });
+    expect((await state(f.id)).versions).toHaveLength(2);
+  });
+
+  it('serializes competing keys consuming the same verification into exactly one new version', async () => {
+    const f = await pendingCandidate();
+    const v = await verifyCandidate(f);
+    const results = await Promise.all([
+      settle(assemblePrivateVerifiedSignalCandidate({ pool, request: v.request })),
+      settle(
+        assemblePrivateVerifiedSignalCandidate({
+          pool,
+          request: { ...v.request, request_key: 'concurrent-other-key', target_version: 3 },
+        }),
+      ),
+    ]);
+    expect(results.filter((r) => r.value)).toHaveLength(1);
+    expect(results.find((r) => r.error).error.code).toBe('verification_already_consumed');
+    expect((await state(f.id)).versions).toHaveLength(2);
+  });
+
+  it('rejects a verification record bound to a different Signal', async () => {
+    const f = await pendingCandidate();
+    const other = await pendingCandidate();
+    const v = await verifyCandidate(f);
+    await expect(
+      assemblePrivateVerifiedSignalCandidate({
+        pool,
+        request: { ...v.request, signal_id: other.id },
+      }),
+    ).rejects.toMatchObject({ code: 'verification_material_changed' });
+    await expectNoWrite(other);
+  });
+
+  it('rechecks expiry after a real post-write table lock wait and rolls back all assembly rows', async () => {
+    const f = await pendingCandidate();
+    const v = await verifyCandidate(f, { valid_for_seconds: 1 });
+    const blocker = await pool.connect();
+    const worker = await pool.connect();
+    let operation;
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('LOCK TABLE public.signal_candidate_assembly_receipts IN SHARE MODE');
+      const pid = (await worker.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      // Fixture wrapper reserves a genuinely independent, idle client, not a transaction.
+      operation = settle(
+        assemblePrivateVerifiedSignalCandidate({
+          pool: { connect: async () => ({ query: worker.query.bind(worker), release() {} }) },
+          request: v.request,
+        }),
+      );
+      await observeBlocked(blocker, pid);
+      const deadline = Date.now() + 5000;
+      while (
+        !(
+          await blocker.query(
+            'SELECT expires_at<=clock_timestamp() AS expired FROM public.signal_candidate_verifications WHERE verification_id=$1',
+            [v.verification.verification_id],
+          )
+        ).rows[0].expired
+      ) {
+        if (Date.now() > deadline) throw new Error('Synthetic verification failed to expire');
+        await delay(10);
+      }
+      await blocker.query('ROLLBACK');
+      expect((await operation).error).toBeDefined();
+      await expectNoWrite(f);
+      expect(
+        (
+          await pool.query(
+            'SELECT request_key FROM public.signal_candidate_assembly_receipts WHERE signal_id=$1',
+            [f.id],
+          )
+        ).rows,
+      ).toEqual([]);
+    } finally {
+      await blocker.query('ROLLBACK');
+      if (operation) await operation;
+      blocker.release();
+      worker.release();
+    }
+  });
+
+  it.each([
+    'UPDATE public.signal_candidate_verifications SET verifier_id=verifier_id WHERE verification_id=$1',
+    'DELETE FROM public.signal_candidate_verifications WHERE verification_id=$1',
+    'TRUNCATE public.signal_candidate_verifications,public.signal_candidate_assembly_receipts',
+    'UPDATE public.signal_candidate_assembly_receipts SET content_hash=content_hash WHERE verification_id=$1',
+    'DELETE FROM public.signal_candidate_assembly_receipts WHERE verification_id=$1',
+    'TRUNCATE public.signal_candidate_assembly_receipts',
+  ])('keeps verification and assembly evidence immutable: %s', async (sql) => {
+    const f = await pendingCandidate();
+    const v = await verifyCandidate(f);
+    await assemblePrivateVerifiedSignalCandidate({ pool, request: v.request });
+    await expect(
+      pool.query(sql, sql.includes('$1') ? [v.verification.verification_id] : []),
+    ).rejects.toMatchObject({ code: '55000' });
+  });
+
+  it.each([
+    ['source_content_hash', "repeat('0',64)"],
+    ['created_xid', "'0'::xid8"],
+    ['verified_at', "date_trunc('milliseconds',statement_timestamp()) - interval '1 second'"],
+    ['expires_at', "date_trunc('milliseconds',statement_timestamp()) + interval '25 hours'"],
+    ['checks', "'[]'::jsonb"],
+  ])('rejects direct SQL forged verification %s', async (column, replacement) => {
+    const f = await pendingCandidate();
+    const v = await verifyCandidate(f);
+    const columns = [
+      'verification_id',
+      'signal_id',
+      'source_version',
+      'source_content_hash',
+      'bundle_fingerprint',
+      'verifier_id',
+      'policy_version',
+      'report_hash',
+      'decision',
+      'checks',
+      'verified_at',
+      'expires_at',
+      'created_xid',
+    ];
+    const expressions = columns.map((field) => {
+      if (field === column) return replacement;
+      if (field === 'verification_id') return '$1::uuid';
+      if (field === 'verified_at') return "date_trunc('milliseconds',statement_timestamp())";
+      if (field === 'expires_at')
+        return "date_trunc('milliseconds',statement_timestamp()) + interval '1 hour'";
+      if (field === 'created_xid') return 'pg_current_xact_id()';
+      return field;
+    });
+    const result = await settle(
+      pool.query(
+        `INSERT INTO public.signal_candidate_verifications (${columns.join(',')})
+       SELECT ${expressions.join(',')} FROM public.signal_candidate_verifications WHERE verification_id=$2`,
+        [randomUUID(), v.verification.verification_id],
+      ),
+    );
+    expect(['23514', '55000']).toContain(result.error?.code);
+    expect(
+      (
+        await pool.query(
+          'SELECT verification_id FROM public.signal_candidate_verifications WHERE signal_id=$1',
+          [f.id],
+        )
+      ).rows,
+    ).toHaveLength(1);
   });
 });
