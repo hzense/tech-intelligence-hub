@@ -1,4 +1,6 @@
 import type { MetadataRoute } from 'next';
+import process from 'node:process';
+import { readSignalReadMode } from '@/lib/public-signal-reader-core';
 import { getResourceEntries, getSignalEntries } from '@/lib/seed-runtime';
 import {
   getDailyEntries,
@@ -88,7 +90,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...signalEntries.map((entry) => ({
       url: `${siteUrl}/signals/${entry.id}`,
       lastModified: new Date(entry.occurred_at),
-      changeFrequency: 'never' as const,
+      changeFrequency:
+        readSignalReadMode(process.env) === 'database' ? ('daily' as const) : ('never' as const),
       priority: 0.7,
     })),
     {

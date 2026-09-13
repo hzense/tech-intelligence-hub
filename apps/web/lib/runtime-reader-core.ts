@@ -13,6 +13,7 @@ import {
   type SearchType,
 } from '@hzense/search/ranking';
 import type { SearchMode } from './search-mode';
+import { createPublicSignalReader, type SignalEntry } from './public-signal-reader-core.ts';
 
 const runtimeRole = 'hzense_runtime';
 const pooledHostPattern = /(^|[.-])pooler([.-]|$)/;
@@ -109,6 +110,10 @@ export interface RuntimeTopicReader {
   readTopics(limit?: number): Promise<RuntimeTopic[]>;
   search(query: string, type?: SearchType): Promise<SearchResult[]>;
   probeSearch(): Promise<void>;
+  readPublicSignals(): Promise<SignalEntry[]>;
+  readPublicSignalById(id: string): Promise<SignalEntry | undefined>;
+  searchPublicSignals(query: string): Promise<SearchResult[]>;
+  probePublicSignals(): Promise<void>;
 }
 
 export interface RuntimeReaderHealthLog {
@@ -338,7 +343,18 @@ export function createLazyRuntimeTopicReader({
     return pool;
   }
 
+  const publicSignals = createPublicSignalReader({
+    query: (sql, parameters) => getPool().query(sql, parameters),
+  });
+
   return {
+    readPublicSignals: () => publicSignals.list(),
+    readPublicSignalById: (id) => publicSignals.byId(id),
+    searchPublicSignals: (query) => publicSignals.search(query),
+    async probePublicSignals() {
+      // An empty public set is valid. Missing schema/permissions are not.
+      await getPool().query('SELECT signal_id FROM public.current_public_signals LIMIT 1', []);
+    },
     hasPool: () => pool !== undefined,
     poolStats: () => poolStats(pool),
     async readTopics(limit = 1) {
@@ -419,6 +435,8 @@ export function createRuntimeReaderHealthHandler({
   readTopics,
   searchMode = () => 'in-process',
   probeSearch,
+  signalReadMode = () => 'legacy',
+  probePublicSignals,
 }: {
   clock?: () => number;
   log: (record: RuntimeReaderHealthLog) => void;
@@ -426,6 +444,8 @@ export function createRuntimeReaderHealthHandler({
   readTopics: (limit: number) => Promise<RuntimeTopic[]>;
   searchMode?: () => SearchMode;
   probeSearch?: () => Promise<void>;
+  signalReadMode?: () => 'legacy' | 'database';
+  probePublicSignals?: () => Promise<void>;
 }): (request?: Pick<Request, 'headers'>) => Promise<Response> {
   return async (request) => {
     const startedAt = clock();
@@ -441,6 +461,10 @@ export function createRuntimeReaderHealthHandler({
       if (searchMode() === 'database') {
         if (!probeSearch) fail('invalid_configuration');
         await probeSearch();
+      }
+      if (signalReadMode() === 'database') {
+        if (!probePublicSignals) fail('invalid_configuration');
+        await probePublicSignals();
       }
     } catch (error) {
       outcome = 'unavailable';

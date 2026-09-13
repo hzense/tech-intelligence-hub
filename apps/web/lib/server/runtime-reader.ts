@@ -50,3 +50,19 @@ export function searchRuntimeDocuments(query: string, type?: SearchType) {
 export function probeRuntimeSearch() {
   return runtimeTopicReader.probeSearch();
 }
+
+export function readRuntimePublicSignals() {
+  return runtimeTopicReader.readPublicSignals();
+}
+
+export function readRuntimePublicSignalById(id: string) {
+  return runtimeTopicReader.readPublicSignalById(id);
+}
+
+export function searchRuntimePublicSignals(query: string) {
+  return runtimeTopicReader.searchPublicSignals(query);
+}
+
+export function probeRuntimePublicSignals() {
+  return runtimeTopicReader.probePublicSignals();
+}

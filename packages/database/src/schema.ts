@@ -11,6 +11,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  pgView,
   primaryKey,
   text,
   timestamp,
@@ -877,6 +878,72 @@ export const signalCandidateAssemblyReceipts = pgTable(
     uniqueIndex('signal_candidate_assembly_receipts_verification_uq').on(t.verificationId),
   ],
 );
+
+export const signalVerificationDependencySeals = pgTable(
+  'signal_verification_dependency_seals',
+  {
+    verificationId: uuid('verification_id')
+      .primaryKey()
+      .references(() => signalCandidateVerifications.verificationId, {
+        onUpdate: 'no action',
+        onDelete: 'no action',
+      }),
+    dependencySeal: jsonb('dependency_seal').notNull(),
+    invalidated: boolean('invalidated').notNull().default(false),
+  },
+  (t) => [
+    check(
+      'signal_verification_dependency_seals_object_ck',
+      sql`jsonb_typeof(${t.dependencySeal}) = 'object'`,
+    ),
+  ],
+);
+
+export const signalPublicationPermits = pgTable(
+  'signal_publication_permits',
+  {
+    eventId: uuid('event_id')
+      .primaryKey()
+      .references(() => signalPublicationOutbox.eventId, {
+        onUpdate: 'no action',
+        onDelete: 'no action',
+      }),
+    verificationId: uuid('verification_id')
+      .notNull()
+      .references(() => signalCandidateVerifications.verificationId, {
+        onUpdate: 'no action',
+        onDelete: 'no action',
+      }),
+    dependencySeal: jsonb('dependency_seal').notNull(),
+  },
+  (t) => [
+    check(
+      'signal_publication_permits_object_ck',
+      sql`jsonb_typeof(${t.dependencySeal}) = 'object'`,
+    ),
+  ],
+);
+
+// SQL migration owns the security-barrier definition; this maps only public DTOs.
+export const currentPublicSignals = pgView('current_public_signals', {
+  signalId: text('signal_id'),
+  version: integer('version'),
+  publicationRevision: integer('publication_revision'),
+  title: text('title'),
+  type: signalType('type'),
+  occurredAt: timestamp('occurred_at', { withTimezone: true }),
+  capturedAt: timestamp('captured_at', { withTimezone: true }),
+  summary: text('summary'),
+  analysis: text('analysis'),
+  importance: integer('importance'),
+  strength: integer('strength'),
+  confidence: doublePrecision('confidence'),
+  novelty: doublePrecision('novelty'),
+  topics: jsonb('topics'),
+  people: jsonb('people'),
+  organizations: jsonb('organizations'),
+  sources: jsonb('sources'),
+}).existing();
 
 export const signalVersionPeople = pgTable(
   'signal_version_people',

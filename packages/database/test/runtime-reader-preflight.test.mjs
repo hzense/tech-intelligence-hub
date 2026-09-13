@@ -133,6 +133,8 @@ function preflightClient({
   ],
   extraSchemaPrivileges = [],
   extraRelations = [],
+  viewRelation = {},
+  omitPublicView = false,
   inheritanceEdges = [],
   rewriteRuleCount = 0,
   physicalTopicColumns = ['id', 'title', 'parent_id', 'status', 'metadata', 'runtime_enabled'],
@@ -219,16 +221,21 @@ function preflightClient({
       return { rowCount: extraSchemaPrivileges.length, rows: extraSchemaPrivileges };
     }
     if (sql.includes('relation_info.relname AS name') && sql.includes('rewrite_info.ev_class')) {
-      const rows = [...expectedTableNames, ...extraRelations].map((name) => ({
+      const rows = [
+        ...expectedTableNames,
+        ...(omitPublicView ? [] : ['current_public_signals']),
+        ...extraRelations,
+      ].map((name) => ({
         name,
-        relkind: 'r',
+        relkind: name === 'current_public_signals' ? 'v' : 'r',
         relpersistence: 'p',
         relrowsecurity: false,
         relforcerowsecurity: false,
         owner: 'hzense_migrator',
         policy_count: 0,
         user_trigger_count: expectedSignalTriggerCount(name),
-        rewrite_rule_count: rewriteRuleCount,
+        rewrite_rule_count: name === 'current_public_signals' ? 1 : rewriteRuleCount,
+        ...(name === 'current_public_signals' ? viewRelation : {}),
       }));
       return { rowCount: rows.length, rows };
     }
@@ -446,6 +453,53 @@ function reservedDatabaseClient(
 }
 
 describe('Runtime reader least-privilege preflight', () => {
+  it.each([
+    { relkind: 'r' },
+    { relkind: 'm' },
+    { owner: 'another_owner' },
+    { rewrite_rule_count: 2 },
+    { user_trigger_count: 1 },
+    { relpersistence: 'u' },
+  ])('rejects current view relation drift: %j', async (viewRelation) => {
+    await expect(
+      inspectRuntimeReaderPreflight(preflightClient({ viewRelation }), expected),
+    ).rejects.toThrow(/current public Signal view relation contract/);
+  });
+  it.each(['definition', 'options', 'columns', 'owner', 'missing'])(
+    'rejects exact current view %s drift',
+    async (field) => {
+      const immutability = signalImmutabilityFixture();
+      if (field === 'missing') immutability.views = [];
+      else if (field === 'definition') immutability.views[0].definition += ' -- changed';
+      else if (field === 'options') immutability.views[0].options = ['security_barrier=false'];
+      else if (field === 'columns') immutability.views[0].columns.push(['metadata', 'jsonb']);
+      else immutability.views[0].owner = 'another_owner';
+      await expect(
+        inspectRuntimeReaderPreflight(preflightClient({ immutability }), expected),
+      ).rejects.toThrow(/current public Signal view/);
+    },
+  );
+  it('recognizes only the fixed view without granting legacy Runtime read access', async () => {
+    await expect(
+      inspectRuntimeReaderPreflight(preflightClient({ omitPublicView: true }), expected),
+    ).rejects.toThrow(/missing \[current_public_signals\]/);
+    await expect(
+      inspectRuntimeReaderPreflight(
+        preflightClient({
+          tablePrivilegeRows: [
+            {
+              schema_name: 'public',
+              table_name: 'current_public_signals',
+              privilege: 'SELECT',
+              granted: true,
+              grantable: false,
+            },
+          ],
+        }),
+        expected,
+      ),
+    ).rejects.toThrow(/table-level privileges/);
+  });
   it('rejects a permissive Signal guard body even with the correct trigger count', async () => {
     const immutability = signalImmutabilityFixture();
     immutability.routines[0].source = 'BEGIN RETURN NEW; END;';

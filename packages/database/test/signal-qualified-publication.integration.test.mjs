@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { URL } from 'node:url';
@@ -6,12 +7,17 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { runMigrations } from '../src/migrate.mjs';
+import { verifyCurrentPublicSignalReaderAccess } from '../src/current-publication-reader-contract.mjs';
 import { waitForDatabaseDisconnects } from './database-disconnect.mjs';
 import {
   readPrivateCandidateVerificationMaterial,
   recordPrivateCandidateVerification,
   assemblePrivateVerifiedSignalCandidate,
 } from '../src/signal-candidate-verification-store.mjs';
+import {
+  publishVerifiedSignal,
+  withdrawPublicSignal,
+} from '../src/signal-publication-service-store.mjs';
 
 const { Client, Pool } = pg;
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
@@ -107,6 +113,8 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
   let record;
   let roleCreated = false;
   let databaseCreated = false;
+  let publisherRoleCreated = false;
+  let runtimeRoleCreated = false;
 
   beforeAll(async () => {
     ({ publishPrivateQualifiedSignalVersion: publish } =
@@ -147,6 +155,8 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
         await administrator.query(`DROP DATABASE ${identifier(databaseName)}`);
       }
       if (roleCreated) await administrator.query(`DROP ROLE ${identifier(ownerRole)}`);
+      if (publisherRoleCreated) await administrator.query('DROP ROLE hzense_publisher');
+      if (runtimeRoleCreated) await administrator.query('DROP ROLE hzense_runtime');
     } finally {
       await administrator.end();
     }
@@ -749,6 +759,411 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
     return { verification: request, request: assemblyRequest(f, request) };
   }
 
+  async function publicCandidate(overrides) {
+    const f = await pendingCandidate();
+    const v = await verifyCandidate(f, overrides);
+    await assemblePrivateVerifiedSignalCandidate({ pool, request: v.request });
+    return {
+      ...f,
+      verification: v.verification,
+      request: { ...f.request, source_version: 2, target_version: 3 },
+    };
+  }
+
+  const withdrawal = (f) => ({
+    request_key: `withdraw:${randomUUID()}`,
+    signal_id: f.id,
+    target_version: 3,
+    expected_revision: 1,
+    reason_code: 'operator_request',
+  });
+
+  it('publishes a verified exact assembly atomically with a permit and current public view', async () => {
+    const f = await publicCandidate();
+    const result = await publishVerifiedSignal({ pool, request: f.request });
+    expect(result).toMatchObject({
+      scope: 'public_publication_receipt',
+      outcome: 'apply',
+      signal_id: f.id,
+      content_version: 3,
+      publication_revision: 1,
+      status: 'published',
+      current_public: true,
+    });
+    const permit = await pool.query(
+      'SELECT verification_id FROM public.signal_publication_permits WHERE event_id=$1',
+      [result.event_id],
+    );
+    expect(permit.rows).toEqual([{ verification_id: f.verification.verification_id }]);
+    expect(
+      (
+        await pool.query('SELECT signal_id FROM public.current_public_signals WHERE signal_id=$1', [
+          f.id,
+        ])
+      ).rowCount,
+    ).toBe(1);
+    expect((await state(f.id)).versions).toHaveLength(3);
+  });
+
+  it('publishes and withdraws using the actual least-privilege Publisher role without mutable dependency grants', async () => {
+    const f = await publicCandidate();
+    await administrator.query(`CREATE ROLE hzense_publisher LOGIN PASSWORD 'synthetic-publication-only'
+      NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 2`);
+    publisherRoleCreated = true;
+    await pool.query(`REVOKE CREATE,TEMPORARY ON DATABASE ${identifier(databaseName)} FROM PUBLIC`);
+    const grants = await readFile(
+      new URL('../../../db/roles/configure_signal_publisher.sql', import.meta.url),
+      'utf8',
+    );
+    await pool.query(grants);
+    const url = new URL(databaseUrl());
+    url.username = 'hzense_publisher';
+    url.password = 'synthetic-publication-only';
+    const restricted = new Pool({ connectionString: url.toString(), max: 1 });
+    await administrator.query(`CREATE ROLE hzense_runtime LOGIN PASSWORD 'synthetic-public-reader'
+      NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 2`);
+    runtimeRoleCreated = true;
+    await pool.query(`GRANT CONNECT ON DATABASE ${identifier(databaseName)} TO hzense_runtime;
+      GRANT USAGE ON SCHEMA public TO hzense_runtime`);
+    await pool.query(
+      await readFile(
+        new URL('../../../db/roles/configure_public_signal_reader.sql', import.meta.url),
+        'utf8',
+      ),
+    );
+    const readerUrl = new URL(databaseUrl());
+    readerUrl.username = 'hzense_runtime';
+    readerUrl.password = 'synthetic-public-reader';
+    const reader = new Pool({ connectionString: readerUrl.toString(), max: 1 });
+    try {
+      await expect(
+        publishVerifiedSignal({ pool: restricted, request: f.request }),
+      ).resolves.toMatchObject({
+        outcome: 'apply',
+        current_public: true,
+      });
+      await expect(verifyCurrentPublicSignalReaderAccess(reader)).resolves.toEqual({
+        ok: true,
+        problems: [],
+      });
+      expect(
+        (
+          await reader.query(
+            'SELECT signal_id FROM public.current_public_signals WHERE signal_id=$1',
+            [f.id],
+          )
+        ).rows,
+      ).toEqual([{ signal_id: f.id }]);
+      for (const sql of [
+        'SELECT * FROM public.signal_candidate_verifications',
+        'SELECT * FROM public.signal_verification_dependency_seals',
+        'SELECT * FROM public.public_source_evidence',
+        "SELECT public.hzense_signal_dependency_seal('missing',1)",
+        "SELECT public.hzense_lock_publication_dependencies('missing',1)",
+      ])
+        await expect(reader.query(sql)).rejects.toMatchObject({ code: '42501' });
+      for (const sql of [
+        'UPDATE public.sources SET name=name',
+        'UPDATE public.entities SET name=name',
+        'UPDATE public.signal_publication_control SET publication_enabled=true',
+        'UPDATE public.signal_candidate_verifications SET verifier_id=verifier_id',
+        'UPDATE public.signal_verification_dependency_seals SET invalidated=false',
+      ])
+        await expect(restricted.query(sql)).rejects.toMatchObject({ code: '42501' });
+      await expect(
+        withdrawPublicSignal({ pool: restricted, request: withdrawal(f) }),
+      ).resolves.toMatchObject({
+        outcome: 'apply',
+        status: 'withdrawn',
+        current_public: false,
+      });
+      expect(
+        (
+          await reader.query(
+            'SELECT signal_id FROM public.current_public_signals WHERE signal_id=$1',
+            [f.id],
+          )
+        ).rows,
+      ).toEqual([]);
+    } finally {
+      await restricted.end();
+      await reader.end();
+    }
+  });
+
+  it('does not call an older public receipt current after withdrawal and a newer publication', async () => {
+    const f = await publicCandidate();
+    await publishVerifiedSignal({ pool, request: f.request });
+    await withdrawPublicSignal({ pool, request: withdrawal(f) });
+    await expect(
+      publishVerifiedSignal({
+        pool,
+        request: {
+          ...f.request,
+          request_key: `republish:${randomUUID()}`,
+          target_version: 4,
+          expected_revision: 2,
+          reason_code: 'republication',
+        },
+      }),
+    ).resolves.toMatchObject({ current_public: true, content_version: 4, publication_revision: 3 });
+    await expect(publishVerifiedSignal({ pool, request: f.request })).resolves.toMatchObject({
+      outcome: 'replay',
+      content_version: 3,
+      publication_revision: 1,
+      current_public: false,
+    });
+  });
+
+  it.each([
+    [
+      'snapshot',
+      "UPDATE public.signal_versions SET title='Tampered synthetic title' WHERE signal_id=$1 AND version=3",
+      'Public target must clone',
+    ],
+    [
+      'edges',
+      'DELETE FROM public.signal_version_topics WHERE signal_id=$1 AND version=3',
+      'Public target edges must exactly clone',
+    ],
+    [
+      'controls',
+      'UPDATE public.signal_publication_control SET publication_enabled=false WHERE $1::text IS NOT NULL',
+      'Public publication controls or lease',
+    ],
+  ])(
+    'enforces the permit database guard after bypassing the service %s check',
+    async (_name, tamperSql, expectedMessage) => {
+      const f = await publicCandidate();
+      let guardError;
+      // Test-only owner injection represents direct SQL bypassing the already
+      // completed JS validation. The production service accepts no callbacks.
+      const directSqlPool = {
+        async connect() {
+          const client = await pool.connect();
+          return {
+            release: (error) => client.release(error),
+            async query(sql, args) {
+              if (!sql.includes('INSERT INTO public.signal_publication_permits'))
+                return client.query(sql, args);
+              await client.query(tamperSql, [f.id]);
+              try {
+                return await client.query(sql, args);
+              } catch (error) {
+                guardError = error;
+                throw error;
+              }
+            },
+          };
+        },
+      };
+      await expect(
+        publishVerifiedSignal({ pool: directSqlPool, request: f.request }),
+      ).rejects.toMatchObject({ code: 'database_unavailable' });
+      expect(guardError).toMatchObject({ code: '23514' });
+      expect(guardError.message).toContain(expectedMessage);
+      expect((await state(f.id)).versions).toHaveLength(2);
+      expect(
+        (
+          await pool.query('SELECT * FROM public.signal_publication_state WHERE signal_id=$1', [
+            f.id,
+          ])
+        ).rows,
+      ).toEqual([]);
+    },
+  );
+
+  it('keeps a legacy private publication hidden and refuses to adopt its request as a public permit', async () => {
+    const f = await publicCandidate();
+    await publish({ pool, request: f.request });
+    expect(
+      (
+        await pool.query('SELECT signal_id FROM public.current_public_signals WHERE signal_id=$1', [
+          f.id,
+        ])
+      ).rows,
+    ).toEqual([]);
+    await expect(publishVerifiedSignal({ pool, request: f.request })).rejects.toMatchObject({
+      code: 'unbound_publication_receipt',
+    });
+  });
+
+  it('requires a recorded assembly instead of trusting a writer-verified source version', async () => {
+    const f = await fixture();
+    await expect(publishVerifiedSignal({ pool, request: f.request })).rejects.toMatchObject({
+      code: 'assembly_not_found',
+    });
+    await expectNoWrite(f);
+  });
+
+  it('withdraws independently of disabled publication, cancelled runs and invalid evidence, with safe replay', async () => {
+    const f = await publicCandidate();
+    await publishVerifiedSignal({ pool, request: f.request });
+    await cancel({ pool, request: { run_id: f.run.run_id } });
+    await pool.query('UPDATE public.signal_publication_control SET publication_enabled=false');
+    await pool.query(
+      "UPDATE public.public_source_evidence SET verification_status='rejected' WHERE id=$1",
+      [`${f.id}-evidence`],
+    );
+    const request = withdrawal(f);
+    await expect(withdrawPublicSignal({ pool, request })).resolves.toMatchObject({
+      outcome: 'apply',
+      status: 'withdrawn',
+      publication_revision: 2,
+      current_public: false,
+    });
+    await expect(withdrawPublicSignal({ pool, request })).resolves.toMatchObject({
+      outcome: 'replay',
+      current_public: false,
+    });
+    await expect(publishVerifiedSignal({ pool, request: f.request })).resolves.toMatchObject({
+      outcome: 'replay',
+      status: 'published',
+      current_public: false,
+    });
+    expect((await state(f.id)).heads[0].status).toBe('withdrawn');
+  });
+
+  it('permanently removes current visibility when a reviewed dependency changes and is later restored', async () => {
+    const f = await publicCandidate();
+    await publishVerifiedSignal({ pool, request: f.request });
+    await pool.query("UPDATE public.entities SET name='Changed identity' WHERE id=$1", [
+      `${f.id}-person`,
+    ]);
+    expect(
+      (
+        await pool.query('SELECT signal_id FROM public.current_public_signals WHERE signal_id=$1', [
+          f.id,
+        ])
+      ).rowCount,
+    ).toBe(0);
+    await pool.query("UPDATE public.entities SET name='Synthetic Person' WHERE id=$1", [
+      `${f.id}-person`,
+    ]);
+    expect(
+      (
+        await pool.query('SELECT signal_id FROM public.current_public_signals WHERE signal_id=$1', [
+          f.id,
+        ])
+      ).rowCount,
+    ).toBe(0);
+    await expect(publishVerifiedSignal({ pool, request: f.request })).resolves.toMatchObject({
+      outcome: 'replay',
+      current_public: false,
+    });
+  });
+
+  it('rejects changed evidence metadata between assembly and public publication without a new version', async () => {
+    const f = await publicCandidate();
+    await pool.query("UPDATE public.sources SET name='Changed source' WHERE id=$1", [
+      `${f.id}-source`,
+    ]);
+    await expect(publishVerifiedSignal({ pool, request: f.request })).rejects.toMatchObject({
+      code: 'verification_material_changed',
+    });
+    expect((await state(f.id)).versions).toHaveLength(2);
+    expect((await state(f.id)).events).toHaveLength(0);
+  });
+
+  it('cannot publish an assembly whose dependency changed and was restored after verification', async () => {
+    const f = await publicCandidate();
+    await pool.query("UPDATE public.entities SET name='Changed identity' WHERE id=$1", [
+      `${f.id}-person`,
+    ]);
+    await pool.query("UPDATE public.entities SET name='Synthetic Person' WHERE id=$1", [
+      `${f.id}-person`,
+    ]);
+    await expect(publishVerifiedSignal({ pool, request: f.request })).rejects.toMatchObject({
+      code: 'dependency_invalidated',
+    });
+    expect((await state(f.id)).versions).toHaveLength(2);
+    expect((await state(f.id)).events).toHaveLength(0);
+  });
+
+  it('cannot publish a verified assembly while the current global publication switch is disabled', async () => {
+    const f = await publicCandidate();
+    await pool.query('UPDATE public.signal_publication_control SET publication_enabled=false');
+    await expect(publishVerifiedSignal({ pool, request: f.request })).rejects.toMatchObject({
+      code: 'publication_disabled',
+    });
+    expect((await state(f.id)).versions).toHaveLength(2);
+    expect((await state(f.id)).events).toHaveLength(0);
+  });
+
+  it('serializes concurrent public requests into one committed publication and one historical replay', async () => {
+    const f = await publicCandidate();
+    const results = await Promise.all([
+      publishVerifiedSignal({ pool, request: f.request }),
+      publishVerifiedSignal({ pool, request: f.request }),
+    ]);
+    expect(results.map((r) => r.outcome).sort()).toEqual(['apply', 'replay']);
+    expect((await state(f.id)).events).toHaveLength(1);
+    expect((await state(f.id)).versions).toHaveLength(3);
+  });
+
+  it('rejects stale independent withdrawal and does not change the current public version', async () => {
+    const f = await publicCandidate();
+    await publishVerifiedSignal({ pool, request: f.request });
+    await expect(
+      withdrawPublicSignal({ pool, request: { ...withdrawal(f), expected_revision: 0 } }),
+    ).rejects.toMatchObject({ code: 'stale_revision' });
+    expect(
+      (
+        await pool.query('SELECT signal_id FROM public.current_public_signals WHERE signal_id=$1', [
+          f.id,
+        ])
+      ).rowCount,
+    ).toBe(1);
+  });
+
+  it('rechecks verification TTL after a real post-write wait and rolls back publication and permit', async () => {
+    const f = await publicCandidate({ valid_for_seconds: 1 });
+    const blocker = await pool.connect();
+    const worker = await pool.connect();
+    let operation;
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('LOCK TABLE public.signal_publication_permits IN SHARE MODE');
+      const pid = (await worker.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      operation = settle(
+        publishVerifiedSignal({
+          pool: { connect: async () => ({ query: worker.query.bind(worker), release() {} }) },
+          request: f.request,
+        }),
+      );
+      await observeBlocked(blocker, pid);
+      const deadline = Date.now() + 5000;
+      while (
+        !(
+          await blocker.query(
+            'SELECT expires_at<=clock_timestamp() AS expired FROM public.signal_candidate_verifications WHERE verification_id=$1',
+            [f.verification.verification_id],
+          )
+        ).rows[0].expired
+      ) {
+        if (Date.now() > deadline) throw new Error('Synthetic verification failed to expire');
+        await delay(10);
+      }
+      await blocker.query('ROLLBACK');
+      expect((await operation).error).toBeDefined();
+      expect((await state(f.id)).versions).toHaveLength(2);
+      expect((await state(f.id)).events).toHaveLength(0);
+      expect(
+        (
+          await pool.query(
+            'SELECT signal_id FROM public.current_public_signals WHERE signal_id=$1',
+            [f.id],
+          )
+        ).rowCount,
+      ).toBe(0);
+    } finally {
+      await blocker.query('ROLLBACK');
+      blocker.release();
+      if (operation) await operation;
+      worker.release();
+    }
+  });
+
   it('assembles sealed pending people into a new candidate, then separately publishes it', async () => {
     const f = await pendingCandidate();
     await expect(publish({ pool, request: f.request })).rejects.toMatchObject({
@@ -1030,7 +1445,7 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
   it.each([
     'UPDATE public.signal_candidate_verifications SET verifier_id=verifier_id WHERE verification_id=$1',
     'DELETE FROM public.signal_candidate_verifications WHERE verification_id=$1',
-    'TRUNCATE public.signal_candidate_verifications,public.signal_candidate_assembly_receipts',
+    'TRUNCATE public.signal_candidate_verifications,public.signal_candidate_assembly_receipts,public.signal_verification_dependency_seals,public.signal_publication_permits',
     'UPDATE public.signal_candidate_assembly_receipts SET content_hash=content_hash WHERE verification_id=$1',
     'DELETE FROM public.signal_candidate_assembly_receipts WHERE verification_id=$1',
     'TRUNCATE public.signal_candidate_assembly_receipts',

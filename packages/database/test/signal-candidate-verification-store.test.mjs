@@ -18,6 +18,7 @@ import {
 // rules and native PostgreSQL tests independently exercise complete materials.
 vi.mock('../src/signal-qualified-publication-store.mjs', () => ({
   lockBundle: vi.fn(),
+  lockPublicPublicationBundle: vi.fn(),
   assembleVersion: vi.fn(),
 }));
 vi.mock('../src/candidate-verification.mjs', async (original) => ({

@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
 import {
+  currentPublicationRoutines,
+  currentPublicationTriggers,
+} from './current-publication-catalog.mjs';
+import {
   signalPublicationFunctionHashes,
   signalPublicationTriggers,
 } from './signal-publication-catalog.mjs';
@@ -78,6 +82,7 @@ export const sealedSignalTriggers = Object.freeze([
   ...signalPublicationControlTriggers,
   ...qualifiedPublicationTriggers,
   ...candidateVerificationTriggers,
+  ...currentPublicationTriggers,
 ]);
 
 export function signalGuardSourceHash(source) {
@@ -136,7 +141,7 @@ export function inspectSignalImmutabilityCatalog({ triggers, routines, stamps },
       row.language !== 'plpgsql' ||
       row.kind !== 'f' ||
       row.result_type !== 'trigger' ||
-      row.security_definer !== false ||
+      row.security_definer !== (name === 'hzense_guard_qualified_publication_receipt') ||
       row.leakproof !== false ||
       row.strict !== false ||
       row.returns_set !== false ||
@@ -152,6 +157,46 @@ export function inspectSignalImmutabilityCatalog({ triggers, routines, stamps },
       signalGuardSourceHash(row.source) !== sourceHash
     ) {
       problems.push(`Signal immutability function contract mismatch: ${key}`);
+    }
+  }
+  for (const [name, contract] of Object.entries(currentPublicationRoutines)) {
+    const key = `${name}(${contract.arguments})`;
+    const row = actualRoutines.get(key);
+    actualRoutines.delete(key);
+    const acl = row?.acl_entries;
+    if (
+      !row ||
+      row.owner !== expectedOwner ||
+      row.language !== (contract.language ?? 'plpgsql') ||
+      row.kind !== 'f' ||
+      row.result_type !== contract.result ||
+      row.security_definer !== (contract.definer ?? true) ||
+      row.leakproof !== false ||
+      row.strict !== false ||
+      row.returns_set !== false ||
+      row.volatility !== (contract.volatility ?? 'v') ||
+      row.parallel !== 'u' ||
+      row.support_function !== false ||
+      row.binary !== null ||
+      row.sql_body !== null ||
+      JSON.stringify(row.configuration) !==
+        JSON.stringify([
+          'search_path=pg_catalog, pg_temp',
+          ...(contract.utc ? ['TimeZone=UTC'] : []),
+        ]) ||
+      row.owner_execute_count !== 1 ||
+      !Array.isArray(acl) ||
+      acl.some(
+        (entry) =>
+          entry.grantor !== expectedOwner ||
+          entry.privilege !== 'EXECUTE' ||
+          entry.grantable ||
+          ![expectedOwner, ...contract.grantees].includes(entry.grantee),
+      ) ||
+      typeof row.source !== 'string' ||
+      signalGuardSourceHash(row.source) !== contract.hash
+    ) {
+      problems.push(`Current publication function contract mismatch: ${key}`);
     }
   }
   for (const key of actualRoutines.keys())
@@ -213,7 +258,10 @@ export async function collectSignalImmutabilityProblems(client, expectedOwner) {
                OR a.privilege_type <> 'EXECUTE' OR a.is_grantable) AS unsafe_acl_count,
            (SELECT count(*)::integer FROM pg_catalog.aclexplode(
               COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))) a
-            WHERE a.grantee = p.proowner AND a.privilege_type = 'EXECUTE') AS owner_execute_count
+            WHERE a.grantee = p.proowner AND a.privilege_type = 'EXECUTE') AS owner_execute_count,
+           (SELECT COALESCE(jsonb_agg(jsonb_build_object('grantee',COALESCE(pg_catalog.pg_get_userbyid(a.grantee),'PUBLIC'),
+              'grantor',pg_catalog.pg_get_userbyid(a.grantor),'privilege',a.privilege_type,'grantable',a.is_grantable)), '[]'::jsonb)
+            FROM pg_catalog.aclexplode(COALESCE(p.proacl,pg_catalog.acldefault('f',p.proowner))) a) AS acl_entries
     FROM pg_catalog.pg_proc p
     JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
     JOIN pg_catalog.pg_language l ON l.oid = p.prolang

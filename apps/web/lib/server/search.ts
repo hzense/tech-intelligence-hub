@@ -5,8 +5,23 @@ import type { SearchType } from '@hzense/search/ranking';
 import { readSearchMode, searchWithMode } from '../search-mode';
 import { searchPublishedContent as searchInProcess } from '../search-runtime';
 import { searchRuntimeDocuments } from './runtime-reader';
+import { readSignalReadMode, mergeCurrentSignalSearch } from '../public-signal-reader-core';
+import { searchPublicSignals } from './public-signals';
 
-export function searchPublishedContent(query: string, type?: SearchType) {
+export async function searchPublishedContent(query: string, type?: SearchType) {
+  if (readSignalReadMode(process.env) === 'database') {
+    if (type === 'signal') return searchPublicSignals(query);
+    const [legacy, current] = await Promise.all([
+      searchWithMode({
+        query,
+        mode: readSearchMode(process.env),
+        inProcess: () => searchInProcess(query, type, false),
+        database: () => searchRuntimeDocuments(query, type),
+      }),
+      type ? Promise.resolve([]) : searchPublicSignals(query),
+    ]);
+    return mergeCurrentSignalSearch(legacy, current);
+  }
   return searchWithMode({
     query,
     mode: readSearchMode(process.env),

@@ -3,6 +3,10 @@ import { loadMigrations, planPendingMigrations, verifyMigrationManifest } from '
 import { inspectProductionTls } from './preflight.mjs';
 import { expectedTableNames } from './verify.mjs';
 import {
+  collectCurrentPublicSignalViewProblems,
+  isExactCurrentPublicSignalRelation,
+} from './current-publication-view-contract.mjs';
+import {
   expectedSignalTriggerCount,
   collectSignalImmutabilityProblems,
 } from './signal-immutability-catalog.mjs';
@@ -296,7 +300,7 @@ export async function inspectTopicSyncPreflight(
        AND relation_info.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
      ORDER BY relation_info.relname`,
   );
-  const expectedRelations = new Set(expectedTableNames);
+  const expectedRelations = new Set([...expectedTableNames, 'current_public_signals']);
   const actualRelations = new Set(relations.rows.map((row) => row.name));
   const missingRelations = [...expectedRelations].filter((name) => !actualRelations.has(name));
   const unexpectedRelations = [...actualRelations].filter((name) => !expectedRelations.has(name));
@@ -306,6 +310,12 @@ export async function inspectTopicSyncPreflight(
     );
   }
   for (const relation of relations.rows) {
+    if (relation.name === 'current_public_signals') {
+      if (!isExactCurrentPublicSignalRelation(relation, target.database_owner)) {
+        throw new Error('Topic sync current public Signal view relation contract mismatch');
+      }
+      continue;
+    }
     if (
       relation.relkind !== 'r' ||
       relation.relpersistence !== 'p' ||
@@ -325,6 +335,9 @@ export async function inspectTopicSyncPreflight(
       throw new Error(`Topic sync public relation has unexpected rewrite rule: ${relation.name}`);
     }
   }
+
+  const viewProblems = await collectCurrentPublicSignalViewProblems(client, target.database_owner);
+  if (viewProblems.length > 0) throw new Error(`Topic sync ${viewProblems.join('; ')}`);
 
   const immutabilityProblems = await collectSignalImmutabilityProblems(
     client,

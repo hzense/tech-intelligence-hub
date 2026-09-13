@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import process from 'node:process';
+import { readSignalReadMode } from '@/lib/public-signal-reader-core';
 import { SiteShell } from '@/components/site-shell';
 import { formatZhDate, getTopicTitleMap } from '@/lib/content-runtime';
 import { formatPercentage, formatSignalType, formatSourceType } from '@/lib/signal-presentation';
@@ -16,6 +18,7 @@ interface SignalDetailProps {
 }
 
 export async function generateStaticParams() {
+  if (readSignalReadMode(process.env) === 'database') return [];
   return (await getSignalEntries()).map((entry) => ({ id: entry.id }));
 }
 
@@ -72,7 +75,7 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
           <article className="signal-detail-body">
             <span className="topic-section-label">信号判断</span>
             <h2>为什么值得记录</h2>
-            <p>{entry.summary}</p>
+            <p>{entry.analysis ?? entry.summary}</p>
             <div className="signal-dimension-grid">
               <div>
                 <span>重要度</span>
@@ -95,41 +98,81 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
           <aside className="signal-context-panel">
             <section>
               <span>来源</span>
-              <a
-                aria-label={`${source?.name ?? entry.source_id} 原始来源（在新窗口打开）`}
-                className="signal-source-link"
-                href={entry.source_url}
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                <strong>{source?.name ?? entry.source_id}</strong>
-                <small>查看原始来源 ↗</small>
-              </a>
-              <small>
-                {source ? formatSourceType(source.type) : '待补充'} · 信任分{' '}
-                {source?.trust_score ?? '—'}
-              </small>
+              {entry.public_sources ? (
+                entry.public_sources.map((item) => (
+                  <a
+                    key={`${item.id}:${item.url}`}
+                    className="signal-source-link"
+                    href={item.url}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                    aria-label={`${item.name} 原始来源（在新窗口打开）`}
+                  >
+                    <strong>{item.name}</strong>
+                    <small>查看原始来源 ↗</small>
+                  </a>
+                ))
+              ) : (
+                <>
+                  <a
+                    aria-label={`${source?.name ?? entry.source_id} 原始来源（在新窗口打开）`}
+                    className="signal-source-link"
+                    href={entry.source_url}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    <strong>{source?.name ?? entry.source_id}</strong>
+                    <small>查看原始来源 ↗</small>
+                  </a>
+                  <small>
+                    {source ? formatSourceType(source.type) : '待补充'} · 信任分{' '}
+                    {source?.trust_score ?? '—'}
+                  </small>
+                </>
+              )}
             </section>
             <section>
               <span>专题</span>
               <div className="context-link-list">
                 {entry.topics.map((topic) => (
                   <Link href={`/topics/${topic}`} key={topic}>
-                    {topicTitleMap.get(topic) ?? topic}
+                    {entry.public_topics
+                      ? (entry.public_topics.find((item) => item.id === topic)?.title ?? topic)
+                      : (topicTitleMap.get(topic) ?? topic)}
                   </Link>
                 ))}
               </div>
             </section>
             <section>
-              <span>关联实体</span>
+              <span>{entry.public_people ? '关键人物与相关组织' : '关联实体'}</span>
               <div className="context-link-list">
-                {entry.entities.map((entity) => (
-                  <Link href={`/resources/${entity}`} key={entity}>
-                    {entityMap.get(entity)?.name ?? entity}
-                  </Link>
-                ))}
+                {entry.public_people ? (
+                  [...entry.public_people, ...(entry.public_organizations ?? [])].map(
+                    (person, index) => (
+                      <p key={`${person.id}:${person.event_role}:${index}`}>
+                        <strong>{person.name}</strong> · {person.event_role}
+                      </p>
+                    ),
+                  )
+                ) : (
+                  <>
+                    {entry.entities.map((entity) => (
+                      <Link href={`/resources/${entity}`} key={entity}>
+                        {entityMap.get(entity)?.name ?? entity}
+                      </Link>
+                    ))}
+                  </>
+                )}
               </div>
             </section>
+            {entry.public_version ? (
+              <section>
+                <span>当前公开版本</span>
+                <p>
+                  内容 v{entry.public_version} · 发布修订 {entry.publication_revision}
+                </p>
+              </section>
+            ) : null}
           </aside>
         </div>
       </main>

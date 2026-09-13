@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import process from 'node:process';
+import { readSignalReadMode } from '@/lib/public-signal-reader-core';
 import Link from 'next/link';
 import { SiteShell } from '@/components/site-shell';
 import {
@@ -66,6 +68,11 @@ export default async function RadarPage({ searchParams }: { searchParams: RadarS
             以专题为观察单元，用手工维护、可追溯评分证据的结构化快照呈现关注度、趋势、成熟度与战略价值。
           </p>
           {latestDate ? <time dateTime={latestDate}>示例快照 · {latestDate}</time> : null}
+          {readSignalReadMode(process.env) === 'database' ? (
+            <p role="status">
+              信号已切换为当前公开版本；历史雷达快照暂不沿用，等待基于新版本重新计算。
+            </p>
+          ) : null}
         </section>
 
         <form className="radar-filters" action="/radar" aria-label="科技雷达筛选">

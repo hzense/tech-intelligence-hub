@@ -9,7 +9,11 @@ import {
   prepareVerifiedCandidateBundle,
 } from './candidate-verification.mjs';
 import { cloneSignalSnapshotForPublication } from './signal-publication-qualification.mjs';
-import { lockBundle, assembleVersion } from './signal-qualified-publication-store.mjs';
+import {
+  lockBundle,
+  lockPublicPublicationBundle,
+  assembleVersion,
+} from './signal-qualified-publication-store.mjs';
 
 // PRIVATE trusted verification adapter, not a route, verifier model, authenticated
 // service or public publication permission. Reviewer IDs and hashes are NOT auth.
@@ -64,8 +68,10 @@ async function lockKey(client, namespace, value) {
   );
 }
 
-async function material(client, command) {
-  const bundle = await lockBundle(client, command);
+async function material(client, command, restricted = false) {
+  const bundle = restricted
+    ? await lockPublicPublicationBundle(client, command)
+    : await lockBundle(client, command);
   // lockBundle already holds every Evidence row FOR SHARE. Read the sealed
   // original metadata under those locks, not only the publication projection.
   const rows = (
@@ -101,6 +107,11 @@ async function material(client, command) {
   ).rows;
   const input = { bundle, evidence_details, entity_details, source_details };
   return { ...input, bundle_fingerprint: fingerprintCandidateVerificationMaterial(input) };
+}
+
+// Internal service helper, not a route or package-root API. Owns no transaction.
+export async function readLockedPublicCandidateMaterial(client, command) {
+  return material(client, command, true);
 }
 
 async function lockSignal(client, id, exclusive = false) {

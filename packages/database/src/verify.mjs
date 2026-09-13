@@ -66,6 +66,16 @@ import {
   expectedSignalTriggerCount,
   collectSignalImmutabilityProblems,
 } from './signal-immutability-catalog.mjs';
+import {
+  currentPublicationColumns,
+  currentPublicationPrimaryKeys,
+  currentPublicationForeignKeys,
+  currentPublicationChecks,
+  currentPublicationDefaults,
+  currentPublicSignalColumns,
+  currentPublicSignalViewHashes,
+} from './current-publication-catalog.mjs';
+import { createHash } from 'node:crypto';
 
 const { Client } = pg;
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
@@ -197,6 +207,7 @@ const expectedColumns = {
   ...signalPublicationControlColumns,
   ...qualifiedPublicationColumns,
   ...candidateVerificationColumns,
+  ...currentPublicationColumns,
 };
 for (const tableName of allStampedSignalTables) {
   expectedColumns[tableName] = {
@@ -264,6 +275,7 @@ const expectedPrimaryKeys = new Set([
   ...signalPublicationControlPrimaryKeys,
   ...qualifiedPublicationPrimaryKeys,
   ...candidateVerificationPrimaryKeys,
+  ...currentPublicationPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -287,6 +299,7 @@ const expectedForeignKeys = new Set([
   ...signalPublicationControlForeignKeys,
   ...qualifiedPublicationForeignKeys,
   ...candidateVerificationForeignKeys,
+  ...currentPublicationForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -309,6 +322,7 @@ const expectedCheckExpressions = {
   ...signalPublicationControlChecks,
   ...qualifiedPublicationChecks,
   ...candidateVerificationChecks,
+  ...currentPublicationChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -371,6 +385,7 @@ const expectedDefaults = new Map([
   ...affiliationDefaults,
   ...signalPublicationControlDefaults,
   ...candidateVerificationDefaults,
+  ...currentPublicationDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
   ['topics.runtime_enabled', new Set(['false'])],
@@ -531,6 +546,29 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
   }
 
   problems.push(...(await collectSignalImmutabilityProblems(client, expectedOwner)));
+  const publicViews = await client.query(`/* hzense:current-publication:views */
+    SELECT c.relname AS name, pg_get_userbyid(c.relowner) AS owner, c.reloptions AS options,
+      pg_get_viewdef(c.oid,true) AS definition,
+      (SELECT jsonb_agg(jsonb_build_array(a.attname,format_type(a.atttypid,a.atttypmod)) ORDER BY a.attnum)
+        FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped) AS columns
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relkind IN ('v','m') ORDER BY c.relname`);
+  if (publicViews.rows.length !== 1 || publicViews.rows[0]?.name !== 'current_public_signals') {
+    problems.push('current public Signal view set mismatch');
+  } else {
+    const view = publicViews.rows[0];
+    if (
+      view.owner !== expectedOwner ||
+      JSON.stringify(view.options) !== JSON.stringify(['security_barrier=true']) ||
+      JSON.stringify(view.columns) !== JSON.stringify(currentPublicSignalColumns) ||
+      typeof view.definition !== 'string' ||
+      !currentPublicSignalViewHashes.has(
+        createHash('sha256').update(view.definition.trim()).digest('hex'),
+      )
+    ) {
+      problems.push('current public Signal view contract mismatch');
+    }
+  }
 
   const history = await client.query(
     'SELECT name, checksum FROM hzense_schema_migrations ORDER BY name',
@@ -754,7 +792,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
     const canonicalize =
       Object.hasOwn(signalPublicationControlChecks, tableName) ||
       Object.hasOwn(qualifiedPublicationChecks, tableName) ||
-      Object.hasOwn(candidateVerificationChecks, tableName)
+      Object.hasOwn(candidateVerificationChecks, tableName) ||
+      Object.hasOwn(currentPublicationChecks, tableName)
         ? canonicalPublicationControlCheck
         : [
               'signal_event_identities',

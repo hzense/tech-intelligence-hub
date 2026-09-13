@@ -105,7 +105,8 @@ async function edges(client, table, signalId, version) {
 }
 
 // Internal shared reader for trusted candidate verification. Not a package API.
-export async function lockBundle(client, command) {
+async function readBundle(client, command, locking) {
+  const lock = locking ? ' FOR SHARE' : '';
   const result = await client.query(
     `SELECT ${snapshotColumns.join(', ')},
        created_xid <> pg_catalog.pg_current_xact_id() AS sealed,
@@ -114,7 +115,7 @@ export async function lockBundle(client, command) {
         AND EXTRACT(YEAR FROM captured_at AT TIME ZONE 'UTC') BETWEEN 1 AND 9999
         AND pg_catalog.date_trunc('milliseconds',occurred_at)=occurred_at
         AND pg_catalog.date_trunc('milliseconds',captured_at)=captured_at) AS precise
-     FROM public.signal_versions WHERE signal_id=$1 AND version=$2 FOR SHARE`,
+     FROM public.signal_versions WHERE signal_id=$1 AND version=$2${lock}`,
     [command.signal_id, command.source_version],
   );
   const { sealed, precise, ...snapshot } = one(result, 'snapshot_not_found');
@@ -125,7 +126,7 @@ export async function lockBundle(client, command) {
   const identity = one(
     await client.query(
       `SELECT signal_id,event_key,basis_version,basis_evidence_id,identity_basis
-     FROM public.signal_event_identities WHERE signal_id=$1 FOR SHARE`,
+     FROM public.signal_event_identities WHERE signal_id=$1${lock}`,
       [command.signal_id],
     ),
     'event_identity_not_found',
@@ -176,7 +177,7 @@ export async function lockBundle(client, command) {
     (
       await client.query(
         `SELECT id,active,allowed_hosts FROM public.sources WHERE id=ANY($1::text[])
-     ORDER BY id COLLATE "C" FOR SHARE`,
+     ORDER BY id COLLATE "C"${lock}`,
         [ids(routes, 'source_id')],
       )
     ).rows,
@@ -185,7 +186,7 @@ export async function lockBundle(client, command) {
     (
       await client.query(
         `SELECT id,source_id,source_url,verification_status FROM public.public_source_evidence
-     WHERE id=ANY($1::text[]) ORDER BY id COLLATE "C" FOR SHARE`,
+     WHERE id=ANY($1::text[]) ORDER BY id COLLATE "C"${lock}`,
         [evidenceIds],
       )
     ).rows,
@@ -196,7 +197,7 @@ export async function lockBundle(client, command) {
     (
       await client.query(
         `SELECT id,type,status FROM public.entities WHERE id=ANY($1::text[])
-     ORDER BY id COLLATE "C" FOR SHARE`,
+     ORDER BY id COLLATE "C"${lock}`,
         [bounded([...new Set([...personIds, ...organizationIds])].sort())],
       )
     ).rows,
@@ -205,7 +206,7 @@ export async function lockBundle(client, command) {
     (
       await client.query(
         `SELECT entity_id,entity_type FROM public.person_profiles WHERE entity_id=ANY($1::text[])
-     ORDER BY entity_id COLLATE "C" FOR SHARE`,
+     ORDER BY entity_id COLLATE "C"${lock}`,
         [personIds],
       )
     ).rows,
@@ -214,7 +215,7 @@ export async function lockBundle(client, command) {
     (
       await client.query(
         `SELECT entity_id,entity_type FROM public.organization_profiles WHERE entity_id=ANY($1::text[])
-     ORDER BY entity_id COLLATE "C" FOR SHARE`,
+     ORDER BY entity_id COLLATE "C"${lock}`,
         [organizationIds],
       )
     ).rows,
@@ -223,7 +224,7 @@ export async function lockBundle(client, command) {
     (
       await client.query(
         `SELECT id,status,runtime_enabled FROM public.topics WHERE id=ANY($1::text[])
-     ORDER BY id COLLATE "C" FOR SHARE`,
+     ORDER BY id COLLATE "C"${lock}`,
         [ids(topic_links, 'topic_id')],
       )
     ).rows,
@@ -243,6 +244,20 @@ export async function lockBundle(client, command) {
     organization_profiles,
     topics,
   };
+}
+
+export async function lockBundle(client, command) {
+  return readBundle(client, command, true);
+}
+
+// Restricted service path: the fixed database helper owns locking privileges,
+// not UPDATE grants on shared dependencies. It must run in the caller's TX.
+export async function lockPublicPublicationBundle(client, command) {
+  await client.query('SELECT public.hzense_lock_publication_dependencies($1,$2)', [
+    command.signal_id,
+    command.source_version,
+  ]);
+  return readBundle(client, command, false);
 }
 
 // Internal shared writer: callers must own the transaction and validate all rows.
