@@ -38,6 +38,15 @@ import {
   signalPublicationUniqueIndexes,
 } from './signal-publication-catalog.mjs';
 import {
+  signalPublicationControlColumns,
+  signalPublicationControlPrimaryKeys,
+  signalPublicationControlForeignKeys,
+  signalPublicationControlChecks,
+  signalPublicationControlDefaults,
+  signalPublicationControlIndexes,
+  canonicalPublicationControlCheck,
+} from './signal-publication-control-catalog.mjs';
+import {
   stampedSignalTables,
   expectedSignalTriggerCount,
   collectSignalImmutabilityProblems,
@@ -170,6 +179,7 @@ const expectedColumns = {
   ...affiliationColumns,
   ...eventIdentityColumns,
   ...signalPublicationColumns,
+  ...signalPublicationControlColumns,
 };
 for (const tableName of stampedSignalTables) {
   expectedColumns[tableName] = {
@@ -234,6 +244,7 @@ const expectedPrimaryKeys = new Set([
   ...affiliationPrimaryKeys,
   ...eventIdentityPrimaryKeys,
   ...signalPublicationPrimaryKeys,
+  ...signalPublicationControlPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -254,6 +265,7 @@ const expectedForeignKeys = new Set([
   ...affiliationForeignKeys,
   ...eventIdentityForeignKeys,
   ...signalPublicationForeignKeys,
+  ...signalPublicationControlForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -273,6 +285,7 @@ const expectedCheckExpressions = {
   ...affiliationChecks,
   ...eventIdentityChecks,
   ...signalPublicationChecks,
+  ...signalPublicationControlChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -333,6 +346,7 @@ const expectedDefaults = new Map([
   ]),
   ...signalFoundationDefaults,
   ...affiliationDefaults,
+  ...signalPublicationControlDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
   ['topics.runtime_enabled', new Set(['false'])],
@@ -367,6 +381,7 @@ const expectedUniqueIndexes = new Set([
 ]);
 
 const requiredNonUniqueIndexes = new Set([
+  ...signalPublicationControlIndexes,
   ...signalFoundationIndexes,
   ...affiliationIndexes,
   'entities|type',
@@ -673,7 +688,9 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
             count(*)::integer AS count,
             bool_and(constraint_info.convalidated) AS validated,
             array_agg(
-              pg_get_constraintdef(constraint_info.oid, true)::text
+              pg_get_constraintdef(constraint_info.oid, table_info.relname NOT IN (
+                'signal_publication_control', 'signal_publication_tasks', 'signal_publication_runs'
+              ))::text
               ORDER BY constraint_info.oid
             ) AS definitions
      FROM pg_constraint AS constraint_info
@@ -706,13 +723,15 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
     problems.push('one or more check constraints are not validated');
   }
   for (const [tableName, expressionAlternatives] of Object.entries(expectedCheckExpressions)) {
-    const canonicalize = [
-      'signal_event_identities',
-      'signal_publication_outbox',
-      'signal_publication_state',
-    ].includes(tableName)
-      ? canonicalCatalogExpressionWithLiterals
-      : canonicalCatalogExpression;
+    const canonicalize = Object.hasOwn(signalPublicationControlChecks, tableName)
+      ? canonicalPublicationControlCheck
+      : [
+            'signal_event_identities',
+            'signal_publication_outbox',
+            'signal_publication_state',
+          ].includes(tableName)
+        ? canonicalCatalogExpressionWithLiterals
+        : canonicalCatalogExpression;
     const definitions =
       checks.rows.find((row) => row.table_name === tableName)?.definitions.map(canonicalize) ?? [];
     for (const acceptedExpressions of expressionAlternatives) {

@@ -13,7 +13,7 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 > **2026-09-13 开发边界：** [V2-1a 数据底座](SIGNAL_V3_FOUNDATION.md) 的 `0004` 与[任职增量](PERSON_ORGANIZATION_AFFILIATIONS.md) 的 `0005` 已合并；[事件身份增量](SIGNAL_EVENT_IDENTITY.md) 追加 `0006_signal_event_identity.sql`，只建私有登记表、不自动回填。普通 Web 部署仍使用旧 Seed 读取。要求最新 schema 的维护预检会将未应用的 `0004`–`0006` 视为 pending，不能自动跳过或直接应用来解除阻塞。`0005` 的日期约束影响全部旧 `relations`，上线前需核验遗留日期；不自动清洗。本轮未执行生产迁移或授予新增业务权限，正式迁移需另行审批并复核维护流程对该版本的支持；不开放新版自动发表，也不重跑已取消的恢复演练。
 
-> **本轮追加边界：** `0007` [版本封存](SIGNAL_VERSION_IMMUTABILITY.md)已随 PR #71 合并；正在开发 `0008` [私有发表转换与 Outbox 底座](SIGNAL_PUBLICATION_OUTBOX.md)，新增两表、两函数及五个 ALWAYS 触发器（含两个延迟约束触发器）。完整 Schema／Runtime／Topic 预检必须使用同期精确契约；未应用迁移仍报 pending，不能自动修复或跳过。`0007` 的旧表重写／排他 DDL 锁要求仍保留。`db/roles/configure_signal_writer.sql` 只供独立审批配置预先创建的受限写入角色，发现不安全既有权限则停止，不进行 PUBLIC ACL 清洗，也不授权两张新表。本轮不创建／授权生产 Publisher，不添加本地生产入口，不将私有状态账本接到旧站；资格化发表与真实投影消费者仍待实现。
+> **本轮追加边界：** `0007` [版本封存](SIGNAL_VERSION_IMMUTABILITY.md)和 `0008` [私有发表转换与 Outbox 底座](SIGNAL_PUBLICATION_OUTBOX.md)已合并；本轮追加 `0009` [任务与发布控制](SIGNAL_PUBLICATION_CONTROLS.md)，新增四张私有表、一个函数与两个 ALWAYS 触发器，默认关闭新发布。完整 Schema／Runtime／Topic 预检必须使用同期精确契约；未应用迁移仍报 pending，不能自动修复或跳过。`0007` 的旧表重写／排他 DDL 锁要求仍保留。`db/roles/configure_signal_writer.sql` 只供独立审批配置预先创建的受限写入角色，发现不安全既有权限则停止，不进行 PUBLIC ACL 清洗，也不授权 Outbox 或任务控制表。本轮不创建／授权生产 Publisher，不添加本地生产入口，不将私有控制或状态账本接到旧站；资格化发表与真实投影消费者仍待实现。
 
 - 正式生产域名：https://hzense.com/
 - Vercel Production：https://tech-intelligence-hub-web.vercel.app/

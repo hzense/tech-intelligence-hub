@@ -116,10 +116,17 @@ describe('private Signal writer privilege contract', () => {
   it('keeps publication storage and guards outside the unchanged 79-grant writer contract', () => {
     const grants = expectedSignalWriterGrants();
     expect(grants).toHaveLength(79);
-    for (const table of ['signal_publication_state', 'signal_publication_outbox']) {
+    for (const table of [
+      'signal_publication_state',
+      'signal_publication_outbox',
+      'signal_publication_control',
+      'signal_publication_tasks',
+      'signal_publication_authorizations',
+      'signal_publication_runs',
+    ]) {
       expect(signalWriterSelectTables).not.toContain(table);
       expect(signalWriterInsertColumns).not.toHaveProperty(table);
-      for (const privilege of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
+      for (const privilege of ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
         expect(
           inspectSignalWriterGrants([
             ...grants,
@@ -128,7 +135,11 @@ describe('private Signal writer privilege contract', () => {
         ).toBe(false);
       }
     }
-    for (const name of ['hzense_guard_publication_receipt', 'hzense_check_publication_pair']) {
+    for (const name of [
+      'hzense_guard_publication_receipt',
+      'hzense_check_publication_pair',
+      'hzense_guard_publication_run',
+    ]) {
       expect(
         inspectSignalWriterGrants([
           ...grants,

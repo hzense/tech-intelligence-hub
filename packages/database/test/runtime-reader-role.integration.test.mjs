@@ -815,6 +815,19 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
     ]),
     'SELECT public.hzense_guard_publication_receipt()',
     'SELECT public.hzense_check_publication_pair()',
+    ...[
+      ['signal_publication_control', 'publication_enabled'],
+      ['signal_publication_tasks', 'publication_enabled'],
+      ['signal_publication_authorizations', 'can_publish'],
+      ['signal_publication_runs', 'fencing_token'],
+    ].flatMap(([table, column]) => [
+      `SELECT * FROM public.${table}`,
+      `INSERT INTO public.${table} DEFAULT VALUES`,
+      `UPDATE public.${table} SET ${column}=${column}`,
+      `DELETE FROM public.${table}`,
+      `TRUNCATE public.${table}`,
+    ]),
+    'SELECT public.hzense_guard_publication_run()',
   ])('keeps private publication storage inaccessible to Runtime reader: %s', async (statement) => {
     await withClient(databaseUrl(runtimeRole, runtimePassword), async (client) => {
       // Test real ACL denial, not merely the user-overridable read-only default.

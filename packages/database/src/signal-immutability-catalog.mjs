@@ -3,8 +3,12 @@ import {
   signalPublicationFunctionHashes,
   signalPublicationTriggers,
 } from './signal-publication-catalog.mjs';
+import {
+  signalPublicationControlFunctionHashes,
+  signalPublicationControlTriggers,
+} from './signal-publication-control-catalog.mjs';
 
-// Independent migration 0007 seal contract, with the narrowly enumerated 0008
+// Independent migration 0007 seal contract, with the narrowly enumerated 0008/0009
 // publication guards. Never derive expected bodies from installed catalog or
 // migration SQL at runtime: both may have drifted.
 export const stampedSignalTables = Object.freeze([
@@ -29,6 +33,7 @@ export const sealedSignalFunctionHashes = Object.freeze({
   hzense_guard_version_edge: '49d6bf24722b9259c77cc4a03d79c53374cdad109d1c8950b9e053a63855720e',
   hzense_reject_sealed_truncate: 'b41325b4f62e1bd563246b024169e3c197e16bee10beee7edeadf15dd0305981',
   ...signalPublicationFunctionHashes,
+  ...signalPublicationControlFunctionHashes,
 });
 
 export function expectedSignalTriggerCount(tableName) {
@@ -53,6 +58,7 @@ export const sealedSignalTriggers = Object.freeze([
     }),
   ]),
   ...signalPublicationTriggers,
+  ...signalPublicationControlTriggers,
 ]);
 
 export function signalGuardSourceHash(source) {
