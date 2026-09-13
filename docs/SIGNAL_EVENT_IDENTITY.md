@@ -2,6 +2,8 @@
 
 本批承接 [Signal V3 快照](SIGNAL_V3_FOUNDATION.md) 与[人物任职](PERSON_ORGANIZATION_AFFILIATIONS.md)，实现事件键登记与无副作用的登记预演。它不等于 AI 语义去重、实际导入或并发发表服务已经完成。
 
+> **后续实施更新（2026-09-13）：** [PR #70](https://github.com/hzense/tech-intelligence-hub/pull/70) 已合并为 `d598eee`，对应 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34755795599) 全部通过，包含 56 项原生 PostgreSQL 集成测试，本地 main 已同步。下文保留当时本地验证记录。新增 `0007` [事务封存](SIGNAL_VERSION_IMMUTABILITY.md)进一步禁止已提交事件身份被普通 DML 改删；首次登记仍可在后来的事务中引用已有版本。未执行生产迁移。
+
 ## 什么是事件键
 
 `event_key` 是经过明确身份判断后分配的规范标识，不是新闻标题、原文 URL、采集时间或可变事件日期的哈希。同一事件的多篇报道应先查找既有键，复用已有 Signal 并补充证据／修订版本；不能为每篇报道新建正式 Signal。
@@ -64,7 +66,7 @@
 - 现有旧 `event_key` 只是历史提示，不因格式合格自动写入本表；没有键的旧 Signal 也不补造键、人物或原文证据。本迁移只建空表，不回填旧数据。
 - 不向 Runtime、Topic Sync、搜索同步角色开放新表，不创建云资源，不新增本地生产维护入口，不启用 AI 自动发布。
 - 生产迁移需另行确认；要求最新 Schema 的维护预检仍将未应用的 `0004`–`0006` 报为 pending，不能绕过或自动执行来解锁，也不重新安排已取消的恢复演练。
-- 后续是不可变保护、受限发表／撤回事务及 Outbox，再进行历史导入和统一读取切换。
+- 不可变保护见后续 `0007` [事务封存契约](SIGNAL_VERSION_IMMUTABILITY.md)；之后是受限发表／撤回事务及 Outbox，再进行历史导入和统一读取切换。
 
 ## 验证记录
 

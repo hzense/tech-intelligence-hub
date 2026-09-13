@@ -7,6 +7,11 @@ import {
   inspectTopicSyncPreflight,
 } from '../src/topic-sync-preflight.mjs';
 import { expectedTableNames } from '../src/verify.mjs';
+import { expectedSignalTriggerCount } from '../src/signal-immutability-catalog.mjs';
+import {
+  signalImmutabilityQueryFixture,
+  signalImmutabilityFixture,
+} from './signal-immutability-fixtures.mjs';
 
 const expected = {
   expectedDatabase: 'hzense',
@@ -27,9 +32,12 @@ async function preflightClient({
   extraSchemaPrivileges = [],
   ownedObjects = [],
   securityDefinerRoutines = [],
+  immutability = signalImmutabilityFixture(),
 } = {}) {
   const migrations = await loadMigrations(resolve(process.cwd(), '../../db/migrations'));
   const query = vi.fn(async (sql) => {
+    const immutabilityResult = signalImmutabilityQueryFixture(sql, immutability);
+    if (immutabilityResult) return immutabilityResult;
     if (sql.includes('FROM pg_roles AS role_info')) {
       return {
         rowCount: 1,
@@ -80,7 +88,7 @@ async function preflightClient({
         relforcerowsecurity: false,
         owner: 'hzense_migrator',
         policy_count: 0,
-        user_trigger_count: 0,
+        user_trigger_count: expectedSignalTriggerCount(name),
         rewrite_rule_count: rewriteRuleCount,
       }));
       return { rowCount: rows.length, rows };
@@ -139,6 +147,14 @@ async function preflightClient({
 }
 
 describe('Topic sync least-privilege preflight', () => {
+  it('rejects a disabled Signal guard even when the trigger count is unchanged', async () => {
+    const immutability = signalImmutabilityFixture();
+    immutability.triggers[0].enabled = 'D';
+    await expect(
+      inspectTopicSyncPreflight(await preflightClient({ immutability }), expected),
+    ).rejects.toThrow(/Signal immutability contract mismatch/);
+  });
+
   it('requires the fixed PostgreSQL 18 and connection-limit contract', async () => {
     await expect(
       inspectTopicSyncPreflight({}, { ...expected, expectedPostgresMajor: 17 }),

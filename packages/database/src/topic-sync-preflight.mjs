@@ -2,6 +2,10 @@ import { fileURLToPath, URL } from 'node:url';
 import { loadMigrations, planPendingMigrations, verifyMigrationManifest } from './migrate.mjs';
 import { inspectProductionTls } from './preflight.mjs';
 import { expectedTableNames } from './verify.mjs';
+import {
+  expectedSignalTriggerCount,
+  collectSignalImmutabilityProblems,
+} from './signal-immutability-catalog.mjs';
 
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
 const migrationManifest = fileURLToPath(
@@ -308,7 +312,7 @@ export async function inspectTopicSyncPreflight(
       relation.relrowsecurity ||
       relation.relforcerowsecurity ||
       relation.policy_count !== 0 ||
-      relation.user_trigger_count !== 0
+      relation.user_trigger_count !== expectedSignalTriggerCount(relation.name)
     ) {
       throw new Error(
         `Topic sync public relation is not a plain protected table: ${relation.name}`,
@@ -320,6 +324,16 @@ export async function inspectTopicSyncPreflight(
     if (relation.rewrite_rule_count !== 0) {
       throw new Error(`Topic sync public relation has unexpected rewrite rule: ${relation.name}`);
     }
+  }
+
+  const immutabilityProblems = await collectSignalImmutabilityProblems(
+    client,
+    target.database_owner,
+  );
+  if (immutabilityProblems.length > 0) {
+    throw new Error(
+      `Topic sync Signal immutability contract mismatch: ${immutabilityProblems.join('; ')}`,
+    );
   }
 
   const privileges = await effectiveTablePrivileges(client);

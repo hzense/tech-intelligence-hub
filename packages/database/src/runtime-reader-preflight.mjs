@@ -7,6 +7,10 @@ import { validateConnectionTarget } from './connection-policy.mjs';
 import { inspectNeonReservedProviderObjects } from './neon-reserved-provider-contract.mjs';
 import { inspectProductionTls } from './preflight.mjs';
 import { expectedTableNames } from './verify.mjs';
+import {
+  expectedSignalTriggerCount,
+  collectSignalImmutabilityProblems,
+} from './signal-immutability-catalog.mjs';
 import { withRecoveryReadClient } from './recovery-read-client.mjs';
 
 const { Client } = pg;
@@ -737,7 +741,7 @@ async function inspectRuntimeReaderTarget(
       relation.relrowsecurity ||
       relation.relforcerowsecurity ||
       relation.policy_count !== 0 ||
-      relation.user_trigger_count !== 0 ||
+      relation.user_trigger_count !== expectedSignalTriggerCount(relation.name) ||
       relation.rewrite_rule_count !== 0
     ) {
       throw new Error(
@@ -747,6 +751,16 @@ async function inspectRuntimeReaderTarget(
     if (relation.owner === userName) {
       throw new Error(`Runtime reader must not own public relation ${relation.name}`);
     }
+  }
+
+  const immutabilityProblems = await collectSignalImmutabilityProblems(
+    client,
+    target.database_owner,
+  );
+  if (immutabilityProblems.length > 0) {
+    throw new Error(
+      `Runtime reader Signal immutability contract mismatch: ${immutabilityProblems.join('; ')}`,
+    );
   }
 
   const inheritanceEdges = await client.query(

@@ -4,6 +4,11 @@ import { URL } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { inspectNeonReservedProviderObjects } from '../src/neon-reserved-provider-contract.mjs';
 import { expectedTableNames } from '../src/verify.mjs';
+import { expectedSignalTriggerCount } from '../src/signal-immutability-catalog.mjs';
+import {
+  signalImmutabilityQueryFixture,
+  signalImmutabilityFixture,
+} from './signal-immutability-fixtures.mjs';
 import {
   inspectRuntimeReaderPreflight,
   inspectRestoredRuntimeReader,
@@ -159,8 +164,11 @@ function preflightClient({
   directRoutineGrants = [],
   sequencePrivileges = [],
   defaultPrivileges = [],
+  immutability = signalImmutabilityFixture(),
 } = {}) {
   const query = vi.fn(async (sql) => {
+    const immutabilityResult = signalImmutabilityQueryFixture(sql, immutability);
+    if (immutabilityResult) return immutabilityResult;
     if (sql.includes('FROM pg_roles AS role_info') && sql.includes('role_default_read_only')) {
       return {
         rowCount: 1,
@@ -219,7 +227,7 @@ function preflightClient({
         relforcerowsecurity: false,
         owner: 'hzense_migrator',
         policy_count: 0,
-        user_trigger_count: 0,
+        user_trigger_count: expectedSignalTriggerCount(name),
         rewrite_rule_count: rewriteRuleCount,
       }));
       return { rowCount: rows.length, rows };
@@ -438,6 +446,14 @@ function reservedDatabaseClient(
 }
 
 describe('Runtime reader least-privilege preflight', () => {
+  it('rejects a permissive Signal guard body even with the correct trigger count', async () => {
+    const immutability = signalImmutabilityFixture();
+    immutability.routines[0].source = 'BEGIN RETURN NEW; END;';
+    await expect(
+      inspectRuntimeReaderPreflight(preflightClient({ immutability }), expected),
+    ).rejects.toThrow(/Signal immutability contract mismatch/);
+  });
+
   it('keeps restored ACL separate from production and rejects residual Search privileges', async () => {
     const restored = () =>
       preflightClient({

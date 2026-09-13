@@ -24,6 +24,14 @@ const tsvector = customType<{ data: string }>({
   },
 });
 
+// Full transaction IDs are database metadata, not JavaScript numbers or part
+// of the Signal 3.0.0 content hash. Keep their 64-bit value losslessly as text.
+const xid8 = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return 'xid8';
+  },
+});
+
 export const entityType = pgEnum('entity_type', [
   'person',
   'company',
@@ -229,6 +237,9 @@ export const publicSourceEvidence = pgTable(
       .$type<'pending' | 'verified' | 'rejected'>()
       .notNull()
       .default('pending'),
+    createdXid: xid8('created_xid')
+      .notNull()
+      .default(sql`pg_catalog.pg_current_xact_id()`),
   },
   (t) => [
     foreignKey({
@@ -278,6 +289,9 @@ export const signalVersions = pgTable(
     legacyStatus: signalStatus('legacy_status'),
     contentHash: text('content_hash').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdXid: xid8('created_xid')
+      .notNull()
+      .default(sql`pg_catalog.pg_current_xact_id()`),
   },
   (t) => [
     primaryKey({ name: 'signal_versions_pkey', columns: [t.signalId, t.version] }),
@@ -364,6 +378,9 @@ export const signalEventIdentities = pgTable(
     basisVersion: integer('basis_version').notNull(),
     basisEvidenceId: text('basis_evidence_id').notNull(),
     identityBasis: text('identity_basis').notNull(),
+    createdXid: xid8('created_xid')
+      .notNull()
+      .default(sql`pg_catalog.pg_current_xact_id()`),
   },
   (t) => [
     foreignKey({

@@ -301,21 +301,24 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
          )`,
       );
       await client.query('CREATE SEQUENCE public.runtime_forbidden_sequence');
+      // Migration 0007 reserves public application routines for the reviewed
+      // sealing guards. Keep unrelated ACL probes in an inaccessible schema;
+      // routine ACL audits must still reject grants even without schema USAGE.
+      await client.query('CREATE SCHEMA runtime_private');
       await client.query(
-        `CREATE FUNCTION public.runtime_forbidden_function()
+        `CREATE FUNCTION runtime_private.runtime_forbidden_function()
          RETURNS text
          LANGUAGE sql
          SECURITY INVOKER
          AS 'SELECT ''forbidden''::text'`,
       );
       await client.query(
-        `CREATE FUNCTION public.runtime_forbidden_definer()
+        `CREATE FUNCTION runtime_private.runtime_forbidden_definer()
          RETURNS text
          LANGUAGE sql
          SECURITY DEFINER
          AS 'SELECT ''forbidden''::text'`,
       );
-      await client.query('CREATE SCHEMA runtime_private');
       await client.query(
         `CREATE FUNCTION runtime_private.runtime_operator_leak(text, text)
          RETURNS boolean
@@ -794,8 +797,8 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
         'CREATE TABLE public.runtime_forbidden_table (id text)',
         'CREATE TEMP TABLE runtime_forbidden_temp (id text)',
         "SELECT nextval('public.runtime_forbidden_sequence')",
-        'SELECT public.runtime_forbidden_function()',
-        'SELECT public.runtime_forbidden_definer()',
+        'SELECT runtime_private.runtime_forbidden_function()',
+        'SELECT runtime_private.runtime_forbidden_definer()',
         `SELECT 'runtime-reader-test' OPERATOR(public.===) '{"secret": true}'::text`,
       ]) {
         await expect(client.query(statement)).rejects.toThrow(/permission denied/);
@@ -858,17 +861,24 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
 
     await withClient(ownerUrl, (client) =>
       client.query(
-        'GRANT EXECUTE ON FUNCTION public.runtime_forbidden_function() TO hzense_runtime',
+        'GRANT EXECUTE ON FUNCTION runtime_private.runtime_forbidden_function() TO hzense_runtime',
       ),
     );
     try {
+      const routineAccess = await withClient(databaseUrl(runtimeRole, runtimePassword), (client) =>
+        client.query(`SELECT has_schema_privilege(current_user, n.oid, 'USAGE') AS schema_usage,
+          has_function_privilege(current_user, p.oid, 'EXECUTE') AS function_execute
+          FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname='runtime_private' AND p.proname='runtime_forbidden_function'`),
+      );
+      expect(routineAccess.rows).toEqual([{ schema_usage: false, function_execute: true }]);
       await expect(
         withClient(databaseUrl(runtimeRole, runtimePassword), strictRuntimePreflight),
       ).rejects.toThrow(/unsafe non-pgvector application|direct routine grants/);
     } finally {
       await withClient(ownerUrl, (client) =>
         client.query(
-          'REVOKE EXECUTE ON FUNCTION public.runtime_forbidden_function() FROM hzense_runtime',
+          'REVOKE EXECUTE ON FUNCTION runtime_private.runtime_forbidden_function() FROM hzense_runtime',
         ),
       );
     }

@@ -132,19 +132,6 @@ async function seedEventIdentityFixture(client) {
   `);
 }
 
-async function removeEventIdentityFixture(client) {
-  // Explicit reverse dependency order; production identities are not deletable by this test.
-  const ids = ['event-identity-one', 'event-identity-two'];
-  for (const table of ['signal_event_identities', 'signal_version_evidence', 'signal_versions']) {
-    await client.query(`DELETE FROM ${table} WHERE signal_id=ANY($1::text[])`, [ids]);
-  }
-  await client.query('DELETE FROM signals WHERE id=ANY($1::text[])', [ids]);
-  await client.query(
-    "DELETE FROM public_source_evidence WHERE id IN ('event-identity-evidence-one','event-identity-evidence-two')",
-  );
-  await client.query("DELETE FROM sources WHERE id='event-identity-source'");
-}
-
 integrationSuite('PostgreSQL migration integration', () => {
   let adminClient;
 
@@ -631,7 +618,8 @@ integrationSuite('PostgreSQL migration integration', () => {
       await competing;
       await second.query('ROLLBACK').catch(() => undefined);
       await Promise.all([first.end(), second.end()]);
-      await withClient(databaseUrl, removeEventIdentityFixture);
+      // The committed winner and fixture snapshots are now sealed. Keep them
+      // until afterAll drops this test-only database; never bypass the guards.
     }
   }, 30_000);
 
