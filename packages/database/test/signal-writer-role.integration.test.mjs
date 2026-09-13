@@ -514,6 +514,21 @@ integration('PostgreSQL private Signal snapshot writer role', () => {
     ).rejects.toMatchObject({ code: '55000' });
   });
 
+  it.each([
+    ...['signal_publication_state', 'signal_publication_outbox'].flatMap((table) => [
+      `SELECT * FROM public.${table}`,
+      `INSERT INTO public.${table} DEFAULT VALUES`,
+      `UPDATE public.${table} SET status='published'`,
+      `DELETE FROM public.${table}`,
+    ]),
+    'SELECT public.hzense_guard_publication_receipt()',
+    'SELECT public.hzense_check_publication_pair()',
+  ])('keeps private publication storage inaccessible to snapshot writer: %s', async (statement) => {
+    await expect(writer((client) => client.query(statement))).rejects.toMatchObject({
+      code: '42501',
+    });
+  });
+
   it('cannot grant permissions or call guards directly', async () => {
     const before = await aclSnapshot();
     // PostgreSQL GRANT without grant option may warn instead of throwing; assert its actual effect.

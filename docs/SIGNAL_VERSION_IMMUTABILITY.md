@@ -6,6 +6,8 @@
 
 追加 `0007_signal_version_immutability.sql`，不修改 `0000`–`0006`。仓库目标为 8 份迁移、24 张表（含账本）、3 个应用触发函数、14 个用户触发器；没有新增业务表。
 
+> 上述数量为 `0007` 批次基线；后续私有[发表转换与 Outbox 底座](SIGNAL_PUBLICATION_OUTBOX.md)追加 `0008`，不改变本页封存规则或快照指纹。
+
 `signal_versions`、`public_source_evidence` 和 `signal_event_identities` 新增 `created_xid xid8 NOT NULL DEFAULT pg_catalog.pg_current_xact_id()`。
 它标记允许组装该记录的本数据库顶层事务，不是业务时间，不参与 `3.0.0` 快照指纹，也不能在 JavaScript 中转为 Number。Drizzle 将其作为字符串处理。
 
@@ -70,4 +72,9 @@
 - 项目外临时 PGlite 0.5.8（PostgreSQL 18.3 wasm／vector 0.8.1）执行全部 8 份迁移，完整 collector 核对 24 表零差异；50 个非法 SQL 被拒绝，10 类函数／触发器／默认值篡改被检出。另验证旧行迁移封存、SAVEPOINT、证据状态与历史载荷分离、后续首次身份登记。
 - 同一隔离环境真实执行 writer 配置 SQL，首次与重复配置成功且幂等；普通角色无 guard EXECUTE 仍完成八表 pending bundle。11 类越权操作以 `42501` 拒绝；6 类不安全 ACL 配置被拒绝且前后 ACL 不变。此处 `SET ROLE` 模拟不替代原生登录、网络和双连接测试。
 - `0007` SHA-256：`d076f9da8dd979a2bca4f54d4ed686783323dde29aa9f94bf7adeaf7b8fdd0ef`，历史 `0000`–`0006` 未变。临时验证依赖不写入项目依赖或锁文件。
+
+### PR 合并后核验（2026-09-13）
+
+[PR #71](https://github.com/hzense/tech-intelligence-hub/pull/71) 已 squash 合并为 `67ce485`；初次 CI 暴露的是测试断言将 `.ok` 错放在 matcher 上，已修复。修复后的 PR CI 和同 SHA 的 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34758602893) 全部通过，包含 131 项原生 PostgreSQL 集成。本地 main 同步完成。以上补充不抹去之前本地跳过的事实，也不代表执行过生产迁移／角色配置。
+
 - 本记录只证明本地开发与验证；本批通过 PR 交付，评审／CI／合并结果另行确认。未部署或访问生产数据库。

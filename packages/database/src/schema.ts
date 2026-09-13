@@ -15,6 +15,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  uuid,
   vector,
 } from 'drizzle-orm/pg-core';
 
@@ -183,8 +184,8 @@ export const signals = pgTable(
   ],
 );
 
-// Private 3.0.0 storage foundation. Publication and database-enforced snapshot
-// immutability require later services and are not supplied by these tables.
+// Private 3.0.0 storage foundation. Migration 0007 seals snapshots after their
+// creation transaction; publication eligibility still requires later services.
 export const personProfiles = pgTable(
   'person_profiles',
   {
@@ -410,6 +411,142 @@ export const signalEventIdentities = pgTable(
     ),
     check('signal_event_identities_identity_basis_ck', sql`${t.identityBasis} ~ '[^[:space:]]'`),
     uniqueIndex('signal_event_identities_event_key_uq').on(t.eventKey),
+  ],
+);
+
+// Private transition ledger. Eligibility and authorization are not provided by
+// this table. Receipts are permanent; consumer delivery state belongs elsewhere.
+export const signalPublicationOutbox = pgTable(
+  'signal_publication_outbox',
+  {
+    eventId: uuid('event_id').primaryKey(),
+    requestKey: text('request_key').notNull(),
+    requestFingerprint: text('request_fingerprint').notNull(),
+    signalId: text('signal_id').notNull(),
+    expectedRevision: integer('expected_revision').notNull(),
+    publicationRevision: integer('publication_revision').notNull(),
+    contentVersion: integer('content_version').notNull(),
+    status: text('status').$type<'published' | 'withdrawn'>().notNull(),
+    reasonCode: text('reason_code')
+      .$type<
+        | 'initial_publication'
+        | 'content_correction'
+        | 'republication'
+        | 'factual_error'
+        | 'privacy'
+        | 'evidence_revoked'
+        | 'operator_request'
+      >()
+      .notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'signal_publication_outbox_version_fk',
+      columns: [t.signalId, t.contentVersion],
+      foreignColumns: [signalVersions.signalId, signalVersions.version],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    foreignKey({
+      name: 'signal_publication_outbox_identity_fk',
+      columns: [t.signalId],
+      foreignColumns: [signalEventIdentities.signalId],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    check(
+      'signal_publication_outbox_request_key_ck',
+      sql`${t.requestKey} COLLATE "C" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'`,
+    ),
+    check(
+      'signal_publication_outbox_request_key_length_ck',
+      sql`length(${t.requestKey}) BETWEEN 1 AND 200`,
+    ),
+    check(
+      'signal_publication_outbox_request_fingerprint_ck',
+      sql`${t.requestFingerprint} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check('signal_publication_outbox_signal_id_ck', sql`${t.signalId} ~ '[^[:space:]]'`),
+    check('signal_publication_outbox_expected_revision_ck', sql`${t.expectedRevision} >= 0`),
+    check('signal_publication_outbox_publication_revision_ck', sql`${t.publicationRevision} > 0`),
+    check(
+      'signal_publication_outbox_revision_step_ck',
+      sql`${t.publicationRevision}::bigint = ${t.expectedRevision}::bigint + 1`,
+    ),
+    check('signal_publication_outbox_content_version_ck', sql`${t.contentVersion} > 0`),
+    check('signal_publication_outbox_status_ck', sql`${t.status} IN ('published', 'withdrawn')`),
+    check(
+      'signal_publication_outbox_reason_code_ck',
+      sql`(${t.status} || ':' || ${t.reasonCode}) IN ('published:initial_publication', 'published:content_correction', 'published:republication', 'withdrawn:factual_error', 'withdrawn:privacy', 'withdrawn:evidence_revoked', 'withdrawn:operator_request')`,
+    ),
+    check('signal_publication_outbox_occurred_at_ck', sql`isfinite(${t.occurredAt})`),
+    check(
+      'signal_publication_outbox_occurred_at_year_ck',
+      sql`extract(year FROM ${t.occurredAt} AT TIME ZONE 'UTC') BETWEEN 1 AND 9999`,
+    ),
+    check(
+      'signal_publication_outbox_occurred_at_precision_ck',
+      sql`date_trunc('milliseconds', ${t.occurredAt}) = ${t.occurredAt}`,
+    ),
+    uniqueIndex('signal_publication_outbox_request_key_uq').on(t.requestKey),
+    uniqueIndex('signal_publication_outbox_revision_uq').on(t.signalId, t.publicationRevision),
+    uniqueIndex('signal_publication_outbox_state_uq').on(
+      t.signalId,
+      t.publicationRevision,
+      t.contentVersion,
+      t.status,
+      t.eventId,
+      t.occurredAt,
+    ),
+  ],
+);
+
+export const signalPublicationState = pgTable(
+  'signal_publication_state',
+  {
+    signalId: text('signal_id').primaryKey(),
+    publicationRevision: integer('publication_revision').notNull(),
+    contentVersion: integer('content_version').notNull(),
+    status: text('status').$type<'published' | 'withdrawn'>().notNull(),
+    eventId: uuid('event_id').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'signal_publication_state_outbox_fk',
+      columns: [
+        t.signalId,
+        t.publicationRevision,
+        t.contentVersion,
+        t.status,
+        t.eventId,
+        t.occurredAt,
+      ],
+      foreignColumns: [
+        signalPublicationOutbox.signalId,
+        signalPublicationOutbox.publicationRevision,
+        signalPublicationOutbox.contentVersion,
+        signalPublicationOutbox.status,
+        signalPublicationOutbox.eventId,
+        signalPublicationOutbox.occurredAt,
+      ],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    check('signal_publication_state_signal_id_ck', sql`${t.signalId} ~ '[^[:space:]]'`),
+    check('signal_publication_state_publication_revision_ck', sql`${t.publicationRevision} > 0`),
+    check('signal_publication_state_content_version_ck', sql`${t.contentVersion} > 0`),
+    check('signal_publication_state_status_ck', sql`${t.status} IN ('published', 'withdrawn')`),
+    check('signal_publication_state_occurred_at_ck', sql`isfinite(${t.occurredAt})`),
+    check(
+      'signal_publication_state_occurred_at_year_ck',
+      sql`extract(year FROM ${t.occurredAt} AT TIME ZONE 'UTC') BETWEEN 1 AND 9999`,
+    ),
+    check(
+      'signal_publication_state_occurred_at_precision_ck',
+      sql`date_trunc('milliseconds', ${t.occurredAt}) = ${t.occurredAt}`,
+    ),
   ],
 );
 

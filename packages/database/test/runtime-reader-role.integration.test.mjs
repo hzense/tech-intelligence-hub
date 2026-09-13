@@ -806,6 +806,24 @@ integrationSuite('PostgreSQL Runtime reader role provisioning integration', () =
     });
   }, 30_000);
 
+  it.each([
+    ...['signal_publication_state', 'signal_publication_outbox'].flatMap((table) => [
+      `SELECT * FROM public.${table}`,
+      `INSERT INTO public.${table} DEFAULT VALUES`,
+      `UPDATE public.${table} SET status='published'`,
+      `DELETE FROM public.${table}`,
+    ]),
+    'SELECT public.hzense_guard_publication_receipt()',
+    'SELECT public.hzense_check_publication_pair()',
+  ])('keeps private publication storage inaccessible to Runtime reader: %s', async (statement) => {
+    await withClient(databaseUrl(runtimeRole, runtimePassword), async (client) => {
+      // Test real ACL denial, not merely the user-overridable read-only default.
+      await client.query('SET default_transaction_read_only = off');
+      await client.query('SET transaction_read_only = off');
+      await expect(client.query(statement)).rejects.toMatchObject({ code: '42501' });
+    });
+  });
+
   it('detects new cross-database access in both configuration and runtime preflight', async () => {
     await adminClient.query(
       `CREATE DATABASE ${quotedIdentifier(sentinelDatabaseName)} OWNER ${quotedIdentifier(ownerRole)}`,

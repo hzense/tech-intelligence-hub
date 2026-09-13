@@ -3,10 +3,9 @@ import { URL } from 'node:url';
 import { sealedSignalTriggers, stampedSignalTables } from '../src/signal-immutability-catalog.mjs';
 
 // Test data only. Production expectations are separately pinned source hashes.
-const migration = readFileSync(
-  new URL('../../../db/migrations/0007_signal_version_immutability.sql', import.meta.url),
-  'utf8',
-);
+const migration = ['0007_signal_version_immutability.sql', '0008_signal_publication_outbox.sql']
+  .map((name) => readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), 'utf8'))
+  .join('\n');
 const bodies = [
   ...migration.matchAll(
     /CREATE FUNCTION public\.(\w+)\(\)[\s\S]*?AS \$guard\$([\s\S]*?)\$guard\$;/g,
@@ -21,10 +20,10 @@ export function signalImmutabilityFixture(owner = 'hzense_migrator') {
       enabled: 'A',
       routine_schema: 'public',
       routine_arguments: '',
-      constraint_trigger: false,
+      constraint_trigger: contract.constraint_trigger ?? false,
       parent_trigger: false,
-      deferrable: false,
-      initially_deferred: false,
+      deferrable: contract.deferrable ?? false,
+      initially_deferred: contract.initially_deferred ?? false,
       argument_count: 0,
       arguments_hex: '',
       column_numbers: '',

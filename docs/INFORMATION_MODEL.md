@@ -1245,18 +1245,18 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 
 本节描述仓库已实现、由自动校验保护的 PostgreSQL `public` Schema 目标，不把尚未执行的迁移表述为生产现状。当前仓库目标包含：
 
-- 24 张持久表：23 张领域或派生数据表，以及 1 张 Migration 历史表；其中 8 张来自 `0004`，2 张来自 `0005`，1 张来自 `0006`，本轮未执行生产迁移。
+- 26 张持久表：25 张领域或派生数据表，以及 1 张 Migration 历史表；其中 8 张来自 `0004`，2 张来自 `0005`，1 张来自 `0006`，2 张来自 `0008`，本轮未执行生产迁移。
 - 9 个 PostgreSQL Enum。
 - `vector` 扩展，以及 `search_documents.embedding vector(1536)`。
-- 仓库 Migration manifest 登记八个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql`、`0003_search_documents_fts.sql`、`0004_signal_version_foundation.sql`、`0005_person_organization_affiliations.sql`、`0006_signal_event_identity.sql` 和 `0007_signal_version_immutability.sql`。`0003` 的历史生产执行见 [FTS-1 切换记录](production-evidence/acl/34535908960-1/cutover.md)；本批未执行 `0004`–`0007`，不声明生产已有 24 表。
-- `0007` 新增 3 个安全模式为 INVOKER 的触发函数及 14 个 ALWAYS 触发器，不新增表或生产授权；函数正文、目录属性及 ACL 由独立精确契约核验。
+- 仓库 Migration manifest 登记九个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql`、`0003_search_documents_fts.sql`、`0004_signal_version_foundation.sql`、`0005_person_organization_affiliations.sql`、`0006_signal_event_identity.sql`、`0007_signal_version_immutability.sql` 和 `0008_signal_publication_outbox.sql`。`0003` 的历史生产执行见 [FTS-1 切换记录](production-evidence/acl/34535908960-1/cutover.md)；本批未执行 `0004`–`0008`，不声明生产已有 26 表。
+- `0007` 新增 3 个安全模式为 INVOKER 的触发函数及 14 个 ALWAYS 触发器；`0008` 追加 2 个 INVOKER 触发函数及 5 个 ALWAYS 触发器，其中 2 个是延迟约束触发器。合计 5 函数／19 触发器，无生产授权变化；函数正文、目录属性及 ACL 由独立精确契约核验。
 
 物理结构的权威顺序如下：
 
-1. [`db/migrations/*.sql`](../db/migrations/) 是 23 张应用 Schema 表的可执行 DDL 权威来源。
+1. [`db/migrations/*.sql`](../db/migrations/) 是 25 张应用 Schema 表的可执行 DDL 权威来源。
 2. [`packages/database/src/migrate.mjs`](../packages/database/src/migrate.mjs) 创建并维护运维表 `hzense_schema_migrations`。
-3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts) 是 23 张应用 Schema 表的 Drizzle 类型映射；运维历史表不进入应用 ORM 映射。
-4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs)、[V2-1a catalog 契约](../packages/database/src/signal-foundation-catalog.mjs)、[任职 catalog 契约](../packages/database/src/affiliation-catalog.mjs) 与[事件身份 catalog 契约](../packages/database/src/event-identity-catalog.mjs) 独立校验完整 24 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史。
+3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts) 是 25 张应用 Schema 表的 Drizzle 类型映射；运维历史表不进入应用 ORM 映射。
+4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs)、[V2-1a catalog 契约](../packages/database/src/signal-foundation-catalog.mjs)、[任职 catalog 契约](../packages/database/src/affiliation-catalog.mjs)、[事件身份 catalog 契约](../packages/database/src/event-identity-catalog.mjs)及 [Outbox catalog 契约](../packages/database/src/signal-publication-catalog.mjs)独立校验完整 26 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史。
 5. 本节是上述可执行合约的设计说明，不能代替 Migration 或 Runner DDL。
 
 Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文的 Source of Truth，公开 Signal 仍读 Seed。新增 `signal_versions` 可以保存完整快照，但本批未导入或发布正文，也未将其接入公开读取。
@@ -1306,6 +1306,15 @@ Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNo
 `0006` 新增私有 `signal_event_identities`：`signal_id` 为主键，`event_key` 全局唯一且限定为最多 200 字符的小写 ASCII slug；`basis_version` 为正整数，`basis_evidence_id` 和 `identity_basis` 非空白。复合 FK `(signal_id,basis_version,basis_evidence_id)` → `signal_version_evidence(signal_id,version,evidence_id)` 锚定同一 Signal 版本的证据，NO ACTION；不新增权限或自动回填旧键。唯一性不代表语义判重、证据真实或数据库不可变保护，详见[事件身份实施契约](SIGNAL_EVENT_IDENTITY.md)。
 
 `0007` 为 `signal_versions`、`public_source_evidence`、`signal_event_identities` 添加数据库元数据 `created_xid xid8 NOT NULL DEFAULT pg_catalog.pg_current_xact_id()`，不改变 `3.0.0` 内容指纹。版本及四类边仅在版本创建事务内组装，提交后禁止普通 DML 追加／改删；事件登记在自身创建事务提交后冻结；原文载荷冻结，但独立核验路径可更新其当前 `verification_status`。七表均禁止 TRUNCATE；owner 的 DDL 仍是外部受信任边界。旧行 stamp 来自迁移事务，可能涉及表重写；实际生产执行需另行审批。独立的 `hzense_signal_writer` 仅列级 INSERT 待核验记录，不得填写状态或 stamp，也不具备审核、发表、修改历史或写公开投影的权限。完整边界和测试见[事务封存与写入权限](SIGNAL_VERSION_IMMUTABILITY.md)。
+
+`0008` 新增两张私有表，不改变 `signals.status`、快照 `3.0.0` 或现有 Runtime／writer ACL：
+
+| 表                          | 主键与约束                                                                                                                                                                                                                                |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signal_publication_outbox` | UUID `event_id` PK；唯一 `request_key`、唯一 `(signal_id,publication_revision)`；固定请求指纹／原因码；正 int32 内容与发布修订；`publication_revision=expected_revision+1`；版本和事件身份 NO ACTION FK；有限、UTC 年 1–9999 的毫秒级时间 |
+| `signal_publication_state`  | `signal_id` PK；完整 `(signal_id,publication_revision,content_version,status,event_id,occurred_at)` 复合 FK → 同一 Outbox 事件；状态 published／withdrawn；无公开视图                                                                     |
+
+Outbox 永久仅追加，不允许改删／TRUNCATE；两个延迟约束触发器保证事务提交时 head 精确匹配该 Signal 的最新事件，防孤儿／错误配对／状态倒退。发表／撤回使用独立发布修订号，撤回同一正文版本也产生新事件。状态转换、请求幂等和纯投影规划由内部模块实现；本批不将账本状态作为授权或合格事实，未接入任务／策略／租约、当前人物证据资格、公开 Reader 或真实消费者。详见[实施边界](SIGNAL_PUBLICATION_OUTBOX.md)。
 
 ## 40.3 核心关系
 
