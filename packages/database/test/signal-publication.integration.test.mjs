@@ -6,6 +6,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { runMigrations } from '../src/migrate.mjs';
+import { waitForDatabaseDisconnects } from './database-disconnect.mjs';
 import { collectSignalImmutabilityProblems } from '../src/signal-immutability-catalog.mjs';
 
 const { Client, Pool } = pg;
@@ -213,15 +214,15 @@ suite('PostgreSQL private Signal publication state and permanent Outbox receipts
   afterAll(async () => {
     await pool?.end();
     if (!administrator) return;
-    if (databaseCreated) {
-      await administrator.query(
-        'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()',
-        [databaseName],
-      );
-      await administrator.query(`DROP DATABASE ${identifier(databaseName)}`);
+    try {
+      if (databaseCreated) {
+        await waitForDatabaseDisconnects(administrator, databaseName);
+        await administrator.query(`DROP DATABASE ${identifier(databaseName)}`);
+      }
+      if (roleCreated) await administrator.query(`DROP ROLE ${identifier(ownerRole)}`);
+    } finally {
+      await administrator.end();
     }
-    if (roleCreated) await administrator.query(`DROP ROLE ${identifier(ownerRole)}`);
-    await administrator.end();
   }, 30_000);
 
   it('atomically records only private metadata without upgrading missing eligibility or legacy status', async () => {

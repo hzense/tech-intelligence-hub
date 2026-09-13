@@ -6,6 +6,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { runMigrations } from '../src/migrate.mjs';
+import { waitForDatabaseDisconnects } from './database-disconnect.mjs';
 
 const { Client, Pool } = pg;
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
@@ -137,10 +138,7 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
     if (!administrator) return;
     try {
       if (databaseCreated) {
-        await administrator.query(
-          'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()',
-          [databaseName],
-        );
+        await waitForDatabaseDisconnects(administrator, databaseName);
         await administrator.query(`DROP DATABASE ${identifier(databaseName)}`);
       }
       if (roleCreated) await administrator.query(`DROP ROLE ${identifier(ownerRole)}`);

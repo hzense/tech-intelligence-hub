@@ -108,3 +108,18 @@ publishPrivateQualifiedSignalVersion({
 原生测试命令仅用于真正可销毁的专用集群：`pnpm --filter @hzense/database test:migrations`，必须配置 `MIGRATION_TEST_ADMIN_URL` 及 `RUNTIME_READER_TEST_ISOLATED_CLUSTER=1`；仓库不保存其值，不以此验证生产数据库。
 
 本批分支 `feat/qualified-signal-publication`，基于已合并 PR #73 的 `main@f0fc283`；基线 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34763140875) 成功。以上是提交前本地证据，本批通过独立 PR 交付；PR CI／评审／合并／生产执行须分别确认，不能以本地验证代替。
+
+### PR #74 合并后 CI 清理竞态（2026-09-13）
+
+[PR #74](https://github.com/hzense/tech-intelligence-hub/pull/74) 的 CI 通过，已合并为 `618c178`；随后 [main CI 的数据库任务](https://github.com/hzense/tech-intelligence-hub/actions/runs/34765438872/job/103745455338)失败。该任务首组 157 项断言全部通过，但 Vitest 捕获未处理的 `57P01: terminating connection due to administrator command`；错误来自控制套件的关闭中 Pool 客户端，而非业务断言。其余 foundation 与 Daily 门禁成功；后续角色测试因首组退出失败未运行，不能将本次 main CI 计作完整 318 项通过。
+
+根因是测试清理竞争：锁定版本 `pg-pool@3.14.0` 在客户端从内部列表移除后即可兑现 `pool.end()`，实际异步断连尚未结束；紧接着调用 `pg_terminate_backend`，可能让关闭中的空闲客户端收到 FATAL，再通过 Pool error 成为未捕获异常。官方 [Pool 事件说明](https://node-postgres.com/apis/pool#events)解释了空闲客户端断连错误会传播到 Pool；具体先后顺序由锁定版本源码和回归验证，而非假设文档承诺了服务端会话已退出。
+
+修复仅限测试基础设施：三个 Pool 套件在关闭连接池后，使用独立管理员连接以 autocommit 有界查询对应临时数据库的 `pg_stat_activity`，确认零连接才正常 DROP；移除强制终止，不吞错误、不忽略 Vitest 未捕获异常、不修改迁移或发布权限。若连接始终未退出，明确失败，保留现场而不是强杀。新增测试覆盖延迟断连、超时及观测错误；本地验证不代表失败的远端运行已恢复。
+
+修复分支 `fix/database-integration-pool-teardown` 的本地验证：
+
+- 新增 10 项单元、3 项原生回归；真实 Pool 已结束但客户端尚未关闭时屏障继续等待，残留连接超时后仍可查询；第三项精确限定测试数据库与 PID，显式捕获并断言旧清理方式产生一次 `57P01`，不忽略其他错误。
+- 专用 PostgreSQL 18.4 / pgvector 0.8.6 上完整 `test:migrations` 连续三轮各 321 项通过：首组 160、Topic 5、Runtime 50、ACL 14、writer 92。普通单元测试跳过的原生项目不计为单元通过。
+- 整仓 1634 项单元测试通过（database 1191、content 372、search 28、web 43），构建／类型检查／lint 的 Turbo 16 项任务成功，12 项复用缓存；格式与 diff 检查通过。
+- 业务 `src`、全部历史迁移、角色授权 SQL、依赖锁与 CI 工作流不变；只增加测试脚本的套件接入。以上为提交前本地证据，修复通过独立 PR 交付，PR CI／评审／合并及后续 main CI 另行确认；未操作生产数据库。
