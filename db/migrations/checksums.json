@@ -11,5 +11,6 @@
   "0009_signal_publication_controls.sql": "6234a3419df037c66986b441c594f605c2d907d5236f2101df0bb2ee8087286a",
   "0010_qualified_signal_publication.sql": "6e56ba4f9706ea62b36235a7acfad1b546826386abdc2bc772c5332a457b069d",
   "0011_signal_candidate_verification.sql": "6db9b93e6ee52b886331755ec58fb6659258ac983e1ab149245143b1ff6572c6",
-  "0012_current_signal_publication.sql": "685527bdc4502c1c12a2cbbc00bb0d99a702f3a26f8caa5425498d132f3f955b"
+  "0012_current_signal_publication.sql": "685527bdc4502c1c12a2cbbc00bb0d99a702f3a26f8caa5425498d132f3f955b",
+  "0013_ai_configuration.sql": "b97d5aead8c2e954b5b96a37f708ad12fb5cea830275f5775ead6724fc4612b7"
 }

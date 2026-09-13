@@ -22,6 +22,21 @@ test('anonymous administration is redirected and APIs fail closed', async ({ pag
     headers: { Cookie: 'next-auth.session-token=forged; __Secure-next-auth.session-token=forged' },
   });
   expect(forged.status()).toBe(401);
+  for (const path of [
+    '/admin/ai',
+    '/admin/ai/profiles',
+    '/admin/ai/tests/00000000-0000-4000-8000-000000000001',
+  ]) {
+    await page.goto(path);
+    await expect(page).toHaveURL(/\/admin\/login$/);
+  }
+  for (const path of ['connections', 'profiles', 'probes']) {
+    const denied = await request.get(`/api/admin/ai/${path}`);
+    expect(denied.status()).toBe(401);
+    expect(denied.headers()['cache-control']).toContain('no-store');
+    const write = await request.post(`/api/admin/ai/${path}`, { data: {} });
+    expect(write.status()).toBe(401);
+  }
   for (const operation of ['publish', 'withdraw']) {
     const denied = await request.post(`/api/admin/signals/${operation}`, { data: {} });
     expect(denied.status()).toBe(401);

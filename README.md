@@ -113,6 +113,7 @@ docs/
 - [产品设计](docs/DESIGN.md)：产品与信息架构。
 - [v2 重构设计](docs/SIGNAL_FIRST_REDESIGN.md)：页面约定、迁移和验收。
 - [自动信号生产方案](docs/AUTONOMOUS_SIGNAL_PIPELINE.md)：与 v2 整合的 AI 生产技术约定。
+- [AI 连接与模型配置](docs/AI_CONNECTIONS.md)：加密凭证、模型发现与独立能力测试、分阶段 Profile；本批本地实现，不代表生产 AI 已启用。
 - [技术架构](docs/TECHNICAL_ARCHITECTURE.md)：模块和技术边界。
 - [信息模型](docs/INFORMATION_MODEL.md)：知识与数据模型。
 - [开发基础](docs/DEVELOPMENT_FOUNDATION.md)：可执行的工程基础。

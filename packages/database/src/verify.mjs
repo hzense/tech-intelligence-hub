@@ -76,6 +76,14 @@ import {
   currentPublicSignalViewHashes,
 } from './current-publication-catalog.mjs';
 import { createHash } from 'node:crypto';
+import {
+  aiConfigurationColumns,
+  aiConfigurationPrimaryKeys,
+  aiConfigurationForeignKeys,
+  aiConfigurationChecks,
+  aiConfigurationDefaults,
+  aiConfigurationIndexes,
+} from './ai-configuration-catalog.mjs';
 
 const { Client } = pg;
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
@@ -208,6 +216,7 @@ const expectedColumns = {
   ...qualifiedPublicationColumns,
   ...candidateVerificationColumns,
   ...currentPublicationColumns,
+  ...aiConfigurationColumns,
 };
 for (const tableName of allStampedSignalTables) {
   expectedColumns[tableName] = {
@@ -276,6 +285,7 @@ const expectedPrimaryKeys = new Set([
   ...qualifiedPublicationPrimaryKeys,
   ...candidateVerificationPrimaryKeys,
   ...currentPublicationPrimaryKeys,
+  ...aiConfigurationPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -300,6 +310,7 @@ const expectedForeignKeys = new Set([
   ...qualifiedPublicationForeignKeys,
   ...candidateVerificationForeignKeys,
   ...currentPublicationForeignKeys,
+  ...aiConfigurationForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -323,6 +334,7 @@ const expectedCheckExpressions = {
   ...qualifiedPublicationChecks,
   ...candidateVerificationChecks,
   ...currentPublicationChecks,
+  ...aiConfigurationChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -386,6 +398,7 @@ const expectedDefaults = new Map([
   ...signalPublicationControlDefaults,
   ...candidateVerificationDefaults,
   ...currentPublicationDefaults,
+  ...aiConfigurationDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
   ['topics.runtime_enabled', new Set(['false'])],
@@ -423,6 +436,7 @@ const expectedUniqueIndexes = new Set([
 
 const requiredNonUniqueIndexes = new Set([
   ...signalPublicationControlIndexes,
+  ...aiConfigurationIndexes,
   ...signalFoundationIndexes,
   ...affiliationIndexes,
   'entities|type',
@@ -755,7 +769,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
               pg_get_constraintdef(constraint_info.oid, table_info.relname NOT IN (
                 'signal_publication_control', 'signal_publication_tasks', 'signal_publication_runs',
                 'signal_qualified_publication_receipts',
-                'signal_candidate_verifications', 'signal_candidate_assembly_receipts'
+                'signal_candidate_verifications', 'signal_candidate_assembly_receipts',
+                'ai_connections', 'ai_connection_versions', 'ai_profiles', 'ai_profile_versions', 'ai_probe_runs'
               ))::text
               ORDER BY constraint_info.oid
             ) AS definitions
@@ -793,7 +808,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
       Object.hasOwn(signalPublicationControlChecks, tableName) ||
       Object.hasOwn(qualifiedPublicationChecks, tableName) ||
       Object.hasOwn(candidateVerificationChecks, tableName) ||
-      Object.hasOwn(currentPublicationChecks, tableName)
+      Object.hasOwn(currentPublicationChecks, tableName) ||
+      Object.hasOwn(aiConfigurationChecks, tableName)
         ? canonicalPublicationControlCheck
         : [
               'signal_event_identities',

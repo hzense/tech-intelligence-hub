@@ -17,7 +17,7 @@
 
 登录页不显示配置中的管理员邮箱。受保护布局和页面分别执行服务端鉴权；会话 API 也独立鉴权。管理员页面设置 `noindex, nofollow`，但搜索引擎指令不是访问控制。
 
-生产目前没有接通 Publisher 或 Signal 业务数据库操作；本地已实现[受限发布／撤回入口](SIGNAL_PUBLIC_PUBLICATION.md)，尚未部署或配置生产权限。信号采集配置、AI 调用和文档／链接批量上传仍未实现。登录成功不自动授予数据库角色、候选公开资格或生产维护权限；会话不需要数据库 Adapter，也不创建用户表。
+生产目前没有接通 Publisher 或 Signal 业务数据库操作；[受限发布／撤回入口](SIGNAL_PUBLIC_PUBLICATION.md)已随 PR #78 合并，但未配置生产权限。本批新增 [AI 连接与模型配置](AI_CONNECTIONS.md)，提供受保护的 `/admin/ai`、`/admin/ai/profiles` 和逐请求鉴权的 `/api/admin/ai/*`；生产 AI 配置仍未启用。信号采集、业务 AI 执行器和文档／链接批量上传仍未实现。登录成功不自动授予数据库角色、候选公开资格或生产维护权限；会话不需要数据库 Adapter，也不创建用户表。
 
 ## 身份和会话规则
 

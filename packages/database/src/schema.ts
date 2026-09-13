@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   check,
   customType,
@@ -33,6 +34,128 @@ const xid8 = customType<{ data: string; driverData: string }>({
     return 'xid8';
   },
 });
+
+export const aiConnections = pgTable(
+  'ai_connections',
+  {
+    id: uuid('id').primaryKey(),
+    revision: integer('revision').notNull().default(1),
+    name: text('name').notNull(),
+    protocol: text('protocol').notNull(),
+    baseUrl: text('base_url').notNull(),
+    enabled: boolean('enabled').notNull().default(false),
+    settings: jsonb('settings').notNull(),
+    encryptedKey: jsonb('encrypted_key'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('ai_connections_revision_ck', sql`${t.revision} >= 1`),
+    check('ai_connections_protocol_ck', sql`${t.protocol} = 'openai-compatible'`),
+    check('ai_connections_settings_ck', sql`jsonb_typeof(${t.settings}) = 'object'`),
+    check(
+      'ai_connections_encrypted_key_ck',
+      sql`${t.encryptedKey} IS NULL OR jsonb_typeof(${t.encryptedKey}) = 'object'`,
+    ),
+  ],
+);
+export const aiConnectionVersions = pgTable(
+  'ai_connection_versions',
+  {
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => aiConnections.id),
+    revision: integer('revision').notNull(),
+    snapshot: jsonb('snapshot').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.connectionId, t.revision] }),
+    check('ai_connection_versions_revision_ck', sql`${t.revision} >= 1`),
+    check('ai_connection_versions_snapshot_ck', sql`jsonb_typeof(${t.snapshot}) = 'object'`),
+  ],
+);
+export const aiProfiles = pgTable(
+  'ai_profiles',
+  {
+    id: uuid('id').primaryKey(),
+    revision: integer('revision').notNull().default(1),
+    name: text('name').notNull(),
+    stages: jsonb('stages').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('ai_profiles_revision_ck', sql`${t.revision} >= 1`),
+    check('ai_profiles_stages_ck', sql`jsonb_typeof(${t.stages}) = 'object'`),
+  ],
+);
+export const aiProfileVersions = pgTable(
+  'ai_profile_versions',
+  {
+    profileId: uuid('profile_id')
+      .notNull()
+      .references(() => aiProfiles.id),
+    revision: integer('revision').notNull(),
+    snapshot: jsonb('snapshot').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.profileId, t.revision] }),
+    check('ai_profile_versions_revision_ck', sql`${t.revision} >= 1`),
+    check('ai_profile_versions_snapshot_ck', sql`jsonb_typeof(${t.snapshot}) = 'object'`),
+  ],
+);
+export const aiProbeRuns = pgTable(
+  'ai_probe_runs',
+  {
+    id: uuid('id').primaryKey(),
+    connectionId: uuid('connection_id').notNull(),
+    connectionRevision: integer('connection_revision').notNull(),
+    kind: text('kind').notNull(),
+    modelId: text('model_id'),
+    fingerprint: text('fingerprint').notNull(),
+    status: text('status').notNull(),
+    configuration: jsonb('configuration').notNull(),
+    reservedMicrousd: bigint('reserved_microusd', { mode: 'bigint' })
+      .notNull()
+      .default(sql`0`),
+    chargedMicrousd: bigint('charged_microusd', { mode: 'bigint' })
+      .notNull()
+      .default(sql`0`),
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    result: jsonb('result').notNull().default({}),
+    errorCode: text('error_code'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.connectionId, t.connectionRevision],
+      foreignColumns: [aiConnectionVersions.connectionId, aiConnectionVersions.revision],
+    }),
+    index('ai_probe_runs_connection_created_idx').on(t.connectionId, t.createdAt),
+    check(
+      'ai_probe_runs_kind_ck',
+      sql`${t.kind} IN ('models', 'connection', 'structured_output', 'tool_calling')`,
+    ),
+    check('ai_probe_runs_fingerprint_ck', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
+    check(
+      'ai_probe_runs_status_ck',
+      sql`${t.status} IN ('pending', 'running', 'succeeded', 'failed', 'unknown', 'stale')`,
+    ),
+    check('ai_probe_runs_configuration_ck', sql`jsonb_typeof(${t.configuration}) = 'object'`),
+    check('ai_probe_runs_reserved_microusd_ck', sql`${t.reservedMicrousd} >= 0`),
+    check('ai_probe_runs_charged_microusd_ck', sql`${t.chargedMicrousd} >= 0`),
+    check('ai_probe_runs_input_tokens_ck', sql`${t.inputTokens} IS NULL OR ${t.inputTokens} >= 0`),
+    check(
+      'ai_probe_runs_output_tokens_ck',
+      sql`${t.outputTokens} IS NULL OR ${t.outputTokens} >= 0`,
+    ),
+    check('ai_probe_runs_result_ck', sql`jsonb_typeof(${t.result}) = 'object'`),
+  ],
+);
 
 export const entityType = pgEnum('entity_type', [
   'person',

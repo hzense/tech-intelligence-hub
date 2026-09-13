@@ -23,13 +23,21 @@ export default async function AdminHomePage() {
           管理员身份已验证
         </h1>
         <p className={styles.copy}>
-          已接通管理员认证与受限信号发布入口。信号采集配置、文档与链接批量导入功能仍待实现。
+          已接通管理员认证、AI
+          连接与模型配置及受限信号发布入口。信号采集、文档与链接批量导入功能仍待实现；AI
+          服务须另行配置后方可使用。
         </p>
         <dl className={styles.account}>
           <dt>当前登录账号</dt>
           <dd>{session.user.email}</dd>
         </dl>
         <div className={styles.actions}>
+          <Link className={styles.backLink} href="/admin/ai">
+            AI 连接与模型测试
+          </Link>
+          <Link className={styles.backLink} href="/admin/ai/profiles">
+            分阶段模型配置
+          </Link>
           <AdminSignOutButton />
           <Link className={styles.backLink} href="/">
             返回网站
