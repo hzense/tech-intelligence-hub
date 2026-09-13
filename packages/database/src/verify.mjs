@@ -23,6 +23,13 @@ import {
   affiliationUniqueIndexes,
   affiliationIndexes,
 } from './affiliation-catalog.mjs';
+import {
+  eventIdentityColumns,
+  eventIdentityPrimaryKeys,
+  eventIdentityForeignKeys,
+  eventIdentityChecks,
+  eventIdentityUniqueIndexes,
+} from './event-identity-catalog.mjs';
 
 const { Client } = pg;
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
@@ -149,6 +156,7 @@ const expectedColumns = {
   },
   ...signalFoundationColumns,
   ...affiliationColumns,
+  ...eventIdentityColumns,
 };
 
 const expectedEnums = {
@@ -205,6 +213,7 @@ const expectedEnums = {
 const expectedPrimaryKeys = new Set([
   ...signalFoundationPrimaryKeys,
   ...affiliationPrimaryKeys,
+  ...eventIdentityPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -223,6 +232,7 @@ const expectedPrimaryKeys = new Set([
 const expectedForeignKeys = new Set([
   ...signalFoundationForeignKeys,
   ...affiliationForeignKeys,
+  ...eventIdentityForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -240,6 +250,7 @@ const expectedForeignKeys = new Set([
 const expectedCheckExpressions = {
   ...signalFoundationChecks,
   ...affiliationChecks,
+  ...eventIdentityChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -320,6 +331,7 @@ const expectedDefaults = new Map([
 
 const expectedUniqueIndexes = new Set([
   ...affiliationUniqueIndexes,
+  ...eventIdentityUniqueIndexes,
   'entities|id,type',
   'radar_snapshots|topic_id,snapshot_date',
   'radar_snapshot_signals|snapshot_id,position',
@@ -377,6 +389,22 @@ export function canonicalCatalogExpression(value) {
     .replace(/\s+/g, '')
     .replace(/[()]/g, '')
     .replace(/^check/, '');
+}
+
+// For new exact CHECK contracts, preserve quoted tokens before normalizing SQL
+// pretty-printing. Regex groups, spaces, case and quoted collation identifiers
+// are semantic content, not removable SQL decoration. Legacy contracts retain
+// their existing comparison until they can be migrated with their own fixtures.
+export function canonicalCatalogExpressionWithLiterals(value) {
+  const quotedTokens = [];
+  const masked = value.replace(/'(?:''|[^'])*'|"(?:""|[^"])*"/g, (token) => {
+    quotedTokens.push(token);
+    return `'__hzense_catalog_token_${quotedTokens.length - 1}__'`;
+  });
+  return canonicalCatalogExpression(masked).replace(
+    /'__hzense_catalog_token_(\d+)__'/g,
+    (_token, index) => quotedTokens[Number(index)],
+  );
 }
 
 async function collectSchemaProblems(client, migrations, expectedPgvectorVersion, expectedOwner) {
@@ -649,10 +677,12 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
     problems.push('one or more check constraints are not validated');
   }
   for (const [tableName, expressionAlternatives] of Object.entries(expectedCheckExpressions)) {
+    const canonicalize =
+      tableName === 'signal_event_identities'
+        ? canonicalCatalogExpressionWithLiterals
+        : canonicalCatalogExpression;
     const definitions =
-      checks.rows
-        .find((row) => row.table_name === tableName)
-        ?.definitions.map(canonicalCatalogExpression) ?? [];
+      checks.rows.find((row) => row.table_name === tableName)?.definitions.map(canonicalize) ?? [];
     for (const acceptedExpressions of expressionAlternatives) {
       if (!definitions.some((definition) => acceptedExpressions.includes(definition))) {
         problems.push(`check constraint expression mismatch: ${tableName}`);

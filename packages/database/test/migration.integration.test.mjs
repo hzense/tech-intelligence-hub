@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { setTimeout as delay } from 'node:timers/promises';
 import { URL } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -102,6 +103,46 @@ async function foundationChecksum() {
   const foundation = migrations.find((migration) => migration.name === '0000_foundation.sql');
   if (!foundation) throw new Error('0000_foundation.sql is missing');
   return foundation.checksum;
+}
+
+async function seedEventIdentityFixture(client) {
+  await client.query(`
+    INSERT INTO sources(id,name,type,trust_score,allowed_hosts)
+      VALUES ('event-identity-source','Fixture source','website',80,ARRAY['example.com']);
+    INSERT INTO signals(id,title,type,occurred_at,captured_at,source_id,source_url,
+      summary,importance,strength,confidence,novelty)
+      SELECT id,'Fixture event','research','2026-01-01T00:00:00Z','2026-09-13T00:00:00Z',
+        'event-identity-source','https://example.com/event','Fixture summary',3,3,0.8,0.6
+      FROM unnest(ARRAY['event-identity-one','event-identity-two']) AS id;
+    INSERT INTO signal_versions(signal_id,version,title,type,occurred_at,date_precision,
+      date_basis,captured_at,summary,importance,strength,confidence,novelty,
+      revision_reason,origin,content_hash)
+      SELECT signal_id,version,'Fixture event','research','2026-01-01T00:00:00Z','day',
+        'Fixture date','2026-09-13T00:00:00Z','Fixture summary',3,3,0.8,0.6,
+        'Fixture revision','manual',repeat('d',64)
+      FROM (VALUES ('event-identity-one',1),('event-identity-one',2),('event-identity-two',1)) AS input(signal_id,version);
+    INSERT INTO public_source_evidence(id,source_id,source_url,locator,excerpt,content_hash,captured_at)
+      SELECT id,'event-identity-source','https://example.com/event','paragraph 1',
+        'Fixture original excerpt',repeat('e',64),'2026-09-13T00:00:00Z'
+      FROM unnest(ARRAY['event-identity-evidence-one','event-identity-evidence-two']) AS id;
+    INSERT INTO signal_version_evidence(signal_id,version,evidence_id,claim,relation) VALUES
+      ('event-identity-one',1,'event-identity-evidence-one','Fixture claim','supports'),
+      ('event-identity-one',2,'event-identity-evidence-two','Updated claim','supports'),
+      ('event-identity-two',1,'event-identity-evidence-two','Other event claim','supports');
+  `);
+}
+
+async function removeEventIdentityFixture(client) {
+  // Explicit reverse dependency order; production identities are not deletable by this test.
+  const ids = ['event-identity-one', 'event-identity-two'];
+  for (const table of ['signal_event_identities', 'signal_version_evidence', 'signal_versions']) {
+    await client.query(`DELETE FROM ${table} WHERE signal_id=ANY($1::text[])`, [ids]);
+  }
+  await client.query('DELETE FROM signals WHERE id=ANY($1::text[])', [ids]);
+  await client.query(
+    "DELETE FROM public_source_evidence WHERE id IN ('event-identity-evidence-one','event-identity-evidence-two')",
+  );
+  await client.query("DELETE FROM sources WHERE id='event-identity-source'");
 }
 
 integrationSuite('PostgreSQL migration integration', () => {
@@ -378,6 +419,220 @@ integrationSuite('PostgreSQL migration integration', () => {
         await client.query('ROLLBACK');
       }
     });
+  }, 30_000);
+
+  it('reserves unique canonical event keys with same-version evidence and no public access', async () => {
+    await withClient(connectionUrl(databaseNames.fresh), async (client) => {
+      await client.query('BEGIN');
+      const rejected = async (sql, values, code) => {
+        await client.query('SAVEPOINT invalid_event_identity');
+        try {
+          await expect(client.query(sql, values)).rejects.toMatchObject({ code });
+        } finally {
+          await client.query('ROLLBACK TO SAVEPOINT invalid_event_identity');
+          await client.query('RELEASE SAVEPOINT invalid_event_identity');
+        }
+      };
+      try {
+        await seedEventIdentityFixture(client);
+        await client.query(`INSERT INTO signal_event_identities(signal_id,event_key,basis_version,basis_evidence_id,identity_basis)
+          VALUES ('event-identity-one','fixture-event-2026',1,'event-identity-evidence-one','Original evidence identifies this event')`);
+        await rejected(
+          `INSERT INTO signal_event_identities(signal_id,event_key,basis_version,basis_evidence_id,identity_basis)
+          VALUES ('event-identity-two','fixture-event-2026',1,'event-identity-evidence-two','Same event candidate')`,
+          [],
+          '23505',
+        );
+        await rejected(
+          `INSERT INTO signal_event_identities(signal_id,event_key,basis_version,basis_evidence_id,identity_basis)
+          VALUES ('event-identity-one','another-event-key',1,'event-identity-evidence-one','Different key for same Signal')`,
+          [],
+          '23505',
+        );
+        for (const key of [
+          '',
+          ' ',
+          'Fixture',
+          'fixture_event',
+          '-fixture',
+          'fixture-',
+          'fixture--event',
+          '事件',
+          'évent',
+          'a'.repeat(201),
+          'fixture\n',
+          '\nfixture',
+          'fixture\revent',
+          'fixture\tevent',
+        ]) {
+          await rejected('UPDATE signal_event_identities SET event_key=$1', [key], '23514');
+        }
+        for (const key of ['a', '9', 'fixture-event-2026', 'a'.repeat(200)]) {
+          await client.query('UPDATE signal_event_identities SET event_key=$1', [key]);
+        }
+        for (const version of [0, -1]) {
+          await rejected('UPDATE signal_event_identities SET basis_version=$1', [version], '23514');
+        }
+        await rejected('UPDATE signal_event_identities SET basis_version=2', [], '23503');
+        await rejected(
+          "UPDATE signal_event_identities SET basis_evidence_id='event-identity-evidence-two'",
+          [],
+          '23503',
+        );
+        await rejected(
+          "UPDATE signal_event_identities SET signal_id='event-identity-two'",
+          [],
+          '23503',
+        );
+        await rejected(
+          "UPDATE signal_event_identities SET basis_evidence_id='missing-evidence'",
+          [],
+          '23503',
+        );
+        for (const field of ['signal_id', 'basis_evidence_id', 'identity_basis']) {
+          for (const value of ['', ' ', '\t\n']) {
+            await rejected(`UPDATE signal_event_identities SET ${field}=$1`, [value], '23514');
+          }
+        }
+        for (const field of [
+          'signal_id',
+          'event_key',
+          'basis_version',
+          'basis_evidence_id',
+          'identity_basis',
+        ]) {
+          await rejected(`UPDATE signal_event_identities SET ${field}=NULL`, [], '23502');
+        }
+        await rejected(
+          "DELETE FROM signal_version_evidence WHERE signal_id='event-identity-one' AND version=1",
+          [],
+          '23503',
+        );
+        await rejected(
+          "UPDATE signal_version_evidence SET evidence_id='event-identity-evidence-two' WHERE signal_id='event-identity-one' AND version=1",
+          [],
+          '23503',
+        );
+        await rejected(
+          "DELETE FROM signal_versions WHERE signal_id='event-identity-one' AND version=1",
+          [],
+          '23503',
+        );
+        await rejected("DELETE FROM signals WHERE id='event-identity-one'", [], '23503');
+        await rejected(
+          "DELETE FROM public_source_evidence WHERE id='event-identity-evidence-one'",
+          [],
+          '23503',
+        );
+        const access = await client.query(
+          "SELECT has_table_privilege($1, 'signal_event_identities', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN') AS allowed",
+          [inheritedRole],
+        );
+        expect(access.rows[0].allowed).toBe(false);
+        await withClient(adminDatabaseUrl(databaseNames.fresh), async (reader) => {
+          await reader.query(`SET ROLE ${quotedRoleName(inheritedRole)}`);
+          try {
+            await expect(
+              reader.query('SELECT * FROM signal_event_identities'),
+            ).rejects.toMatchObject({ code: '42501' });
+          } finally {
+            await reader.query('RESET ROLE');
+          }
+        });
+      } finally {
+        await client.query('ROLLBACK');
+      }
+    });
+  }, 30_000);
+
+  it('detects event-key regex grouping drift even when removing SQL parentheses would hide it', async () => {
+    const databaseUrl = connectionUrl(databaseNames.fresh);
+    await withClient(databaseUrl, async (client) => {
+      try {
+        await client.query(`ALTER TABLE signal_event_identities
+          DROP CONSTRAINT signal_event_identities_event_key_ck;
+          ALTER TABLE signal_event_identities ADD CONSTRAINT signal_event_identities_event_key_ck
+            CHECK(event_key COLLATE "C" ~ '^([a-z0-9]+-)([a-z0-9]+)*$');`);
+        expect(
+          (
+            await client.query(
+              `SELECT 'event-' COLLATE "C" ~ '^([a-z0-9]+-)([a-z0-9]+)*$' AS accepted`,
+            )
+          ).rows[0].accepted,
+        ).toBe(true);
+        await expect(
+          verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+        ).rejects.toThrow('check constraint expression mismatch: signal_event_identities');
+      } finally {
+        await client.query(`ALTER TABLE signal_event_identities
+          DROP CONSTRAINT signal_event_identities_event_key_ck;
+          ALTER TABLE signal_event_identities ADD CONSTRAINT signal_event_identities_event_key_ck
+            CHECK(event_key COLLATE "C" ~ '^[a-z0-9]+(-[a-z0-9]+)*$');`);
+      }
+    });
+    await expect(
+      verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+    ).resolves.toMatchObject({ tableCount: expectedTableNames.size });
+  }, 30_000);
+
+  it('serializes concurrent event-key claims so only one Signal can reserve the key', async () => {
+    const databaseUrl = connectionUrl(databaseNames.fresh);
+    const first = new Client({ connectionString: databaseUrl });
+    const second = new Client({ connectionString: databaseUrl });
+    let competing;
+    try {
+      await first.connect();
+      await second.connect();
+      await seedEventIdentityFixture(first);
+      await first.query('BEGIN');
+      await second.query('BEGIN');
+      await second.query("SET LOCAL lock_timeout='10s'");
+      const firstPid = (await first.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const secondPid = (await second.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      await first.query(`INSERT INTO signal_event_identities(signal_id,event_key,basis_version,basis_evidence_id,identity_basis)
+        VALUES ('event-identity-one','concurrent-fixture-event',1,'event-identity-evidence-one','First claimant')`);
+      competing = second
+        .query(
+          `INSERT INTO signal_event_identities(signal_id,event_key,basis_version,basis_evidence_id,identity_basis)
+        VALUES ('event-identity-two','concurrent-fixture-event',1,'event-identity-evidence-two','Competing claimant')`,
+        )
+        .then(
+          () => ({ error: null }),
+          (error) => ({ error }),
+        );
+      const blocked = await withClient(databaseUrl, async (observer) => {
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+          const result = await observer.query(
+            'SELECT $1::integer=ANY(pg_blocking_pids($2::integer)) AS blocked',
+            [firstPid, secondPid],
+          );
+          if (result.rows[0].blocked) return true;
+          await delay(25);
+        }
+        return false;
+      });
+      expect(blocked).toBe(true);
+      await first.query('COMMIT');
+      expect((await competing).error).toMatchObject({
+        code: '23505',
+        constraint: 'signal_event_identities_event_key_uq',
+      });
+      await second.query('ROLLBACK');
+      expect(
+        (
+          await first.query(
+            "SELECT signal_id FROM signal_event_identities WHERE event_key='concurrent-fixture-event'",
+          )
+        ).rows,
+      ).toEqual([{ signal_id: 'event-identity-one' }]);
+    } finally {
+      await first.query('ROLLBACK').catch(() => undefined);
+      await competing;
+      await second.query('ROLLBACK').catch(() => undefined);
+      await Promise.all([first.end(), second.end()]);
+      await withClient(databaseUrl, removeEventIdentityFixture);
+    }
   }, 30_000);
 
   it('stores directed affiliations, conservative date bounds and multiple evidence without public access', async () => {
