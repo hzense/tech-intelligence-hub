@@ -737,6 +737,147 @@ export const signalQualifiedPublicationReceipts = pgTable(
   ],
 );
 
+// Private append-only verification reports; created_xid is not part of a report
+// fingerprint. SQL guards enforce database statement time and transaction sealing.
+export const signalCandidateVerifications = pgTable(
+  'signal_candidate_verifications',
+  {
+    verificationId: uuid('verification_id').primaryKey(),
+    signalId: text('signal_id').notNull(),
+    sourceVersion: integer('source_version').notNull(),
+    sourceContentHash: text('source_content_hash').notNull(),
+    bundleFingerprint: text('bundle_fingerprint').notNull(),
+    verifierId: uuid('verifier_id').notNull(),
+    policyVersion: text('policy_version').notNull(),
+    reportHash: text('report_hash').notNull(),
+    decision: text('decision').notNull(),
+    checks: jsonb('checks').notNull(),
+    verifiedAt: timestamp('verified_at', { withTimezone: true })
+      .notNull()
+      .default(sql`date_trunc('milliseconds', statement_timestamp())`),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdXid: xid8('created_xid')
+      .notNull()
+      .default(sql`pg_catalog.pg_current_xact_id()`),
+  },
+  (t) => [
+    foreignKey({
+      name: 'signal_candidate_verifications_source_fk',
+      columns: [t.signalId, t.sourceVersion],
+      foreignColumns: [signalVersions.signalId, signalVersions.version],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    check('signal_candidate_verifications_signal_id_ck', sql`${t.signalId} ~ '[^[:space:]]'`),
+    check('signal_candidate_verifications_version_ck', sql`${t.sourceVersion} > 0`),
+    check(
+      'signal_candidate_verifications_source_hash_ck',
+      sql`${t.sourceContentHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'signal_candidate_verifications_bundle_hash_ck',
+      sql`${t.bundleFingerprint} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'signal_candidate_verifications_policy_ck',
+      sql`${t.policyVersion} = 'candidate-verification-v1'`,
+    ),
+    check(
+      'signal_candidate_verifications_report_hash_ck',
+      sql`${t.reportHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'signal_candidate_verifications_decision_ck',
+      sql`${t.decision} IN ('approved', 'rejected')`,
+    ),
+    check('signal_candidate_verifications_checks_ck', sql`jsonb_typeof(${t.checks}) = 'object'`),
+    check('signal_candidate_verifications_verified_at_ck', sql`isfinite(${t.verifiedAt})`),
+    check(
+      'signal_candidate_verifications_verified_at_year_ck',
+      sql`extract(year FROM ${t.verifiedAt} AT TIME ZONE 'UTC') BETWEEN 1 AND 9999`,
+    ),
+    check(
+      'signal_candidate_verifications_verified_at_precision_ck',
+      sql`date_trunc('milliseconds', ${t.verifiedAt}) = ${t.verifiedAt}`,
+    ),
+    check('signal_candidate_verifications_expires_at_ck', sql`isfinite(${t.expiresAt})`),
+    check(
+      'signal_candidate_verifications_expires_at_year_ck',
+      sql`extract(year FROM ${t.expiresAt} AT TIME ZONE 'UTC') BETWEEN 1 AND 9999`,
+    ),
+    check(
+      'signal_candidate_verifications_expires_at_precision_ck',
+      sql`date_trunc('milliseconds', ${t.expiresAt}) = ${t.expiresAt}`,
+    ),
+    check('signal_candidate_verifications_expiry_order_ck', sql`${t.expiresAt} > ${t.verifiedAt}`),
+    check(
+      'signal_candidate_verifications_expiry_window_ck',
+      sql`${t.expiresAt} <= ${t.verifiedAt} + interval '24 hours'`,
+    ),
+    uniqueIndex('signal_candidate_verifications_identity_uq').on(
+      t.verificationId,
+      t.signalId,
+      t.sourceVersion,
+    ),
+  ],
+);
+
+export const signalCandidateAssemblyReceipts = pgTable(
+  'signal_candidate_assembly_receipts',
+  {
+    requestKey: text('request_key').primaryKey(),
+    requestFingerprint: text('request_fingerprint').notNull(),
+    verificationId: uuid('verification_id').notNull(),
+    signalId: text('signal_id').notNull(),
+    sourceVersion: integer('source_version').notNull(),
+    targetVersion: integer('target_version').notNull(),
+    contentHash: text('content_hash').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'signal_candidate_assembly_receipts_verification_fk',
+      columns: [t.verificationId, t.signalId, t.sourceVersion],
+      foreignColumns: [
+        signalCandidateVerifications.verificationId,
+        signalCandidateVerifications.signalId,
+        signalCandidateVerifications.sourceVersion,
+      ],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    foreignKey({
+      name: 'signal_candidate_assembly_receipts_target_fk',
+      columns: [t.signalId, t.targetVersion],
+      foreignColumns: [signalVersions.signalId, signalVersions.version],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    check(
+      'signal_candidate_assembly_receipts_request_key_ck',
+      sql`${t.requestKey} COLLATE "C" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'`,
+    ),
+    check(
+      'signal_candidate_assembly_receipts_key_length_ck',
+      sql`length(${t.requestKey}) BETWEEN 1 AND 200`,
+    ),
+    check(
+      'signal_candidate_assembly_receipts_fingerprint_ck',
+      sql`${t.requestFingerprint} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check('signal_candidate_assembly_receipts_signal_id_ck', sql`${t.signalId} ~ '[^[:space:]]'`),
+    check('signal_candidate_assembly_receipts_source_version_ck', sql`${t.sourceVersion} > 0`),
+    check(
+      'signal_candidate_assembly_receipts_target_version_ck',
+      sql`${t.targetVersion} > ${t.sourceVersion}`,
+    ),
+    check(
+      'signal_candidate_assembly_receipts_content_hash_ck',
+      sql`${t.contentHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    uniqueIndex('signal_candidate_assembly_receipts_verification_uq').on(t.verificationId),
+  ],
+);
+
 export const signalVersionPeople = pgTable(
   'signal_version_people',
   {

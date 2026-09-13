@@ -54,7 +54,15 @@ import {
   qualifiedPublicationUniqueIndexes,
 } from './qualified-publication-catalog.mjs';
 import {
-  stampedSignalTables,
+  candidateVerificationColumns,
+  candidateVerificationPrimaryKeys,
+  candidateVerificationForeignKeys,
+  candidateVerificationChecks,
+  candidateVerificationUniqueIndexes,
+  candidateVerificationDefaults,
+} from './candidate-verification-catalog.mjs';
+import {
+  allStampedSignalTables,
   expectedSignalTriggerCount,
   collectSignalImmutabilityProblems,
 } from './signal-immutability-catalog.mjs';
@@ -188,8 +196,9 @@ const expectedColumns = {
   ...signalPublicationColumns,
   ...signalPublicationControlColumns,
   ...qualifiedPublicationColumns,
+  ...candidateVerificationColumns,
 };
-for (const tableName of stampedSignalTables) {
+for (const tableName of allStampedSignalTables) {
   expectedColumns[tableName] = {
     ...expectedColumns[tableName],
     created_xid: ['xid8', true],
@@ -254,6 +263,7 @@ const expectedPrimaryKeys = new Set([
   ...signalPublicationPrimaryKeys,
   ...signalPublicationControlPrimaryKeys,
   ...qualifiedPublicationPrimaryKeys,
+  ...candidateVerificationPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -276,6 +286,7 @@ const expectedForeignKeys = new Set([
   ...signalPublicationForeignKeys,
   ...signalPublicationControlForeignKeys,
   ...qualifiedPublicationForeignKeys,
+  ...candidateVerificationForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -297,6 +308,7 @@ const expectedCheckExpressions = {
   ...signalPublicationChecks,
   ...signalPublicationControlChecks,
   ...qualifiedPublicationChecks,
+  ...candidateVerificationChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -351,13 +363,14 @@ const expectedCheckExpressions = {
 };
 
 const expectedDefaults = new Map([
-  ...stampedSignalTables.map((name) => [
+  ...allStampedSignalTables.map((name) => [
     `${name}.created_xid`,
     new Set(['pg_current_xact_id', 'pg_catalog.pg_current_xact_id']),
   ]),
   ...signalFoundationDefaults,
   ...affiliationDefaults,
   ...signalPublicationControlDefaults,
+  ...candidateVerificationDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
   ['topics.runtime_enabled', new Set(['false'])],
@@ -385,6 +398,7 @@ const expectedUniqueIndexes = new Set([
   ...eventIdentityUniqueIndexes,
   ...signalPublicationUniqueIndexes,
   ...qualifiedPublicationUniqueIndexes,
+  ...candidateVerificationUniqueIndexes,
   'entities|id,type',
   'radar_snapshots|topic_id,snapshot_date',
   'radar_snapshot_signals|snapshot_id,position',
@@ -702,7 +716,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
             array_agg(
               pg_get_constraintdef(constraint_info.oid, table_info.relname NOT IN (
                 'signal_publication_control', 'signal_publication_tasks', 'signal_publication_runs',
-                'signal_qualified_publication_receipts'
+                'signal_qualified_publication_receipts',
+                'signal_candidate_verifications', 'signal_candidate_assembly_receipts'
               ))::text
               ORDER BY constraint_info.oid
             ) AS definitions
@@ -738,7 +753,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
   for (const [tableName, expressionAlternatives] of Object.entries(expectedCheckExpressions)) {
     const canonicalize =
       Object.hasOwn(signalPublicationControlChecks, tableName) ||
-      Object.hasOwn(qualifiedPublicationChecks, tableName)
+      Object.hasOwn(qualifiedPublicationChecks, tableName) ||
+      Object.hasOwn(candidateVerificationChecks, tableName)
         ? canonicalPublicationControlCheck
         : [
               'signal_event_identities',

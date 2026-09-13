@@ -104,7 +104,8 @@ async function edges(client, table, signalId, version) {
   );
 }
 
-async function lockBundle(client, command) {
+// Internal shared reader for trusted candidate verification. Not a package API.
+export async function lockBundle(client, command) {
   const result = await client.query(
     `SELECT ${snapshotColumns.join(', ')},
        created_xid <> pg_catalog.pg_current_xact_id() AS sealed,
@@ -244,7 +245,8 @@ async function lockBundle(client, command) {
   };
 }
 
-async function assembleVersion(client, snapshot, bundle) {
+// Internal shared writer: callers must own the transaction and validate all rows.
+export async function assembleVersion(client, snapshot, bundle) {
   await client.query(
     `INSERT INTO public.signal_versions (${snapshotColumns.join(', ')})
      VALUES (${snapshotColumns.map((_, index) => `$${index + 1}`).join(', ')})`,

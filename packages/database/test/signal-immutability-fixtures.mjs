@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
-import { sealedSignalTriggers, stampedSignalTables } from '../src/signal-immutability-catalog.mjs';
+import {
+  sealedSignalTriggers,
+  allStampedSignalTables,
+} from '../src/signal-immutability-catalog.mjs';
 
 // Test data only. Production expectations are separately pinned source hashes.
 const migration = [
@@ -8,6 +11,7 @@ const migration = [
   '0008_signal_publication_outbox.sql',
   '0009_signal_publication_controls.sql',
   '0010_qualified_signal_publication.sql',
+  '0011_signal_candidate_verification.sql',
 ]
   .map((name) => readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), 'utf8'))
   .join('\n');
@@ -57,7 +61,7 @@ export function signalImmutabilityFixture(owner = 'hzense_migrator') {
       unsafe_acl_count: 0,
       owner_execute_count: 1,
     })),
-    stamps: stampedSignalTables.map((table_name) => ({
+    stamps: allStampedSignalTables.map((table_name) => ({
       table_name,
       data_type: 'xid8',
       not_null: true,

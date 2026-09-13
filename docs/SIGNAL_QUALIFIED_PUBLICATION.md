@@ -4,6 +4,8 @@
 
 设计取舍、反面观点与来源见[设计记录](../insights/2026-09-13-qualified-publication/README.md)。本批不将 `pending` 候选自动升级成 `verified`，也不把数据库状态检查等同于新闻事实核验。
 
+后续增量 `0011` 见[受控核验记录与候选组装](SIGNAL_CANDIDATE_VERIFICATION.md)：对已核验原文、已封存但人物／组织边仍 pending 的候选，依据可信记录创建新的候选版本，不修改本页 `0010` 的事务和权限边界。
+
 ## 1. 输入、输出与版本语义
 
 私有入口位于 [signal-qualified-publication-store.mjs](../packages/database/src/signal-qualified-publication-store.mjs)：
@@ -123,3 +125,5 @@ publishPrivateQualifiedSignalVersion({
 - 专用 PostgreSQL 18.4 / pgvector 0.8.6 上完整 `test:migrations` 连续三轮各 321 项通过：首组 160、Topic 5、Runtime 50、ACL 14、writer 92。普通单元测试跳过的原生项目不计为单元通过。
 - 整仓 1634 项单元测试通过（database 1191、content 372、search 28、web 43），构建／类型检查／lint 的 Turbo 16 项任务成功，12 项复用缓存；格式与 diff 检查通过。
 - 业务 `src`、全部历史迁移、角色授权 SQL、依赖锁与 CI 工作流不变；只增加测试脚本的套件接入。以上为提交前本地证据，修复通过独立 PR 交付，PR CI／评审／合并及后续 main CI 另行确认；未操作生产数据库。
+
+**交付更新：** 上述修复已通过 [PR #75](https://github.com/hzense/tech-intelligence-hub/pull/75) 合并为 `3eef3f9`，对应 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34768195574) 成功；历史失败运行未被改写，不再将当前 main 标为仍待修复。本次候选组装开发基于之后已合并的 `main@9b022ee`，未执行生产迁移。

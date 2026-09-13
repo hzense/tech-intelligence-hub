@@ -13,18 +13,38 @@ import {
 const owner = 'hzense_migrator';
 
 describe('Signal transaction seal exact catalog contract', () => {
-  it('accepts exactly seven reviewed functions, twenty-four guards and three xid8 columns', () => {
+  it('accepts exactly eight reviewed functions, twenty-nine guards and four xid8 columns', () => {
     const fixture = signalImmutabilityFixture();
-    expect(fixture.routines).toHaveLength(7);
-    expect(fixture.triggers).toHaveLength(24);
+    expect(fixture.routines).toHaveLength(8);
+    expect(fixture.triggers).toHaveLength(29);
+    expect(fixture.stamps).toHaveLength(4);
     expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([]);
     expect(expectedSignalTriggerCount('signal_versions')).toBe(2);
     expect(expectedSignalTriggerCount('signal_publication_outbox')).toBe(3);
     expect(expectedSignalTriggerCount('signal_publication_state')).toBe(2);
     expect(expectedSignalTriggerCount('signal_publication_runs')).toBe(2);
     expect(expectedSignalTriggerCount('signal_qualified_publication_receipts')).toBe(3);
+    expect(expectedSignalTriggerCount('signal_candidate_verifications')).toBe(2);
+    expect(expectedSignalTriggerCount('signal_candidate_assembly_receipts')).toBe(3);
     expect(expectedSignalTriggerCount('topics')).toBe(0);
     expect(expectedSignalTriggerCount('unexpected')).toBe(0);
+  });
+
+  it.each([
+    ['deferrable', false],
+    ['initially_deferred', false],
+    ['enabled', 'O'],
+    ['trigger_type', 7],
+    ['routine_name', 'hzense_guard_publication_run'],
+    ['when_expression', 'false'],
+  ])('rejects weakened candidate assembly approval guard %s', (key, value) => {
+    const fixture = signalImmutabilityFixture();
+    fixture.triggers.find((row) => row.name === 'signal_candidate_assembly_receipts_approval_trg')[
+      key
+    ] = value;
+    expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([
+      expect.stringContaining('trigger contract mismatch'),
+    ]);
   });
 
   it.each([
@@ -83,6 +103,8 @@ describe('Signal transaction seal exact catalog contract', () => {
     'hzense_guard_publication_receipt',
     'hzense_check_publication_pair',
     'hzense_guard_publication_run',
+    'hzense_guard_qualified_publication_receipt',
+    'hzense_guard_candidate_verification',
   ])('pins publication function %s source and privileges', (name) => {
     for (const mutation of [
       (routine) => {
@@ -186,6 +208,18 @@ describe('Signal transaction seal exact catalog contract', () => {
         expect.stringContaining('creation transaction column mismatch'),
       ]),
     );
+  });
+
+  it('pins the candidate verification xid separately from the legacy seal attachment set', () => {
+    const fixture = signalImmutabilityFixture();
+    fixture.stamps.find(
+      (row) => row.table_name === 'signal_candidate_verifications',
+    ).default_expression = "'1'::xid8";
+    expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([
+      expect.stringContaining(
+        'creation transaction column mismatch: signal_candidate_verifications',
+      ),
+    ]);
   });
 
   it('does not discard semantic whitespace, case or punctuation within function bodies', () => {
