@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
 import process from 'node:process';
 import { URL } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
-import { runMigrations, migrationLockKeys } from '../src/migrate.mjs';
+import { loadMigrations, runMigrations, migrationLockKeys } from '../src/migrate.mjs';
 import { inspectTopicSyncPreflight } from '../src/topic-sync-preflight.mjs';
 import { runTopicSync, syncTopics } from '../src/topic-sync.mjs';
 
@@ -157,9 +158,10 @@ integrationSuite('PostgreSQL Topic sync integration', () => {
   }, 30_000);
 
   it('applies, preserves unrelated metadata and reruns as a physical no-op', async () => {
+    const migrations = await loadMigrations(resolve(process.cwd(), '../../db/migrations'));
     await expect(
       withClient(databaseUrl(syncRole, syncPassword), syncPreflight),
-    ).resolves.toMatchObject({ connectionLimit: 2, migrationCount: 5 });
+    ).resolves.toMatchObject({ connectionLimit: 2, migrationCount: migrations.length });
 
     const reviewed = await runRestrictedSync(desiredTopics, true);
     expect(reviewed).toMatchObject({ committed: false, inserted: 3, updated: 0 });

@@ -4,12 +4,15 @@ import { getTableName } from 'drizzle-orm';
 import { getTableConfig, PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 import {
+  affiliationEvidence,
   entities,
   organizationProfiles,
   personProfiles,
+  personOrganizationAffiliations,
   publicSourceEvidence,
   radarSnapshots,
   radarSnapshotSignals,
+  relations,
   searchDocuments,
   signals,
   signalVersionEvidence,
@@ -20,10 +23,159 @@ import {
   sources,
   topics,
 } from '../src/schema.js';
+import { affiliationChecks, affiliationRelationChecks } from '../src/affiliation-catalog.mjs';
+import { canonicalCatalogExpression } from '../src/verify.mjs';
 
 function columnNames(table: Parameters<typeof getTableConfig>[0]): string[] {
   return getTableConfig(table).columns.map((column) => column.name);
 }
+
+describe('Person organization affiliation foundation', () => {
+  const tables = [personOrganizationAffiliations, affiliationEvidence];
+
+  it('reuses the exact directed relation identity and leaves dates in one place', () => {
+    expect(columnNames(personOrganizationAffiliations)).toEqual([
+      'relation_id',
+      'person_id',
+      'organization_id',
+      'relation_type',
+      'role_title',
+      'date_basis',
+      'verification_status',
+    ]);
+    expect(columnNames(affiliationEvidence)).toEqual([
+      'relation_id',
+      'evidence_id',
+      'claim',
+      'relation',
+      'verification_status',
+    ]);
+    expect(columnNames(relations)).toEqual(expect.arrayContaining(['valid_from', 'valid_to']));
+    expect(tables.flatMap(columnNames)).not.toEqual(expect.arrayContaining(['valid_from']));
+    expect(tables.flatMap(columnNames)).not.toEqual(expect.arrayContaining(['valid_to']));
+    const identity = getTableConfig(relations).indexes.find(
+      (index) => index.config.name === 'relations_identity_uq',
+    );
+    expect(identity?.config.unique).toBe(true);
+    expect(identity?.config.columns.map((column) => 'name' in column && column.name)).toEqual([
+      'id',
+      'source_id',
+      'target_id',
+      'relation_type',
+    ]);
+    const reference = getTableConfig(personOrganizationAffiliations).foreignKeys[0].reference();
+    expect(getTableName(reference.foreignTable)).toBe('relations');
+    expect(reference.columns.map((column) => column.name)).toEqual([
+      'relation_id',
+      'person_id',
+      'organization_id',
+      'relation_type',
+    ]);
+    expect(reference.foreignColumns.map((column) => column.name)).toEqual([
+      'id',
+      'source_id',
+      'target_id',
+      'relation_type',
+    ]);
+    expect(
+      getTableConfig(personOrganizationAffiliations).foreignKeys.map((key) =>
+        getTableName(key.reference().foreignTable),
+      ),
+    ).toEqual(['relations', 'person_profiles', 'organization_profiles']);
+  });
+
+  it('allows repeat appointments and multiple evidence without declaring verification or publication', () => {
+    expect(personOrganizationAffiliations.relationId.primary).toBe(true);
+    expect(
+      getTableConfig(personOrganizationAffiliations).indexes.every((index) => !index.config.unique),
+    ).toBe(true);
+    expect(
+      getTableConfig(affiliationEvidence).primaryKeys[0].columns.map((column) => column.name),
+    ).toEqual(['relation_id', 'evidence_id']);
+    expect(personOrganizationAffiliations.verificationStatus.default).toBe('pending');
+    expect(affiliationEvidence.verificationStatus.default).toBe('pending');
+    for (const table of tables) {
+      for (const key of getTableConfig(table).foreignKeys) {
+        expect(key.onUpdate).toBe('no action');
+        expect(key.onDelete).toBe('no action');
+      }
+    }
+  });
+
+  it('keeps Drizzle constraints equal to the independent exact catalog', () => {
+    const dialect = new PgDialect();
+    for (const table of [...tables, relations]) {
+      const config = getTableConfig(table);
+      const checks =
+        config.name === 'relations'
+          ? config.checks.filter((constraint) => constraint.name.startsWith('relations_valid_'))
+          : config.checks;
+      const expected =
+        config.name === 'relations'
+          ? affiliationRelationChecks
+          : affiliationChecks[config.name as keyof typeof affiliationChecks];
+      const actual = checks.map((constraint) =>
+        canonicalCatalogExpression(
+          dialect
+            .sqlToQuery(constraint.value)
+            .sql.replace(/"[a-z_]+"\."([a-z_]+)"/g, '$1')
+            .replace(/DATE ('[^']*')/g, '$1')
+            .replace(/ IN \(([^)]+)\)/g, '=ANY(ARRAY[$1])'),
+        ),
+      );
+      expect(actual).toHaveLength(expected.length);
+      for (const [index, expression] of actual.entries()) {
+        expect(expected[index]).toContain(expression);
+        expect(expected[index]).not.toContain(`${expression}ortrue`);
+      }
+    }
+  });
+
+  it('ships append-only fail-closed DDL without data rewrites or privileges', async () => {
+    const migration = await readFile(
+      resolve(process.cwd(), '../../db/migrations/0005_person_organization_affiliations.sql'),
+      'utf8',
+    );
+    const normalized = migration
+      .replace(/\s+/g, ' ')
+      .replace(/CHECK \( /g, 'CHECK (')
+      .replace(/ \),/g, '),')
+      .replace(/ \);/g, ');');
+    const dialect = new PgDialect();
+    for (const table of [...tables, relations]) {
+      const config = getTableConfig(table);
+      const checks =
+        config.name === 'relations'
+          ? config.checks.filter((constraint) => constraint.name.startsWith('relations_valid_'))
+          : config.checks;
+      for (const constraint of checks) {
+        const expression = dialect
+          .sqlToQuery(constraint.value)
+          .sql.replace(/"[a-z_]+"\."([a-z_]+)"/g, '$1')
+          .replace(/\s+/g, ' ');
+        expect(normalized).toContain(`CONSTRAINT ${constraint.name} CHECK (${expression})`);
+        expect(constraint.name.length).toBeLessThanOrEqual(63);
+      }
+      if (table === relations) continue;
+      for (const key of config.foreignKeys) {
+        const reference = key.reference();
+        expect(normalized).toContain(
+          `CONSTRAINT ${key.getName()} FOREIGN KEY (${reference.columns.map((column) => column.name).join(', ')}) REFERENCES ${getTableName(reference.foreignTable)}(${reference.foreignColumns.map((column) => column.name).join(', ')}) ON UPDATE NO ACTION ON DELETE NO ACTION`,
+        );
+      }
+      for (const index of config.indexes) {
+        expect(normalized).toContain(
+          `CREATE INDEX ${index.config.name} ON ${config.name}(${index.config.columns.map((column) => 'name' in column && column.name).join(', ')})`,
+        );
+      }
+    }
+    const executable = migration.replace(/^--.*$/gm, '');
+    expect(executable).not.toMatch(/\b(?:GRANT|TRIGGER|FUNCTION|VIEW|POLICY|NOT VALID)\b/i);
+    expect(executable).not.toMatch(
+      /\b(?:INSERT\s+INTO|UPDATE\s+relations|DELETE\s+FROM|CASCADE)\b/i,
+    );
+  });
+});
 
 describe('Radar evidence persistence schema', () => {
   it('keeps Signal and Radar evidence fields aligned with the information model', () => {

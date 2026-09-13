@@ -150,16 +150,11 @@ integrationSuite('PostgreSQL migration integration', () => {
 
   it('migrates a fresh pgvector database and reruns idempotently', async () => {
     const databaseUrl = connectionUrl(databaseNames.fresh);
+    const migrations = await loadMigrations(resolve(process.cwd(), '../../db/migrations'));
     await expect(
       runDatabasePreflight(productionLikeOptions(databaseNames.fresh)),
     ).resolves.toMatchObject({
-      pendingMigrations: [
-        '0000_foundation.sql',
-        '0001_radar_evidence.sql',
-        '0002_topic_projection.sql',
-        '0003_search_documents_fts.sql',
-        '0004_signal_version_foundation.sql',
-      ],
+      pendingMigrations: migrations.map(({ name }) => name),
       pgvectorVersion: '0.8.6',
     });
 
@@ -224,8 +219,8 @@ integrationSuite('PostgreSQL migration integration', () => {
     await expect(
       verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
     ).resolves.toMatchObject({
-      migrationCount: 5,
-      tableCount: 21,
+      migrationCount: migrations.length,
+      tableCount: expectedTableNames.size,
     });
   }, 30_000);
 
@@ -383,6 +378,211 @@ integrationSuite('PostgreSQL migration integration', () => {
         await client.query('ROLLBACK');
       }
     });
+  }, 30_000);
+
+  it('stores directed affiliations, conservative date bounds and multiple evidence without public access', async () => {
+    await withClient(connectionUrl(databaseNames.fresh), async (client) => {
+      await client.query('BEGIN');
+      const rejected = async (sql, code) => {
+        await client.query('SAVEPOINT invalid_affiliation_input');
+        try {
+          await expect(client.query(sql)).rejects.toMatchObject({ code });
+        } finally {
+          await client.query('ROLLBACK TO SAVEPOINT invalid_affiliation_input');
+          await client.query('RELEASE SAVEPOINT invalid_affiliation_input');
+        }
+      };
+      try {
+        await client.query(`
+          INSERT INTO entities(id, type, name) VALUES
+            ('aff-person', 'person', 'Fixture person'),
+            ('aff-person-two', 'person', 'Another fixture person'),
+            ('aff-org', 'company', 'Fixture organization'),
+            ('aff-org-two', 'institution', 'Another fixture organization');
+          INSERT INTO person_profiles(entity_id) VALUES ('aff-person'), ('aff-person-two');
+          INSERT INTO organization_profiles(entity_id, entity_type)
+            VALUES ('aff-org', 'company'), ('aff-org-two', 'institution');
+          INSERT INTO relations(id, source_id, target_id, relation_type, valid_from, valid_to)
+            VALUES ('aff-relation', 'aff-person', 'aff-org', 'works_at', '2026-01-01', '2026-01-01'),
+              ('aff-repeat', 'aff-person', 'aff-org', 'works_at', NULL, NULL),
+              ('aff-advice', 'aff-person', 'aff-org-two', 'advises', NULL, '2026-01-01'),
+              ('aff-lead', 'aff-person', 'aff-org-two', 'leads', '2026-01-01', NULL);
+          INSERT INTO person_organization_affiliations(relation_id, person_id, organization_id,
+            relation_type, role_title, date_basis)
+            SELECT id, source_id, target_id, relation_type, 'Fixture role', 'Dates stated by source'
+            FROM relations WHERE id IN ('aff-relation', 'aff-repeat', 'aff-advice', 'aff-lead');
+          INSERT INTO sources(id, name, type, trust_score, allowed_hosts)
+            VALUES ('aff-source', 'Fixture source', 'website', 80, ARRAY['example.com']);
+          INSERT INTO public_source_evidence(id, source_id, source_url, locator,
+            excerpt, content_hash, captured_at)
+            SELECT id, 'aff-source', 'https://example.com/affiliation', 'paragraph 1',
+              'Fixture appointment excerpt', repeat('c', 64), '2026-09-13T00:00:00Z'
+            FROM unnest(ARRAY['aff-evidence-one', 'aff-evidence-two']) AS id;
+          INSERT INTO affiliation_evidence(relation_id, evidence_id, claim, relation)
+            VALUES ('aff-relation', 'aff-evidence-one', 'Fixture appointment claim', 'supports'),
+              ('aff-relation', 'aff-evidence-two', 'Fixture contrary claim', 'contradicts'),
+              ('aff-repeat', 'aff-evidence-one', 'Fixture context', 'context');
+        `);
+        expect(
+          (
+            await client.query(
+              'SELECT count(*)::integer AS count FROM person_organization_affiliations',
+            )
+          ).rows[0].count,
+        ).toBe(4);
+        expect(
+          (await client.query('SELECT count(*)::integer AS count FROM affiliation_evidence'))
+            .rows[0].count,
+        ).toBe(3);
+        for (const table of ['person_organization_affiliations', 'affiliation_evidence']) {
+          expect(
+            (await client.query(`SELECT DISTINCT verification_status FROM ${table}`)).rows,
+          ).toEqual([{ verification_status: 'pending' }]);
+          await rejected(`UPDATE ${table} SET verification_status='published'`, '23514');
+        }
+        for (const [from, to] of [
+          ['0001-01-01', '9999-12-31'],
+          ['2026-01-01', '2026-01-01'],
+        ]) {
+          await client.query('UPDATE relations SET valid_from=$1, valid_to=$2 WHERE id=$3', [
+            from,
+            to,
+            'aff-relation',
+          ]);
+        }
+        for (const field of ['valid_from', 'valid_to']) {
+          for (const value of ['infinity', '-infinity', '0001-01-01 BC', '10000-01-01']) {
+            await rejected(
+              `UPDATE relations SET ${field}='${value}' WHERE id='aff-relation'`,
+              '23514',
+            );
+          }
+          await rejected(`UPDATE relations SET ${field}='NaN' WHERE id='aff-relation'`, '22007');
+        }
+        await rejected(
+          "UPDATE relations SET valid_from='2026-01-02',valid_to='2026-01-01' WHERE id='aff-relation'",
+          '23514',
+        );
+        for (const mutation of [
+          "person_id='aff-person-two'",
+          "organization_id='aff-org-two'",
+          "person_id='aff-org',organization_id='aff-person'",
+          "relation_id='missing-relation'",
+          "relation_type='advises'",
+        ]) {
+          await rejected(
+            `UPDATE person_organization_affiliations SET ${mutation} WHERE relation_id='aff-relation'`,
+            '23503',
+          );
+        }
+        for (const relationType of ['founded', 'invests_in']) {
+          await rejected(
+            `UPDATE person_organization_affiliations SET relation_type='${relationType}' WHERE relation_id='aff-relation'`,
+            '23514',
+          );
+        }
+        // Even a matching reversed legacy edge cannot bypass typed profile FKs.
+        await client.query(
+          "INSERT INTO relations(id,source_id,target_id,relation_type) VALUES ('aff-reversed','aff-org','aff-person','works_at')",
+        );
+        await rejected(
+          "INSERT INTO person_organization_affiliations(relation_id,person_id,organization_id,relation_type,role_title,date_basis) VALUES ('aff-reversed','aff-org','aff-person','works_at','Fixture','Fixture')",
+          '23503',
+        );
+        for (const mutation of [
+          "id='changed'",
+          "source_id='aff-person-two'",
+          "target_id='aff-org-two'",
+          "relation_type='advises'",
+        ]) {
+          await rejected(`UPDATE relations SET ${mutation} WHERE id='aff-relation'`, '23503');
+        }
+        await rejected(
+          "UPDATE affiliation_evidence SET evidence_id='missing-evidence' WHERE evidence_id='aff-evidence-two'",
+          '23503',
+        );
+        await rejected(
+          "UPDATE affiliation_evidence SET relation_id='missing-affiliation' WHERE evidence_id='aff-evidence-two'",
+          '23503',
+        );
+        for (const [table, predicate] of [
+          ['relations', "id='aff-relation'"],
+          ['person_profiles', "entity_id='aff-person'"],
+          ['organization_profiles', "entity_id='aff-org'"],
+          ['person_organization_affiliations', "relation_id='aff-relation'"],
+          ['public_source_evidence', "id='aff-evidence-one'"],
+        ]) {
+          await rejected(`DELETE FROM ${table} WHERE ${predicate}`, '23503');
+        }
+        for (const [table, field] of [
+          ['person_organization_affiliations', 'role_title'],
+          ['person_organization_affiliations', 'date_basis'],
+          ['affiliation_evidence', 'claim'],
+        ]) {
+          for (const blank of ["''", "'   '", 'chr(9)||chr(10)']) {
+            await rejected(`UPDATE ${table} SET ${field}=${blank}`, '23514');
+          }
+        }
+        await rejected("UPDATE affiliation_evidence SET relation='unverified'", '23514');
+        await rejected(
+          "INSERT INTO person_organization_affiliations SELECT * FROM person_organization_affiliations WHERE relation_id='aff-relation'",
+          '23505',
+        );
+        await rejected(
+          "INSERT INTO affiliation_evidence SELECT * FROM affiliation_evidence WHERE relation_id='aff-relation'",
+          '23505',
+        );
+        const access = await client.query(
+          `SELECT bool_or(has_table_privilege($1, oid, 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN')) AS allowed
+          FROM pg_class WHERE relnamespace='public'::regnamespace AND relname=ANY($2::text[])`,
+          [inheritedRole, ['person_organization_affiliations', 'affiliation_evidence']],
+        );
+        expect(access.rows[0].allowed).toBe(false);
+      } finally {
+        await client.query('ROLLBACK');
+      }
+    });
+  }, 30_000);
+
+  it('rejects invalid legacy relation dates before adding affiliations without repairing data', async () => {
+    const migrationSql = await readFile(
+      resolve(process.cwd(), '../../db/migrations/0005_person_organization_affiliations.sql'),
+      'utf8',
+    );
+    await withClient(connectionUrl(databaseNames.fresh), async (client) => {
+      await client.query('BEGIN');
+      try {
+        await client.query(`
+          DROP TABLE affiliation_evidence;
+          DROP TABLE person_organization_affiliations;
+          DROP INDEX relations_identity_uq;
+          ALTER TABLE relations DROP CONSTRAINT relations_valid_from_ck,
+            DROP CONSTRAINT relations_valid_to_ck, DROP CONSTRAINT relations_valid_interval_ck;
+          INSERT INTO entities(id,type,name) VALUES ('aff-legacy-person','person','Fixture'), ('aff-legacy-org','company','Fixture');
+          INSERT INTO relations(id,source_id,target_id,relation_type,valid_from,valid_to)
+            VALUES ('aff-legacy','aff-legacy-person','aff-legacy-org','founded','2026-02-01','2026-01-01');
+        `);
+        await client.query('SAVEPOINT legacy_affiliation_migration');
+        await expect(client.query(migrationSql)).rejects.toMatchObject({ code: '23514' });
+        await client.query('ROLLBACK TO SAVEPOINT legacy_affiliation_migration');
+        expect(
+          (
+            await client.query(
+              "SELECT valid_from::text, valid_to::text FROM relations WHERE id='aff-legacy'",
+            )
+          ).rows,
+        ).toEqual([{ valid_from: '2026-02-01', valid_to: '2026-01-01' }]);
+        expect(
+          (await client.query("SELECT to_regclass('person_organization_affiliations') AS relation"))
+            .rows[0].relation,
+        ).toBeNull();
+      } finally {
+        await client.query('ROLLBACK');
+      }
+    });
+    await expect(
+      verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
+    ).resolves.toMatchObject({ tableCount: expectedTableNames.size });
   }, 30_000);
 
   it('rejects a migration login that can inherit or SET ROLE', async () => {

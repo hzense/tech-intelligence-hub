@@ -1245,17 +1245,17 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 
 本节描述仓库已实现、由自动校验保护的 PostgreSQL `public` Schema 目标，不把尚未执行的迁移表述为生产现状。当前仓库目标包含：
 
-- 21 张持久表：20 张领域或派生数据表，以及 1 张 Migration 历史表；其中 8 张来自尚未上线的 `0004`。
+- 23 张持久表：22 张领域或派生数据表，以及 1 张 Migration 历史表；其中 8 张来自 `0004`，2 张来自 `0005`，两批均未在本轮执行生产迁移。
 - 9 个 PostgreSQL Enum。
 - `vector` 扩展，以及 `search_documents.embedding vector(1536)`。
-- 仓库 Migration manifest 登记五个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql`、`0003_search_documents_fts.sql` 和 `0004_signal_version_foundation.sql`。`0003` 的历史生产执行见 [FTS-1 切换记录](production-evidence/acl/34535908960-1/cutover.md)；本批未执行 `0004`，不声明生产已有 21 表。
+- 仓库 Migration manifest 登记六个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql`、`0003_search_documents_fts.sql`、`0004_signal_version_foundation.sql` 和 `0005_person_organization_affiliations.sql`。`0003` 的历史生产执行见 [FTS-1 切换记录](production-evidence/acl/34535908960-1/cutover.md)；本批未执行 `0004`／`0005`，不声明生产已有 23 表。
 
 物理结构的权威顺序如下：
 
-1. [`db/migrations/*.sql`](../db/migrations/) 是 20 张应用 Schema 表的可执行 DDL 权威来源。
+1. [`db/migrations/*.sql`](../db/migrations/) 是 22 张应用 Schema 表的可执行 DDL 权威来源。
 2. [`packages/database/src/migrate.mjs`](../packages/database/src/migrate.mjs) 创建并维护运维表 `hzense_schema_migrations`。
-3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts) 是 20 张应用 Schema 表的 Drizzle 类型映射；运维历史表不进入应用 ORM 映射。
-4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs) 与 [V2-1a catalog 契约](../packages/database/src/signal-foundation-catalog.mjs) 独立校验完整 21 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史。
+3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts) 是 22 张应用 Schema 表的 Drizzle 类型映射；运维历史表不进入应用 ORM 映射。
+4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs)、[V2-1a catalog 契约](../packages/database/src/signal-foundation-catalog.mjs) 与[任职 catalog 契约](../packages/database/src/affiliation-catalog.mjs) 独立校验完整 23 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史。
 5. 本节是上述可执行合约的设计说明，不能代替 Migration 或 Runner DDL。
 
 Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文的 Source of Truth，公开 Signal 仍读 Seed。新增 `signal_versions` 可以保存完整快照，但本批未导入或发布正文，也未将其接入公开读取。
@@ -1291,7 +1291,16 @@ Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNo
 | `signal_version_organizations` | PK (signal_id,version,organization_id,evidence_id)；组织档案 FK、同版本证据及事件角色                 |
 | `signal_version_topics`        | PK (signal_id,version,topic_id)；版本与规范 Topic 外键                                                |
 
-实体新增 `(id,type)` 唯一索引作为类型化外键目标；上述新增外键全部 NO ACTION，防止级联删除快照／证据。没有公开版本指针或发表状态，没有引入 Trigger/函数/权限放宽；跨表发表资格、数据库级版本不可变和人物任职关系仍待后续实施。详细字段与验收见 [V2-1a 契约](SIGNAL_V3_FOUNDATION.md)。
+实体新增 `(id,type)` 唯一索引作为类型化外键目标；上述新增外键全部 NO ACTION，防止级联删除快照／证据。没有公开版本指针或发表状态，没有引入 Trigger/函数/权限放宽；跨表发表资格和数据库级版本不可变仍待后续实施。详细字段与验收见 [V2-1a 契约](SIGNAL_V3_FOUNDATION.md)。
+
+`0005` 另增下列 2 张私有表：
+
+| 表                                 | 主键与约束                                                                                                                                                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `person_organization_affiliations` | PK relation_id；复合 FK (relation_id,person_id,organization_id,relation_type) → relations(id,source_id,target_id,relation_type)；人物／组织档案 FK；类型限 works_at/leads/advises，职务及日期依据非空白，核验状态默认 pending |
+| `affiliation_evidence`             | PK (relation_id,evidence_id)；FK → 任职及公开原文证据；保存断言、supports/contradicts/context 及核验状态，支持一段任职多证据                                                                                                  |
+
+`relations` 新增 `(id,source_id,target_id,relation_type)` 唯一索引。`valid_from`／`valid_to` 仍是唯一有效期字段，新增有限日期、`0001-01-01` 至 `9999-12-31` 和起止顺序 CHECK，允许空值及同日区间；这些 CHECK 也作用于旧非任职关系，非法历史值导致迁移失败，不自动清洗。所有新增外键 NO ACTION，不增加授权。空端点表示未知而非“至今”；证据与按日覆盖判定相互独立，不能仅凭现任职务推断历史 Signal 所属组织。当前没有任职不可变版本或自动发表资格，细节见[任职实施契约](PERSON_ORGANIZATION_AFFILIATIONS.md)。
 
 ## 40.3 核心关系
 
