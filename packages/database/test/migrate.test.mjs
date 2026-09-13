@@ -26,6 +26,7 @@ describe('database migration runner', () => {
       '0007_signal_version_immutability.sql',
       '0008_signal_publication_outbox.sql',
       '0009_signal_publication_controls.sql',
+      '0010_qualified_signal_publication.sql',
     ]);
     expect(migrations.every((migration) => migration.checksum.length === 64)).toBe(true);
     await expect(verifyMigrationManifest(migrations)).resolves.toBeUndefined();

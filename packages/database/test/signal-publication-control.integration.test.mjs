@@ -548,7 +548,12 @@ suite('PostgreSQL private persisted publication controls and run leases', () => 
           [request.run_id],
         ],
         ['DELETE FROM public.signal_publication_runs WHERE run_id=$1', [request.run_id]],
-        ['TRUNCATE public.signal_publication_runs', []],
+        // Include the new referencing receipt table so PostgreSQL reaches the
+        // ALWAYS lifecycle guard rather than its earlier FK truncate check.
+        [
+          'TRUNCATE public.signal_publication_runs, public.signal_qualified_publication_receipts',
+          [],
+        ],
         [
           "INSERT INTO public.signal_publication_runs(run_id,task_id,principal_id,original_intent,status,fencing_token,lease_owner,lease_expires_at) VALUES($1,$2,$3,'auto_publish','running',1,$4,date_trunc('milliseconds',clock_timestamp())+interval '1 minute')",
           [randomUUID(), request.task_id, request.principal_id, worker.lease_owner],
@@ -563,7 +568,10 @@ suite('PostgreSQL private persisted publication controls and run leases', () => 
       await rejectedSql(replica, 'DELETE FROM public.signal_publication_runs WHERE run_id=$1', [
         request.run_id,
       ]);
-      await rejectedSql(replica, 'TRUNCATE public.signal_publication_runs');
+      await rejectedSql(
+        replica,
+        'TRUNCATE public.signal_publication_runs, public.signal_qualified_publication_receipts',
+      );
       await rejectedSql(
         replica,
         "UPDATE public.signal_publication_runs SET original_intent='preview_only' WHERE run_id=$1",

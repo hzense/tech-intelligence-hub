@@ -491,6 +491,11 @@ export const signalPublicationOutbox = pgTable(
     ),
     uniqueIndex('signal_publication_outbox_request_key_uq').on(t.requestKey),
     uniqueIndex('signal_publication_outbox_revision_uq').on(t.signalId, t.publicationRevision),
+    uniqueIndex('signal_publication_outbox_qualified_receipt_uq').on(
+      t.requestKey,
+      t.signalId,
+      t.contentVersion,
+    ),
     uniqueIndex('signal_publication_outbox_state_uq').on(
       t.signalId,
       t.publicationRevision,
@@ -664,6 +669,71 @@ export const signalPublicationRuns = pgTable(
       sql`${t.leaseExpiresAt} IS NULL OR date_trunc('milliseconds', ${t.leaseExpiresAt}) = ${t.leaseExpiresAt}`,
     ),
     index('signal_publication_runs_task_lease_idx').on(t.taskId, t.status, t.leaseExpiresAt),
+  ],
+);
+
+// Private append-only binding. The migration additionally installs exact
+// transaction-seal and deferred control guards; this is not a public API.
+export const signalQualifiedPublicationReceipts = pgTable(
+  'signal_qualified_publication_receipts',
+  {
+    requestKey: text('request_key').primaryKey(),
+    requestFingerprint: text('request_fingerprint').notNull(),
+    signalId: text('signal_id').notNull(),
+    sourceVersion: integer('source_version').notNull(),
+    targetVersion: integer('target_version').notNull(),
+    runId: uuid('run_id').notNull(),
+    leaseOwner: uuid('lease_owner').notNull(),
+    fencingToken: integer('fencing_token').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'signal_qualified_publication_receipts_outbox_fk',
+      columns: [t.requestKey, t.signalId, t.targetVersion],
+      foreignColumns: [
+        signalPublicationOutbox.requestKey,
+        signalPublicationOutbox.signalId,
+        signalPublicationOutbox.contentVersion,
+      ],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    foreignKey({
+      name: 'signal_qualified_publication_receipts_source_fk',
+      columns: [t.signalId, t.sourceVersion],
+      foreignColumns: [signalVersions.signalId, signalVersions.version],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    foreignKey({
+      name: 'signal_qualified_publication_receipts_run_fk',
+      columns: [t.runId],
+      foreignColumns: [signalPublicationRuns.runId],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    check(
+      'signal_qualified_publication_receipts_request_key_ck',
+      sql`${t.requestKey} COLLATE "C" ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$'`,
+    ),
+    check(
+      'signal_qualified_publication_receipts_request_key_length_ck',
+      sql`length(${t.requestKey}) BETWEEN 1 AND 200`,
+    ),
+    check(
+      'signal_qualified_publication_receipts_fingerprint_ck',
+      sql`${t.requestFingerprint} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'signal_qualified_publication_receipts_signal_id_ck',
+      sql`${t.signalId} ~ '[^[:space:]]'`,
+    ),
+    check('signal_qualified_publication_receipts_source_version_ck', sql`${t.sourceVersion} > 0`),
+    check(
+      'signal_qualified_publication_receipts_target_version_ck',
+      sql`${t.targetVersion} > ${t.sourceVersion}`,
+    ),
+    check('signal_qualified_publication_receipts_token_ck', sql`${t.fencingToken} > 0`),
   ],
 );
 

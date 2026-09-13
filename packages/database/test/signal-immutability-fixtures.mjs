@@ -7,6 +7,7 @@ const migration = [
   '0007_signal_version_immutability.sql',
   '0008_signal_publication_outbox.sql',
   '0009_signal_publication_controls.sql',
+  '0010_qualified_signal_publication.sql',
 ]
   .map((name) => readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), 'utf8'))
   .join('\n');

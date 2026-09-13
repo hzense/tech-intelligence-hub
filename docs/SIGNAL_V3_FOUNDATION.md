@@ -2,7 +2,7 @@
 
 本批冻结 Signal 快照的机器契约 `3.0.0`，对应产品重构的 V2-1a。它与旧内容模型 `2.0.0` 并存；并不代表数据库权威切换或整个 V2-1 已完成。
 
-> **后续实施更新（2026-09-13）：** 本页保留 `0004` 首批边界。`0007` 的[事务封存与受限写入身份](SIGNAL_VERSION_IMMUTABILITY.md)已合并；新增 `created_xid` 是数据库元数据，不进入 `3.0.0` 指纹。`0008` 私有[发表转换与 Outbox 事务底座](SIGNAL_PUBLICATION_OUTBOX.md)已合并；正在交付 `0009` [任务与发布控制](SIGNAL_PUBLICATION_CONTROLS.md)。完整资格化 Publisher、真实消费者与读取切换仍待完成，未执行生产迁移。
+> **后续实施更新（2026-09-13）：** 本页保留 `0004` 首批边界。`0007` 的[事务封存与受限写入身份](SIGNAL_VERSION_IMMUTABILITY.md)已合并；新增 `created_xid` 是数据库元数据，不进入 `3.0.0` 指纹。`0008` 私有[发表转换与 Outbox 事务底座](SIGNAL_PUBLICATION_OUTBOX.md)及 `0009` [任务与发布控制](SIGNAL_PUBLICATION_CONTROLS.md)已合并；本地交付 `0010` [已记录资格检查与原子发表](SIGNAL_QUALIFIED_PUBLICATION.md)，克隆已封存的记录合格候选并共同提交回执。完整资格化 Publisher、受控核验产物、真实消费者与读取切换仍待完成，未执行生产迁移。
 
 ## 本批范围与安全边界
 

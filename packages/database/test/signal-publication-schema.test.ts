@@ -12,6 +12,7 @@ import {
   signalPublicationFunctionHashes,
   signalPublicationTriggers,
 } from '../src/signal-publication-catalog.mjs';
+import { qualifiedPublicationUniqueIndexes } from '../src/qualified-publication-catalog.mjs';
 import { canonicalCatalogExpressionWithLiterals, expectedTableNames } from '../src/verify.mjs';
 import { signalGuardSourceHash } from '../src/signal-immutability-catalog.mjs';
 
@@ -60,7 +61,9 @@ describe('Private Signal publication state and permanent receipt schema', () => 
         return `${getTableName(table)}|${config.columns.map((column) => 'name' in column && column.name).join(',')}`;
       }),
     );
-    expect(indexes).toEqual(signalPublicationUniqueIndexes);
+    expect(indexes.toSorted()).toEqual(
+      [...signalPublicationUniqueIndexes, ...qualifiedPublicationUniqueIndexes].toSorted(),
+    );
   });
 
   it('aligns every strict token, reason, revision and bounded millisecond timestamp CHECK with DDL', async () => {
