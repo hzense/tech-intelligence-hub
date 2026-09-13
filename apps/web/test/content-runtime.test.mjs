@@ -45,9 +45,9 @@ test('only exposes active Topics in attention order', async () => {
   assert.ok(topics.length > 0);
   assert.ok(topics.every((entry) => entry.frontMatter.status !== 'archived'));
   assert.deepEqual(
-    topics.map((entry) => entry.frontMatter.attention ?? 0),
+    topics.map((entry) => entry.assessment?.attention ?? -1),
     [...topics]
-      .map((entry) => entry.frontMatter.attention ?? 0)
+      .map((entry) => entry.assessment?.attention ?? -1)
       .sort((left, right) => right - left),
   );
 });

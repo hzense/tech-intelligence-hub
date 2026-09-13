@@ -1,12 +1,12 @@
 import type { SeedEntity, SeedRadarSnapshot, SeedSignal, SeedSource } from '@hzense/content';
-import { getTopicEntries, type TopicEntry } from '@/lib/content-runtime';
-import { filterLatestRadarSnapshots, type RadarFilters } from '@/lib/radar-model';
+import { getTopicEntries, type TopicEntry } from './content-runtime.ts';
+import { filterLatestRadarSnapshots, type RadarFilters } from './radar-model.ts';
 import {
   getRadarSnapshots,
   getResourceEntries,
   getSeedSourceMap,
   getSignalEntries,
-} from '@/lib/seed-runtime';
+} from './seed-runtime.ts';
 
 export interface RadarEvidenceSignal {
   signal: SeedSignal;

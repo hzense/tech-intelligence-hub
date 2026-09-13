@@ -4,10 +4,6 @@ title: AI 智能体
 type: topic
 status: strategic
 language: zh-CN
-attention: 92
-trend: rapid_growth
-maturity: emerging
-strategic_value: critical
 ---
 
 # AI 智能体

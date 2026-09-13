@@ -5,6 +5,8 @@ import {
   type FrontMatter,
   type MarkdownSection,
 } from '@hzense/content';
+import { getRadarSnapshots } from './seed-runtime.ts';
+import { projectTopicAssessments, type TopicEntry } from './topic-assessments.ts';
 
 type DailyFrontMatter = Extract<FrontMatter, { type: 'daily' }>;
 type InsightFrontMatter = Extract<FrontMatter, { type: 'insight' }>;
@@ -13,7 +15,7 @@ type WeeklyFrontMatter = Extract<FrontMatter, { type: 'weekly' }>;
 
 export type DailyEntry = ContentEntry<DailyFrontMatter>;
 export type InsightEntry = ContentEntry<InsightFrontMatter>;
-export type TopicEntry = ContentEntry<TopicFrontMatter>;
+export type { TopicEntry } from './topic-assessments.ts';
 export type WeeklyEntry = ContentEntry<WeeklyFrontMatter>;
 
 let contentPromise: ReturnType<typeof loadContent> | undefined;
@@ -35,7 +37,7 @@ function isInsight(entry: ContentEntry): entry is InsightEntry {
   return entry.frontMatter.type === 'insight';
 }
 
-function isTopic(entry: ContentEntry): entry is TopicEntry {
+function isTopic(entry: ContentEntry): entry is ContentEntry<TopicFrontMatter> {
   return entry.frontMatter.type === 'topic';
 }
 
@@ -90,14 +92,8 @@ export async function getInsightEntryById(id: string): Promise<InsightEntry | un
 }
 
 export async function getTopicEntries(): Promise<TopicEntry[]> {
-  return (await getContent())
-    .filter(isTopic)
-    .filter((entry) => entry.frontMatter.status !== 'archived')
-    .sort(
-      (left, right) =>
-        (right.frontMatter.attention ?? 0) - (left.frontMatter.attention ?? 0) ||
-        left.frontMatter.title.localeCompare(right.frontMatter.title, 'zh-CN'),
-    );
+  const [content, snapshots] = await Promise.all([getContent(), getRadarSnapshots()]);
+  return projectTopicAssessments(content.filter(isTopic), snapshots);
 }
 
 export async function getTopicEntryById(id: string): Promise<TopicEntry | undefined> {

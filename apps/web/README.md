@@ -36,6 +36,7 @@ pnpm --filter @hzense/web dev
 
 - [`lib/content-runtime.ts`](lib/content-runtime.ts) 通过 `@hzense/content` 读取仓库中的 `content/`、`data/seed/` 与受控分类体系（Taxonomy）。日报、周报和洞察仅展示 `published` 内容；专题排除 `archived` 状态。
 - [`lib/seed-runtime.ts`](lib/seed-runtime.ts) 读取 YAML 种子数据：公开信号接受 `accepted` 或 `reviewed` 状态，并优先按事件发生时间 `occurred_at` 排序；资源仅展示 `active` 实体。
+- [`lib/topic-assessments.ts`](lib/topic-assessments.ts) 将 Topic 正文与该专题的最新雷达快照组合成只读 `assessment`。专题列表、详情与首页／雷达的四项指标统一来自 `data/seed/radar.yaml`，不从 Markdown 回退；缺快照显示 `—`／“待评估”并排在已评分专题之后。Topic Markdown 禁止重复填写评分，现有内容校验会拦截；评分更新仍需要构建发布，不会因新增信号自动重算。
 - [`lib/search-runtime.ts`](lib/search-runtime.ts) 将可公开内容转成统一搜索文档，复用 `@hzense/search` 的投影与排序规则。
 - [`lib/server/search.ts`](lib/server/search.ts) 在服务端选择搜索模式。`HZENSE_SEARCH_MODE` 支持 `in-process`、`shadow`、`database`，未设置时使用 `in-process`；`shadow` 比较两种结果并返回进程内结果，`database` 直接使用数据库查询。
 

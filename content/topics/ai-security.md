@@ -4,10 +4,6 @@ title: AI 安全
 type: topic
 status: active
 language: zh-CN
-attention: 85
-trend: rapid_growth
-maturity: emerging
-strategic_value: high
 ---
 
 # AI 安全

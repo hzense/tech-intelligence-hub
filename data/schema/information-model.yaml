@@ -38,10 +38,8 @@ content_types:
     required: [id, title, type, status]
     fields:
       parent: topic_id|null
-      attention: '0..100'
-      trend: [rapid_growth, growth, stable, decline, rapid_decline]
-      maturity: [research, early, emerging, growth, mature]
-      strategic_value: [low, medium, high, critical]
+    forbidden_fields: [attention, trend, maturity, strategic_value]
+    assessment_source: 'data/seed/radar.yaml: latest snapshot per topic; absent means unassessed'
   paper_note:
     description: HZense analysis or notes about a paper; distinct from the objective paper entity.
     required: [id, title, type, status, date, paper]
