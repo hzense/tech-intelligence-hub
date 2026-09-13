@@ -1,7 +1,7 @@
 # HZense 开发进度看板
 
 **最后更新：** 2026-09-13
-**当前阶段：** 旧网站 MVP 已交付；Signal-first v2 数据底座 V2-1a 与任职证据增量已合并，稳定事件身份本地实现完成，应用和生产尚未按新版切换
+**当前阶段：** 旧网站 MVP 已交付；Signal-first v2 快照、任职证据和事件身份增量已合并，历史版本封存与受限写入身份本地开发验证完成，应用和生产尚未按新版切换
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
 > 本看板区分“工程基础”“网站 MVP”“MVP 生产就绪度”和“完整科技情报平台”。百分比是人工估算，不以文档数量或提交数量代替产品进展；MVP 已完成不代表完整产品已完成。
@@ -19,7 +19,9 @@
   - [x] V2-1a 首批仓库实现：冻结 `3.0.0` Signal 快照契约，追加 `0004` 的 8 张私有表、类型化人物／组织与同版本证据外键；Drizzle、精确 verifier 和历史导入纯函数预演同步实现。见[实施契约](SIGNAL_V3_FOUNDATION.md)。[PR #68](https://github.com/hzense/tech-intelligence-hub/pull/68) 已合并为 `22e137a`，PR 与 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34726612068) 均通过；未执行生产迁移，不计为整个 V2-1 完成。
   - [ ] V2-1b 任职关系及证据、稳定事件键、不可变保护、受限角色与发表／撤回事务、Outbox。
     - [x] 首批任职与证据：复用 `relations` 的身份／方向／日期，追加 `0005` 两张私有表、类型化复合外键、保守按日区间判断与证据状态预检；见[实施契约](PERSON_ORGANIZATION_AFFILIATIONS.md)。[PR #69](https://github.com/hzense/tech-intelligence-hub/pull/69) 已合并为 `dd4d58f`，PR 与 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34727621783) 均通过，本地 main 已同步；未执行生产迁移，不代表 V2-1b 全部完成或资源页面已上线。
-    - [x] 稳定事件身份本地实现：追加 `0006` 私有事件键登记、同版本证据锚点、严格目录校验与批量登记预演；见[实施契约](SIGNAL_EVENT_IDENTITY.md)。同键不同 Signal、同 Signal 换键或更改登记依据均阻断，不按先到先得覆盖；不确定身份与旧键提示暂缓。新增 97 项内容测试、5 项数据库单元／结构测试与 3 项原生 PostgreSQL 集成用例；补充 SQL 核验 24 表、非法写入及约束篡改通过。本批通过 PR 交付，远端 CI 与评审待确认，未执行生产迁移；原生集成需 CI 运行，不可变保护、发表事务及 Outbox 仍独立待办。
+    - [x] 稳定事件身份：追加 `0006` 私有事件键登记、同版本证据锚点、严格目录校验与批量登记预演；见[实施契约](SIGNAL_EVENT_IDENTITY.md)。同键不同 Signal、同 Signal 换键或更改登记依据均阻断，不按先到先得覆盖；不确定身份与旧键提示暂缓。[PR #70](https://github.com/hzense/tech-intelligence-hub/pull/70) 已合并为 `d598eee`，对应 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34755795599) 全部通过，包含 56 项原生 PostgreSQL 集成；本地 main 已同步，未执行生产迁移。
+    - [x] 历史版本封存与受限写入身份本地开发：追加 `0007`，版本和四类边只允许在创建事务内组装；提交后不能追加／改写历史，原文仅当前核验状态可变。新增 `hzense_signal_writer` 列级 INSERT 契约，不得自行审核或公开。完整 Schema、Runtime 和 Topic 预检精确检查函数／触发器，不放开未知对象。详见[实施与验证记录](SIGNAL_VERSION_IMMUTABILITY.md)。整仓 1145 项测试通过，构建／格式／lint／typecheck／内容／Seed／工作流校验通过；隔离 PGlite 验证通过。新增 75 项原生集成已接入 CI，本机总计 131 项因无专用连接跳过，仍待 PR CI；本批通过 PR 交付，评审／CI／合并结果另行确认，未执行生产迁移或生产角色配置。
+    - [ ] 下一批：发表／撤回事务、当前资格校验、Publisher 权限与事务 Outbox；再处理历史导入和读切换。封存本身不代表已审核或可公开。
   - [ ] V2-1c 历史导入事务、冲突／幂等核验、统一读取及权威切换。预演保留旧状态与引用，不自动补造人物、生成原文证据或提升为新版 published。
 - [ ] V2-2 AI 后台：管理员认证、模型列表／手填与分阶段 Profile、独立能力测试／兼容故障切换、密钥保护、来源增量及机器临时准入、预算、手动／定时任务与审计。
   - [x] 批量导入设计：正式定义文档／链接／混合批次、AI 生成并发布、逐项结果、重试与隐私边界，见设计第 7.4 节；仅为设计完成。

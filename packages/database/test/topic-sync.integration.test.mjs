@@ -359,7 +359,11 @@ integrationSuite('PostgreSQL Topic sync integration', () => {
       `),
     );
     try {
-      await expect(withClient(syncUrl, syncPreflight)).rejects.toThrow(/SECURITY DEFINER/);
+      // The exact 0007 public-routine contract rejects this unreviewed function
+      // before the later executable SECURITY DEFINER privilege audit runs.
+      await expect(withClient(syncUrl, syncPreflight)).rejects.toThrow(
+        /unexpected public application function: hzense_topic_sync_security_definer_test/,
+      );
     } finally {
       await withClient(adminTarget, (client) =>
         client.query('DROP FUNCTION public.hzense_topic_sync_security_definer_test()'),

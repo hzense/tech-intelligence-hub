@@ -1248,7 +1248,8 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 - 24 张持久表：23 张领域或派生数据表，以及 1 张 Migration 历史表；其中 8 张来自 `0004`，2 张来自 `0005`，1 张来自 `0006`，本轮未执行生产迁移。
 - 9 个 PostgreSQL Enum。
 - `vector` 扩展，以及 `search_documents.embedding vector(1536)`。
-- 仓库 Migration manifest 登记七个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql`、`0003_search_documents_fts.sql`、`0004_signal_version_foundation.sql`、`0005_person_organization_affiliations.sql` 和 `0006_signal_event_identity.sql`。`0003` 的历史生产执行见 [FTS-1 切换记录](production-evidence/acl/34535908960-1/cutover.md)；本批未执行 `0004`–`0006`，不声明生产已有 24 表。
+- 仓库 Migration manifest 登记八个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql`、`0003_search_documents_fts.sql`、`0004_signal_version_foundation.sql`、`0005_person_organization_affiliations.sql`、`0006_signal_event_identity.sql` 和 `0007_signal_version_immutability.sql`。`0003` 的历史生产执行见 [FTS-1 切换记录](production-evidence/acl/34535908960-1/cutover.md)；本批未执行 `0004`–`0007`，不声明生产已有 24 表。
+- `0007` 新增 3 个安全模式为 INVOKER 的触发函数及 14 个 ALWAYS 触发器，不新增表或生产授权；函数正文、目录属性及 ACL 由独立精确契约核验。
 
 物理结构的权威顺序如下：
 
@@ -1291,7 +1292,7 @@ Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNo
 | `signal_version_organizations` | PK (signal_id,version,organization_id,evidence_id)；组织档案 FK、同版本证据及事件角色                 |
 | `signal_version_topics`        | PK (signal_id,version,topic_id)；版本与规范 Topic 外键                                                |
 
-实体新增 `(id,type)` 唯一索引作为类型化外键目标；上述新增外键全部 NO ACTION，防止级联删除快照／证据。没有公开版本指针或发表状态，没有引入 Trigger/函数/权限放宽；跨表发表资格和数据库级版本不可变仍待后续实施。详细字段与验收见 [V2-1a 契约](SIGNAL_V3_FOUNDATION.md)。
+实体新增 `(id,type)` 唯一索引作为类型化外键目标；上述新增外键全部 NO ACTION，防止级联删除快照／证据。`0004` 自身没有公开版本指针、发表状态、Trigger 或函数；数据库版本封存由后续 `0007` 承担，跨表发表资格仍待实施。详细字段与首批验收见 [V2-1a 契约](SIGNAL_V3_FOUNDATION.md)。
 
 `0005` 另增下列 2 张私有表：
 
@@ -1303,6 +1304,8 @@ Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNo
 `relations` 新增 `(id,source_id,target_id,relation_type)` 唯一索引。`valid_from`／`valid_to` 仍是唯一有效期字段，新增有限日期、`0001-01-01` 至 `9999-12-31` 和起止顺序 CHECK，允许空值及同日区间；这些 CHECK 也作用于旧非任职关系，非法历史值导致迁移失败，不自动清洗。所有新增外键 NO ACTION，不增加授权。空端点表示未知而非“至今”；证据与按日覆盖判定相互独立，不能仅凭现任职务推断历史 Signal 所属组织。当前没有任职不可变版本或自动发表资格，细节见[任职实施契约](PERSON_ORGANIZATION_AFFILIATIONS.md)。
 
 `0006` 新增私有 `signal_event_identities`：`signal_id` 为主键，`event_key` 全局唯一且限定为最多 200 字符的小写 ASCII slug；`basis_version` 为正整数，`basis_evidence_id` 和 `identity_basis` 非空白。复合 FK `(signal_id,basis_version,basis_evidence_id)` → `signal_version_evidence(signal_id,version,evidence_id)` 锚定同一 Signal 版本的证据，NO ACTION；不新增权限或自动回填旧键。唯一性不代表语义判重、证据真实或数据库不可变保护，详见[事件身份实施契约](SIGNAL_EVENT_IDENTITY.md)。
+
+`0007` 为 `signal_versions`、`public_source_evidence`、`signal_event_identities` 添加数据库元数据 `created_xid xid8 NOT NULL DEFAULT pg_catalog.pg_current_xact_id()`，不改变 `3.0.0` 内容指纹。版本及四类边仅在版本创建事务内组装，提交后禁止普通 DML 追加／改删；事件登记在自身创建事务提交后冻结；原文载荷冻结，但独立核验路径可更新其当前 `verification_status`。七表均禁止 TRUNCATE；owner 的 DDL 仍是外部受信任边界。旧行 stamp 来自迁移事务，可能涉及表重写；实际生产执行需另行审批。独立的 `hzense_signal_writer` 仅列级 INSERT 待核验记录，不得填写状态或 stamp，也不具备审核、发表、修改历史或写公开投影的权限。完整边界和测试见[事务封存与写入权限](SIGNAL_VERSION_IMMUTABILITY.md)。
 
 ## 40.3 核心关系
 

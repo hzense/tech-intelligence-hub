@@ -6,7 +6,7 @@
 
 **日期：** 2026-09-12
 
-**状态：** 目标设计分批实施中；V2-1a 数据快照与 V2-1b 任职证据已合并，稳定事件身份增量本地实现完成，生产权威与权限未切换
+**状态：** 目标设计分批实施中；V2-1a 数据快照、任职证据与事件身份已合并，正在交付事务封存与受限写入，生产权威与权限未切换
 
 **品牌：** HZense  
 **品牌标语：** Sense what matters in technology.  
@@ -24,6 +24,8 @@
 2026-09-13 首批实现见 [V2-1a](SIGNAL_V3_FOUNDATION.md)：8 张私有关系表、独立 Signal 3.0.0 快照校验、历史导入纯函数预演与精确数据库 verifier。[V2-1b 任职增量](PERSON_ORGANIZATION_AFFILIATIONS.md) 复用 `relations` 的身份／日期，增加类型化任职、来源证据及独立的时间／核验状态判断；[事件身份增量](SIGNAL_EVENT_IDENTITY.md) 增加规范键唯一登记、同版本证据锚点和批量冲突预演，不从 URL／标题推断事件。仍使用当前 PostgreSQL／Drizzle／pg 驱动，不新增数据库或对象存储资源。不可变发表事务、Outbox、Worker、当前人物展示及读取切换未完成，不能以 schema 存在认定功能已上线。
 
 > **Architecture-ready, not infrastructure-heavy.**
+
+本轮 `0007` [事务封存](SIGNAL_VERSION_IMMUTABILITY.md)保护版本、四类版本关系、原文载荷和规范事件身份；版本须在同一创建事务内组装，提交后只能另建修订版本。三处严格预检共用精确函数／触发器契约。新增 `hzense_signal_writer` 配置仅授予待核验记录的列级 INSERT，不授予审核、发表或索引写权限，不代替后续 Publisher／Outbox。沿用存储栈，不新增生产连接或云资源。
 
 ## 2. 技术栈基线与目标能力
 

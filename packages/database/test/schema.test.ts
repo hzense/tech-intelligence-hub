@@ -35,6 +35,81 @@ function columnNames(table: Parameters<typeof getTableConfig>[0]): string[] {
   return getTableConfig(table).columns.map((column) => column.name);
 }
 
+describe('Transaction-sealed Signal snapshot metadata', () => {
+  it('stores full transaction IDs as xid8 database defaults rather than content fields', () => {
+    const dialect = new PgDialect();
+    for (const table of [signalVersions, publicSourceEvidence, signalEventIdentities]) {
+      const column = getTableConfig(table).columns.find((entry) => entry.name === 'created_xid');
+      expect(column).toBeDefined();
+      expect(column?.getSQLType()).toBe('xid8');
+      expect(column?.notNull).toBe(true);
+      expect(column?.hasDefault).toBe(true);
+      expect(
+        dialect.sqlToQuery(column?.default as Parameters<PgDialect['sqlToQuery']>[0]).sql,
+      ).toBe('pg_catalog.pg_current_xact_id()');
+      expect(column?.mapFromDriverValue('18446744073709551615')).toBe('18446744073709551615');
+    }
+    for (const table of [
+      signalVersionEvidence,
+      signalVersionPeople,
+      signalVersionOrganizations,
+      signalVersionTopics,
+    ]) {
+      expect(columnNames(table)).not.toContain('created_xid');
+    }
+  });
+
+  it('ships always-enabled row and truncate guards without granting privileges or disabling old constraints', async () => {
+    const migration = await readFile(
+      resolve(process.cwd(), '../../db/migrations/0007_signal_version_immutability.sql'),
+      'utf8',
+    );
+    const normalized = migration.replace(/\s+/g, ' ');
+    const rowTables = ['signal_versions', 'public_source_evidence', 'signal_event_identities'];
+    const edgeTables = [
+      'signal_version_evidence',
+      'signal_version_people',
+      'signal_version_organizations',
+      'signal_version_topics',
+    ];
+    for (const table of rowTables) {
+      expect(normalized).toContain(
+        `ALTER TABLE public.${table} ADD COLUMN created_xid xid8 NOT NULL DEFAULT pg_catalog.pg_current_xact_id()`,
+      );
+    }
+    for (const table of [...rowTables, ...edgeTables]) {
+      const fn = rowTables.includes(table)
+        ? 'hzense_guard_sealed_row'
+        : 'hzense_guard_version_edge';
+      expect(normalized).toContain(
+        `CREATE TRIGGER ${table}_sealed_row_trg BEFORE INSERT OR UPDATE OR DELETE ON public.${table} FOR EACH ROW EXECUTE FUNCTION public.${fn}()`,
+      );
+      expect(normalized).toContain(
+        `CREATE TRIGGER ${table}_sealed_truncate_trg BEFORE TRUNCATE ON public.${table} FOR EACH STATEMENT EXECUTE FUNCTION public.hzense_reject_sealed_truncate()`,
+      );
+      for (const suffix of ['sealed_row_trg', 'sealed_truncate_trg']) {
+        expect(normalized).toContain(
+          `ALTER TABLE public.${table} ENABLE ALWAYS TRIGGER ${table}_${suffix}`,
+        );
+      }
+    }
+    for (const fn of [
+      'hzense_guard_sealed_row',
+      'hzense_guard_version_edge',
+      'hzense_reject_sealed_truncate',
+    ]) {
+      expect(normalized).toContain(
+        `CREATE FUNCTION public.${fn}() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp`,
+      );
+      expect(normalized).toContain(`REVOKE ALL ON FUNCTION public.${fn}() FROM PUBLIC`);
+    }
+    expect(migration.match(/CREATE TRIGGER/g)).toHaveLength(14);
+    expect(migration.replace(/^--.*$/gm, '')).not.toMatch(
+      /\b(?:GRANT|DISABLE|SECURITY DEFINER|DROP)\b/i,
+    );
+  });
+});
+
 describe('Private Signal canonical event identity', () => {
   it('reserves one key per stable Signal without storing publication or review state', () => {
     expect(columnNames(signalEventIdentities)).toEqual([
@@ -43,10 +118,14 @@ describe('Private Signal canonical event identity', () => {
       'basis_version',
       'basis_evidence_id',
       'identity_basis',
+      'created_xid',
     ]);
     expect(signalEventIdentities.signalId.primary).toBe(true);
     const config = getTableConfig(signalEventIdentities);
-    expect(config.columns.every((column) => column.notNull && !column.hasDefault)).toBe(true);
+    expect(config.columns.every((column) => column.notNull)).toBe(true);
+    expect(
+      config.columns.filter((column) => column.hasDefault).map((column) => column.name),
+    ).toEqual(['created_xid']);
     expect(config.indexes).toHaveLength(1);
     expect(config.indexes[0].config.unique).toBe(true);
     expect(config.indexes[0].config.name).toBe('signal_event_identities_event_key_uq');
@@ -400,6 +479,7 @@ describe('Signal 3.0.0 private storage foundation', () => {
       'legacy_status',
       'content_hash',
       'created_at',
+      'created_xid',
     ]);
     const config = getTableConfig(signalVersions);
     expect(config.primaryKeys[0].columns.map((column) => column.name)).toEqual([
@@ -476,6 +556,7 @@ describe('Signal 3.0.0 private storage foundation', () => {
       'captured_at',
       'source_published_at',
       'verification_status',
+      'created_xid',
     ]);
     expect(publicSourceEvidence.sourcePublishedAt.notNull).toBe(false);
     expect(publicSourceEvidence.capturedAt.hasDefault).toBe(false);

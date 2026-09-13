@@ -13,6 +13,8 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 > **2026-09-13 开发边界：** [V2-1a 数据底座](SIGNAL_V3_FOUNDATION.md) 的 `0004` 与[任职增量](PERSON_ORGANIZATION_AFFILIATIONS.md) 的 `0005` 已合并；[事件身份增量](SIGNAL_EVENT_IDENTITY.md) 追加 `0006_signal_event_identity.sql`，只建私有登记表、不自动回填。普通 Web 部署仍使用旧 Seed 读取。要求最新 schema 的维护预检会将未应用的 `0004`–`0006` 视为 pending，不能自动跳过或直接应用来解除阻塞。`0005` 的日期约束影响全部旧 `relations`，上线前需核验遗留日期；不自动清洗。本轮未执行生产迁移或授予新增业务权限，正式迁移需另行审批并复核维护流程对该版本的支持；不开放新版自动发表，也不重跑已取消的恢复演练。
 
+> **本轮追加边界：** `0006` 已随 PR #70 合并；[版本封存](SIGNAL_VERSION_IMMUTABILITY.md)追加 `0007` 的三个 xid8 元数据列、三函数和十四个 ALWAYS 触发器，完整 Schema／Runtime／Topic 预检必须同时使用更新后的精确契约。`0007` 可能重写旧表并取得排他 DDL 锁；未应用迁移仍报 pending，不能自动修复或跳过。`db/roles/configure_signal_writer.sql` 只供独立审批后配置预先创建的角色，发现不安全既有权限则停止，不进行 PUBLIC ACL 清洗。本轮未创建或授权生产角色，不添加本地生产入口；后续发布与 Outbox 尚未实现。
+
 - 正式生产域名：https://hzense.com/
 - Vercel Production：https://tech-intelligence-hub-web.vercel.app/
 - 域名策略：`www.hzense.com` 重定向到 `hzense.com`

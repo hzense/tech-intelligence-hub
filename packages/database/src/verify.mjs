@@ -30,6 +30,11 @@ import {
   eventIdentityChecks,
   eventIdentityUniqueIndexes,
 } from './event-identity-catalog.mjs';
+import {
+  stampedSignalTables,
+  expectedSignalTriggerCount,
+  collectSignalImmutabilityProblems,
+} from './signal-immutability-catalog.mjs';
 
 const { Client } = pg;
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
@@ -158,6 +163,12 @@ const expectedColumns = {
   ...affiliationColumns,
   ...eventIdentityColumns,
 };
+for (const tableName of stampedSignalTables) {
+  expectedColumns[tableName] = {
+    ...expectedColumns[tableName],
+    created_xid: ['xid8', true],
+  };
+}
 
 const expectedEnums = {
   entity_type: [
@@ -305,6 +316,10 @@ const expectedCheckExpressions = {
 };
 
 const expectedDefaults = new Map([
+  ...stampedSignalTables.map((name) => [
+    `${name}.created_xid`,
+    new Set(['pg_current_xact_id', 'pg_catalog.pg_current_xact_id']),
+  ]),
   ...signalFoundationDefaults,
   ...affiliationDefaults,
   ['topics.status', new Set(["'watching'"])],
@@ -454,13 +469,15 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
     if (table.policy_count !== 0) {
       problems.push(`unexpected row-level security policy: ${table.name}`);
     }
-    if (table.user_trigger_count !== 0) {
+    if (table.user_trigger_count !== expectedSignalTriggerCount(table.name)) {
       problems.push(`unexpected user trigger: ${table.name}`);
     }
     if (table.rewrite_rule_count !== 0) {
       problems.push(`unexpected rewrite rule: ${table.name}`);
     }
   }
+
+  problems.push(...(await collectSignalImmutabilityProblems(client, expectedOwner)));
 
   const history = await client.query(
     'SELECT name, checksum FROM hzense_schema_migrations ORDER BY name',
