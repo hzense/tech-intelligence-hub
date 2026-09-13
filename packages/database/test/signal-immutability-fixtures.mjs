@@ -3,7 +3,11 @@ import { URL } from 'node:url';
 import { sealedSignalTriggers, stampedSignalTables } from '../src/signal-immutability-catalog.mjs';
 
 // Test data only. Production expectations are separately pinned source hashes.
-const migration = ['0007_signal_version_immutability.sql', '0008_signal_publication_outbox.sql']
+const migration = [
+  '0007_signal_version_immutability.sql',
+  '0008_signal_publication_outbox.sql',
+  '0009_signal_publication_controls.sql',
+]
   .map((name) => readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), 'utf8'))
   .join('\n');
 const bodies = [

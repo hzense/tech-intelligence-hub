@@ -1245,18 +1245,18 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 
 本节描述仓库已实现、由自动校验保护的 PostgreSQL `public` Schema 目标，不把尚未执行的迁移表述为生产现状。当前仓库目标包含：
 
-- 26 张持久表：25 张领域或派生数据表，以及 1 张 Migration 历史表；其中 8 张来自 `0004`，2 张来自 `0005`，1 张来自 `0006`，2 张来自 `0008`，本轮未执行生产迁移。
+- 30 张持久表：29 张领域、派生或私有控制表，以及 1 张 Migration 历史表；其中 8 张来自 `0004`，2 张来自 `0005`，1 张来自 `0006`，2 张来自 `0008`，4 张来自 `0009`，本轮未执行生产迁移。
 - 9 个 PostgreSQL Enum。
 - `vector` 扩展，以及 `search_documents.embedding vector(1536)`。
-- 仓库 Migration manifest 登记九个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql`、`0003_search_documents_fts.sql`、`0004_signal_version_foundation.sql`、`0005_person_organization_affiliations.sql`、`0006_signal_event_identity.sql`、`0007_signal_version_immutability.sql` 和 `0008_signal_publication_outbox.sql`。`0003` 的历史生产执行见 [FTS-1 切换记录](production-evidence/acl/34535908960-1/cutover.md)；本批未执行 `0004`–`0008`，不声明生产已有 26 表。
-- `0007` 新增 3 个安全模式为 INVOKER 的触发函数及 14 个 ALWAYS 触发器；`0008` 追加 2 个 INVOKER 触发函数及 5 个 ALWAYS 触发器，其中 2 个是延迟约束触发器。合计 5 函数／19 触发器，无生产授权变化；函数正文、目录属性及 ACL 由独立精确契约核验。
+- 仓库 Migration manifest 登记十个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql`、`0003_search_documents_fts.sql`、`0004_signal_version_foundation.sql`、`0005_person_organization_affiliations.sql`、`0006_signal_event_identity.sql`、`0007_signal_version_immutability.sql`、`0008_signal_publication_outbox.sql` 和 `0009_signal_publication_controls.sql`。`0003` 的历史生产执行见 [FTS-1 切换记录](production-evidence/acl/34535908960-1/cutover.md)；本批未执行 `0004`–`0009`，不声明生产已有 30 表。
+- `0007` 新增 3 个 INVOKER 触发函数及 14 个 ALWAYS 触发器；`0008` 追加 2 个函数及 5 个触发器，其中 2 个是延迟约束触发器；`0009` 追加 1 个函数及 2 个 ALWAYS 触发器。合计 6 函数／21 触发器，无生产授权变化；函数正文、目录属性及 ACL 由独立精确契约核验。
 
 物理结构的权威顺序如下：
 
-1. [`db/migrations/*.sql`](../db/migrations/) 是 25 张应用 Schema 表的可执行 DDL 权威来源。
+1. [`db/migrations/*.sql`](../db/migrations/) 是 29 张应用 Schema 表的可执行 DDL 权威来源。
 2. [`packages/database/src/migrate.mjs`](../packages/database/src/migrate.mjs) 创建并维护运维表 `hzense_schema_migrations`。
-3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts) 是 25 张应用 Schema 表的 Drizzle 类型映射；运维历史表不进入应用 ORM 映射。
-4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs)、[V2-1a catalog 契约](../packages/database/src/signal-foundation-catalog.mjs)、[任职 catalog 契约](../packages/database/src/affiliation-catalog.mjs)、[事件身份 catalog 契约](../packages/database/src/event-identity-catalog.mjs)及 [Outbox catalog 契约](../packages/database/src/signal-publication-catalog.mjs)独立校验完整 26 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史。
+3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts) 是 29 张应用 Schema 表的 Drizzle 类型映射；运维历史表不进入应用 ORM 映射。
+4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs)、[V2-1a catalog 契约](../packages/database/src/signal-foundation-catalog.mjs)、[任职 catalog 契约](../packages/database/src/affiliation-catalog.mjs)、[事件身份 catalog 契约](../packages/database/src/event-identity-catalog.mjs)、[Outbox catalog 契约](../packages/database/src/signal-publication-catalog.mjs)及[任务控制 catalog 契约](../packages/database/src/signal-publication-control-catalog.mjs)独立校验完整 30 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史。
 5. 本节是上述可执行合约的设计说明，不能代替 Migration 或 Runner DDL。
 
 Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文的 Source of Truth，公开 Signal 仍读 Seed。新增 `signal_versions` 可以保存完整快照，但本批未导入或发布正文，也未将其接入公开读取。
@@ -1316,6 +1316,17 @@ Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNo
 
 Outbox 永久仅追加，不允许改删／TRUNCATE；两个延迟约束触发器保证事务提交时 head 精确匹配该 Signal 的最新事件，防孤儿／错误配对／状态倒退。发表／撤回使用独立发布修订号，撤回同一正文版本也产生新事件。状态转换、请求幂等和纯投影规划由内部模块实现；本批不将账本状态作为授权或合格事实，未接入任务／策略／租约、当前人物证据资格、公开 Reader 或真实消费者。详见[实施边界](SIGNAL_PUBLICATION_OUTBOX.md)。
 
+`0009` 新增四张私有任务控制表，未与上述 Outbox 组成完整 Publisher：
+
+| 表                                  | 主键与约束                                                                                                                                                      |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signal_publication_control`        | boolean 单例 PK 且只能 true；`publication_enabled` 默认 false，迁移插入关闭记录                                                                                 |
+| `signal_publication_tasks`          | UUID `task_id` PK；三种当前策略，默认 `preview_only`；任务发表开关默认关闭                                                                                      |
+| `signal_publication_authorizations` | PK `(task_id,principal_id)`；task NO ACTION FK；`can_publish` 默认 false；主体 UUID 尚待认证服务绑定                                                            |
+| `signal_publication_runs`           | UUID `run_id` PK；任务／主体复合 NO ACTION FK；原始意图与身份不可变；pending/running/cancelled/completed 状态与 int32 token、租约形状一致；时间有限且为毫秒精度 |
+
+运行守卫拒绝删除、TRUNCATE、终态恢复、改写原始意图、活跃租约抢占和过期续租；重新领取递增 fencing token，最高 int32 后停止。`(task_id,status,lease_expires_at)` 索引配合任务行串行领取检查，限制同任务有效租约为一个。全局／任务／授权和运行按固定锁序读取，再使用数据库当前时钟检查控制状态；这里不验证人物证据，也不提供身份认证或安全撤回服务。详见[任务与发布控制](SIGNAL_PUBLICATION_CONTROLS.md)。
+
 ## 40.3 核心关系
 
 ```text
@@ -1361,7 +1372,7 @@ radar_snapshots N ───── N signals
 - `search_documents(source_id)`。
 - `search_documents(document_date)`、唯一 `(source_type, source_id)` 与 GIN `(search_vector)`。
 
-当前物理基线没有 RLS、Policy 或用户 Trigger。未来引入这些机制必须通过单独评审的新 Migration，并同步更新 Verifier 和本节；仅当变更可由 Drizzle 表达且影响应用类型映射时，才同步更新 Drizzle Schema。
+当前仓库目标没有 RLS 或 Policy；已由 `0007`–`0009` 明确引入并精确校验 21 个用户触发器。新增机制必须通过单独评审的新 Migration，并同步更新 Verifier 和本节；仅当变更可由 Drizzle 表达且影响应用类型映射时，才同步更新 Drizzle Schema。新增控制状态的 CHECK 校验保留括号、类型转换和字面量，防止 AND／OR 重分组被错误归一化为原约束。
 
 ## 40.5 Enum 与 pgvector
 

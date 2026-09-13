@@ -2,6 +2,8 @@
 
 本批承接[版本封存](SIGNAL_VERSION_IMMUTABILITY.md)，实现发表／撤回的**私有状态转换存储**、永久请求回执、事务 Outbox 和纯投影规划。不是可以上线的 Publisher；没有新增公开视图、网站读取、生产入口或角色授权，也没有执行生产迁移。
 
+> **后续交付：** 本批已由 PR #72 合并为 `6db71c6`，PR 与 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34760910939) 通过，184 项原生 PostgreSQL 集成通过；第 7 节保留提交前本地证据。后续 [任务与发布控制](SIGNAL_PUBLICATION_CONTROLS.md)实现第 6 节第 1 项的私有控制存储与锁定检查，但尚未与资格、新版本组装和本页转换写入合并为完整 Publisher。
+
 ## 1. 本批解决什么
 
 - 当前状态与对应 Outbox 事件一起提交；缺事件、缺状态、错误配对和事务中途失败不能留下半成品。

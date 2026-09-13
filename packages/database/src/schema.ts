@@ -550,6 +550,123 @@ export const signalPublicationState = pgTable(
   ],
 );
 
+// Private coordination fixtures. Creating these rows does not itself authorize
+// publication; control evaluation belongs to the locked execution transaction.
+export const signalPublicationControl = pgTable(
+  'signal_publication_control',
+  {
+    singleton: boolean('singleton').primaryKey(),
+    publicationEnabled: boolean('publication_enabled').notNull().default(false),
+  },
+  (t) => [check('signal_publication_control_singleton_ck', sql`${t.singleton}`)],
+);
+
+export const signalPublicationTasks = pgTable(
+  'signal_publication_tasks',
+  {
+    taskId: uuid('task_id').primaryKey(),
+    policy: text('policy')
+      .$type<'auto_publish' | 'review_required' | 'preview_only'>()
+      .notNull()
+      .default('preview_only'),
+    publicationEnabled: boolean('publication_enabled').notNull().default(false),
+  },
+  (t) => [
+    check(
+      'signal_publication_tasks_policy_ck',
+      sql`${t.policy} IN ('auto_publish', 'review_required', 'preview_only')`,
+    ),
+  ],
+);
+
+export const signalPublicationAuthorizations = pgTable(
+  'signal_publication_authorizations',
+  {
+    taskId: uuid('task_id').notNull(),
+    principalId: uuid('principal_id').notNull(),
+    canPublish: boolean('can_publish').notNull().default(false),
+  },
+  (t) => [
+    primaryKey({ columns: [t.taskId, t.principalId] }),
+    foreignKey({
+      name: 'signal_publication_authorizations_task_fk',
+      columns: [t.taskId],
+      foreignColumns: [signalPublicationTasks.taskId],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+  ],
+);
+
+export const signalPublicationRuns = pgTable(
+  'signal_publication_runs',
+  {
+    runId: uuid('run_id').primaryKey(),
+    taskId: uuid('task_id').notNull(),
+    principalId: uuid('principal_id').notNull(),
+    originalIntent: text('original_intent')
+      .$type<'auto_publish' | 'review_required' | 'preview_only'>()
+      .notNull(),
+    status: text('status')
+      .$type<'pending' | 'running' | 'cancelled' | 'completed'>()
+      .notNull()
+      .default('pending'),
+    fencingToken: integer('fencing_token').notNull().default(0),
+    leaseOwner: uuid('lease_owner'),
+    leaseExpiresAt: timestamp('lease_expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .default(sql`date_trunc('milliseconds', clock_timestamp())`),
+  },
+  (t) => [
+    foreignKey({
+      name: 'signal_publication_runs_authorization_fk',
+      columns: [t.taskId, t.principalId],
+      foreignColumns: [
+        signalPublicationAuthorizations.taskId,
+        signalPublicationAuthorizations.principalId,
+      ],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    check(
+      'signal_publication_runs_intent_ck',
+      sql`${t.originalIntent} IN ('auto_publish', 'review_required', 'preview_only')`,
+    ),
+    check(
+      'signal_publication_runs_status_ck',
+      sql`${t.status} IN ('pending', 'running', 'cancelled', 'completed')`,
+    ),
+    check('signal_publication_runs_token_ck', sql`${t.fencingToken} >= 0`),
+    check(
+      'signal_publication_runs_state_ck',
+      sql`(${t.status} = 'pending' AND ${t.fencingToken} = 0 AND ${t.leaseOwner} IS NULL AND ${t.leaseExpiresAt} IS NULL) OR (${t.status} = 'running' AND ${t.fencingToken} > 0 AND ${t.leaseOwner} IS NOT NULL AND ${t.leaseExpiresAt} IS NOT NULL) OR (${t.status} = 'cancelled' AND ${t.leaseOwner} IS NULL AND ${t.leaseExpiresAt} IS NULL) OR (${t.status} = 'completed' AND ${t.fencingToken} > 0 AND ${t.leaseOwner} IS NULL AND ${t.leaseExpiresAt} IS NULL)`,
+    ),
+    check('signal_publication_runs_created_at_ck', sql`isfinite(${t.createdAt})`),
+    check(
+      'signal_publication_runs_created_at_year_ck',
+      sql`extract(year FROM ${t.createdAt} AT TIME ZONE 'UTC') BETWEEN 1 AND 9999`,
+    ),
+    check(
+      'signal_publication_runs_created_at_precision_ck',
+      sql`date_trunc('milliseconds', ${t.createdAt}) = ${t.createdAt}`,
+    ),
+    check(
+      'signal_publication_runs_lease_expires_at_ck',
+      sql`${t.leaseExpiresAt} IS NULL OR isfinite(${t.leaseExpiresAt})`,
+    ),
+    check(
+      'signal_publication_runs_lease_expires_at_year_ck',
+      sql`${t.leaseExpiresAt} IS NULL OR extract(year FROM ${t.leaseExpiresAt} AT TIME ZONE 'UTC') BETWEEN 1 AND 9999`,
+    ),
+    check(
+      'signal_publication_runs_lease_expires_at_precision_ck',
+      sql`${t.leaseExpiresAt} IS NULL OR date_trunc('milliseconds', ${t.leaseExpiresAt}) = ${t.leaseExpiresAt}`,
+    ),
+    index('signal_publication_runs_task_lease_idx').on(t.taskId, t.status, t.leaseExpiresAt),
+  ],
+);
+
 export const signalVersionPeople = pgTable(
   'signal_version_people',
   {

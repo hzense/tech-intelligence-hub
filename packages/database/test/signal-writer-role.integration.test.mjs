@@ -434,16 +434,17 @@ integration('PostgreSQL private Signal snapshot writer role', () => {
     }
   });
 
-  it('assembles a complete private snapshot in one transaction with inbox/pending defaults', async () => {
+  it('assembles a UTC-dated private snapshot in a non-UTC session with inbox/pending defaults', async () => {
     await writer((client) =>
       client.query(`
       BEGIN;
+      SET LOCAL TIME ZONE 'Europe/Berlin';
       INSERT INTO public.signals(id,title,type,occurred_at,source_id,source_url,summary,importance,strength,confidence,novelty)
-        VALUES ('writer-signal','Fixture','technology','2026-01-01','writer-source','https://example.com/fixture','Fixture',3,3,0.8,0.5);
+        VALUES ('writer-signal','Fixture','technology','2026-01-01T00:00:00Z','writer-source','https://example.com/fixture','Fixture',3,3,0.8,0.5);
       INSERT INTO public.public_source_evidence(id,source_id,source_url,locator,excerpt,content_hash,captured_at)
-        VALUES ('writer-evidence','writer-source','https://example.com/fixture','section','Fixture evidence','${'a'.repeat(64)}','2026-01-02');
+        VALUES ('writer-evidence','writer-source','https://example.com/fixture','section','Fixture evidence','${'a'.repeat(64)}','2026-01-02T00:00:00Z');
       INSERT INTO public.signal_versions(signal_id,version,title,type,occurred_at,date_precision,date_basis,captured_at,summary,importance,strength,confidence,novelty,revision_reason,origin,legacy_status,content_hash)
-        VALUES ('writer-signal',1,'Fixture','technology','2026-01-01','day','Fixture date','2026-01-02','Fixture',3,3,0.8,0.5,'Initial assembly','manual',NULL,'${'b'.repeat(64)}');
+        VALUES ('writer-signal',1,'Fixture','technology','2026-01-01T00:00:00Z','day','Fixture date','2026-01-02T00:00:00Z','Fixture',3,3,0.8,0.5,'Initial assembly','manual',NULL,'${'b'.repeat(64)}');
       INSERT INTO public.signal_version_evidence(signal_id,version,evidence_id,claim,relation)
         VALUES ('writer-signal',1,'writer-evidence','Fixture claim','supports');
       INSERT INTO public.signal_version_people(signal_id,version,person_id,evidence_id,event_role)
@@ -523,6 +524,19 @@ integration('PostgreSQL private Signal snapshot writer role', () => {
     ]),
     'SELECT public.hzense_guard_publication_receipt()',
     'SELECT public.hzense_check_publication_pair()',
+    ...[
+      ['signal_publication_control', 'publication_enabled'],
+      ['signal_publication_tasks', 'publication_enabled'],
+      ['signal_publication_authorizations', 'can_publish'],
+      ['signal_publication_runs', 'fencing_token'],
+    ].flatMap(([table, column]) => [
+      `SELECT * FROM public.${table}`,
+      `INSERT INTO public.${table} DEFAULT VALUES`,
+      `UPDATE public.${table} SET ${column}=${column}`,
+      `DELETE FROM public.${table}`,
+      `TRUNCATE public.${table}`,
+    ]),
+    'SELECT public.hzense_guard_publication_run()',
   ])('keeps private publication storage inaccessible to snapshot writer: %s', async (statement) => {
     await expect(writer((client) => client.query(statement))).rejects.toMatchObject({
       code: '42501',

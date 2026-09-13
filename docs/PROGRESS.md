@@ -1,7 +1,7 @@
 # HZense 开发进度看板
 
 **最后更新：** 2026-09-13
-**当前阶段：** 旧网站 MVP 已交付；Signal-first v2 快照、任职、事件身份与版本封存已合并；正在交付私有发表转换和 Outbox 事务底座，应用和生产尚未按新版切换
+**当前阶段：** 旧网站 MVP 已交付；Signal-first v2 快照、任职、事件身份、版本封存和私有 Outbox 底座已合并；正在交付任务与发布控制，应用和生产尚未按新版切换
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
 > 本看板区分“工程基础”“网站 MVP”“MVP 生产就绪度”和“完整科技情报平台”。百分比是人工估算，不以文档数量或提交数量代替产品进展；MVP 已完成不代表完整产品已完成。
@@ -23,7 +23,9 @@
     - [x] 历史版本封存与受限写入身份本地开发：追加 `0007`，版本和四类边只允许在创建事务内组装；提交后不能追加／改写历史，原文仅当前核验状态可变。新增 `hzense_signal_writer` 列级 INSERT 契约，不得自行审核或公开。完整 Schema、Runtime 和 Topic 预检精确检查函数／触发器，不放开未知对象。详见[实施与验证记录](SIGNAL_VERSION_IMMUTABILITY.md)。整仓 1145 项测试通过，构建／格式／lint／typecheck／内容／Seed／工作流校验通过；隔离 PGlite 验证通过。新增 75 项原生集成已接入 CI，本机总计 131 项因无专用连接跳过，仍待 PR CI；本批通过 PR 交付，评审／CI／合并结果另行确认，未执行生产迁移或生产角色配置。
     - [x] 封存交付后续核验：上述批次已通过 [PR #71](https://github.com/hzense/tech-intelligence-hub/pull/71) 合并为 `67ce485`，修复一处原生测试断言访问方式；PR CI 与 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34758602893) 全部通过，131 项原生 PostgreSQL 集成通过。本地 main 已同步；上条本地跳过记录保留为当时结果，不代表当前 CI 仍待运行。
     - [x] 当前增量本地开发：`0008` 私有发表状态／永久 Outbox 回执、独立发布修订号、原子配对和幂等转换、纯投影规划，见[实施契约](SIGNAL_PUBLICATION_OUTBOX.md)。整仓 1259 项单元测试通过，9 迁移／26 表隔离 SQL 验证零差异；新增 53 项原生集成已接入 CI，本机总计 184 项因无专用连接跳过，仍待 PR CI。本批通过独立 PR 交付，CI／评审／合并结果另行确认；不增加生产入口或角色授权，不代表资格化 Publisher 或搜索自动消费已经完成。
-    - [ ] 后续：当前资格／任务策略／授权／租约与 fencing 的事务校验、受限 Publisher 和独立安全撤回、真实 Outbox 消费者；再处理历史导入和读切换。私有账本出现 published 不是可公开许可。
+    - [x] Outbox 交付后续核验：[PR #72](https://github.com/hzense/tech-intelligence-hub/pull/72) 已合并为 `6db71c6`；修复新增外键改变 TRUNCATE 拒绝路径的测试，未放宽封存保护。PR 与 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34760910939) 均通过，184 项原生 PostgreSQL 集成通过；本地 main 已同步，未执行生产迁移。上条保留提交前本地证据，不代表当前仍待 PR CI。
+    - [x] 当前增量本地开发：私有任务与发布控制，追加 `0009` 的持久化开关／策略／授权／运行，冻结原始任务意图，校验取消、数据库租约与 fencing；详见[实施与验证记录](SIGNAL_PUBLICATION_CONTROLS.md)。整仓 1432 项单元测试及构建／类型／lint／格式／内容／Seed／工作流校验通过；临时 PostgreSQL 18.4 / pgvector 0.8.6 的完整 260 项原生集成通过，包括新增控制套件 34 项、其中 13 项真实并发竞争。修复旧 writer 测试日期对默认时区的依赖，未放宽约束。本批通过独立 PR 交付，PR CI／评审／合并结果另行确认；未执行生产迁移，不接入完整 Publisher、AI 后台或生产入口。
+    - [ ] 后续：当前证据／人物／组织资格、与组装及 Outbox 同事务的受限 Publisher、独立安全撤回与真实消费者；再处理历史导入和读切换。私有账本出现 published 或控制门禁通过都不是可公开许可。
   - [ ] V2-1c 历史导入事务、冲突／幂等核验、统一读取及权威切换。预演保留旧状态与引用，不自动补造人物、生成原文证据或提升为新版 published。
 - [ ] V2-2 AI 后台：管理员认证、模型列表／手填与分阶段 Profile、独立能力测试／兼容故障切换、密钥保护、来源增量及机器临时准入、预算、手动／定时任务与审计。
   - [x] 批量导入设计：正式定义文档／链接／混合批次、AI 生成并发布、逐项结果、重试与隐私边界，见设计第 7.4 节；仅为设计完成。
