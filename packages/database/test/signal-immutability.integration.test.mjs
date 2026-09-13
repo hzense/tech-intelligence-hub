@@ -51,10 +51,13 @@ async function withClient(name, callback, asAdmin = false) {
   }
 }
 
-async function rejected(client, sql, code = '55000', values = []) {
+async function rejected(client, sql, code = '55000', values = [], message) {
   await client.query('SAVEPOINT rejected_sealed_write');
   try {
-    await expect(client.query(sql, values)).rejects.toMatchObject({ code });
+    await expect(client.query(sql, values)).rejects.toMatchObject({
+      code,
+      ...(message === undefined ? {} : { message }),
+    });
   } finally {
     await client.query('ROLLBACK TO SAVEPOINT rejected_sealed_write');
     await client.query('RELEASE SAVEPOINT rejected_sealed_write');
@@ -469,7 +472,17 @@ suite('Signal snapshot transaction sealing', () => {
             client,
             "INSERT INTO signal_version_topics SELECT * FROM signal_version_topics WHERE signal_id='sealed-signal'",
           );
-          await rejected(client, 'TRUNCATE signal_event_identities');
+          // 0008 references identities from the Outbox: RESTRICT now fails
+          // before BEFORE TRUNCATE triggers, even in replica mode. Include the
+          // FK closure so this test actually reaches the original ALWAYS guard.
+          await rejected(client, 'TRUNCATE public.signal_event_identities', '0A000');
+          await rejected(
+            client,
+            'TRUNCATE public.signal_event_identities CASCADE',
+            '55000',
+            [],
+            'Sealed snapshot tables cannot be truncated',
+          );
         } finally {
           await client.query('ROLLBACK');
         }
