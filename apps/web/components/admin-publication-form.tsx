@@ -90,7 +90,7 @@ export function AdminPublicationForm({
         </p>
       )}
       {!databaseMode && <p>网站仍使用旧版信号数据源，暂不开放新发布；已配置服务时仍可安全撤回。</p>}
-      <form onSubmit={submit}>
+      <form method="post" onSubmit={submit}>
         <fieldset disabled={pending}>
           <legend>操作与版本</legend>
           <label>

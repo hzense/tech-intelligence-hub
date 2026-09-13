@@ -42,6 +42,26 @@ describe('AI configuration request boundary', () => {
       }).stages.verify.model_id,
     ).toBe('test/model');
   });
+  it('canonicalizes negative zero consistently with JSON persistence', () => {
+    const connection = parseAiConnectionCreate(
+      {
+        ...create(),
+        settings: {
+          ...settings,
+          input_price_microusd_per_million: -0,
+          output_price_microusd_per_million: -0,
+        },
+      },
+      hosts,
+    );
+    const profile = parseAiProfileSave({
+      name: 'Test',
+      stages: { extract: { ...stage(), temperature: -0 }, verify: stage(), analyze: stage() },
+    });
+    expect(connection.settings.input_price_microusd_per_million).toBe(0);
+    expect(connection.settings.output_price_microusd_per_million).toBe(0);
+    expect(profile.stages.extract.temperature).toBe(0);
+  });
   it.each([
     'http://example.com/v1',
     'https://other.example/v1',
@@ -110,18 +130,33 @@ describe('AI configuration request boundary', () => {
       parseAiConnectionUpdate({ id, expected_revision: 1, revoke_key: true }, hosts).revoke_key,
     ).toBe(true);
   });
-  it.each([{ id }, { expected_revision: 1 }, { id: '', expected_revision: 1 }])(
-    'requires profile identity and revision together %j',
-    (identity) => {
-      expect(() =>
-        parseAiProfileSave({
-          ...identity,
-          name: 'Test',
-          stages: { extract: stage(), verify: stage(), analyze: stage() },
-        }),
-      ).toThrow();
-    },
-  );
+  it('accepts a stable client ID for creation and requires revisions only for updates', () => {
+    const value = {
+      id,
+      name: 'Test',
+      stages: { extract: stage(), verify: stage(), analyze: stage() },
+    };
+    expect(parseAiProfileSave(value)).toEqual(value);
+    expect(parseAiProfileSave({ ...value, expected_revision: 1 })).toEqual({
+      ...value,
+      expected_revision: 1,
+    });
+  });
+  it.each([
+    { expected_revision: 1 },
+    { id: '', expected_revision: 1 },
+    { id: '' },
+    { id, expected_revision: undefined },
+    { id, expected_revision: 0 },
+  ])('rejects invalid profile create/update identity %j', (identity) => {
+    expect(() =>
+      parseAiProfileSave({
+        ...identity,
+        name: 'Test',
+        stages: { extract: stage(), verify: stage(), analyze: stage() },
+      }),
+    ).toThrow();
+  });
   it.each([
     { temperature: 3 },
     { max_output_tokens: 127 },

@@ -10,7 +10,8 @@ const messages: Record<string, string> = {
   invalid_request: '请检查字段格式、模型名称和数值范围。',
   invalid_configuration: '请检查接口域名白名单及配置格式。',
   revision_conflict: '配置已变化，请刷新后重新编辑。',
-  request_id_conflict: '该测试编号已用于其他请求，请先查询原测试。',
+  request_id_conflict:
+    '该请求编号已用于不同内容，或已有配置已被修改。请刷新核对原记录，不要覆盖重试。',
   endpoint_key_required: '更换接口地址时必须重新填写密钥，不能沿用原接口的密钥。',
   key_unavailable: '密钥已撤销或不可用。',
   connection_unavailable: '连接不可用，请检查启用状态及密钥。',

@@ -398,6 +398,7 @@ const env = {
   HZENSE_RUNTIME_EXPECTED_PORT: '5432',
   HZENSE_RUNTIME_EXPECTED_NAME: 'testdb',
   HZENSE_RUNTIME_EXPECTED_USER: 'hzense_runtime',
+  HZENSE_AI_ALLOWED_HOSTS: 'ai-gateway.vercel.sh',
   HZENSE_AI_DATABASE_URL:
     'postgresql://hzense_ai_admin:fixture-only@ep-test-pooler.eu-central-1.aws.neon.tech:5432/testdb?sslmode=verify-full&channel_binding=prefer',
   HZENSE_AI_KEYRING: JSON.stringify({
@@ -450,6 +451,8 @@ const invalidEnvironment = [
     }),
   },
   { HZENSE_RUNTIME_EXPECTED_HOST: 'wrong-pooler.neon.tech' },
+  { HZENSE_AI_ALLOWED_HOSTS: undefined },
+  { HZENSE_AI_ALLOWED_HOSTS: '' },
   { HZENSE_AI_ALLOWED_HOSTS: 'https://example.com' },
   { HZENSE_AI_ALLOWED_HOSTS: 'localhost' },
 ];
@@ -479,3 +482,7 @@ for (const value of [
   test(`host allowlist rejects ${value.slice(0, 80)}`, () => {
     assert.throws(() => readAiAllowedHosts(value), AiBackendConfigurationError);
   });
+
+test('missing allowlist does not authorize an implicit provider', () => {
+  assert.throws(() => readAiAllowedHosts(undefined), AiBackendConfigurationError);
+});

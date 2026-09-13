@@ -269,6 +269,71 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
       await owner((client) => client.query('REVOKE SELECT ON public.signals FROM PUBLIC'));
     }
   });
+  for (const [label, drift, message] of [
+    [
+      'missing required column read',
+      'REVOKE SELECT (name) ON public.ai_connections FROM hzense_ai_admin',
+      'effective column privilege contract mismatch',
+    ],
+    [
+      'table-wide read escalation',
+      'GRANT SELECT ON public.ai_connections TO hzense_ai_admin',
+      'no direct table or sequence privileges',
+    ],
+    [
+      'protected history column write',
+      'GRANT UPDATE (snapshot) ON public.ai_connection_versions TO hzense_ai_admin',
+      'effective column privilege contract mismatch',
+    ],
+    [
+      'column grant option',
+      'GRANT SELECT (name) ON public.ai_connections TO hzense_ai_admin WITH GRANT OPTION',
+      'effective column privilege contract mismatch',
+    ],
+    [
+      'database grant option',
+      `GRANT CONNECT ON DATABASE ${quote(databaseName)} TO hzense_ai_admin WITH GRANT OPTION`,
+      'database privilege contract mismatch',
+    ],
+    [
+      'schema grant option',
+      'GRANT USAGE ON SCHEMA public TO hzense_ai_admin WITH GRANT OPTION',
+      'schema privilege contract mismatch',
+    ],
+    [
+      'ambient effective table read',
+      'GRANT SELECT ON public.signals TO PUBLIC',
+      'effective table privilege contract mismatch',
+    ],
+    [
+      'ambient effective column read',
+      'GRANT SELECT (title) ON public.signals TO PUBLIC',
+      'effective column privilege contract mismatch',
+    ],
+    [
+      'missing direct ACL hidden by matching ambient access',
+      'REVOKE SELECT (name) ON public.ai_connections FROM hzense_ai_admin; GRANT SELECT (name) ON public.ai_connections TO PUBLIC',
+      'direct column ACL contract mismatch',
+    ],
+  ])
+    it(`rolls back every new grant when post-grant verification detects ${label}`, async () => {
+      // Inject drift after GRANT, exercising the commit gate independently of
+      // preflight. No elevated permission survives the failed transaction.
+      const driftedSql = roleSql.replace('DO $ai_admin_verify$', `${drift};\nDO $ai_admin_verify$`);
+      expect(driftedSql).not.toBe(roleSql);
+      await expect(owner((client) => client.query(driftedSql))).rejects.toThrow(message);
+      const remaining = await owner((client) =>
+        client.query(`SELECT 1 FROM pg_shdepend
+          WHERE refclassid='pg_authid'::regclass AND refobjid='hzense_ai_admin'::regrole AND deptype='a'`),
+      );
+      expect(remaining.rows).toEqual([]);
+      await expect(
+        service((client) => client.query('SELECT name FROM public.ai_connections')),
+      ).rejects.toMatchObject({ code: '42501' });
+      await expect(
+        service((client) => client.query('SELECT title FROM public.signals')),
+      ).rejects.toMatchObject({ code: '42501' });
+    });
   it('provisions only the authenticated restricted role and five exact private tables', async () => {
     await owner((client) => client.query(roleSql));
     const result = await service((client) =>
@@ -324,12 +389,74 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
       expect(row.insertable).toBe(aiTable);
       expect(row.updatable).toBe(updates[row.relname]?.includes(row.attname) ?? false);
     }
+    const directColumns = await owner((client) =>
+      client.query(`SELECT c.relname,a.attname,acl.privilege_type,acl.is_grantable
+        FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+        CROSS JOIN LATERAL aclexplode(a.attacl) acl
+        WHERE acl.grantee='hzense_ai_admin'::regrole`),
+    );
+    const expectedColumns = Object.entries(aiConfigurationColumns).flatMap(([table, columns]) =>
+      Object.keys(columns).flatMap((column) =>
+        ['SELECT', 'INSERT', ...(updates[table]?.includes(column) ? ['UPDATE'] : [])].map(
+          (privilege) => `${table}.${column}.${privilege}`,
+        ),
+      ),
+    );
+    expect(
+      directColumns.rows.map((row) => `${row.relname}.${row.attname}.${row.privilege_type}`).sort(),
+    ).toEqual(expectedColumns.sort());
+    expect(directColumns.rows.every((row) => !row.is_grantable)).toBe(true);
+    expect(
+      (
+        await owner((client) =>
+          client.query(`SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a
+            WHERE a.grantee='hzense_ai_admin'::regrole`),
+        )
+      ).rows,
+    ).toEqual([]);
     const dangerous = await owner((client) =>
       client.query(`SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE n.nspname='public' AND c.relkind IN ('r','v','S') AND
       (has_table_privilege('hzense_ai_admin',c.oid,'DELETE') OR has_table_privilege('hzense_ai_admin',c.oid,'TRUNCATE') OR has_table_privilege('hzense_ai_admin',c.oid,'TRIGGER'))`),
     );
     expect(dangerous.rows).toEqual([]);
+  });
+  it('keeps a newly added column on every AI table unreadable and unwritable', async () => {
+    for (const [table, columns] of Object.entries(aiConfigurationColumns)) {
+      await owner((client) =>
+        client.query(`ALTER TABLE public.${quote(table)} ADD COLUMN future_private text`),
+      );
+      try {
+        const privileges = await owner((client) =>
+          client.query(
+            `SELECT has_column_privilege('hzense_ai_admin',$1,'future_private','SELECT') AS readable,
+              has_column_privilege('hzense_ai_admin',$1,'future_private','INSERT') AS insertable,
+              has_column_privilege('hzense_ai_admin',$1,'future_private','UPDATE') AS updatable`,
+            [`public.${table}`],
+          ),
+        );
+        expect(privileges.rows[0]).toEqual({
+          readable: false,
+          insertable: false,
+          updatable: false,
+        });
+        await service((client) =>
+          client.query(`SELECT ${quote(Object.keys(columns)[0])} FROM public.${quote(table)}`),
+        );
+        for (const query of [
+          `SELECT future_private FROM public.${quote(table)}`,
+          `SELECT * FROM public.${quote(table)}`,
+          `UPDATE public.${quote(table)} SET future_private='not-authorized'`,
+        ])
+          await expect(service((client) => client.query(query))).rejects.toMatchObject({
+            code: '42501',
+          });
+      } finally {
+        await owner((client) =>
+          client.query(`ALTER TABLE public.${quote(table)} DROP COLUMN future_private`),
+        );
+      }
+    }
   });
   it('writes mutable settings, append-only masked history and probe costs through the real role', async () => {
     await service(async (client) => {
@@ -577,7 +704,72 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
         : { schema_valid: true, sentinel_matched: true },
   });
 
-  it('executes the real store with restricted credentials, masked revisions, persisted probes, replay, profiles and revocation', async () =>
+  it('serializes connection creation retries and rejects conflicting or obsolete create payloads', async () =>
+    withPool(async (pool) => {
+      const request = { ...createRequest(), id: randomUUID() };
+      const create = (input = request) =>
+        createAiConnection({ pool, request: input, keyring, allowedHosts });
+      const [first, retry] = await Promise.all([create(), create()]);
+      expect(retry).toEqual(first);
+      expect(first).toMatchObject({ id: request.id, revision: 1 });
+      expect(
+        (await getAiConnectionHistory({ pool, id: request.id })).map((row) => row.revision),
+      ).toEqual([1]);
+      await expect(
+        create({ ...request, settings: Object.fromEntries(Object.entries(settings).reverse()) }),
+      ).resolves.toEqual(first);
+      const zeroPriceRequest = {
+        ...request,
+        id: randomUUID(),
+        settings: {
+          ...settings,
+          input_price_microusd_per_million: -0,
+          output_price_microusd_per_million: -0,
+        },
+      };
+      const zeroPriceConnection = await create(zeroPriceRequest);
+      expect(zeroPriceConnection.settings.input_price_microusd_per_million).toBe(0);
+      expect(zeroPriceConnection.settings.output_price_microusd_per_million).toBe(0);
+      await expect(create(zeroPriceRequest)).resolves.toEqual(zeroPriceConnection);
+      expect(await getAiConnectionHistory({ pool, id: zeroPriceRequest.id })).toHaveLength(1);
+      for (const changes of [
+        { name: 'A different connection' },
+        { api_key: 'another-synthetic-role-test-key' },
+        { enabled: false },
+        { settings: { ...settings, max_concurrency: 2 } },
+      ])
+        await expect(create({ ...request, ...changes })).rejects.toMatchObject({
+          code: 'request_id_conflict',
+        });
+      const conflictingId = randomUUID();
+      const attempts = await Promise.allSettled([
+        create({ ...request, id: conflictingId, name: 'First competing payload' }),
+        create({ ...request, id: conflictingId, name: 'Second competing payload' }),
+      ]);
+      expect(attempts.filter((attempt) => attempt.status === 'fulfilled')).toHaveLength(1);
+      expect(attempts.find((attempt) => attempt.status === 'rejected').reason).toMatchObject({
+        code: 'request_id_conflict',
+      });
+      expect(await getAiConnectionHistory({ pool, id: conflictingId })).toHaveLength(1);
+      await updateAiConnection({
+        pool,
+        request: { id: request.id, expected_revision: 1, name: request.name },
+        keyring,
+        allowedHosts,
+      });
+      await expect(create()).rejects.toMatchObject({ code: 'request_id_conflict' });
+      await updateAiConnection({
+        pool,
+        request: { id: request.id, expected_revision: 2, revoke_key: true },
+        keyring,
+        allowedHosts,
+      });
+      await expect(create()).rejects.toMatchObject({ code: 'request_id_conflict' });
+      expect(
+        (await getAiConnectionHistory({ pool, id: request.id })).map((row) => row.revision),
+      ).toEqual([3, 2, 1]);
+    }));
+  it('executes the real store with restricted credentials, masked revisions, persisted probes, explicit-ID profile retries and revocation', async () =>
     withPool(async (pool) => {
       const input = createRequest();
       const connection = await createAiConnection({ pool, request: input, keyring, allowedHosts });
@@ -588,11 +780,12 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
         connection_revision: 1,
         model_id: 'synthetic-model',
         prompt: 'Synthetic test',
-        temperature: 0,
+        temperature: -0,
         max_output_tokens: 128,
         require_tools: false,
       };
       const profileRequest = {
+        id: randomUUID(),
         name: 'Synthetic profile',
         stages: { extract: stage, verify: stage, analyze: stage },
       };
@@ -635,7 +828,37 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
           });
         }
       }
-      const profile = await saveAiProfile({ pool, request: profileRequest });
+      const [profile, profileRetry] = await Promise.all([
+        saveAiProfile({ pool, request: profileRequest }),
+        saveAiProfile({ pool, request: profileRequest }),
+      ]);
+      expect(profile).toMatchObject({ id: profileRequest.id, revision: 1 });
+      expect(profileRetry).toEqual(profile);
+      for (const storedStage of Object.values(profile.stages))
+        expect(storedStage.temperature).toBe(0);
+      await expect(saveAiProfile({ pool, request: profileRequest })).resolves.toEqual(profile);
+      expect(await getAiProfileHistory({ pool, id: profile.id })).toHaveLength(1);
+      await expect(
+        saveAiProfile({
+          pool,
+          request: {
+            ...profileRequest,
+            stages: Object.fromEntries(Object.entries(profileRequest.stages).reverse()),
+          },
+        }),
+      ).resolves.toEqual(profile);
+      await expect(
+        saveAiProfile({ pool, request: { ...profileRequest, name: 'A conflicting profile' } }),
+      ).rejects.toMatchObject({ code: 'request_id_conflict' });
+      await expect(
+        saveAiProfile({
+          pool,
+          request: {
+            ...profileRequest,
+            stages: { ...profileRequest.stages, extract: { ...stage, prompt: 'Different prompt' } },
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'request_id_conflict' });
       expect(profile.readiness.ready).toBe(true);
       expect((await resolveAiProfileForExecution({ pool, id: profile.id })).id).toBe(profile.id);
       expect(
@@ -654,6 +877,9 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
       expect(
         (await getAiProfileHistory({ pool, id: profile.id })).map((row) => row.revision),
       ).toEqual([2, 1]);
+      await expect(saveAiProfile({ pool, request: profileRequest })).rejects.toMatchObject({
+        code: 'request_id_conflict',
+      });
       expect(
         await runAiProbe({
           pool,

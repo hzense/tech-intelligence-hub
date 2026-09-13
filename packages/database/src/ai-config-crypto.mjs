@@ -49,9 +49,9 @@ function open(value, key, aad) {
   return Buffer.concat([cipher.update(ciphertext), cipher.final()]);
 }
 export function encryptAiKey(apiKey, connectionId, keyring) {
+  parseAiApiKey(apiKey);
+  aiUuid(connectionId);
   try {
-    parseAiApiKey(apiKey);
-    aiUuid(connectionId);
     const ring = readAiKeyring(keyring),
       aad = Buffer.from(`hzense:ai-connection:${connectionId}:v1`);
     const dek = randomBytes(32);

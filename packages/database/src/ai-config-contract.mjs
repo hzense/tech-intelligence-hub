@@ -84,7 +84,7 @@ export function aiModelId(value) {
 }
 export function aiInteger(value, min, max) {
   if (!Number.isSafeInteger(value) || value < min || value > max) aiFail();
-  return value;
+  return value === 0 ? 0 : value;
 }
 const bool = (value) => {
   if (typeof value !== 'boolean') aiFail();
@@ -196,9 +196,9 @@ export function parseAiProbeRequest(input) {
 }
 export function parseAiProfileSave(input) {
   const v = aiObject(input, ['name', 'stages'], ['id', 'expected_revision']);
-  if ('id' in v !== 'expected_revision' in v) aiFail();
-  if ('id' in v) {
-    v.id = aiUuid(v.id);
+  if ('id' in v) v.id = aiUuid(v.id);
+  if ('expected_revision' in v) {
+    if (!('id' in v)) aiFail();
     v.expected_revision = aiInteger(v.expected_revision, 1, 2147483646);
   }
   v.name = aiText(v.name, 120);
@@ -224,6 +224,8 @@ export function parseAiProfileSave(input) {
       s.temperature > 2
     )
       aiFail();
+    // JSON and jsonb store negative zero as zero; compare canonical requests on replay.
+    if (s.temperature === 0) s.temperature = 0;
     s.max_output_tokens = aiInteger(s.max_output_tokens, 128, 8192);
     s.require_tools = bool(s.require_tools);
     stages[name] = s;

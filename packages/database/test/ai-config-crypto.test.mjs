@@ -5,6 +5,16 @@ const id = '11111111-1111-4111-8111-111111111111';
 const other = '22222222-2222-4222-8222-222222222222';
 const ring = { active: 'v1', keys: { v1: Buffer.alloc(32, 1).toString('base64') } };
 describe('AI envelope encryption', () => {
+  it.each([
+    ['short', id],
+    ['synthetic-api-key', 'invalid-id'],
+  ])('reports invalid key or identity as an invalid request', (apiKey, connectionId) => {
+    expect(() => encryptAiKey(apiKey, connectionId, ring)).toThrow('invalid_request');
+    expect(() => encryptAiKey(apiKey, connectionId, undefined)).toThrow('invalid_request');
+  });
+  it('reports keyring failures only after validating the request', () => {
+    expect(() => encryptAiKey('synthetic-api-key', id, undefined)).toThrow('keyring_unavailable');
+  });
   it('uses independent random keys/IVs without returning plaintext or tail', () => {
     const first = encryptAiKey('synthetic-api-key', id, ring),
       second = encryptAiKey('synthetic-api-key', id, ring);

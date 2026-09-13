@@ -312,6 +312,7 @@ test(
         const page = await request('/admin', { headers: { cookie } });
         const html = await page.text();
         assert.match(html, /受限信号发布/);
+        assert.match(html, /<form\b[^>]*method="post"/);
         assert.match(html, /发布服务尚未配置/);
         const response = await request('/api/admin/signals/withdraw', {
           method: 'POST',

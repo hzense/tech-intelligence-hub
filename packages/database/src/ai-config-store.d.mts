@@ -71,12 +71,19 @@ export interface AiProfileStage {
   max_output_tokens: number;
   require_tools: boolean;
 }
-export interface AiProfileSaveRequest {
-  id?: string;
-  expected_revision?: number;
+interface AiProfileFields {
   name: string;
   stages: { extract: AiProfileStage; verify: AiProfileStage; analyze: AiProfileStage };
 }
+export interface AiProfileCreateRequest extends AiProfileFields {
+  id?: string;
+  expected_revision?: never;
+}
+export interface AiProfileUpdateRequest extends AiProfileFields {
+  id: string;
+  expected_revision: number;
+}
+export type AiProfileSaveRequest = AiProfileCreateRequest | AiProfileUpdateRequest;
 export interface AiProfile {
   id: string;
   revision: number;

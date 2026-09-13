@@ -10,7 +10,8 @@ export class AiBackendConfigurationError extends Error {
 }
 
 export function readAiAllowedHosts(raw: string | undefined): string[] {
-  const hosts = (raw ?? 'ai-gateway.vercel.sh').split(',');
+  if (typeof raw !== 'string' || raw.length === 0) throw new AiBackendConfigurationError();
+  const hosts = raw.split(',');
   if (
     hosts.length > 20 ||
     hosts.some(

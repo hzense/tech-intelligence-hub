@@ -1366,7 +1366,7 @@ Outbox 新增唯一 `(request_key,signal_id,content_version)` 作为绑定外键
 | `ai_profile_versions`    | `(profile_id,revision)` PK/FK；阶段配置与提示词历史                                     |
 | `ai_probe_runs`          | UUID PK；复合 FK 绑定连接修订；请求指纹、固定测试类型、状态、预算／用量、安全摘要与时间 |
 
-AI 测试先登记再调用，配置行锁下校验预算及并发，修订变化不复用旧能力证明。角色 `hzense_ai_admin` 只通过独立 opt-in SQL 获列级写入权，不获业务表或发布能力；历史版本不可由该角色改删。`0013` 拒绝新表继承意外非 owner ACL，失败整体回滚而不修复旧权限。加密、变量、表字段职责及未上线边界见 [AI 连接与模型配置](AI_CONNECTIONS.md)。
+AI 测试先登记再调用，配置行锁下校验预算及并发，修订变化不复用旧能力证明。角色 `hzense_ai_admin` 只通过独立 opt-in SQL 获显式列级 SELECT／INSERT／必要 UPDATE 权限，不获业务表或发布能力；未来新增列不自动可读，历史版本不可由该角色改删。授权脚本提交前精确核对有效权限、直接 ACL 和 grant option，超额授权使事务回滚。`0013` 拒绝新表继承意外非 owner ACL，失败整体回滚而不修复旧权限。加密、变量、表字段职责及未上线边界见 [AI 连接与模型配置](AI_CONNECTIONS.md)。
 
 ## 40.3 核心关系
 

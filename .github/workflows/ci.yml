@@ -125,6 +125,17 @@ jobs:
           MIGRATION_TEST_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
           RUNTIME_READER_TEST_ISOLATED_CLUSTER: '1'
         run: pnpm --filter @hzense/database test:migrations
+      - name: Build search dependency for configured administrator fixture
+        run: pnpm --filter @hzense/search build
+      - name: Install Chromium for configured administrator fixture
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Verify configured AI forms through HTTP and isolated PostgreSQL
+        working-directory: apps/web
+        env:
+          HZENSE_AI_BROWSER_PG_TEST: '1'
+          MIGRATION_TEST_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+          RUNTIME_READER_TEST_ISOLATED_CLUSTER: '1'
+        run: node --test test/admin-ai-browser-pg.test.mjs
       - name: Summarize migration gate
         if: always()
         env:
@@ -134,6 +145,7 @@ jobs:
             echo '## Database migration gate'
             echo "- Result: $JOB_STATUS"
             echo '- Matrix: restricted migrator, Topic writer and Runtime reader; full schema contract, idempotent reruns, lock contention, privilege isolation, legacy upgrade and rollback'
+            echo '- Configured AI: real React forms, HTTP handler and restricted PostgreSQL store; synthetic provider only, separate from Next.js/Google authentication verification'
             echo '- Service: PostgreSQL 18 + administrator-preinstalled pgvector 0.8.6 (digest pinned)'
           } >> "$GITHUB_STEP_SUMMARY"
 

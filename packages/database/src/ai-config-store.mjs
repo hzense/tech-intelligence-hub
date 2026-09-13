@@ -1,5 +1,6 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import { isDeepStrictEqual } from 'node:util';
 import {
   AiConfigError,
   aiFail,
@@ -28,9 +29,10 @@ const one = (result) => {
 function safeError(error) {
   return error instanceof AiConfigError ? error : new AiConfigError('database_unavailable');
 }
-async function transaction(pool, operation) {
+async function transaction(pool, operation, { commitErrorCode = 'database_unavailable' } = {}) {
   let client;
   let started = false;
+  let committing = false;
   let discard;
   try {
     if (!pool || typeof pool.connect !== 'function') aiFail('database_unavailable');
@@ -42,13 +44,14 @@ async function transaction(pool, operation) {
     await client.query("SET LOCAL statement_timeout='15s'");
     await client.query("SET LOCAL idle_in_transaction_session_timeout='15s'");
     const result = await operation(client);
+    committing = true;
     await client.query('COMMIT');
     started = false;
     return result;
   } catch (error) {
     discard = error;
     if (started) await client?.query('ROLLBACK').catch(() => undefined);
-    throw safeError(error);
+    throw committing ? new AiConfigError(commitErrorCode) : safeError(error);
   } finally {
     client?.release(discard);
   }
@@ -122,12 +125,44 @@ async function connectionHistory(client, row) {
     [row.id, row.revision, JSON.stringify(connectionDto(row))],
   );
 }
+function matchesConnectionCreate(row, request, keyring) {
+  if (
+    row.revision !== 1 ||
+    !row.encrypted_key ||
+    ['name', 'protocol', 'base_url', 'enabled', 'settings'].some(
+      (field) => !isDeepStrictEqual(row[field], request[field]),
+    )
+  )
+    return false;
+  const actual = Buffer.from(decryptAiKey(row.encrypted_key, row.id, keyring));
+  const expected = Buffer.from(request.api_key);
+  try {
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  } finally {
+    actual.fill(0);
+    expected.fill(0);
+  }
+}
 export async function createAiConnection({ pool, request, keyring, allowedHosts }) {
   const v = parseAiConnectionCreate(request, allowedHosts);
   const id = v.id ?? randomUUID();
-  const encrypted = encryptAiKey(v.api_key, id, keyring);
   return transaction(pool, async (client) => {
-    const row = one(
+    await client.query(
+      '/* ai:connection-create-lock */ SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+      [`hzense:ai-connection-create:${id}`],
+    );
+    const old = (
+      await client.query(
+        `/* ai:connection */ SELECT ${connectionColumns} FROM public.ai_connections WHERE id=$1 FOR UPDATE`,
+        [id],
+      )
+    ).rows[0];
+    if (old) {
+      if (!matchesConnectionCreate(old, v, keyring)) aiFail('request_id_conflict');
+      return connectionDto(old);
+    }
+    const encrypted = encryptAiKey(v.api_key, id, keyring);
+    const row = (
       await client.query(
         `/* ai:connection-create */ INSERT INTO public.ai_connections(id,revision,name,protocol,base_url,enabled,settings,encrypted_key)
   VALUES($1,1,$2,$3,$4,$5,$6::jsonb,$7::jsonb) ON CONFLICT(id) DO NOTHING RETURNING ${connectionColumns}`,
@@ -140,8 +175,9 @@ export async function createAiConnection({ pool, request, keyring, allowedHosts 
           JSON.stringify(v.settings),
           JSON.stringify(encrypted),
         ],
-      ),
-    );
+      )
+    ).rows[0];
+    if (!row) aiFail('request_id_conflict');
     await connectionHistory(client, row);
     return connectionDto(row);
   });
@@ -250,24 +286,35 @@ async function readiness(client, stages, locking = false) {
 }
 export async function saveAiProfile({ pool, request }) {
   const v = parseAiProfileSave(request);
+  const id = v.id ?? randomUUID();
+  const updating = 'expected_revision' in v;
   return transaction(pool, async (client) => {
-    const id = v.id ?? randomUUID();
     let revision = 1;
-    if (v.id) {
-      const old = one(
-        await client.query(
-          `/* ai:profile */ SELECT ${profileColumns} FROM public.ai_profiles WHERE id=$1 FOR UPDATE`,
-          [id],
-        ),
+    if (!updating)
+      await client.query(
+        '/* ai:profile-create-lock */ SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+        [`hzense:ai-profile-create:${id}`],
       );
+    const old = (
+      await client.query(
+        `/* ai:profile */ SELECT ${profileColumns} FROM public.ai_profiles WHERE id=$1 FOR UPDATE`,
+        [id],
+      )
+    ).rows[0];
+    if (updating) {
+      if (!old) aiFail('not_found');
       if (old.revision !== v.expected_revision) aiFail('revision_conflict');
       revision = old.revision + 1;
+    } else if (old) {
+      if (old.revision !== 1 || old.name !== v.name || !isDeepStrictEqual(old.stages, v.stages))
+        aiFail('request_id_conflict');
+      return profileDto(old, await readiness(client, old.stages, true));
     }
     const ready = await readiness(client, v.stages, true);
     if (!ready.ready) aiFail('profile_not_ready');
     const row = one(
       await client.query(
-        v.id
+        updating
           ? `/* ai:profile-update */ UPDATE public.ai_profiles SET revision=$2,name=$3,stages=$4::jsonb,updated_at=clock_timestamp() WHERE id=$1 RETURNING ${profileColumns}`
           : `/* ai:profile-create */ INSERT INTO public.ai_profiles(id,revision,name,stages) VALUES($1,$2,$3,$4::jsonb) RETURNING ${profileColumns}`,
         [id, revision, v.name, JSON.stringify(v.stages)],
@@ -446,60 +493,65 @@ export async function runAiProbe({ pool, request, keyring, allowedHosts, invoke 
   const v = parseAiProbeRequest(request);
   if (typeof invoke !== 'function') aiFail('invalid_configuration');
   const fingerprint = probeFingerprint(v);
-  const reserved = await transaction(pool, async (client) => {
-    await client.query('/* ai:probe-lock */ SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
-      `hzense:ai-probe:${v.id}`,
-    ]);
-    const old = await probe(client, v.id);
-    if (old) {
-      if (old.fingerprint !== fingerprint) aiFail('request_id_conflict');
-      await connection(client, old.connection_id, true);
-      await sweep(client, old.connection_id);
-      return { replay: await probe(client, v.id) };
-    }
-    const row = await connection(client, v.connection_id, true);
-    validateAiBaseUrl(row.base_url, allowedHosts);
-    if (row.revision !== v.connection_revision) aiFail('revision_conflict');
-    if (!row.enabled || !row.encrypted_key) aiFail('connection_unavailable');
-    await sweep(client, v.connection_id);
-    const usage = one(
+  const reserved = await transaction(
+    pool,
+    async (client) => {
       await client.query(
-        `/* ai:probe-budget */ SELECT count(*) FILTER(WHERE created_at>=date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AS today_count,
+        '/* ai:probe-lock */ SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+        [`hzense:ai-probe:${v.id}`],
+      );
+      const old = await probe(client, v.id);
+      if (old) {
+        if (old.fingerprint !== fingerprint) aiFail('request_id_conflict');
+        await connection(client, old.connection_id, true);
+        await sweep(client, old.connection_id);
+        return { replay: await probe(client, v.id) };
+      }
+      const row = await connection(client, v.connection_id, true);
+      validateAiBaseUrl(row.base_url, allowedHosts);
+      if (row.revision !== v.connection_revision) aiFail('revision_conflict');
+      if (!row.enabled || !row.encrypted_key) aiFail('connection_unavailable');
+      await sweep(client, v.connection_id);
+      const usage = one(
+        await client.query(
+          `/* ai:probe-budget */ SELECT count(*) FILTER(WHERE created_at>=date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AS today_count,
       COALESCE(sum(GREATEST(reserved_microusd,charged_microusd)) FILTER(WHERE created_at>=date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),0) AS today_cost,
       count(*) FILTER(WHERE status IN ('pending','running')) AS active FROM public.ai_probe_runs WHERE connection_id=$1`,
-        [v.connection_id],
-      ),
-    );
-    if (Number(usage.today_count) >= 100) aiFail('daily_probe_limit');
-    if (Number(usage.active) >= row.settings.max_concurrency) aiFail('concurrency_limit');
-    const amount = v.kind === 'models' ? 0n : cost(8192, 128, row.settings);
-    if (BigInt(usage.today_cost) + amount > BigInt(row.settings.daily_budget_microusd))
-      aiFail('daily_budget_exceeded');
-    const configuration = {
-      protocol: row.protocol,
-      base_url: row.base_url,
-      settings: row.settings,
-      max_output_tokens: 128,
-      reserved_input_tokens: 8192,
-    };
-    const saved = one(
-      await client.query(
-        `/* ai:probe-reserve */ INSERT INTO public.ai_probe_runs(id,connection_id,connection_revision,kind,model_id,fingerprint,status,configuration,reserved_microusd,charged_microusd,result)
+          [v.connection_id],
+        ),
+      );
+      if (Number(usage.today_count) >= 100) aiFail('daily_probe_limit');
+      if (Number(usage.active) >= row.settings.max_concurrency) aiFail('concurrency_limit');
+      const amount = v.kind === 'models' ? 0n : cost(8192, 128, row.settings);
+      if (BigInt(usage.today_cost) + amount > BigInt(row.settings.daily_budget_microusd))
+        aiFail('daily_budget_exceeded');
+      const configuration = {
+        protocol: row.protocol,
+        base_url: row.base_url,
+        settings: row.settings,
+        max_output_tokens: 128,
+        reserved_input_tokens: 8192,
+      };
+      const saved = one(
+        await client.query(
+          `/* ai:probe-reserve */ INSERT INTO public.ai_probe_runs(id,connection_id,connection_revision,kind,model_id,fingerprint,status,configuration,reserved_microusd,charged_microusd,result)
       VALUES($1,$2,$3,$4,$5,$6,'pending',$7::jsonb,$8,$8,'{}'::jsonb) RETURNING ${probeColumns}`,
-        [
-          v.id,
-          v.connection_id,
-          v.connection_revision,
-          v.kind,
-          v.model_id ?? null,
-          fingerprint,
-          JSON.stringify(configuration),
-          amount.toString(),
-        ],
-      ),
-    );
-    return { saved };
-  });
+          [
+            v.id,
+            v.connection_id,
+            v.connection_revision,
+            v.kind,
+            v.model_id ?? null,
+            fingerprint,
+            JSON.stringify(configuration),
+            amount.toString(),
+          ],
+        ),
+      );
+      return { saved };
+    },
+    { commitErrorCode: 'probe_outcome_unknown' },
+  );
   if (reserved.replay) return probeDto(reserved.replay);
   // A pending reservation was committed before any credentials are decrypted
   // or network is attempted. An uncertain commit must not cause an API retry.

@@ -1,15 +1,8 @@
 import 'server-only';
 import pg from 'pg';
 import {
-  createAiConnection,
-  updateAiConnection,
   listAiConnections,
-  getAiConnectionHistory,
-  saveAiProfile,
   listAiProfiles,
-  getAiProfileHistory,
-  runAiProbe,
-  getAiProbe,
   listAiProbes,
   type AiConnection,
   type AiProfile,
@@ -22,6 +15,7 @@ import {
   type AiAdminOperation,
 } from '../admin-ai-core';
 import { invokeAiProbe } from '../ai-provider';
+import { createAiAdminExecutor } from '../admin-ai-service';
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
@@ -121,32 +115,11 @@ export async function executeAiAdmin(
   command: Record<string, unknown>,
 ): Promise<unknown> {
   const config = readAiBackendConfiguration(process.env);
-  const input = {
+  const execute = createAiAdminExecutor({
     pool: restrictedPool,
-    request: command,
     keyring: config.keyring,
     allowedHosts: config.allowedHosts,
-  };
-  switch (operation) {
-    case 'list-connections':
-      return { connections: await listAiConnections(input) };
-    case 'create-connection':
-      return { connection: await createAiConnection(input) };
-    case 'update-connection':
-      return { connection: await updateAiConnection(input) };
-    case 'connection-history':
-      return { history: await getAiConnectionHistory({ ...input, id: String(command.id) }) };
-    case 'list-profiles':
-      return { profiles: await listAiProfiles(input) };
-    case 'save-profile':
-      return { profile: await saveAiProfile(input) };
-    case 'profile-history':
-      return { history: await getAiProfileHistory({ ...input, id: String(command.id) }) };
-    case 'list-probes':
-      return { probes: await listAiProbes(input) };
-    case 'get-probe':
-      return { probe: await getAiProbe({ ...input, id: String(command.id) }) };
-    case 'run-probe':
-      return { probe: await runAiProbe({ ...input, invoke: invokeAiProbe }) };
-  }
+    invoke: invokeAiProbe,
+  });
+  return execute(operation, command);
 }

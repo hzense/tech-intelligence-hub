@@ -16,7 +16,7 @@ const stages = [
 ] as const;
 
 export function AdminAiProfiles({
-  connections,
+  connections: initialConnections,
   initialProfiles,
   configured,
   available,
@@ -27,6 +27,7 @@ export function AdminAiProfiles({
   available: boolean;
 }) {
   const [profiles, setProfiles] = useState(initialProfiles);
+  const [connections, setConnections] = useState(initialConnections);
   const [editing, setEditing] = useState<AiProfile | null>(null);
   const [message, setMessage] = useState('');
   const [history, setHistory] = useState<unknown>(null);
@@ -34,8 +35,12 @@ export function AdminAiProfiles({
   const createId = useRef<string | null>(null);
 
   async function refresh() {
-    const result = await aiRequest<{ profiles: AiProfile[] }>('profiles');
-    setProfiles(result.profiles);
+    const [profileResult, connectionResult] = await Promise.all([
+      aiRequest<{ profiles: AiProfile[] }>('profiles'),
+      aiRequest<{ connections: AiConnection[] }>('connections'),
+    ]);
+    setProfiles(profileResult.profiles);
+    setConnections(connectionResult.connections);
   }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,12 +69,14 @@ export function AdminAiProfiles({
     setBusy(true);
     setMessage('');
     try {
-      const result = await aiRequest<{ profile: AiProfile }>('profiles', 'POST', {
-        id: editing?.id ?? createId.current,
-        ...(editing ? { expected_revision: editing.revision } : {}),
+      const payload: AiProfileSaveRequest = {
+        ...(editing
+          ? { id: editing.id, expected_revision: editing.revision }
+          : { id: createId.current }),
         name: String(data.get('name')),
         stages: draft,
-      });
+      };
+      const result = await aiRequest<{ profile: AiProfile }>('profiles', 'POST', payload);
       setEditing(result.profile);
       createId.current = null;
       setMessage(`已保存配置 r${result.profile.revision}。本次未启动任何任务。`);
@@ -115,7 +122,7 @@ export function AdminAiProfiles({
                 setBusy(true);
                 try {
                   await refresh();
-                  setMessage('列表已刷新。连接变更后，请刷新页面更新连接修订。');
+                  setMessage('配置状态与连接修订已刷新；变更后的连接仍需重新通过能力测试。');
                 } catch {
                   setMessage('读取失败，请稍后重试。');
                 } finally {
