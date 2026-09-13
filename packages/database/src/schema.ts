@@ -533,9 +533,114 @@ export const relations = pgTable(
     metadata: jsonb('metadata').notNull().default({}),
   },
   (t) => [
+    uniqueIndex('relations_identity_uq').on(t.id, t.sourceId, t.targetId, t.relationType),
     index('relations_source_idx').on(t.sourceId),
     index('relations_target_idx').on(t.targetId),
     check('relations_confidence_ck', sql`${t.confidence} between 0 and 1`),
+    check(
+      'relations_valid_from_ck',
+      sql`${t.validFrom} IS NULL OR (isfinite(${t.validFrom}) AND ${t.validFrom} >= DATE '0001-01-01' AND ${t.validFrom} <= DATE '9999-12-31')`,
+    ),
+    check(
+      'relations_valid_to_ck',
+      sql`${t.validTo} IS NULL OR (isfinite(${t.validTo}) AND ${t.validTo} >= DATE '0001-01-01' AND ${t.validTo} <= DATE '9999-12-31')`,
+    ),
+    check(
+      'relations_valid_interval_ck',
+      sql`${t.validFrom} IS NULL OR ${t.validTo} IS NULL OR ${t.validFrom} <= ${t.validTo}`,
+    ),
+  ],
+);
+
+// Dates live only in relations. A pending edge does not establish employment.
+export const personOrganizationAffiliations = pgTable(
+  'person_organization_affiliations',
+  {
+    relationId: text('relation_id').primaryKey(),
+    personId: text('person_id').notNull(),
+    organizationId: text('organization_id').notNull(),
+    relationType: text('relation_type').notNull(),
+    roleTitle: text('role_title').notNull(),
+    dateBasis: text('date_basis').notNull(),
+    verificationStatus: text('verification_status').notNull().default('pending'),
+  },
+  (t) => [
+    foreignKey({
+      name: 'person_organization_affiliations_identity_fk',
+      columns: [t.relationId, t.personId, t.organizationId, t.relationType],
+      foreignColumns: [
+        relations.id,
+        relations.sourceId,
+        relations.targetId,
+        relations.relationType,
+      ],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    foreignKey({
+      name: 'person_organization_affiliations_person_fk',
+      columns: [t.personId],
+      foreignColumns: [personProfiles.entityId],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    foreignKey({
+      name: 'person_organization_affiliations_organization_fk',
+      columns: [t.organizationId],
+      foreignColumns: [organizationProfiles.entityId],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    check(
+      'person_organization_affiliations_relation_type_ck',
+      sql`${t.relationType} IN ('works_at', 'leads', 'advises')`,
+    ),
+    check('person_organization_affiliations_role_title_ck', sql`${t.roleTitle} ~ '[^[:space:]]'`),
+    check('person_organization_affiliations_date_basis_ck', sql`${t.dateBasis} ~ '[^[:space:]]'`),
+    check(
+      'person_organization_affiliations_verification_status_ck',
+      sql`${t.verificationStatus} IN ('pending', 'verified', 'rejected')`,
+    ),
+    index('person_organization_affiliations_person_idx').on(t.personId),
+    index('person_organization_affiliations_organization_idx').on(t.organizationId),
+  ],
+);
+
+export const affiliationEvidence = pgTable(
+  'affiliation_evidence',
+  {
+    relationId: text('relation_id').notNull(),
+    evidenceId: text('evidence_id').notNull(),
+    claim: text('claim').notNull(),
+    relation: text('relation').notNull(),
+    verificationStatus: text('verification_status').notNull().default('pending'),
+  },
+  (t) => [
+    primaryKey({ name: 'affiliation_evidence_pkey', columns: [t.relationId, t.evidenceId] }),
+    foreignKey({
+      name: 'affiliation_evidence_affiliation_fk',
+      columns: [t.relationId],
+      foreignColumns: [personOrganizationAffiliations.relationId],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    foreignKey({
+      name: 'affiliation_evidence_evidence_fk',
+      columns: [t.evidenceId],
+      foreignColumns: [publicSourceEvidence.id],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    check('affiliation_evidence_claim_ck', sql`${t.claim} ~ '[^[:space:]]'`),
+    check(
+      'affiliation_evidence_relation_ck',
+      sql`${t.relation} IN ('supports', 'contradicts', 'context')`,
+    ),
+    check(
+      'affiliation_evidence_verification_status_ck',
+      sql`${t.verificationStatus} IN ('pending', 'verified', 'rejected')`,
+    ),
+    index('affiliation_evidence_evidence_idx').on(t.evidenceId),
   ],
 );
 export const radarSnapshots = pgTable(

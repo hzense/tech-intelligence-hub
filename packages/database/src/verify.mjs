@@ -13,6 +13,16 @@ import {
   signalFoundationDefaults,
   signalFoundationIndexes,
 } from './signal-foundation-catalog.mjs';
+import {
+  affiliationColumns,
+  affiliationPrimaryKeys,
+  affiliationForeignKeys,
+  affiliationRelationChecks,
+  affiliationChecks,
+  affiliationDefaults,
+  affiliationUniqueIndexes,
+  affiliationIndexes,
+} from './affiliation-catalog.mjs';
 
 const { Client } = pg;
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
@@ -138,6 +148,7 @@ const expectedColumns = {
     applied_at: ['timestamp with time zone', true],
   },
   ...signalFoundationColumns,
+  ...affiliationColumns,
 };
 
 const expectedEnums = {
@@ -193,6 +204,7 @@ const expectedEnums = {
 
 const expectedPrimaryKeys = new Set([
   ...signalFoundationPrimaryKeys,
+  ...affiliationPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -210,6 +222,7 @@ const expectedPrimaryKeys = new Set([
 
 const expectedForeignKeys = new Set([
   ...signalFoundationForeignKeys,
+  ...affiliationForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -226,6 +239,7 @@ const expectedForeignKeys = new Set([
 
 const expectedCheckExpressions = {
   ...signalFoundationChecks,
+  ...affiliationChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -243,6 +257,7 @@ const expectedCheckExpressions = {
     ['novelty>=0andnovelty<=1', "novelty>='0'andnovelty<='1'", 'noveltybetween0and1'],
   ],
   relations: [
+    ...affiliationRelationChecks,
     [
       'confidence>=0andconfidence<=1',
       "confidence>='0'andconfidence<='1'",
@@ -280,6 +295,7 @@ const expectedCheckExpressions = {
 
 const expectedDefaults = new Map([
   ...signalFoundationDefaults,
+  ...affiliationDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
   ['topics.runtime_enabled', new Set(['false'])],
@@ -303,6 +319,7 @@ const expectedDefaults = new Map([
 ]);
 
 const expectedUniqueIndexes = new Set([
+  ...affiliationUniqueIndexes,
   'entities|id,type',
   'radar_snapshots|topic_id,snapshot_date',
   'radar_snapshot_signals|snapshot_id,position',
@@ -312,6 +329,7 @@ const expectedUniqueIndexes = new Set([
 
 const requiredNonUniqueIndexes = new Set([
   ...signalFoundationIndexes,
+  ...affiliationIndexes,
   'entities|type',
   'entities|name',
   'signals|occurred_at',
