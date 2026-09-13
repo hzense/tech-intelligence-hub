@@ -13,15 +13,60 @@ import {
 const owner = 'hzense_migrator';
 
 describe('Signal transaction seal exact catalog contract', () => {
-  it('accepts exactly the reviewed migration sources, fourteen guards and three xid8 columns', () => {
+  it('accepts exactly five reviewed functions, nineteen guards and three xid8 columns', () => {
     const fixture = signalImmutabilityFixture();
-    expect(fixture.routines).toHaveLength(3);
-    expect(fixture.triggers).toHaveLength(14);
+    expect(fixture.routines).toHaveLength(5);
+    expect(fixture.triggers).toHaveLength(19);
     expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([]);
     expect(expectedSignalTriggerCount('signal_versions')).toBe(2);
+    expect(expectedSignalTriggerCount('signal_publication_outbox')).toBe(3);
+    expect(expectedSignalTriggerCount('signal_publication_state')).toBe(2);
     expect(expectedSignalTriggerCount('topics')).toBe(0);
     expect(expectedSignalTriggerCount('unexpected')).toBe(0);
   });
+
+  it.each([
+    ['constraint_trigger', false],
+    ['deferrable', false],
+    ['initially_deferred', false],
+    ['trigger_type', 7],
+    ['enabled', 'O'],
+    ['routine_name', 'hzense_guard_publication_receipt'],
+    ['when_expression', 'false'],
+    ['column_numbers', '1'],
+  ])('rejects changed deferred publication pair trigger %s', (key, value) => {
+    const fixture = signalImmutabilityFixture();
+    const trigger = fixture.triggers.find(
+      (row) => row.name === 'signal_publication_state_pair_trg',
+    );
+    trigger[key] = value;
+    expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([
+      expect.stringContaining('trigger contract mismatch'),
+    ]);
+  });
+
+  it.each(['hzense_guard_publication_receipt', 'hzense_check_publication_pair'])(
+    'pins publication function %s source and privileges',
+    (name) => {
+      for (const mutation of [
+        (routine) => {
+          routine.source = 'BEGIN RETURN NULL; END;';
+        },
+        (routine) => {
+          routine.security_definer = true;
+        },
+        (routine) => {
+          routine.unsafe_acl_count = 1;
+        },
+      ]) {
+        const fixture = signalImmutabilityFixture();
+        mutation(fixture.routines.find((row) => row.name === name));
+        expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([
+          expect.stringContaining('function contract mismatch'),
+        ]);
+      }
+    },
+  );
 
   it.each([
     ['trigger_type', 19],

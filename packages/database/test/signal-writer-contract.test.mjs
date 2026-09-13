@@ -113,6 +113,36 @@ describe('private Signal writer privilege contract', () => {
     expect(inspectSignalWriterGrants(expectedSignalWriterGrants()).ok).toBe(true);
   });
 
+  it('keeps publication storage and guards outside the unchanged 79-grant writer contract', () => {
+    const grants = expectedSignalWriterGrants();
+    expect(grants).toHaveLength(79);
+    for (const table of ['signal_publication_state', 'signal_publication_outbox']) {
+      expect(signalWriterSelectTables).not.toContain(table);
+      expect(signalWriterInsertColumns).not.toHaveProperty(table);
+      for (const privilege of ['SELECT', 'INSERT', 'UPDATE', 'DELETE']) {
+        expect(
+          inspectSignalWriterGrants([
+            ...grants,
+            { kind: 'table', object: `public.${table}`, privilege, grant_option: false },
+          ]).ok,
+        ).toBe(false);
+      }
+    }
+    for (const name of ['hzense_guard_publication_receipt', 'hzense_check_publication_pair']) {
+      expect(
+        inspectSignalWriterGrants([
+          ...grants,
+          {
+            kind: 'function',
+            object: `public.${name}()`,
+            privilege: 'EXECUTE',
+            grant_option: false,
+          },
+        ]).ok,
+      ).toBe(false);
+    }
+  });
+
   it.each(['UPDATE', 'DELETE', 'TRUNCATE', 'TRIGGER', 'REFERENCES', 'MAINTAIN', 'INSERT'])(
     'rejects unapproved table-level %s',
     (privilege) => {

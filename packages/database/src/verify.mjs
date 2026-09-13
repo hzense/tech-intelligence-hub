@@ -31,6 +31,13 @@ import {
   eventIdentityUniqueIndexes,
 } from './event-identity-catalog.mjs';
 import {
+  signalPublicationColumns,
+  signalPublicationPrimaryKeys,
+  signalPublicationForeignKeys,
+  signalPublicationChecks,
+  signalPublicationUniqueIndexes,
+} from './signal-publication-catalog.mjs';
+import {
   stampedSignalTables,
   expectedSignalTriggerCount,
   collectSignalImmutabilityProblems,
@@ -162,6 +169,7 @@ const expectedColumns = {
   ...signalFoundationColumns,
   ...affiliationColumns,
   ...eventIdentityColumns,
+  ...signalPublicationColumns,
 };
 for (const tableName of stampedSignalTables) {
   expectedColumns[tableName] = {
@@ -225,6 +233,7 @@ const expectedPrimaryKeys = new Set([
   ...signalFoundationPrimaryKeys,
   ...affiliationPrimaryKeys,
   ...eventIdentityPrimaryKeys,
+  ...signalPublicationPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -244,6 +253,7 @@ const expectedForeignKeys = new Set([
   ...signalFoundationForeignKeys,
   ...affiliationForeignKeys,
   ...eventIdentityForeignKeys,
+  ...signalPublicationForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -262,6 +272,7 @@ const expectedCheckExpressions = {
   ...signalFoundationChecks,
   ...affiliationChecks,
   ...eventIdentityChecks,
+  ...signalPublicationChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -347,6 +358,7 @@ const expectedDefaults = new Map([
 const expectedUniqueIndexes = new Set([
   ...affiliationUniqueIndexes,
   ...eventIdentityUniqueIndexes,
+  ...signalPublicationUniqueIndexes,
   'entities|id,type',
   'radar_snapshots|topic_id,snapshot_date',
   'radar_snapshot_signals|snapshot_id,position',
@@ -694,10 +706,13 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
     problems.push('one or more check constraints are not validated');
   }
   for (const [tableName, expressionAlternatives] of Object.entries(expectedCheckExpressions)) {
-    const canonicalize =
-      tableName === 'signal_event_identities'
-        ? canonicalCatalogExpressionWithLiterals
-        : canonicalCatalogExpression;
+    const canonicalize = [
+      'signal_event_identities',
+      'signal_publication_outbox',
+      'signal_publication_state',
+    ].includes(tableName)
+      ? canonicalCatalogExpressionWithLiterals
+      : canonicalCatalogExpression;
     const definitions =
       checks.rows.find((row) => row.table_name === tableName)?.definitions.map(canonicalize) ?? [];
     for (const acceptedExpressions of expressionAlternatives) {

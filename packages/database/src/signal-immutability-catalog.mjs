@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
+import {
+  signalPublicationFunctionHashes,
+  signalPublicationTriggers,
+} from './signal-publication-catalog.mjs';
 
-// Independent migration 0007 contract. Do not derive expected bodies from the
-// installed catalog or from migration SQL at runtime: both may have drifted.
+// Independent migration 0007 seal contract, with the narrowly enumerated 0008
+// publication guards. Never derive expected bodies from installed catalog or
+// migration SQL at runtime: both may have drifted.
 export const stampedSignalTables = Object.freeze([
   'signal_versions',
   'public_source_evidence',
@@ -23,14 +28,15 @@ export const sealedSignalFunctionHashes = Object.freeze({
   hzense_guard_sealed_row: 'cac551349972dfdc20016fd7bdb7f50c3ee97bb5c803ae7a7cffec2c6a429524',
   hzense_guard_version_edge: '49d6bf24722b9259c77cc4a03d79c53374cdad109d1c8950b9e053a63855720e',
   hzense_reject_sealed_truncate: 'b41325b4f62e1bd563246b024169e3c197e16bee10beee7edeadf15dd0305981',
+  ...signalPublicationFunctionHashes,
 });
 
 export function expectedSignalTriggerCount(tableName) {
-  return sealedSignalTables.includes(tableName) ? 2 : 0;
+  return sealedSignalTriggers.filter((trigger) => trigger.table_name === tableName).length;
 }
 
-export const sealedSignalTriggers = Object.freeze(
-  sealedSignalTables.flatMap((table) => [
+export const sealedSignalTriggers = Object.freeze([
+  ...sealedSignalTables.flatMap((table) => [
     Object.freeze({
       table_name: table,
       name: `${table}_sealed_row_trg`,
@@ -46,7 +52,8 @@ export const sealedSignalTriggers = Object.freeze(
       routine_name: 'hzense_reject_sealed_truncate',
     }),
   ]),
-);
+  ...signalPublicationTriggers,
+]);
 
 export function signalGuardSourceHash(source) {
   // Only trim outer SQL dollar-quote padding; retain every literal, operator,
@@ -72,10 +79,10 @@ export function inspectSignalImmutabilityCatalog({ triggers, routines, stamps },
       row.routine_schema !== 'public' ||
       row.routine_name !== contract.routine_name ||
       row.routine_arguments !== '' ||
-      row.constraint_trigger !== false ||
+      row.constraint_trigger !== (contract.constraint_trigger ?? false) ||
       row.parent_trigger !== false ||
-      row.deferrable !== false ||
-      row.initially_deferred !== false ||
+      row.deferrable !== (contract.deferrable ?? false) ||
+      row.initially_deferred !== (contract.initially_deferred ?? false) ||
       row.argument_count !== 0 ||
       row.arguments_hex !== '' ||
       row.column_numbers !== '' ||

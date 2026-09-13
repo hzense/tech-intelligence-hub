@@ -6,5 +6,6 @@
   "0004_signal_version_foundation.sql": "caab5e3b1827eec0fe5410c6935b71c4142e09fcb6a66029d225d3f841e4ad2e",
   "0005_person_organization_affiliations.sql": "0504823486759d05d604b0f9eefa94d6c2010c233cd6367658908d3d39b01ad8",
   "0006_signal_event_identity.sql": "1dcef8dd9ab4e34f994a1e506f8a5a9685a412409e15db02766bc4215ae3740f",
-  "0007_signal_version_immutability.sql": "d076f9da8dd979a2bca4f54d4ed686783323dde29aa9f94bf7adeaf7b8fdd0ef"
+  "0007_signal_version_immutability.sql": "d076f9da8dd979a2bca4f54d4ed686783323dde29aa9f94bf7adeaf7b8fdd0ef",
+  "0008_signal_publication_outbox.sql": "a1117fda9894ba6590d66c25195af6c3db700c0a0653170fe975c8af4ad4a75a"
 }
