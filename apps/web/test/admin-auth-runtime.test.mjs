@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, URL, URLSearchParams } from 'node:url';
 import { encode } from 'next-auth/jwt';
+import { chromium } from '@playwright/test';
 import { ADMIN_AUTHORIZATION_VERSION } from '../lib/admin-auth-policy.ts';
 
 // Opt-in built-server regression, never a production endpoint or login bypass.
@@ -140,6 +141,145 @@ test(
       );
     });
     await t.test(
+      'AI browser pages hydrate safely on desktop and mobile',
+      {
+        skip: process.env.HZENSE_ADMIN_AUTH_BROWSER !== '1',
+      },
+      async () => {
+        const browser = await chromium.launch();
+        try {
+          for (const [width, height] of [
+            [1440, 1000],
+            [390, 844],
+          ]) {
+            const context = await browser.newContext({ viewport: { width, height } });
+            const cookie = await encryptedCookie(token);
+            await context.addCookies([
+              {
+                name: 'next-auth.session-token',
+                value: cookie.slice(cookie.indexOf('=') + 1),
+                url: origin,
+              },
+            ]);
+            await context.route('**/*', (route) =>
+              route.request().url().startsWith(`${origin}/`) ? route.continue() : route.abort(),
+            );
+            const page = await context.newPage();
+            const errors = [];
+            page.on('pageerror', (error) => errors.push(error.message));
+            for (const [path, title] of [
+              ['/admin/ai', 'AI 连接与模型测试'],
+              ['/admin/ai/profiles', '分阶段模型配置'],
+            ]) {
+              await page.goto(`${origin}${path}`);
+              await page.getByRole('heading', { name: title, exact: true, level: 1 }).waitFor();
+              assert.equal(await page.locator('form').getAttribute('method'), 'post');
+              assert.equal(await page.locator('form button[type="submit"]').isDisabled(), true);
+              assert.equal(
+                await page.evaluate(
+                  () =>
+                    globalThis.document.documentElement.scrollWidth >
+                    globalThis.document.documentElement.clientWidth,
+                ),
+                false,
+              );
+              await page.screenshot({
+                path: `/tmp/hzense-ai-${path.endsWith('profiles') ? 'profiles' : 'connections'}-${width}.png`,
+                fullPage: true,
+              });
+            }
+            await page.goto(`${origin}/admin/ai`);
+            const pending = {
+              id: '00000000-0000-4000-8000-000000000001',
+              connection_id: '00000000-0000-4000-8000-000000000002',
+              connection_revision: 1,
+              kind: 'connection',
+              model_id: 'synthetic-model',
+            };
+            // A synthetic browser receipt tests navigation recovery, never a provider request.
+            await page.evaluate(
+              (receipt) =>
+                globalThis.sessionStorage.setItem(
+                  'hzense.ai.pending-probe.v1',
+                  JSON.stringify(receipt),
+                ),
+              { version: 1, request: pending },
+            );
+            await page.reload();
+            await page.getByText(`待确认测试：${pending.id}`, { exact: false }).waitFor();
+            assert.equal(
+              await page.getByRole('button', { name: '读取模型列表', exact: true }).isDisabled(),
+              true,
+            );
+            assert.deepEqual(errors, []);
+            await context.close();
+          }
+        } finally {
+          await browser.close();
+        }
+      },
+    );
+    await t.test(
+      'AI pages and APIs require real session; absent backend remains closed',
+      async () => {
+        const cookie = await encryptedCookie(token);
+        for (const path of [
+          '/admin/ai',
+          '/admin/ai/profiles',
+          '/admin/ai/tests/00000000-0000-4000-8000-000000000001',
+        ]) {
+          assert.equal((await request(path)).status, 307);
+          const page = await request(path, { headers: { cookie } });
+          assert.equal(page.status, 200);
+          assert.match(page.headers.get('cache-control'), /no-store/);
+          const html = await page.text();
+          assert.match(html, /AI 后台尚未配置完成|测试记录暂不可用/);
+          if (!path.includes('/tests/')) assert.match(html, /<form\b[^>]*method="post"/);
+        }
+        for (const path of [
+          'connections',
+          'profiles',
+          'probes',
+          'connections/00000000-0000-4000-8000-000000000001/history',
+          'profiles/00000000-0000-4000-8000-000000000001/history',
+          'probes/00000000-0000-4000-8000-000000000001',
+        ]) {
+          assert.equal((await request(`/api/admin/ai/${path}`)).status, 401);
+          const response = await request(`/api/admin/ai/${path}`, { headers: { cookie } });
+          assert.equal(response.status, 503);
+          assert.deepEqual(await response.json(), { error: 'ai_not_configured' });
+        }
+        for (const path of ['connections', 'profiles', 'probes']) {
+          const options = {
+            method: 'POST',
+            headers: { origin, cookie, 'content-type': 'application/json' },
+            body: '{}',
+          };
+          const response = await request(`/api/admin/ai/${path}`, options);
+          assert.equal(response.status, 503);
+          assert.deepEqual(await response.json(), { error: 'ai_not_configured' });
+          assert.equal(
+            (
+              await request(`/api/admin/ai/${path}`, {
+                ...options,
+                headers: { ...options.headers, origin: 'https://attacker.example' },
+              })
+            ).status,
+            403,
+          );
+          assert.equal(
+            (
+              await request(`/api/admin/ai/${path}`, {
+                ...options,
+                headers: { origin, 'content-type': 'application/json' },
+              })
+            ).status,
+            401,
+          );
+        }
+      },
+    );
+    await t.test(
       'publication routes authenticate before parsing or opening a database connection',
       async () => {
         for (const operation of ['publish', 'withdraw']) {
@@ -172,6 +312,7 @@ test(
         const page = await request('/admin', { headers: { cookie } });
         const html = await page.text();
         assert.match(html, /受限信号发布/);
+        assert.match(html, /<form\b[^>]*method="post"/);
         assert.match(html, /发布服务尚未配置/);
         const response = await request('/api/admin/signals/withdraw', {
           method: 'POST',
