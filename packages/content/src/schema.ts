@@ -81,10 +81,11 @@ export const topicSchema = common.extend({
   type: z.literal('topic'),
   status: topicStatus,
   parent: id.nullable().optional(),
-  attention: z.number().int().min(0).max(100).optional(),
-  trend: z.enum(['rapid_growth', 'growth', 'stable', 'decline', 'rapid_decline']).optional(),
-  maturity: z.enum(['research', 'early', 'emerging', 'growth', 'mature']).optional(),
-  strategic_value: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  // Current assessment metrics belong exclusively to Radar snapshots, not Topic Markdown.
+  attention: z.never().optional(),
+  trend: z.never().optional(),
+  maturity: z.never().optional(),
+  strategic_value: z.never().optional(),
 });
 export const paperNoteSchema = common.extend({
   type: z.literal('paper_note'),

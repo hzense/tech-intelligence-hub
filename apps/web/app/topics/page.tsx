@@ -43,22 +43,22 @@ export default async function TopicsPage() {
             >
               <div className="topic-index-meta">
                 <span>{formatTopicStatus(entry.frontMatter.status)}</span>
-                <strong>{entry.frontMatter.attention ?? '—'}</strong>
+                <strong>{entry.assessment?.attention ?? '—'}</strong>
               </div>
               <h2>{entry.frontMatter.title}</h2>
               <p>{entry.summary}</p>
               <dl className="topic-metric-row">
                 <div>
                   <dt>趋势</dt>
-                  <dd>{formatTopicTrend(entry.frontMatter.trend)}</dd>
+                  <dd>{formatTopicTrend(entry.assessment?.trend)}</dd>
                 </div>
                 <div>
                   <dt>成熟度</dt>
-                  <dd>{formatTopicMaturity(entry.frontMatter.maturity)}</dd>
+                  <dd>{formatTopicMaturity(entry.assessment?.maturity)}</dd>
                 </div>
                 <div>
                   <dt>战略价值</dt>
-                  <dd>{formatTopicStrategicValue(entry.frontMatter.strategic_value)}</dd>
+                  <dd>{formatTopicStrategicValue(entry.assessment?.strategic_value)}</dd>
                 </div>
               </dl>
             </Link>

@@ -4,10 +4,6 @@ title: 基础模型
 type: topic
 status: strategic
 language: zh-CN
-attention: 95
-trend: growth
-maturity: growth
-strategic_value: critical
 ---
 
 # 基础模型

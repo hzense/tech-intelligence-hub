@@ -32,7 +32,7 @@ export function getRadarMaturityPosition(maturity: SeedRadarSnapshot['maturity']
 }
 
 export function filterLatestRadarSnapshots(
-  snapshots: SeedRadarSnapshot[],
+  snapshots: readonly SeedRadarSnapshot[],
   filters: RadarFilters = {},
 ): SeedRadarSnapshot[] {
   const latestByTopic = new Map<string, SeedRadarSnapshot>();

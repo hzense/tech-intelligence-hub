@@ -4,10 +4,6 @@ title: AI 基础设施
 type: topic
 status: strategic
 language: zh-CN
-attention: 94
-trend: growth
-maturity: growth
-strategic_value: critical
 ---
 
 # AI 基础设施

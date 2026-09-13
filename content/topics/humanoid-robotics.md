@@ -4,10 +4,6 @@ title: 人形机器人
 type: topic
 status: active
 language: zh-CN
-attention: 82
-trend: growth
-maturity: early
-strategic_value: high
 ---
 
 # 人形机器人

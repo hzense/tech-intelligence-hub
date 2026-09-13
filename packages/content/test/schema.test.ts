@@ -2,6 +2,32 @@ import { describe, expect, it } from 'vitest';
 import { validateFrontMatter } from '../src/schema.js';
 
 describe('front matter schemas', () => {
+  it('accepts Topic editorial metadata without duplicated Radar metrics', () => {
+    expect(
+      validateFrontMatter({
+        id: 'topic-ai-security',
+        title: 'AI 安全',
+        type: 'topic',
+        status: 'active',
+      }),
+    ).toMatchObject({ id: 'topic-ai-security', type: 'topic' });
+  });
+  it.each([
+    ['attention', 85],
+    ['trend', 'rapid_growth'],
+    ['maturity', 'emerging'],
+    ['strategic_value', 'high'],
+  ])('rejects a duplicated Topic metric: %s', (field, value) => {
+    expect(() =>
+      validateFrontMatter({
+        id: 'topic-ai-security',
+        title: 'AI 安全',
+        type: 'topic',
+        status: 'active',
+        [field]: value,
+      }),
+    ).toThrow();
+  });
   it('accepts a minimal daily', () => {
     expect(
       validateFrontMatter({

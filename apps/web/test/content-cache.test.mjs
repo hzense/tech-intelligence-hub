@@ -36,6 +36,7 @@ test('root content changes invalidate build and test hashes without changing app
     const inputs = [
       'data/seed/signals.yaml',
       'data/seed/entities.yaml',
+      'data/seed/radar.yaml',
       'data/taxonomy/taxonomy.yaml',
       'content/daily/2026/example.md',
     ];

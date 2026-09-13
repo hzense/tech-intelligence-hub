@@ -375,12 +375,14 @@ title: Agent Security
 type: topic
 status: strategic
 parent: topic-ai-security
-attention: 88
-trend: rapid_growth
-maturity: early
-strategic_value: high
 ---
 ```
+
+当前公开站的四项指标 `attention`、`trend`、`maturity`、`strategic_value` 统一来自
+`data/seed/radar.yaml` 中该 Topic 日期最新的完整快照。Topic Markdown 只保存页面元信息与正文，
+禁止再次填写这四项指标，内容校验会拒绝重复定义。专题列表、专题详情与首页雷达使用同一快照选择规则；
+无快照时显示 `—`／“待评估”，不回退旧值、不视为零分。列表按快照关注度降序排列，待评估项置后。
+这些仍是手工维护的示例评分，不代表已根据最新 Signals 自动重算；新版数据权威切换另行交付。
 
 Topic 状态：
 
