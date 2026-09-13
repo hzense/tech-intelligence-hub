@@ -1,0 +1,91 @@
+.main {
+  min-height: 65vh;
+  padding-block: clamp(48px, 8vw, 96px);
+}
+
+.card {
+  max-width: 640px;
+  margin-inline: auto;
+  padding: clamp(24px, 5vw, 48px);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.title {
+  margin: 16px 0 20px;
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  line-height: 1.25;
+  letter-spacing: -0.04em;
+}
+
+.copy,
+.notice {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.notice {
+  margin-block: 16px 0;
+}
+
+.account {
+  margin-block: 28px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.account dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.account dd {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.action {
+  min-width: 0;
+}
+
+.button {
+  cursor: pointer;
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
+  transform: none;
+}
+
+.button:focus-visible,
+.backLink:focus-visible {
+  outline: 3px solid var(--brand-bright);
+  outline-offset: 4px;
+}
+
+.backLink {
+  display: inline-flex;
+  min-height: 52px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}

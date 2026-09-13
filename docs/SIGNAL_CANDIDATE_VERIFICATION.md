@@ -71,11 +71,11 @@
 
 ## 6. 本地验证与交付状态（2026-09-13）
 
-- 整仓 **1807 项单元测试**通过：database 1354、content 377、search 28、web 48。新纯规则 95 项、适配器生命周期 55 项；常规测试跳过的原生套件另行执行，不计作单元通过。
+- 认证增量前的阶段验证：整仓 **1807 项单元测试**通过，database 1354、content 377、search 28、web 48。新纯规则 95 项、适配器生命周期 55 项；常规测试跳过的原生套件另行执行，不计作单元通过。
 - 独立临时 PostgreSQL 18.4 / pgvector 0.8.6 上完整 `test:migrations` **374 项通过**：首组 191、Topic 角色 5、Runtime 角色 61、ACL 14、writer 103。候选相关新增 31 项，覆盖已封存 pending 人物链路、单次消费／并发、拒绝和错配、依赖变化、真实锁等待后的过期回滚、不可变及伪造事务时间／哈希拒绝。
 - 明确验证候选组装本身不写 head／Outbox，再以新事务调用既有私有发表核心。此合成数据测试不证明真实事实、人物消歧或生产公开资格。
-- 独立精确校验通过 12 迁移／33 表与 pgvector；Runtime／writer 各新增 11 项拒绝访问新私有表／函数。未改历史 `0000`–`0010`、角色授权 SQL 或锁文件。
+- 独立精确校验通过 12 迁移／33 表与 pgvector；Runtime／writer 各新增 11 项拒绝访问新私有表／函数。`0011` 数据库增量未改历史 `0000`–`0010`、角色授权 SQL 或依赖锁文件；后续 Google 认证新增的依赖与锁文件更新另见 [ADMIN_AUTH.md](ADMIN_AUTH.md)。
 - 整仓 build／typecheck／lint／test 的 16 个 Turbo 任务成功；最终复跑 12 项复用缓存。格式、62 篇内容与交叉引用、Taxonomy／Seed、5 个工作流、diff 检查通过。
 - 独立审查发现的人名／来源性质遗漏，以及 JavaScript 解码 JSONB 高精度数值导致的指纹碰撞，均已补字段绑定和回归。
 
-分支 `feat/signal-candidate-verification` 基于 `main@9b022ee`。以上是本地与隔离数据库结果；未提交、未创建 PR、未操作 Neon／生产权限或自动发布开关。后续认证接入还需确定登录提供方与管理员账号。完整进度见 [PROGRESS.md](PROGRESS.md)。
+分支 `feat/signal-candidate-verification` 基于 `main@9b022ee`。以上是本地与隔离数据库阶段结果；同分支随后按操作者选择追加 [Google 单账号管理员认证](ADMIN_AUTH.md)，不改变本模块的私有信任边界。组合交付的整仓单元结果为 **1909 项通过**（database 1354、content 377、search 28、web 150）；另有 14 个构建后认证 HTTP 场景、28 项浏览器回归通过。未操作 Neon／生产权限或自动发布开关，生产 OAuth 配置和真实登录尚待验收。本批通过 PR 交付，远端 CI／评审／合并结果另行确认；完整进度见 [PROGRESS.md](PROGRESS.md)。

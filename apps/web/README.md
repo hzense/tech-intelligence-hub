@@ -6,19 +6,29 @@ HZense 科技情报网站，使用 Next.js App Router、React 和 TypeScript 构
 
 应用已包含响应式首页、桌面与移动导航、明暗主题切换，以及以下页面：
 
-| 路由                            | 内容                                         |
-| ------------------------------- | -------------------------------------------- |
-| `/`                             | 首页与内容入口                               |
-| `/daily`、`/daily/[date]`       | 日报列表与按日期访问的正文，包含历史回顾样例 |
-| `/weekly`、`/weekly/[week]`     | 周报列表与正文                               |
-| `/insights`、`/insights/[id]`   | 洞察文章列表与正文                           |
-| `/topics`、`/topics/[id]`       | 专题列表与关联内容                           |
-| `/signals`、`/signals/[id]`     | 信号列表、详情与原始来源                     |
-| `/resources`、`/resources/[id]` | 资源列表、详情与关联信号                     |
-| `/radar`                        | 科技雷达、领域／成熟度／趋势筛选与评分依据   |
-| `/search`                       | 公开内容搜索与类型筛选                       |
+| 路由                            | 内容                                                    |
+| ------------------------------- | ------------------------------------------------------- |
+| `/`                             | 首页与内容入口                                          |
+| `/daily`、`/daily/[date]`       | 日报列表与按日期访问的正文，包含历史回顾样例            |
+| `/weekly`、`/weekly/[week]`     | 周报列表与正文                                          |
+| `/insights`、`/insights/[id]`   | 洞察文章列表与正文                                      |
+| `/topics`、`/topics/[id]`       | 专题列表与关联内容                                      |
+| `/signals`、`/signals/[id]`     | 信号列表、详情与原始来源                                |
+| `/resources`、`/resources/[id]` | 资源列表、详情与关联信号                                |
+| `/radar`                        | 科技雷达、领域／成熟度／趋势筛选与评分依据              |
+| `/search`                       | 公开内容搜索与类型筛选                                  |
+| `/admin/login`、`/admin`        | Google 管理员登录及最小受保护首页；不是采集或发布操作台 |
+| `/api/admin/session`            | 独立鉴权的只读管理员会话 API                            |
 
 雷达目前展示手工维护、带评分证据的结构化示例快照。新版产品方向见 [Signal-first v2 设计](../../docs/SIGNAL_FIRST_REDESIGN.md)；其中的 AI 生产、版本化业务数据与产品迁移属于待实施设计，不能据此视为当前应用已经提供的能力。
+
+## 管理员认证
+
+管理员入口使用 NextAuth.js `4.24.15` 的 Google OAuth，仅授权服务端 `HZENSE_ADMIN_EMAIL` 指定的单个 Gmail 账号。Google 资料必须满足 `email_verified=true`，身份绑定 Google `sub`；邮箱比较忽略大小写，但不去点、不扩展到整个邮箱域、不接受 `+` 别名。受保护页面和会话 API 分别执行服务端鉴权，会话授权自登录起绝对有效期为 1 小时。
+
+生产配置需要 `GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、`NEXTAUTH_SECRET`、`NEXTAUTH_URL` 和 `HZENSE_ADMIN_EMAIL`。全部只在 Vercel **Production** 环境保存，不使用 `NEXT_PUBLIC_` 前缀，也不把真实邮箱或密钥写进仓库。`NEXTAUTH_URL` 必须精确为 `https://hzense.com`，Google OAuth Web application 的授权回调为 `https://hzense.com/api/auth/callback/google`。Preview 认证禁用；配置缺失时，登录按钮禁用并显示明确提示。
+
+当前只接通认证代码入口：没有新增数据库权限，没有接入 Publisher、AI 或文档／链接批量上传，尚未执行生产部署和真实 Google OAuth 验收。Google Cloud 网页步骤、变量填写规则、本地隔离回归及上线验收要求见 [管理员登录配置说明](../../docs/ADMIN_AUTH.md)。公开页面本地开发不要求配置认证变量。
 
 ## 本地开发
 
