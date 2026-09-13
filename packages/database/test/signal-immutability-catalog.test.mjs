@@ -13,17 +13,35 @@ import {
 const owner = 'hzense_migrator';
 
 describe('Signal transaction seal exact catalog contract', () => {
-  it('accepts exactly six reviewed functions, twenty-one guards and three xid8 columns', () => {
+  it('accepts exactly seven reviewed functions, twenty-four guards and three xid8 columns', () => {
     const fixture = signalImmutabilityFixture();
-    expect(fixture.routines).toHaveLength(6);
-    expect(fixture.triggers).toHaveLength(21);
+    expect(fixture.routines).toHaveLength(7);
+    expect(fixture.triggers).toHaveLength(24);
     expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([]);
     expect(expectedSignalTriggerCount('signal_versions')).toBe(2);
     expect(expectedSignalTriggerCount('signal_publication_outbox')).toBe(3);
     expect(expectedSignalTriggerCount('signal_publication_state')).toBe(2);
     expect(expectedSignalTriggerCount('signal_publication_runs')).toBe(2);
+    expect(expectedSignalTriggerCount('signal_qualified_publication_receipts')).toBe(3);
     expect(expectedSignalTriggerCount('topics')).toBe(0);
     expect(expectedSignalTriggerCount('unexpected')).toBe(0);
+  });
+
+  it.each([
+    ['deferrable', false],
+    ['initially_deferred', false],
+    ['enabled', 'O'],
+    ['trigger_type', 7],
+    ['routine_name', 'hzense_guard_publication_run'],
+    ['when_expression', 'false'],
+  ])('rejects weakened qualified receipt commit guard %s', (key, value) => {
+    const fixture = signalImmutabilityFixture();
+    fixture.triggers.find(
+      (row) => row.name === 'signal_qualified_publication_receipts_controls_trg',
+    )[key] = value;
+    expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([
+      expect.stringContaining('trigger contract mismatch'),
+    ]);
   });
 
   it.each([

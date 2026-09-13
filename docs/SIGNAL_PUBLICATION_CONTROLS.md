@@ -2,6 +2,8 @@
 
 承接 [PR #72 的私有发表转换与 Outbox](SIGNAL_PUBLICATION_OUTBOX.md)，本批实现持久化任务意图、当前发布策略、授权记录、取消状态和执行租约。它是完整 Publisher 的前置部分，不是 AI 采集后台、公开发表入口或身份认证服务；未执行生产迁移，未启用自动发表。
 
+> **后续交付（2026-09-13）：** 本批已由 [PR #73](https://github.com/hzense/tech-intelligence-hub/pull/73) 合并为 `f0fc283`，PR 与 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34763140875) 通过，完整原生 PostgreSQL 回归 260 项通过。后续 `0010` [已记录资格检查与原子发表](SIGNAL_QUALIFIED_PUBLICATION.md)正在本地交付：复用本门禁，在同事务检查已封存候选的记录资格、克隆新版本并写 Outbox／head／绑定回执；仍不是完整生产 Publisher。下文第 4–5 节保留 `0009` 当时的边界与验证记录。
+
 ## 1. 数据结构与默认值
 
 追加 `0009_signal_publication_controls.sql`，保留 `0000`–`0008` 原校验和。
@@ -53,7 +55,7 @@ pending ──领取（token + 1）──> running ──有效租约完成─�
 
 门禁返回的 `private_control_only` 是私有诊断信息，不是可复用授权票据、已核验内容或“搜索 ready”。事务结束或租约过期后不能沿用。纯函数也不能证明输入真的来自已锁定数据库。
 
-下一批仍须把当前人物／组织／证据／事件身份资格、必要的新版本组装、公开状态和 Outbox 写入放进**同一事务**，并在后续依赖锁等待后、最终写入前再次核对租约。不能先调用本批门禁并提交，再调用自有事务的 `recordPrivateSignalPublicationTransition`，这样仍有检查与写入分离的竞态。
+`0009` 交付时的下一步是把当前人物／组织／证据／事件身份资格、必要的新版本组装、公开状态和 Outbox 写入放进**同一事务**，并在后续依赖锁等待后、最终写入前再次核对租约。此私有事务部分由后续 `0010` 实现，但不包含完整事实核验或公开许可。不能先调用本批门禁并提交，再调用自有事务的 `recordPrivateSignalPublicationTransition`，这样仍有检查与写入分离的竞态。
 
 本批不将 gate 接到 `0008` 存储函数，不输出发表成功，不提供 Runtime／writer 权限，不实现安全撤回的认证与审计，也不接入公开视图、搜索消费者、缓存或 Seed Reader。独立安全撤回不能被暂停中的采集租约／预算阻塞，但不能用本批 `cancel` 代替 Signal 撤回。
 

@@ -537,6 +537,12 @@ integration('PostgreSQL private Signal snapshot writer role', () => {
       `TRUNCATE public.${table}`,
     ]),
     'SELECT public.hzense_guard_publication_run()',
+    'SELECT * FROM public.signal_qualified_publication_receipts',
+    'INSERT INTO public.signal_qualified_publication_receipts DEFAULT VALUES',
+    'UPDATE public.signal_qualified_publication_receipts SET fencing_token=fencing_token',
+    'DELETE FROM public.signal_qualified_publication_receipts',
+    'TRUNCATE public.signal_qualified_publication_receipts',
+    'SELECT public.hzense_guard_qualified_publication_receipt()',
   ])('keeps private publication storage inaccessible to snapshot writer: %s', async (statement) => {
     await expect(writer((client) => client.query(statement))).rejects.toMatchObject({
       code: '42501',
