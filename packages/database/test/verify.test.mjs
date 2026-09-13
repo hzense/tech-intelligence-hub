@@ -1,7 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalCatalogExpression } from '../src/verify.mjs';
+import {
+  canonicalCatalogExpression,
+  canonicalCatalogExpressionWithLiterals,
+} from '../src/verify.mjs';
 
 describe('database catalog expression canonicalization', () => {
+  it('preserves regex grouping to detect canonical event-key constraint weakening', () => {
+    const correct = `CHECK ((event_key COLLATE "C") ~ '^[a-z0-9]+(-[a-z0-9]+)*$'::text)`;
+    const weakened = `CHECK ((event_key COLLATE "C") ~ '^([a-z0-9]+-)([a-z0-9]+)*$'::text)`;
+    expect(canonicalCatalogExpressionWithLiterals(correct)).toBe(
+      `event_keycollate"C"~'^[a-z0-9]+(-[a-z0-9]+)*$'`,
+    );
+    expect(canonicalCatalogExpressionWithLiterals(weakened)).not.toBe(
+      canonicalCatalogExpressionWithLiterals(correct),
+    );
+  });
+
+  it('preserves literal whitespace, case, escaped quotes and quoted identifiers', () => {
+    expect(canonicalCatalogExpressionWithLiterals(`CHECK (label ~ ' A(B) C''D '::text)`)).toBe(
+      `label~' A(B) C''D '`,
+    );
+    expect(canonicalCatalogExpressionWithLiterals(`CHECK ("Quoted" = 'x'::text)`)).toBe(
+      `"Quoted"='x'`,
+    );
+    expect(
+      canonicalCatalogExpressionWithLiterals(`CHECK (key = '__hzense_catalog_token_0__'::text)`),
+    ).toBe(`key='__hzense_catalog_token_0__'`);
+  });
+
   it('normalizes PostgreSQL casts and pretty-printing without losing operators', () => {
     expect(
       canonicalCatalogExpression(

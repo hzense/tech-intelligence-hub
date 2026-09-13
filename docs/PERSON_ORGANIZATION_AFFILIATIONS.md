@@ -64,7 +64,7 @@
 - 没有新增数据库连接入口、导入命令或自动写入。新增表仅随显式迁移应用；本轮不操作生产数据库。
 - 合并后要求最新 Schema 的维护预检可能报告 `0004`／`0005` pending。不能自动应用迁移来解除门禁；上线前须独立审查旧关系日期、角色与维护流程兼容性，且不重启已取消的恢复演练。
 
-下一批仍需稳定事件键、不可变版本及受限发表／撤回事务、Outbox；再进行历史导入事务和统一读取切换。
+下一增量见[稳定事件身份契约](SIGNAL_EVENT_IDENTITY.md)；不可变版本及受限发表／撤回事务、Outbox、历史导入事务和统一读取切换仍待实施。
 
 ## 验证记录
 
@@ -77,4 +77,4 @@
 - 全仓 lint／typecheck／format 和 `git diff --check` 通过。内容校验 62 文件及引用通过；Seed 校验仍为 62 Taxonomy Topics、6 Seed Topics、19 Entities、8 Relations、82 Signals、5 Radar 快照，未更改旧数据。
 - `0005` SHA-256：`0504823486759d05d604b0f9eefa94d6c2010c233cd6367658908d3d39b01ad8`，历史 `0000`–`0004` 未变，未增加项目依赖。
 
-本批通过 PR 交付，远端 CI、评审与合并结果另行确认；未部署或执行生产迁移。单元测试、补充 SQL 测试、真实 PostgreSQL 集成、PR CI 和生产执行分别记录，跳过不算通过。
+2026-09-13 合并核验：[PR #69](https://github.com/hzense/tech-intelligence-hub/pull/69) 已合并为 `dd4d58f`，PR 与 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34727621783) 全部通过，本地 main 已同步。未执行生产迁移；本记录不声明生产部署或新版功能已上线。单元测试、补充 SQL 测试、真实 PostgreSQL 集成、PR CI 和生产执行分别记录，跳过不算通过。

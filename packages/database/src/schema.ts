@@ -355,6 +355,47 @@ export const signalVersionEvidence = pgTable(
     ),
   ],
 );
+// Reserves one canonical key per stable Signal; this does not publish it.
+export const signalEventIdentities = pgTable(
+  'signal_event_identities',
+  {
+    signalId: text('signal_id').primaryKey(),
+    eventKey: text('event_key').notNull(),
+    basisVersion: integer('basis_version').notNull(),
+    basisEvidenceId: text('basis_evidence_id').notNull(),
+    identityBasis: text('identity_basis').notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'signal_event_identities_evidence_fk',
+      columns: [t.signalId, t.basisVersion, t.basisEvidenceId],
+      foreignColumns: [
+        signalVersionEvidence.signalId,
+        signalVersionEvidence.version,
+        signalVersionEvidence.evidenceId,
+      ],
+    })
+      .onUpdate('no action')
+      .onDelete('no action'),
+    check('signal_event_identities_signal_id_ck', sql`${t.signalId} ~ '[^[:space:]]'`),
+    check(
+      'signal_event_identities_event_key_ck',
+      sql`${t.eventKey} COLLATE "C" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`,
+    ),
+    check(
+      'signal_event_identities_event_key_length_ck',
+      sql`length(${t.eventKey}) BETWEEN 1 AND 200`,
+    ),
+    check('signal_event_identities_basis_version_ck', sql`${t.basisVersion} > 0`),
+    check(
+      'signal_event_identities_basis_evidence_id_ck',
+      sql`${t.basisEvidenceId} ~ '[^[:space:]]'`,
+    ),
+    check('signal_event_identities_identity_basis_ck', sql`${t.identityBasis} ~ '[^[:space:]]'`),
+    uniqueIndex('signal_event_identities_event_key_uq').on(t.eventKey),
+  ],
+);
+
 export const signalVersionPeople = pgTable(
   'signal_version_people',
   {

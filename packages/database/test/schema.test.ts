@@ -15,6 +15,7 @@ import {
   relations,
   searchDocuments,
   signals,
+  signalEventIdentities,
   signalVersionEvidence,
   signalVersionOrganizations,
   signalVersionPeople,
@@ -24,11 +25,87 @@ import {
   topics,
 } from '../src/schema.js';
 import { affiliationChecks, affiliationRelationChecks } from '../src/affiliation-catalog.mjs';
-import { canonicalCatalogExpression } from '../src/verify.mjs';
+import { eventIdentityChecks } from '../src/event-identity-catalog.mjs';
+import {
+  canonicalCatalogExpression,
+  canonicalCatalogExpressionWithLiterals,
+} from '../src/verify.mjs';
 
 function columnNames(table: Parameters<typeof getTableConfig>[0]): string[] {
   return getTableConfig(table).columns.map((column) => column.name);
 }
+
+describe('Private Signal canonical event identity', () => {
+  it('reserves one key per stable Signal without storing publication or review state', () => {
+    expect(columnNames(signalEventIdentities)).toEqual([
+      'signal_id',
+      'event_key',
+      'basis_version',
+      'basis_evidence_id',
+      'identity_basis',
+    ]);
+    expect(signalEventIdentities.signalId.primary).toBe(true);
+    const config = getTableConfig(signalEventIdentities);
+    expect(config.columns.every((column) => column.notNull && !column.hasDefault)).toBe(true);
+    expect(config.indexes).toHaveLength(1);
+    expect(config.indexes[0].config.unique).toBe(true);
+    expect(config.indexes[0].config.name).toBe('signal_event_identities_event_key_uq');
+    expect(
+      config.indexes[0].config.columns.map((column) => 'name' in column && column.name),
+    ).toEqual(['event_key']);
+  });
+
+  it('requires identity evidence already attached to the same Signal and version', () => {
+    const keys = getTableConfig(signalEventIdentities).foreignKeys;
+    expect(keys).toHaveLength(1);
+    const reference = keys[0].reference();
+    expect(reference.columns.map((column) => column.name)).toEqual([
+      'signal_id',
+      'basis_version',
+      'basis_evidence_id',
+    ]);
+    expect(getTableName(reference.foreignTable)).toBe('signal_version_evidence');
+    expect(reference.foreignColumns.map((column) => column.name)).toEqual([
+      'signal_id',
+      'version',
+      'evidence_id',
+    ]);
+    expect(keys[0].onUpdate).toBe('no action');
+    expect(keys[0].onDelete).toBe('no action');
+  });
+
+  it('keeps canonical ASCII keys and other checks aligned with migration and independent catalog', async () => {
+    const migration = await readFile(
+      resolve(process.cwd(), '../../db/migrations/0006_signal_event_identity.sql'),
+      'utf8',
+    );
+    const normalized = migration.replace(/\s+/g, ' ');
+    const dialect = new PgDialect();
+    const config = getTableConfig(signalEventIdentities);
+    const expected = eventIdentityChecks.signal_event_identities;
+    expect(config.checks).toHaveLength(expected.length);
+    for (const [index, constraint] of config.checks.entries()) {
+      const expression = dialect
+        .sqlToQuery(constraint.value)
+        .sql.replace(/"[a-z_]+"\."([a-z_]+)"/g, '$1');
+      expect(normalized).toContain(`CONSTRAINT ${constraint.name} CHECK (${expression})`);
+      expect(expected[index]).toContain(canonicalCatalogExpressionWithLiterals(expression));
+      expect(expected[index]).not.toContain(
+        `${canonicalCatalogExpressionWithLiterals(expression)}ortrue`,
+      );
+      expect(constraint.name.length).toBeLessThanOrEqual(63);
+    }
+    expect(normalized).toContain(
+      'CREATE UNIQUE INDEX signal_event_identities_event_key_uq ON signal_event_identities(event_key)',
+    );
+    expect(normalized).toContain(
+      'FOREIGN KEY (signal_id, basis_version, basis_evidence_id) REFERENCES signal_version_evidence(signal_id, version, evidence_id) ON UPDATE NO ACTION ON DELETE NO ACTION',
+    );
+    expect(migration.replace(/^--.*$/gm, '')).not.toMatch(
+      /\b(?:INSERT|GRANT|TRIGGER|FUNCTION|VIEW|POLICY|CASCADE|ALTER)\b/i,
+    );
+  });
+});
 
 describe('Person organization affiliation foundation', () => {
   const tables = [personOrganizationAffiliations, affiliationEvidence];
