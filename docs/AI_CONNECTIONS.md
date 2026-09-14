@@ -56,7 +56,11 @@ Profile 页的“刷新状态”同时读取配置和当前连接修订。连接
 
 生产启用顺序：PR 审核及 CI → 受保护迁移并运行精确 Schema 核验 → 最小角色／ACL 审计 → 保存服务端变量并部署 → 管理员添加连接 → 小额真实三类能力测试／未知结果核对 → Profile 保存验收。本文不授权自动执行这些生产操作。
 
-`db/roles/configure_ai_admin.sql` 是独立 opt-in 的授权候选：数据库 owner 身份，已完成 `0013`，事先创建无所有权、无成员关系／设置／旧授权的 `LOGIN NOINHERIT CONNECTION LIMIT 2` 角色；脚本不创建密码，也不自动修复其他角色或 PUBLIC 权限。五张 AI 私表只按显式列白名单授予 SELECT、INSERT 和必要 UPDATE，未来新增列不会自动可读；版本历史无 UPDATE／DELETE，无发布、DDL 或业务表写权。提交前再次核对有效权限、直接 ACL 和 grant option，发现超额权限则整个事务回滚。
+`db/roles/configure_ai_admin.sql` 是独立 opt-in 的授权候选：数据库 owner 身份，已完成 `0013`，事先创建无所有权、无出向成员关系／设置／旧授权的 `LOGIN NOINHERIT CONNECTION LIMIT 2` 角色；脚本不创建密码，也不自动修复其他角色或 PUBLIC 权限。五张 AI 私表只按显式列白名单授予 SELECT、INSERT 和必要 UPDATE，未来新增列不会自动可读；版本历史无 UPDATE／DELETE，无发布、DDL 或业务表写权。提交前再次核对角色、成员关系、有效权限、直接 ACL 和 grant option，发现超额权限则整个事务回滚。
+
+PostgreSQL 16+ 的非超级用户 `CREATEROLE` 创建者会收到一条由 bootstrap superuser 授予的管理关系，创建者不能自行撤销。在 Neon 中只接受与 Runtime 相同的精确入向边：`hzense_ai_admin` 授予 `neondb_owner`，grantor 为 `cloud_admin`，`ADMIN=true`、`INHERIT=false`、`SET=false`；其余入向边和所有出向边拒绝。它不会让 AI 角色继承创建者权限，但 `neondb_owner` 仍可管理／重新授予该角色，因此这是明确接受的云管理员控制边界，不是针对管理员的安全隔离。[PostgreSQL 官方说明](https://www.postgresql.org/docs/18/role-attributes.html)
+
+`db/roles/create_ai_admin.sql` 是独立的 Neon 凭据创建候选，须由管理员在已核对的生产 `main`／`neondb` 以 `neondb_owner` 提交。它将 `createrole_self_grant` 在事务内清空，并固定 `password_encryption=scram-sha-256`，仅接受上述精确管理边；不尝试撤销系统保留的边。随机密码只作为查询结果返回，事务临时表提交即删除，不写入本项目脚本或日志证据；平台查询结果及审计留存仍由平台策略控制。仅在 `COMMIT` 成功后使用结果，不重复运行或刷新丢失结果。若角色已存在，立即拒绝，不轮换密码，也不附带五张 AI 表授权。数据库分支身份仍需从 Neon 页面核对，SQL 中的数据库名／角色守卫不能独立识别分支。
 
 授权前和提交前均检查其他可连接数据库的有效 CONNECT／CREATE／TEMPORARY，包含通过 PUBLIC 获得的权限；`NOINHERIT` 不能隔离 PUBLIC。仅接受与 Runtime 相同的精确 Neon 保留库形态：`cloud_admin` 所有、连接限制 `-1`，`postgres` 的 NULL ACL／PUBLIC CONNECT+TEMPORARY，或 `template1` 的模板标志／显式 ACL／PUBLIC 仅 CONNECT；不得有目标角色直接授权、grant option 或 CREATE。普通业务库不在豁免内，发现异常只拒绝，不改其 ACL。
 

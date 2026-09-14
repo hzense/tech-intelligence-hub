@@ -34,10 +34,15 @@ const sentinelDatabase = `hzense_ai_sentinel_${suffix}`;
 const ownerRole = `hzense_ai_owner_${suffix}`;
 const restrictedRole = 'hzense_ai_admin';
 const providerRole = 'cloud_admin';
+const providerOwnerRole = 'neondb_owner';
 const deniedRoles = ['hzense_runtime', 'hzense_signal_writer', 'hzense_publisher'];
 const password = `fixture-ai-only-${suffix}`;
 const roleSql = await readFile(
   new URL('../../../db/roles/configure_ai_admin.sql', import.meta.url),
+  'utf8',
+);
+const createRoleSql = await readFile(
+  new URL('../../../db/roles/create_ai_admin.sql', import.meta.url),
   'utf8',
 );
 const connectionId = randomUUID();
@@ -76,6 +81,24 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
   let databaseCreated = false;
   const createdRoles = [];
   let isolatedDatabases = [];
+  // The disposable cluster's real bootstrap grantor has OID 10 but is named
+  // postgres, not cloud_admin. Project only that expected provider identity;
+  // every membership row/option remains the real PostgreSQL catalog value.
+  // This does not verify a Neon branch or its provider-role identities.
+  function providerMembershipSql(sql = roleSql) {
+    expect(sql).toContain("pg_get_userbyid(m.grantor)='cloud_admin'");
+    return sql.replaceAll("pg_get_userbyid(m.grantor)='cloud_admin'", 'm.grantor=10::oid');
+  }
+  async function roleMemberships(role = restrictedRole) {
+    return (
+      await administrator.query(
+        `SELECT member,roleid,grantor,admin_option,inherit_option,set_option
+        FROM pg_catalog.pg_auth_members WHERE member=$1::regrole OR roleid=$1::regrole
+        ORDER BY member,roleid,grantor`,
+        [role],
+      )
+    ).rows;
+  }
   async function databasePrivileges() {
     return (
       await administrator.query(`SELECT datname,datdba,datacl::text,datconnlimit,datistemplate,datallowconn
@@ -139,7 +162,13 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
       throw new Error('AI role tests require a disposable isolated PostgreSQL cluster');
     administrator = new Client({ connectionString: adminUrl });
     await administrator.connect();
-    for (const role of [ownerRole, restrictedRole, ...deniedRoles, providerRole]) {
+    for (const role of [
+      ownerRole,
+      restrictedRole,
+      ...deniedRoles,
+      providerRole,
+      providerOwnerRole,
+    ]) {
       if ((await administrator.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [role])).rowCount)
         throw new Error(`Refusing to modify pre-existing fixture role ${role}`);
       await administrator.query(`CREATE ROLE ${quote(role)} LOGIN NOINHERIT CONNECTION LIMIT 2
@@ -340,6 +369,242 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
       await owner((client) => client.query('REVOKE SELECT ON public.signals FROM hzense_ai_admin'));
     }
   });
+  it('reproduces the non-superuser creator grant surviving REVOKE without target a/o dependencies', async () => {
+    const probeRole = `hzense_ai_creator_probe_${suffix}`;
+    const notices = [];
+    const captureNotice = (notice) => notices.push(notice.message);
+    administrator.on('notice', captureNotice);
+    try {
+      await administrator.query(`BEGIN;
+        ALTER ROLE ${quote(providerOwnerRole)} CREATEROLE;
+        SET LOCAL ROLE ${quote(providerOwnerRole)};
+        SET LOCAL createrole_self_grant='';
+        CREATE ROLE ${quote(probeRole)} NOLOGIN;
+        REVOKE ${quote(probeRole)} FROM ${quote(providerOwnerRole)}`);
+      const memberships = await roleMemberships(probeRole);
+      expect(memberships).toHaveLength(1);
+      expect(memberships[0]).toMatchObject({
+        grantor: 10,
+        admin_option: true,
+        inherit_option: false,
+        set_option: false,
+      });
+      expect(notices.some((notice) => notice.includes('has not been granted membership'))).toBe(
+        true,
+      );
+      expect(
+        (
+          await administrator.query(
+            `SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass
+            AND refobjid=$1::regrole AND deptype IN ('a','o')`,
+            [probeRole],
+          )
+        ).rows,
+      ).toEqual([]);
+    } finally {
+      await administrator.query('ROLLBACK');
+      administrator.off('notice', captureNotice);
+    }
+    expect(
+      (await administrator.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [probeRole])).rows,
+    ).toEqual([]);
+  });
+  for (const commit of [false, true])
+    it(`executes the projected credential candidate with ${commit ? 'commit and existing-password protection' : 'rollback and no residual role'}`, async () => {
+      const probeRole = `hzense_ai_created_${suffix}`;
+      // Map only the locally authenticated owner/database, temporary target
+      // name and bootstrap grantor. No production/Neon identity is asserted.
+      const candidate = providerMembershipSql(createRoleSql)
+        .replaceAll("'neondb'", `'${databaseName}'`)
+        .replaceAll("'neondb_owner'", `'${ownerRole}'`)
+        .replaceAll('hzense_ai_admin', probeRole);
+      await administrator.query(`ALTER ROLE ${quote(ownerRole)} CREATEROLE`);
+      try {
+        await owner(async (client) => {
+          await client.query(
+            "SET createrole_self_grant='inherit,set'; SET password_encryption='md5'",
+          );
+          const settings = async () =>
+            (await client.query('SHOW createrole_self_grant; SHOW password_encryption')).map(
+              (result) => result.rows,
+            );
+          const beforeSettings = await settings();
+          const results = await client.query(
+            commit ? candidate : candidate.replace(/COMMIT;\s*$/, 'ROLLBACK;'),
+          );
+          const secretResult = results.find((result) =>
+            result.fields.some((field) => field.name === 'HZENSE_AI_DATABASE_PASSWORD - SECRET'),
+          );
+          const secret = secretResult?.rows[0]?.['HZENSE_AI_DATABASE_PASSWORD - SECRET'];
+          // Never pass the credential itself to assertion diagnostics or logs.
+          expect(typeof secret === 'string' && /^[a-f0-9]{64}$/.test(secret)).toBe(true);
+          expect(await settings()).toEqual(beforeSettings);
+          expect(
+            (await client.query("SELECT to_regclass('pg_temp.ai_setup_result') IS NULL AS gone"))
+              .rows[0].gone,
+          ).toBe(true);
+          if (commit) {
+            const memberships = await roleMemberships(probeRole);
+            expect(memberships).toHaveLength(1);
+            expect(memberships[0]).toMatchObject({
+              grantor: 10,
+              admin_option: true,
+              inherit_option: false,
+              set_option: false,
+            });
+            const verifier = async () =>
+              (
+                await administrator.query(
+                  `SELECT md5(rolpassword) AS fingerprint,
+                  rolpassword LIKE 'SCRAM-SHA-256$%' AS scram FROM pg_authid WHERE rolname=$1`,
+                  [probeRole],
+                )
+              ).rows;
+            const beforeVerifier = await verifier();
+            expect(beforeVerifier[0].scram).toBe(true);
+            await expect(client.query(candidate)).rejects.toThrow('AI role already exists');
+            await client.query('ROLLBACK');
+            expect(await verifier()).toEqual(beforeVerifier);
+            expect(await roleMemberships(probeRole)).toEqual(memberships);
+          } else {
+            expect(
+              (await administrator.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [probeRole]))
+                .rows,
+            ).toEqual([]);
+          }
+        });
+      } finally {
+        await administrator.query(`DROP ROLE IF EXISTS ${quote(probeRole)}`);
+        await administrator.query(`ALTER ROLE ${quote(ownerRole)} NOCREATEROLE`);
+      }
+    });
+  it('accepts only the projected bootstrap ADMIN-only creator edge without changing it', async () => {
+    expect(roleSql.match(/pg_get_userbyid\(m\.grantor\)='cloud_admin'/g)).toHaveLength(2);
+    await administrator.query(
+      'GRANT hzense_ai_admin TO neondb_owner WITH ADMIN TRUE, INHERIT FALSE, SET FALSE',
+    );
+    try {
+      const before = await roleMemberships();
+      await owner((client) =>
+        client.query(providerMembershipSql().replace(/COMMIT;\s*$/, 'ROLLBACK;')),
+      );
+      expect(await roleMemberships()).toEqual(before);
+      await emptyRoleGrants();
+    } finally {
+      await administrator.query('REVOKE hzense_ai_admin FROM neondb_owner');
+    }
+  });
+  for (const [label, change, cleanup, projected = true] of [
+    [
+      'unapproved bootstrap grantor name',
+      'GRANT hzense_ai_admin TO neondb_owner WITH ADMIN TRUE, INHERIT FALSE, SET FALSE',
+      'REVOKE hzense_ai_admin FROM neondb_owner',
+      false,
+    ],
+    [
+      'unapproved member',
+      'GRANT hzense_ai_admin TO hzense_runtime WITH ADMIN TRUE, INHERIT FALSE, SET FALSE',
+      'REVOKE hzense_ai_admin FROM hzense_runtime',
+    ],
+    [
+      'missing ADMIN option',
+      'GRANT hzense_ai_admin TO neondb_owner WITH ADMIN FALSE, INHERIT FALSE, SET FALSE',
+      'REVOKE hzense_ai_admin FROM neondb_owner',
+    ],
+    [
+      'INHERIT option',
+      'GRANT hzense_ai_admin TO neondb_owner WITH ADMIN TRUE, INHERIT TRUE, SET FALSE',
+      'REVOKE hzense_ai_admin FROM neondb_owner',
+    ],
+    [
+      'SET option',
+      'GRANT hzense_ai_admin TO neondb_owner WITH ADMIN TRUE, INHERIT FALSE, SET TRUE',
+      'REVOKE hzense_ai_admin FROM neondb_owner',
+    ],
+    [
+      'outgoing membership',
+      'GRANT hzense_runtime TO hzense_ai_admin WITH ADMIN TRUE, INHERIT FALSE, SET FALSE',
+      'REVOKE hzense_runtime FROM hzense_ai_admin',
+    ],
+    [
+      'additional incoming membership alongside the provider edge',
+      'GRANT hzense_ai_admin TO neondb_owner,hzense_runtime WITH ADMIN TRUE, INHERIT FALSE, SET FALSE',
+      'REVOKE hzense_ai_admin FROM neondb_owner,hzense_runtime',
+    ],
+  ]) {
+    const candidate = () => (projected ? providerMembershipSql() : roleSql);
+    it(`refuses ${label} before GRANT without repairing memberships`, async () => {
+      await administrator.query(change);
+      try {
+        const before = await roleMemberships();
+        await expect(owner((client) => client.query(candidate()))).rejects.toThrow(
+          'unsafe memberships',
+        );
+        expect(await roleMemberships()).toEqual(before);
+        await emptyRoleGrants();
+      } finally {
+        await administrator.query(cleanup);
+      }
+    });
+    it(`rolls back new ACLs when ${label} appears after GRANT`, async () => {
+      const sql = candidate();
+      const verificationStart = sql.indexOf('DO $ai_admin_verify$');
+      try {
+        await owner(async (client) => {
+          await client.query(sql.slice(0, verificationStart));
+          await administrator.query(change);
+          await expect(client.query(sql.slice(verificationStart))).rejects.toThrow(
+            'membership contract mismatch',
+          );
+        });
+        await emptyRoleGrants();
+      } finally {
+        await administrator.query(cleanup);
+      }
+    });
+  }
+  for (const [label, change, cleanup] of [
+    ['LOGIN', 'ALTER ROLE hzense_ai_admin NOLOGIN', 'ALTER ROLE hzense_ai_admin LOGIN'],
+    ['INHERIT', 'ALTER ROLE hzense_ai_admin INHERIT', 'ALTER ROLE hzense_ai_admin NOINHERIT'],
+    ['SUPERUSER', 'ALTER ROLE hzense_ai_admin SUPERUSER', 'ALTER ROLE hzense_ai_admin NOSUPERUSER'],
+    ['CREATEDB', 'ALTER ROLE hzense_ai_admin CREATEDB', 'ALTER ROLE hzense_ai_admin NOCREATEDB'],
+    [
+      'CREATEROLE',
+      'ALTER ROLE hzense_ai_admin CREATEROLE',
+      'ALTER ROLE hzense_ai_admin NOCREATEROLE',
+    ],
+    [
+      'REPLICATION',
+      'ALTER ROLE hzense_ai_admin REPLICATION',
+      'ALTER ROLE hzense_ai_admin NOREPLICATION',
+    ],
+    ['BYPASSRLS', 'ALTER ROLE hzense_ai_admin BYPASSRLS', 'ALTER ROLE hzense_ai_admin NOBYPASSRLS'],
+    [
+      'connection limit',
+      'ALTER ROLE hzense_ai_admin CONNECTION LIMIT 3',
+      'ALTER ROLE hzense_ai_admin CONNECTION LIMIT 2',
+    ],
+    [
+      'role settings',
+      "ALTER ROLE hzense_ai_admin SET work_mem='8MB'",
+      'ALTER ROLE hzense_ai_admin RESET work_mem',
+    ],
+  ])
+    it(`rolls back new ACLs on post-GRANT ${label} drift`, async () => {
+      const verificationStart = roleSql.indexOf('DO $ai_admin_verify$');
+      try {
+        await owner(async (client) => {
+          await client.query(roleSql.slice(0, verificationStart));
+          await administrator.query(change);
+          await expect(client.query(roleSql.slice(verificationStart))).rejects.toThrow(
+            'role contract mismatch',
+          );
+        });
+        await emptyRoleGrants();
+      } finally {
+        await administrator.query(cleanup);
+      }
+    });
   it('refuses ambient PUBLIC access instead of changing unrelated ACLs', async () => {
     await owner((client) => client.query('GRANT SELECT ON public.signals TO PUBLIC'));
     try {

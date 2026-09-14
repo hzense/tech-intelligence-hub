@@ -3,6 +3,10 @@
 -- must pre-create EMPTY hzense_ai_admin LOGIN NOINHERIT CONNECTION LIMIT 2.
 -- No passwords/roles are created here. Refuse existing rights, do not repair
 -- PUBLIC/other-role privileges. Trusted server service writes this private state.
+-- PostgreSQL retains a bootstrap-superuser ADMIN-only grant to a non-superuser
+-- creator. Accept only Neon's exact neondb_owner -> hzense_ai_admin management
+-- edge, granted by cloud_admin with neither INHERIT nor SET. It gives the AI
+-- login no provider privileges. Never create, revoke or repair memberships here.
 BEGIN;
 SET LOCAL search_path = pg_catalog, pg_temp;
 DO $ai_admin$
@@ -18,10 +22,14 @@ BEGIN
     OR target.rolsuper OR target.rolcreatedb OR target.rolcreaterole OR target.rolreplication OR target.rolbypassrls THEN
     RAISE EXCEPTION 'Pre-create a restricted hzense_ai_admin LOGIN NOINHERIT CONNECTION LIMIT 2';
   END IF;
-  IF EXISTS(SELECT 1 FROM pg_auth_members WHERE member=target.oid OR roleid=target.oid)
+  IF (SELECT count(*) FROM pg_catalog.pg_auth_members WHERE member=target.oid OR roleid=target.oid)>1
+    OR EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members m WHERE (m.member=target.oid OR m.roleid=target.oid)
+      AND (m.roleid=target.oid AND pg_get_userbyid(m.member)='neondb_owner'
+        AND pg_get_userbyid(m.grantor)='cloud_admin' AND m.admin_option
+        AND NOT m.inherit_option AND NOT m.set_option) IS NOT TRUE)
     OR EXISTS(SELECT 1 FROM pg_db_role_setting WHERE setrole=target.oid)
     OR EXISTS(SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND refobjid=target.oid AND deptype IN ('o','a')) THEN
-    RAISE EXCEPTION 'AI administrator must have no ownership, memberships, settings or existing direct ACLs';
+    RAISE EXCEPTION 'AI administrator must have no ownership, unsafe memberships, settings or existing direct ACLs';
   END IF;
   IF NOT EXISTS(SELECT 1 FROM public.hzense_schema_migrations WHERE name='0013_ai_configuration.sql') THEN
     RAISE EXCEPTION 'Verify migration 0013 before AI administrator provisioning';
@@ -92,6 +100,7 @@ GRANT UPDATE (status,reserved_microusd,charged_microusd,input_tokens,output_toke
 DO $ai_admin_verify$
 DECLARE
   target oid := 'hzense_ai_admin'::regrole;
+  target_role pg_roles%ROWTYPE;
   relation_info record;
   column_info record;
   checked_privilege text;
@@ -109,6 +118,23 @@ DECLARE
     "ai_probe_runs": ["status","reserved_microusd","charged_microusd","input_tokens","output_tokens","result","error_code","finished_at"]
   }$columns$::jsonb;
 BEGIN
+  -- Re-read role attributes and memberships after GRANT. No role mutation is
+  -- allowed to bypass the commit gate; this does not prevent later drift.
+  SELECT * INTO target_role FROM pg_roles WHERE oid=target;
+  IF NOT FOUND OR NOT target_role.rolcanlogin OR target_role.rolinherit OR target_role.rolconnlimit<>2
+    OR target_role.rolsuper OR target_role.rolcreatedb OR target_role.rolcreaterole
+    OR target_role.rolreplication OR target_role.rolbypassrls
+    OR EXISTS(SELECT 1 FROM pg_db_role_setting WHERE setrole=target)
+    OR EXISTS(SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND refobjid=target AND deptype='o') THEN
+    RAISE EXCEPTION 'AI administrator role contract mismatch';
+  END IF;
+  IF (SELECT count(*) FROM pg_catalog.pg_auth_members WHERE member=target OR roleid=target)>1
+    OR EXISTS(SELECT 1 FROM pg_catalog.pg_auth_members m WHERE (m.member=target OR m.roleid=target)
+      AND (m.roleid=target AND pg_get_userbyid(m.member)='neondb_owner'
+        AND pg_get_userbyid(m.grantor)='cloud_admin' AND m.admin_option
+        AND NOT m.inherit_option AND NOT m.set_option) IS NOT TRUE) THEN
+    RAISE EXCEPTION 'AI administrator membership contract mismatch';
+  END IF;
   IF NOT has_database_privilege(target,current_database(),'CONNECT')
     OR has_database_privilege(target,current_database(),'CONNECT WITH GRANT OPTION')
     OR has_database_privilege(target,current_database(),'CREATE')
