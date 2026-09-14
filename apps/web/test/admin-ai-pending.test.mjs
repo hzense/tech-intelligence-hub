@@ -180,6 +180,88 @@ test('an unresolved original request cannot be overwritten by a new ID or edited
   assert.equal(persistPendingAiProbe(fixture('models'), first.factory), true);
 });
 
+test('a stale response cannot clear a newer pending request while the matching ID can clear', () => {
+  const first = memory();
+  const original = fixture();
+  const newer = { ...fixture('models'), id: '00000000-0000-4000-8000-000000000003' };
+  assert.equal(persistPendingAiProbe(original, first.factory), true);
+  assert.equal(clearPendingAiProbe(first.factory, original.id), true);
+  assert.equal(persistPendingAiProbe(newer, first.factory), true);
+  // The original asynchronous request completes after another page starts a new one.
+  assert.equal(clearPendingAiProbe(first.factory, original.id), false);
+  assert.deepEqual(readPendingAiProbe(first.factory), { available: true, request: newer });
+  assert.equal(clearPendingAiProbe(first.factory, newer.id), true);
+  assert.deepEqual(readPendingAiProbe(first.factory), { available: true, request: null });
+  assert.equal(clearPendingAiProbe(first.factory, newer.id), false);
+});
+
+test('conditional cleanup validates the same storage object before removal', () => {
+  const first = memory();
+  const second = memory();
+  assert.equal(persistPendingAiProbe(fixture(), first.factory), true);
+  const newer = { ...fixture(), id: '00000000-0000-4000-8000-000000000003' };
+  assert.equal(persistPendingAiProbe(newer, second.factory), true);
+  let factoryCalls = 0;
+  const alternatingFactory = () => (factoryCalls++ === 0 ? first.storage : second.storage);
+  assert.equal(clearPendingAiProbe(alternatingFactory, fixture().id), true);
+  assert.equal(factoryCalls, 1);
+  assert.deepEqual(readPendingAiProbe(first.factory), { available: true, request: null });
+  assert.deepEqual(readPendingAiProbe(second.factory), { available: true, request: newer });
+});
+
+test('conditional cleanup preserves malformed, inaccessible and silently uncleared storage', () => {
+  const first = memory();
+  let removals = 0;
+  const trackedStorage = {
+    ...first.storage,
+    removeItem: (key) => {
+      removals++;
+      first.storage.removeItem(key);
+    },
+  };
+  for (const raw of [
+    'not-json',
+    JSON.stringify({ version: 2, request: fixture() }),
+    JSON.stringify({ version: 1, request: { ...fixture(), api_key: 'synthetic-private' } }),
+    JSON.stringify({ version: 1, request: { ...fixture(), id: 'invalid' } }),
+    'x'.repeat(1025),
+  ]) {
+    first.values.set(pendingAiProbeStorageKey, raw);
+    assert.equal(
+      clearPendingAiProbe(() => trackedStorage, fixture().id),
+      false,
+    );
+    assert.equal(first.values.get(pendingAiProbeStorageKey), raw);
+  }
+  assert.equal(removals, 0);
+  assert.equal(
+    clearPendingAiProbe(() => {
+      throw new Error('storage denied');
+    }, fixture().id),
+    false,
+  );
+  assert.equal(
+    clearPendingAiProbe(
+      () => ({
+        ...trackedStorage,
+        getItem: () => {
+          throw new Error('read denied');
+        },
+      }),
+      fixture().id,
+    ),
+    false,
+  );
+  assert.equal(removals, 0);
+  first.values.clear();
+  assert.equal(persistPendingAiProbe(fixture(), first.factory), true);
+  assert.equal(
+    clearPendingAiProbe(() => ({ ...first.storage, removeItem: () => {} }), fixture().id),
+    false,
+  );
+  assert.deepEqual(readPendingAiProbe(first.factory), { available: true, request: fixture() });
+});
+
 test('browser helper has no Node, credential or automatic networking dependency', async () => {
   const source = await readFile(new URL('../lib/admin-ai-pending.ts', import.meta.url), 'utf8');
   assert.equal(source.includes('node:'), false);

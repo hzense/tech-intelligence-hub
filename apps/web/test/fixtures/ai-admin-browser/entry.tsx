@@ -29,6 +29,7 @@ async function mount() {
       <AdminAiProfiles
         connections={data.connections}
         initialProfiles={data.profiles}
+        initialProbes={data.probes}
         configured
         available
       />

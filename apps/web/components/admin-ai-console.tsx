@@ -177,6 +177,7 @@ export function AdminAiConsole({
     }
   }
   async function probe(request: AiProbeRequest) {
+    const expectedId = request.id;
     if (!persistPendingAiProbe(request)) {
       setMessage('无法安全保存测试编号，或已有另一项待确认测试；未发起模型调用。请先查询原记录。');
       return;
@@ -187,7 +188,8 @@ export function AdminAiConsole({
     try {
       const result = await aiRequest<{ probe: AiProbe }>('probes', 'POST', request);
       await refresh();
-      if (!['pending', 'running', 'unknown'].includes(result.probe.status)) releasePending();
+      if (!['pending', 'running', 'unknown'].includes(result.probe.status))
+        releasePending(expectedId);
       setMessage(`测试 ${request.id}：${result.probe.status}。结果已保存，可通过测试详情查询。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '测试结果未确认，请使用原编号查询。');
@@ -196,21 +198,23 @@ export function AdminAiConsole({
     }
   }
   async function queryPending() {
-    if (!pending) return;
+    const expectedId = pending?.id;
+    if (!expectedId) return;
     setBusy(true);
     try {
-      const result = await aiRequest<{ probe: AiProbe }>(`probes/${pending.id}`);
+      const result = await aiRequest<{ probe: AiProbe }>(`probes/${expectedId}`);
       await refresh();
       setMessage(`原测试状态：${result.probe.status}`);
-      if (!['pending', 'running', 'unknown'].includes(result.probe.status)) releasePending();
+      if (!['pending', 'running', 'unknown'].includes(result.probe.status))
+        releasePending(expectedId);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '查询失败。');
     } finally {
       setBusy(false);
     }
   }
-  function releasePending() {
-    if (!clearPendingAiProbe()) {
+  function releasePending(expectedId: string | undefined) {
+    if (!expectedId || !clearPendingAiProbe(undefined, expectedId)) {
       setMessage('无法清除本地测试编号，保留待确认状态；不会自动创建新测试。');
       return;
     }
@@ -498,7 +502,11 @@ export function AdminAiConsole({
               <button className={styles.button} disabled={busy} onClick={() => probe(pending)}>
                 原编号重试
               </button>
-              <button className={styles.button} disabled={busy} onClick={releasePending}>
+              <button
+                className={styles.button}
+                disabled={busy}
+                onClick={() => releasePending(pending?.id)}
+              >
                 结束查询，允许新测试（可能再次计费）
               </button>
             </div>

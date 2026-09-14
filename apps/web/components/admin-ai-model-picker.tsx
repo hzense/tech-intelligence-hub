@@ -9,11 +9,17 @@ export function AdminAiModelPicker({
   value,
   onChange,
   disabled,
+  name,
+  required = false,
+  describedBy = 'ai-model-list-status',
 }: {
   models: string[];
   value: string;
   onChange: (value: string) => void;
   disabled: boolean;
+  name?: string;
+  required?: boolean;
+  describedBy?: string;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -64,10 +70,11 @@ export function AdminAiModelPicker({
               ? count - 1
               : Math.max(0, activeIndex - 1),
       );
-    } else if (event.key === 'Enter' && active) {
+    } else if (event.key === 'Enter') {
+      // This picker can live inside a Profile form; Enter must never implicitly save it.
+      event.preventDefault();
       const choice = choices[activeIndex];
-      if (choice !== undefined) {
-        event.preventDefault();
+      if (active && choice !== undefined) {
         choose(choice);
       }
     }
@@ -93,7 +100,9 @@ export function AdminAiModelPicker({
           aria-expanded={expanded}
           aria-controls={expanded ? `${id}-list` : undefined}
           aria-activedescendant={active ? `${id}-option-${activeIndex}` : undefined}
-          aria-describedby={`ai-model-list-status${expanded ? ` ${id}-status` : ''}`}
+          aria-describedby={`${describedBy}${expanded ? ` ${id}-status` : ''}`}
+          name={name}
+          required={required}
           autoComplete="off"
           spellCheck={false}
           maxLength={200}
