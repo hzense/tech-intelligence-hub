@@ -6,7 +6,9 @@
 
 [PR #79](https://github.com/hzense/tech-intelligence-hub/pull/79) 交付配置后台；后续 [PR #80](https://github.com/hzense/tech-intelligence-hub/pull/80) 已合并为 `5a03b1e`，对应 main CI 成功且 Production 部署 READY。2026-09-14 已按独立 AI 批次风险审批完成生产 `0004–0013` 迁移；迁移后的 Schema 核验及独立 `verify` 均确认 14 个迁移、40 张表。恢复能力仍未演练，不因此标为已验证。
 
-Production 域名白名单已保存并随新部署生效，真实 Google 管理员登录后已确认页面显示允许域名；迁移后的 Runtime 自身只读预检和公开数据库健康检查也已通过。`hzense_ai_admin` 和专用数据库 URL／根密钥环仍未创建配置，因此表单继续禁用。代码与数据库结构上线不等于 AI 服务可用，具体证据见[生产迁移与启用记录](production-evidence/2026-09-14-ai-configuration.md)。尚未调用真实供应商，模型兼容性、费用及 Profile 就绪仍须单独验收；未启用 Signal 新读取或自动发布。
+2026-09-14 操作者确认现有 `hzense_ai_admin` 密码已保存并明确授权后，五张 AI 私表最小权限已提交且独立只读复核通过，专用数据库 URL／根密钥环均已保存为本项目 Production-only Secret；原域名白名单保留。PR #82 的 `main@15ffd409` 首次配置后部署虽 READY，但 URL 的 TLS 参数不符导致页面 `configured=false`；仅修正同一 Secret 为 `sslmode=verify-full`、`channel_binding=prefer`，密码不变，第二次部署现已 READY 并绑定正式域名。
+
+真实 Google 管理员登录后，连接与 Profile 页面均可编辑，未配置提示消失；正常页面刷新触发的两个列表 GET 均为 200，匿名请求均为 401，公开数据库健康为 200。本阶段没有新建角色、修改密码或再次迁移；授权后独立检查连接、Profile、测试记录均为 0，随后未创建业务配置或发起测试。后台现已可配置，但真实供应商连接保存／加解密、模型兼容性、费用及 Profile 端到端资格仍须单独验收；未启用 Signal 新读取、自动采集或自动发布。部署、首次失败与修正、最小验收及有界日志证据见[生产迁移与启用记录](production-evidence/2026-09-14-ai-configuration.md#配置后部署与最小验收)。
 
 ## 管理员使用路径
 
@@ -47,12 +49,12 @@ Profile 页的“刷新状态”同时读取配置和当前连接修订。连接
 
 这里只列变量名称和格式，不保存真实值。不新建本地生产配置文件、不拉取 Production 密钥，所有生产配置通过线上受保护流程完成。Preview 和非 Production 环境不会连接生产 AI 配置库；测试使用单独的隔离数据库或注入的合成 transport，不通过伪造平台变量连接生产。
 
-| 变量                                          | 契约                                                                                                                                                                       |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HZENSE_AI_DATABASE_URL`                      | 独立 `hzense_ai_admin` 凭据；明确端口的 Neon pooled URL；TLS 必须开启，目标必须匹配现有 Runtime 的批准主机／端口／库名。不能填 Migrator、Writer、Publisher 或 Runtime 凭据 |
-| `HZENSE_AI_KEYRING`                           | JSON 结构 `{"active":"<版本>","keys":{"<版本>":"<32字节随机根密钥的标准Base64>"}}`；根密钥和数据库分开存储，只放服务端 Secret                                              |
-| `HZENSE_AI_ALLOWED_HOSTS`                     | 必填的小写域名逗号列表，无空格、通配符、协议或路径；最多 20 个。缺失或为空时 AI 后端保持关闭，没有默认供应商授权；使用 Gateway 也须显式填写 `ai-gateway.vercel.sh`         |
-| `HZENSE_RUNTIME_EXPECTED_HOST/PORT/NAME/USER` | 复用现有批准的 Neon 目标绑定，USER 仍为 `hzense_runtime`；只复用校验契约，实际 AI 数据库连接用户名必须是 `hzense_ai_admin`                                                 |
+| 变量                                          | 契约                                                                                                                                                                                                                                    |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HZENSE_AI_DATABASE_URL`                      | 独立 `hzense_ai_admin` 凭据；明确端口的 Neon pooled URL，查询参数必须为 `sslmode=verify-full&channel_binding=prefer`；Neon 默认 `require/require` 会被应用配置校验拒绝。目标须匹配 Runtime 批准的主机／端口／库名，不得使用其他角色凭据 |
+| `HZENSE_AI_KEYRING`                           | JSON 结构 `{"active":"<版本>","keys":{"<版本>":"<32字节随机根密钥的标准Base64>"}}`；根密钥和数据库分开存储，只放服务端 Secret                                                                                                           |
+| `HZENSE_AI_ALLOWED_HOSTS`                     | 必填的小写域名逗号列表，无空格、通配符、协议或路径；最多 20 个。缺失或为空时 AI 后端保持关闭，没有默认供应商授权；使用 Gateway 也须显式填写 `ai-gateway.vercel.sh`                                                                      |
+| `HZENSE_RUNTIME_EXPECTED_HOST/PORT/NAME/USER` | 复用现有批准的 Neon 目标绑定，USER 仍为 `hzense_runtime`；只复用校验契约，实际 AI 数据库连接用户名必须是 `hzense_ai_admin`                                                                                                              |
 
 生产启用顺序：PR 审核及 CI → 受保护迁移并运行精确 Schema 核验 → 最小角色／ACL 审计 → 保存服务端变量并部署 → 管理员添加连接 → 小额真实三类能力测试／未知结果核对 → Profile 保存验收。本文不授权自动执行这些生产操作。
 
