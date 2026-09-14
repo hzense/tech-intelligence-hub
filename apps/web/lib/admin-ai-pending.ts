@@ -87,10 +87,17 @@ export function persistPendingAiProbe(
   }
 }
 
-/** A failed removal must not reopen new-test controls. */
-export function clearPendingAiProbe(storage: StorageFactory = browserStorage): boolean {
+/** A failed or stale removal must not reopen new-test controls. */
+export function clearPendingAiProbe(
+  storage: StorageFactory = browserStorage,
+  expectedId?: string,
+): boolean {
   try {
     const target = storage();
+    if (expectedId !== undefined) {
+      const current = readPendingAiProbe(() => target);
+      if (!current.available || current.request?.id !== expectedId) return false;
+    }
     target.removeItem(pendingAiProbeStorageKey);
     return target.getItem(pendingAiProbeStorageKey) === null;
   } catch {

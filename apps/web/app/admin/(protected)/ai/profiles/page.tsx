@@ -24,6 +24,7 @@ export default async function AdminAiProfilesPage() {
       </header>
       <AdminAiProfiles
         initialProfiles={state.profiles}
+        initialProbes={state.probes}
         connections={state.connections}
         configured={state.configured}
         available={state.available}

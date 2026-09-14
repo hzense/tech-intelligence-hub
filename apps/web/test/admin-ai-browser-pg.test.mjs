@@ -276,11 +276,29 @@ test(
       async () => {
         await page.goto(`${server.origin}/admin/ai/profiles`);
         await page.getByLabel('配置名称', { exact: true }).fill('Browser fixture profile');
-        for (const stage of ['extract', 'verify', 'analyze']) {
+        const callsBeforeProfileSelection = providerCalls.length;
+        const stageLabels = { extract: '信号提取', verify: '独立核验', analyze: '专题分析' };
+        await expect(page.locator('input[name$=".temperature"]')).toHaveCount(0);
+        for (const [stage, label] of Object.entries(stageLabels)) {
+          const fieldset = page.getByRole('group', { name: label, exact: true });
+          await expect(page.locator(`textarea[name="${stage}.prompt"]`)).not.toHaveValue('');
           await page.locator(`select[name="${stage}.connection"]`).selectOption(connection.id);
-          await page.locator(`input[name="${stage}.model"]`).fill(modelAlias);
+          await fieldset.getByRole('button', { name: '展开模型列表', exact: true }).click();
+          await fieldset.getByRole('option', { name: modelAlias, exact: true }).click();
+          await expect(
+            fieldset.getByRole('combobox', {
+              name: '模型 ID（搜索、选择或手动输入）',
+              exact: true,
+            }),
+          ).toHaveValue(modelAlias);
           await page.locator(`textarea[name="${stage}.prompt"]`).fill(`Synthetic ${stage} prompt`);
         }
+        await sendFromBrowser(page, 'connections', 'GET');
+        assert.equal(
+          providerCalls.length,
+          callsBeforeProfileSelection,
+          'All three stage pickers reuse the current revision models receipt',
+        );
         server.dropNextSuccessfulResponse('save-profile');
         const first = page.waitForRequest(
           (request) =>
@@ -290,8 +308,10 @@ test(
         createProfileRequest = (await first).postDataJSON();
         assert.match(createProfileRequest.id, /^[a-f0-9-]{36}$/);
         assert.equal(Object.hasOwn(createProfileRequest, 'expected_revision'), false);
-        for (const stage of Object.values(createProfileRequest.stages))
+        for (const stage of Object.values(createProfileRequest.stages)) {
           assert.equal(stage.model_id, modelAlias);
+          assert.equal(stage.temperature, 0.7);
+        }
         await expect(page.getByRole('status')).toContainText(
           /未确认|Failed to fetch|NetworkError|Load failed/,
         );
@@ -372,6 +392,10 @@ test(
           await expect(
             page.locator('select[name="extract.connection"] option:checked'),
           ).toContainText('r2');
+          for (const stage of ['extract', 'verify', 'analyze']) {
+            await expect(page.locator(`input[name="${stage}.model"]`)).toHaveValue('');
+            await page.locator(`input[name="${stage}.model"]`).fill(modelAlias);
+          }
           const unqualified = responseFor(page, 'profiles', 'POST');
           await page.getByRole('button', { name: '保存为新修订', exact: true }).click();
           const unqualifiedResponse = await unqualified;
