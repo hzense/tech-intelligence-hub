@@ -236,15 +236,20 @@ test(
       async () => {
         const discovered = await runProbe(page, '读取模型列表');
         assert.equal(discovered.receipt.result.models[0].id, modelAlias);
-        await expect(page.locator('#ai-model-choices option')).toHaveAttribute('value', modelAlias);
+        const modelInput = page.getByRole('combobox', {
+          name: '模型 ID（搜索、选择或手动输入）',
+          exact: true,
+        });
+        await expect(modelInput).toHaveCount(1);
+        await expect(page.locator('input[list], datalist')).toHaveCount(0);
         const callsBeforeSelection = providerCalls.length;
         const requestsBeforeSelection = probeRequests.length;
-        await page
-          .getByRole('combobox', { name: '从模型列表选择', exact: true })
-          .selectOption(modelAlias);
-        await expect(page.getByLabel('模型 ID（列表选择或手动输入）', { exact: true })).toHaveValue(
-          modelAlias,
-        );
+        await page.getByRole('button', { name: '展开模型列表', exact: true }).click();
+        const modelList = page.getByRole('listbox', { name: '可选模型', exact: true });
+        await expect(modelList.getByRole('option')).toHaveText([modelAlias]);
+        await modelList.getByRole('option', { name: modelAlias, exact: true }).click();
+        await expect(modelInput).toHaveValue(modelAlias);
+        await expect(modelList).toBeHidden();
         // A same-origin read is a barrier after the selection handler; selection
         // must only update the input, not create a probe or call the provider.
         await page.evaluate(() =>
@@ -385,7 +390,7 @@ test(
             2,
           );
           await consolePage
-            .getByLabel('模型 ID（列表选择或手动输入）', { exact: true })
+            .getByRole('combobox', { name: '模型 ID（搜索、选择或手动输入）', exact: true })
             .fill(modelAlias);
           await runProbe(consolePage, '测试基础连接');
           await runProbe(consolePage, '测试结构化输出');

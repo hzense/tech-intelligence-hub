@@ -159,6 +159,71 @@
   color: var(--muted);
   font-size: 13px;
 }
+.modelPicker {
+  position: relative;
+  min-width: 0;
+}
+.modelInput {
+  display: flex;
+  margin-top: 7px;
+}
+.modelInput input {
+  border-radius: 9px 0 0 9px;
+}
+.modelToggle {
+  flex: 0 0 44px;
+  border: 1px solid var(--line);
+  border-left: 0;
+  border-radius: 0 9px 9px 0;
+  background: var(--surface-soft);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.modelPopup {
+  position: absolute;
+  inset-inline: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.modelStatus {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.modelOptions {
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.modelOption {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  text-align: start;
+  overflow-wrap: anywhere;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.modelOption:hover,
+.modelOption[aria-selected='true'] {
+  background: var(--surface-soft);
+  box-shadow: inset 3px 0 var(--brand);
+}
+.modelToggle:focus-visible,
+.modelOption:focus-visible {
+  outline: 3px solid var(--brand-bright);
+  outline-offset: -3px;
+}
 @media (max-width: 760px) {
   .grid,
   .fields {
