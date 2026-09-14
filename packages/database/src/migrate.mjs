@@ -356,7 +356,11 @@ export async function runMigrations({
     throw new Error('DATABASE_URL is required');
   }
 
-  const migrations = await loadMigrations(directory);
+  // Approval hooks inspect the exact immutable artifact this invocation executes,
+  // not a later reread of files that could differ from these SQL strings.
+  const migrations = Object.freeze(
+    (await loadMigrations(directory)).map((migration) => Object.freeze({ ...migration })),
+  );
   if (manifestPath) {
     await verifyMigrationManifest(migrations, manifestPath);
   }
@@ -397,7 +401,12 @@ export async function runMigrations({
 
     const pending = planPendingMigrations(migrations, appliedRows);
     // Revalidate operation scope against the actual plan while holding the lock.
-    if (beforeApply) await beforeApply(pending.map((migration) => migration.name));
+    if (beforeApply) {
+      await beforeApply(
+        pending.map((migration) => migration.name),
+        Object.freeze({ migrations }),
+      );
+    }
     for (const migration of pending) {
       console.log(`[db:migrate] applying ${migration.name}`);
       await client.query('BEGIN');

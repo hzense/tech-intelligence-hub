@@ -16,18 +16,140 @@ export const maintenanceOperations = Object.freeze([
 const writes = new Set(['migrate', 'search-apply']);
 const digest = /^[a-f0-9]{64}$/;
 const unverifiedRecoveryPolicy = 'accept-unverified-fts1';
+const aiConfigRecoveryPolicy = 'accept-unverified-ai-config';
+
+// A reviewed one-time rollout boundary, NOT the moving repository manifest.
+// Keep historical checksums pinned too, so approval identifies the complete
+// migration artifact. Future migrations need their own review and policy.
+const aiConfigManifest = Object.freeze(
+  [
+    ['0000_foundation.sql', 'a0a2285225ff14a62ee67aed18d8cceb01d12f2320f45c4bbd1f0d58adc20d30'],
+    ['0001_radar_evidence.sql', '508139859e91cd5e3e7baf0cae28bf685a307679fc7d0e95729557f581946df3'],
+    [
+      '0002_topic_projection.sql',
+      '150bc65eaf878306a868c5cc4dee06fd39433a0aa65c301d3e8c702134ea57f6',
+    ],
+    [
+      '0003_search_documents_fts.sql',
+      '98fec22c9a74bf237d82172f77d3d2da4b1a6942678deca8f5b29a4c78907261',
+    ],
+    [
+      '0004_signal_version_foundation.sql',
+      'caab5e3b1827eec0fe5410c6935b71c4142e09fcb6a66029d225d3f841e4ad2e',
+    ],
+    [
+      '0005_person_organization_affiliations.sql',
+      '0504823486759d05d604b0f9eefa94d6c2010c233cd6367658908d3d39b01ad8',
+    ],
+    [
+      '0006_signal_event_identity.sql',
+      '1dcef8dd9ab4e34f994a1e506f8a5a9685a412409e15db02766bc4215ae3740f',
+    ],
+    [
+      '0007_signal_version_immutability.sql',
+      'd076f9da8dd979a2bca4f54d4ed686783323dde29aa9f94bf7adeaf7b8fdd0ef',
+    ],
+    [
+      '0008_signal_publication_outbox.sql',
+      'a1117fda9894ba6590d66c25195af6c3db700c0a0653170fe975c8af4ad4a75a',
+    ],
+    [
+      '0009_signal_publication_controls.sql',
+      '6234a3419df037c66986b441c594f605c2d907d5236f2101df0bb2ee8087286a',
+    ],
+    [
+      '0010_qualified_signal_publication.sql',
+      '6e56ba4f9706ea62b36235a7acfad1b546826386abdc2bc772c5332a457b069d',
+    ],
+    [
+      '0011_signal_candidate_verification.sql',
+      '6db9b93e6ee52b886331755ec58fb6659258ac983e1ab149245143b1ff6572c6',
+    ],
+    [
+      '0012_current_signal_publication.sql',
+      '685527bdc4502c1c12a2cbbc00bb0d99a702f3a26f8caa5425498d132f3f955b',
+    ],
+    [
+      '0013_ai_configuration.sql',
+      'b97d5aead8c2e954b5b96a37f708ad12fb5cea830275f5775ead6724fc4612b7',
+    ],
+  ].map((entry) => Object.freeze(entry)),
+);
+
+// Domain separation and ordered tuples make both fingerprints reproducible.
+// Empty plans are deliberately refused: use the independent verify operation.
+export function aiConfigMigrationPlan(pendingMigrations, migrations) {
+  requireGate(
+    Array.isArray(migrations) &&
+      migrations.length === aiConfigManifest.length &&
+      Array.from(migrations).every(
+        (migration, index) =>
+          migration?.name === aiConfigManifest[index][0] &&
+          migration?.checksum === aiConfigManifest[index][1] &&
+          typeof migration?.sql === 'string' &&
+          createHash('sha256').update(migration.sql).digest('hex') === aiConfigManifest[index][1],
+      ),
+    'ai-config-migration-manifest-required',
+  );
+  const approved = aiConfigManifest.slice(4);
+  requireGate(
+    Array.isArray(pendingMigrations) &&
+      pendingMigrations.length > 0 &&
+      pendingMigrations.length <= approved.length &&
+      Array.from(pendingMigrations).every(
+        (name, index) => name === approved[approved.length - pendingMigrations.length + index][0],
+      ),
+    'ai-config-migration-scope-required',
+  );
+  const manifestFingerprint = createHash('sha256')
+    .update('hzense/ai-config-migration-manifest/v1\0')
+    .update(JSON.stringify(aiConfigManifest))
+    .digest('hex');
+  const planFingerprint = createHash('sha256')
+    .update('hzense/ai-config-migration-plan/v1\0')
+    .update(JSON.stringify({ manifestFingerprint, pendingMigrations }))
+    .digest('hex');
+  return { manifestFingerprint, planFingerprint };
+}
+
+export function requireAiConfigMigrationScope(preflight, migrations, approval) {
+  const plan = aiConfigMigrationPlan(preflight?.pendingMigrations, migrations);
+  requireGate(
+    approval?.manifestFingerprint === plan.manifestFingerprint &&
+      approval?.planFingerprint === plan.planFingerprint,
+    'ai-config-migration-plan-mismatch',
+  );
+  return plan;
+}
 
 // Explicit exception, not fabricated evidence of a successful restore. The
 // protected Environment review remains the authority; these are declarations.
-function validateRecoveryPolicy(approval) {
+function validateRecoveryPolicy(approval, operation) {
   const policy = Object.hasOwn(approval, 'recoveryPolicy') ? approval.recoveryPolicy : 'verified';
   requireGate(
-    policy === 'verified' || policy === unverifiedRecoveryPolicy,
+    policy === 'verified' ||
+      policy === unverifiedRecoveryPolicy ||
+      policy === aiConfigRecoveryPolicy,
     'unsupported-recovery-policy',
   );
   if (policy === 'verified') {
     requireGate(!Object.hasOwn(approval, 'riskAcceptance'), 'conflicting-recovery-approval');
     return policy;
+  }
+  if (policy === aiConfigRecoveryPolicy) {
+    requireGate(
+      operation === 'migrate' || operation === 'acl-capture',
+      'ai-config-operation-required',
+    );
+    if (operation === 'migrate') {
+      requireGate(
+        typeof approval.manifestFingerprint === 'string' &&
+          digest.test(approval.manifestFingerprint) &&
+          typeof approval.planFingerprint === 'string' &&
+          digest.test(approval.planFingerprint),
+        'reviewed-ai-config-plan-required',
+      );
+    }
   }
   const acceptance = approval.riskAcceptance;
   requireGate(
@@ -36,7 +158,10 @@ function validateRecoveryPolicy(approval) {
       approval.restoreRehearsed === false &&
       approval.aclRecoveryReviewed === false &&
       !Object.hasOwn(approval, 'restoreEvidenceFingerprint') &&
-      acceptance?.scope === 'fts1-production-launch' &&
+      acceptance?.scope ===
+        (policy === aiConfigRecoveryPolicy
+          ? 'ai-configuration-production-launch'
+          : 'fts1-production-launch') &&
       acceptance.accepted === true &&
       acceptance.historicalAclGapAccepted === true &&
       acceptance.acknowledgement === 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
@@ -114,9 +239,9 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
     Number.isFinite(expiry) && expiry > now && expiry <= now + 24 * 60 * 60 * 1000,
     'approval-expired-or-too-long',
   );
-  const recoveryPolicy = validateRecoveryPolicy(approval);
+  const recoveryPolicy = validateRecoveryPolicy(approval, operation);
   requireGate(
-    (recoveryPolicy === unverifiedRecoveryPolicy || approval.backupVerified === true) &&
+    (recoveryPolicy !== 'verified' || approval.backupVerified === true) &&
       approval.ddlFreezeConfirmed === true &&
       backupCoversApproval(approval, expiry),
     'recovery-evidence-required',
@@ -127,7 +252,7 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
         approval.archiveRepository === 'hzense/tech-intelligence-hub',
       'public-acl-archive-approval-required',
     );
-  } else if (recoveryPolicy === unverifiedRecoveryPolicy) {
+  } else if (recoveryPolicy !== 'verified') {
     requireGate(digest.test(approval.aclFingerprint ?? ''), 'recovery-evidence-required');
   } else {
     requireGate(
@@ -163,10 +288,10 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
 export function publicRecoveryAcceptance(request, rawApproval) {
   if (
     (writes.has(request.operation) || request.operation === 'acl-capture') &&
-    request.approval?.recoveryPolicy === unverifiedRecoveryPolicy
+    [unverifiedRecoveryPolicy, aiConfigRecoveryPolicy].includes(request.approval?.recoveryPolicy)
   ) {
     return {
-      recoveryPolicy: unverifiedRecoveryPolicy,
+      recoveryPolicy: request.approval.recoveryPolicy,
       recoveryVerified: false,
       riskAcceptanceSha256: createHash('sha256').update(rawApproval).digest('hex'),
     };
@@ -188,7 +313,7 @@ export function publicMaintenanceResult(operation, result = {}) {
   ]) {
     if (Number.isSafeInteger(result[key]) && result[key] >= 0) summary[key] = result[key];
   }
-  for (const key of ['fingerprint', 'planFingerprint']) {
+  for (const key of ['fingerprint', 'planFingerprint', 'manifestFingerprint']) {
     if (typeof result[key] === 'string' && digest.test(result[key])) summary[key] = result[key];
   }
   if (typeof result.committed === 'boolean') summary.committed = result.committed;
@@ -294,10 +419,35 @@ async function executeOperation(env, { operation, approval }) {
     await import('../../packages/database/src/preflight.mjs');
   const options = productionDatabaseOptions(env);
   const policy = validateConnectionTarget(options);
-  if (operation === 'preflight') return runDatabasePreflight(options);
+  if (operation === 'preflight') {
+    const preflight = await runDatabasePreflight(options);
+    const { loadMigrations, verifyMigrationManifest } =
+      await import('../../packages/database/src/migrate.mjs');
+    const migrations = await loadMigrations();
+    await verifyMigrationManifest(migrations);
+    try {
+      return { ...preflight, ...aiConfigMigrationPlan(preflight.pendingMigrations, migrations) };
+    } catch (error) {
+      // Generic read-only preflight remains useful outside this one-time rollout;
+      // never issue AI approval fingerprints for an empty or out-of-scope plan.
+      if (!(error instanceof MaintenanceGateError)) throw error;
+      return preflight;
+    }
+  }
   const { verifyDatabaseContract } = await import('../../packages/database/src/verify.mjs');
   if (operation === 'migrate') {
-    const { runMigrations } = await import('../../packages/database/src/migrate.mjs');
+    const { runMigrations, loadMigrations, verifyMigrationManifest } =
+      await import('../../packages/database/src/migrate.mjs');
+    let approvedPlan;
+    async function checkScope(preflight) {
+      if (approval?.recoveryPolicy === unverifiedRecoveryPolicy)
+        requireFts1MigrationScope(preflight);
+      if (approval?.recoveryPolicy === aiConfigRecoveryPolicy) {
+        const migrations = await loadMigrations();
+        await verifyMigrationManifest(migrations);
+        approvedPlan = requireAiConfigMigrationScope(preflight, migrations, approval);
+      }
+    }
     await runMigrations({
       connectionString: options.connectionString,
       beforeMigrate: async (client) => {
@@ -305,16 +455,27 @@ async function executeOperation(env, { operation, approval }) {
           ...options,
           expectedHost: policy.host,
         });
-        if (approval?.recoveryPolicy === unverifiedRecoveryPolicy) {
-          requireFts1MigrationScope(preflight);
-        }
+        await checkScope(preflight);
       },
-      beforeApply:
-        approval?.recoveryPolicy === unverifiedRecoveryPolicy
-          ? (pendingMigrations) => requireFts1MigrationScope({ pendingMigrations })
-          : undefined,
+      beforeApply: [unverifiedRecoveryPolicy, aiConfigRecoveryPolicy].includes(
+        approval?.recoveryPolicy,
+      )
+        ? (pendingMigrations, artifact) => {
+            if (approval?.recoveryPolicy === aiConfigRecoveryPolicy) {
+              // The runner freezes this actual execution snapshot before opening
+              // its connection. Do not substitute another filesystem reread.
+              approvedPlan = requireAiConfigMigrationScope(
+                { pendingMigrations },
+                artifact?.migrations,
+                approval,
+              );
+            } else {
+              requireFts1MigrationScope({ pendingMigrations });
+            }
+          }
+        : undefined,
     });
-    return verifyDatabaseContract(options);
+    return { ...(await verifyDatabaseContract(options)), ...approvedPlan };
   }
   await runDatabasePreflight(options);
   const verification = await verifyDatabaseContract(options);

@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import process from 'node:process';
 import test from 'node:test';
+import pg from 'pg';
 import { chromium, expect } from '@playwright/test';
+import { validateConnectionTarget } from '../../../packages/database/src/connection-policy.mjs';
 import { startAiAdminBrowserFixture } from './fixtures/ai-admin-browser/server.mjs';
 import { createAiBrowserDatabase } from './fixtures/ai-admin-browser/database.mjs';
 const { fetch } = globalThis;
@@ -17,10 +19,14 @@ test(
     timeout: 120_000,
   },
   async (t) => {
-    const database = await createAiBrowserDatabase({
-      adminUrl: process.env.MIGRATION_TEST_ADMIN_URL,
-      isolatedCluster: process.env.RUNTIME_READER_TEST_ISOLATED_CLUSTER,
-    });
+    const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
+    const isolatedCluster = process.env.RUNTIME_READER_TEST_ISOLATED_CLUSTER;
+    assert.equal(isolatedCluster, '1', 'Disposable PostgreSQL cluster required');
+    validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
+    const administrator = new pg.Client({ connectionString: adminUrl });
+    await administrator.connect();
+    const isolatedDatabases = [];
+    let database;
     let server;
     let browser;
     let context;
@@ -32,10 +38,56 @@ test(
         try {
           await server?.close();
         } finally {
-          await database.close();
+          try {
+            await database?.close();
+          } finally {
+            try {
+              for (const saved of isolatedDatabases) {
+                await administrator.query(
+                  `REVOKE CONNECT,CREATE,TEMPORARY ON DATABASE "${saved.name}" FROM PUBLIC`,
+                );
+                for (const privilege of saved.privileges)
+                  await administrator.query(
+                    `GRANT ${privilege} ON DATABASE "${saved.name}" TO PUBLIC`,
+                  );
+              }
+            } finally {
+              await administrator.end();
+            }
+          }
         }
       }
     });
+    const otherPublicPrivileges = (
+      await administrator.query(`SELECT d.datname AS name,
+        array_agg(a.privilege_type ORDER BY a.privilege_type) AS privileges
+        FROM pg_catalog.pg_database d
+        CROSS JOIN LATERAL pg_catalog.aclexplode(
+          COALESCE(d.datacl,pg_catalog.acldefault('d',d.datdba))) a
+        WHERE d.datallowconn AND a.grantee=0 GROUP BY d.datname ORDER BY d.datname`)
+    ).rows;
+    for (const saved of otherPublicPrivileges) {
+      assert.ok(
+        ['postgres', 'template1'].includes(saved.name),
+        'AI browser fixture refuses to modify unrelated database ACLs',
+      );
+      assert.ok(
+        saved.privileges.every((privilege) =>
+          ['CONNECT', 'CREATE', 'TEMPORARY'].includes(privilege),
+        ),
+        'Unexpected fixture database privilege',
+      );
+    }
+    // A stock disposable PostgreSQL cluster exposes postgres/template1 to PUBLIC.
+    // Isolate only these known databases; restore their effective grants even if
+    // fixture creation fails. Production provisioning never normalizes these ACLs.
+    for (const saved of otherPublicPrivileges) {
+      isolatedDatabases.push(saved);
+      await administrator.query(
+        `REVOKE CONNECT,CREATE,TEMPORARY ON DATABASE "${saved.name}" FROM PUBLIC`,
+      );
+    }
+    database = await createAiBrowserDatabase({ adminUrl, isolatedCluster });
     const keyring = { active: 'test', keys: { test: Buffer.alloc(32, 7).toString('base64') } };
     const secret = 'synthetic-browser-fixture-key';
     const providerCalls = [];

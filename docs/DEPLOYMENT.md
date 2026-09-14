@@ -11,6 +11,8 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 ## 当前部署
 
+> **2026-09-14 AI 配置启用检查：** PR #79 已合并且对应 main CI／Production 部署成功，但生产库只到 `0003`，AI 私表、专用角色和两个 AI Secret 尚缺，因此 `/admin/ai` 表单关闭。Production 域名白名单已保存，尚未重新部署。操作者已另行同意新备份保护下的 `0004–0013` 批次升级及最小角色授权，恢复能力仍未演练；不复用旧 FTS 豁免，不扩大 Runtime，不切换 Signal 新读取／自动发布。具体状态见[本次记录](production-evidence/2026-09-14-ai-configuration.md)，执行规则见[AI 批次风险门禁](ONLINE_MAINTENANCE.md#ai-配置批次的显式风险接受)。下述早期开发边界保留为历史，不代表本次已执行迁移。
+
 > **2026-09-13 开发边界：** [V2-1a 数据底座](SIGNAL_V3_FOUNDATION.md) 的 `0004` 与[任职增量](PERSON_ORGANIZATION_AFFILIATIONS.md) 的 `0005` 已合并；[事件身份增量](SIGNAL_EVENT_IDENTITY.md) 追加 `0006_signal_event_identity.sql`，只建私有登记表、不自动回填。普通 Web 部署仍使用旧 Seed 读取。要求最新 schema 的维护预检会将未应用的 `0004`–`0006` 视为 pending，不能自动跳过或直接应用来解除阻塞。`0005` 的日期约束影响全部旧 `relations`，上线前需核验遗留日期；不自动清洗。本轮未执行生产迁移或授予新增业务权限，正式迁移需另行审批并复核维护流程对该版本的支持；不开放新版自动发表，也不重跑已取消的恢复演练。
 
 > **本轮追加边界：** `0007` [版本封存](SIGNAL_VERSION_IMMUTABILITY.md)、`0008` [私有发表转换与 Outbox 底座](SIGNAL_PUBLICATION_OUTBOX.md)及 `0009` [任务与发布控制](SIGNAL_PUBLICATION_CONTROLS.md)已合并；本地追加 `0010` [已记录资格检查与原子发表](SIGNAL_QUALIFIED_PUBLICATION.md)，新增一张私有绑定回执表、一个函数、三个 ALWAYS 触发器及 Outbox 复合唯一索引。沿用默认关闭的新发布控制，候选检查、克隆和回执只在私有同事务入口中实施。完整 Schema／Runtime／Topic 预检必须使用同期精确契约；未应用迁移仍报 pending，不能自动修复或跳过。`0007` 的旧表重写／排他 DDL 锁要求仍保留，`0010` 索引与外键 DDL 也须另行评估维护锁影响。`db/roles/configure_signal_writer.sql` 只供独立审批配置预先创建的受限写入角色，发现不安全既有权限则停止，不进行 PUBLIC ACL 清洗，也不授权 Outbox、任务控制或绑定回执。本轮不创建／授权生产 Publisher，不添加本地生产入口，不将私有控制或状态账本接到旧站；完整核验、受限发表／安全撤回身份、公开读取与真实投影消费者仍待实现。
@@ -35,7 +37,7 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 和 `HZENSE_ADMIN_EMAIL`。密钥与邮箱不写进仓库、不用 `NEXT_PUBLIC_`、不进入 Preview 或 PR 测试。
 配置后需要重新部署及真实账号验收；缺少／错误配置或 Preview 部署时认证关闭，公开页面不受影响。
 
-本轮只接通认证代码与自动化测试，未设置生产凭据、执行真实 Google 登录或部署。
+认证首次开发时只交付代码与自动化测试；生产配置及部署现已完成，2026-09-14 已在真实管理员登录会话中查看 `/admin/ai`。这不代表 AI 后端或供应商连接已可用。
 管理员身份不等于数据库写入角色，不自动授予 Publisher 权限，也不启用 AI 采集、批量导入或发布开关。
 
 ## Hosted Alpha 收尾

@@ -1,12 +1,22 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { URL } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
-import { loadMigrations, migrationLockKeys, runMigrations } from '../src/migrate.mjs';
+import {
+  loadMigrations,
+  migrationChecksum,
+  migrationLockKeys,
+  runMigrations,
+} from '../src/migrate.mjs';
+import {
+  aiConfigMigrationPlan,
+  requireAiConfigMigrationScope,
+} from '../../../.github/scripts/production-maintenance.mjs';
 import { inspectDatabasePreflight, runDatabasePreflight } from '../src/preflight.mjs';
 import { expectedTableNames, verifyDatabaseContract } from '../src/verify.mjs';
 import { syncSearchDocuments } from '../src/search-sync.mjs';
@@ -31,6 +41,7 @@ const databaseNames = {
   legacy: `hzense_migration_legacy_${runSuffix}`,
   missingEdge: `hzense_migration_missing_${runSuffix}`,
   rollback: `hzense_migration_rollback_${runSuffix}`,
+  artifact: `hzense_migration_artifact_${runSuffix}`,
 };
 
 function quotedDatabaseName(name) {
@@ -174,6 +185,124 @@ integrationSuite('PostgreSQL migration integration', () => {
     await adminClient.query(`DROP ROLE IF EXISTS ${quotedRoleName(migrationRole)}`);
     await adminClient.query(`DROP ROLE IF EXISTS ${quotedRoleName(inheritedRole)}`);
     await adminClient.end();
+  }, 30_000);
+
+  it('binds AI risk approval to the immutable SQL snapshot actually executed, not restored files', async () => {
+    const databaseUrl = connectionUrl(databaseNames.artifact);
+    const migrations = await loadMigrations(resolve(process.cwd(), '../../db/migrations'));
+    const pending = migrations.slice(4).map(({ name }) => name);
+    const approval = aiConfigMigrationPlan(pending, migrations);
+    await withClient(databaseUrl, async (client) => {
+      await client.query(`CREATE TABLE hzense_schema_migrations (
+        name text PRIMARY KEY, checksum text NOT NULL CHECK (length(checksum)=64),
+        applied_at timestamptz NOT NULL DEFAULT now())`);
+      for (const migration of migrations.slice(0, 4)) {
+        await client.query('BEGIN');
+        try {
+          await client.query(migration.sql);
+          await client.query('INSERT INTO hzense_schema_migrations(name,checksum) VALUES ($1,$2)', [
+            migration.name,
+            migration.checksum,
+          ]);
+          await client.query('COMMIT');
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      }
+    });
+    const directory = await mkdtemp(join(tmpdir(), 'hzense-ai-approved-artifact-'));
+    const manifestPath = join(directory, 'checksums.json');
+    const last = migrations.at(-1);
+    const unapprovedSql = `${last.sql}\n-- synthetic unapproved artifact, never run\n`;
+    const manifest = Object.fromEntries(migrations.map(({ name, checksum }) => [name, checksum]));
+    try {
+      await Promise.all(
+        migrations.map(({ name, sql }) =>
+          writeFile(join(directory, name), name === last.name ? unapprovedSql : sql),
+        ),
+      );
+      await writeFile(
+        manifestPath,
+        JSON.stringify({ ...manifest, [last.name]: migrationChecksum(unapprovedSql) }),
+      );
+      let checkedActualArtifact = false;
+      await expect(
+        runMigrations({
+          connectionString: databaseUrl,
+          directory,
+          manifestPath,
+          beforeMigrate: async (client) => {
+            // Simulate files being restored AFTER the runner has loaded its SQL.
+            await writeFile(join(directory, last.name), last.sql);
+            await writeFile(manifestPath, JSON.stringify(manifest));
+            const preflight = await inspectDatabasePreflight(
+              client,
+              productionLikeOptions(databaseNames.artifact),
+            );
+            expect(
+              requireAiConfigMigrationScope(preflight, await loadMigrations(directory), approval),
+            ).toEqual(approval);
+          },
+          beforeApply: (actualPending, artifact) => {
+            checkedActualArtifact = true;
+            expect(Object.isFrozen(artifact)).toBe(true);
+            expect(Object.isFrozen(artifact.migrations)).toBe(true);
+            expect(artifact.migrations.every(Object.isFrozen)).toBe(true);
+            expect(artifact.migrations.at(-1).sql).toBe(unapprovedSql);
+            expect(() => {
+              artifact.migrations.at(-1).sql = last.sql;
+            }).toThrow(TypeError);
+            requireAiConfigMigrationScope(
+              { pendingMigrations: actualPending },
+              artifact.migrations,
+              approval,
+            );
+          },
+        }),
+      ).rejects.toThrow('ai-config-migration-manifest-required');
+      expect(checkedActualArtifact).toBe(true);
+      await withClient(databaseUrl, async (client) => {
+        expect(
+          (await client.query('SELECT count(*)::int AS count FROM hzense_schema_migrations'))
+            .rows[0].count,
+        ).toBe(4);
+        expect(
+          (await client.query("SELECT to_regclass('public.signal_versions') AS relation")).rows[0]
+            .relation,
+        ).toBeNull();
+      });
+      await runMigrations({
+        connectionString: databaseUrl,
+        directory,
+        manifestPath,
+        beforeMigrate: (client) =>
+          inspectDatabasePreflight(client, productionLikeOptions(databaseNames.artifact)),
+        beforeApply: (actualPending, artifact) => {
+          expect(artifact.migrations).toEqual(migrations);
+          requireAiConfigMigrationScope(
+            { pendingMigrations: actualPending },
+            artifact.migrations,
+            approval,
+          );
+          // Legacy first hook argument remains an isolated copy, not the plan.
+          actualPending.length = 0;
+        },
+      });
+      await expect(
+        verifyDatabaseContract(productionLikeOptions(databaseNames.artifact)),
+      ).resolves.toMatchObject({ migrationCount: 14 });
+      await withClient(databaseUrl, async (client) => {
+        expect(
+          (await client.query('SELECT publication_enabled FROM signal_publication_control')).rows,
+        ).toEqual([{ publication_enabled: false }]);
+        expect(
+          (await client.query('SELECT count(*)::int AS count FROM ai_connections')).rows[0].count,
+        ).toBe(0);
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   }, 30_000);
 
   it('migrates a fresh pgvector database and reruns idempotently', async () => {
