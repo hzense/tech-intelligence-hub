@@ -129,6 +129,11 @@ jobs:
         run: pnpm --filter @hzense/search build
       - name: Install Chromium for configured administrator fixture
         run: pnpm exec playwright install --with-deps chromium
+      - name: Verify AI provider presets and endpoint guidance without external calls
+        working-directory: apps/web
+        env:
+          HZENSE_AI_GUIDANCE_BROWSER_TEST: '1'
+        run: node --test test/admin-ai-guidance-browser.test.mjs
       - name: Verify configured AI forms through HTTP and isolated PostgreSQL
         working-directory: apps/web
         env:
