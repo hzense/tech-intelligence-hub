@@ -4,7 +4,9 @@
 
 本功能是 [AI 生产技术契约](AUTONOMOUS_SIGNAL_PIPELINE.md) 第 4.1、4.2 节的首批实现，提供管理员连接配置、模型发现／手填、独立能力测试及版本化 Profile。它不启动自动采集，不接收业务文档，不运行 Signal 提取／事实核验／专题生成，也不自动发布。
 
-[PR #79](https://github.com/hzense/tech-intelligence-hub/pull/79) 已合并为 `3a71c15`，对应 main CI 成功且页面代码已部署。2026-09-14 生产只读核验确认数据库仍为 `0000–0003`，没有 AI 私表或 `hzense_ai_admin`；初次检查缺少三个 AI 服务端变量，因此页面按设计关闭。随后已保存 Production 域名白名单，专用数据库 URL／根密钥环仍待配置并重新部署。代码上线不等于服务可用，当前启用工作见[生产准备记录](production-evidence/2026-09-14-ai-configuration.md)。真实供应商兼容性与费用验收仍须单独确认。
+[PR #79](https://github.com/hzense/tech-intelligence-hub/pull/79) 交付配置后台；后续 [PR #80](https://github.com/hzense/tech-intelligence-hub/pull/80) 已合并为 `5a03b1e`，对应 main CI 成功且 Production 部署 READY。2026-09-14 已按独立 AI 批次风险审批完成生产 `0004–0013` 迁移；迁移后的 Schema 核验及独立 `verify` 均确认 14 个迁移、40 张表。恢复能力仍未演练，不因此标为已验证。
+
+Production 域名白名单已保存并随新部署生效，真实 Google 管理员登录后已确认页面显示允许域名；迁移后的 Runtime 自身只读预检和公开数据库健康检查也已通过。`hzense_ai_admin` 和专用数据库 URL／根密钥环仍未创建配置，因此表单继续禁用。代码与数据库结构上线不等于 AI 服务可用，具体证据见[生产迁移与启用记录](production-evidence/2026-09-14-ai-configuration.md)。尚未调用真实供应商，模型兼容性、费用及 Profile 就绪仍须单独验收；未启用 Signal 新读取或自动发布。
 
 ## 管理员使用路径
 
