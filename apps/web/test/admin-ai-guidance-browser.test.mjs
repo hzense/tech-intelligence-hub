@@ -47,7 +47,7 @@ async function startGuidanceFixture() {
         if (!response.ok) throw new Error('Synthetic bootstrap failed');
         const data = await response.json();
         createRoot(document.getElementById('root')).render(
-          <AdminAiConsole initialConnections={data.connections} initialProbes={[]}
+          <AdminAiConsole initialConnections={data.connections} initialProbes={data.probes}
             configured available allowedHosts={data.allowedHosts} />
         );
       `,
@@ -70,6 +70,7 @@ async function startGuidanceFixture() {
   );
   let origin;
   let connections = [];
+  let probes = [];
   let allowedHosts = [];
   let failNextCreate = false;
   let failedCreateResponses = 0;
@@ -87,7 +88,7 @@ async function startGuidanceFixture() {
         outgoing.end(JSON.stringify(value));
       };
       if (url.pathname === '/__fixture/bootstrap') {
-        json({ connections, allowedHosts });
+        json({ connections, probes, allowedHosts });
       } else if (url.pathname === '/api/admin/ai/connections') {
         if (incoming.method === 'GET') {
           json({ connections });
@@ -127,7 +128,7 @@ async function startGuidanceFixture() {
         connections = [...connections.filter((item) => item.id !== body.id), connection];
         json({ connection });
       } else if (url.pathname === '/api/admin/ai/probes' && incoming.method === 'GET') {
-        json({ probes: [] });
+        json({ probes });
       } else if (assets.has(url.pathname)) {
         outgoing.writeHead(200, {
           'Content-Type': url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript',
@@ -165,6 +166,7 @@ async function startGuidanceFixture() {
     },
     reset(data = {}) {
       connections = structuredClone(data.connections ?? []);
+      probes = structuredClone(data.probes ?? []);
       allowedHosts = data.allowedHosts ?? ['ai-gateway.vercel.sh', 'openrouter.ai'];
       writes.length = 0;
       failNextCreate = false;
@@ -426,6 +428,81 @@ test(
         const retry = await expectSubmitted('POST');
         assert.equal(fixture.writes.length, 2);
         assert.equal(retry.id, originalId);
+      },
+    );
+
+    await t.test(
+      'model picker preserves aliases and only uses the selected connection revision',
+      async () => {
+        const alias = '~provider/fixture-latest';
+        const other = {
+          ...savedConnection,
+          id: '22345678-1234-4123-8123-123456789abc',
+          name: 'Other fixture',
+          enabled: true,
+        };
+        const listed = {
+          id: '32345678-1234-4123-8123-123456789abc',
+          connection_id: savedConnection.id,
+          connection_revision: 1,
+          kind: 'models',
+          model_id: null,
+          status: 'succeeded',
+          result: {
+            models: [{ id: alias }, { id: 'provider/fixed-model' }],
+            count: 2,
+            truncated: true,
+          },
+          created_at: '2026-01-01T00:00:00.000Z',
+          reserved_microusd: 0,
+          charged_microusd: 0,
+        };
+        await mount({
+          connections: [{ ...savedConnection, enabled: true }, other],
+          probes: [
+            {
+              ...listed,
+              id: '42345678-1234-4123-8123-123456789abc',
+              connection_revision: 2,
+              result: { models: [{ id: 'provider/wrong-revision' }], count: 1, truncated: false },
+            },
+            listed,
+          ],
+        });
+        const picker = page.getByRole('combobox', { name: '从模型列表选择', exact: true });
+        const model = page.getByLabel('模型 ID（列表选择或手动输入）', { exact: true });
+        await expect(picker.locator('option')).toHaveText([
+          '请选择模型（不会自动调用）',
+          alias,
+          'provider/fixed-model',
+        ]);
+        await expect(model).toHaveValue('');
+        await picker.selectOption(alias);
+        await expect(model).toHaveValue(alias);
+        await expect(page.getByRole('button', { name: '测试基础连接', exact: true })).toBeEnabled();
+        await expect(page.getByText('模型列表已截断；仍可手动填写完整模型 ID。')).toBeVisible();
+        await expectNoWrites();
+        await model.fill('provider/manual-model');
+        await expect(picker).toHaveValue('');
+        await model.fill('~~provider/invalid-model');
+        await expect(
+          page.getByRole('button', { name: '测试基础连接', exact: true }),
+        ).toBeDisabled();
+        await picker.selectOption(alias);
+        await page.getByRole('combobox', { name: '测试连接', exact: true }).selectOption(other.id);
+        await expect(model).toHaveValue('');
+        await expect(picker).toBeDisabled();
+        await expect(picker.locator('option')).toHaveText(['请先读取模型列表']);
+        await expectNoWrites();
+        await page
+          .getByRole('combobox', { name: '测试连接', exact: true })
+          .selectOption(savedConnection.id);
+        await picker.selectOption(alias);
+        await page.getByRole('button', { name: '停用', exact: true }).first().click();
+        await expect(picker).toBeDisabled();
+        await expect(model).toHaveValue('');
+        assert.equal(fixture.writes.length, 1);
+        assert.equal(fixture.writes[0].method, 'PATCH');
       },
     );
 

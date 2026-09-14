@@ -1,4 +1,5 @@
 import type { AiProbeRequest } from '../../../packages/database/src/ai-config-store.mjs';
+import { isValidAiModelId } from '../../../packages/database/src/ai-model-id.mjs';
 
 export const pendingAiProbeStorageKey = 'hzense.ai.pending-probe.v1';
 type PendingStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
@@ -49,12 +50,7 @@ function safeRequest(value: unknown): AiProbeRequest | null {
   };
   if (row.kind === 'models') return Object.hasOwn(row, 'model_id') ? null : request;
   const model = row.model_id;
-  if (
-    typeof model !== 'string' ||
-    model.length > 200 ||
-    model.match(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/)?.[0] !== model
-  )
-    return null;
+  if (!isValidAiModelId(model)) return null;
   return { ...request, model_id: model };
 }
 

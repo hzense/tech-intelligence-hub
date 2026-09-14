@@ -1,6 +1,7 @@
 import { generateText, Output, jsonSchema, tool, isStepCount, type LanguageModelUsage } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { Buffer } from 'node:buffer';
+import { isValidAiModelId } from '../../../packages/database/src/ai-model-id.mjs';
 import {
   AiProbeError,
   createPinnedAiFetch,
@@ -33,11 +34,7 @@ export interface AiProbeResult {
   error_code?: AiProbeErrorCode;
 }
 export function validAiModelId(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    value.length <= 200 &&
-    value.match(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/)?.[0] === value
-  );
+  return isValidAiModelId(value);
 }
 function validSentinel(value: unknown): value is { sentinel: string; ok: true } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;

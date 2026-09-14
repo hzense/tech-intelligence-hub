@@ -366,7 +366,18 @@ test('models only returns bounded strict IDs, not arbitrary provider metadata', 
   assert.equal(JSON.stringify(result).includes(apiKey), false);
   assert.equal(calls, 1);
   assert.ok(Buffer.byteLength(JSON.stringify(result.result)) < 16384);
-  for (const id of ['', 'has space', 'id\n', 'x'.repeat(201), apiKey]) {
+  for (const id of [
+    '',
+    'has space',
+    'id\n',
+    '~',
+    '~~vendor/model',
+    '~vendor/~model',
+    '~vendor/model+variant',
+    '~vendor/model\n',
+    'x'.repeat(201),
+    apiKey,
+  ]) {
     const invalid = createAiProbeInvoker({
       resolve,
       request: async () => Response.json({ data: [{ id }] }),
@@ -396,6 +407,53 @@ test('models only returns bounded strict IDs, not arbitrary provider metadata', 
   assert.ok(Buffer.byteLength(JSON.stringify(bounded.result)) < 16384);
 });
 
+test('catalog aliases retain a single leading tilde through parsing and exact model invocation', async () => {
+  const aliases = [
+    '~openai/gpt-astra-latest',
+    '~openai/gpt-sol-latest',
+    '~openai/gpt-terra-latest',
+    '~openai/gpt-luna-latest',
+  ];
+  const models = [
+    { id: 'provider/fixture-model' },
+    { id: 'provider/another-model' },
+    ...aliases.map((id) => ({ id })),
+  ];
+  let directoryCalls = 0;
+  const directory = createAiProbeInvoker({
+    resolve,
+    request: async (request) => {
+      directoryCalls++;
+      assert.equal(request.method, 'GET');
+      assert.equal(request.url.pathname, '/v1/models');
+      return Response.json({ data: models });
+    },
+  });
+  const listed = await directory(fixture('models'));
+  assert.equal(listed.success, true);
+  assert.deepEqual(listed.result, { models, count: models.length, truncated: false });
+  assert.equal(directoryCalls, 1);
+
+  const requestedModels = [];
+  const invoke = createAiProbeInvoker({
+    resolve,
+    request: async (request) => {
+      assert.equal(request.method, 'POST');
+      assert.equal(request.url.pathname, '/v1/chat/completions');
+      const body = JSON.parse(request.body);
+      requestedModels.push(body.model);
+      return response(aiProbeSentinel, { model: body.model });
+    },
+  });
+  for (const modelId of aliases) {
+    assert.equal(validAiModelId(modelId), true);
+    const result = await invoke({ ...fixture(), modelId });
+    assert.equal(result.success, true);
+    assert.equal(result.model_id, modelId);
+  }
+  assert.deepEqual(requestedModels, aliases);
+});
+
 test('invalid configuration and model IDs fail before any DNS or HTTP work', async () => {
   let resolutions = 0;
   let requests = 0;
@@ -409,7 +467,17 @@ test('invalid configuration and model IDs fail before any DNS or HTTP work', asy
       return response(aiProbeSentinel);
     },
   });
-  for (const modelId of [undefined, '', 'x'.repeat(201), 'vendor/model\n', apiKey]) {
+  for (const modelId of [
+    undefined,
+    '',
+    'x'.repeat(201),
+    'vendor/model\n',
+    '~',
+    '~~vendor/model',
+    '~vendor/~model',
+    '~vendor/model\n',
+    apiKey,
+  ]) {
     const result = await invoke({ ...fixture(), modelId });
     assert.equal(result.success, false);
     assert.equal(result.error_code, 'invalid_model');
