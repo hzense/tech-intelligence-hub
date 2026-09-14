@@ -276,11 +276,18 @@ pending 清单均重新核对；整个迁移工件、运行、提交、备份、
 旧计划不能覆盖部分完成后的新状态。
 
 这条路径不创建密码或角色，也不执行 ACL 授权。Schema 核验完成后，使用 Neon SQL
-管理身份创建全新的空受限角色，再用数据库 owner 执行固定的
+管理身份通过独立 `db/roles/create_ai_admin.sql` 候选创建全新的空受限角色，再用数据库 owner 执行固定的
 `db/roles/configure_ai_admin.sql`。不要使用 Neon Roles 普通创建流程临时赋予
 `neon_superuser` 成员关系；[Neon 的角色兼容性说明](https://neon.com/docs/reference/compatibility)
 区分了控制台／API 创建角色与 SQL 创建角色的默认权限。凭据录入和服务端变量保存
 遵守浏览器确认／交接要求；不将密码放入提交、聊天、日志或本地生产文件。
+
+非超级用户 SQL 创建者仍会收到 bootstrap superuser 保留的 ADMIN-only 管理边，
+不能用创建者自己的 REVOKE 撤销。AI 初始化仅接受 `cloud_admin` 将
+`hzense_ai_admin` 授给 `neondb_owner`，且 `ADMIN=true`、`INHERIT=false`、
+`SET=false` 的精确入向边；不接受任何 AI 角色的出向成员关系。管理员仍可重新授予
+该角色，这是云管理员控制边界，不是 AI 角色获得管理员权限。创建候选由操作者提交，
+只在 COMMIT 成功后使用返回密码；已有角色时拒绝，不重置密码或尝试反复创建。
 
 ## 当前仓库 ACL 公开归档
 
