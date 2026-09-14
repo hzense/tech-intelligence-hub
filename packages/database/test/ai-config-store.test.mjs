@@ -545,21 +545,26 @@ describe('AI probe reservation and exactly-once external attempt', () => {
     expect(invoke).not.toHaveBeenCalled();
     expect(f.state.probes).toHaveLength(0);
   });
-  it('counts models list probes while reserving no money', async () => {
-    const f = fake();
-    const req = request();
-    req.kind = 'models';
-    delete req.model_id;
-    const result = await run(f, req, async () => ({
-      success: true,
-      model_id: null,
-      input_tokens: null,
-      output_tokens: null,
-      result: { models: [{ id: 'test/model' }], count: 1, truncated: false },
-    }));
-    expect(result.reserved_microusd).toBe('0');
-    expect(result.status).toBe('succeeded');
-  });
+  it.each(['test/model', '~openai/gpt-astra-latest'])(
+    'preserves listed model ID %s while reserving no money',
+    async (modelId) => {
+      const f = fake();
+      const req = request();
+      req.kind = 'models';
+      delete req.model_id;
+      const result = await run(f, req, async () => ({
+        success: true,
+        model_id: null,
+        input_tokens: null,
+        output_tokens: null,
+        result: { models: [{ id: modelId }], count: 1, truncated: false },
+      }));
+      expect(result.reserved_microusd).toBe('0');
+      expect(result.status).toBe('succeeded');
+      expect(result.result.models).toEqual([{ id: modelId }]);
+      expect(f.state.probes[0].result.models).toEqual([{ id: modelId }]);
+    },
+  );
   it.each([1, 2])(
     'does not issue an external call after uncertain commit %s',
     async (failCommit) => {
@@ -677,6 +682,19 @@ describe('AI probe reservation and exactly-once external attempt', () => {
   });
 });
 describe('AI profile capability readiness', () => {
+  it('persists and qualifies the exact alias rather than its unprefixed model ID', async () => {
+    const f = fake();
+    const modelId = '~openai/gpt-astra-latest';
+    const req = profileCreate();
+    for (const value of Object.values(req.stages)) value.model_id = modelId;
+    const result = await saveAiProfile({ pool: f.pool, request: req });
+    for (const value of Object.values(result.stages)) expect(value.model_id).toBe(modelId);
+    for (const value of Object.values(f.state.profiles[0].stages))
+      expect(value.model_id).toBe(modelId);
+    const capabilityQueries = f.calls.filter(({ sql }) => sql.includes('/* ai:profile-probes */'));
+    expect(capabilityQueries.length).toBeGreaterThan(0);
+    for (const { args } of capabilityQueries) expect(args[2]).toBe(modelId);
+  });
   it('replays a negative-zero temperature after the profile passes through JSON persistence', async () => {
     const f = fake();
     const req = profileCreate();

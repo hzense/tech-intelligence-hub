@@ -89,6 +89,20 @@ test('unavailable, corrupt and unrecognized storage always fails closed', () => 
   }
 });
 
+test('model aliases keep their exact ID when a pending test is saved and restored', () => {
+  for (const kind of ['connection', 'structured_output', 'tool_calling']) {
+    const first = memory();
+    const request = { ...fixture(kind), model_id: '~provider/fixture-latest' };
+    assert.equal(persistPendingAiProbe(request, first.factory), true);
+    assert.deepEqual(readPendingAiProbe(first.factory), { available: true, request });
+    assert.equal(persistPendingAiProbe(request, first.factory), true);
+    assert.equal(
+      persistPendingAiProbe({ ...request, model_id: 'provider/fixture-latest' }, first.factory),
+      false,
+    );
+  }
+});
+
 test('unknown/private fields, malformed identities and invalid models are never stored or restored', () => {
   for (const invalid of [
     { ...fixture(), api_key: 'synthetic-secret' },
@@ -100,6 +114,16 @@ test('unknown/private fields, malformed identities and invalid models are never 
     { ...fixture(), connection_revision: 2147483648 },
     { ...fixture(), kind: 'execute' },
     { ...fixture(), model_id: 'model\n' },
+    ...[
+      '~',
+      '~~provider/model',
+      'provider/~model',
+      '~provider/model\n',
+      '~provider/model?key=x',
+      '~provider/model#x',
+      '~provider model',
+      '~' + 'x'.repeat(200),
+    ].map((model_id) => ({ ...fixture(), model_id })),
     { ...fixture(), model_id: 'x'.repeat(201) },
     { ...fixture('models'), model_id: 'provider/model' },
     { ...fixture(), model_id: undefined },

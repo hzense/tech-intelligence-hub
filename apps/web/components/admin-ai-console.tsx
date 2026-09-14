@@ -21,6 +21,7 @@ import {
   clearPendingAiProbe,
 } from '../lib/admin-ai-pending';
 import styles from './admin-ai.module.css';
+import { isValidAiModelId } from '../../../packages/database/src/ai-model-id.mjs';
 
 const defaults: AiConnectionSettings = {
   timeout_ms: 10000,
@@ -80,7 +81,7 @@ export function AdminAiConsole({
   );
   const models = Array.isArray(listed?.result.models)
     ? listed.result.models.flatMap((item) =>
-        item && typeof item === 'object' && 'id' in item && typeof item.id === 'string'
+        item && typeof item === 'object' && 'id' in item && isValidAiModelId(item.id)
           ? [item.id]
           : [],
       )
@@ -138,6 +139,7 @@ export function AdminAiConsole({
       form.reset();
       setEditing(result.connection);
       setSelectedId(result.connection.id);
+      setModel('');
       createId.current = null;
       await refresh();
       setMessage('连接已保存。测试结果只适用于当前修订；保存本身不会调用模型。');
@@ -157,6 +159,7 @@ export function AdminAiConsole({
         ...(revoke ? { revoke_key: true } : { enabled: !connection.enabled }),
       });
       if (editing?.id === connection.id) setEditing(result.connection);
+      if (selectedId === connection.id) setModel('');
       await refresh();
       setMessage(
         revoke
@@ -270,6 +273,7 @@ export function AdminAiConsole({
                   disabled={busy}
                   onClick={() => {
                     setEditing(connection);
+                    if (selectedId !== connection.id) setModel('');
                     setSelectedId(connection.id);
                     setHistory(null);
                   }}
@@ -432,6 +436,29 @@ export function AdminAiConsole({
               </select>
             </label>
             <label>
+              从模型列表选择
+              <select
+                value={models.includes(model) ? model : ''}
+                disabled={models.length === 0}
+                onChange={(event) => setModel(event.target.value)}
+                aria-describedby="ai-model-list-status"
+              >
+                <option value="">
+                  {models.length ? '请选择模型（不会自动调用）' : '请先读取模型列表'}
+                </option>
+                {models.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p id="ai-model-list-status" className={styles.muted}>
+              {listed
+                ? `当前连接 r${selected?.revision} 的列表包含 ${models.length} 个模型；选择后只填写模型 ID，不自动测试。`
+                : '点击“读取模型列表”后可从下拉列表选择；也可手动填写完整模型 ID。'}
+            </p>
+            <label>
               模型 ID（列表选择或手动输入）
               <input
                 list="ai-model-choices"
@@ -459,7 +486,7 @@ export function AdminAiConsole({
                     disabled={
                       !selected?.enabled ||
                       !selected.has_key ||
-                      (kind !== 'models' && !model.trim())
+                      (kind !== 'models' && !isValidAiModelId(model))
                     }
                     onClick={() => {
                       if (selected)

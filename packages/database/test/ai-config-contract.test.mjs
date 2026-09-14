@@ -183,18 +183,48 @@ describe('AI configuration request boundary', () => {
     ).toThrow();
     expect(parseAiProbeRequest({ ...request, kind: 'models' }).kind).toBe('models');
   });
-  it.each(['model\nheader', 'model name', '<script>', 'model?token=secret', '../model', ''])(
-    'rejects noncanonical model ID %j',
-    (model_id) => {
-      expect(() =>
-        parseAiProbeRequest({
-          id,
-          connection_id: id,
-          connection_revision: 1,
-          kind: 'connection',
-          model_id,
-        }),
-      ).toThrow();
-    },
-  );
+  it.each([
+    '~openai/gpt-astra-latest',
+    '~openai/gpt-sol-latest',
+    '~openai/gpt-terra-latest',
+    '~openai/gpt-luna-latest',
+  ])('preserves an exact alias in probe requests and all profile stages: %s', (model_id) => {
+    const request = { id, connection_id: id, connection_revision: 1, kind: 'connection', model_id };
+    expect(parseAiProbeRequest(request).model_id).toBe(model_id);
+    const stages = Object.fromEntries(
+      ['extract', 'verify', 'analyze'].map((name) => [name, { ...stage(), model_id }]),
+    );
+    const profile = parseAiProfileSave({ name: 'Alias profile', stages });
+    for (const value of Object.values(profile.stages)) expect(value.model_id).toBe(model_id);
+  });
+  it.each([
+    'model\nheader',
+    'model name',
+    '<script>',
+    'model?token=secret',
+    '../model',
+    '',
+    '~',
+    '~~provider/model',
+    '~provider/~model',
+    '~provider/model+variant',
+    '~provider/model@version',
+    '~provider/model\n',
+  ])('rejects noncanonical model ID %j', (model_id) => {
+    expect(() =>
+      parseAiProbeRequest({
+        id,
+        connection_id: id,
+        connection_revision: 1,
+        kind: 'connection',
+        model_id,
+      }),
+    ).toThrow();
+    expect(() =>
+      parseAiProfileSave({
+        name: 'Invalid alias profile',
+        stages: { extract: { ...stage(), model_id }, verify: stage(), analyze: stage() },
+      }),
+    ).toThrow();
+  });
 });

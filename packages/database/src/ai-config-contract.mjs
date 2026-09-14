@@ -1,6 +1,7 @@
 import { types } from 'node:util';
 import { isIP } from 'node:net';
 import { URL } from 'node:url';
+import { isValidAiModelId } from './ai-model-id.mjs';
 
 export const aiConfigErrorCodes = Object.freeze([
   'invalid_request',
@@ -74,12 +75,7 @@ export function aiUuid(value) {
   return value.toLowerCase();
 }
 export function aiModelId(value) {
-  if (
-    typeof value !== 'string' ||
-    value.length > 200 ||
-    value.match(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/)?.[0] !== value
-  )
-    aiFail();
+  if (!isValidAiModelId(value)) aiFail();
   return value;
 }
 export function aiInteger(value, min, max) {

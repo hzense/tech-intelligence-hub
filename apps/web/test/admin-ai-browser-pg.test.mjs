@@ -90,6 +90,7 @@ test(
     database = await createAiBrowserDatabase({ adminUrl, isolatedCluster });
     const keyring = { active: 'test', keys: { test: Buffer.alloc(32, 7).toString('base64') } };
     const secret = 'synthetic-browser-fixture-key';
+    const modelAlias = '~provider/synthetic-model';
     const providerCalls = [];
     server = await startAiAdminBrowserFixture({
       pool: database.pool,
@@ -97,10 +98,15 @@ test(
       allowedHosts: ['example.com'],
       invoke: async (request) => {
         assert.equal(request.apiKey, secret);
-        providerCalls.push({ kind: request.kind, revision: request.connection.revision });
+        if (request.kind !== 'models') assert.equal(request.modelId, modelAlias);
+        providerCalls.push({
+          kind: request.kind,
+          revision: request.connection.revision,
+          model_id: request.modelId ?? null,
+        });
         const result =
           request.kind === 'models'
-            ? { models: [{ id: 'synthetic-model' }], count: 1, truncated: false }
+            ? { models: [{ id: modelAlias }], count: 1, truncated: false }
             : request.kind === 'connection'
               ? { sentinel_matched: true }
               : { schema_valid: true, sentinel_matched: true };
@@ -136,7 +142,12 @@ test(
     ]);
     const page = await context.newPage();
     const pageErrors = [];
+    const probeRequests = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
+    page.on('request', (request) => {
+      if (request.url() === `${server.origin}/api/admin/ai/probes` && request.method() === 'POST')
+        probeRequests.push(request.postDataJSON());
+    });
     let connection;
     let profile;
     let createProfileRequest;
@@ -167,8 +178,13 @@ test(
       assert.equal(response.status(), 200);
       const value = await response.json();
       assert.equal(value.probe.status, 'succeeded');
+      const request = response.request().postDataJSON();
+      if (request.kind !== 'models') {
+        assert.equal(request.model_id, modelAlias);
+        assert.equal(value.probe.model_id, modelAlias);
+      }
       await expect(target.getByRole('button', { name: label, exact: true })).toBeEnabled();
-      return { request: response.request().postDataJSON(), receipt: value.probe };
+      return { request, receipt: value.probe };
     }
     await t.test('test-session absence still reaches the real authentication denial', async () => {
       const response = await fetch(`${server.origin}/api/admin/ai/connections`);
@@ -216,16 +232,26 @@ test(
       },
     );
     await t.test(
-      'UI model/probe controls persist proofs; same request replays, conflicting request fails',
+      'UI discovered model alias selection persists exact proofs; same request replays, conflicting request fails',
       async () => {
-        await runProbe(page, '读取模型列表');
-        await expect(page.locator('#ai-model-choices option')).toHaveAttribute(
-          'value',
-          'synthetic-model',
-        );
+        const discovered = await runProbe(page, '读取模型列表');
+        assert.equal(discovered.receipt.result.models[0].id, modelAlias);
+        await expect(page.locator('#ai-model-choices option')).toHaveAttribute('value', modelAlias);
+        const callsBeforeSelection = providerCalls.length;
+        const requestsBeforeSelection = probeRequests.length;
         await page
-          .getByLabel('模型 ID（列表选择或手动输入）', { exact: true })
-          .fill('synthetic-model');
+          .getByRole('combobox', { name: '从模型列表选择', exact: true })
+          .selectOption(modelAlias);
+        await expect(page.getByLabel('模型 ID（列表选择或手动输入）', { exact: true })).toHaveValue(
+          modelAlias,
+        );
+        // A same-origin read is a barrier after the selection handler; selection
+        // must only update the input, not create a probe or call the provider.
+        await page.evaluate(() =>
+          fetch('/api/admin/ai/connections').then((response) => response.json()),
+        );
+        assert.equal(probeRequests.length, requestsBeforeSelection);
+        assert.equal(providerCalls.length, callsBeforeSelection);
         const { request, receipt } = await runProbe(page, '测试基础连接');
         await runProbe(page, '测试结构化输出');
         const calls = providerCalls.length;
@@ -247,7 +273,7 @@ test(
         await page.getByLabel('配置名称', { exact: true }).fill('Browser fixture profile');
         for (const stage of ['extract', 'verify', 'analyze']) {
           await page.locator(`select[name="${stage}.connection"]`).selectOption(connection.id);
-          await page.locator(`input[name="${stage}.model"]`).fill('synthetic-model');
+          await page.locator(`input[name="${stage}.model"]`).fill(modelAlias);
           await page.locator(`textarea[name="${stage}.prompt"]`).fill(`Synthetic ${stage} prompt`);
         }
         server.dropNextSuccessfulResponse('save-profile');
@@ -259,6 +285,8 @@ test(
         createProfileRequest = (await first).postDataJSON();
         assert.match(createProfileRequest.id, /^[a-f0-9-]{36}$/);
         assert.equal(Object.hasOwn(createProfileRequest, 'expected_revision'), false);
+        for (const stage of Object.values(createProfileRequest.stages))
+          assert.equal(stage.model_id, modelAlias);
         await expect(page.getByRole('status')).toContainText(
           /未确认|Failed to fetch|NetworkError|Load failed/,
         );
@@ -271,11 +299,17 @@ test(
         profile = (await response.json()).profile;
         assert.equal(profile.id, createProfileRequest.id);
         assert.equal(profile.revision, 1);
+        for (const stage of Object.values(profile.stages)) assert.equal(stage.model_id, modelAlias);
         const rows = await database.pool.query(
-          'SELECT revision FROM public.ai_profile_versions WHERE profile_id=$1',
+          'SELECT revision,snapshot FROM public.ai_profile_versions WHERE profile_id=$1',
           [profile.id],
         );
-        assert.deepEqual(rows.rows, [{ revision: 1 }]);
+        assert.deepEqual(
+          rows.rows.map((row) => row.revision),
+          [1],
+        );
+        for (const stage of Object.values(rows.rows[0].snapshot.stages))
+          assert.equal(stage.model_id, modelAlias);
         await expect(page.getByRole('status')).toContainText('已保存配置 r1');
       },
     );
@@ -287,9 +321,12 @@ test(
         await page.getByRole('button', { name: '保存为新修订', exact: true }).click();
         const response = await pending;
         assert.equal(response.request().postDataJSON().expected_revision, 1);
+        for (const stage of Object.values(response.request().postDataJSON().stages))
+          assert.equal(stage.model_id, modelAlias);
         assert.equal(response.status(), 200);
         profile = (await response.json()).profile;
         assert.equal(profile.revision, 2);
+        for (const stage of Object.values(profile.stages)) assert.equal(stage.model_id, modelAlias);
         const replay = await sendFromBrowser(page, 'profiles', 'POST', createProfileRequest);
         assert.deepEqual(replay, { status: 409, body: { error: 'request_id_conflict' } });
         assert.deepEqual(
@@ -335,8 +372,10 @@ test(
           const unqualifiedResponse = await unqualified;
           assert.equal(unqualifiedResponse.status(), 409);
           assert.deepEqual(await unqualifiedResponse.json(), { error: 'profile_not_ready' });
-          for (const stage of Object.values(unqualifiedResponse.request().postDataJSON().stages))
+          for (const stage of Object.values(unqualifiedResponse.request().postDataJSON().stages)) {
             assert.equal(stage.connection_revision, 2);
+            assert.equal(stage.model_id, modelAlias);
+          }
           assert.equal(
             (
               await database.pool.query('SELECT revision FROM public.ai_profiles WHERE id=$1', [
@@ -347,7 +386,7 @@ test(
           );
           await consolePage
             .getByLabel('模型 ID（列表选择或手动输入）', { exact: true })
-            .fill('synthetic-model');
+            .fill(modelAlias);
           await runProbe(consolePage, '测试基础连接');
           await runProbe(consolePage, '测试结构化输出');
           await page.getByRole('button', { name: '刷新状态', exact: true }).click();
@@ -360,8 +399,10 @@ test(
           assert.equal(savedResponse.status(), 200);
           const submitted = savedResponse.request().postDataJSON();
           assert.equal(submitted.expected_revision, 2);
-          for (const stage of Object.values(submitted.stages))
+          for (const stage of Object.values(submitted.stages)) {
             assert.equal(stage.connection_revision, 2);
+            assert.equal(stage.model_id, modelAlias);
+          }
           profile = (await savedResponse.json()).profile;
           assert.equal(profile.revision, 3);
           assert.equal(profile.readiness.ready, true);
@@ -370,7 +411,10 @@ test(
               profile.id,
             ])
           ).rows[0].stages;
-          for (const stage of Object.values(stored)) assert.equal(stage.connection_revision, 2);
+          for (const stage of Object.values(stored)) {
+            assert.equal(stage.connection_revision, 2);
+            assert.equal(stage.model_id, modelAlias);
+          }
         } finally {
           await consolePage.close();
         }
