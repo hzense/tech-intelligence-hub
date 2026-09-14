@@ -22,6 +22,7 @@ import {
 } from '../lib/admin-ai-pending';
 import styles from './admin-ai.module.css';
 import { isValidAiModelId } from '../../../packages/database/src/ai-model-id.mjs';
+import { AdminAiModelPicker } from './admin-ai-model-picker';
 
 const defaults: AiConnectionSettings = {
   timeout_ms: 10000,
@@ -69,6 +70,7 @@ export function AdminAiConsole({
     useSyncExternalStore(subscribePending, pendingSnapshot, serverPendingSnapshot),
   ) as ReturnType<typeof readPendingAiProbe>;
   const pending = pendingState.request;
+  const modelControlsDisabled = busy || !available || !pendingState.available || pending !== null;
   const createId = useRef<string | null>(null);
   const settings = editing?.settings ?? defaults;
   const selected = connections.find((row) => row.id === selectedId);
@@ -91,6 +93,8 @@ export function AdminAiConsole({
       aiRequest<{ connections: AiConnection[] }>('connections'),
       aiRequest<{ probes: AiProbe[] }>('probes'),
     ]);
+    if (a.connections.find((row) => row.id === selectedId)?.revision !== selected?.revision)
+      setModel('');
     setConnections(a.connections);
     setProbes(b.probes);
   }
@@ -416,7 +420,7 @@ export function AdminAiConsole({
       <section className={styles.card} style={{ marginTop: 24 }}>
         <h2>模型与能力测试</h2>
         <div className={styles.form}>
-          <fieldset disabled={busy || !available || !pendingState.available || pending !== null}>
+          <fieldset disabled={modelControlsDisabled}>
             <label>
               测试连接
               <select
@@ -435,44 +439,18 @@ export function AdminAiConsole({
                 ))}
               </select>
             </label>
-            <label>
-              从模型列表选择
-              <select
-                value={models.includes(model) ? model : ''}
-                disabled={models.length === 0}
-                onChange={(event) => setModel(event.target.value)}
-                aria-describedby="ai-model-list-status"
-              >
-                <option value="">
-                  {models.length ? '请选择模型（不会自动调用）' : '请先读取模型列表'}
-                </option>
-                {models.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <AdminAiModelPicker
+              key={`${selectedId}:${selected?.revision}:${listed?.id}:${modelControlsDisabled}`}
+              models={models}
+              value={model}
+              onChange={setModel}
+              disabled={modelControlsDisabled}
+            />
             <p id="ai-model-list-status" className={styles.muted}>
               {listed
                 ? `当前连接 r${selected?.revision} 的列表包含 ${models.length} 个模型；选择后只填写模型 ID，不自动测试。`
-                : '点击“读取模型列表”后可从下拉列表选择；也可手动填写完整模型 ID。'}
+                : '点击“读取模型列表”后可在同一输入框搜索和选择；也可直接填写完整模型 ID。'}
             </p>
-            <label>
-              模型 ID（列表选择或手动输入）
-              <input
-                list="ai-model-choices"
-                value={model}
-                onChange={(event) => setModel(event.target.value)}
-                maxLength={200}
-                placeholder="先读取列表，也可以直接填写供应商模型 ID"
-              />
-            </label>
-            <datalist id="ai-model-choices">
-              {models.map((id) => (
-                <option key={id} value={id} />
-              ))}
-            </datalist>
             {listed?.result.truncated === true ? (
               <p className={styles.muted}>模型列表已截断；仍可手动填写完整模型 ID。</p>
             ) : null}

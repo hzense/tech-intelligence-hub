@@ -33,6 +33,24 @@ const savedConnection = {
   created_at: '2026-01-01T00:00:00.000Z',
   updated_at: '2026-01-01T00:00:00.000Z',
 };
+const modelAlias = '~provider/fixture-latest';
+const fixedModel = 'provider/fixed-model';
+const savedModelProbe = {
+  id: '32345678-1234-4123-8123-123456789abc',
+  connection_id: savedConnection.id,
+  connection_revision: 1,
+  kind: 'models',
+  model_id: null,
+  status: 'succeeded',
+  result: {
+    models: [{ id: modelAlias }, { id: fixedModel }],
+    count: 2,
+    truncated: true,
+  },
+  created_at: '2026-01-01T00:00:00.000Z',
+  reserved_microusd: 0,
+  charged_microusd: 0,
+};
 
 // Real AdminAiConsole and its fetch calls, but an entirely synthetic, loopback-only
 // HTTP adapter. This does not verify Next routing, authentication, persistence,
@@ -122,6 +140,7 @@ async function startGuidanceFixture() {
           ...savedConnection,
           ...previous,
           ...suppliedFields,
+          ...(body.revoke_key === true ? { enabled: false, has_key: false, key_mask: null } : {}),
           id: body.id,
           revision: previous ? previous.revision + 1 : 1,
         };
@@ -129,6 +148,10 @@ async function startGuidanceFixture() {
         json({ connection });
       } else if (url.pathname === '/api/admin/ai/probes' && incoming.method === 'GET') {
         json({ probes });
+      } else if (url.pathname.startsWith('/api/admin/ai/probes/') && incoming.method === 'GET') {
+        const probe = probes.find((item) => item.id === url.pathname.split('/').at(-1));
+        if (probe) json({ probe });
+        else outgoing.writeHead(404).end();
       } else if (assets.has(url.pathname)) {
         outgoing.writeHead(200, {
           'Content-Type': url.pathname.endsWith('.css') ? 'text/css' : 'text/javascript',
@@ -220,6 +243,25 @@ test(
     const apiKey = () => page.getByLabel('API Key', { exact: true });
     const editKey = () => page.getByLabel('替换 API Key（不替换则留空）', { exact: true });
     const save = () => page.getByRole('button', { name: '保存连接', exact: true });
+    const model = () =>
+      page.getByRole('combobox', { name: '模型 ID（搜索、选择或手动输入）', exact: true });
+    const modelList = () => page.getByRole('listbox', { name: '可选模型', exact: true });
+    const expandModels = () => page.getByRole('button', { name: '展开模型列表', exact: true });
+    const collapseModels = () => page.getByRole('button', { name: '收起模型列表', exact: true });
+    const modelOption = (id) => modelList().getByRole('option', { name: id, exact: true });
+    async function mountListedModels(data = {}) {
+      await mount({
+        connections: [{ ...savedConnection, enabled: true }],
+        probes: [savedModelProbe],
+        ...data,
+      });
+    }
+    async function selectListedModel(id) {
+      await expandModels().click();
+      await modelOption(id).click();
+      await expect(model()).toHaveValue(id);
+      await expect(modelList()).toBeHidden();
+    }
     async function mount(data) {
       fixture.reset(data);
       await page.goto(`${fixture.origin}/admin/ai`);
@@ -432,77 +474,269 @@ test(
     );
 
     await t.test(
-      'model picker preserves aliases and only uses the selected connection revision',
+      'one editable model combobox searches case-insensitively and selects by mouse',
       async () => {
-        const alias = '~provider/fixture-latest';
+        await mountListedModels();
+        await expect(model()).toHaveCount(1);
+        assert.equal(await model().evaluate((element) => element.tagName), 'INPUT');
+        await expect(model()).toBeEditable();
+        await expect(page.locator('input[list], datalist')).toHaveCount(0);
+        await expect(
+          page.getByRole('combobox', { name: '从模型列表选择', exact: true }),
+        ).toHaveCount(0);
+        await expect(model()).toHaveAttribute('aria-expanded', 'false');
+        await model().fill('FIXED');
+        await expect(modelList()).toBeVisible();
+        await expect(modelList().getByRole('option')).toHaveText([fixedModel]);
+        await expect(model()).toHaveAttribute(
+          'aria-controls',
+          await modelList().getAttribute('id'),
+        );
+        await collapseModels().click();
+        await expect(model()).toHaveValue('FIXED');
+        await expandModels().click();
+        await expect(modelList().getByRole('option')).toHaveText([modelAlias, fixedModel]);
+        await modelOption(modelAlias).click();
+        await expect(model()).toHaveValue(modelAlias);
+        await expect(modelList()).toBeHidden();
+        await expect(model()).toHaveAttribute('aria-expanded', 'false');
+        await expect(page.getByRole('button', { name: '测试基础连接', exact: true })).toBeEnabled();
+        await expect(page.getByText('模型列表已截断；仍可手动填写完整模型 ID。')).toBeVisible();
+        await expectNoWrites();
+      },
+    );
+
+    await t.test(
+      'model combobox keyboard selection, Escape and Tab do not submit or trap focus',
+      async () => {
+        await mountListedModels();
+        await model().focus();
+        await model().press('ArrowDown');
+        await expect(modelList()).toBeVisible();
+        await expect(model()).toBeFocused();
+        await expect(model()).toHaveAttribute(
+          'aria-activedescendant',
+          await modelOption(modelAlias).getAttribute('id'),
+        );
+        await model().press('ArrowDown');
+        await expect(model()).toHaveAttribute(
+          'aria-activedescendant',
+          await modelOption(fixedModel).getAttribute('id'),
+        );
+        await model().press('ArrowUp');
+        await expect(model()).toHaveAttribute(
+          'aria-activedescendant',
+          await modelOption(modelAlias).getAttribute('id'),
+        );
+        await model().press('Enter');
+        await expect(model()).toHaveValue(modelAlias);
+        await expect(modelList()).toBeHidden();
+        await model().fill('FIXED');
+        await expect(modelList()).toBeVisible();
+        await model().press('Escape');
+        await expect(modelList()).toBeHidden();
+        await expect(model()).toHaveValue('FIXED');
+        await expandModels().click();
+        await model().focus();
+        await model().press('ArrowDown');
+        await model().press('Tab');
+        await expect(model()).not.toBeFocused();
+        await expect(model()).toHaveValue('FIXED');
+        await expectNoWrites();
+      },
+    );
+
+    await t.test(
+      'text cursor keys and IME Enter do not accept a previously highlighted model',
+      async () => {
+        await mountListedModels();
+        for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) {
+          await model().fill('provider');
+          await model().press('ArrowDown');
+          await expect(model()).toHaveAttribute(
+            'aria-activedescendant',
+            await modelOption(modelAlias).getAttribute('id'),
+          );
+          await model().press(key);
+          await expect(model()).not.toHaveAttribute('aria-activedescendant');
+          await model().press('Enter');
+          await expect(model()).toHaveValue('provider');
+        }
+        for (const composition of [{ isComposing: true }, { keyCode: 229 }]) {
+          await model().fill('provider');
+          await model().press('ArrowDown');
+          await expect(model()).toHaveAttribute(
+            'aria-activedescendant',
+            await modelOption(modelAlias).getAttribute('id'),
+          );
+          // Synthetic keyboard events exercise both browser IME compatibility
+          // guards; they do not claim to emulate an operating-system IME.
+          await model().dispatchEvent('keydown', {
+            key: 'Enter',
+            code: 'Enter',
+            ...composition,
+          });
+          await expect(model()).toHaveValue('provider');
+          await expect(modelList()).toBeVisible();
+          await model().press('Escape');
+        }
+        await expectNoWrites();
+      },
+    );
+
+    await t.test(
+      'missing lists and unmatched searches still allow an exact manually typed model',
+      async () => {
+        await mountListedModels({ probes: [] });
+        await expect(model()).toBeEditable();
+        await expandModels().click();
+        await expect(page.getByRole('status').filter({ hasText: '尚无模型列表' })).toBeVisible();
+        await expect(modelList().getByRole('option')).toHaveCount(0);
+        await collapseModels().click();
+        await model().fill('~provider/manual-without-list');
+        await expect(model()).toHaveValue('~provider/manual-without-list');
+        await expect(page.getByRole('button', { name: '测试基础连接', exact: true })).toBeEnabled();
+        await expect(page.getByRole('option', { name: modelAlias, exact: true })).toHaveCount(0);
+        await expectNoWrites();
+        await mountListedModels();
+        await model().fill('provider/unmatched-manual');
+        await expect(model()).toHaveAttribute('aria-expanded', 'true');
+        await expect(modelList()).toBeAttached();
+        await expect(page.getByRole('status').filter({ hasText: '没有匹配的模型' })).toBeVisible();
+        await expect(modelList().getByRole('option')).toHaveCount(0);
+        await model().press('Enter');
+        await expect(model()).toHaveValue('provider/unmatched-manual');
+        await expect(page.getByRole('button', { name: '测试基础连接', exact: true })).toBeEnabled();
+        await model().fill('~~provider/invalid-model');
+        await expect(
+          page.getByRole('button', { name: '测试基础连接', exact: true }),
+        ).toBeDisabled();
+        await expectNoWrites();
+      },
+    );
+
+    await t.test(
+      'model lists are connection/revision-scoped and saving clears the selection',
+      async () => {
         const other = {
           ...savedConnection,
           id: '22345678-1234-4123-8123-123456789abc',
           name: 'Other fixture',
           enabled: true,
         };
-        const listed = {
-          id: '32345678-1234-4123-8123-123456789abc',
-          connection_id: savedConnection.id,
-          connection_revision: 1,
-          kind: 'models',
-          model_id: null,
-          status: 'succeeded',
-          result: {
-            models: [{ id: alias }, { id: 'provider/fixed-model' }],
-            count: 2,
-            truncated: true,
-          },
-          created_at: '2026-01-01T00:00:00.000Z',
-          reserved_microusd: 0,
-          charged_microusd: 0,
-        };
-        await mount({
+        await mountListedModels({
           connections: [{ ...savedConnection, enabled: true }, other],
           probes: [
             {
-              ...listed,
+              ...savedModelProbe,
               id: '42345678-1234-4123-8123-123456789abc',
-              connection_revision: 2,
+              connection_revision: 99,
               result: { models: [{ id: 'provider/wrong-revision' }], count: 1, truncated: false },
             },
-            listed,
+            savedModelProbe,
           ],
         });
-        const picker = page.getByRole('combobox', { name: '从模型列表选择', exact: true });
-        const model = page.getByLabel('模型 ID（列表选择或手动输入）', { exact: true });
-        await expect(picker.locator('option')).toHaveText([
-          '请选择模型（不会自动调用）',
-          alias,
-          'provider/fixed-model',
-        ]);
-        await expect(model).toHaveValue('');
-        await picker.selectOption(alias);
-        await expect(model).toHaveValue(alias);
-        await expect(page.getByRole('button', { name: '测试基础连接', exact: true })).toBeEnabled();
-        await expect(page.getByText('模型列表已截断；仍可手动填写完整模型 ID。')).toBeVisible();
-        await expectNoWrites();
-        await model.fill('provider/manual-model');
-        await expect(picker).toHaveValue('');
-        await model.fill('~~provider/invalid-model');
-        await expect(
-          page.getByRole('button', { name: '测试基础连接', exact: true }),
-        ).toBeDisabled();
-        await picker.selectOption(alias);
+        await expandModels().click();
+        await expect(modelList().getByRole('option')).toHaveText([modelAlias, fixedModel]);
+        await modelOption(modelAlias).click();
         await page.getByRole('combobox', { name: '测试连接', exact: true }).selectOption(other.id);
-        await expect(model).toHaveValue('');
-        await expect(picker).toBeDisabled();
-        await expect(picker.locator('option')).toHaveText(['请先读取模型列表']);
+        await expect(model()).toHaveValue('');
+        await expect(modelList()).toBeHidden();
+        await model().fill('provider/manual-on-other');
+        await expect(page.getByRole('option', { name: modelAlias, exact: true })).toHaveCount(0);
         await expectNoWrites();
         await page
           .getByRole('combobox', { name: '测试连接', exact: true })
           .selectOption(savedConnection.id);
-        await picker.selectOption(alias);
-        await page.getByRole('button', { name: '停用', exact: true }).first().click();
-        await expect(picker).toBeDisabled();
-        await expect(model).toHaveValue('');
+        await selectListedModel(modelAlias);
+        await page.getByRole('button', { name: '编辑', exact: true }).first().click();
+        await page.getByLabel('连接名称', { exact: true }).fill('Saved with new revision');
+        const body = await expectSubmitted('PATCH');
+        assert.equal(body.id, savedConnection.id);
+        await expect(model()).toHaveValue('');
+        await model().fill('provider/still-manual');
+        await expect(page.getByRole('option', { name: modelAlias, exact: true })).toHaveCount(0);
+        assert.equal(fixture.writes.length, 1);
+      },
+    );
+
+    await t.test(
+      'read-only receipt refresh retains unchanged models but clears changed or removed connections',
+      async () => {
+        for (const revision of [1, 2, null]) {
+          await mountListedModels();
+          await selectListedModel(modelAlias);
+          // Simulate an independent session changing server state. Restore a
+          // synthetic pending receipt locally, then use its real GET-only UI
+          // query path to refresh, without configuring or invoking a provider.
+          fixture.reset({
+            connections: revision === null ? [] : [{ ...savedConnection, enabled: true, revision }],
+            probes: [savedModelProbe],
+          });
+          await page.evaluate(
+            (request) => {
+              globalThis.sessionStorage.setItem(
+                'hzense.ai.pending-probe.v1',
+                JSON.stringify({ version: 1, request }),
+              );
+              globalThis.dispatchEvent(new globalThis.Event('storage'));
+            },
+            {
+              id: savedModelProbe.id,
+              connection_id: savedConnection.id,
+              connection_revision: 1,
+              kind: 'models',
+            },
+          );
+          await page.getByRole('button', { name: '查询原编号', exact: true }).click();
+          await expect(
+            page.getByRole('status').filter({ hasText: '原测试状态：succeeded' }),
+          ).toBeVisible();
+          await expect(model()).toHaveValue(revision === 1 ? modelAlias : '');
+          await expect(modelList()).toBeHidden();
+          await expandModels().click();
+          await expect(modelList().getByRole('option')).toHaveText(
+            revision === 1 ? [modelAlias, fixedModel] : [],
+          );
+          await expectNoWrites();
+        }
+      },
+    );
+
+    await t.test(
+      'disabling a connection clears its model choice and old revision list',
+      async () => {
+        await mountListedModels();
+        await selectListedModel(modelAlias);
+        await page.getByRole('button', { name: '停用', exact: true }).click();
+        await expect(page.getByRole('status').filter({ hasText: '启用状态已更新' })).toBeVisible();
+        await expect(model()).toHaveValue('');
+        await expect(modelList()).toBeHidden();
+        await expect(
+          page.getByRole('button', { name: '测试基础连接', exact: true }),
+        ).toBeDisabled();
         assert.equal(fixture.writes.length, 1);
         assert.equal(fixture.writes[0].method, 'PATCH');
+        assert.equal(fixture.writes[0].body.enabled, false);
+      },
+    );
+
+    await t.test(
+      'revoking a connection clears its model choice without a provider request',
+      async () => {
+        await mountListedModels();
+        await selectListedModel(modelAlias);
+        await page.getByText('撤销密钥', { exact: true }).click();
+        await page.getByRole('button', { name: '确认撤销此连接密钥', exact: true }).click();
+        await expect(page.getByRole('status').filter({ hasText: '密钥已撤销' })).toBeVisible();
+        await expect(model()).toHaveValue('');
+        await expect(modelList()).toBeHidden();
+        await expect(
+          page.getByRole('button', { name: '测试基础连接', exact: true }),
+        ).toBeDisabled();
+        assert.equal(fixture.writes.length, 1);
+        assert.equal(fixture.writes[0].method, 'PATCH');
+        assert.equal(fixture.writes[0].body.revoke_key, true);
       },
     );
 
