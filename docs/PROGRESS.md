@@ -1,7 +1,7 @@
 # HZense 开发进度看板
 
 **最后更新：** 2026-09-14
-**当前阶段：** 旧网站 MVP 已交付；Signal-first v2 私有资格发表核心、候选核验及受限公开发布／撤回已合并；Google 管理员认证已上线；AI 连接与分阶段模型配置 PR #79 已补齐评审修复和本地验证，远端复核／合并另行确认，未配置生产 AI 密钥；生产数据库及网站尚未切换新版
+**当前阶段：** 旧网站 MVP 已交付；Signal-first v2 私有资格发表核心、候选核验及受限公开发布／撤回已合并；Google 管理员认证已上线；AI 连接与分阶段模型配置 PR #79 已合并、main CI 成功且页面代码已部署，生产 AI 后端启用中；生产数据库仍到 `0003`，网站尚未切换新版
 **仓库：** [hzense/tech-intelligence-hub](https://github.com/hzense/tech-intelligence-hub)
 
 > 本看板区分“工程基础”“网站 MVP”“MVP 生产就绪度”和“完整科技情报平台”。百分比是人工估算，不以文档数量或提交数量代替产品进展；MVP 已完成不代表完整产品已完成。
@@ -37,6 +37,7 @@
     - [ ] 后续交付：生产迁移及 Publisher／Reader 最小权限兼容审计 → 内容就绪后切换并做真实发布／搜索／撤回验收；再完成历史导入和数据权威迁移。认证剩余验收见 V2-2；原文核验执行器、AI 任务和完整业务后台仍待接入，记录的 verified、私有 published 或历史回执均不是可公开许可。
   - [ ] V2-1c 历史导入事务、冲突／幂等核验、统一读取及权威切换。预演保留旧状态与引用，不自动补造人物、生成原文证据或提升为新版 published。
 - [ ] V2-2 AI 后台：管理员认证、模型列表／手填与分阶段 Profile、独立能力测试／兼容故障切换、密钥保护、来源增量及机器临时准入、预算、手动／定时任务与审计。
+  - [ ] AI 配置生产启用（2026-09-14）：已实时确认 PR #79 合并提交 `3a71c15`、main CI 成功及 Production READY；Neon 只读核验与 hosted preflight 均确认 10 个 pending 迁移，AI 表／专用角色／两个 Secret 尚缺，Production 域名白名单已保存、待重新部署。操作者已明确同意新备份保护下接受恢复未演练风险，并授权本批最小权限初始化；不扩大旧 FTS 豁免、不启用 Signal 发布。跨库 PUBLIC 守卫与精确迁移计划门禁在当前独立分支交付，PR／合并／迁移／服务配置各自验收。见[生产准备记录](production-evidence/2026-09-14-ai-configuration.md)。
   - [x] PR #79 评审修复本地验证（2026-09-14）：修复 Profile 新建／更新契约及连接／Profile 安全重放；五表改显式列级 SELECT 并增加提交前 ACL 复核；补齐表单 POST、连接修订刷新、域名显式授权、错误分类、类型声明和预算说明。新增真实组件→HTTP→受限 PostgreSQL 配置主流程并接入 CI，供应商仍为模拟调用。整仓 2245 项单元、451 项原生 PostgreSQL、配置主流程 7 项（含父测试）、构建后认证 19 项和全站浏览器冒烟 28 项通过，其余构建／静态／内容门禁通过。初次 2219／440 验收没有覆盖配置页面保存主流程，下条保留当时证据，不再作为该路径通过的依据。修复由 [PR #79](https://github.com/hzense/tech-intelligence-hub/pull/79) 承载，远端 CI、合并和生产配置另行确认。见[修复与补测边界](AI_CONNECTIONS.md#pr-79-评审修复与补测2026-09-14)。
   - [x] 当前增量本地开发（2026-09-13）：[AI 连接与分阶段模型配置](AI_CONNECTIONS.md)。新增 `0013` 五张私表、专用 `hzense_ai_admin` 最小角色、信封加密、端点白名单与固定 DNS 连接、模型发现／手填、三类独立能力测试和提取／核验／分析 Profile。测试先登记预算并持久化再调用，幂等／并发／超时及版本失效保护已实现；整仓 2219 项单元、完整 440 项原生 PostgreSQL、19 项构建后认证／HTTP／浏览器回归和全站 28 项桌面／移动冒烟通过，构建、lint、类型、格式、依赖审计及内容／Seed／工作流校验通过。通过独立 PR 交付，评审／远端 CI／合并另行确认，不计为整个 V2-2 完成。未配置生产密钥、执行生产迁移或真实模型调用，不含自动采集、批量导入、执行器或任务调度。
   - [x] 管理员认证本地实现（2026-09-13）：按操作者选择接入 Google 单账号登录；服务端单 Gmail 白名单、已验证邮箱和 Google `sub` 绑定、PKCE／state／nonce、逐页面／API 独立鉴权、1 小时绝对会话时效及同源／CSRF 防护。`/admin/login`、`/admin` 和只读会话 API 已实现；缺配置和 Preview 均关闭认证。102 项新增单元回归、14 个构建后 HTTP 场景及全站 28 项桌面／移动端浏览器回归通过；HTTP 隔离回归接入 CI。见[认证与上线配置](ADMIN_AUTH.md)。与候选核验增量通过同一 PR 的独立提交交付，远端 CI／评审／合并另行确认；尚未部署，不含真实 Google 登录验收、生产 OAuth 配置、数据库写入授权或 AI／导入功能；真实账号只应放在服务端配置，不进仓库。
@@ -324,20 +325,20 @@
 
 ## MVP 验收状态
 
-| MVP 验收项                                                     | 状态 | 当前证据 / 缺口                                                                                                                                                          |
-| -------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Home、Daily、Insights、Topics、Weekly、Signals、Resources 路由 | ✅   | PR #12–#14 已实现 Weekly、Signals、Resources 列表与详情路由，并通过 Vercel Preview 页面验收                                                                              |
-| 桌面端与移动端可用                                             | ✅   | PR #11 在 Desktop Chrome 与 Pixel 7 视口验证 Home、Daily、Insights、Topics、404、metadata 与安全响应头                                                                   |
-| Markdown/MDX 通过验证层加载                                    | ✅   | [PR #6 head CI](https://github.com/hzense/tech-intelligence-hub/pull/6/checks)验证同一加载器用于 CI 校验与 Web 构建                                                      |
-| Topic / Entity 引用无断链                                      | ✅   | Seed 与内容引用均由 CI 校验                                                                                                                                              |
-| 基础关键词搜索                                                 | ✅   | PR #16 接入六类公开内容、相关度排序、类型筛选及双视口验收                                                                                                                |
-| 手工 Radar                                                     | ✅   | PR #17 接入页面与可视化；[PR #19](https://github.com/hzense/tech-intelligence-hub/pull/19)增加评分说明、明确 Signal 引用与 HTTPS 原始来源                                |
-| 亮色与暗色主题                                                 | ✅   | Web Shell 已实现主题切换                                                                                                                                                 |
-| CI 全部通过                                                    | ✅   | [PR #19 Checks](https://github.com/hzense/tech-intelligence-hub/pull/19/checks)验证生产依赖审计、构建、单测、内容/Seed、双视口 Radar 与真实 pgvector Migration 流程      |
-| Vercel 生产部署与域名                                          | ✅   | [`hzense.com`](https://hzense.com/) 已上线；HTTPS、HTTP → HTTPS 与 `www` → 根域名跳转均已验收                                                                            |
-| PostgreSQL 生产数据基线                                        | ✅   | PostgreSQL 18.6 / pgvector 0.8.6、13 张表、3 个 Migration / 0 pending 与 62 条 Topic 投影已完成独立生产验收；未知 Topic 为 0，reviewed fingerprint 匹配，no-op 为 0 变更 |
-| Runtime Reader 生产接入                                        | ✅   | Production-only 配置、`READY` 部署、真实五列读取、安全日志与小时级工作流首次手工运行均通过独立验收                                                                       |
-| sitemap、robots、canonical metadata                            | ✅   | App Router metadata routes 与页面 canonical 由 PR #9 的 Playwright 测试自动验证                                                                                          |
+| MVP 验收项                                                     | 状态 | 当前证据 / 缺口                                                                                                                                                                                                |
+| -------------------------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Home、Daily、Insights、Topics、Weekly、Signals、Resources 路由 | ✅   | PR #12–#14 已实现 Weekly、Signals、Resources 列表与详情路由，并通过 Vercel Preview 页面验收                                                                                                                    |
+| 桌面端与移动端可用                                             | ✅   | PR #11 在 Desktop Chrome 与 Pixel 7 视口验证 Home、Daily、Insights、Topics、404、metadata 与安全响应头                                                                                                         |
+| Markdown/MDX 通过验证层加载                                    | ✅   | [PR #6 head CI](https://github.com/hzense/tech-intelligence-hub/pull/6/checks)验证同一加载器用于 CI 校验与 Web 构建                                                                                            |
+| Topic / Entity 引用无断链                                      | ✅   | Seed 与内容引用均由 CI 校验                                                                                                                                                                                    |
+| 基础关键词搜索                                                 | ✅   | PR #16 接入六类公开内容、相关度排序、类型筛选及双视口验收                                                                                                                                                      |
+| 手工 Radar                                                     | ✅   | PR #17 接入页面与可视化；[PR #19](https://github.com/hzense/tech-intelligence-hub/pull/19)增加评分说明、明确 Signal 引用与 HTTPS 原始来源                                                                      |
+| 亮色与暗色主题                                                 | ✅   | Web Shell 已实现主题切换                                                                                                                                                                                       |
+| CI 全部通过                                                    | ✅   | [PR #19 Checks](https://github.com/hzense/tech-intelligence-hub/pull/19/checks)验证生产依赖审计、构建、单测、内容/Seed、双视口 Radar 与真实 pgvector Migration 流程                                            |
+| Vercel 生产部署与域名                                          | ✅   | [`hzense.com`](https://hzense.com/) 已上线；HTTPS、HTTP → HTTPS 与 `www` → 根域名跳转均已验收                                                                                                                  |
+| PostgreSQL 生产数据基线                                        | ✅   | 历史基线：PostgreSQL 18.6 / pgvector 0.8.6、13 张表、3 个 Migration / 0 pending 与 62 条 Topic 投影验收通过。2026-09-14 当前账本为 4 条（0000–0003），相对 AI 配置版本仍有 10 个 pending；见本批生产准备记录。 |
+| Runtime Reader 生产接入                                        | ✅   | Production-only 配置、`READY` 部署、真实五列读取、安全日志与小时级工作流首次手工运行均通过独立验收                                                                                                             |
+| sitemap、robots、canonical metadata                            | ✅   | App Router metadata routes 与页面 canonical 由 PR #9 的 Playwright 测试自动验证                                                                                                                                |
 
 ## 当前风险与阻塞
 

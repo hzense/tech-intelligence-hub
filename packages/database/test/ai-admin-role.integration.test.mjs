@@ -30,8 +30,10 @@ if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'l
 const suite = adminUrl ? describe.sequential : describe.skip;
 const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
 const databaseName = `hzense_ai_config_${suffix}`;
+const sentinelDatabase = `hzense_ai_sentinel_${suffix}`;
 const ownerRole = `hzense_ai_owner_${suffix}`;
 const restrictedRole = 'hzense_ai_admin';
+const providerRole = 'cloud_admin';
 const deniedRoles = ['hzense_runtime', 'hzense_signal_writer', 'hzense_publisher'];
 const password = `fixture-ai-only-${suffix}`;
 const roleSql = await readFile(
@@ -73,20 +75,98 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
   let administrator;
   let databaseCreated = false;
   const createdRoles = [];
+  let isolatedDatabases = [];
+  async function databasePrivileges() {
+    return (
+      await administrator.query(`SELECT datname,datdba,datacl::text,datconnlimit,datistemplate,datallowconn
+        FROM pg_catalog.pg_database ORDER BY datname`)
+    ).rows;
+  }
+  async function emptyRoleGrants() {
+    expect(
+      (
+        await administrator.query(`SELECT 1 FROM pg_shdepend
+          WHERE refclassid='pg_authid'::regclass AND refobjid='hzense_ai_admin'::regrole AND deptype='a'`)
+      ).rows,
+    ).toEqual([]);
+  }
+  async function withSentinel(callback, role = ownerRole) {
+    await administrator.query(`CREATE DATABASE ${quote(sentinelDatabase)} OWNER ${quote(role)}`);
+    try {
+      return await callback();
+    } finally {
+      await waitForDatabaseDisconnects(administrator, sentinelDatabase);
+      await administrator.query(`DROP DATABASE ${quote(sentinelDatabase)}`);
+    }
+  }
+  async function restoreIsolatedDatabases() {
+    for (const database of isolatedDatabases) {
+      await administrator.query(
+        `REVOKE CONNECT,CREATE,TEMPORARY ON DATABASE ${quote(database.name)} FROM PUBLIC`,
+      );
+      for (const privilege of database.privileges) {
+        if (!['CONNECT', 'CREATE', 'TEMPORARY'].includes(privilege))
+          throw new Error('Unexpected fixture database privilege');
+        await administrator.query(
+          `GRANT ${privilege} ON DATABASE ${quote(database.name)} TO PUBLIC`,
+        );
+      }
+    }
+    isolatedDatabases = [];
+  }
+  async function configureProviderFixture({ database = 'postgres', template = false } = {}) {
+    if (!['postgres', 'template1', 'unapproved_provider_database'].includes(database))
+      throw new Error('Unexpected provider fixture name');
+    return owner(async (client) => {
+      // Only the fixed reserved name/template identity is projected. Privilege
+      // checks still use the real sentinel OID, owner and ACL, and the view reads
+      // fresh catalog state before and after GRANT. Production SQL explicitly
+      // uses pg_catalog.pg_database and never trusts this test-only view.
+      await client.query(`CREATE TEMP VIEW ai_database_catalog AS
+        SELECT oid,CASE WHEN datname='${sentinelDatabase}' THEN '${database}'::name ELSE datname END AS datname,
+          datdba,datacl,datallowconn,datconnlimit,
+          CASE WHEN datname='${sentinelDatabase}' THEN ${template ? 'true' : 'false'} ELSE datistemplate END AS datistemplate
+        FROM pg_catalog.pg_database`);
+      expect(roleSql.match(/FROM pg_catalog\.pg_database d/g)).toHaveLength(2);
+      const fixtureSql = roleSql
+        .replaceAll('FROM pg_catalog.pg_database d', 'FROM pg_temp.ai_database_catalog d')
+        .replace(/COMMIT;\s*$/, 'ROLLBACK;');
+      return client.query(fixtureSql);
+    });
+  }
   beforeAll(async () => {
     if (process.env.RUNTIME_READER_TEST_ISOLATED_CLUSTER !== '1')
       throw new Error('AI role tests require a disposable isolated PostgreSQL cluster');
     administrator = new Client({ connectionString: adminUrl });
     await administrator.connect();
-    for (const role of [ownerRole, restrictedRole, ...deniedRoles]) {
+    for (const role of [ownerRole, restrictedRole, ...deniedRoles, providerRole]) {
       if ((await administrator.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [role])).rowCount)
         throw new Error(`Refusing to modify pre-existing fixture role ${role}`);
       await administrator.query(`CREATE ROLE ${quote(role)} LOGIN NOINHERIT CONNECTION LIMIT 2
         NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
       createdRoles.push(role);
     }
+    await administrator.query(`ALTER ROLE ${quote(providerRole)} NOLOGIN`);
     await administrator.query(`CREATE DATABASE ${quote(databaseName)} OWNER ${quote(ownerRole)}`);
     databaseCreated = true;
+    const otherPublicPrivileges = (
+      await administrator.query(
+        `SELECT d.datname AS name,array_agg(a.privilege_type ORDER BY a.privilege_type) AS privileges
+        FROM pg_catalog.pg_database d CROSS JOIN LATERAL aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a
+        WHERE d.datname<>$1 AND d.datallowconn AND a.grantee=0 GROUP BY d.datname ORDER BY d.datname`,
+        [databaseName],
+      )
+    ).rows;
+    if (otherPublicPrivileges.some((row) => !['postgres', 'template1'].includes(row.name)))
+      throw new Error('AI role fixture refuses to modify unrelated database ACLs');
+    // This disposable cluster's two known baseline databases need explicit
+    // isolation. Restore their effective PUBLIC privileges during teardown.
+    for (const database of otherPublicPrivileges) {
+      isolatedDatabases.push(database);
+      await administrator.query(
+        `REVOKE CONNECT,CREATE,TEMPORARY ON DATABASE ${quote(database.name)} FROM PUBLIC`,
+      );
+    }
     await databaseAdmin((client) => client.query('CREATE EXTENSION vector'));
     await runMigrations({ connectionString: urlFor(ownerRole) });
     // Fixture hardening only; role provisioning must never rewrite PUBLIC rights.
@@ -99,6 +179,7 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
   afterAll(async () => {
     if (!administrator) return;
     try {
+      await restoreIsolatedDatabases();
       if (databaseCreated) {
         await waitForDatabaseDisconnects(administrator, databaseName);
         await administrator.query(`DROP DATABASE ${quote(databaseName)}`);
@@ -269,6 +350,107 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
       await owner((client) => client.query('REVOKE SELECT ON public.signals FROM PUBLIC'));
     }
   });
+  for (const privilege of ['CONNECT', 'TEMPORARY', 'CREATE']) {
+    it(`refuses another database's PUBLIC ${privilege} without repairing any ACL`, async () =>
+      withSentinel(async () => {
+        await administrator.query(
+          `REVOKE CONNECT,CREATE,TEMPORARY ON DATABASE ${quote(sentinelDatabase)} FROM PUBLIC`,
+        );
+        await administrator.query(
+          `GRANT ${privilege} ON DATABASE ${quote(sentinelDatabase)} TO PUBLIC`,
+        );
+        const before = await databasePrivileges();
+        await expect(owner((client) => client.query(roleSql))).rejects.toThrow(
+          'unsafe privileges on another connectable database',
+        );
+        expect(await databasePrivileges()).toEqual(before);
+        await emptyRoleGrants();
+      }));
+    it(`rolls back all grants if another database gains PUBLIC ${privilege} after provisioning`, async () =>
+      withSentinel(async () => {
+        await administrator.query(
+          `REVOKE CONNECT,CREATE,TEMPORARY ON DATABASE ${quote(sentinelDatabase)} FROM PUBLIC`,
+        );
+        const before = await databasePrivileges();
+        const driftedSql = roleSql.replace(
+          'DO $ai_admin_verify$',
+          `GRANT ${privilege} ON DATABASE ${quote(sentinelDatabase)} TO PUBLIC;\nDO $ai_admin_verify$`,
+        );
+        await expect(owner((client) => client.query(driftedSql))).rejects.toThrow(
+          'unsafe privileges on another connectable database',
+        );
+        expect(await databasePrivileges()).toEqual(before);
+        await emptyRoleGrants();
+        await expect(
+          service((client) => client.query('SELECT name FROM public.ai_connections')),
+        ).rejects.toMatchObject({ code: '42501' });
+      }));
+  }
+  for (const [label, fixture, change, accepted, sentinelOwner = providerRole] of [
+    ['exact provider postgres', {}, undefined, true],
+    [
+      'unapproved provider database name',
+      { database: 'unapproved_provider_database' },
+      undefined,
+      false,
+    ],
+    ['reserved postgres without provider ownership', {}, undefined, false, ownerRole],
+    ['reserved postgres marked as a template', { template: true }, undefined, false],
+    [
+      'provider postgres with a connection limit',
+      {},
+      `ALTER DATABASE ${quote(sentinelDatabase)} CONNECTION LIMIT 1`,
+      false,
+    ],
+    [
+      'provider postgres with an explicit ACL',
+      {},
+      `REVOKE TEMPORARY ON DATABASE ${quote(sentinelDatabase)} FROM PUBLIC; GRANT TEMPORARY ON DATABASE ${quote(sentinelDatabase)} TO PUBLIC`,
+      false,
+    ],
+    [
+      'provider postgres with PUBLIC CREATE',
+      {},
+      `GRANT CREATE ON DATABASE ${quote(sentinelDatabase)} TO PUBLIC`,
+      false,
+    ],
+    [
+      'exact provider template1',
+      { database: 'template1', template: true },
+      `REVOKE TEMPORARY ON DATABASE ${quote(sentinelDatabase)} FROM PUBLIC`,
+      true,
+    ],
+    [
+      'provider template1 without template identity',
+      { database: 'template1' },
+      `REVOKE TEMPORARY ON DATABASE ${quote(sentinelDatabase)} FROM PUBLIC`,
+      false,
+    ],
+    [
+      'provider template1 with default PUBLIC TEMPORARY',
+      { database: 'template1', template: true },
+      undefined,
+      false,
+    ],
+    [
+      'provider template1 with PUBLIC CREATE',
+      { database: 'template1', template: true },
+      `REVOKE TEMPORARY ON DATABASE ${quote(sentinelDatabase)} FROM PUBLIC; GRANT CREATE ON DATABASE ${quote(sentinelDatabase)} TO PUBLIC`,
+      false,
+    ],
+  ])
+    it(`${accepted ? 'accepts' : 'refuses'} ${label} using real OID-bound privileges`, async () =>
+      withSentinel(async () => {
+        if (change) await administrator.query(change);
+        const before = await databasePrivileges();
+        if (accepted) await configureProviderFixture(fixture);
+        else
+          await expect(configureProviderFixture(fixture)).rejects.toThrow(
+            'unsafe privileges on another connectable database',
+          );
+        expect(await databasePrivileges()).toEqual(before);
+        await emptyRoleGrants();
+      }, sentinelOwner));
   for (const [label, drift, message] of [
     [
       'missing required column read',

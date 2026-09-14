@@ -61,7 +61,7 @@
 1. 在 [Actions](https://github.com/hzense/tech-intelligence-hub/actions) 选择
    **Production maintenance → Run workflow → main**，每次只选一个 operation。
 2. 任务停在 Environment 审批。核对 commit、operation、运行编号和尝试编号。
-   写操作必须完成严格恢复审核，或明确选择下述 FTS-1 风险接受路径；
+   写操作必须完成严格恢复审核，或明确选择下述相应批次的风险接受路径；
    两种路径均须在审批前更新 `MAINTENANCE_APPROVAL`，不可复用旧 run 的审批。
 3. 审批后由 GitHub hosted runner 执行。若等待期间 `main` 前进或最新 push CI
    不是 success，初检失败，不进入持密执行步骤；需针对新的 `main` 重新发起、审核。
@@ -232,6 +232,55 @@ artifact 不能保证执行期恶意依赖无法读取生产凭据，后续须�
 本次只调整两项 hosted 写操作及前置只读 ACL 采集的审批方式；不增加任意 SQL、自动授权、自动切换或
 关闭预检的开关。Runtime 前向最小授权须另行评审，不能据此重新执行 destructive
 normalization；生产 Runtime preflight、shadow 对账、切换和功能验收也不豁免。
+
+### AI 配置批次的显式风险接受
+
+2026-09-14 操作者另行同意：在新的当前生产备份保护下，接受恢复尚未演练的风险，
+按序升级 `0004–0013`，仅启用 AI 配置后台，不开启 Signal 自动发布或切换网站读取。
+新策略 `accept-unverified-ai-config` 不能借用 FTS-1 的 scope；默认 `verified` 和旧 FTS
+策略的规则保持不变。代码合并与 CI 通过后才可使用，实际执行状态见
+[本批记录](./production-evidence/2026-09-14-ai-configuration.md)。
+
+新策略仅允许 `migrate` 及其独立 `acl-capture`，不允许 `search-apply`。使用上节的
+run-bound 审批字段，替换以下两项：
+
+```json
+{
+  "recoveryPolicy": "accept-unverified-ai-config",
+  "riskAcceptance": {
+    "scope": "ai-configuration-production-launch",
+    "accepted": false,
+    "historicalAclGapAccepted": false,
+    "acknowledgement": "recovery-unverified-data-loss-or-prolonged-outage-accepted"
+  }
+}
+```
+
+这只是不可执行的字段模板，不是完整审批，也不是风险已接受的默认值。确认真实备份、
+冻结窗口及风险后才填写声明；`backupVerified`、`restoreRehearsed`、
+`aclRecoveryReviewed` 始终为 false，不提供 `restoreEvidenceFingerprint`。
+`acl-capture` 仍需 `publicArchiveApproved: true` 与准确 `archiveRepository`，使用独立
+run／operation 审批；后续迁移填写本次双采集并审核的 `aclFingerprint`。
+
+`migrate` 还必须提供同 SHA 在线 `preflight` 输出的 `manifestFingerprint` 和
+`planFingerprint`。实现独立固定了 `0000–0013` 的名称及 checksum，完整工件有变动
+或新增迁移时不出具这批指纹；pending 只允许 `0004–0013` 的非空连续后缀，不能跳过
+中间迁移、夹入其他迁移或扩大到未来版本。第一次为全部十项，部分提交后的恢复执行
+必须重新预检、确认账本、审核新计划与新 run，不复用旧指纹。全部已应用时改运行
+独立 `verify`，不以空计划重放 AI 写审批。
+
+两种指纹使用带版本的域前缀与有序名称／checksum 清单计算。迁移锁前及持锁后的实际
+pending 清单均重新核对；整个迁移工件、运行、提交、备份、期限及 ACL 审查分别绑定。
+成功摘要保留 `recoveryPolicy: "accept-unverified-ai-config"`、`recoveryVerified: false`
+和审批摘要，不输出审批正文或秘密。逐文件事务不是整批原子事务；批准尚未失效的
+旧计划不能覆盖部分完成后的新状态。
+
+这条路径不创建密码或角色，也不执行 ACL 授权。Schema 核验完成后，使用 Neon SQL
+管理身份创建全新的空受限角色，再用数据库 owner 执行固定的
+`db/roles/configure_ai_admin.sql`。不要使用 Neon Roles 普通创建流程临时赋予
+`neon_superuser` 成员关系；[Neon 的角色兼容性说明](https://neon.com/docs/reference/compatibility)
+区分了控制台／API 创建角色与 SQL 创建角色的默认权限。凭据录入和服务端变量保存
+遵守浏览器确认／交接要求；不将密码放入提交、聊天、日志或本地生产文件。
 
 ## 当前仓库 ACL 公开归档
 

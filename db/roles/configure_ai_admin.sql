@@ -31,6 +31,31 @@ BEGIN
       AND (has_schema_privilege(target.oid,oid,'CREATE') OR (nspname<>'public' AND has_schema_privilege(target.oid,oid,'USAGE')))) THEN
     RAISE EXCEPTION 'Remove unsafe ambient database/schema capabilities in separately approved maintenance';
   END IF;
+  -- PUBLIC privileges apply even to NOINHERIT roles. Inspect every connectable
+  -- database without changing its ACL. Only the same exact provider-owned
+  -- reserved-database shapes accepted by the runtime reader are exempt.
+  IF EXISTS(SELECT 1 FROM pg_catalog.pg_database d WHERE d.datname<>current_database() AND d.datallowconn
+    AND (has_database_privilege(target.oid,d.oid,'CONNECT') OR has_database_privilege(target.oid,d.oid,'CREATE')
+      OR has_database_privilege(target.oid,d.oid,'TEMPORARY'))
+    AND NOT (
+      pg_get_userbyid(d.datdba)='cloud_admin' AND d.datconnlimit=-1
+      AND NOT has_database_privilege(target.oid,d.oid,'CONNECT WITH GRANT OPTION')
+      AND NOT has_database_privilege(target.oid,d.oid,'CREATE')
+      AND NOT has_database_privilege(target.oid,d.oid,'CREATE WITH GRANT OPTION')
+      AND NOT has_database_privilege(target.oid,d.oid,'TEMPORARY WITH GRANT OPTION')
+      AND NOT EXISTS(SELECT 1 FROM aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a
+        WHERE a.grantee=target.oid OR (a.grantee=0 AND a.is_grantable))
+      AND ((d.datname='postgres' AND NOT d.datistemplate AND d.datacl IS NULL
+        AND has_database_privilege(target.oid,d.oid,'CONNECT') AND has_database_privilege(target.oid,d.oid,'TEMPORARY')
+        AND (SELECT array_agg(a.privilege_type ORDER BY a.privilege_type)
+          FROM aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a WHERE a.grantee=0)=ARRAY['CONNECT','TEMPORARY']::text[])
+        OR (d.datname='template1' AND d.datistemplate AND d.datacl IS NOT NULL
+          AND has_database_privilege(target.oid,d.oid,'CONNECT') AND NOT has_database_privilege(target.oid,d.oid,'TEMPORARY')
+          AND (SELECT array_agg(a.privilege_type ORDER BY a.privilege_type)
+            FROM aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a WHERE a.grantee=0)=ARRAY['CONNECT']::text[]))
+    )) THEN
+    RAISE EXCEPTION 'AI administrator has unsafe privileges on another connectable database';
+  END IF;
   IF EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl,acldefault(CASE WHEN c.relkind='S' THEN 'S'::"char" ELSE 'r'::"char" END,c.relowner))) a
       WHERE n.nspname !~ '^pg_' AND n.nspname<>'information_schema' AND a.grantee=0)
@@ -93,6 +118,31 @@ BEGIN
     OR NOT EXISTS(SELECT 1 FROM pg_database d CROSS JOIN LATERAL aclexplode(d.datacl) a
       WHERE d.datname=current_database() AND a.grantee=target AND a.privilege_type='CONNECT' AND NOT a.is_grantable) THEN
     RAISE EXCEPTION 'AI administrator database privilege contract mismatch';
+  END IF;
+  -- Recheck effective cross-database privileges after GRANT. Drift visible at
+  -- this check fails provisioning; this does not lock other databases' ACLs or
+  -- prevent later changes. Keep the operator's maintenance freeze in place.
+  IF EXISTS(SELECT 1 FROM pg_catalog.pg_database d WHERE d.datname<>current_database() AND d.datallowconn
+    AND (has_database_privilege(target,d.oid,'CONNECT') OR has_database_privilege(target,d.oid,'CREATE')
+      OR has_database_privilege(target,d.oid,'TEMPORARY'))
+    AND NOT (
+      pg_get_userbyid(d.datdba)='cloud_admin' AND d.datconnlimit=-1
+      AND NOT has_database_privilege(target,d.oid,'CONNECT WITH GRANT OPTION')
+      AND NOT has_database_privilege(target,d.oid,'CREATE')
+      AND NOT has_database_privilege(target,d.oid,'CREATE WITH GRANT OPTION')
+      AND NOT has_database_privilege(target,d.oid,'TEMPORARY WITH GRANT OPTION')
+      AND NOT EXISTS(SELECT 1 FROM aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a
+        WHERE a.grantee=target OR (a.grantee=0 AND a.is_grantable))
+      AND ((d.datname='postgres' AND NOT d.datistemplate AND d.datacl IS NULL
+        AND has_database_privilege(target,d.oid,'CONNECT') AND has_database_privilege(target,d.oid,'TEMPORARY')
+        AND (SELECT array_agg(a.privilege_type ORDER BY a.privilege_type)
+          FROM aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a WHERE a.grantee=0)=ARRAY['CONNECT','TEMPORARY']::text[])
+        OR (d.datname='template1' AND d.datistemplate AND d.datacl IS NOT NULL
+          AND has_database_privilege(target,d.oid,'CONNECT') AND NOT has_database_privilege(target,d.oid,'TEMPORARY')
+          AND (SELECT array_agg(a.privilege_type ORDER BY a.privilege_type)
+            FROM aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a WHERE a.grantee=0)=ARRAY['CONNECT']::text[]))
+    )) THEN
+    RAISE EXCEPTION 'AI administrator has unsafe privileges on another connectable database';
   END IF;
   IF NOT has_schema_privilege(target,'public','USAGE')
     OR EXISTS(SELECT 1 FROM pg_namespace n WHERE n.nspname !~ '^pg_' AND n.nspname<>'information_schema'

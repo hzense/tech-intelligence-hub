@@ -31,7 +31,10 @@ vi.mock('../src/preflight.mjs', () => ({
   inspectDatabasePreflight: mocks.preflight,
   runDatabasePreflight: mocks.preflight,
 }));
-vi.mock('../src/migrate.mjs', () => ({ runMigrations: mocks.migrate }));
+vi.mock('../src/migrate.mjs', async (importOriginal) => ({
+  ...(await importOriginal()),
+  runMigrations: mocks.migrate,
+}));
 vi.mock('../src/verify.mjs', () => ({ verifyDatabaseContract: mocks.verify }));
 
 const now = Date.parse('2026-09-10T10:00:00Z');
