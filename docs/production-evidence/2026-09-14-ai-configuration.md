@@ -137,3 +137,18 @@ Vercel 页面已分别确认 `HZENSE_AI_DATABASE_URL`、`HZENSE_AI_KEYRING` 保�
 | 有界错误日志         | `2026-09-14T08:25:31.255Z–2026-09-14T08:40:31.255Z` 范围内 error／fatal 扫描无匹配；仅作为该窗口结果，不外推全站或长期无错误。                                      |
 
 以上证明服务端配置已被当前部署接受、AI 专用连接的页面读取可用，并保持匿名拒绝边界。它不证明真实供应商连接可保存、已验证根密钥加解密、模型兼容／计费或 Profile 端到端资格。本轮没有创建／保存真实供应商连接或 Profile，没有模型列表／能力调用，也没有开启自动采集、Signal 新读取或自动发布。
+
+## OpenRouter 域名授权与表单改进
+
+后续操作者填写 OpenRouter 连接时，生产日志在 `10:12:36Z`、`10:14:00Z`、`10:16:31Z` 均记录 `POST /api/admin/ai/connections` 返回 400，对应 `main@30c5820` 的部署。只读页面确认当时允许域名只有 `ai-gateway.vercel.sh`；填写的 OpenRouter 域名不在其中。原表单还曾使用完整 `/chat/completions` 请求路径；这不是该次白名单拒绝的原因，但会使后续程序追加错误路径。
+
+用公开地址和合成参数进行本地校验，确认旧白名单拒绝 OpenRouter，加入精确域名后接受 `https://openrouter.ai/api/v1`；该检查没有读取真实凭据、连接数据库或访问供应商。`createAiConnection` 在数据库事务前执行此校验，不能将该 400 当作 Neon 故障或供应商密钥无效。
+
+操作者明确要求修改并加入 `openrouter.ai` 后，线上只更改本项目的 Production Config `HZENSE_AI_ALLOWED_HOSTS` 为 `ai-gateway.vercel.sh,openrouter.ai`，保留原域名及其它环境变量，没有更改密码、数据库授权或供应商凭据。Vercel 明确显示保存成功，随后对现有 `main@30c58200a67be8bf1f34759fd533e4181fd9f736` 重新部署：
+
+- 部署：`dpl_HBQmzYE2CbA1S3NbVrwsJq6a7xUk`，Production READY，绑定 `hzense.com`／`www.hzense.com`。
+- 创建：`2026-09-14T12:34:09.820Z`；READY：`2026-09-14T12:35:25.034Z`。
+- 新的真实管理员页面已显示 `ai-gateway.vercel.sh、openrouter.ai`，连接表单启用；没有提交表单或点击模型测试。
+- 操作者原页面已自行修正基础地址为 `/api/v1`；该页面及未保存内容保留，不刷新、不复制或提交 API key。
+
+同批代码改善供应商预设、未授权域名和误填请求端点的提示。预设不构成服务端授权；更换目的端点时清空当前输入密钥，需用户重新输入；不自动保存或调用。代码的测试、PR、合并后生产部署结果在对应 PR 留存，不能用上述旧代码重新部署代替新 UI 上线证明。真实供应商连接保存、加解密、模型能力与 Profile 资格仍未验收。

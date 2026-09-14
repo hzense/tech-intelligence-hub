@@ -1,6 +1,15 @@
 'use client';
 import Link from 'next/link';
+import { useRef, useState } from 'react';
 import type { AiProbe } from '../../../packages/database/src/ai-config-store.mjs';
+import {
+  aiEndpointChanged,
+  aiEndpointMessage,
+  aiPresetForEndpoint,
+  aiProviderPresets,
+  inspectAiEndpoint,
+  type AiProviderPresetId,
+} from '../lib/admin-ai-endpoint';
 import styles from './admin-ai.module.css';
 
 const messages: Record<string, string> = {
@@ -8,7 +17,8 @@ const messages: Record<string, string> = {
   forbidden_origin: '请求来源不受信任。',
   ai_not_configured: 'AI 后台尚未配置完成。',
   invalid_request: '请检查字段格式、模型名称和数值范围。',
-  invalid_configuration: '请检查接口域名白名单及配置格式。',
+  invalid_configuration:
+    '接口基础地址未通过服务端校验。请检查 HTTPS 基础路径和本页允许域名；修改 Production 的 HZENSE_AI_ALLOWED_HOSTS 后须重新部署并刷新页面。',
   revision_conflict: '配置已变化，请刷新后重新编辑。',
   request_id_conflict:
     '该请求编号已用于不同内容，或已有配置已被修改。请刷新核对原记录，不要覆盖重试。',
@@ -81,6 +91,124 @@ export function AiAvailability({
         : 'AI 后台尚未配置完成：需要独立数据库角色、服务端加密根密钥及允许访问的接口域名。'}{' '}
       不要把密钥发送到对话或填写在普通文本字段中。此页面不启动采集或发布。
     </div>
+  );
+}
+
+/** Keyed by the enclosing form's connection/revision, not by provider choice. */
+export function AiEndpointFields({
+  initialBaseUrl,
+  editing,
+  allowedHosts,
+}: {
+  initialBaseUrl: string;
+  editing: boolean;
+  allowedHosts: string[];
+}) {
+  const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
+  const storedBaseUrl = editing ? initialBaseUrl : undefined;
+  const [preset, setPreset] = useState<AiProviderPresetId>(() =>
+    aiPresetForEndpoint(initialBaseUrl, storedBaseUrl),
+  );
+  const [keyNotice, setKeyNotice] = useState('');
+  const keyInput = useRef<HTMLInputElement>(null);
+  const guidance = inspectAiEndpoint(baseUrl, allowedHosts);
+  const suggestedPreset = !guidance.valid
+    ? aiProviderPresets.find((item) => item.baseUrl === guidance.suggestedBaseUrl)
+    : undefined;
+  const endpointChanged = aiEndpointChanged(initialBaseUrl, baseUrl, storedBaseUrl);
+
+  function updateEndpoint(next: string) {
+    if (aiEndpointChanged(baseUrl, next, storedBaseUrl)) {
+      if (keyInput.current) keyInput.current.value = '';
+      setKeyNotice('接口地址已改变，请为当前地址重新填写 API Key；不会沿用之前填写或保存的密钥。');
+    }
+    setBaseUrl(next);
+  }
+
+  return (
+    <>
+      <label>
+        供应商预设
+        <select
+          value={preset}
+          onChange={(event) => {
+            const next = aiProviderPresets.find((item) => item.id === event.target.value);
+            setPreset(next?.id ?? 'custom');
+            if (next) updateEndpoint(next.baseUrl);
+          }}
+        >
+          {aiProviderPresets.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.label}（{allowedHosts.includes(item.host) ? '已授权' : '未授权'}）
+            </option>
+          ))}
+          <option value="custom">自定义</option>
+        </select>
+      </label>
+      <p className={styles.muted}>
+        预设只填写基础地址，不自动保存、授权或发起请求；其他配置字段保留。
+      </p>
+      <label>
+        接口基础地址
+        <input
+          name="base_url"
+          type="url"
+          required
+          value={baseUrl}
+          onChange={(event) => {
+            updateEndpoint(event.target.value);
+            setPreset(aiPresetForEndpoint(event.target.value, storedBaseUrl));
+          }}
+          aria-invalid={!guidance.valid}
+          aria-describedby="ai-endpoint-guidance"
+          maxLength={2048}
+        />
+      </label>
+      <p id="ai-endpoint-guidance" className={styles.muted} role="status">
+        {guidance.valid
+          ? '此域名在当前服务端白名单中；保存时仍由服务端校验。'
+          : aiEndpointMessage(guidance)}
+      </p>
+      {!guidance.valid && guidance.suggestedBaseUrl ? (
+        <>
+          <p className={styles.muted}>
+            {suggestedPreset
+              ? `建议基础地址：${suggestedPreset.baseUrl}`
+              : '修正只移除末尾请求路径，域名保持不变；请在保存前核对基础地址。'}
+          </p>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => {
+              const next = guidance.suggestedBaseUrl;
+              if (!next) return;
+              updateEndpoint(next);
+              setPreset(aiPresetForEndpoint(next, storedBaseUrl));
+            }}
+          >
+            使用建议的基础地址
+          </button>
+        </>
+      ) : null}
+      <p className={styles.muted}>
+        首批协议：OpenAI-compatible Chat
+        Completions。修改接口地址时必须重新填写密钥；不沿用旧密钥访问新端点。
+      </p>
+      {keyNotice ? <p className={styles.muted}>{keyNotice}</p> : null}
+      <label>
+        {editing ? '替换 API Key（不替换则留空）' : 'API Key'}
+        <input
+          ref={keyInput}
+          name="api_key"
+          type="password"
+          required={!editing || endpointChanged}
+          minLength={8}
+          maxLength={4096}
+          autoComplete="new-password"
+          spellCheck={false}
+        />
+      </label>
+    </>
   );
 }
 export function ProbeSummary({ probe }: { probe: AiProbe }) {

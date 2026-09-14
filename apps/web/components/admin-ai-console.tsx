@@ -7,7 +7,14 @@ import type {
   AiProbeKind,
   AiProbeRequest,
 } from '../../../packages/database/src/ai-config-store.mjs';
-import { aiRequest, AiAvailability, ProbeSummary, probeLabels } from './admin-ai-shared';
+import {
+  aiRequest,
+  AiAvailability,
+  AiEndpointFields,
+  ProbeSummary,
+  probeLabels,
+} from './admin-ai-shared';
+import { aiEndpointChanged, aiEndpointMessage, inspectAiEndpoint } from '../lib/admin-ai-endpoint';
 import {
   readPendingAiProbe,
   persistPendingAiProbe,
@@ -90,10 +97,23 @@ export function AdminAiConsole({
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
+    const baseUrl = string(data, 'base_url');
+    const endpoint = inspectAiEndpoint(baseUrl, allowedHosts);
+    if (!endpoint.valid) {
+      setMessage(aiEndpointMessage(endpoint));
+      return;
+    }
+    const replaceEndpoint =
+      !editing || aiEndpointChanged(editing.base_url, baseUrl, editing.base_url);
+    if (editing && replaceEndpoint && !string(data, 'api_key')) {
+      setMessage('更换接口地址时必须重新填写密钥，不能沿用原接口的密钥。');
+      return;
+    }
     const patch = {
       name: string(data, 'name'),
       protocol: 'openai-compatible',
-      base_url: string(data, 'base_url'),
+      // Do not re-normalize an unchanged stored endpoint when saving other fields.
+      ...(replaceEndpoint ? { base_url: baseUrl } : {}),
       enabled: data.get('enabled') === 'on',
       settings: {
         timeout_ms: number(data, 'timeout_ms'),
@@ -307,32 +327,11 @@ export function AdminAiConsole({
                 连接名称
                 <input name="name" required maxLength={100} defaultValue={editing?.name ?? ''} />
               </label>
-              <label>
-                接口基础地址
-                <input
-                  name="base_url"
-                  type="url"
-                  required
-                  defaultValue={editing?.base_url ?? 'https://ai-gateway.vercel.sh/v1'}
-                  maxLength={2048}
-                />
-              </label>
-              <p className={styles.muted}>
-                首批协议：OpenAI-compatible Chat
-                Completions。修改接口地址时必须重新填写密钥；不沿用旧密钥访问新端点。
-              </p>
-              <label>
-                {editing ? '替换 API Key（不替换则留空）' : 'API Key'}
-                <input
-                  name="api_key"
-                  type="password"
-                  required={!editing}
-                  minLength={8}
-                  maxLength={4096}
-                  autoComplete="new-password"
-                  spellCheck={false}
-                />
-              </label>
+              <AiEndpointFields
+                initialBaseUrl={editing?.base_url ?? 'https://ai-gateway.vercel.sh/v1'}
+                editing={editing !== null}
+                allowedHosts={allowedHosts}
+              />
               <label className={styles.checkbox}>
                 <input type="checkbox" name="enabled" defaultChecked={editing?.enabled ?? false} />
                 允许此连接接受测试和后续受控调用
