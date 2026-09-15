@@ -32,6 +32,9 @@ export default async function AdminHomePage() {
           <dd>{session.user.email}</dd>
         </dl>
         <div className={styles.actions}>
+          <Link className={styles.backLink} href="/admin/signals">
+            信号只读工作台
+          </Link>
           <Link className={styles.backLink} href="/admin/ai">
             AI 连接与模型测试
           </Link>
