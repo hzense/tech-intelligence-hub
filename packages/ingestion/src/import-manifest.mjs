@@ -74,6 +74,15 @@ const error = (code) => {
   throw failure;
 };
 
+function appendOwn(array, value) {
+  Object.defineProperty(array, String(array.length), {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
+}
+
 function record(value, allowed, code) {
   if (
     !value ||
@@ -109,7 +118,7 @@ function denseArray(value, maximum, code) {
   for (let index = 0; index < size; index++) {
     const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
     if (!descriptor || !Object.hasOwn(descriptor, 'value')) error(code);
-    result.push(descriptor.value);
+    appendOwn(result, descriptor.value);
   }
   return result;
 }
@@ -174,15 +183,15 @@ function checkFile(value, index, capabilities, clientIds) {
       'invalid_file_descriptor',
     );
   } catch {
-    result.errors.push('invalid_file_descriptor');
+    appendOwn(result.errors, 'invalid_file_descriptor');
     return result;
   }
   const id = file.clientItemId;
   if (typeof id !== 'string' || id.match(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/)?.[0] !== id) {
-    result.errors.push('invalid_client_item_id');
+    appendOwn(result.errors, 'invalid_client_item_id');
   } else {
     result.clientItemId = id;
-    if (clientIds.has(id)) result.errors.push('duplicate_client_item_id');
+    if (clientIds.has(id)) appendOwn(result.errors, 'duplicate_client_item_id');
     else clientIds.add(id);
   }
 
@@ -195,56 +204,58 @@ function checkFile(value, index, capabilities, clientIds) {
     hasControls(file.name) ||
     ['.', '..'].includes(file.name)
   ) {
-    result.errors.push('invalid_file_name');
+    appendOwn(result.errors, 'invalid_file_name');
   } else {
     result.name = file.name;
     const extension = /\.([A-Za-z0-9]+)$/.exec(file.name)?.[1]?.toLowerCase();
-    if (conversions.has(extension)) result.errors.push('conversion_required');
-    else if (!Object.hasOwn(extensions, extension ?? '')) result.errors.push('unsupported_format');
+    if (conversions.has(extension)) appendOwn(result.errors, 'conversion_required');
+    else if (!Object.hasOwn(extensions, extension ?? ''))
+      appendOwn(result.errors, 'unsupported_format');
     else result.format = extensions[extension];
   }
 
-  if (!Number.isSafeInteger(file.size) || file.size <= 0) result.errors.push('invalid_file_size');
+  if (!Number.isSafeInteger(file.size) || file.size <= 0)
+    appendOwn(result.errors, 'invalid_file_size');
   else {
     result.size = file.size;
-    if (file.size > IMPORT_LIMITS.maxFileBytes) result.errors.push('file_too_large');
+    if (file.size > IMPORT_LIMITS.maxFileBytes) appendOwn(result.errors, 'file_too_large');
   }
   if (
     file.mime !== undefined &&
     (typeof file.mime !== 'string' || file.mime.length > 128 || hasControls(file.mime))
   ) {
-    result.errors.push('invalid_mime');
+    appendOwn(result.errors, 'invalid_mime');
   } else {
     const mime = (file.mime ?? '').trim().toLowerCase();
     result.mime = mime;
     if (conversionMimes.has(mime) || mime.includes('macroenabled'))
-      result.errors.push('conversion_required');
+      appendOwn(result.errors, 'conversion_required');
     else if (
       result.format &&
       mime &&
       mime !== 'application/octet-stream' &&
       !mimeTypes[result.format].includes(mime)
     )
-      result.errors.push('mime_mismatch');
+      appendOwn(result.errors, 'mime_mismatch');
   }
   if (file.pageCount !== undefined) {
     if (!Number.isSafeInteger(file.pageCount) || file.pageCount < 1)
-      result.errors.push('invalid_page_count');
+      appendOwn(result.errors, 'invalid_page_count');
     else {
       result.pageCount = file.pageCount;
       if (file.pageCount > IMPORT_LIMITS.maxDocumentPages)
-        result.errors.push('document_page_limit');
+        appendOwn(result.errors, 'document_page_limit');
     }
   }
   if (file.requiresOcr !== undefined && typeof file.requiresOcr !== 'boolean')
-    result.errors.push('invalid_ocr_declaration');
+    appendOwn(result.errors, 'invalid_ocr_declaration');
   result.requiresOcr = ['png', 'jpeg'].includes(result.format) || file.requiresOcr === true;
   if (
     result.format &&
     ((parserFormats.includes(result.format) && !capabilities.parsers.includes(result.format)) ||
       (result.requiresOcr && !capabilities.ocr))
   )
-    result.errors.push('capability_unavailable');
+    appendOwn(result.errors, 'capability_unavailable');
   result.errors = [...new Set(result.errors)];
   return result;
 }
@@ -310,12 +321,12 @@ export function validateImportManifest(input, options) {
     let unknownBytes = false;
     result.files = files.map((file, index) => {
       const checked = checkFile(file, index, capabilities, clientIds);
-      if (index >= IMPORT_LIMITS.maxFiles) checked.errors.push('file_count_exceeded');
+      if (index >= IMPORT_LIMITS.maxFiles) appendOwn(checked.errors, 'file_count_exceeded');
       if (checked.size === null) unknownBytes = true;
       else {
         totalBytes += BigInt(checked.size);
         if (totalBytes > BigInt(IMPORT_LIMITS.maxBatchBytes))
-          checked.errors.push('batch_bytes_exceeded');
+          appendOwn(checked.errors, 'batch_bytes_exceeded');
       }
       checked.status = checked.errors.length ? 'invalid' : 'valid';
       return checked;
@@ -335,22 +346,23 @@ export function validateImportManifest(input, options) {
       try {
         checked.canonicalUrl = canonicalUrl(originalUrl);
       } catch (failure) {
-        checked.errors.push(faults.get(failure) ?? 'invalid_url');
+        appendOwn(checked.errors, faults.get(failure) ?? 'invalid_url');
       }
       if (checked.canonicalUrl) {
         checked.duplicateOfLine = seenUrls.get(checked.canonicalUrl) ?? null;
         if (checked.duplicateOfLine === null)
           seenUrls.set(checked.canonicalUrl, checked.lineNumber);
         if (!capabilities.urlFetch || (!capabilities.parsers.length && !capabilities.ocr))
-          checked.errors.push('capability_unavailable');
+          appendOwn(checked.errors, 'capability_unavailable');
       }
-      if (result.urls.length >= IMPORT_LIMITS.maxLinks) checked.errors.push('link_count_exceeded');
+      if (result.urls.length >= IMPORT_LIMITS.maxLinks)
+        appendOwn(checked.errors, 'link_count_exceeded');
       checked.status = checked.errors.length
         ? 'invalid'
         : checked.duplicateOfLine === null
           ? 'valid'
           : 'duplicate';
-      result.urls.push(checked);
+      appendOwn(result.urls, checked);
     }
     if (!files.length && !result.urls.length) batchErrors.add('empty_batch');
     if (files.length > IMPORT_LIMITS.maxFiles) batchErrors.add('file_count_exceeded');

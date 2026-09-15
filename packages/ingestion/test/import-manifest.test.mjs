@@ -600,3 +600,65 @@ test('inherited values and getters cannot supply capabilities, manifest files or
     }
   }
 });
+
+test('numeric prototype accessors cannot replace copied files, URLs, errors or parser capabilities', () => {
+  const scenarios = [
+    {
+      input: { files: [file({ name: 'evil.exe', size: 0 })] },
+      options: { capabilities: { ocr: true } },
+      replacement: file({ name: 'substituted.png', size: 1 }),
+    },
+    {
+      input: { urlLines: 'https://example.org/first\nhttps://example.org/second' },
+      options: { capabilities: { parsers: ['html'], urlFetch: true } },
+      replacement: { originalUrl: 'https://substituted.example/', status: 'valid', errors: [] },
+    },
+    {
+      input: { files: [file({ name: '../private.exe', size: 0 })], urlLines: 'http://localhost/' },
+      options: { capabilities: { parsers: ['text'] } },
+      replacement: 'substituted_error',
+    },
+    {
+      input: { files: [file()] },
+      options: { capabilities: { parsers: ['invalid-parser'] } },
+      replacement: 'pdf',
+    },
+  ];
+  for (const scenario of scenarios) {
+    for (const prototypeName of ['Array', 'Object']) {
+      const source = `
+        import { validateImportManifest } from '@hzense/ingestion';
+        import { stdout } from 'node:process';
+        const scenario = ${JSON.stringify(scenario)};
+        const baseline = validateImportManifest(scenario.input, scenario.options);
+        const prototype = ${prototypeName}.prototype;
+        let getterCalls = 0;
+        let setterCalls = 0;
+        let result;
+        try {
+          for (const index of ['0', '1']) {
+            Object.defineProperty(prototype, index, {
+              configurable: true,
+              get() { getterCalls++; return scenario.replacement; },
+              set() { setterCalls++; },
+            });
+          }
+          result = validateImportManifest(scenario.input, scenario.options);
+        } finally {
+          delete prototype[0];
+          delete prototype[1];
+        }
+        stdout.write(JSON.stringify({ baseline, result, getterCalls, setterCalls }));
+      `;
+      const output = execFileSync(execPath, ['--input-type=module', '-e', source], {
+        cwd: fileURLToPath(new URL('..', import.meta.url)),
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+      const { baseline, result, getterCalls, setterCalls } = JSON.parse(output);
+      assert.deepEqual(result, baseline);
+      assert.equal(getterCalls, 0);
+      assert.equal(setterCalls, 0);
+    }
+  }
+});
