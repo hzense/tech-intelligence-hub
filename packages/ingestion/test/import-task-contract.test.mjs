@@ -48,3 +48,12 @@ test('batch outcome distinguishes partially completed and uncertain work', () =>
   assert.equal(importBatchStatus({ cancelled: false }, [{ status: 'unknown' }]), 'unknown');
   assert.equal(importBatchStatus({ cancelled: true }, [{ status: 'completed' }]), 'cancelled');
 });
+test('output text and locator strings count Unicode code points consistently', () => {
+  const make = (text, sheet) => ({ fragments: [{ text, locator: { sheet, row: 1 } }] });
+  assert.equal(
+    parseImportOutput(make('😀'.repeat(20000), '😀'.repeat(150))).classification,
+    'private',
+  );
+  assert.throws(() => parseImportOutput(make('😀'.repeat(20001), 'sheet')));
+  assert.throws(() => parseImportOutput(make('ok', '😀'.repeat(151))));
+});

@@ -87,7 +87,7 @@ export function parseImportOutput(value) {
     if (
       typeof fragment.text !== 'string' ||
       !fragment.text.trim() ||
-      fragment.text.length > 20000 ||
+      Array.from(fragment.text).length > 20000 ||
       fragment.text.includes('\0')
     )
       importFail('invalid_output');
@@ -106,7 +106,12 @@ export function parseImportOutput(value) {
     if (!Object.keys(locator).length) importFail('invalid_output');
     for (const [key, number] of Object.entries(locator)) {
       if (key === 'sheet' || key === 'region') {
-        if (typeof number !== 'string' || !number || number.length > 150 || hasControl(number))
+        if (
+          typeof number !== 'string' ||
+          !number ||
+          Array.from(number).length > 150 ||
+          hasControl(number)
+        )
           importFail('invalid_output');
       } else if (
         !Number.isSafeInteger(number) ||

@@ -30,6 +30,13 @@ test('CSV formulas remain inert text and cells have locations', () => {
   assert.equal(out.fragments[3].text, '=HYPERLINK(1)');
   assert.deepEqual(out.fragments[3].locator, { row: 2, column: 2 });
 });
+test('Python parser and persistence use Unicode code points for astral text limits', () => {
+  for (const count of [15000, 20000]) {
+    const text = '😀'.repeat(count);
+    assert.equal(parseImportOutput(parse('text', text).output).fragments[0].text, text);
+  }
+  assert.equal(parse('text', '😀'.repeat(20001)).error, 'limit_exceeded');
+});
 test('DOCX ZIP parser reads real XML without executing embedded instructions', () => {
   const xml =
     '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>synthetic source</w:t></w:r></w:p></w:body></w:document>';
