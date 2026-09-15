@@ -270,7 +270,7 @@ export async function claimImportItem({
     );
     const active = (
       await client.query(
-        "SELECT count(*)::integer AS n FROM public.import_items WHERE status='running'",
+        "SELECT count(*)::integer AS n FROM public.import_attempts WHERE status IN ('running','cancelled','unknown') AND lease_until>now()",
       )
     ).rows[0].n;
     if (active >= 1) importFail('worker_busy');
@@ -302,7 +302,8 @@ export async function claimImportItem({
     ]);
     const attempt = (
       await client.query(
-        "INSERT INTO public.import_attempts(item_id,fence,parser_version,status,lease_until,budget_day,reserved_microusd) VALUES($1,$2,$3,'running',now()+interval '5 minutes',$4,$5) RETURNING *",
+        // Seven minutes cover the 240s request lifetime plus a late-created 120s Sandbox.
+        "INSERT INTO public.import_attempts(item_id,fence,parser_version,status,lease_until,budget_day,reserved_microusd) VALUES($1,$2,$3,'running',now()+interval '7 minutes',$4,$5) RETURNING *",
         [i.id, next, parserVersion, day, reserveMicrousd],
       )
     ).rows[0];

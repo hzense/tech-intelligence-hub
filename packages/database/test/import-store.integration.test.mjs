@@ -175,6 +175,17 @@ suite('private import PostgreSQL persistence', () => {
     ).rejects.toMatchObject({ code: 'stale_attempt' });
     await expect(retryImportItem(args(b))).rejects.toMatchObject({ code: 'retry_not_allowed' });
     expect((await getImportBatch({ pool, owner, id: b.id })).status).toBe('cancelled');
+    const next = await ready();
+    await expect(
+      claimImportItem({ ...args(next), parserVersion: 'text/v1' }),
+    ).rejects.toMatchObject({ code: 'worker_busy' });
+    // Advance only the cancelled fixture lease. A cancelled VM keeps capacity until this deadline.
+    await pool.query(
+      "UPDATE public.import_attempts SET lease_until=now()-interval '1 second' WHERE item_id=$1",
+      [b.items[0].id],
+    );
+    await claimImportItem({ ...args(next), parserVersion: 'text/v1' });
+    await finishImportAttempt({ ...args(next), fence: 1, outcome: 'completed', output });
   });
   it('expired free work can retry with a new fence; old workers cannot submit', async () => {
     const b = await ready();
@@ -219,6 +230,14 @@ suite('private import PostgreSQL persistence', () => {
     const usage = (await pool.query('SELECT * FROM public.import_daily_usage')).rows[0];
     expect(usage.reserved_microusd).toBe('0');
     expect(usage.charged_microusd).toBe('90');
+    const next = await ready();
+    await expect(
+      claimImportItem({ ...args(next), parserVersion: 'text/v1', dailyLimitMicrousd: 100 }),
+    ).rejects.toMatchObject({ code: 'worker_busy' });
+    await pool.query(
+      "UPDATE public.import_attempts SET lease_until=now()-interval '1 second' WHERE item_id=$1",
+      [winner.items[0].id],
+    );
   });
   it('completed private output requires owning admin and the current completed fence', async () => {
     const b = await ready();

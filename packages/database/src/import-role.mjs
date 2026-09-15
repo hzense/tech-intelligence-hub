@@ -2,7 +2,10 @@ import { importFail } from '../../ingestion/src/import-task-contract.mjs';
 export const importRoleCheckSQL = `SELECT current_user='hzense_import_admin' AND session_user=current_user
   AND r.rolcanlogin AND r.rolconnlimit=2 AND r.rolconfig IS NULL
   AND NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole AND NOT r.rolreplication AND NOT r.rolbypassrls AND NOT r.rolinherit
-  AND NOT EXISTS(SELECT 1 FROM pg_auth_members WHERE member=r.oid)
+  AND NOT EXISTS(SELECT 1 FROM pg_auth_members m WHERE (m.member=r.oid OR m.roleid=r.oid)
+    AND (m.roleid=r.oid AND pg_get_userbyid(m.member)='neondb_owner'
+      AND pg_get_userbyid(m.grantor)='cloud_admin' AND m.admin_option
+      AND NOT m.inherit_option AND NOT m.set_option) IS NOT TRUE)
   AND NOT EXISTS(SELECT 1 FROM pg_db_role_setting WHERE setrole=r.oid)
   AND NOT has_database_privilege(current_database(),'CREATE,TEMPORARY')
   AND NOT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname!~'^pg_' AND nspname<>'information_schema' AND has_schema_privilege(oid,'CREATE'))

@@ -80,6 +80,24 @@ suite('dedicated import service role', () => {
     ])
       await expect(reader.query(sql)).rejects.toMatchObject({ code: '42501' });
   });
+  it('rejects inbound SET, INHERIT and unapproved ADMIN-only membership edges', async () => {
+    const peer = `${name}_peer`;
+    await owner.query(`CREATE ROLE "${peer}" NOLOGIN NOINHERIT`);
+    try {
+      for (const options of [
+        'INHERIT FALSE, SET TRUE',
+        'INHERIT TRUE, SET FALSE',
+        'ADMIN TRUE, INHERIT FALSE, SET FALSE',
+      ]) {
+        await owner.query(`GRANT ${role} TO "${peer}" WITH ${options}`);
+        await expect(assertImportRole(reader)).rejects.toMatchObject({ code: 'not_configured' });
+        await owner.query(`REVOKE ${role} FROM "${peer}"`);
+      }
+      await assertImportRole(reader);
+    } finally {
+      await owner.query(`DROP ROLE "${peer}"`);
+    }
+  });
   it('rejects ambient column grants and security-invoker function access', async () => {
     await owner.query(`GRANT SELECT(secret) ON public.unrelated_secret TO ${role}`);
     await expect(assertImportRole(reader)).rejects.toMatchObject({ code: 'not_configured' });
