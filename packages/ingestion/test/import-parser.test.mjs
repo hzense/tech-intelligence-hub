@@ -71,6 +71,20 @@ test('XLSX real workbook resolves sheet names, coordinates and cached formulas',
   assert.equal(out.fragments[0].text, 'evidence');
   assert.deepEqual(out.fragments[1].locator, { sheet: 'Research', row: 1, column: 2 });
   assert.deepEqual(out.warnings, ['formula_cached_only']);
+  const sheet = files['xl/worksheets/sheet1.xml'];
+  for (const row of [1000000, 1000001, 1048576]) {
+    files['xl/worksheets/sheet1.xml'] = sheet
+      .replaceAll('A1', `A${row}`)
+      .replaceAll('B1', `B${row}`);
+    const boundary = parse(
+      'xlsx',
+      JSON.stringify(files),
+      "z=zipfile.ZipFile('input','w'); [z.writestr(k,v) for k,v in json.loads(source).items()]; z.close()",
+    );
+    if (row === 1000000)
+      assert.equal(parseImportOutput(boundary.output).fragments[0].locator.row, row);
+    else assert.equal(boundary.error, 'limit_exceeded');
+  }
 });
 test(
   'PDF text extraction, scanned-page refusal and page cap',

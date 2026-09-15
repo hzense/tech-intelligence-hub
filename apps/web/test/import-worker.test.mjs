@@ -84,3 +84,18 @@ test('ambiguous completion is never replayed as a second completion', async () =
   await assert.rejects(runImportProcessing(path, 100, deps));
   assert.equal(calls, 1);
 });
+test('invalid parser output durably fails exactly once despite a positive reservation', async () => {
+  for (const output of [
+    { fragments: [{ text: 'cell', locator: { row: 1000001, column: 1 } }] },
+    { fragments: [] },
+    { fragments: [{ text: 'x'.repeat(20001), locator: { paragraph: 1 } }] },
+  ]) {
+    const { deps, events } = fixture({ parse: async () => output });
+    const result = await runImportProcessing(path, 100, deps);
+    assert.equal(result.outcome, 'failed');
+    assert.equal(result.errorCode, 'parse_failed');
+    assert.equal(result.chargedMicrousd, 100);
+    assert.equal(result.output, undefined);
+    assert.equal(events.filter((e) => e === 'finish').length, 1);
+  }
+});

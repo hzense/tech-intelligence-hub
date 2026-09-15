@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ImportDocument, ImportItem } from '../../../packages/database/src/import-store.mjs';
 import { ImportIOError } from './import-io.ts';
+import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
 interface ObjectReceipt {
   bytes: Buffer;
   version: string;
@@ -63,6 +64,13 @@ export async function runImportProcessing(
     )
       throw new Error('document_conflict');
     const output = await deps.parse(receipt.bytes, document.format);
+    // Deterministic parser contract failures must be persisted as failed, not left running.
+    // Keep the original input shape: persistence independently validates and normalizes it.
+    try {
+      parseImportOutput(output);
+    } catch {
+      throw new ImportIOError('parse_failed');
+    }
     completion = {
       fence: claim.attempt.fence,
       outcome: 'completed',

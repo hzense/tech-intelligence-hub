@@ -12,6 +12,8 @@ def emit(text,locator):
  global total
  text=text.strip()
  if not text: return
+ for key,value in locator.items():
+  if key in ('page','paragraph','row','column') and (value<1 or value>(300 if key=='page' else 1000000)): fail('limit_exceeded')
  if '\x00' in text or len(text)>20000: fail('limit_exceeded')
  total+=len(text.encode('utf-8'))
  if total>1000000 or len(fragments)>=10000: fail('limit_exceeded')

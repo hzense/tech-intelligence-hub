@@ -7,10 +7,17 @@ import { ImportTaskError } from '../../../packages/ingestion/src/import-task-con
 import { readImportBytes, ImportIOError } from '../lib/import-io.ts';
 import { assertImportFetchURL, fetchImportURL } from '../lib/import-fetch.ts';
 const origin = 'https://hzense.com';
-test('retry limit is a conflict rather than a transient service error', async () => {
-  const response = importError(new ImportTaskError('retry_not_allowed'));
-  assert.equal(response.status, 409);
-  assert.deepEqual(await response.json(), { error: 'retry_not_allowed' });
+test('store business conflicts retain their actual codes rather than becoming service errors', async () => {
+  for (const code of [
+    'retry_not_allowed',
+    'request_id_conflict',
+    'daily_batch_limit',
+    'stale_attempt',
+  ]) {
+    const response = importError(new ImportTaskError(code));
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { error: code });
+  }
 });
 test('list cursor is forwarded without allowing extra or repeated query fields', async () => {
   let received;
