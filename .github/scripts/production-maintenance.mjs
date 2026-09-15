@@ -131,7 +131,35 @@ const importTasksManifest = Object.freeze([
     'ae84c8eb9c212c48bde256eda199238f8d43579f2caa969b76fcc248709eda8a',
   ]),
 ]);
-export function importTasksMigrationPlan(pendingMigrations, migrations) {
+export function importTasksTargetBinding(policy, preflight, backupId) {
+  requireGate(
+    ['host', 'port', 'database', 'user'].every(
+      (key) => typeof policy?.[key] === 'string' && policy[key].length > 0,
+    ) &&
+      preflight?.database === policy.database &&
+      preflight?.user === policy.user,
+    'import-tasks-target-required',
+  );
+  requireGate(
+    typeof backupId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:/-]{7,255}$/.test(backupId),
+    'reviewed-backup-required',
+  );
+  return {
+    targetFingerprint: createHash('sha256')
+      .update('hzense/import-tasks-target/v1\0')
+      .update(
+        JSON.stringify([
+          policy.host.toLowerCase(),
+          policy.port,
+          preflight.database,
+          preflight.user,
+        ]),
+      )
+      .digest('hex'),
+    backupIdSha256: createHash('sha256').update(backupId).digest('hex'),
+  };
+}
+export function importTasksMigrationPlan(pendingMigrations, migrations, binding) {
   requireGate(
     Array.isArray(migrations) &&
       migrations.length === importTasksManifest.length &&
@@ -154,17 +182,26 @@ export function importTasksMigrationPlan(pendingMigrations, migrations) {
     .update('hzense/import-tasks-migration-manifest/v1\0')
     .update(JSON.stringify(importTasksManifest))
     .digest('hex');
+  requireGate(
+    digest.test(binding?.targetFingerprint ?? '') && digest.test(binding?.backupIdSha256 ?? ''),
+    'import-tasks-target-required',
+  );
+  const { targetFingerprint, backupIdSha256 } = binding;
   const planFingerprint = createHash('sha256')
-    .update('hzense/import-tasks-migration-plan/v1\0')
-    .update(JSON.stringify({ manifestFingerprint, pendingMigrations }))
+    .update('hzense/import-tasks-migration-plan/v2\0')
+    .update(
+      JSON.stringify({ manifestFingerprint, pendingMigrations, targetFingerprint, backupIdSha256 }),
+    )
     .digest('hex');
-  return { manifestFingerprint, planFingerprint };
+  return { manifestFingerprint, planFingerprint, targetFingerprint, backupIdSha256 };
 }
-export function requireImportTasksMigrationScope(preflight, migrations, approval) {
-  const plan = importTasksMigrationPlan(preflight?.pendingMigrations, migrations);
+export function requireImportTasksMigrationScope(preflight, migrations, approval, binding) {
+  const plan = importTasksMigrationPlan(preflight?.pendingMigrations, migrations, binding);
   requireGate(
     approval?.manifestFingerprint === plan.manifestFingerprint &&
-      approval?.planFingerprint === plan.planFingerprint,
+      approval?.planFingerprint === plan.planFingerprint &&
+      approval?.targetFingerprint === plan.targetFingerprint &&
+      approval?.backupIdSha256 === plan.backupIdSha256,
     'import-tasks-migration-plan-mismatch',
   );
   return plan;
@@ -186,6 +223,8 @@ function validateRecoveryPolicy(approval, operation) {
     return policy;
   }
   if (policy === aiConfigRecoveryPolicy || policy === importTasksRecoveryPolicy) {
+    if (policy === importTasksRecoveryPolicy)
+      requireGate(digest.test(approval.targetFingerprint ?? ''), 'import-tasks-target-required');
     requireGate(
       operation === 'migrate' || operation === 'acl-capture',
       policy === importTasksRecoveryPolicy
@@ -370,7 +409,13 @@ export function publicMaintenanceResult(operation, result = {}) {
   ]) {
     if (Number.isSafeInteger(result[key]) && result[key] >= 0) summary[key] = result[key];
   }
-  for (const key of ['fingerprint', 'planFingerprint', 'manifestFingerprint']) {
+  for (const key of [
+    'fingerprint',
+    'planFingerprint',
+    'manifestFingerprint',
+    'targetFingerprint',
+    'backupIdSha256',
+  ]) {
     if (typeof result[key] === 'string' && digest.test(result[key])) summary[key] = result[key];
   }
   if (typeof result.committed === 'boolean') summary.committed = result.committed;
@@ -460,10 +505,30 @@ export async function verifyMaintenanceFreshness(env, { fetchImpl = globalThis.f
 
 async function executeOperation(env, { operation, approval }) {
   if (operation === 'acl-capture') {
+    let binding;
+    if (approval?.recoveryPolicy === importTasksRecoveryPolicy) {
+      const { productionDatabaseOptions, validateConnectionTarget } =
+        await import('../../packages/database/src/connection-policy.mjs');
+      const { runDatabasePreflight } = await import('../../packages/database/src/preflight.mjs');
+      const options = productionDatabaseOptions(env);
+      binding = importTasksTargetBinding(
+        validateConnectionTarget(options),
+        await runDatabasePreflight(options),
+        env.MAINTENANCE_BACKUP_ID,
+      );
+      requireGate(
+        binding.targetFingerprint === approval.targetFingerprint &&
+          binding.backupIdSha256 === approval.backupIdSha256,
+        'import-tasks-target-mismatch',
+      );
+    }
     const { capturePublicAclEvidence } = await import('./public-acl-evidence.mjs');
-    return capturePublicAclEvidence(env, {
-      checkApproval: () => validateMaintenanceRequest(env),
-    });
+    return {
+      ...(await capturePublicAclEvidence(env, {
+        checkApproval: () => validateMaintenanceRequest(env),
+      })),
+      ...binding,
+    };
   }
   if (operation === 'runtime-preflight') {
     const { runRuntimeReaderPreflight, runtimeReaderProductionOptions } =
@@ -483,7 +548,14 @@ async function executeOperation(env, { operation, approval }) {
     const migrations = await loadMigrations();
     await verifyMigrationManifest(migrations);
     try {
-      return { ...preflight, ...importTasksMigrationPlan(preflight.pendingMigrations, migrations) };
+      return {
+        ...preflight,
+        ...importTasksMigrationPlan(
+          preflight.pendingMigrations,
+          migrations,
+          importTasksTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+        ),
+      };
     } catch (error) {
       if (!(error instanceof MaintenanceGateError)) throw error;
     }
@@ -501,6 +573,7 @@ async function executeOperation(env, { operation, approval }) {
     const { runMigrations, loadMigrations, verifyMigrationManifest } =
       await import('../../packages/database/src/migrate.mjs');
     let approvedPlan;
+    let migrationClient;
     async function checkScope(preflight) {
       if (approval?.recoveryPolicy === unverifiedRecoveryPolicy)
         requireFts1MigrationScope(preflight);
@@ -509,13 +582,19 @@ async function executeOperation(env, { operation, approval }) {
         await verifyMigrationManifest(migrations);
         approvedPlan =
           approval.recoveryPolicy === importTasksRecoveryPolicy
-            ? requireImportTasksMigrationScope(preflight, migrations, approval)
+            ? requireImportTasksMigrationScope(
+                preflight,
+                migrations,
+                approval,
+                importTasksTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+              )
             : requireAiConfigMigrationScope(preflight, migrations, approval);
       }
     }
     await runMigrations({
       connectionString: options.connectionString,
       beforeMigrate: async (client) => {
+        migrationClient = client;
         const preflight = await inspectDatabasePreflight(client, {
           ...options,
           expectedHost: policy.host,
@@ -527,17 +606,32 @@ async function executeOperation(env, { operation, approval }) {
         aiConfigRecoveryPolicy,
         importTasksRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
-        ? (pendingMigrations, artifact) => {
+        ? async (pendingMigrations, artifact) => {
             if (
               [aiConfigRecoveryPolicy, importTasksRecoveryPolicy].includes(approval?.recoveryPolicy)
             ) {
               // The runner freezes this actual execution snapshot before opening
               // its connection. Do not substitute another filesystem reread.
-              const requireScope =
-                approval.recoveryPolicy === importTasksRecoveryPolicy
-                  ? requireImportTasksMigrationScope
-                  : requireAiConfigMigrationScope;
-              approvedPlan = requireScope({ pendingMigrations }, artifact?.migrations, approval);
+              if (approval.recoveryPolicy === importTasksRecoveryPolicy) {
+                // Re-read authenticated identity from the very same connection
+                // while holding the migration lock, not from approval fields.
+                const current = await inspectDatabasePreflight(migrationClient, {
+                  ...options,
+                  expectedHost: policy.host,
+                });
+                approvedPlan = requireImportTasksMigrationScope(
+                  { ...current, pendingMigrations },
+                  artifact?.migrations,
+                  approval,
+                  importTasksTargetBinding(policy, current, env.MAINTENANCE_BACKUP_ID),
+                );
+              } else {
+                approvedPlan = requireAiConfigMigrationScope(
+                  { pendingMigrations },
+                  artifact?.migrations,
+                  approval,
+                );
+              }
             } else {
               requireFts1MigrationScope({ pendingMigrations });
             }

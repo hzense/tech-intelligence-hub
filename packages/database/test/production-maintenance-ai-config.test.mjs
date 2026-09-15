@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   aiConfigMigrationPlan,
   importTasksMigrationPlan,
+  importTasksTargetBinding,
   requireImportTasksMigrationScope,
   publicMaintenanceFailure,
   publicMaintenanceResult,
@@ -24,10 +25,11 @@ const calls = vi.hoisted(() => ({
   ddl: vi.fn(),
   lockedPending: undefined,
   lockedMigrations: undefined,
+  policy: { host: 'test.invalid', port: '5432', database: 'hzense', user: 'migrator' },
 }));
 vi.mock('../src/connection-policy.mjs', () => ({
   productionDatabaseOptions: () => ({ connectionString: 'test-adapter-only' }),
-  validateConnectionTarget: () => ({ host: 'test.invalid' }),
+  validateConnectionTarget: () => calls.policy,
 }));
 vi.mock('../src/preflight.mjs', () => ({
   runDatabasePreflight: calls.preflight,
@@ -130,6 +132,7 @@ function execute(env = environment(), options = {}) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  calls.policy = { host: 'test.invalid', port: '5432', database: 'hzense', user: 'migrator' };
   calls.lockedPending = pending;
   calls.lockedMigrations = migrations;
   calls.preflight.mockResolvedValue({ pendingMigrations: pending });
@@ -152,6 +155,12 @@ describe('independent 0014 import rollout gate', () => {
     sql: readFileSync(new URL(name, directory), 'utf8'),
   }));
   const onlyImport = ['0014_import_tasks.sql'];
+  const identity = { database: 'hzense', user: 'migrator' };
+  const binding = importTasksTargetBinding(
+    { host: 'test.invalid', port: '5432', ...identity },
+    identity,
+    backupId,
+  );
   function importEnvironment(operation = 'migrate', changes = {}) {
     return environment(operation, {
       recoveryPolicy: 'accept-unverified-import-tasks',
@@ -161,23 +170,24 @@ describe('independent 0014 import rollout gate', () => {
         historicalAclGapAccepted: true,
         acknowledgement: 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
       },
-      ...(operation === 'migrate' ? importTasksMigrationPlan(onlyImport, full) : {}),
+      ...binding,
+      ...(operation === 'migrate' ? importTasksMigrationPlan(onlyImport, full, binding) : {}),
       ...changes,
     });
   }
   function configure() {
     calls.load.mockResolvedValue(full);
-    calls.inspect.mockResolvedValue({ pendingMigrations: onlyImport });
-    calls.preflight.mockResolvedValue({ pendingMigrations: onlyImport });
+    calls.inspect.mockResolvedValue({ ...identity, pendingMigrations: onlyImport });
+    calls.preflight.mockResolvedValue({ ...identity, pendingMigrations: onlyImport });
     calls.lockedPending = onlyImport;
     calls.lockedMigrations = full;
     calls.verify.mockResolvedValue({ migrationCount: 15, tableCount: 47 });
   }
   it('binds exact full manifest, actual SQL bytes, and only pending 0014', () => {
-    const plan = importTasksMigrationPlan(onlyImport, full);
-    expect(requireImportTasksMigrationScope({ pendingMigrations: onlyImport }, full, plan)).toEqual(
-      plan,
-    );
+    const plan = importTasksMigrationPlan(onlyImport, full, binding);
+    expect(
+      requireImportTasksMigrationScope({ pendingMigrations: onlyImport }, full, plan, binding),
+    ).toEqual(plan);
     for (const pending of [[], ['0013_ai_configuration.sql'], [...onlyImport, '0015_future.sql']])
       expect(() => importTasksMigrationPlan(pending, full)).toThrow(
         'import-tasks-migration-scope-required',
@@ -194,10 +204,15 @@ describe('independent 0014 import rollout gate', () => {
       'ai-config-migration-manifest-required',
     );
     expect(() =>
-      requireImportTasksMigrationScope({ pendingMigrations: onlyImport }, full, {
-        ...plan,
-        planFingerprint: 'f'.repeat(64),
-      }),
+      requireImportTasksMigrationScope(
+        { pendingMigrations: onlyImport },
+        full,
+        {
+          ...plan,
+          planFingerprint: 'f'.repeat(64),
+        },
+        binding,
+      ),
     ).toThrow('import-tasks-migration-plan-mismatch');
   });
   it('requires new explicit scope and preserves backup, expiry, and run binding', () => {
@@ -222,9 +237,15 @@ describe('independent 0014 import rollout gate', () => {
   });
   it('emits exact plan fingerprints on readonly preflight without DDL', async () => {
     configure();
-    expect(await execute({ ...baseEnv, MAINTENANCE_OPERATION: 'preflight' })).toMatchObject({
+    expect(
+      await execute({
+        ...baseEnv,
+        MAINTENANCE_BACKUP_ID: backupId,
+        MAINTENANCE_OPERATION: 'preflight',
+      }),
+    ).toMatchObject({
       pendingMigrationCount: 1,
-      ...importTasksMigrationPlan(onlyImport, full),
+      ...importTasksMigrationPlan(onlyImport, full, binding),
     });
     expect(calls.ddl).not.toHaveBeenCalled();
   });
@@ -237,6 +258,47 @@ describe('independent 0014 import rollout gate', () => {
       recoveryPolicy: 'accept-unverified-import-tasks',
     });
     expect(calls.ddl).toHaveBeenCalledOnce();
+    expect(calls.inspect).toHaveBeenCalledTimes(2);
+  });
+  it('rejects another matching-schema endpoint even when connection expectations change with it', async () => {
+    configure();
+    calls.policy = { ...calls.policy, host: 'other.invalid' };
+    await expect(execute(importEnvironment())).rejects.toThrow(
+      'import-tasks-migration-plan-mismatch',
+    );
+    expect(calls.ddl).not.toHaveBeenCalled();
+  });
+  it('rejects changed authenticated identity during locked recheck', async () => {
+    configure();
+    calls.inspect
+      .mockResolvedValueOnce({ ...identity, pendingMigrations: onlyImport })
+      .mockResolvedValueOnce({ ...identity, database: 'other', pendingMigrations: onlyImport });
+    await expect(execute(importEnvironment())).rejects.toThrow('import-tasks-target-required');
+    expect(calls.ddl).not.toHaveBeenCalled();
+  });
+  it('binds backup reference to the plan even with an otherwise valid replacement approval', async () => {
+    configure();
+    const replacement = 'different-reviewed-backup';
+    const env = importEnvironment('migrate', {
+      backupIdSha256: createHash('sha256').update(replacement).digest('hex'),
+    });
+    env.MAINTENANCE_BACKUP_ID = replacement;
+    await expect(execute(env)).rejects.toThrow('import-tasks-migration-plan-mismatch');
+    expect(calls.ddl).not.toHaveBeenCalled();
+  });
+  it('rejects target drift before ACL capture', async () => {
+    configure();
+    calls.policy = { ...calls.policy, host: 'other.invalid' };
+    await expect(execute(importEnvironment('acl-capture'))).rejects.toThrow(
+      'import-tasks-target-mismatch',
+    );
+    expect(calls.capture).not.toHaveBeenCalled();
+  });
+  it('emits no import approval fingerprints without a backup reference', async () => {
+    configure();
+    const result = await execute({ ...baseEnv, MAINTENANCE_OPERATION: 'preflight' });
+    expect(result.planFingerprint).toBeUndefined();
+    expect(result.targetFingerprint).toBeUndefined();
   });
   it('rejects concurrent advancement before any DDL', async () => {
     configure();

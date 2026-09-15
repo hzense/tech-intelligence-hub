@@ -77,7 +77,7 @@ export function maintenanceWorkflowProblems(workflow) {
     MAINTENANCE_APPROVAL:
       "${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture') && secrets.MAINTENANCE_APPROVAL || '' }}",
     MAINTENANCE_BACKUP_ID:
-      "${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture') && secrets.MAINTENANCE_BACKUP_ID || '' }}",
+      "${{ (inputs.operation == 'preflight' || inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture') && secrets.MAINTENANCE_BACKUP_ID || '' }}",
   };
   for (const [name, expression] of Object.entries(secretBindings)) {
     check(steps[4]?.env?.[name] === expression, `keep the scoped ${name} binding`);

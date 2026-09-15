@@ -66,7 +66,7 @@ jobs:
           DATABASE_DIRECT_URL: ${{ inputs.operation != 'runtime-preflight' && secrets.DATABASE_DIRECT_URL || '' }}
           HZENSE_RUNTIME_DATABASE_URL: ${{ inputs.operation == 'runtime-preflight' && secrets.HZENSE_RUNTIME_DATABASE_URL || '' }}
           MAINTENANCE_APPROVAL: ${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture') && secrets.MAINTENANCE_APPROVAL || '' }}
-          MAINTENANCE_BACKUP_ID: ${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture') && secrets.MAINTENANCE_BACKUP_ID || '' }}
+          MAINTENANCE_BACKUP_ID: ${{ (inputs.operation == 'preflight' || inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture') && secrets.MAINTENANCE_BACKUP_ID || '' }}
           HZENSE_DATABASE_EXPECTED_HOST: ${{ vars.HZENSE_DATABASE_EXPECTED_HOST }}
           HZENSE_DATABASE_EXPECTED_PORT: ${{ vars.HZENSE_DATABASE_EXPECTED_PORT }}
           HZENSE_DATABASE_EXPECTED_NAME: ${{ vars.HZENSE_DATABASE_EXPECTED_NAME }}
