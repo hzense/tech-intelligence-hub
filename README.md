@@ -32,7 +32,7 @@ HZense 是一个科技情报平台，将分散的技术信息整理为结构化�
 
 以上是已整合的设计基线，不代表功能已实现、数据已迁移或生产已切换。各阶段必须分别开发和验收，进度见 [PROGRESS.md](docs/PROGRESS.md)。下文的旧版 MVP 和历史记录不能当作新版路线图或最新生产检查结果。
 
-当前增量：Google 管理员认证的[上线记录](docs/production-evidence/2026-09-13-admin-auth.md)已归档；[受限公开发布与安全撤回](docs/SIGNAL_PUBLIC_PUBLICATION.md)提供已核验候选的发布入口及实时公开资格视图，网站和新版信号搜索共用此视图，不需逐次手工同步。该增量默认关闭，生产迁移、最小角色配置和读模式切换另行执行；AI 采集、任务配置和批量导入仍待开发。
+当前增量：Google 管理员认证的[上线记录](docs/production-evidence/2026-09-13-admin-auth.md)已归档；[受限公开发布与安全撤回](docs/SIGNAL_PUBLIC_PUBLICATION.md)提供已核验候选的发布入口及实时公开资格视图，网站和新版信号搜索共用此视图，不需逐次手工同步。该增量默认关闭，生产迁移、最小角色配置和读模式切换另行执行。[私有批量导入](docs/IMPORT_TASKS.md)已实现任务存储、上传页面和隔离解析代码，生产资源与启用仍待审批；AI 采集、生成执行与完整调度仍待接通。
 
 ## 现有 MVP 流程：保留至新版切换
 
@@ -88,7 +88,7 @@ content/                   # 现有编辑内容与历史档案
 packages/
   content/                 # Zod 模式、内容加载与校验
   database/                # Drizzle 结构、迁移、同步和权限检查
-  ingestion/               # 批量输入接收前校验；尚未接线上上传／解析
+  ingestion/               # 批量输入契约、私有任务契约与隔离解析源码
   search/                  # 搜索投影、匹配、排序和数据库查询
   intelligence/            # 智能分析模块预留边界，尚无独立实现
   ui/                      # 共享设计系统预留边界，尚无独立组件包
@@ -114,7 +114,7 @@ docs/
 - [产品设计](docs/DESIGN.md)：产品与信息架构。
 - [v2 重构设计](docs/SIGNAL_FIRST_REDESIGN.md)：页面约定、迁移和验收。
 - [自动信号生产方案](docs/AUTONOMOUS_SIGNAL_PIPELINE.md)：与 v2 整合的 AI 生产技术约定。
-- [批量导入当前增量](insights/2026-09-15-batch-import/README.md)：第二阶段设计、接收前校验与尚待接线的能力。
+- [批量导入当前增量](docs/IMPORT_TASKS.md)：私有存储、上传入口、隔离处理、测试与生产配置边界；OCR 暂关闭。
 - [AI 连接与模型配置](docs/AI_CONNECTIONS.md)：加密凭证、模型发现与独立能力测试、分阶段 Profile；本批本地实现，不代表生产 AI 已启用。
 - [后台信号工作台](docs/SIGNAL_WORKBENCH.md)：只读列表、版本详情、证据摘要与当前公开资格；六阶段交付顺序、专用只读角色及生产授权边界。
 - [技术架构](docs/TECHNICAL_ARCHITECTURE.md)：模块和技术边界。

@@ -24,7 +24,7 @@ export default async function AdminHomePage() {
         </h1>
         <p className={styles.copy}>
           已接通管理员认证、AI
-          连接与模型配置及受限信号发布入口。信号采集、文档与链接批量导入功能仍待实现；AI
+          连接与模型配置及受限信号发布入口。文档与链接批量导入须完成独立生产配置后启用；AI
           服务须另行配置后方可使用。
         </p>
         <dl className={styles.account}>
@@ -32,6 +32,9 @@ export default async function AdminHomePage() {
           <dd>{session.user.email}</dd>
         </dl>
         <div className={styles.actions}>
+          <Link className={styles.backLink} href="/admin/imports">
+            文档与链接批量导入
+          </Link>
           <Link className={styles.backLink} href="/admin/signals">
             信号只读工作台
           </Link>

@@ -64,6 +64,11 @@ jobs:
         run: pnpm build
       - name: Run unit tests
         run: pnpm test
+      - name: Verify isolated parser with synthetic documents
+        run: |
+          python3 -m venv "$RUNNER_TEMP/import-parser-venv"
+          "$RUNNER_TEMP/import-parser-venv/bin/pip" install -r packages/ingestion/parser-requirements.txt
+          HZENSE_PARSER_TEST_PYTHON="$RUNNER_TEMP/import-parser-venv/bin/python3" node --test packages/ingestion/test/import-parser.test.mjs
       - name: Verify built administrator authentication with isolated fixtures
         working-directory: apps/web
         env:
@@ -71,6 +76,8 @@ jobs:
         run: node --test test/admin-auth-runtime.test.mjs
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
+      - name: Verify import workbench with isolated browser fixtures
+        run: HZENSE_IMPORT_BROWSER_TEST=1 node --test apps/web/test/admin-import-browser.test.mjs
       - name: Run production browser smoke tests
         run: pnpm test:e2e
       - name: Validate Topic authority and content integrity

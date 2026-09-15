@@ -189,7 +189,8 @@ integrationSuite('PostgreSQL migration integration', () => {
 
   it('binds AI risk approval to the immutable SQL snapshot actually executed, not restored files', async () => {
     const databaseUrl = connectionUrl(databaseNames.artifact);
-    const migrations = await loadMigrations(resolve(process.cwd(), '../../db/migrations'));
+    const currentMigrations = await loadMigrations(resolve(process.cwd(), '../../db/migrations'));
+    const migrations = currentMigrations.filter(({ name }) => name < '0014_');
     const pending = migrations.slice(4).map(({ name }) => name);
     const approval = aiConfigMigrationPlan(pending, migrations);
     await withClient(databaseUrl, async (client) => {
@@ -240,8 +241,16 @@ integrationSuite('PostgreSQL migration integration', () => {
               client,
               productionLikeOptions(databaseNames.artifact),
             );
+            // Today's full artifact must not reuse the old AI-only approval.
+            expect(() =>
+              requireAiConfigMigrationScope(preflight, currentMigrations, approval),
+            ).toThrow('ai-config-migration-manifest-required');
             expect(
-              requireAiConfigMigrationScope(preflight, await loadMigrations(directory), approval),
+              requireAiConfigMigrationScope(
+                { ...preflight, pendingMigrations: pending },
+                await loadMigrations(directory),
+                approval,
+              ),
             ).toEqual(approval);
           },
           beforeApply: (actualPending, artifact) => {
@@ -289,9 +298,11 @@ integrationSuite('PostgreSQL migration integration', () => {
           actualPending.length = 0;
         },
       });
+      // Complete the separately scoped local fixture before the moving full-schema verifier.
+      await runGuardedMigrations(databaseNames.artifact);
       await expect(
         verifyDatabaseContract(productionLikeOptions(databaseNames.artifact)),
-      ).resolves.toMatchObject({ migrationCount: 14 });
+      ).resolves.toMatchObject({ migrationCount: currentMigrations.length });
       await withClient(databaseUrl, async (client) => {
         expect(
           (await client.query('SELECT publication_enabled FROM signal_publication_control')).rows,

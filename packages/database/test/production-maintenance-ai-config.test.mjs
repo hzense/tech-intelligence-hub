@@ -42,7 +42,11 @@ vi.mock('../../../.github/scripts/public-acl-evidence.mjs', () => ({
 }));
 
 const directory = new URL('../../../db/migrations/', import.meta.url);
-const manifest = JSON.parse(readFileSync(new URL('checksums.json', directory), 'utf8'));
+const currentManifest = JSON.parse(readFileSync(new URL('checksums.json', directory), 'utf8'));
+// This is the historical 0000–0013 approval fixture, not permission for 0014.
+const manifest = Object.fromEntries(
+  Object.entries(currentManifest).filter(([name]) => name < '0014_'),
+);
 const migrations = Object.entries(manifest).map(([name, checksum]) => ({
   name,
   checksum,
@@ -140,6 +144,19 @@ beforeEach(() => {
 });
 
 describe('fixed AI configuration migration plan', () => {
+  it('refuses the current import migration under the historical AI approval', () => {
+    const current = Object.entries(currentManifest).map(([name, checksum]) => ({
+      name,
+      checksum,
+      sql: readFileSync(new URL(name, directory), 'utf8'),
+    }));
+    expect(() =>
+      aiConfigMigrationPlan(
+        current.slice(4).map(({ name }) => name),
+        current,
+      ),
+    ).toThrow('ai-config-migration-manifest-required');
+  });
   it('pins independently reviewed names and actual SQL checksums, with domain-separated hashes', () => {
     expect(migrations).toHaveLength(14);
     for (const migration of migrations) {

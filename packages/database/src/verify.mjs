@@ -84,6 +84,15 @@ import {
   aiConfigurationDefaults,
   aiConfigurationIndexes,
 } from './ai-configuration-catalog.mjs';
+import {
+  importColumns,
+  importPrimaryKeys,
+  importForeignKeys,
+  importChecks,
+  importDefaults,
+  importIndexes,
+  importUniqueIndexes,
+} from './import-catalog.mjs';
 
 const { Client } = pg;
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
@@ -217,6 +226,7 @@ const expectedColumns = {
   ...candidateVerificationColumns,
   ...currentPublicationColumns,
   ...aiConfigurationColumns,
+  ...importColumns,
 };
 for (const tableName of allStampedSignalTables) {
   expectedColumns[tableName] = {
@@ -286,6 +296,7 @@ const expectedPrimaryKeys = new Set([
   ...candidateVerificationPrimaryKeys,
   ...currentPublicationPrimaryKeys,
   ...aiConfigurationPrimaryKeys,
+  ...importPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -311,6 +322,7 @@ const expectedForeignKeys = new Set([
   ...candidateVerificationForeignKeys,
   ...currentPublicationForeignKeys,
   ...aiConfigurationForeignKeys,
+  ...importForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -335,6 +347,7 @@ const expectedCheckExpressions = {
   ...candidateVerificationChecks,
   ...currentPublicationChecks,
   ...aiConfigurationChecks,
+  ...importChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -399,6 +412,7 @@ const expectedDefaults = new Map([
   ...candidateVerificationDefaults,
   ...currentPublicationDefaults,
   ...aiConfigurationDefaults,
+  ...importDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
   ['topics.runtime_enabled', new Set(['false'])],
@@ -422,6 +436,7 @@ const expectedDefaults = new Map([
 ]);
 
 const expectedUniqueIndexes = new Set([
+  ...importUniqueIndexes,
   ...affiliationUniqueIndexes,
   ...eventIdentityUniqueIndexes,
   ...signalPublicationUniqueIndexes,
@@ -437,6 +452,7 @@ const expectedUniqueIndexes = new Set([
 const requiredNonUniqueIndexes = new Set([
   ...signalPublicationControlIndexes,
   ...aiConfigurationIndexes,
+  ...importIndexes,
   ...signalFoundationIndexes,
   ...affiliationIndexes,
   'entities|type',
@@ -770,7 +786,9 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
                 'signal_publication_control', 'signal_publication_tasks', 'signal_publication_runs',
                 'signal_qualified_publication_receipts',
                 'signal_candidate_verifications', 'signal_candidate_assembly_receipts',
-                'ai_connections', 'ai_connection_versions', 'ai_profiles', 'ai_profile_versions', 'ai_probe_runs'
+                'ai_connections', 'ai_connection_versions', 'ai_profiles', 'ai_profile_versions', 'ai_probe_runs',
+                'import_batches', 'import_items', 'import_documents', 'import_attempts',
+                'import_outputs', 'import_audit', 'import_daily_usage'
               ))::text
               ORDER BY constraint_info.oid
             ) AS definitions
@@ -809,7 +827,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
       Object.hasOwn(qualifiedPublicationChecks, tableName) ||
       Object.hasOwn(candidateVerificationChecks, tableName) ||
       Object.hasOwn(currentPublicationChecks, tableName) ||
-      Object.hasOwn(aiConfigurationChecks, tableName)
+      Object.hasOwn(aiConfigurationChecks, tableName) ||
+      Object.hasOwn(importChecks, tableName)
         ? canonicalPublicationControlCheck
         : [
               'signal_event_identities',

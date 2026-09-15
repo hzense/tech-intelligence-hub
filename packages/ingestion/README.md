@@ -1,6 +1,8 @@
-# 资料导入前置契约
+# 资料导入契约与隔离解析器
 
-`@hzense/ingestion` 当前提供混合批次的**接收前声明校验**。这是资料导入中心的一个独立子模块，不是已经接通的上传、抓取、解析、AI 或发布服务。
+任务契约位于 `src/import-task-contract.mjs`，隔离 Python 解析源码位于 `src/import-parser-source.mjs`。Web 层已接入上传与 Worker 适配，存储实现和生产未完成边界见[导入任务记录](../../docs/IMPORT_TASKS.md)。以下接收前校验函数本身仍不执行上传、解析或发布。
+
+`@hzense/ingestion` 的包入口提供混合批次的**接收前声明校验**。新增隔离解析源码由线上 Sandbox 执行，不是用户本地上传工具；不在 Web 进程内执行不可信文档，不调用 AI 或发布服务。
 
 ## 已实现的边界
 
@@ -82,4 +84,4 @@ pnpm --filter @hzense/ingestion typecheck
 pnpm --filter @hzense/ingestion build
 ```
 
-源码直接使用 `.mjs`，声明使用 `.d.mts`，没有运行时依赖或生成产物。现有 `packages/*` 工作区模式可以发现此包；调用方仍需声明工作区依赖并更新根锁文件。
+契约源码使用 `.mjs`，声明使用 `.d.mts`，无 Node 运行时依赖或生成产物。解析镜像另需 Python 3.11+ 和 `parser-requirements.txt` 中的固定依赖；生产不在线安装。CI 在临时 Python 环境运行合成 PDF／Office 等样例，通过 `HZENSE_PARSER_TEST_PYTHON` 指定测试解释器；这不是生产上传入口或云隔离验收。
