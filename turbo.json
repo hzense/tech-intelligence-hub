@@ -4,8 +4,10 @@
   "globalEnv": ["HZENSE_SIGNAL_READ_MODE"],
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },
+    "@hzense/ingestion#build": { "dependsOn": ["^build"], "outputs": [] },
     "lint": { "dependsOn": ["^lint"] },
     "typecheck": { "dependsOn": ["^typecheck"] },
-    "test": { "dependsOn": ["^build"], "outputs": ["coverage/**"] }
+    "test": { "dependsOn": ["^build"], "outputs": ["coverage/**"] },
+    "@hzense/ingestion#test": { "dependsOn": ["^build"], "outputs": [] }
   }
 }
