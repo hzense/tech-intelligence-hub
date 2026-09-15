@@ -17,6 +17,7 @@ const writes = new Set(['migrate', 'search-apply']);
 const digest = /^[a-f0-9]{64}$/;
 const unverifiedRecoveryPolicy = 'accept-unverified-fts1';
 const aiConfigRecoveryPolicy = 'accept-unverified-ai-config';
+const importTasksRecoveryPolicy = 'accept-unverified-import-tasks';
 
 // A reviewed one-time rollout boundary, NOT the moving repository manifest.
 // Keep historical checksums pinned too, so approval identifies the complete
@@ -122,6 +123,53 @@ export function requireAiConfigMigrationScope(preflight, migrations, approval) {
   return plan;
 }
 
+// New, independently reviewed boundary. Never widen the historical AI approval.
+const importTasksManifest = Object.freeze([
+  ...aiConfigManifest,
+  Object.freeze([
+    '0014_import_tasks.sql',
+    'ae84c8eb9c212c48bde256eda199238f8d43579f2caa969b76fcc248709eda8a',
+  ]),
+]);
+export function importTasksMigrationPlan(pendingMigrations, migrations) {
+  requireGate(
+    Array.isArray(migrations) &&
+      migrations.length === importTasksManifest.length &&
+      Array.from(migrations).every(
+        (entry, index) =>
+          entry?.name === importTasksManifest[index][0] &&
+          entry?.checksum === importTasksManifest[index][1] &&
+          typeof entry?.sql === 'string' &&
+          createHash('sha256').update(entry.sql).digest('hex') === importTasksManifest[index][1],
+      ),
+    'import-tasks-migration-manifest-required',
+  );
+  requireGate(
+    Array.isArray(pendingMigrations) &&
+      pendingMigrations.length === 1 &&
+      pendingMigrations[0] === '0014_import_tasks.sql',
+    'import-tasks-migration-scope-required',
+  );
+  const manifestFingerprint = createHash('sha256')
+    .update('hzense/import-tasks-migration-manifest/v1\0')
+    .update(JSON.stringify(importTasksManifest))
+    .digest('hex');
+  const planFingerprint = createHash('sha256')
+    .update('hzense/import-tasks-migration-plan/v1\0')
+    .update(JSON.stringify({ manifestFingerprint, pendingMigrations }))
+    .digest('hex');
+  return { manifestFingerprint, planFingerprint };
+}
+export function requireImportTasksMigrationScope(preflight, migrations, approval) {
+  const plan = importTasksMigrationPlan(preflight?.pendingMigrations, migrations);
+  requireGate(
+    approval?.manifestFingerprint === plan.manifestFingerprint &&
+      approval?.planFingerprint === plan.planFingerprint,
+    'import-tasks-migration-plan-mismatch',
+  );
+  return plan;
+}
+
 // Explicit exception, not fabricated evidence of a successful restore. The
 // protected Environment review remains the authority; these are declarations.
 function validateRecoveryPolicy(approval, operation) {
@@ -129,17 +177,20 @@ function validateRecoveryPolicy(approval, operation) {
   requireGate(
     policy === 'verified' ||
       policy === unverifiedRecoveryPolicy ||
-      policy === aiConfigRecoveryPolicy,
+      policy === aiConfigRecoveryPolicy ||
+      policy === importTasksRecoveryPolicy,
     'unsupported-recovery-policy',
   );
   if (policy === 'verified') {
     requireGate(!Object.hasOwn(approval, 'riskAcceptance'), 'conflicting-recovery-approval');
     return policy;
   }
-  if (policy === aiConfigRecoveryPolicy) {
+  if (policy === aiConfigRecoveryPolicy || policy === importTasksRecoveryPolicy) {
     requireGate(
       operation === 'migrate' || operation === 'acl-capture',
-      'ai-config-operation-required',
+      policy === importTasksRecoveryPolicy
+        ? 'import-tasks-operation-required'
+        : 'ai-config-operation-required',
     );
     if (operation === 'migrate') {
       requireGate(
@@ -147,7 +198,9 @@ function validateRecoveryPolicy(approval, operation) {
           digest.test(approval.manifestFingerprint) &&
           typeof approval.planFingerprint === 'string' &&
           digest.test(approval.planFingerprint),
-        'reviewed-ai-config-plan-required',
+        policy === importTasksRecoveryPolicy
+          ? 'reviewed-import-tasks-plan-required'
+          : 'reviewed-ai-config-plan-required',
       );
     }
   }
@@ -159,9 +212,11 @@ function validateRecoveryPolicy(approval, operation) {
       approval.aclRecoveryReviewed === false &&
       !Object.hasOwn(approval, 'restoreEvidenceFingerprint') &&
       acceptance?.scope ===
-        (policy === aiConfigRecoveryPolicy
-          ? 'ai-configuration-production-launch'
-          : 'fts1-production-launch') &&
+        (policy === importTasksRecoveryPolicy
+          ? 'import-tasks-production-launch'
+          : policy === aiConfigRecoveryPolicy
+            ? 'ai-configuration-production-launch'
+            : 'fts1-production-launch') &&
       acceptance.accepted === true &&
       acceptance.historicalAclGapAccepted === true &&
       acceptance.acknowledgement === 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
@@ -288,7 +343,9 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
 export function publicRecoveryAcceptance(request, rawApproval) {
   if (
     (writes.has(request.operation) || request.operation === 'acl-capture') &&
-    [unverifiedRecoveryPolicy, aiConfigRecoveryPolicy].includes(request.approval?.recoveryPolicy)
+    [unverifiedRecoveryPolicy, aiConfigRecoveryPolicy, importTasksRecoveryPolicy].includes(
+      request.approval?.recoveryPolicy,
+    )
   ) {
     return {
       recoveryPolicy: request.approval.recoveryPolicy,
@@ -426,6 +483,11 @@ async function executeOperation(env, { operation, approval }) {
     const migrations = await loadMigrations();
     await verifyMigrationManifest(migrations);
     try {
+      return { ...preflight, ...importTasksMigrationPlan(preflight.pendingMigrations, migrations) };
+    } catch (error) {
+      if (!(error instanceof MaintenanceGateError)) throw error;
+    }
+    try {
       return { ...preflight, ...aiConfigMigrationPlan(preflight.pendingMigrations, migrations) };
     } catch (error) {
       // Generic read-only preflight remains useful outside this one-time rollout;
@@ -442,10 +504,13 @@ async function executeOperation(env, { operation, approval }) {
     async function checkScope(preflight) {
       if (approval?.recoveryPolicy === unverifiedRecoveryPolicy)
         requireFts1MigrationScope(preflight);
-      if (approval?.recoveryPolicy === aiConfigRecoveryPolicy) {
+      if ([aiConfigRecoveryPolicy, importTasksRecoveryPolicy].includes(approval?.recoveryPolicy)) {
         const migrations = await loadMigrations();
         await verifyMigrationManifest(migrations);
-        approvedPlan = requireAiConfigMigrationScope(preflight, migrations, approval);
+        approvedPlan =
+          approval.recoveryPolicy === importTasksRecoveryPolicy
+            ? requireImportTasksMigrationScope(preflight, migrations, approval)
+            : requireAiConfigMigrationScope(preflight, migrations, approval);
       }
     }
     await runMigrations({
@@ -457,18 +522,22 @@ async function executeOperation(env, { operation, approval }) {
         });
         await checkScope(preflight);
       },
-      beforeApply: [unverifiedRecoveryPolicy, aiConfigRecoveryPolicy].includes(
-        approval?.recoveryPolicy,
-      )
+      beforeApply: [
+        unverifiedRecoveryPolicy,
+        aiConfigRecoveryPolicy,
+        importTasksRecoveryPolicy,
+      ].includes(approval?.recoveryPolicy)
         ? (pendingMigrations, artifact) => {
-            if (approval?.recoveryPolicy === aiConfigRecoveryPolicy) {
+            if (
+              [aiConfigRecoveryPolicy, importTasksRecoveryPolicy].includes(approval?.recoveryPolicy)
+            ) {
               // The runner freezes this actual execution snapshot before opening
               // its connection. Do not substitute another filesystem reread.
-              approvedPlan = requireAiConfigMigrationScope(
-                { pendingMigrations },
-                artifact?.migrations,
-                approval,
-              );
+              const requireScope =
+                approval.recoveryPolicy === importTasksRecoveryPolicy
+                  ? requireImportTasksMigrationScope
+                  : requireAiConfigMigrationScope;
+              approvedPlan = requireScope({ pendingMigrations }, artifact?.migrations, approval);
             } else {
               requireFts1MigrationScope({ pendingMigrations });
             }

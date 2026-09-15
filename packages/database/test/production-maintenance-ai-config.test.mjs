@@ -4,6 +4,8 @@ import { URL } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   aiConfigMigrationPlan,
+  importTasksMigrationPlan,
+  requireImportTasksMigrationScope,
   publicMaintenanceFailure,
   publicMaintenanceResult,
   requireAiConfigMigrationScope,
@@ -140,6 +142,119 @@ beforeEach(() => {
     await beforeMigrate({});
     await beforeApply?.(calls.lockedPending, { migrations: calls.lockedMigrations });
     calls.ddl();
+  });
+});
+
+describe('independent 0014 import rollout gate', () => {
+  const full = Object.entries(currentManifest).map(([name, checksum]) => ({
+    name,
+    checksum,
+    sql: readFileSync(new URL(name, directory), 'utf8'),
+  }));
+  const onlyImport = ['0014_import_tasks.sql'];
+  function importEnvironment(operation = 'migrate', changes = {}) {
+    return environment(operation, {
+      recoveryPolicy: 'accept-unverified-import-tasks',
+      riskAcceptance: {
+        scope: 'import-tasks-production-launch',
+        accepted: true,
+        historicalAclGapAccepted: true,
+        acknowledgement: 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
+      },
+      ...(operation === 'migrate' ? importTasksMigrationPlan(onlyImport, full) : {}),
+      ...changes,
+    });
+  }
+  function configure() {
+    calls.load.mockResolvedValue(full);
+    calls.inspect.mockResolvedValue({ pendingMigrations: onlyImport });
+    calls.preflight.mockResolvedValue({ pendingMigrations: onlyImport });
+    calls.lockedPending = onlyImport;
+    calls.lockedMigrations = full;
+    calls.verify.mockResolvedValue({ migrationCount: 15, tableCount: 47 });
+  }
+  it('binds exact full manifest, actual SQL bytes, and only pending 0014', () => {
+    const plan = importTasksMigrationPlan(onlyImport, full);
+    expect(requireImportTasksMigrationScope({ pendingMigrations: onlyImport }, full, plan)).toEqual(
+      plan,
+    );
+    for (const pending of [[], ['0013_ai_configuration.sql'], [...onlyImport, '0015_future.sql']])
+      expect(() => importTasksMigrationPlan(pending, full)).toThrow(
+        'import-tasks-migration-scope-required',
+      );
+    for (const changed of [
+      full.slice(1),
+      [...full].reverse(),
+      full.map((entry, i) => (i === 14 ? { ...entry, sql: `${entry.sql}\n` } : entry)),
+    ])
+      expect(() => importTasksMigrationPlan(onlyImport, changed)).toThrow(
+        'import-tasks-migration-manifest-required',
+      );
+    expect(() => aiConfigMigrationPlan(onlyImport, full)).toThrow(
+      'ai-config-migration-manifest-required',
+    );
+    expect(() =>
+      requireImportTasksMigrationScope({ pendingMigrations: onlyImport }, full, {
+        ...plan,
+        planFingerprint: 'f'.repeat(64),
+      }),
+    ).toThrow('import-tasks-migration-plan-mismatch');
+  });
+  it('requires new explicit scope and preserves backup, expiry, and run binding', () => {
+    expect(validateMaintenanceRequest(importEnvironment(), now).approval.recoveryPolicy).toBe(
+      'accept-unverified-import-tasks',
+    );
+    for (const changes of [
+      { riskAcceptance: { accepted: true, scope: 'ai-configuration-production-launch' } },
+      { restoreRehearsed: true },
+      { runId: '999' },
+      { backupExpiresAt: '2026-09-14T10:30:00Z' },
+    ])
+      expect(() =>
+        validateMaintenanceRequest(importEnvironment('migrate', changes), now),
+      ).toThrow();
+    expect(() => validateMaintenanceRequest(importEnvironment('search-apply'), now)).toThrow(
+      'import-tasks-operation-required',
+    );
+    expect(validateMaintenanceRequest(importEnvironment('acl-capture'), now).operation).toBe(
+      'acl-capture',
+    );
+  });
+  it('emits exact plan fingerprints on readonly preflight without DDL', async () => {
+    configure();
+    expect(await execute({ ...baseEnv, MAINTENANCE_OPERATION: 'preflight' })).toMatchObject({
+      pendingMigrationCount: 1,
+      ...importTasksMigrationPlan(onlyImport, full),
+    });
+    expect(calls.ddl).not.toHaveBeenCalled();
+  });
+  it('checks execution snapshot under lock and labels recovery unverified', async () => {
+    configure();
+    expect(await execute(importEnvironment())).toMatchObject({
+      migrationCount: 15,
+      tableCount: 47,
+      recoveryVerified: false,
+      recoveryPolicy: 'accept-unverified-import-tasks',
+    });
+    expect(calls.ddl).toHaveBeenCalledOnce();
+  });
+  it('rejects concurrent advancement before any DDL', async () => {
+    configure();
+    calls.lockedPending = [];
+    await expect(execute(importEnvironment())).rejects.toThrow(
+      'import-tasks-migration-scope-required',
+    );
+    expect(calls.ddl).not.toHaveBeenCalled();
+  });
+  it('rejects changed execution artifact even when disk inspection matched', async () => {
+    configure();
+    calls.lockedMigrations = full.map((entry, i) =>
+      i === 14 ? { ...entry, sql: `${entry.sql}\n` } : entry,
+    );
+    await expect(execute(importEnvironment())).rejects.toThrow(
+      'import-tasks-migration-manifest-required',
+    );
+    expect(calls.ddl).not.toHaveBeenCalled();
   });
 });
 
