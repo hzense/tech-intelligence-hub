@@ -84,6 +84,15 @@ suite('dedicated import service role', () => {
     await owner.query(`GRANT SELECT(secret) ON public.unrelated_secret TO ${role}`);
     await expect(assertImportRole(reader)).rejects.toMatchObject({ code: 'not_configured' });
     await owner.query(`REVOKE SELECT(secret) ON public.unrelated_secret FROM ${role}`);
+    await owner.query(`GRANT REFERENCES(secret) ON public.unrelated_secret TO ${role}`);
+    await expect(assertImportRole(reader)).rejects.toMatchObject({ code: 'not_configured' });
+    await owner.query(`REVOKE REFERENCES(secret) ON public.unrelated_secret FROM ${role}`);
+    await owner.query(`GRANT MAINTAIN ON public.unrelated_secret TO ${role}`);
+    await expect(assertImportRole(reader)).rejects.toMatchObject({ code: 'not_configured' });
+    await owner.query(`REVOKE MAINTAIN ON public.unrelated_secret FROM ${role}`);
+    await owner.query(`ALTER ROLE ${role} IN DATABASE "${name}" SET search_path=public`);
+    await expect(assertImportRole(reader)).rejects.toMatchObject({ code: 'not_configured' });
+    await owner.query(`ALTER ROLE ${role} IN DATABASE "${name}" RESET ALL`);
     await owner.query(
       'CREATE FUNCTION public.unrelated_call() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$',
     );
