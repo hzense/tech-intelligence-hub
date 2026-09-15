@@ -12,6 +12,13 @@ const manifest: ImportManifest = {
   files: [{ clientItemId: 'client-1', name: 'report.pdf', size: 200, requiresOcr: true }],
   urlLines: 'https://example.org/report',
 };
+const frozenManifest: ImportManifest = Object.freeze({
+  files: Object.freeze([
+    Object.freeze({ clientItemId: 'frozen-1', name: 'report.pdf', size: 200 }),
+  ]),
+  urlLines: 'https://example.org/report',
+});
+validateImportManifest(frozenManifest, { capabilities: configured });
 const result: ImportManifestValidation = validateImportManifest(manifest, {
   capabilities: configured,
 });

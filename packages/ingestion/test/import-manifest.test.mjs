@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { execPath } from 'node:process';
 import test from 'node:test';
+import { fileURLToPath, URL } from 'node:url';
 import { IMPORT_LIMITS, validateImportManifest } from '@hzense/ingestion';
 
 const capabilities = Object.freeze({
@@ -87,6 +90,17 @@ test('empty and octet-stream MIME are declarations only, not true type verificat
   checkFileError({ mime: 'application/pdf; charset=utf-8' }, 'mime_mismatch');
   for (const mime of [null, 42, 'x'.repeat(129), 'application/pdf\n'])
     checkFileError({ mime }, 'invalid_mime');
+});
+
+test('ambiguous Excel MIME is declaration-compatible only with CSV and still requires byte verification', () => {
+  const mime = 'application/vnd.ms-excel';
+  const csv = oneFile({ name: 'report.csv', mime });
+  assert.equal(csv.valid, true);
+  assert.equal(csv.files[0].format, 'csv');
+  assert.equal(csv.requiresContentVerification, true);
+  checkFileError({ name: 'report.xls', mime }, 'conversion_required');
+  checkFileError({ name: 'report.exe', mime }, 'unsupported_format');
+  checkFileError({ name: 'report.xlsx', mime }, 'mime_mismatch');
 });
 
 test('legacy, macro and archive extensions require conversion even with benign MIME', () => {
@@ -524,4 +538,65 @@ test('hostile inspection failures cannot leak arbitrary exception values or invo
   assert.deepEqual(result.batchErrors, ['invalid_manifest']);
   assert.equal(calls, 0);
   assert.equal(JSON.stringify(result).includes('private diagnostics'), false);
+});
+
+test('inherited values and getters cannot supply capabilities, manifest files or file declarations', () => {
+  // Every scenario gets its own process; Object.prototype is never modified in this runner.
+  const scenarios = [
+    {
+      inherited: { capabilities: { parsers: ['pdf'] } },
+      input: { files: [file()] },
+      expectedBatch: [],
+      expectedFile: ['capability_unavailable'],
+    },
+    {
+      inherited: { files: [file()] },
+      input: {},
+      options: { capabilities: { parsers: ['pdf'] } },
+      expectedBatch: ['empty_batch'],
+    },
+    {
+      inherited: file(),
+      input: { files: [{}] },
+      options: { capabilities: { parsers: ['pdf'] } },
+      expectedBatch: [],
+      expectedFile: ['invalid_client_item_id', 'invalid_file_name', 'invalid_file_size'],
+    },
+  ];
+  for (const scenario of scenarios) {
+    for (const getter of [false, true]) {
+      const source = `
+        import { validateImportManifest } from '@hzense/ingestion';
+        import { stdout } from 'node:process';
+        const scenario = ${JSON.stringify(scenario)};
+        let getterCalls = 0;
+        let result;
+        const keys = Object.keys(scenario.inherited);
+        try {
+          for (const key of keys) {
+            const value = scenario.inherited[key];
+            const descriptor = ${getter}
+              ? { configurable: true, get() { getterCalls++; return value; } }
+              : { configurable: true, writable: true, value };
+            Object.defineProperty(Object.prototype, key, descriptor);
+          }
+          result = validateImportManifest(scenario.input, scenario.options);
+        } finally {
+          for (const key of keys) delete Object.prototype[key];
+        }
+        stdout.write(JSON.stringify({ result, getterCalls }));
+      `;
+      const output = execFileSync(execPath, ['--input-type=module', '-e', source], {
+        cwd: fileURLToPath(new URL('..', import.meta.url)),
+        encoding: 'utf8',
+        timeout: 5000,
+      });
+      const { result, getterCalls } = JSON.parse(output);
+      assert.equal(result.valid, false);
+      assert.deepEqual(result.batchErrors, scenario.expectedBatch);
+      if (scenario.expectedFile) assert.deepEqual(result.files[0].errors, scenario.expectedFile);
+      else assert.deepEqual(result.files, []);
+      assert.equal(getterCalls, 0);
+    }
+  }
 });

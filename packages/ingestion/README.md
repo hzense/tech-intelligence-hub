@@ -57,7 +57,9 @@ const result = validateImportManifest(
 
 文件支持 PDF、DOCX、MD／Markdown、TXT、HTML／HTM、CSV、XLSX、PNG、JPEG／JPG。图片需要 OCR；扫描 PDF 除 PDF 解析器外还需要 OCR。`requiresOcr: false` 或缺失不能豁免实际扫描检测；`pageCount` 未提供也不能豁免解析时的真实页数上限。
 
-旧 DOC、旧 Office、宏文件和用户压缩包返回 `conversion_required`；未列出的格式返回 `unsupported_format`。文件名不允许路径、控制字符或首尾空白。文件大小必须是大于零的安全整数。空 MIME、`application/octet-stream` 或与扩展名对应的已知 MIME 可以通过声明检查，**这不是真实类型验证**；不接受以 MIME 声明绕过转换要求。
+旧 DOC、旧 Office、宏文件和用户压缩包扩展名返回 `conversion_required`；未列出的格式返回 `unsupported_format`，不能借 MIME 声明绕过扩展名限制。文件名不允许路径、控制字符或首尾空白。文件大小必须是大于零的安全整数。空 MIME、`application/octet-stream` 或与扩展名对应的已知 MIME 可以通过声明检查，**这不是真实类型验证**。
+
+`application/vnd.ms-excel` 是存在歧义的 MIME，本契约仅在扩展名为 `.csv` 时保留声明兼容；这不能证明实际内容是 CSV。后续真实字节验证若识别为旧 Office，仍须拒绝直接解析并要求转换。`.xls` 搭配该 MIME 仍返回 `conversion_required`，其他不支持的扩展名也不能凭该 MIME 获准。
 
 URL 仅允许 HTTPS 默认端口或 443，拒绝凭据、控制字符、IP 字面量、单标签主机及 localhost／local／internal 等保留后缀。去空行但保留非空行原始位置。规范化只由 URL 标准解析器处理地址并移除 fragment；不排序、删除或重新序列化 query 参数。相同规范 URL 的后续行标记 `duplicate` 和 `duplicateOfLine`，首次保留；不推断跨批重复、相同文件内容或相同事件。
 

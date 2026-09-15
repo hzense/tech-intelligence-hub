@@ -83,7 +83,8 @@ function record(value, allowed, code) {
     error(code);
   const keys = Reflect.ownKeys(value);
   if (keys.length > allowed.length) error(code);
-  const result = {};
+  // Missing fields must stay missing even when Object.prototype is polluted.
+  const result = Object.create(null);
   for (const key of keys) {
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (

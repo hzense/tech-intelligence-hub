@@ -14,7 +14,7 @@ export interface ImportFileDeclaration {
   requiresOcr?: boolean;
 }
 export interface ImportManifest {
-  files?: ImportFileDeclaration[];
+  files?: readonly ImportFileDeclaration[];
   urlLines?: string;
 }
 export type ImportErrorCode =
