@@ -12,6 +12,7 @@ if (adminURL) validateConnectionTarget({ connectionString: adminURL, profile: 'l
 const suite = adminURL ? describe.sequential : describe.skip;
 const name = `hzense_import_role_${process.pid}_${Date.now()}`;
 const role = 'hzense_import_admin';
+const rolePassword = randomUUID();
 let admin, owner, reader;
 let createdRole = false,
   createdDatabase = false;
@@ -21,7 +22,9 @@ suite('dedicated import service role', () => {
     await admin.connect();
     if ((await admin.query('SELECT 1 FROM pg_roles WHERE rolname=$1', [role])).rows.length)
       throw new Error('Role exists; refuse unrelated role mutation');
-    await admin.query(`CREATE ROLE ${role} LOGIN NOINHERIT CONNECTION LIMIT 2`);
+    await admin.query(
+      `CREATE ROLE ${role} LOGIN NOINHERIT CONNECTION LIMIT 2 PASSWORD '${rolePassword}'`,
+    );
     createdRole = true;
     await admin.query(`CREATE DATABASE "${name}" TEMPLATE template0 ENCODING 'UTF8'`);
     createdDatabase = true;
@@ -42,6 +45,7 @@ suite('dedicated import service role', () => {
       `GRANT USAGE ON SCHEMA public TO ${role}; GRANT SELECT,INSERT ON public.import_batches,public.import_items,public.import_documents,public.import_attempts,public.import_outputs,public.import_audit,public.import_daily_usage TO ${role}; GRANT UPDATE ON public.import_batches,public.import_items,public.import_attempts,public.import_daily_usage TO ${role}`,
     );
     url.username = role;
+    url.password = rolePassword;
     reader = new pg.Pool({ connectionString: url.href, max: 1 });
   });
   afterAll(async () => {
