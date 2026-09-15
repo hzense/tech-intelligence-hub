@@ -1,10 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { handleUpload, getPayloadFromClientToken } from '@vercel/blob/client';
+import { del } from '@vercel/blob';
 const { Request } = globalThis;
 // Synthetic token: cryptographic contract only; never contacts a Blob store.
 const token = 'vercel_blob_rw_synthetic_store_secret';
+test('installed Blob SDK transmits conditional deletion rather than ignoring ifMatch', async (t) => {
+  const require = createRequire(import.meta.url);
+  const { MockAgent, getGlobalDispatcher, setGlobalDispatcher } = createRequire(
+    require.resolve('@vercel/blob'),
+  )('undici');
+  const previous = getGlobalDispatcher(),
+    agent = new MockAgent();
+  agent.disableNetConnect();
+  setGlobalDispatcher(agent);
+  t.after(async () => {
+    setGlobalDispatcher(previous);
+    await agent.close();
+  });
+  let requests = 0;
+  agent
+    .get('https://vercel.com')
+    .intercept({
+      path: '/api/blob/delete',
+      method: 'POST',
+      headers: { 'x-if-match': 'etag-v1' },
+      body: JSON.stringify({ urls: ['imports/synthetic/original'] }),
+    })
+    .reply(() => {
+      requests++;
+      return { statusCode: 200, data: '{}' };
+    });
+  await del('imports/synthetic/original', {
+    token,
+    ifMatch: 'etag-v1',
+    abortSignal: globalThis.AbortSignal.timeout(2000),
+  });
+  assert.equal(requests, 1);
+  agent.assertNoPendingInterceptors();
+  await assert.rejects(del(['first', 'second'], { token, ifMatch: 'etag-v1' }));
+  assert.equal(requests, 1);
+});
 test('installed Blob SDK signs exact path, bounded size, expiry and no-overwrite claims', async () => {
   const path = 'imports/synthetic-batch/synthetic-item',
     validUntil = Date.now() + 300000;

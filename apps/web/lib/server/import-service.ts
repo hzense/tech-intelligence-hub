@@ -14,6 +14,7 @@ import { readRuntimeReaderConfig } from '../runtime-reader-core';
 import { ImportIOError, readImportBytes } from '../import-io';
 import { fetchImportURL } from '../import-fetch';
 import { runImportProcessing } from '../import-worker-core';
+import { retryImportWithSourceCheck } from '../import-retry';
 import {
   assertImportStore,
   originalExpired,
@@ -108,11 +109,11 @@ export const importPool = {
 function key(batchId: string, itemId: string) {
   return `imports/${importUuid(batchId)}/${importUuid(itemId)}`;
 }
-export async function readImportObject(path: string) {
+async function inspectImportOriginal(path: string) {
   const { token } = importConfig();
   let metadata;
   try {
-    metadata = await head(path, { token });
+    metadata = await head(path, { token, abortSignal: AbortSignal.timeout(15000) });
   } catch (error) {
     if (error instanceof BlobNotFoundError) throw new ImportIOError('source_unavailable');
     throw error;
@@ -120,6 +121,11 @@ export async function readImportObject(path: string) {
   if (originalExpired(metadata.uploadedAt)) throw new ImportIOError('source_unavailable');
   if (metadata.pathname !== path || metadata.size > 25 * 1024 * 1024 || metadata.size < 1)
     importFail('document_conflict');
+  return metadata;
+}
+export async function readImportObject(path: string) {
+  const { token } = importConfig();
+  const metadata = await inspectImportOriginal(path);
   let result;
   try {
     result = await get(path, { access: 'private', token, useCache: false });
@@ -276,7 +282,12 @@ export async function executeImportAdmin(owner: string, method: string, body: un
   const itemId = importUuid(value.itemId),
     args = { pool: importPool, owner, batchId, itemId };
   if (value.action === 'confirm') return confirmImportUpload(owner, batchId, itemId);
-  if (value.action === 'retry') return store.retryImportItem(args);
+  if (value.action === 'retry')
+    return retryImportWithSourceCheck(itemId, {
+      getBatch: () => store.getImportBatch({ pool: importPool, owner, id: batchId }),
+      checkOriginal: () => inspectImportOriginal(key(batchId, itemId)),
+      retry: () => store.retryImportItem(args),
+    });
   if (value.action === 'recover') return store.expireImportAttempt(args);
   if (value.action === 'output') return store.getImportOutput(args);
   if (value.action === 'run') return runImportItem(owner, batchId, itemId);
