@@ -167,6 +167,30 @@ test(
     await page.getByRole('button', { name: '较新批次' }).click();
     await expect(page.getByText('批次 batch-0', { exact: true })).toBeVisible();
     await expect(page.getByText('第 1 页')).toBeVisible();
+    batches = [
+      {
+        id: 'expired-batch',
+        status: 'failed',
+        cancelled: false,
+        intent: 'preview',
+        items: [
+          {
+            id: 'expired-original',
+            kind: 'file',
+            status: 'failed',
+            fence: 1,
+            error_code: 'source_unavailable',
+            declaration: { name: 'expired.txt' },
+          },
+        ],
+      },
+    ];
+    await page.reload();
+    await expect(page.getByText('原件已过期或不存在，请新建批次重新导入。')).toBeVisible();
+    await expect(page.getByRole('button', { name: '重新排队' })).toHaveCount(0);
+    batches[0].items[0].error_code = 'worker_unavailable';
+    await page.reload();
+    await expect(page.getByRole('button', { name: '重新排队' })).toBeVisible();
     assert.deepEqual(errors, []);
   },
 );
