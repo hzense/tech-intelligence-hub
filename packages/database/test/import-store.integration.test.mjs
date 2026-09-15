@@ -15,6 +15,8 @@ import {
   retryImportItem,
   expireImportAttempt,
   getImportOutput,
+  listImportBatches,
+  getImportQueue,
 } from '../src/import-store.mjs';
 import { importChecks } from '../src/import-catalog.mjs';
 import { canonicalPublicationControlCheck } from '../src/signal-publication-control-catalog.mjs';
@@ -257,6 +259,55 @@ suite('private import PostgreSQL persistence', () => {
     expect(
       (await pool.query('SELECT id FROM public.import_batches WHERE id=$1', [value.id])).rows,
     ).toHaveLength(0);
+  });
+  it('pages all batches with exact database timestamp precision and ownership checks', async () => {
+    const ids = [];
+    for (let n = 0; n < 51; n++) ids.push((await created({ owner: 'pager' })).id);
+    // Force sub-millisecond differences: the cursor must not round-trip a JavaScript Date.
+    await pool.query(
+      "UPDATE public.import_batches SET created_at='2026-01-01T00:00:00.123456Z' WHERE owner_id='pager'",
+    );
+    const first = await listImportBatches({ pool, owner: 'pager' });
+    const second = await listImportBatches({ pool, owner: 'pager', before: first.at(-1).id });
+    expect(first).toHaveLength(50);
+    expect(second).toHaveLength(1);
+    expect(new Set([...first, ...second].map((x) => x.id)).size).toBe(51);
+    await expect(
+      listImportBatches({ pool, owner: 'intruder', before: first[0].id }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+  });
+  it('filters incompatible and exhausted batches before bounding the worker queue', async () => {
+    for (let n = 0; n < 12; n++)
+      await created({
+        owner: 'queue',
+        request: {
+          id: randomUUID(),
+          intent: 'preview',
+          manifest: { urlLines: 'https://example.com' },
+        },
+        configuration: { parserVersion: 'old-parser', batchLimitMicrousd: 10 },
+      });
+    for (let n = 0; n < 12; n++)
+      await created({
+        owner: 'queue',
+        request: {
+          id: randomUUID(),
+          intent: 'preview',
+          manifest: { urlLines: 'https://example.com' },
+        },
+        configuration: { parserVersion: 'new-parser', batchLimitMicrousd: 0 },
+      });
+    const valid = await created({
+      owner: 'queue',
+      request: {
+        id: randomUUID(),
+        intent: 'preview',
+        manifest: { urlLines: 'https://example.com' },
+      },
+      configuration: { parserVersion: 'new-parser', batchLimitMicrousd: 10 },
+    });
+    const queue = await getImportQueue({ pool, parserVersion: 'new-parser', reserveMicrousd: 1 });
+    expect(queue.map((x) => x.batchId)).toEqual([valid.id]);
   });
   it('migration refuses leaked default privileges atomically', async () => {
     const client = await pool.connect();

@@ -2,10 +2,31 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 const { Request, ReadableStream } = globalThis;
-import { createImportAdminHandler } from '../lib/admin-import-core.ts';
+import { createImportAdminHandler, importError } from '../lib/admin-import-core.ts';
+import { ImportTaskError } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { readImportBytes, ImportIOError } from '../lib/import-io.ts';
 import { assertImportFetchURL, fetchImportURL } from '../lib/import-fetch.ts';
 const origin = 'https://hzense.com';
+test('retry limit is a conflict rather than a transient service error', async () => {
+  const response = importError(new ImportTaskError('retry_not_allowed'));
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'retry_not_allowed' });
+});
+test('list cursor is forwarded without allowing extra or repeated query fields', async () => {
+  let received;
+  const h = createImportAdminHandler({
+    session: async () => ({ user: { id: 'admin' } }),
+    origin: () => origin,
+    execute: async (_owner, _method, body) => {
+      received = body;
+      return {};
+    },
+  });
+  assert.equal((await h(new Request(`${origin}/api/admin/imports?before=example`))).status, 200);
+  assert.deepEqual(received, { before: 'example' });
+  assert.equal((await h(new Request(`${origin}/api/admin/imports?before=a&before=b`))).status, 400);
+  assert.equal((await h(new Request(`${origin}/api/admin/imports?owner=someone`))).status, 400);
+});
 function request(body = {}, headers = {}) {
   return new Request(`${origin}/api/admin/imports`, {
     method: 'POST',

@@ -20,9 +20,9 @@ const labels: Record<string, string> = {
   unknown: '结果未知，待对账',
   cancelled: '已取消',
 };
-async function api(body?: unknown) {
+async function api(body?: unknown, before?: string) {
   const response = await fetch(
-    '/api/admin/imports',
+    `/api/admin/imports${before ? `?before=${encodeURIComponent(before)}` : ''}`,
     body
       ? {
           method: 'POST',
@@ -45,6 +45,7 @@ export function AdminImports({ configured }: { configured: boolean }) {
     [message, setMessage] = useState(''),
     [output, setOutput] = useState('');
   const requestId = useRef<string | null>(null);
+  const [pageCursors, setPageCursors] = useState<string[]>([]);
   const manifest = {
     files: files.map((file, i) => ({
       clientItemId: `file-${i}`,
@@ -54,7 +55,21 @@ export function AdminImports({ configured }: { configured: boolean }) {
     urlLines: urls,
   };
   const validation = validateImportManifest(manifest, { capabilities });
-  const refresh = async () => setBatches((await api()).batches);
+  const refresh = async () => setBatches((await api(undefined, pageCursors.at(-1))).batches);
+  async function turnPage(older: boolean) {
+    const next = older ? [...pageCursors, batches.at(-1)!.id] : pageCursors.slice(0, -1);
+    setBusy(true);
+    try {
+      setBatches((await api(undefined, next.at(-1))).batches);
+      setPageCursors(next);
+      setOutput('');
+      setMessage('批次页面已更新。');
+    } catch {
+      setMessage('批次页面读取失败。');
+    } finally {
+      setBusy(false);
+    }
+  }
   useEffect(() => {
     if (configured)
       void api()
@@ -108,7 +123,8 @@ export function AdminImports({ configured }: { configured: boolean }) {
         });
         await api({ action: 'confirm', batchId: batch.id, itemId: item.id });
       }
-      await refresh();
+      setBatches((await api()).batches);
+      setPageCursors([]);
       setMessage('原件已接收。点击「处理」执行隔离解析；不会自动发布。');
       requestId.current = null;
     } catch (error) {
@@ -235,7 +251,10 @@ export function AdminImports({ configured }: { configured: boolean }) {
                     核对超时状态
                   </button>
                 )}
-                {item.status === 'failed' && !batch.cancelled && (
+                {item.status === 'failed' && item.fence >= 5 && (
+                  <p>已达 5 次尝试上限，不能再次重试。</p>
+                )}
+                {item.status === 'failed' && item.fence < 5 && !batch.cancelled && (
                   <button
                     disabled={busy}
                     onClick={() =>
@@ -274,6 +293,21 @@ export function AdminImports({ configured }: { configured: boolean }) {
           </ul>
         </section>
       ))}
+      <nav aria-label="批次分页">
+        <button
+          disabled={!configured || busy || pageCursors.length === 0}
+          onClick={() => void turnPage(false)}
+        >
+          较新批次
+        </button>
+        <span>第 {pageCursors.length + 1} 页</span>
+        <button
+          disabled={!configured || busy || batches.length < 50}
+          onClick={() => void turnPage(true)}
+        >
+          更早批次
+        </button>
+      </nav>
       {output && (
         <section className={styles.panel}>
           <h2>私有解析结果</h2>

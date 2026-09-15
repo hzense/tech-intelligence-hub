@@ -1,9 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
-import { importPool, runImportItem } from '@/lib/server/import-service';
-import {
-  getImportQueue,
-  expireImportAttempt,
-} from '../../../../../../packages/database/src/import-store.mjs';
+import { importPool, importQueue, runImportItem } from '@/lib/server/import-service';
+import { expireImportAttempt } from '../../../../../../packages/database/src/import-store.mjs';
 import { importResponse } from '@/lib/import-io';
 import { importError } from '@/lib/admin-import-core';
 import { ImportTaskError } from '../../../../../../packages/ingestion/src/import-task-contract.mjs';
@@ -23,7 +20,7 @@ export async function POST(request: Request) {
   )
     return importResponse({ error: 'unauthorized' }, 401);
   try {
-    const queue = await getImportQueue({ pool: importPool });
+    const queue = await importQueue();
     for (const item of queue) {
       if (item.status === 'running') {
         await expireImportAttempt({ pool: importPool, ...item });

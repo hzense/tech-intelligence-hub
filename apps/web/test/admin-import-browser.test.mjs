@@ -37,10 +37,13 @@ test(
         res.end(assets.get(req.url));
         return;
       }
-      if (req.url === '/api/admin/imports') {
+      const requestUrl = new URL(req.url, 'http://localhost');
+      if (requestUrl.pathname === '/api/admin/imports') {
         res.setHeader('Content-Type', 'application/json');
         if (req.method === 'GET') {
-          res.end(JSON.stringify({ batches }));
+          const before = requestUrl.searchParams.get('before');
+          const offset = before ? batches.findIndex((batch) => batch.id === before) + 1 : 0;
+          res.end(JSON.stringify({ batches: batches.slice(offset, offset + 50) }));
           return;
         }
         const chunks = [];
@@ -85,8 +88,9 @@ test(
           return;
         }
         if (value.action === 'cancel') {
-          batches[0].cancelled = true;
-          batches[0].status = 'cancelled';
+          const batch = batches.find((entry) => entry.id === value.batchId);
+          batch.cancelled = true;
+          batch.status = 'cancelled';
           res.end('{}');
           return;
         }
@@ -137,6 +141,32 @@ test(
     await page.getByRole('button', { name: '取消未完成项' }).click();
     await expect(page.getByRole('heading', { name: '已取消' })).toBeVisible();
     assert.equal(commands.filter((c) => c.action === 'run').length, 1);
+    batches = Array.from({ length: 51 }, (_, index) => ({
+      id: `batch-${index}`,
+      status: 'failed',
+      cancelled: false,
+      intent: 'preview',
+      items: [
+        {
+          id: `item-${index}`,
+          kind: 'url',
+          status: 'failed',
+          fence: 5,
+          declaration: { url: `https://example.com/research-${index}` },
+        },
+      ],
+    }));
+    await page.reload();
+    await page.getByRole('button', { name: '更早批次' }).click();
+    await expect(page.getByText('批次 batch-50', { exact: true })).toBeVisible();
+    await expect(page.getByText('已达 5 次尝试上限，不能再次重试。')).toBeVisible();
+    await expect(page.getByRole('button', { name: /重试/ })).toHaveCount(0);
+    await page.getByRole('button', { name: '取消未完成项' }).click();
+    await expect(page.getByRole('heading', { name: '已取消' })).toBeVisible();
+    await expect(page.getByText('第 2 页')).toBeVisible();
+    await page.getByRole('button', { name: '较新批次' }).click();
+    await expect(page.getByText('批次 batch-0', { exact: true })).toBeVisible();
+    await expect(page.getByText('第 1 页')).toBeVisible();
     assert.deepEqual(errors, []);
   },
 );

@@ -58,7 +58,7 @@ export function createImportBatch(
   },
 ): Promise<ImportBatch>;
 export function getImportBatch(args: Owned & { id: string }): Promise<ImportBatch>;
-export function listImportBatches(args: Owned): Promise<ImportBatch[]>;
+export function listImportBatches(args: Owned & { before?: string }): Promise<ImportBatch[]>;
 export function cancelImportBatch(args: Owned & { id: string }): Promise<ImportBatch>;
 export function confirmImportDocument(
   args: ItemArgs & { document: ImportDocument; fence?: number },
@@ -79,5 +79,7 @@ export function retryImportItem(args: ItemArgs): Promise<{ item_id: string; stat
 export function expireImportAttempt(args: ItemArgs): Promise<{ changed: boolean; status?: string }>;
 export function getImportQueue(args: {
   pool: ImportPool;
+  parserVersion: string;
+  reserveMicrousd?: number;
 }): Promise<{ owner: string; batchId: string; itemId: string; status: string }[]>;
 export function getImportOutput(args: ItemArgs): Promise<unknown>;

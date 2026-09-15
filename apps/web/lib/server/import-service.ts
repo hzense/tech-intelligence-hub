@@ -220,8 +220,17 @@ export async function runImportItem(owner: string, batchId: string, itemId: stri
   });
 }
 export async function executeImportAdmin(owner: string, method: string, body: unknown) {
-  if (method === 'GET')
-    return { batches: await store.listImportBatches({ pool: importPool, owner }) };
+  if (method === 'GET') {
+    const before =
+      body && typeof body === 'object' && 'before' in body ? importUuid(body.before) : undefined;
+    return {
+      batches: await store.listImportBatches({
+        pool: importPool,
+        owner,
+        ...(before === undefined ? {} : { before }),
+      }),
+    };
+  }
   if (!body || typeof body !== 'object' || Array.isArray(body)) importFail();
   const value = body as Record<string, unknown>;
   if (Object.keys(value).some((k) => !['action', 'batchId', 'itemId', 'request'].includes(k)))
@@ -249,4 +258,12 @@ export async function executeImportAdmin(owner: string, method: string, body: un
   if (value.action === 'output') return store.getImportOutput(args);
   if (value.action === 'run') return runImportItem(owner, batchId, itemId);
   importFail();
+}
+export async function importQueue() {
+  const config = importConfig();
+  return store.getImportQueue({
+    pool: importPool,
+    parserVersion: parserVersion(config.snapshot),
+    reserveMicrousd: config.reserve,
+  });
 }

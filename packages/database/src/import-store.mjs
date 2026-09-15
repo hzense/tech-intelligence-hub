@@ -140,15 +140,16 @@ export async function createImportBatch({ pool, owner, request, capabilities, co
 export async function getImportBatch({ pool, owner, id }) {
   return transaction(pool, async (client) => detail(client, await batch(client, id, owner)), true);
 }
-export async function listImportBatches({ pool, owner }) {
+export async function listImportBatches({ pool, owner, before }) {
   importOwner(owner);
   return transaction(
     pool,
     async (client) => {
+      const cursor = before === undefined ? null : await batch(client, before, owner);
       const rows = (
         await client.query(
-          'SELECT * FROM public.import_batches WHERE owner_id=$1 ORDER BY created_at DESC,id DESC LIMIT 50',
-          [owner],
+          'SELECT * FROM public.import_batches WHERE owner_id=$1 AND ($2::uuid IS NULL OR (created_at,id)<(SELECT c.created_at,c.id FROM public.import_batches c WHERE c.id=$2::uuid AND c.owner_id=$1)) ORDER BY created_at DESC,id DESC LIMIT 50',
+          [owner, cursor?.id ?? null],
         )
       ).rows;
       const result = [];
@@ -374,16 +375,24 @@ export async function finishImportAttempt({
 }
 
 /** Service-only queue metadata; never exposed through an unauthenticated API. */
-export async function getImportQueue({ pool }) {
+export async function getImportQueue({ pool, parserVersion, reserveMicrousd = 0 }) {
+  if (typeof parserVersion !== 'string' || !/^[a-zA-Z0-9._/-]{1,100}$/.test(parserVersion))
+    importFail('invalid_parser');
+  money(reserveMicrousd);
   return transaction(
     pool,
     async (client) =>
       (
-        await client.query(`SELECT b.owner_id AS owner,b.id AS "batchId",i.id AS "itemId",i.status
+        await client.query(
+          `SELECT b.owner_id AS owner,b.id AS "batchId",i.id AS "itemId",i.status
     FROM public.import_items i JOIN public.import_batches b ON b.id=i.batch_id
-    WHERE NOT b.cancelled AND (i.status='queued' OR (i.status='running' AND EXISTS (
+    WHERE NOT b.cancelled AND ((i.status='queued' AND b.configuration->>'parserVersion'=$1 AND i.fence<5
+      AND (SELECT COALESCE(sum(greatest(a.reserved_microusd,a.charged_microusd)),0) FROM public.import_attempts a JOIN public.import_items x ON x.id=a.item_id WHERE x.batch_id=b.id)+$2::bigint<=(b.configuration->>'batchLimitMicrousd')::bigint)
+      OR (i.status='running' AND EXISTS (
       SELECT 1 FROM public.import_attempts a WHERE a.item_id=i.id AND a.fence=i.fence AND a.lease_until<=now())))
-    ORDER BY CASE WHEN i.status='running' THEN 0 ELSE 1 END,i.created_at,i.id LIMIT 10`)
+    ORDER BY CASE WHEN i.status='running' THEN 0 ELSE 1 END,i.created_at,i.id LIMIT 10`,
+          [parserVersion, reserveMicrousd],
+        )
       ).rows,
     true,
   );

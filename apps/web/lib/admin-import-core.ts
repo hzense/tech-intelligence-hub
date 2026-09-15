@@ -17,7 +17,7 @@ const exposed = new Set([
   'budget_exceeded',
   'worker_busy',
   'not_claimable',
-  'not_retryable',
+  'retry_not_allowed',
   'cancelled',
   'document_conflict',
   'commit_unknown',
@@ -56,11 +56,18 @@ export function createImportAdminHandler(deps: ImportAdminDependencies) {
         return importResponse({ error: 'forbidden' }, 403);
       if (!['GET', 'POST'].includes(request.method))
         return importResponse({ error: 'method_not_allowed' }, 405);
+      const query = new URL(request.url).searchParams;
+      if ([...query.keys()].some((k) => k !== 'before') || query.getAll('before').length > 1)
+        return importResponse({ error: 'invalid_request' }, 400);
       return importResponse(
         await deps.execute(
           session.user.id,
           request.method,
-          request.method === 'POST' ? await readImportJSON(request) : null,
+          request.method === 'POST'
+            ? await readImportJSON(request)
+            : query.has('before')
+              ? { before: query.get('before') }
+              : null,
         ),
       );
     } catch (error) {
