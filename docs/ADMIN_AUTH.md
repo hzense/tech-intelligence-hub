@@ -19,6 +19,8 @@
 
 生产目前没有接通 Publisher 或 Signal 业务数据库操作；[受限发布／撤回入口](SIGNAL_PUBLIC_PUBLICATION.md)已随 PR #78 合并，但未配置生产权限。本批新增 [AI 连接与模型配置](AI_CONNECTIONS.md)，提供受保护的 `/admin/ai`、`/admin/ai/profiles` 和逐请求鉴权的 `/api/admin/ai/*`；生产 AI 配置仍未启用。信号采集、业务 AI 执行器和文档／链接批量上传仍未实现。登录成功不自动授予数据库角色、候选公开资格或生产维护权限；会话不需要数据库 Adapter，也不创建用户表。
 
+**2026-09-15 工作台增量：** 新增受保护的 `/admin/signals`、`/admin/signals/[id]` 和两条独立鉴权的 GET API。只读版本／证据摘要，不提供生成、审核或发布动作；生产还需要独立 `hzense_signal_admin_reader` 与 Production-only Secret。实现及验收状态见[后台信号工作台](SIGNAL_WORKBENCH.md)。以上早期 AI 状态保留为当时记录，后续生产结果以 [AI 配置记录](production-evidence/2026-09-14-ai-configuration.md)为准。
+
 ## 身份和会话规则
 
 - `HZENSE_ADMIN_EMAIL` 只接受一个 Gmail 邮箱，不支持邮箱列表、通配符、Workspace 域名、`googlemail.com` 或 `+` 别名。

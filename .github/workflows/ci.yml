@@ -134,6 +134,11 @@ jobs:
         env:
           HZENSE_AI_GUIDANCE_BROWSER_TEST: '1'
         run: node --test test/admin-ai-guidance-browser.test.mjs test/admin-ai-profiles-browser.test.mjs
+      - name: Verify private read-only Signal workbench without external calls
+        working-directory: apps/web
+        env:
+          HZENSE_SIGNAL_WORKBENCH_BROWSER_TEST: '1'
+        run: node --test test/admin-signal-workbench-browser.test.mjs
       - name: Verify configured AI forms through HTTP and isolated PostgreSQL
         working-directory: apps/web
         env:

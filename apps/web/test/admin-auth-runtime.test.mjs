@@ -280,6 +280,38 @@ test(
       },
     );
     await t.test(
+      'Signal workbench pages and GET APIs require a real session and a separate backend',
+      async () => {
+        const cookie = await encryptedCookie(token);
+        for (const path of ['/admin/signals', '/admin/signals/synthetic-signal']) {
+          const anonymous = await request(path);
+          assert.equal(anonymous.status, 307);
+          assert.equal(new URL(anonymous.headers.get('location'), origin).pathname, '/admin/login');
+          const page = await request(path, { headers: { cookie } });
+          assert.equal(page.status, 200);
+          assert.match(page.headers.get('cache-control'), /no-store/);
+        }
+        for (const path of ['/api/admin/signals', '/api/admin/signals/synthetic-signal']) {
+          for (const suffix of ['', '?unexpected=private-marker']) {
+            const anonymous = await request(`${path}${suffix}`);
+            assert.equal(anonymous.status, 401);
+            assert.deepEqual(await anonymous.json(), { error: 'unauthorized' });
+            assert.equal(anonymous.headers.get('cache-control'), 'private, no-store');
+            assert.equal(anonymous.headers.get('x-robots-tag'), 'noindex, nofollow');
+          }
+          const unavailable = await request(path, { headers: { cookie } });
+          assert.equal(unavailable.status, 503);
+          assert.deepEqual(await unavailable.json(), { error: 'workbench_not_configured' });
+          assert.equal(
+            (await request(path, { headers: { cookie, origin: 'https://attacker.example' } }))
+              .status,
+            403,
+          );
+        }
+      },
+    );
+
+    await t.test(
       'publication routes authenticate before parsing or opening a database connection',
       async () => {
         for (const operation of ['publish', 'withdraw']) {
@@ -377,6 +409,62 @@ test(
             .getSetCookie()
             .some((value) => value.startsWith('next-auth.session-token=;')),
         );
+      },
+    );
+    await t.test(
+      'Preview disables Signal workbench authentication even for the valid synthetic cookie',
+      async () => {
+        // Reuse the same canonical local origin, key and otherwise-valid claims;
+        // only VERCEL_ENV changes. A different port would invalidate the origin
+        // independently and would not prove the Preview deployment gate.
+        child.kill('SIGTERM');
+        await exited;
+        const preview = spawn(process.execPath, child.spawnargs.slice(1), {
+          cwd: fileURLToPath(new URL('../', import.meta.url)),
+          env: {
+            PATH: process.env.PATH,
+            NODE_ENV: 'production',
+            NEXT_TELEMETRY_DISABLED: '1',
+            NEXTAUTH_URL: origin,
+            NEXTAUTH_SECRET: secret,
+            GOOGLE_CLIENT_ID: clientId,
+            GOOGLE_CLIENT_SECRET: 'GOCSPX-synthetic-runtime-fixture',
+            HZENSE_ADMIN_EMAIL: email,
+            HZENSE_SEARCH_MODE: 'in-process',
+            VERCEL_ENV: 'preview',
+          },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let previewOutput = '';
+        preview.stdout.on('data', (chunk) => {
+          previewOutput += chunk;
+        });
+        preview.stderr.on('data', (chunk) => {
+          previewOutput += chunk;
+        });
+        const previewExited = new Promise((resolve) => preview.once('exit', resolve));
+        try {
+          for (let count = 0; !previewOutput.includes('Ready in'); count++) {
+            assert.equal(preview.exitCode, null, 'Synthetic Preview server failed to start');
+            assert.ok(count < 200, 'Synthetic Preview server startup timed out');
+            await delay(50);
+          }
+          const cookie = await encryptedCookie(token);
+          for (const path of ['/admin/signals', '/admin/signals/synthetic-signal']) {
+            const page = await request(path, { headers: { cookie } });
+            assert.equal(page.status, 307);
+            assert.equal(new URL(page.headers.get('location'), origin).pathname, '/admin/login');
+          }
+          for (const path of ['/api/admin/signals', '/api/admin/signals/synthetic-signal']) {
+            const response = await request(path, { headers: { cookie } });
+            assert.equal(response.status, 401);
+            assert.deepEqual(await response.json(), { error: 'unauthorized' });
+            assert.equal(response.headers.get('cache-control'), 'private, no-store');
+          }
+        } finally {
+          if (preview.exitCode === null && preview.signalCode === null) preview.kill('SIGTERM');
+          await previewExited;
+        }
       },
     );
   },
