@@ -73,6 +73,30 @@ test('known OCR refusal is a private failure, not a published or empty success',
   assert.equal(result.errorCode, 'ocr_required');
   assert.equal(result.output, undefined);
 });
+test('expired originals become a deterministic failure instead of an unknown paid attempt', async () => {
+  const { deps } = fixture({
+    claim: async () => ({
+      item: { kind: 'file' },
+      attempt: { fence: 3 },
+      document: { object_key: path },
+    }),
+    read: async () => {
+      throw new ImportIOError('source_unavailable');
+    },
+  });
+  const result = await runImportProcessing(path, 100, deps);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(result.errorCode, 'source_unavailable');
+  assert.equal(result.chargedMicrousd, 0);
+});
+test('source errors after processing starts retain the conservative charge', async () => {
+  const { deps } = fixture({
+    parse: async () => {
+      throw new ImportIOError('source_unavailable');
+    },
+  });
+  assert.equal((await runImportProcessing(path, 100, deps)).chargedMicrousd, 100);
+});
 test('ambiguous completion is never replayed as a second completion', async () => {
   let calls = 0;
   const { deps } = fixture({

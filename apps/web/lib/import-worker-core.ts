@@ -36,11 +36,13 @@ export async function runImportProcessing(
   await deps.expire();
   const claim = await deps.claim(); // No external work unless the durable budget/lease claim succeeds.
   let completion: Completion;
+  let processingStarted = false;
   try {
     let document = claim.document;
     if (!document) {
       if (claim.item.kind !== 'url' || !claim.item.declaration.url)
         throw new Error('document_missing');
+      processingStarted = true;
       const fetched = await deps.fetch(claim.item.declaration.url);
       await deps.put(path, fetched.bytes);
       const receipt = await deps.read(path);
@@ -63,6 +65,7 @@ export async function runImportProcessing(
       receipt.bytes.length !== document.byte_size
     )
       throw new Error('document_conflict');
+    processingStarted = true;
     const output = await deps.parse(receipt.bytes, document.format);
     // Deterministic parser contract failures must be persisted as failed, not left running.
     // Keep the original input shape: persistence independently validates and normalizes it.
@@ -86,12 +89,14 @@ export async function runImportProcessing(
         'unsupported_content',
         'limit_exceeded',
         'ocr_required',
+        'source_unavailable',
       ].includes(error.code);
     completion = {
       fence: claim.attempt.fence,
       outcome: known ? 'failed' : 'unknown',
       errorCode: known ? error.code : 'outcome_unknown',
-      chargedMicrousd: reserve,
+      chargedMicrousd:
+        known && error.code === 'source_unavailable' && !processingStarted ? 0 : reserve,
     };
   }
   // An ambiguous completion commit must not trigger a second competing completion.

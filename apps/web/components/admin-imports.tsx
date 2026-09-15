@@ -141,6 +141,7 @@ export function AdminImports({ configured }: { configured: boolean }) {
       <Link href="/admin">返回管理后台</Link>
       <h1>文档与链接批量导入</h1>
       <p>原件与解析结果仅管理员可见。接收、解析、AI 生成与发布是不同步骤；此入口目前完成前两步。</p>
+      <p>原件自上传起保留 7 天，到期停止读取并由定时任务清理；解析结果和审计记录不随原件删除。</p>
       {!configured && (
         <p role="status">
           生产导入尚未配置。需专用数据库权限、私有 Blob、隔离解析镜像及预算后启用。
@@ -254,16 +255,22 @@ export function AdminImports({ configured }: { configured: boolean }) {
                 {item.status === 'failed' && item.fence >= 5 && (
                   <p>已达 5 次尝试上限，不能再次重试。</p>
                 )}
-                {item.status === 'failed' && item.fence < 5 && !batch.cancelled && (
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      void action({ action: 'retry', batchId: batch.id, itemId: item.id })
-                    }
-                  >
-                    重新排队
-                  </button>
+                {item.error_code === 'source_unavailable' && (
+                  <p>原件已过期或不存在，请新建批次重新导入。</p>
                 )}
+                {item.status === 'failed' &&
+                  item.fence < 5 &&
+                  item.error_code !== 'source_unavailable' &&
+                  !batch.cancelled && (
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        void action({ action: 'retry', batchId: batch.id, itemId: item.id })
+                      }
+                    >
+                      重新排队
+                    </button>
+                  )}
                 {item.status === 'awaiting_upload' && !batch.cancelled && (
                   <button
                     disabled={busy}

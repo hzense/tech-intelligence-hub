@@ -245,6 +245,10 @@ function money(value) {
   if (!Number.isSafeInteger(value) || value < 0) importFail('invalid_budget');
   return value;
 }
+// Preserve the historical reservation, but a confirmed pre-processing missing
+// original consumes neither the settled daily budget nor the batch budget.
+const attemptBudgetSQL =
+  "CASE WHEN a.status='failed' AND a.error_code='source_unavailable' AND a.charged_microusd=0 THEN 0 ELSE greatest(a.reserved_microusd,a.charged_microusd) END";
 /** One short transaction per claim. No network/parse work while holding locks. */
 export async function claimImportItem({
   pool,
@@ -279,7 +283,7 @@ export async function claimImportItem({
     const batchLimitMicrousd = money(b.configuration.batchLimitMicrousd);
     const total = (
       await client.query(
-        'SELECT COALESCE(sum(greatest(a.reserved_microusd,a.charged_microusd)),0)::text AS n FROM public.import_attempts a JOIN public.import_items i ON i.id=a.item_id WHERE i.batch_id=$1',
+        `SELECT COALESCE(sum(${attemptBudgetSQL}),0)::text AS n FROM public.import_attempts a JOIN public.import_items i ON i.id=a.item_id WHERE i.batch_id=$1`,
         [b.id],
       )
     ).rows[0].n;
@@ -341,6 +345,7 @@ export async function finishImportAttempt({
         'worker_unavailable',
         'outcome_unknown',
         'ocr_required',
+        'source_unavailable',
       ].includes(errorCode))
   )
     importFail();
@@ -352,9 +357,11 @@ export async function finishImportAttempt({
     const a = await liveAttempt(client, i);
     // Unknown outcomes keep at least the reserved charge and require reconciliation.
     const charge =
-      BigInt(chargedMicrousd) > BigInt(a.reserved_microusd)
-        ? BigInt(chargedMicrousd)
-        : BigInt(a.reserved_microusd);
+      outcome === 'failed' && errorCode === 'source_unavailable' && chargedMicrousd === 0
+        ? 0n
+        : BigInt(chargedMicrousd) > BigInt(a.reserved_microusd)
+          ? BigInt(chargedMicrousd)
+          : BigInt(a.reserved_microusd);
     await client.query(
       'UPDATE public.import_daily_usage SET reserved_microusd=reserved_microusd-$2,charged_microusd=charged_microusd+$3 WHERE day=$1',
       [a.budget_day, a.reserved_microusd, charge.toString()],
@@ -387,7 +394,7 @@ export async function getImportQueue({ pool, parserVersion, reserveMicrousd = 0 
           `SELECT b.owner_id AS owner,b.id AS "batchId",i.id AS "itemId",i.status
     FROM public.import_items i JOIN public.import_batches b ON b.id=i.batch_id
     WHERE NOT b.cancelled AND ((i.status='queued' AND b.configuration->>'parserVersion'=$1 AND i.fence<5
-      AND (SELECT COALESCE(sum(greatest(a.reserved_microusd,a.charged_microusd)),0) FROM public.import_attempts a JOIN public.import_items x ON x.id=a.item_id WHERE x.batch_id=b.id)+$2::bigint<=(b.configuration->>'batchLimitMicrousd')::bigint)
+      AND (SELECT COALESCE(sum(${attemptBudgetSQL}),0) FROM public.import_attempts a JOIN public.import_items x ON x.id=a.item_id WHERE x.batch_id=b.id)+$2::bigint<=(b.configuration->>'batchLimitMicrousd')::bigint)
       OR (i.status='running' AND EXISTS (
       SELECT 1 FROM public.import_attempts a WHERE a.item_id=i.id AND a.fence=i.fence AND a.lease_until<=now())))
     ORDER BY CASE WHEN i.status='running' THEN 0 ELSE 1 END,i.created_at,i.id LIMIT 10`,
@@ -439,6 +446,13 @@ export async function retryImportItem({ pool, owner, batchId, itemId }) {
     const b = await batch(client, batchId, owner, true),
       i = await item(client, b.id, itemId);
     if (b.cancelled || i.status !== 'failed' || i.fence >= 5) importFail('retry_not_allowed');
+    const previous = (
+      await client.query(
+        'SELECT error_code FROM public.import_attempts WHERE item_id=$1 AND fence=$2',
+        [i.id, i.fence],
+      )
+    ).rows[0];
+    if (previous?.error_code === 'source_unavailable') importFail('retry_not_allowed');
     await client.query("UPDATE public.import_items SET status='queued' WHERE id=$1", [i.id]);
     await audit(client, b.id, i.id, 'retried');
     return { item_id: i.id, status: 'queued' };

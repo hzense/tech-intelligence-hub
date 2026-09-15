@@ -67,6 +67,67 @@ async function ready(overrides = {}) {
 const output = { fragments: [{ text: 'hello', locator: { paragraph: 1 } }] };
 
 suite('private import PostgreSQL persistence', () => {
+  it('releases daily and batch reservations for a missing source before processing', async () => {
+    const input = request();
+    input.manifest.files.push({ clientItemId: 'b', name: 'second.txt', size: 5 });
+    const b = await created({
+      request: input,
+      configuration: { parserVersion: 'text/v1', batchLimitMicrousd: 100 },
+    });
+    for (const i of b.items)
+      await confirmImportDocument({
+        ...args(b),
+        itemId: i.id,
+        document: { ...document(b), object_key: `imports/${b.id}/${i.id}` },
+      });
+    const first = await claimImportItem({
+      ...args(b),
+      parserVersion: 'text/v1',
+      reserveMicrousd: 100,
+      dailyLimitMicrousd: 100,
+    });
+    await finishImportAttempt({
+      ...args(b),
+      fence: first.attempt.fence,
+      outcome: 'failed',
+      errorCode: 'source_unavailable',
+      chargedMicrousd: 0,
+    });
+    const usage = (
+      await pool.query(
+        "SELECT reserved_microusd,charged_microusd FROM public.import_daily_usage WHERE day=(now() AT TIME ZONE 'UTC')::date",
+      )
+    ).rows[0];
+    expect(usage).toEqual({ reserved_microusd: '0', charged_microusd: '0' });
+    const queue = await getImportQueue({ pool, parserVersion: 'text/v1', reserveMicrousd: 100 });
+    expect(queue.some((entry) => entry.itemId === b.items[1].id)).toBe(true);
+    const secondArgs = { ...args(b), itemId: b.items[1].id };
+    const second = await claimImportItem({
+      ...secondArgs,
+      parserVersion: 'text/v1',
+      reserveMicrousd: 100,
+      dailyLimitMicrousd: 100,
+    });
+    await finishImportAttempt({
+      ...secondArgs,
+      fence: second.attempt.fence,
+      outcome: 'failed',
+      errorCode: 'source_unavailable',
+      chargedMicrousd: 0,
+    });
+  });
+  it('expired originals remain failed and cannot be queued for another paid retry', async () => {
+    const b = await ready();
+    const claim = await claimImportItem({ ...args(b), parserVersion: 'text/v1' });
+    await finishImportAttempt({
+      ...args(b),
+      fence: claim.attempt.fence,
+      outcome: 'failed',
+      errorCode: 'source_unavailable',
+    });
+    await expect(retryImportItem(args(b))).rejects.toMatchObject({ code: 'retry_not_allowed' });
+    expect((await getImportBatch({ pool, owner, id: b.id })).items[0].status).toBe('failed');
+  });
   beforeAll(async () => {
     admin = new pg.Client({ connectionString: adminUrl });
     await admin.connect();

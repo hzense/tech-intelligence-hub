@@ -1,7 +1,7 @@
 import 'server-only';
 import pg from 'pg';
 import { createHash } from 'node:crypto';
-import { get, head, put } from '@vercel/blob';
+import { get, head, put, BlobNotFoundError } from '@vercel/blob';
 import { Sandbox } from '@vercel/sandbox';
 import { importParserSource } from '../../../../packages/ingestion/src/import-parser-source.mjs';
 import * as store from '../../../../packages/database/src/import-store.mjs';
@@ -14,6 +14,11 @@ import { readRuntimeReaderConfig } from '../runtime-reader-core';
 import { ImportIOError, readImportBytes } from '../import-io';
 import { fetchImportURL } from '../import-fetch';
 import { runImportProcessing } from '../import-worker-core';
+import { retryImportWithSourceCheck } from '../import-retry';
+import {
+  assertImportStore,
+  originalExpired,
+} from '../../../../packages/ingestion/src/import-retention.mjs';
 export const importCapabilities = {
   parsers: ['pdf', 'docx', 'markdown', 'text', 'html', 'csv', 'xlsx'] as const,
   ocr: false,
@@ -34,9 +39,14 @@ export function importConfig() {
       !raw ||
       !process.env.HZENSE_IMPORT_BLOB_TOKEN ||
       !process.env.HZENSE_IMPORT_PARSER_SNAPSHOT_ID ||
+      process.env.HZENSE_IMPORT_RETENTION_DAYS !== '7' ||
       process.env.HZENSE_IMPORT_ENABLED !== '1'
     )
       importFail('not_configured');
+    assertImportStore(
+      process.env.HZENSE_IMPORT_BLOB_TOKEN,
+      process.env.HZENSE_IMPORT_BLOB_STORE_ID,
+    );
     const url = new URL(raw);
     if (decodeURIComponent(url.username) !== 'hzense_import_admin') importFail('not_configured');
     url.username = 'hzense_runtime';
@@ -99,13 +109,32 @@ export const importPool = {
 function key(batchId: string, itemId: string) {
   return `imports/${importUuid(batchId)}/${importUuid(itemId)}`;
 }
-export async function readImportObject(path: string) {
+async function inspectImportOriginal(path: string) {
   const { token } = importConfig();
-  const metadata = await head(path, { token });
+  let metadata;
+  try {
+    metadata = await head(path, { token, abortSignal: AbortSignal.timeout(15000) });
+  } catch (error) {
+    if (error instanceof BlobNotFoundError) throw new ImportIOError('source_unavailable');
+    throw error;
+  }
+  if (originalExpired(metadata.uploadedAt)) throw new ImportIOError('source_unavailable');
   if (metadata.pathname !== path || metadata.size > 25 * 1024 * 1024 || metadata.size < 1)
     importFail('document_conflict');
-  const result = await get(path, { access: 'private', token, useCache: false });
-  if (!result || result.statusCode !== 200 || result.blob.etag !== metadata.etag)
+  return metadata;
+}
+export async function readImportObject(path: string) {
+  const { token } = importConfig();
+  const metadata = await inspectImportOriginal(path);
+  let result;
+  try {
+    result = await get(path, { access: 'private', token, useCache: false });
+  } catch (error) {
+    if (error instanceof BlobNotFoundError) throw new ImportIOError('source_unavailable');
+    throw error;
+  }
+  if (!result) throw new ImportIOError('source_unavailable');
+  if (result.statusCode !== 200 || result.blob.etag !== metadata.etag)
     importFail('document_conflict');
   const bytes = await readImportBytes(result.stream, 25 * 1024 * 1024);
   if (bytes.length !== metadata.size) importFail('document_conflict');
@@ -253,7 +282,12 @@ export async function executeImportAdmin(owner: string, method: string, body: un
   const itemId = importUuid(value.itemId),
     args = { pool: importPool, owner, batchId, itemId };
   if (value.action === 'confirm') return confirmImportUpload(owner, batchId, itemId);
-  if (value.action === 'retry') return store.retryImportItem(args);
+  if (value.action === 'retry')
+    return retryImportWithSourceCheck(itemId, {
+      getBatch: () => store.getImportBatch({ pool: importPool, owner, id: batchId }),
+      checkOriginal: () => inspectImportOriginal(key(batchId, itemId)),
+      retry: () => store.retryImportItem(args),
+    });
   if (value.action === 'recover') return store.expireImportAttempt(args);
   if (value.action === 'output') return store.getImportOutput(args);
   if (value.action === 'run') return runImportItem(owner, batchId, itemId);
