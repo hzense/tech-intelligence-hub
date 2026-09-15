@@ -56,6 +56,34 @@ test('wrong store credentials and out-of-scope paths fail closed before deletion
     assert.equal(deleted.length, 0);
   }
 });
+test('retention accepts every UUID shape accepted at import creation, including v7', async () => {
+  for (const id of [
+    '11111111-1111-7111-8111-111111111111',
+    '11111111-1111-0111-0111-111111111111',
+  ]) {
+    const { args, blob, deleted } = fixture();
+    blob.pathname = `imports/${id}/${id}`;
+    blob.url = `https://synthetic.private.blob.vercel-storage.com/${blob.pathname}`;
+    assert.equal((await sweepImportOriginals({ ...args, apply: true })).deleted, 1);
+    assert.equal(deleted[0].p, blob.pathname);
+  }
+});
+test('retention still rejects malformed and traversal object paths', async () => {
+  for (const invalid of [
+    path + '/extra',
+    path + '/',
+    path.replace('imports/', 'imports/../'),
+    path.toUpperCase(),
+  ]) {
+    const { args, blob, deleted } = fixture();
+    blob.pathname = invalid;
+    await assert.rejects(
+      sweepImportOriginals({ ...args, apply: true }),
+      /unexpected_original_path/,
+    );
+    assert.equal(deleted.length, 0);
+  }
+});
 test('fresh and replaced originals are never deleted', async () => {
   const { args, blob, deleted } = fixture();
   blob.uploadedAt = new Date(now);

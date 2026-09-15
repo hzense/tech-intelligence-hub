@@ -2,13 +2,23 @@ import { createRequire } from 'node:module';
 import { pathToFileURL, URL } from 'node:url';
 import process from 'node:process';
 import console from 'node:console';
+import { importUuid } from '../../packages/ingestion/src/import-task-contract.mjs';
 import {
   assertImportStore,
   originalExpired,
 } from '../../packages/ingestion/src/import-retention.mjs';
 
-const uuid = '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
-const originalPath = new RegExp(`^imports/${uuid}/${uuid}$`);
+function isOriginalPath(pathname) {
+  if (typeof pathname !== 'string') return false;
+  const parts = pathname.split('/');
+  if (parts.length !== 3 || parts[0] !== 'imports') return false;
+  try {
+    // Exactly the same identifier contract as import creation and objectPath().
+    return importUuid(parts[1]) === parts[1] && importUuid(parts[2]) === parts[2];
+  } catch {
+    return false;
+  }
+}
 // Separate cloud job: only a dedicated Blob credential, never database/AI secrets.
 export async function sweepImportOriginals({
   token,
@@ -30,7 +40,7 @@ export async function sweepImportOriginals({
     for (const blob of page.blobs) {
       scanned++;
       // Unexpected paths cannot expand the deletion scope; fail before deleting anything.
-      if (!originalPath.test(blob.pathname)) throw new Error('unexpected_original_path');
+      if (!isOriginalPath(blob.pathname)) throw new Error('unexpected_original_path');
       const url = new URL(blob.url);
       if (
         url.protocol !== 'https:' ||
