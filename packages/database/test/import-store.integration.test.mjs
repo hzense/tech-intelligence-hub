@@ -67,6 +67,18 @@ async function ready(overrides = {}) {
 const output = { fragments: [{ text: 'hello', locator: { paragraph: 1 } }] };
 
 suite('private import PostgreSQL persistence', () => {
+  it('expired originals remain failed and cannot be queued for another paid retry', async () => {
+    const b = await ready();
+    const claim = await claimImportItem({ ...args(b), parserVersion: 'text/v1' });
+    await finishImportAttempt({
+      ...args(b),
+      fence: claim.attempt.fence,
+      outcome: 'failed',
+      errorCode: 'source_unavailable',
+    });
+    await expect(retryImportItem(args(b))).rejects.toMatchObject({ code: 'retry_not_allowed' });
+    expect((await getImportBatch({ pool, owner, id: b.id })).items[0].status).toBe('failed');
+  });
   beforeAll(async () => {
     admin = new pg.Client({ connectionString: adminUrl });
     await admin.connect();

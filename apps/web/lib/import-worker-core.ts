@@ -86,6 +86,7 @@ export async function runImportProcessing(
         'unsupported_content',
         'limit_exceeded',
         'ocr_required',
+        'source_unavailable',
       ].includes(error.code);
     completion = {
       fence: claim.attempt.fence,

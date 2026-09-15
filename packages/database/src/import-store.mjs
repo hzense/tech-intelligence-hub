@@ -341,6 +341,7 @@ export async function finishImportAttempt({
         'worker_unavailable',
         'outcome_unknown',
         'ocr_required',
+        'source_unavailable',
       ].includes(errorCode))
   )
     importFail();
@@ -439,6 +440,13 @@ export async function retryImportItem({ pool, owner, batchId, itemId }) {
     const b = await batch(client, batchId, owner, true),
       i = await item(client, b.id, itemId);
     if (b.cancelled || i.status !== 'failed' || i.fence >= 5) importFail('retry_not_allowed');
+    const previous = (
+      await client.query(
+        'SELECT error_code FROM public.import_attempts WHERE item_id=$1 AND fence=$2',
+        [i.id, i.fence],
+      )
+    ).rows[0];
+    if (previous?.error_code === 'source_unavailable') importFail('retry_not_allowed');
     await client.query("UPDATE public.import_items SET status='queued' WHERE id=$1", [i.id]);
     await audit(client, b.id, i.id, 'retried');
     return { item_id: i.id, status: 'queued' };
