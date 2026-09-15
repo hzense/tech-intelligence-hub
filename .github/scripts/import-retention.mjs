@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, URL } from 'node:url';
 import process from 'node:process';
 import console from 'node:console';
 import {
@@ -48,7 +48,7 @@ export async function sweepImportOriginals({
     if (!page.cursor || cursors.has(page.cursor)) throw new Error('retention_cursor_invalid');
     cursors.add(page.cursor);
     cursor = page.cursor;
-  } while (true);
+  } while (cursor);
   let deleted = 0;
   if (apply)
     for (const pathname of candidates.keys()) {
