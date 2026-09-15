@@ -1,0 +1,17 @@
+{
+  "name": "@hzense/ingestion",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/import-manifest.d.mts",
+      "default": "./src/import-manifest.mjs"
+    }
+  },
+  "scripts": {
+    "build": "node --check src/import-manifest.mjs",
+    "typecheck": "tsc --noEmit --strict --module nodenext --target es2022 test/type-contract.ts",
+    "lint": "eslint src test",
+    "test": "node --test test/*.test.mjs"
+  }
+}
