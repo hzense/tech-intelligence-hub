@@ -1,0 +1,260 @@
+import { readFile } from 'node:fs/promises';
+import process from 'node:process';
+import { randomUUID } from 'node:crypto';
+import { URL } from 'node:url';
+import pg from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { validateConnectionTarget } from '../src/connection-policy.mjs';
+import {
+  createImportBatch,
+  getImportBatch,
+  confirmImportDocument,
+  claimImportItem,
+  finishImportAttempt,
+  cancelImportBatch,
+  retryImportItem,
+  expireImportAttempt,
+  getImportOutput,
+} from '../src/import-store.mjs';
+import { importChecks } from '../src/import-catalog.mjs';
+import { canonicalPublicationControlCheck } from '../src/signal-publication-control-catalog.mjs';
+
+const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
+if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
+const suite = adminUrl ? describe.sequential : describe.skip;
+const name = `hzense_import_${process.pid}_${Date.now()}`;
+const owner = 'test-admin';
+const capabilities = { parsers: ['text'], urlFetch: true };
+const ddl = await readFile(
+  new URL('../../../db/migrations/0014_import_tasks.sql', import.meta.url),
+  'utf8',
+);
+let admin, pool;
+const request = () => ({
+  id: randomUUID(),
+  intent: 'preview',
+  manifest: { files: [{ clientItemId: 'a', name: 'note.txt', size: 5 }] },
+});
+async function created(overrides = {}) {
+  return createImportBatch({
+    pool,
+    owner,
+    request: request(),
+    capabilities,
+    configuration: { parserVersion: 'text/v1', batchLimitMicrousd: 0 },
+    ...overrides,
+  });
+}
+function args(b) {
+  return { pool, owner, batchId: b.id, itemId: b.items[0].id };
+}
+function document(b) {
+  return {
+    object_key: `imports/${b.id}/${b.items[0].id}`,
+    object_version: 'etag-v1',
+    sha256: 'a'.repeat(64),
+    byte_size: 5,
+    format: 'text',
+  };
+}
+async function ready(overrides = {}) {
+  const b = await created(overrides);
+  await confirmImportDocument({ ...args(b), document: document(b) });
+  return b;
+}
+const output = { fragments: [{ text: 'hello', locator: { paragraph: 1 } }] };
+
+suite('private import PostgreSQL persistence', () => {
+  beforeAll(async () => {
+    admin = new pg.Client({ connectionString: adminUrl });
+    await admin.connect();
+    await admin.query(`CREATE DATABASE "${name}" TEMPLATE template0 ENCODING 'UTF8'`);
+    const url = new URL(adminUrl);
+    url.pathname = `/${name}`;
+    pool = new pg.Pool({ connectionString: url.toString(), max: 5 });
+    await pool.query(ddl);
+  });
+  afterAll(async () => {
+    await pool?.end();
+    if (admin) {
+      await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      await admin.end();
+    }
+  });
+  it('pins native PostgreSQL CHECK expressions to the independent verifier', async () => {
+    const checks = (
+      await pool.query(
+        "SELECT r.relname,pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid WHERE c.contype='c' AND r.relname LIKE 'import_%'",
+      )
+    ).rows;
+    for (const [table, forms] of Object.entries(importChecks)) {
+      const actual = checks
+        .filter((row) => row.relname === table)
+        .map((row) => canonicalPublicationControlCheck(row.definition));
+      expect(actual).toHaveLength(forms.length);
+      for (const alternatives of forms)
+        expect(
+          actual.some((value) => alternatives.includes(value)),
+          JSON.stringify({ table, actual, alternatives }),
+        ).toBe(true);
+    }
+  });
+  it('commits one batch under concurrent idempotent submission and rejects changed ownership/content', async () => {
+    const value = request();
+    const [a, b] = await Promise.all([created({ request: value }), created({ request: value })]);
+    expect(a.id).toBe(b.id);
+    expect(a.items[0].id).toBe(b.items[0].id);
+    await expect(created({ owner: 'other', request: value })).rejects.toMatchObject({
+      code: 'request_id_conflict',
+    });
+    await expect(
+      created({ request: { ...value, intent: 'generate_publish' } }),
+    ).rejects.toMatchObject({ code: 'request_id_conflict' });
+    await expect(getImportBatch({ pool, owner: 'other', id: a.id })).rejects.toMatchObject({
+      code: 'not_found',
+    });
+  });
+  it('requires actual object identity and immutable content before queuing', async () => {
+    const b = await created();
+    expect(b.status).toBe('awaiting_upload');
+    await expect(claimImportItem({ ...args(b), parserVersion: 'text/v1' })).rejects.toMatchObject({
+      code: 'not_claimable',
+    });
+    await expect(
+      confirmImportDocument({ ...args(b), document: { ...document(b), byte_size: 6 } }),
+    ).rejects.toMatchObject({ code: 'document_conflict' });
+    await confirmImportDocument({ ...args(b), document: document(b) });
+    await confirmImportDocument({ ...args(b), document: document(b) });
+    await expect(
+      confirmImportDocument({ ...args(b), document: { ...document(b), sha256: 'b'.repeat(64) } }),
+    ).rejects.toMatchObject({ code: 'document_conflict' });
+    expect((await getImportBatch({ pool, owner, id: b.id })).status).toBe('queued');
+  });
+  it('pins the parser revision and budget cap from creation, not the next worker request', async () => {
+    const b = await ready();
+    await expect(claimImportItem({ ...args(b), parserVersion: 'text/v2' })).rejects.toMatchObject({
+      code: 'configuration_conflict',
+    });
+    await expect(
+      claimImportItem({
+        ...args(b),
+        parserVersion: 'text/v1',
+        reserveMicrousd: 1,
+        dailyLimitMicrousd: 1000,
+        batchLimitMicrousd: 1000,
+      }),
+    ).rejects.toMatchObject({ code: 'budget_exceeded' });
+    expect((await getImportBatch({ pool, owner, id: b.id })).status).toBe('queued');
+  });
+  it('only one worker claims an item, stores located output, and rejects duplicate finish', async () => {
+    const b = await ready();
+    const claims = await Promise.allSettled([
+      claimImportItem({ ...args(b), parserVersion: 'text/v1' }),
+      claimImportItem({ ...args(b), parserVersion: 'text/v1' }),
+    ]);
+    expect(claims.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    await finishImportAttempt({ ...args(b), fence: 1, outcome: 'completed', output });
+    expect((await getImportBatch({ pool, owner, id: b.id })).status).toBe('completed');
+    await expect(
+      finishImportAttempt({ ...args(b), fence: 1, outcome: 'completed', output }),
+    ).rejects.toMatchObject({ code: 'stale_attempt' });
+    const result = (
+      await pool.query('SELECT content FROM public.import_outputs WHERE item_id=$1', [
+        b.items[0].id,
+      ])
+    ).rows[0].content;
+    expect(result.classification).toBe('private');
+    expect(result.fragments[0].locator.paragraph).toBe(1);
+  });
+  it('cancel invalidates running work without deleting completed evidence', async () => {
+    const b = await ready();
+    await claimImportItem({ ...args(b), parserVersion: 'text/v1' });
+    await cancelImportBatch({ pool, owner, id: b.id });
+    await expect(
+      finishImportAttempt({ ...args(b), fence: 1, outcome: 'completed', output }),
+    ).rejects.toMatchObject({ code: 'stale_attempt' });
+    await expect(retryImportItem(args(b))).rejects.toMatchObject({ code: 'retry_not_allowed' });
+    expect((await getImportBatch({ pool, owner, id: b.id })).status).toBe('cancelled');
+  });
+  it('expired free work can retry with a new fence; old workers cannot submit', async () => {
+    const b = await ready();
+    await claimImportItem({ ...args(b), parserVersion: 'text/v1' });
+    await pool.query(
+      "UPDATE public.import_attempts SET lease_until=now()-interval '1 second' WHERE item_id=$1",
+      [b.items[0].id],
+    );
+    expect(await expireImportAttempt(args(b))).toEqual({ changed: true, status: 'failed' });
+    await retryImportItem(args(b));
+    await claimImportItem({ ...args(b), parserVersion: 'text/v1' });
+    await expect(
+      finishImportAttempt({ ...args(b), fence: 1, outcome: 'completed', output }),
+    ).rejects.toMatchObject({ code: 'stale_attempt' });
+    await finishImportAttempt({ ...args(b), fence: 2, outcome: 'completed', output });
+  });
+  it('atomically enforces global budgets across batches and preserves unknown charges', async () => {
+    const configuration = { parserVersion: 'ocr/v1', batchLimitMicrousd: 100 };
+    const a = await ready({ configuration }),
+      b = await ready({ configuration });
+    const budget = {
+      parserVersion: 'ocr/v1',
+      reserveMicrousd: 80,
+      dailyLimitMicrousd: 100,
+    };
+    const claims = await Promise.allSettled([
+      claimImportItem({ ...args(a), ...budget }),
+      claimImportItem({ ...args(b), ...budget }),
+    ]);
+    expect(claims.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const winner = claims[0].status === 'fulfilled' ? a : b;
+    await finishImportAttempt({
+      ...args(winner),
+      fence: 1,
+      outcome: 'unknown',
+      chargedMicrousd: 90,
+      errorCode: 'outcome_unknown',
+    });
+    await expect(retryImportItem(args(winner))).rejects.toMatchObject({
+      code: 'retry_not_allowed',
+    });
+    const usage = (await pool.query('SELECT * FROM public.import_daily_usage')).rows[0];
+    expect(usage.reserved_microusd).toBe('0');
+    expect(usage.charged_microusd).toBe('90');
+  });
+  it('completed private output requires owning admin and the current completed fence', async () => {
+    const b = await ready();
+    // Previous tests consumed the daily budget; a free fixture uses that existing ceiling.
+    await claimImportItem({ ...args(b), parserVersion: 'text/v1', dailyLimitMicrousd: 100 });
+    await finishImportAttempt({ ...args(b), fence: 1, outcome: 'completed', output });
+    expect((await getImportOutput(args(b))).classification).toBe('private');
+    await expect(getImportOutput({ ...args(b), owner: 'other-admin' })).rejects.toMatchObject({
+      code: 'not_found',
+    });
+  });
+  it('a failed transaction cannot leave a half-created batch', async () => {
+    const value = request();
+    await expect(created({ request: { ...value, manifest: { files: [] } } })).rejects.toMatchObject(
+      { code: 'manifest_rejected' },
+    );
+    expect(
+      (await pool.query('SELECT id FROM public.import_batches WHERE id=$1', [value.id])).rows,
+    ).toHaveLength(0);
+  });
+  it('migration refuses leaked default privileges atomically', async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO PUBLIC');
+      // A separate schema is not equivalent; recreate only this isolated fixture in a rollback transaction.
+      await client.query(
+        'DROP TABLE public.import_outputs, public.import_attempts, public.import_documents, public.import_audit, public.import_items, public.import_batches, public.import_daily_usage',
+      );
+      // PUBLIC is explicitly revoked; an inherited named role must fail.
+      await client.query(`CREATE ROLE "${name}_leak"`);
+      await client.query(`ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO "${name}_leak"`);
+      await expect(client.query(ddl)).rejects.toThrow(/owner-only ACLs/);
+    } finally {
+      await client.query('ROLLBACK');
+      client.release();
+    }
+  });
+});

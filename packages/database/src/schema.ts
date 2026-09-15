@@ -1,4 +1,13 @@
 import { sql } from 'drizzle-orm';
+export {
+  importBatches,
+  importItems,
+  importDocuments,
+  importAttempts,
+  importOutputs,
+  importAudit,
+  importDailyUsage,
+} from './import-schema.js';
 import {
   bigint,
   boolean,
