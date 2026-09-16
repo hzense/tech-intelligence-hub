@@ -22,7 +22,7 @@
 
 ## 仍未完成
 
-### 2026-09-16 迁移已提交，完整核验待修复
+### 2026-09-16 迁移已提交，完整核验已通过
 
 - [预检 34999035044](https://github.com/hzense/tech-intelligence-hub/actions/runs/34999035044) 成功，只有 0014 待迁移，目标和备份绑定与批准计划一致。
 - [ACL 采集 35069259800](https://github.com/hzense/tech-intelligence-hub/actions/runs/35069259800) 成功，两次独立指纹相同：`2165a195f946fda0f0e1fc85e5abe4b6b42ed4d20edeae8f98e0188fb97bda5a`；脱敏制品 `acl-evidence-35069259800-1` 已归档。恢复能力仍为 `recoveryVerified=false`。
@@ -33,9 +33,19 @@
 
 后续授权更新：操作者已明确回复“确认接受”，接受该新备份未验证恢复能力的风险，仅限 `0014` 迁移和导入角色最小授权。浏览器再次核对备份分支仍存在、父分支为 main、到期为 `2026-09-22T16:17:09Z`。此授权不是迁移或权限授予成功证明。
 
+后续核验：PR #94 已合并为 `f8ff4df90aa4683bccb76debf59495be8c944161`，main CI [35073192941](https://github.com/hzense/tech-intelligence-hub/actions/runs/35073192941) 成功。操作者批准独立只读 [verify 35073482849](https://github.com/hzense/tech-intelligence-hub/actions/runs/35073482849) 后，于 `2026-09-16T09:20:30Z` 返回 `operation=verify,status=succeeded,migrationCount=15,tableCount=47`；没有重跑迁移或变更 ACL。
+
+### 2026-09-16 导入凭据配置准备
+
+按“开始配置”续接：Neon 页面只读确认生产 main/hzense 的 15 条迁移和 7 张导入表，`hzense_import_admin` 不存在；main/neondb 的实际登录为具有 CREATEROLE 的非超级用户 `neondb_owner`。Vercel API 只读取变量元数据，已有导入配置均为 Production-only Sensitive，尚无 `HZENSE_IMPORT_DATABASE_URL`。
+
+新增 `db/roles/create_import_admin.sql` 为凭据创建候选，复用既有受审 AI 凭据流程，仅替换目标角色及标签，并添加模板一致性测试。它只允许创建不存在的受限登录，拒绝覆盖现有密码，不附带导入表授权。浏览器已准备语句，但**尚未提交**：新凭据必须由管理员在页面执行并保管结果，确认 COMMIT 成功后才能使用。数据库分支必须由页面独立核对。不要把密码、连接串或结果截图提交到聊天或仓库。
+
+随后操作者回复“已创建”。独立页面在 main/hzense 以 `hzense_migrator` 只读确认 `hzense_import_admin` 已存在：LOGIN=true、INHERIT=false、连接上限 2，五项高权限均 false；所有权／直接 ACL 依赖为 0、角色设置为 0，仅有 cloud_admin 授予 neondb_owner 的 ADMIN-only 管理边（INHERIT/SET=false）。未读取原密码结果页，未验证密码或实际服务登录。新增 `configure_import_admin.sql` 并以隔离原生 PostgreSQL 验证精确权限、重复授权拒绝、checksum／角色／PUBLIC 漂移拒绝及提交前 DELETE 注入回滚；生产授权仍待独立执行确认，Production DSN 尚未保存。
+
 操作者进一步确认维护期间没有其他生产 DDL、角色授权或发布并行操作。PR #93 复审发现目标绑定缺口，已将数据库目标与备份哈希纳入 v2 计划，增加 ACL 采集前及实际迁移连接锁内检查；当时尚未执行生产 DDL，后续执行结果见上文。
 
-1. 合并只读角色校验契约修复，单独运行生产 `verify` 完成完整 Schema 核验；0014 已提交，不重复执行迁移。
+1. 完整 Schema 的独立 `verify` 已通过；0014 已提交，不重复执行迁移。
 2. 专用 `hzense_import_admin` 的最小 ACL、独立身份核验、Production DSN。
 3. 保留策略代码已合并部署，真实 Store 空扫描后才开启云端清理。
 4. 资源配置后的部署和受控合成文件端到端验收，最后开启导入。后台持续处理调度尚未配置。

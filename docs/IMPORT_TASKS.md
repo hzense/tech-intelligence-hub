@@ -87,6 +87,8 @@ Sandbox 使用 Vercel 运行环境的服务认证；上述配置只能放在服�
 
 专用角色要求 `LOGIN NOINHERIT CONNECTION LIMIT 2`、无高权限和角色／数据库设置、无应用 schema CREATE、数据库 CREATE/TEMP、其它业务表／列／序列／非扩展函数权限。成员关系检查双向拒绝，仅保留既有 Neon 规则允许的精确管理边：cloud_admin 授予 neondb_owner 对目标角色的 ADMIN-only，且 INHERIT／SET 均为 false。仅七张导入私表 SELECT、INSERT，其中 `import_batches/items/attempts/daily_usage` 可 UPDATE；原件、结果、审计禁止 UPDATE／DELETE，也拒绝 MAINTAIN 等额外能力。生产授权需先核验现有公共权限和完整 Schema，拒绝隐式修复 PUBLIC 或复用旧审批。
 
+生产配置分两步：`db/roles/create_import_admin.sql` 仅作为管理员提交的新凭据创建候选，在已核对的 Neon main/neondb 以 `neondb_owner` 执行；角色已存在即拒绝，不轮换密码。`db/roles/configure_import_admin.sql` 由 hzense 数据库实际 owner 在完整 Schema 核验通过且维护窗口无并行 DDL／授权时执行，单事务、共用迁移锁、固定 0014 checksum、拒绝非空角色及其他库的越权。它只授予当前库 CONNECT、public USAGE、七张表 SELECT/INSERT 和四张状态表 UPDATE；提交前重新核对属性、双向成员、跨库、直接及有效 ACL，错误整笔回滚。既有权限和 PUBLIC 权限均不自动修复，脚本不加入迁移、启动或探针。连接密码仅保存于 Production 敏感配置，之后须使用真实服务身份验证；owner 上的授权成功不等于服务登录或导入已启用。
+
 ## 仍待交付与审批
 
 1. 完成生产开通；`0014` 迁移和最小授权仍须独立门禁。地区、应用预算及原件保留期限已批准，平台实际费用不是应用硬预算保证。
