@@ -49,7 +49,7 @@ test('each dependency fails closed with static diagnostics only', () => {
     ['VERCEL_ENV', 'preview', 'environment'],
     ['HZENSE_IMPORT_ENABLED', 'true', 'enabled'],
     ['HZENSE_IMPORT_DATABASE_URL', 'not-a-url-secret', 'database_url'],
-    ['HZENSE_RUNTIME_EXPECTED_HOST', 'wrong-pooler.neon.tech', 'database_target'],
+    ['HZENSE_RUNTIME_EXPECTED_HOST', 'wrong-pooler.neon.tech', 'database_host_mismatch'],
     ['NODE_TLS_REJECT_UNAUTHORIZED', '0', 'database_tls'],
     ['HZENSE_IMPORT_BLOB_TOKEN', 'secret-token-from-another-store', 'blob_binding'],
     ['HZENSE_IMPORT_PARSER_SNAPSHOT_ID', '', 'parser_snapshot'],
@@ -89,6 +89,70 @@ test('role, duplicate parameters and non-verify TLS remain rejected', () => {
     assert.ok(result.issues.includes(code));
     assert.equal(result.valid, false);
   }
+});
+test('target diagnostics identify each mismatch without exposing either side', () => {
+  const env = configuration();
+  const cases = [
+    [env.HZENSE_IMPORT_DATABASE_URL.replace(':5432', ''), ['database_port_missing']],
+    [env.HZENSE_IMPORT_DATABASE_URL.replace(':5432', ':5433'), ['database_port_mismatch']],
+    [
+      env.HZENSE_IMPORT_DATABASE_URL.replace('/hzense?', '/private-db?'),
+      ['database_name_mismatch'],
+    ],
+    [
+      env.HZENSE_IMPORT_DATABASE_URL.replace('ep-test-pooler', 'ep-other-pooler'),
+      ['database_host_mismatch'],
+    ],
+    [
+      env.HZENSE_IMPORT_DATABASE_URL.replace('ep-test-pooler', 'ep-test'),
+      ['database_pooled_endpoint', 'database_host_mismatch'],
+    ],
+    [
+      env.HZENSE_IMPORT_DATABASE_URL.replace(':5432/hzense', '/private-db'),
+      ['database_port_missing', 'database_name_mismatch'],
+    ],
+  ];
+  for (const [url, expected] of cases) {
+    for (const gate of ['0', '1']) {
+      const result = diagnoseImportConfiguration({
+        ...env,
+        HZENSE_IMPORT_ENABLED: gate,
+        HZENSE_IMPORT_DATABASE_URL: url,
+      });
+      assert.deepEqual(result.issues, expected);
+      assert.equal(result.valid, false);
+      assert.equal(result.ready, false);
+      const displayed =
+        JSON.stringify(result) +
+        result.issues.map((code) => importConfigurationMessages[code]).join('');
+      assert.doesNotMatch(
+        displayed,
+        /synthetic-secret|ep-test|ep-other|private-db|5432|5433|postgresql:\/\//,
+      );
+    }
+  }
+});
+test('target diagnostics retain host case and database percent decoding semantics', () => {
+  const env = configuration();
+  const result = diagnoseImportConfiguration({
+    ...env,
+    HZENSE_RUNTIME_EXPECTED_HOST: env.HZENSE_RUNTIME_EXPECTED_HOST.toUpperCase(),
+    HZENSE_IMPORT_DATABASE_URL: env.HZENSE_IMPORT_DATABASE_URL.replace('/hzense?', '/%68zense?'),
+  });
+  assert.deepEqual(result.issues, []);
+  assert.equal(result.valid, true);
+  const nonNeon = env.HZENSE_IMPORT_DATABASE_URL.replace(
+    'ep-test-pooler.neon.tech',
+    'private-pooler.example',
+  );
+  assert.deepEqual(
+    diagnoseImportConfiguration({
+      ...env,
+      HZENSE_IMPORT_DATABASE_URL: nonNeon,
+      HZENSE_RUNTIME_EXPECTED_HOST: 'private-pooler.example',
+    }).issues,
+    ['database_pooled_endpoint'],
+  );
 });
 test('page authenticates before diagnostics and operational path uses the same gate', () => {
   const page = readFileSync(
