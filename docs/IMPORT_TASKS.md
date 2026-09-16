@@ -83,7 +83,7 @@ Sandbox 使用 Vercel 运行环境的服务认证；上述配置只能放在服�
 postgresql://hzense_import_admin:<URL编码后的密码>@<已核准的Neon-pooler主机>:5432/hzense?sslmode=verify-full&channel_binding=prefer
 ```
 
-`database_tls` 时核对两项 TLS 参数及证书校验；`database_target` 时核对预期主机、显式端口和库名；`blob_binding` 时核对专用 Store 与令牌是否匹配。不得为消除提示而降级 TLS、放宽目标绑定或扩大角色授权。敏感配置仅在 Vercel Production 中更正，不复制到聊天、日志、代码或本地环境文件。更正后需重新部署，再检查诊断；导入开关仍须单独审批。
+`database_tls` 时核对两项 TLS 参数及证书校验；`database_host_mismatch`、`database_port_missing`、`database_port_mismatch`、`database_name_mismatch` 分别表示主机不匹配、缺少显式端口、端口不匹配、库名不匹配；`database_pooled_endpoint` 表示不是受支持的 Neon pooled 地址。多个目标问题可以同时展示，无法细分时保留 `database_target`。这些提示均不显示实际或预期值；`blob_binding` 时核对专用 Store 与令牌是否匹配。不得为消除提示而降级 TLS、放宽目标绑定或扩大角色授权。敏感配置仅在 Vercel Production 中更正，不复制到聊天、日志、代码或本地环境文件。更正后需重新部署，再检查诊断；导入开关仍须单独审批。
 
 ## 原件到期与云端清理
 

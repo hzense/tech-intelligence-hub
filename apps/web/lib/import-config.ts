@@ -11,6 +11,14 @@ export const importConfigurationMessages = {
   database_role: '数据库连接必须使用 hzense_import_admin 角色。',
   database_target:
     '数据库主机、显式端口和库名必须与 HZENSE_RUNTIME_EXPECTED_HOST/PORT/NAME 一致，并使用 Neon pooled 地址。',
+  database_host_mismatch:
+    '连接串主机与 HZENSE_RUNTIME_EXPECTED_HOST 不一致；请核对主机，不要覆盖预期目标。',
+  database_port_missing:
+    '连接串缺少显式端口；请在主机后填写与 HZENSE_RUNTIME_EXPECTED_PORT 一致的端口。',
+  database_port_mismatch: '连接串端口与 HZENSE_RUNTIME_EXPECTED_PORT 不一致。',
+  database_name_mismatch: '连接串库名与 HZENSE_RUNTIME_EXPECTED_NAME 不一致。',
+  database_pooled_endpoint:
+    '连接串不是受支持的 Neon pooled 地址；请使用包含 pooler 标记的 Neon 主机。',
   database_tls:
     '连接串必须包含 sslmode=verify-full 和 channel_binding=prefer，且不得禁用证书验证。',
   database_parameters: '数据库连接参数不合法；只允许单个 sslmode 和 channel_binding 参数。',
@@ -28,6 +36,26 @@ export type ImportConfigurationDiagnostics = {
   ready: boolean;
   issues: Issue[];
 };
+
+// Refine a rejection, never grant access. The authoritative runtime validator remains unchanged.
+function targetIssues(raw: string | undefined, env: Environment): Issue[] {
+  try {
+    const url = new URL(raw!);
+    const host = url.hostname.toLowerCase();
+    const result: Issue[] = [];
+    if (!/(^|[.-])pooler([.-]|$)/.test(host) || !host.endsWith('.neon.tech'))
+      result.push('database_pooled_endpoint');
+    if (host !== env.HZENSE_RUNTIME_EXPECTED_HOST?.toLowerCase())
+      result.push('database_host_mismatch');
+    if (!url.port) result.push('database_port_missing');
+    else if (url.port !== env.HZENSE_RUNTIME_EXPECTED_PORT) result.push('database_port_mismatch');
+    if (decodeURIComponent(url.pathname.replace(/^\//, '')) !== env.HZENSE_RUNTIME_EXPECTED_NAME)
+      result.push('database_name_mismatch');
+    return result.length ? result : ['database_target'];
+  } catch {
+    return ['database_target'];
+  }
+}
 
 // Pure, no I/O: safe to run while the import gate is closed. Never returns input values/errors.
 export function diagnoseImportConfiguration(env: Environment): ImportConfigurationDiagnostics {
@@ -72,7 +100,7 @@ export function diagnoseImportConfiguration(env: Environment): ImportConfigurati
     const code = error instanceof RuntimeReaderError ? error.code : undefined;
     if (code === 'tls_required') issues.push('database_tls');
     else if (code === 'target_mismatch' || code === 'pooled_endpoint_required')
-      issues.push('database_target');
+      issues.push(...targetIssues(raw, env));
     else if (code === 'invalid_configuration') issues.push('database_parameters');
     else if (code !== 'not_production') issues.push('database_url');
   }
