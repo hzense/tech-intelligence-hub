@@ -56,22 +56,34 @@
 
 ## 生产配置（分阶段开通）
 
-| 配置                                 | 用途                                                                                                   |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| `HZENSE_IMPORT_ENABLED=1`            | 完成审批与验收后才开启，Preview 禁用                                                                   |
-| `HZENSE_IMPORT_DATABASE_URL`         | 专用 `hzense_import_admin` Neon pooled TLS DSN；沿用 `HZENSE_RUNTIME_EXPECTED_HOST/PORT/NAME` 目标核对 |
-| `HZENSE_IMPORT_BLOB_TOKEN`           | 仅专用私有 Blob Store 的服务端令牌                                                                     |
-| `HZENSE_IMPORT_BLOB_STORE_ID`        | 专用 Store ID，必须与令牌中的 Store ID 一致；错配拒绝启动                                              |
-| `HZENSE_IMPORT_RETENTION_DAYS=7`     | 原件读取保留期限；当前只接受批准的 7 天                                                                |
-| `HZENSE_IMPORT_PARSER_SNAPSHOT_ID`   | 无凭据、预装固定解析依赖的批准镜像                                                                     |
-| `HZENSE_IMPORT_RESERVE_MICROUSD`     | 每次领取的保守费用预留，正整数                                                                         |
-| `HZENSE_IMPORT_DAILY_LIMIT_MICROUSD` | UTC 日应用预算，正整数                                                                                 |
-| `HZENSE_IMPORT_BATCH_LIMIT_MICROUSD` | 创建时冻结的批次预算，正整数                                                                           |
-| `HZENSE_IMPORT_WORKER_TOKEN`         | 至少 32 字符随机服务令牌，调度器以 Bearer 提交 POST                                                    |
+| 配置                                 | 用途                                                                                                                                                             |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HZENSE_IMPORT_ENABLED=1`            | 完成审批与验收后才开启，Preview 禁用                                                                                                                             |
+| `HZENSE_IMPORT_DATABASE_URL`         | 专用 `hzense_import_admin` Neon pooled DSN，显式端口及 `sslmode=verify-full&channel_binding=prefer` 必填；沿用 `HZENSE_RUNTIME_EXPECTED_HOST/PORT/NAME` 目标核对 |
+| `HZENSE_IMPORT_BLOB_TOKEN`           | 仅专用私有 Blob Store 的服务端令牌                                                                                                                               |
+| `HZENSE_IMPORT_BLOB_STORE_ID`        | 专用 Store ID，必须与令牌中的 Store ID 一致；错配拒绝启动                                                                                                        |
+| `HZENSE_IMPORT_RETENTION_DAYS=7`     | 原件读取保留期限；当前只接受批准的 7 天                                                                                                                          |
+| `HZENSE_IMPORT_PARSER_SNAPSHOT_ID`   | 无凭据、预装固定解析依赖的批准镜像                                                                                                                               |
+| `HZENSE_IMPORT_RESERVE_MICROUSD`     | 每次领取的保守费用预留，正整数                                                                                                                                   |
+| `HZENSE_IMPORT_DAILY_LIMIT_MICROUSD` | UTC 日应用预算，正整数                                                                                                                                           |
+| `HZENSE_IMPORT_BATCH_LIMIT_MICROUSD` | 创建时冻结的批次预算，正整数                                                                                                                                     |
+| `HZENSE_IMPORT_WORKER_TOKEN`         | 至少 32 字符随机服务令牌，调度器以 Bearer 提交 POST                                                                                                              |
 
 Sandbox 使用 Vercel 运行环境的服务认证；上述配置只能放在服务端 Production Secret，不填入文档或浏览器表单。预算是应用侧保守预留，不冒称 Vercel 实际账单或平台硬支出上限；Blob 存储与网络费用须另行评估。未知结果禁止重试，待人工对账。
 
 2026-09-15 操作者批准单批 **10 美元**、UTC 日全局 **50 美元**、原件 **7 天**。对应预算值分别为 `10000000`、`50000000` microUSD；每次解析暂按 `100000` microUSD（0.10 美元）保守预留。当前不调用 AI/OCR，因此这些数值不是模型费用的实测账单。开通进度见[生产准备记录](production-evidence/2026-09-15-import-production.md)。
+
+### 关闭开关时排查配置
+
+管理员登录后访问 `/admin/imports`，页面的“导入配置诊断”会独立显示开关状态与配置校验结果。仅进行内存中的格式与绑定检查，不连接 Neon、不调用 Blob 或 Sandbox、不读取原件或调用 AI。只有配置通过且开关为 `1`，业务入口才启用；诊断通过不等于密码认证、数据库 ACL 或端到端验收通过。
+
+诊断只返回固定错误码和静态中文说明，不返回环境变量值、连接串、令牌、原始异常消息或堆栈。数据库连接模板如下（占位符不能直接保存）：
+
+```text
+postgresql://hzense_import_admin:<URL编码后的密码>@<已核准的Neon-pooler主机>:5432/hzense?sslmode=verify-full&channel_binding=prefer
+```
+
+`database_tls` 时核对两项 TLS 参数及证书校验；`database_target` 时核对预期主机、显式端口和库名；`blob_binding` 时核对专用 Store 与令牌是否匹配。不得为消除提示而降级 TLS、放宽目标绑定或扩大角色授权。敏感配置仅在 Vercel Production 中更正，不复制到聊天、日志、代码或本地环境文件。更正后需重新部署，再检查诊断；导入开关仍须单独审批。
 
 ## 原件到期与云端清理
 
