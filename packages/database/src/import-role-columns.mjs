@@ -1,0 +1,72 @@
+// Pinned to migration 0014: new columns do not inherit service privileges.
+export const importRoleColumns = {
+  import_batches: {
+    SELECT: ['id', 'owner_id', 'fingerprint', 'intent', 'configuration', 'cancelled', 'created_at'],
+    INSERT: ['id', 'owner_id', 'fingerprint', 'intent', 'configuration'],
+    UPDATE: ['cancelled'],
+  },
+  import_items: {
+    SELECT: ['id', 'batch_id', 'position', 'kind', 'declaration', 'status', 'fence', 'created_at'],
+    INSERT: ['id', 'batch_id', 'position', 'kind', 'declaration', 'status'],
+    UPDATE: ['status', 'fence'],
+  },
+  import_documents: {
+    SELECT: [
+      'item_id',
+      'object_key',
+      'object_version',
+      'sha256',
+      'byte_size',
+      'format',
+      'metadata',
+      'created_at',
+    ],
+    INSERT: [
+      'item_id',
+      'object_key',
+      'object_version',
+      'sha256',
+      'byte_size',
+      'format',
+      'metadata',
+    ],
+  },
+  import_attempts: {
+    SELECT: [
+      'item_id',
+      'fence',
+      'parser_version',
+      'status',
+      'lease_until',
+      'budget_day',
+      'reserved_microusd',
+      'charged_microusd',
+      'error_code',
+      'created_at',
+      'finished_at',
+    ],
+    INSERT: [
+      'item_id',
+      'fence',
+      'parser_version',
+      'status',
+      'lease_until',
+      'budget_day',
+      'reserved_microusd',
+    ],
+    UPDATE: ['status', 'error_code', 'charged_microusd', 'finished_at'],
+  },
+  import_outputs: {
+    SELECT: ['item_id', 'fence', 'content', 'created_at'],
+    INSERT: ['item_id', 'fence', 'content'],
+  },
+  import_audit: {
+    SELECT: ['id', 'batch_id', 'item_id', 'event', 'created_at'],
+    INSERT: ['id', 'batch_id', 'item_id', 'event'],
+  },
+  import_daily_usage: {
+    SELECT: ['day', 'reserved_microusd', 'charged_microusd'],
+    INSERT: ['day'],
+    UPDATE: ['reserved_microusd', 'charged_microusd'],
+  },
+};

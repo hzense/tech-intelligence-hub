@@ -85,7 +85,9 @@ Sandbox 使用 Vercel 运行环境的服务认证；上述配置只能放在服�
 
 **7 天是读取截止时间，不是平台保证的物理销毁期限。** 小时任务可能受调度延迟、main CI 失败或平台故障影响，物理删除可能晚于截止时间；失败时应查看 Actions 运行状态并修复，不能据一次成功运行宣称长期保留策略已满足。删除不可由 Blob 直接撤销，重新处理需要重新上传；当前没有为原件创建额外备份。
 
-专用角色要求 `LOGIN NOINHERIT CONNECTION LIMIT 2`、无高权限和角色／数据库设置、无应用 schema CREATE、数据库 CREATE/TEMP、其它业务表／列／序列／非扩展函数权限。成员关系检查双向拒绝，仅保留既有 Neon 规则允许的精确管理边：cloud_admin 授予 neondb_owner 对目标角色的 ADMIN-only，且 INHERIT／SET 均为 false。仅七张导入私表 SELECT、INSERT，其中 `import_batches/items/attempts/daily_usage` 可 UPDATE；原件、结果、审计禁止 UPDATE／DELETE，也拒绝 MAINTAIN 等额外能力。生产授权需先核验现有公共权限和完整 Schema，拒绝隐式修复 PUBLIC 或复用旧审批。
+专用角色要求 `LOGIN NOINHERIT CONNECTION LIMIT 2`、无高权限和角色／数据库设置、无应用 schema CREATE、数据库 CREATE/TEMP、其它业务表／列／序列／非扩展函数权限。成员关系检查双向拒绝，仅保留既有 Neon 规则允许的精确管理边：cloud_admin 授予 neondb_owner 对目标角色的 ADMIN-only，且 INHERIT／SET 均为 false。七张导入私表按 `import-role-columns.mjs` 的固定列白名单授予 SELECT／INSERT，禁止整表授权。UPDATE 仅允许 batches.cancelled、items.status/fence、attempts.status/error_code/charged_microusd/finished_at 和 daily_usage 的两项预算计数；不能改写归属、配置、声明、解析版本、租约或预算归属。原件、结果、审计禁止 UPDATE／DELETE，新增字段不自动获得权限，也拒绝 MAINTAIN 等额外能力。生产授权需先核验现有公共权限和完整 Schema，拒绝隐式修复 PUBLIC 或复用旧审批。
+
+生产配置分两步：`db/roles/create_import_admin.sql` 仅作为管理员提交的新凭据创建候选，在已核对的 Neon main/neondb 以 `neondb_owner` 执行；角色已存在即拒绝，不轮换密码。`db/roles/configure_import_admin.sql` 由 hzense 数据库实际 owner 在完整 Schema 核验通过且维护窗口无并行 DDL／授权时执行，单事务、共用迁移锁、固定 0014 checksum、拒绝非空角色及其他库的越权。它只授予当前库 CONNECT、public USAGE 及上述固定列权限；提交前重新核对属性、双向成员、跨库、直接及有效 ACL，错误整笔回滚。SQL 授权及其提交核验与运行时列白名单由一致性测试约束。既有权限和 PUBLIC 权限均不自动修复，脚本不加入迁移、启动或探针。连接密码仅保存于 Production 敏感配置，之后须使用真实服务身份验证；owner 上的授权成功不等于服务登录或导入已启用。
 
 ## 仍待交付与审批
 
