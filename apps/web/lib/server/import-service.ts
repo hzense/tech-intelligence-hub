@@ -10,15 +10,12 @@ import {
   importFail,
   importUuid,
 } from '../../../../packages/ingestion/src/import-task-contract.mjs';
-import { readRuntimeReaderConfig } from '../runtime-reader-core';
+import { diagnoseImportConfiguration } from '../import-config';
 import { ImportIOError, readImportBytes } from '../import-io';
 import { fetchImportURL } from '../import-fetch';
 import { runImportProcessing } from '../import-worker-core';
 import { retryImportWithSourceCheck } from '../import-retry';
-import {
-  assertImportStore,
-  originalExpired,
-} from '../../../../packages/ingestion/src/import-retention.mjs';
+import { originalExpired } from '../../../../packages/ingestion/src/import-retention.mjs';
 export const importCapabilities = {
   parsers: ['pdf', 'docx', 'markdown', 'text', 'html', 'csv', 'xlsx'] as const,
   ocr: false,
@@ -27,45 +24,19 @@ export const importCapabilities = {
 function parserVersion(snapshot: string) {
   return `isolated-v1/${createHash('sha256').update(snapshot).update(importParserSource).digest('hex').slice(0, 32)}`;
 }
-function positive(name: string) {
-  const n = Number(process.env[name]);
-  if (!Number.isSafeInteger(n) || n <= 0) importFail('not_configured');
-  return n;
-}
 export function importConfig() {
-  try {
-    const raw = process.env.HZENSE_IMPORT_DATABASE_URL;
-    if (
-      !raw ||
-      !process.env.HZENSE_IMPORT_BLOB_TOKEN ||
-      !process.env.HZENSE_IMPORT_PARSER_SNAPSHOT_ID ||
-      process.env.HZENSE_IMPORT_RETENTION_DAYS !== '7' ||
-      process.env.HZENSE_IMPORT_ENABLED !== '1'
-    )
-      importFail('not_configured');
-    assertImportStore(
-      process.env.HZENSE_IMPORT_BLOB_TOKEN,
-      process.env.HZENSE_IMPORT_BLOB_STORE_ID,
-    );
-    const url = new URL(raw);
-    if (decodeURIComponent(url.username) !== 'hzense_import_admin') importFail('not_configured');
-    url.username = 'hzense_runtime';
-    readRuntimeReaderConfig({
-      ...process.env,
-      HZENSE_RUNTIME_DATABASE_URL: url.href,
-      HZENSE_RUNTIME_EXPECTED_USER: 'hzense_runtime',
-    });
-    return {
-      url: raw,
-      token: process.env.HZENSE_IMPORT_BLOB_TOKEN,
-      snapshot: process.env.HZENSE_IMPORT_PARSER_SNAPSHOT_ID,
-      reserve: positive('HZENSE_IMPORT_RESERVE_MICROUSD'),
-      daily: positive('HZENSE_IMPORT_DAILY_LIMIT_MICROUSD'),
-      batch: positive('HZENSE_IMPORT_BATCH_LIMIT_MICROUSD'),
-    };
-  } catch {
-    throw new ImportIOError('not_configured');
-  }
+  if (!importConfigurationDiagnostics().ready) throw new ImportIOError('not_configured');
+  return {
+    url: process.env.HZENSE_IMPORT_DATABASE_URL!,
+    token: process.env.HZENSE_IMPORT_BLOB_TOKEN!,
+    snapshot: process.env.HZENSE_IMPORT_PARSER_SNAPSHOT_ID!,
+    reserve: Number(process.env.HZENSE_IMPORT_RESERVE_MICROUSD),
+    daily: Number(process.env.HZENSE_IMPORT_DAILY_LIMIT_MICROUSD),
+    batch: Number(process.env.HZENSE_IMPORT_BATCH_LIMIT_MICROUSD),
+  };
+}
+export function importConfigurationDiagnostics() {
+  return diagnoseImportConfiguration(process.env);
 }
 export function importsConfigured() {
   try {
