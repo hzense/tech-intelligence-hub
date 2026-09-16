@@ -43,6 +43,8 @@
 
 随后操作者回复“已创建”。独立页面在 main/hzense 以 `hzense_migrator` 只读确认 `hzense_import_admin` 已存在：LOGIN=true、INHERIT=false、连接上限 2，五项高权限均 false；所有权／直接 ACL 依赖为 0、角色设置为 0，仅有 cloud_admin 授予 neondb_owner 的 ADMIN-only 管理边（INHERIT/SET=false）。未读取原密码结果页，未验证密码或实际服务登录。新增 `configure_import_admin.sql` 并以隔离原生 PostgreSQL 验证精确权限、重复授权拒绝、checksum／角色／PUBLIC 漂移拒绝及提交前 DELETE 注入回滚；生产授权仍待独立执行确认，Production DSN 尚未保存。
 
+操作者随后回复“已经保存”，平台元数据确认 `HZENSE_IMPORT_DATABASE_URL` 已设置为仅 Production 的 Sensitive 变量。没有读取其值，尚未验证真实服务认证或部署运行时；导入开关仍为 0。PR #95 评审要求收紧整表授权，已改为固定列级 SELECT／INSERT／UPDATE 白名单并同步运行时核验：不可更新 owner_id、configuration、batch_id、declaration、尝试身份、parser_version、lease_until、预算归属或原始预留，未来新增列不继承权限。隔离 PostgreSQL 的 18 项定向测试通过，包括实际服务身份完成创建、原件确认、claim、预算结算、输出及取消，以及表级／不可变列授权注入整笔回滚。该测试不代表生产已授权，生产授权仍待执行时确认。
+
 操作者进一步确认维护期间没有其他生产 DDL、角色授权或发布并行操作。PR #93 复审发现目标绑定缺口，已将数据库目标与备份哈希纳入 v2 计划，增加 ACL 采集前及实际迁移连接锁内检查；当时尚未执行生产 DDL，后续执行结果见上文。
 
 1. 完整 Schema 的独立 `verify` 已通过；0014 已提交，不重复执行迁移。

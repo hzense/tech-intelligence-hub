@@ -5,7 +5,14 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { assertImportRole } from '../src/import-role.mjs';
-import { createImportBatch } from '../src/import-store.mjs';
+import {
+  createImportBatch,
+  confirmImportDocument,
+  claimImportItem,
+  finishImportAttempt,
+  cancelImportBatch,
+  getImportOutput,
+} from '../src/import-store.mjs';
 import { randomUUID } from 'node:crypto';
 const adminURL = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminURL) validateConnectionTarget({ connectionString: adminURL, profile: 'local-test' });
@@ -145,12 +152,19 @@ suite('dedicated import service role', () => {
     }
     await assertImportRole(reader);
   });
-  it('post-grant verification rejects and rolls back an injected DELETE grant', async () => {
+  it.each([
+    'DELETE ON public.import_documents',
+    'SELECT ON public.import_batches',
+    'INSERT ON public.import_items',
+    'UPDATE ON public.import_attempts',
+    'UPDATE(owner_id) ON public.import_batches',
+    'INSERT(created_at) ON public.import_audit',
+  ])('post-grant verification rejects and rolls back injected %s', async (grant) => {
     await owner.query(`DROP OWNED BY ${role}`);
     try {
       const drift = roleSql.replace(
         'DO $import_admin_verify$',
-        `GRANT DELETE ON public.import_documents TO ${role};\nDO $import_admin_verify$`,
+        `GRANT ${grant} TO ${role};\nDO $import_admin_verify$`,
       );
       await expect(provision(drift)).rejects.toThrow(/privilege mismatch/);
       expect(
@@ -171,8 +185,90 @@ suite('dedicated import service role', () => {
       "UPDATE public.import_documents SET sha256='x'",
       'DELETE FROM public.import_outputs',
       'SELECT * FROM public.unrelated_secret',
+      "UPDATE public.import_batches SET owner_id='other',configuration='{}'::jsonb",
+      "UPDATE public.import_items SET batch_id=gen_random_uuid(),declaration='{}'::jsonb",
+      "UPDATE public.import_attempts SET parser_version='other',budget_day=current_date,reserved_microusd=0",
+      'UPDATE public.import_attempts SET item_id=gen_random_uuid(),fence=99,lease_until=now()',
+      'UPDATE public.import_daily_usage SET day=current_date',
+      'UPDATE public.import_batches SET created_at=now()',
     ])
       await expect(reader.query(sql)).rejects.toMatchObject({ code: '42501' });
+  });
+  it('runs original reception, claim, budget settlement, output and cancellation with column-only rights', async () => {
+    const batch = await createImportBatch({
+      pool: reader,
+      owner: 'service-test',
+      request: {
+        id: randomUUID(),
+        intent: 'preview',
+        manifest: { files: [{ clientItemId: 'a', name: 'note.txt', size: 5 }] },
+      },
+      capabilities: { parsers: ['text'] },
+      configuration: { parserVersion: 'text/v1', batchLimitMicrousd: 100 },
+    });
+    const args = {
+      pool: reader,
+      owner: 'service-test',
+      batchId: batch.id,
+      itemId: batch.items[0].id,
+    };
+    await confirmImportDocument({
+      ...args,
+      document: {
+        object_key: `imports/${batch.id}/${args.itemId}`,
+        object_version: 'v1',
+        sha256: 'a'.repeat(64),
+        byte_size: 5,
+        format: 'text',
+      },
+    });
+    const claim = await claimImportItem({
+      ...args,
+      parserVersion: 'text/v1',
+      reserveMicrousd: 10,
+      dailyLimitMicrousd: 100,
+    });
+    await finishImportAttempt({
+      ...args,
+      fence: claim.attempt.fence,
+      outcome: 'completed',
+      output: { fragments: [{ text: 'hello', locator: { paragraph: 1 } }] },
+      chargedMicrousd: 10,
+    });
+    expect(await getImportOutput(args)).toBeTruthy();
+    await cancelImportBatch({ pool: reader, owner: 'service-test', id: batch.id });
+    await assertImportRole(reader);
+  });
+  it('rejects table-wide and immutable-column drift, and never inherits access to future columns', async () => {
+    for (const grant of [
+      'SELECT ON public.import_batches',
+      'INSERT ON public.import_items',
+      'UPDATE ON public.import_attempts',
+      'UPDATE(owner_id) ON public.import_batches',
+      'INSERT(created_at) ON public.import_audit',
+    ]) {
+      try {
+        await owner.query(`GRANT ${grant} TO ${role}`);
+        await expect(assertImportRole(reader)).rejects.toMatchObject({ code: 'not_configured' });
+      } finally {
+        // PostgreSQL table-level REVOKE also removes matching column grants.
+        // Re-provision the disposable fixture instead of relying on that side effect.
+        await owner.query(`DROP OWNED BY ${role}`);
+        await provision();
+      }
+    }
+    await owner.query('ALTER TABLE public.import_batches ADD COLUMN future_secret text');
+    try {
+      await assertImportRole(reader);
+      await expect(
+        reader.query('SELECT future_secret FROM public.import_batches'),
+      ).rejects.toMatchObject({ code: '42501' });
+      await owner.query(`GRANT SELECT(future_secret) ON public.import_batches TO ${role}`);
+      await expect(assertImportRole(reader)).rejects.toMatchObject({ code: 'not_configured' });
+    } finally {
+      await owner.query('ALTER TABLE public.import_batches DROP COLUMN future_secret');
+    }
+    await assertImportRole(reader);
   });
   it('rejects inbound SET, INHERIT and unapproved ADMIN-only membership edges', async () => {
     const peer = `${name}_peer`;

@@ -85,8 +85,13 @@ BEGIN
 END;
 $import_admin$;
 GRANT USAGE ON SCHEMA public TO hzense_import_admin;
-GRANT SELECT,INSERT ON public.import_batches,public.import_items,public.import_documents,public.import_attempts,public.import_outputs,public.import_audit,public.import_daily_usage TO hzense_import_admin;
-GRANT UPDATE ON public.import_batches,public.import_items,public.import_attempts,public.import_daily_usage TO hzense_import_admin;
+GRANT SELECT(id,owner_id,fingerprint,intent,configuration,cancelled,created_at),INSERT(id,owner_id,fingerprint,intent,configuration),UPDATE(cancelled) ON public.import_batches TO hzense_import_admin;
+GRANT SELECT(id,batch_id,position,kind,declaration,status,fence,created_at),INSERT(id,batch_id,position,kind,declaration,status),UPDATE(status,fence) ON public.import_items TO hzense_import_admin;
+GRANT SELECT(item_id,object_key,object_version,sha256,byte_size,format,metadata,created_at),INSERT(item_id,object_key,object_version,sha256,byte_size,format,metadata) ON public.import_documents TO hzense_import_admin;
+GRANT SELECT(item_id,fence,parser_version,status,lease_until,budget_day,reserved_microusd,charged_microusd,error_code,created_at,finished_at),INSERT(item_id,fence,parser_version,status,lease_until,budget_day,reserved_microusd),UPDATE(status,error_code,charged_microusd,finished_at) ON public.import_attempts TO hzense_import_admin;
+GRANT SELECT(item_id,fence,content,created_at),INSERT(item_id,fence,content) ON public.import_outputs TO hzense_import_admin;
+GRANT SELECT(id,batch_id,item_id,event,created_at),INSERT(id,batch_id,item_id,event) ON public.import_audit TO hzense_import_admin;
+GRANT SELECT(day,reserved_microusd,charged_microusd),INSERT(day),UPDATE(reserved_microusd,charged_microusd) ON public.import_daily_usage TO hzense_import_admin;
 DO $import_admin_verify$
 DECLARE
   target oid := 'hzense_import_admin'::regrole;
@@ -95,8 +100,7 @@ DECLARE
   column_info record;
   checked_privilege text;
   expected boolean;
-  import_tables text[] := ARRAY['import_batches','import_items','import_documents','import_attempts','import_outputs','import_audit','import_daily_usage'];
-  mutable_tables text[] := ARRAY['import_batches','import_items','import_attempts','import_daily_usage'];
+  allowed_columns jsonb := '{"import_batches":{"SELECT":["id","owner_id","fingerprint","intent","configuration","cancelled","created_at"],"INSERT":["id","owner_id","fingerprint","intent","configuration"],"UPDATE":["cancelled"]},"import_items":{"SELECT":["id","batch_id","position","kind","declaration","status","fence","created_at"],"INSERT":["id","batch_id","position","kind","declaration","status"],"UPDATE":["status","fence"]},"import_documents":{"SELECT":["item_id","object_key","object_version","sha256","byte_size","format","metadata","created_at"],"INSERT":["item_id","object_key","object_version","sha256","byte_size","format","metadata"]},"import_attempts":{"SELECT":["item_id","fence","parser_version","status","lease_until","budget_day","reserved_microusd","charged_microusd","error_code","created_at","finished_at"],"INSERT":["item_id","fence","parser_version","status","lease_until","budget_day","reserved_microusd"],"UPDATE":["status","error_code","charged_microusd","finished_at"]},"import_outputs":{"SELECT":["item_id","fence","content","created_at"],"INSERT":["item_id","fence","content"]},"import_audit":{"SELECT":["id","batch_id","item_id","event","created_at"],"INSERT":["id","batch_id","item_id","event"]},"import_daily_usage":{"SELECT":["day","reserved_microusd","charged_microusd"],"INSERT":["day"],"UPDATE":["reserved_microusd","charged_microusd"]}}'::jsonb;
 BEGIN
   -- Re-read role attributes and memberships after GRANT. No role mutation is
   -- allowed to bypass the commit gate; this does not prevent later drift.
@@ -167,9 +171,7 @@ BEGIN
     FOR checked_privilege IN SELECT a.privilege_type FROM aclexplode(acldefault(
       CASE WHEN relation_info.relkind='S' THEN 'S'::"char" ELSE 'r'::"char" END,relation_info.relowner)) a
     LOOP
-      expected := relation_info.nspname='public' AND relation_info.relkind='r'
-        AND relation_info.relname=ANY(import_tables) AND
-        (checked_privilege IN ('SELECT','INSERT') OR (checked_privilege='UPDATE' AND relation_info.relname=ANY(mutable_tables)));
+      expected := false; -- No table-wide grants, including future columns.
       IF relation_info.relkind='S' THEN
         IF has_sequence_privilege(target,relation_info.oid,checked_privilege) THEN
           RAISE EXCEPTION 'Import administrator sequence privilege mismatch';
@@ -179,13 +181,12 @@ BEGIN
         RAISE EXCEPTION 'Import administrator table privilege mismatch: %.% %',relation_info.nspname,relation_info.relname,checked_privilege;
       END IF;
     END LOOP;
-    FOR column_info IN SELECT a.attnum FROM pg_attribute a
+    FOR column_info IN SELECT a.attnum,a.attname FROM pg_attribute a
       WHERE a.attrelid=relation_info.oid AND a.attnum>0 AND NOT a.attisdropped AND relation_info.relkind<>'S'
     LOOP
       FOREACH checked_privilege IN ARRAY ARRAY['SELECT','INSERT','UPDATE','REFERENCES'] LOOP
         expected := relation_info.nspname='public' AND relation_info.relkind='r'
-          AND relation_info.relname=ANY(import_tables) AND
-          (checked_privilege IN ('SELECT','INSERT') OR (checked_privilege='UPDATE' AND relation_info.relname=ANY(mutable_tables)));
+          AND COALESCE((allowed_columns->relation_info.relname->checked_privilege) ? column_info.attname,false);
         IF has_column_privilege(target,relation_info.oid,column_info.attnum,checked_privilege) IS DISTINCT FROM expected
           OR has_column_privilege(target,relation_info.oid,column_info.attnum,checked_privilege||' WITH GRANT OPTION') THEN
           RAISE EXCEPTION 'Import administrator column privilege mismatch';
@@ -193,14 +194,14 @@ BEGIN
       END LOOP;
     END LOOP;
   END LOOP;
-  -- Exact direct ACLs, not just effective rights; no redundant column or default grants.
-  IF (SELECT count(*) FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE a.grantee=target)<>18
-    OR EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-      CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE a.grantee=target AND
-      (n.nspname<>'public' OR c.relkind<>'r' OR c.relname<>ALL(import_tables)
+  -- Exact pinned direct column ACLs; missing, extra and future grants fail closed.
+  IF EXISTS(SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE a.grantee=target)
+    OR (SELECT count(*) FROM pg_attribute c CROSS JOIN LATERAL aclexplode(c.attacl) a WHERE a.grantee=target)<>88
+    OR EXISTS(SELECT 1 FROM pg_attribute col JOIN pg_class c ON c.oid=col.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+      CROSS JOIN LATERAL aclexplode(col.attacl) a WHERE a.grantee=target AND
+      (n.nspname<>'public' OR c.relkind<>'r' OR col.attnum<=0 OR col.attisdropped
         OR a.grantor<>c.relowner OR a.is_grantable
-        OR NOT (a.privilege_type IN ('SELECT','INSERT') OR (a.privilege_type='UPDATE' AND c.relname=ANY(mutable_tables)))))
-    OR EXISTS(SELECT 1 FROM pg_attribute c CROSS JOIN LATERAL aclexplode(c.attacl) a WHERE a.grantee=target)
+        OR NOT COALESCE((allowed_columns->c.relname->a.privilege_type) ? col.attname,false)))
     OR EXISTS(SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a WHERE a.grantee=target) THEN
     RAISE EXCEPTION 'Import administrator direct ACL contract mismatch';
   END IF;
