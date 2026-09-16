@@ -6,6 +6,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { runMigrations } from '../src/migrate.mjs';
+import { verifyDatabaseContract } from '../src/verify.mjs';
 import {
   signalWorkbenchReadColumns,
   verifySignalWorkbenchAccess,
@@ -268,6 +269,16 @@ suite('Signal administrator has exact read-only PostgreSQL privileges', () => {
         )
       ).rows[0].creates,
     ).toBe(false);
+  });
+
+  it('full schema verification accepts the actual reviewed reader provisioning after all migrations', async () => {
+    const result = await verifyDatabaseContract({
+      connectionString: urlFor(ownerRole),
+      profile: 'local-test',
+      expectedDatabase: database,
+      expectedUser: ownerRole,
+    });
+    expect(result).toMatchObject({ migrationCount: 15, tableCount: 47 });
   });
 
   it('empty-role-only provisioning refuses a second grant run without changing valid rights', async () => {

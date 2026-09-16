@@ -120,6 +120,60 @@ describe('Signal transaction seal exact catalog contract', () => {
     expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([]);
   });
 
+  it('accepts the separately provisioned Signal admin reader on the currentness predicate only', () => {
+    const fixture = signalImmutabilityFixture();
+    fixture.routines
+      .find((row) => row.name === 'hzense_public_signal_is_current')
+      .acl_entries.push({
+        grantee: 'hzense_signal_admin_reader',
+        grantor: owner,
+        privilege: 'EXECUTE',
+        grantable: false,
+      });
+    expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([]);
+  });
+
+  it.each([
+    { grantee: 'PUBLIC' },
+    { grantee: 'hzense_import_admin' },
+    { grantee: 'unreviewed_reader' },
+    { grantor: 'untrusted_grantor' },
+    { privilege: 'SELECT' },
+    { grantable: true },
+  ])('rejects a broadened Signal reader predicate grant: %j', (change) => {
+    const fixture = signalImmutabilityFixture();
+    fixture.routines
+      .find((row) => row.name === 'hzense_public_signal_is_current')
+      .acl_entries.push({
+        grantee: 'hzense_signal_admin_reader',
+        grantor: owner,
+        privilege: 'EXECUTE',
+        grantable: false,
+        ...change,
+      });
+    expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([
+      'Current publication function contract mismatch: hzense_public_signal_is_current(p_event_id uuid)',
+    ]);
+  });
+
+  it('does not permit the Signal admin reader to execute any other publication or guard function', () => {
+    for (const candidate of signalImmutabilityFixture().routines) {
+      if (candidate.name === 'hzense_public_signal_is_current') continue;
+      const fixture = signalImmutabilityFixture();
+      const row = fixture.routines.find((row) => row.name === candidate.name);
+      row.acl_entries.push({
+        grantee: 'hzense_signal_admin_reader',
+        grantor: owner,
+        privilege: 'EXECUTE',
+        grantable: false,
+      });
+      row.unsafe_acl_count += 1;
+      expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([
+        expect.stringContaining(`function contract mismatch: ${candidate.name}(`),
+      ]);
+    }
+  });
+
   it.each([
     'signal_publication_permits_current_trg',
     'sources_verification_invalidation_trg',

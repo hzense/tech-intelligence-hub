@@ -93,7 +93,9 @@ export const currentPublicationRoutines = {
     volatility: 's',
     utc: true,
     hash: '50cea910d38b415f5f55e06ccb375072486976190cb11fa6cde2200a5ba6068b',
-    grantees: ['hzense_runtime', 'hzense_publisher'],
+    // Optional, separately provisioned EXECUTE only; keep in sync with
+    // db/roles/configure_signal_admin_reader.sql. No new database grant here.
+    grantees: ['hzense_runtime', 'hzense_publisher', 'hzense_signal_admin_reader'],
   },
 };
 export const currentPublicationTriggers = [
