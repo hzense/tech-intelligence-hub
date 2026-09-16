@@ -22,3 +22,9 @@ it('pins provisioning grants and verifier to the runtime column contract', async
     );
   }
 });
+
+it('never expands storage projections beyond the pinned SELECT contract', async () => {
+  const source = await readFile(new URL('../src/import-store.mjs', import.meta.url), 'utf8');
+  expect(source).not.toMatch(/(?:SELECT|RETURNING)\s+(?:\w+\.)?\*/i);
+  expect(source).toContain('importRoleColumns[table].SELECT');
+});

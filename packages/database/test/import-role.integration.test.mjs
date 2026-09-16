@@ -5,6 +5,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { assertImportRole } from '../src/import-role.mjs';
+import { importRoleColumns } from '../src/import-role-columns.mjs';
 import {
   createImportBatch,
   confirmImportDocument,
@@ -12,6 +13,8 @@ import {
   finishImportAttempt,
   cancelImportBatch,
   getImportOutput,
+  getImportBatch,
+  listImportBatches,
 } from '../src/import-store.mjs';
 import { randomUUID } from 'node:crypto';
 const adminURL = process.env.MIGRATION_TEST_ADMIN_URL;
@@ -194,51 +197,77 @@ suite('dedicated import service role', () => {
     ])
       await expect(reader.query(sql)).rejects.toMatchObject({ code: '42501' });
   });
-  it('runs original reception, claim, budget settlement, output and cancellation with column-only rights', async () => {
-    const batch = await createImportBatch({
-      pool: reader,
-      owner: 'service-test',
-      request: {
-        id: randomUUID(),
-        intent: 'preview',
-        manifest: { files: [{ clientItemId: 'a', name: 'note.txt', size: 5 }] },
-      },
-      capabilities: { parsers: ['text'] },
-      configuration: { parserVersion: 'text/v1', batchLimitMicrousd: 100 },
-    });
-    const args = {
-      pool: reader,
-      owner: 'service-test',
-      batchId: batch.id,
-      itemId: batch.items[0].id,
-    };
-    await confirmImportDocument({
-      ...args,
-      document: {
-        object_key: `imports/${batch.id}/${args.itemId}`,
-        object_version: 'v1',
-        sha256: 'a'.repeat(64),
-        byte_size: 5,
-        format: 'text',
-      },
-    });
-    const claim = await claimImportItem({
-      ...args,
-      parserVersion: 'text/v1',
-      reserveMicrousd: 10,
-      dailyLimitMicrousd: 100,
-    });
-    await finishImportAttempt({
-      ...args,
-      fence: claim.attempt.fence,
-      outcome: 'completed',
-      output: { fragments: [{ text: 'hello', locator: { paragraph: 1 } }] },
-      chargedMicrousd: 10,
-    });
-    expect(await getImportOutput(args)).toBeTruthy();
-    await cancelImportBatch({ pool: reader, owner: 'service-test', id: batch.id });
-    await assertImportRole(reader);
-  });
+  it.each([false, true])(
+    'runs the service lifecycle with column-only rights (future columns: %s)',
+    async (futureColumns) => {
+      const tables = Object.keys(importRoleColumns);
+      try {
+        if (futureColumns) {
+          for (const table of tables)
+            await owner.query(
+              `ALTER TABLE public.${table} ADD COLUMN future_secret text DEFAULT 'private'`,
+            );
+        }
+        await assertImportRole(reader);
+        const batch = await createImportBatch({
+          pool: reader,
+          owner: 'service-test',
+          request: {
+            id: randomUUID(),
+            intent: 'preview',
+            manifest: { files: [{ clientItemId: 'a', name: 'note.txt', size: 5 }] },
+          },
+          capabilities: { parsers: ['text'] },
+          configuration: { parserVersion: 'text/v1', batchLimitMicrousd: 100 },
+        });
+        const args = {
+          pool: reader,
+          owner: 'service-test',
+          batchId: batch.id,
+          itemId: batch.items[0].id,
+        };
+        await confirmImportDocument({
+          ...args,
+          document: {
+            object_key: `imports/${batch.id}/${args.itemId}`,
+            object_version: 'v1',
+            sha256: 'a'.repeat(64),
+            byte_size: 5,
+            format: 'text',
+          },
+        });
+        const claim = await claimImportItem({
+          ...args,
+          parserVersion: 'text/v1',
+          reserveMicrousd: 10,
+          dailyLimitMicrousd: 100,
+        });
+        await finishImportAttempt({
+          ...args,
+          fence: claim.attempt.fence,
+          outcome: 'completed',
+          output: { fragments: [{ text: 'hello', locator: { paragraph: 1 } }] },
+          chargedMicrousd: 10,
+        });
+        expect(await getImportOutput(args)).toBeTruthy();
+        const detail = await getImportBatch({ pool: reader, owner: 'service-test', id: batch.id });
+        expect(detail).not.toHaveProperty('future_secret');
+        expect(detail.items[0]).not.toHaveProperty('future_secret');
+        expect(
+          (await listImportBatches({ pool: reader, owner: 'service-test' })).some(
+            (b) => b.id === batch.id,
+          ),
+        ).toBe(true);
+        await cancelImportBatch({ pool: reader, owner: 'service-test', id: batch.id });
+        await assertImportRole(reader);
+      } finally {
+        if (futureColumns) {
+          for (const table of tables)
+            await owner.query(`ALTER TABLE public.${table} DROP COLUMN IF EXISTS future_secret`);
+        }
+      }
+    },
+  );
   it('rejects table-wide and immutable-column drift, and never inherits access to future columns', async () => {
     for (const grant of [
       'SELECT ON public.import_batches',

@@ -1,4 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { importRoleColumns } from './import-role-columns.mjs';
+// Match the pinned ACL projection: future columns must not leak or break reads.
+const selectColumns = (table, alias = '') =>
+  importRoleColumns[table].SELECT.map((column) => `${alias}${column}`).join(',');
 import {
   ImportTaskError,
   importFail,
@@ -42,7 +46,7 @@ async function audit(client, batch, item, event) {
 async function batch(client, id, owner, lock = false) {
   const row = (
     await client.query(
-      `SELECT * FROM public.import_batches WHERE id=$1 AND owner_id=$2${lock ? ' FOR UPDATE' : ''}`,
+      `SELECT ${selectColumns('import_batches')} FROM public.import_batches WHERE id=$1 AND owner_id=$2${lock ? ' FOR UPDATE' : ''}`,
       [importUuid(id), importOwner(owner)],
     )
   ).rows[0];
@@ -51,10 +55,10 @@ async function batch(client, id, owner, lock = false) {
 }
 async function item(client, batchId, id) {
   const row = (
-    await client.query('SELECT * FROM public.import_items WHERE id=$1 AND batch_id=$2 FOR UPDATE', [
-      importUuid(id),
-      batchId,
-    ])
+    await client.query(
+      `SELECT ${selectColumns('import_items')} FROM public.import_items WHERE id=$1 AND batch_id=$2 FOR UPDATE`,
+      [importUuid(id), batchId],
+    )
   ).rows[0];
   if (!row) importFail('not_found');
   return row;
@@ -62,7 +66,7 @@ async function item(client, batchId, id) {
 async function detail(client, row) {
   const items = (
     await client.query(
-      `SELECT i.*, d.sha256,d.byte_size,d.format, a.error_code,a.lease_until
+      `SELECT ${selectColumns('import_items', 'i.')}, d.sha256,d.byte_size,d.format, a.error_code,a.lease_until
     FROM public.import_items i LEFT JOIN public.import_documents d ON d.item_id=i.id
     LEFT JOIN public.import_attempts a ON a.item_id=i.id AND a.fence=i.fence
     WHERE i.batch_id=$1 ORDER BY i.position`,
@@ -100,8 +104,12 @@ export async function createImportBatch({ pool, owner, request, capabilities, co
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
       `import:create:${owner}`,
     ]);
-    const old = (await client.query('SELECT * FROM public.import_batches WHERE id=$1', [parsed.id]))
-      .rows[0];
+    const old = (
+      await client.query(
+        `SELECT ${selectColumns('import_batches')} FROM public.import_batches WHERE id=$1`,
+        [parsed.id],
+      )
+    ).rows[0];
     if (old) {
       if (old.owner_id !== owner || old.fingerprint !== parsed.fingerprint)
         importFail('request_id_conflict');
@@ -116,7 +124,7 @@ export async function createImportBatch({ pool, owner, request, capabilities, co
     if (count >= 100) importFail('daily_batch_limit');
     const row = (
       await client.query(
-        'INSERT INTO public.import_batches(id,owner_id,fingerprint,intent,configuration) VALUES($1,$2,$3,$4,$5::jsonb) RETURNING *',
+        `INSERT INTO public.import_batches(id,owner_id,fingerprint,intent,configuration) VALUES($1,$2,$3,$4,$5::jsonb) RETURNING ${selectColumns('import_batches')}`,
         [parsed.id, owner, parsed.fingerprint, parsed.intent, JSON.stringify(snapshot)],
       )
     ).rows[0];
@@ -148,7 +156,7 @@ export async function listImportBatches({ pool, owner, before }) {
       const cursor = before === undefined ? null : await batch(client, before, owner);
       const rows = (
         await client.query(
-          'SELECT * FROM public.import_batches WHERE owner_id=$1 AND ($2::uuid IS NULL OR (created_at,id)<(SELECT c.created_at,c.id FROM public.import_batches c WHERE c.id=$2::uuid AND c.owner_id=$1)) ORDER BY created_at DESC,id DESC LIMIT 50',
+          `SELECT ${selectColumns('import_batches')} FROM public.import_batches WHERE owner_id=$1 AND ($2::uuid IS NULL OR (created_at,id)<(SELECT c.created_at,c.id FROM public.import_batches c WHERE c.id=$2::uuid AND c.owner_id=$1)) ORDER BY created_at DESC,id DESC LIMIT 50`,
           [owner, cursor?.id ?? null],
         )
       ).rows;
@@ -188,7 +196,10 @@ export async function confirmImportDocument({ pool, owner, batchId, itemId, docu
       await liveAttempt(client, i);
     }
     const old = (
-      await client.query('SELECT * FROM public.import_documents WHERE item_id=$1', [i.id])
+      await client.query(
+        `SELECT ${selectColumns('import_documents')} FROM public.import_documents WHERE item_id=$1`,
+        [i.id],
+      )
     ).rows[0];
     if (old) {
       if (
@@ -234,7 +245,7 @@ export async function confirmImportDocument({ pool, owner, batchId, itemId, docu
 async function liveAttempt(client, i) {
   const attempt = (
     await client.query(
-      'SELECT *,lease_until>now() AS live FROM public.import_attempts WHERE item_id=$1 AND fence=$2 FOR UPDATE',
+      `SELECT ${selectColumns('import_attempts')},lease_until>now() AS live FROM public.import_attempts WHERE item_id=$1 AND fence=$2 FOR UPDATE`,
       [i.id, i.fence],
     )
   ).rows[0];
@@ -308,13 +319,17 @@ export async function claimImportItem({
     const attempt = (
       await client.query(
         // Seven minutes cover the 240s request lifetime plus a late-created 120s Sandbox.
-        "INSERT INTO public.import_attempts(item_id,fence,parser_version,status,lease_until,budget_day,reserved_microusd) VALUES($1,$2,$3,'running',now()+interval '7 minutes',$4,$5) RETURNING *",
+        `INSERT INTO public.import_attempts(item_id,fence,parser_version,status,lease_until,budget_day,reserved_microusd) VALUES($1,$2,$3,'running',now()+interval '7 minutes',$4,$5) RETURNING ${selectColumns('import_attempts')}`,
         [i.id, next, parserVersion, day, reserveMicrousd],
       )
     ).rows[0];
     const document =
-      (await client.query('SELECT * FROM public.import_documents WHERE item_id=$1', [i.id]))
-        .rows[0] ?? null;
+      (
+        await client.query(
+          `SELECT ${selectColumns('import_documents')} FROM public.import_documents WHERE item_id=$1`,
+          [i.id],
+        )
+      ).rows[0] ?? null;
     if (i.kind === 'file' && !document) importFail('document_missing');
     await audit(client, b.id, i.id, 'claimed');
     return { item: { ...i, fence: next }, attempt, document };
@@ -467,7 +482,7 @@ export async function expireImportAttempt({ pool, owner, batchId, itemId }) {
     if (b.cancelled || i.status !== 'running') return { changed: false };
     const a = (
       await client.query(
-        'SELECT *,lease_until<=now() AS expired FROM public.import_attempts WHERE item_id=$1 AND fence=$2 FOR UPDATE',
+        `SELECT ${selectColumns('import_attempts')},lease_until<=now() AS expired FROM public.import_attempts WHERE item_id=$1 AND fence=$2 FOR UPDATE`,
         [i.id, i.fence],
       )
     ).rows[0];
