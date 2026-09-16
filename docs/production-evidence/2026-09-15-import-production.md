@@ -4,7 +4,7 @@
 
 操作者授权创建导入资源，并指定单批 10 美元、每日 50 美元、原件保留 7 天。导入基础代码 [PR #91](https://github.com/hzense/tech-intelligence-hub/pull/91)、保留策略 [PR #92](https://github.com/hzense/tech-intelligence-hub/pull/92)、独立迁移门禁 [PR #93](https://github.com/hzense/tech-intelligence-hub/pull/93) 已合并。2026-09-15 已核验 main `630610fa93faf400442eaa8991ac32d3ddb8d902` 的 [CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34998673977) 成功，Production 部署 `dpl_FpvNsqkXriA47cizBkYFyk3VMESA` READY；这不代表导入已启用。
 
-**导入开关和定时清理均保持关闭。** 本记录不是导入上线或恢复演练完成证明；没有调用 AI、OCR，没有写公开 Signal、发布或搜索投影。
+**最新状态（2026-09-16）：生产导入及每小时原件清理已开启。** TXT 和 PDF/DOCX/Markdown/HTTPS 混合批次的受控验收通过，清理预演与正式运行均成功、实际删除 0。详细证据见文末；下文较早的“关闭／待验收”描述是历史状态，不再代表当前开关。没有调用 AI、OCR，没有写公开 Signal、发布或搜索投影，也不声称恢复演练完成。
 
 ## 已完成的资源与只读核验
 
@@ -120,3 +120,16 @@ PR [#95](https://github.com/hzense/tech-intelligence-hub/pull/95) 已完成复�
 - 在临时开启窗口内，未携带登录凭证的 `GET /api/admin/imports` 返回 HTTP 401。验收部署近 10 分钟错误级日志查询未返回日志；未核验日志 Drains 或完整监控覆盖。
 - 测试批次、私有合成原件和解析/审计数据保留，没有执行删除。7 天到期拒绝读取与物理删除不同：定时清理仍关闭，不能承诺到期自动删除已经生效。
 - Production 导入开关已保存回 `0`，恢复部署 `dpl_HdbSjjFzpjwSLao3gM6B2oPGmwxd` 已 READY 并绑定 `hzense.com`。浏览器刷新确认导入关闭、配置校验仍通过、上传/创建/刷新控件禁用。此次临时验收窗口已结束，TXT 链路通过不等于正式开启生产导入。
+
+### 2026-09-16 混合批次验收与正式启用
+
+操作者要求执行记录归档、常用入口验收、原件清理启用和生产导入开启，并明确允许 PR #98 在 CI 与代码检查通过后自动合并。
+
+- [PR #98](https://github.com/hzense/tech-intelligence-hub/pull/98) 已合并，本地同步 main `cfdfe2355fe78305ef696aaf5a7c849f02774c88`。[PR CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/35120071826) 与 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/35120503119) 全部通过。此次检查是 agent 对实际差异的检查，不是独立人工评审；合并时没有外部评审意见。
+- PR #98 同时修复预演门禁：清理关闭时允许手动 `dry-run`，避免预演前开启定时删除。`apply` 仍要求显式开关，当前 main、成功 CI、专用 Store、固定路径与七天期限检查均保留；定向 8 项测试、工作流校验与 ESLint 通过。
+- 单个混合批次 `cb7877df-d8b8-492a-b5b8-e1857c5c3e01` 接收三个合成文件及 `https://example.com/`。PDF、DOCX、Markdown、HTTPS 网页各处理一次，全部完成并逐项回读，均为 `classification=private`、`warnings=[]`：PDF 1 个片段定位到第 1 页；DOCX 和 Markdown 各 3 个片段，测试标记与段落定位正确；网页 4 个片段包含 Example Domain 正文。
+- 只读预演 [35121009554](https://github.com/hzense/tech-intelligence-hub/actions/runs/35121009554) 在 `HZENSE_IMPORT_RETENTION_ENABLED=0` 时成功：`mode=dry-run, retentionDays=7, scanned=5, eligible=0, deleted=0`。
+- 随后设置仓库清理开关为 `1`；正式运行 [35121089709](https://github.com/hzense/tech-intelligence-hub/actions/runs/35121089709) 成功：`mode=apply, retentionDays=7, scanned=5, eligible=0, deleted=0`。工作流为 active、配置每小时第 23 分钟运行；这证明首次运行成功，不证明未来调度无延迟，也没有验证过期原件实际删除。
+- Production `HZENSE_IMPORT_ENABLED=1`。合并后的部署 `dpl_5b1BDmNs93ETTAkfK2CUm4VJFsp5`（main `cfdfe23`）READY；平台确认 `hzense.com` 指向该部署。浏览器重新加载后显示导入开启、配置通过，并能读取两个已完成批次；匿名 `GET /api/admin/imports` 仍返回 HTTP 401。该部署近 10 分钟错误级日志查询未返回日志；未核验 Drains 或完整监控覆盖。
+- 所有五个测试原件保留，未执行实际删除。应用预算仍为单批 10 美元、UTC 日 50 美元，原件读取截止为 7 天；平台实际费用、存储与网络费用没有在本轮核算。解析结果与审计不受原件清理影响。
+- 本轮正式开启的是管理员上传/链接接收、手动隔离解析和私有结果读取。AI 生成、自动发布、外部 OCR、持续处理调度未启用；CSV/XLSX、扫描件、复杂文档、最大批量、重试/取消/并发及真实到期删除尚未完成生产验收。
