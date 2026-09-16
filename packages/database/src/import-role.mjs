@@ -32,7 +32,7 @@ export const importRoleCheckSQL = `WITH allowed(table_name,column_name,privilege
     SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid
     WHERE n.nspname='public' AND c.relkind='r' AND c.relname=e.table_name AND a.attname=e.column_name AND a.attnum>0 AND NOT a.attisdropped
       AND has_column_privilege(c.oid,a.attnum,e.privilege)))
-  AND NOT EXISTS(SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a WHERE a.grantee=r.oid)
+  AND NOT EXISTS(SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a WHERE a.grantee IN (0,r.oid))
   AND NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='S' AND n.nspname!~'^pg_' AND n.nspname<>'information_schema' AND (c.relowner=r.oid OR has_sequence_privilege(c.oid,'SELECT,UPDATE,USAGE')))
   AND NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname!~'^pg_' AND n.nspname<>'information_schema' AND has_function_privilege(p.oid,'EXECUTE')
     AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e'))

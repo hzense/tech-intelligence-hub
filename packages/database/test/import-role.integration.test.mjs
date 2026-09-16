@@ -136,6 +136,21 @@ suite('dedicated import service role', () => {
       'GRANT SELECT ON public.unrelated_secret TO PUBLIC',
       'REVOKE SELECT ON public.unrelated_secret FROM PUBLIC',
     ],
+    [
+      'PUBLIC default table grant',
+      'ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO PUBLIC',
+      'ALTER DEFAULT PRIVILEGES REVOKE SELECT ON TABLES FROM PUBLIC',
+    ],
+    [
+      'PUBLIC default sequence grant',
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE ON SEQUENCES TO PUBLIC',
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE USAGE ON SEQUENCES FROM PUBLIC',
+    ],
+    [
+      'PUBLIC default function grant',
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO PUBLIC',
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC',
+    ],
   ])('provisioning fails closed without partial grants: %s', async (_label, drift, restore) => {
     await owner.query(`DROP OWNED BY ${role}`);
     try {
@@ -299,6 +314,38 @@ suite('dedicated import service role', () => {
     }
     await assertImportRole(reader);
   });
+  it.each(['SELECT ON TABLES', 'USAGE ON SEQUENCES', 'EXECUTE ON FUNCTIONS'])(
+    'rejects explicit PUBLIC default privilege drift at runtime and before commit: %s',
+    async (privilege) => {
+      const drift = `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ${privilege} TO PUBLIC;`;
+      const restore = `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ${privilege} FROM PUBLIC;`;
+      try {
+        await owner.query(drift);
+        await expect(assertImportRole(reader)).rejects.toMatchObject({ code: 'not_configured' });
+      } finally {
+        await owner.query(restore);
+      }
+      await owner.query(`DROP OWNED BY ${role}`);
+      try {
+        await expect(
+          provision(
+            roleSql.replace('DO $import_admin_verify$', `${drift}\nDO $import_admin_verify$`),
+          ),
+        ).rejects.toThrow(/direct ACL contract mismatch/);
+        expect(
+          (
+            await owner.query(
+              `SELECT count(*)::int AS count FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND refobjid=$1::regrole AND deptype='a'`,
+              [role],
+            )
+          ).rows[0].count,
+        ).toBe(0);
+      } finally {
+        await provision();
+      }
+      await assertImportRole(reader);
+    },
+  );
   it('rejects inbound SET, INHERIT and unapproved ADMIN-only membership edges', async () => {
     const peer = `${name}_peer`;
     await owner.query(`CREATE ROLE "${peer}" NOLOGIN NOINHERIT`);

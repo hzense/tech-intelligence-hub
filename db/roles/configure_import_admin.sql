@@ -35,6 +35,10 @@ BEGIN
   IF NOT EXISTS(SELECT 1 FROM public.hzense_schema_migrations WHERE name='0014_import_tasks.sql' AND checksum='ae84c8eb9c212c48bde256eda199238f8d43579f2caa969b76fcc248709eda8a') THEN
     RAISE EXCEPTION 'Verify migration 0014 before Import administrator provisioning';
   END IF;
+  IF EXISTS(SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a
+    WHERE a.grantee IN (0,target.oid)) THEN
+    RAISE EXCEPTION 'Remove unsafe explicit PUBLIC/import default ACLs in separately approved maintenance';
+  END IF;
   IF has_database_privilege(target.oid,current_database(),'CREATE') OR has_database_privilege(target.oid,current_database(),'TEMPORARY')
     OR EXISTS(SELECT 1 FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname<>'information_schema'
       AND (has_schema_privilege(target.oid,oid,'CREATE') OR (nspname<>'public' AND has_schema_privilege(target.oid,oid,'USAGE')))) THEN
@@ -202,7 +206,7 @@ BEGIN
       (n.nspname<>'public' OR c.relkind<>'r' OR col.attnum<=0 OR col.attisdropped
         OR a.grantor<>c.relowner OR a.is_grantable
         OR NOT COALESCE((allowed_columns->c.relname->a.privilege_type) ? col.attname,false)))
-    OR EXISTS(SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a WHERE a.grantee=target) THEN
+    OR EXISTS(SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a WHERE a.grantee IN (0,target)) THEN
     RAISE EXCEPTION 'Import administrator direct ACL contract mismatch';
   END IF;
   IF EXISTS(SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a WHERE a.grantee=target)
