@@ -288,6 +288,11 @@ suite('Signal administrator has exact read-only PostgreSQL privileges', () => {
 
   it.each([
     [
+      'missing predicate execute',
+      `REVOKE EXECUTE ON FUNCTION public.hzense_public_signal_is_current(uuid) FROM ${quote(readerRole)}`,
+      `GRANT EXECUTE ON FUNCTION public.hzense_public_signal_is_current(uuid) TO ${quote(readerRole)}`,
+    ],
+    [
       'role attributes',
       `ALTER ROLE ${quote(readerRole)} INHERIT`,
       `ALTER ROLE ${quote(readerRole)} NOINHERIT`,
