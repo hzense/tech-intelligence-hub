@@ -6,6 +6,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { runMigrations } from '../src/migrate.mjs';
+import { verifyDatabaseContract } from '../src/verify.mjs';
 import {
   signalWorkbenchReadColumns,
   verifySignalWorkbenchAccess,
@@ -270,10 +271,71 @@ suite('Signal administrator has exact read-only PostgreSQL privileges', () => {
     ).toBe(false);
   });
 
+  it('full schema verification accepts the actual reviewed reader provisioning after all migrations', async () => {
+    const result = await verifyDatabaseContract({
+      connectionString: urlFor(ownerRole),
+      profile: 'local-test',
+      expectedDatabase: database,
+      expectedUser: ownerRole,
+    });
+    expect(result).toMatchObject({ migrationCount: 15, tableCount: 47 });
+  });
+
   it('empty-role-only provisioning refuses a second grant run without changing valid rights', async () => {
     await expect(owner((client) => client.query(roleSql))).rejects.toThrow();
     await verifySignalWorkbenchAccess(reader);
   });
+
+  it.each([
+    [
+      'missing predicate execute',
+      `REVOKE EXECUTE ON FUNCTION public.hzense_public_signal_is_current(uuid) FROM ${quote(readerRole)}`,
+      `GRANT EXECUTE ON FUNCTION public.hzense_public_signal_is_current(uuid) TO ${quote(readerRole)}`,
+    ],
+    [
+      'role attributes',
+      `ALTER ROLE ${quote(readerRole)} INHERIT`,
+      `ALTER ROLE ${quote(readerRole)} NOINHERIT`,
+    ],
+    [
+      'inbound membership',
+      `GRANT ${quote(readerRole)} TO ${quote(auxiliaryRole)}`,
+      `REVOKE ${quote(readerRole)} FROM ${quote(auxiliaryRole)}`,
+    ],
+    [
+      'outbound membership',
+      `GRANT ${quote(auxiliaryRole)} TO ${quote(readerRole)}`,
+      `REVOKE ${quote(auxiliaryRole)} FROM ${quote(readerRole)}`,
+    ],
+    [
+      'extra column',
+      `GRANT SELECT(excerpt) ON public.public_source_evidence TO ${quote(readerRole)}`,
+      `REVOKE SELECT(excerpt) ON public.public_source_evidence FROM ${quote(readerRole)}`,
+    ],
+    [
+      'missing column',
+      `REVOKE SELECT(title) ON public.signal_versions FROM ${quote(readerRole)}`,
+      `GRANT SELECT(title) ON public.signal_versions TO ${quote(readerRole)}`,
+    ],
+  ])(
+    'full schema verification rejects optional reader drift: %s',
+    async (_label, change, restore) => {
+      const verify = () =>
+        verifyDatabaseContract({
+          connectionString: urlFor(ownerRole),
+          profile: 'local-test',
+          expectedDatabase: database,
+          expectedUser: ownerRole,
+        });
+      await admin((client) => client.query(change));
+      try {
+        await expect(verify()).rejects.toThrow(/Signal workbench reader/);
+      } finally {
+        await admin((client) => client.query(restore));
+      }
+      await expect(verify()).resolves.toMatchObject({ migrationCount: 15, tableCount: 47 });
+    },
+  );
 
   it.each([
     'SELECT * FROM public.signals',
