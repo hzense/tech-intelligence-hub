@@ -29,6 +29,7 @@
 - [迁移 35070299513](https://github.com/hzense/tech-intelligence-hub/actions/runs/35070299513) 工作流结果为失败，公开错误仅为 `database-or-contract-check-failed`。随后 Neon main/hzense 的只读账本查询确认：**0014 已于 `2026-09-16T07:49:59.714336Z` 提交**；迁移记录 15 条，7 张导入表存在，0014 checksum 为 `ae84c8eb9c212c48bde256eda199238f8d43579f2caa969b76fcc248709eda8a`。
 - 明确发现迁移后校验冲突：既有 `configure_signal_admin_reader.sql` 允许只读角色执行 `hzense_public_signal_is_current(uuid)`，实际 ACL 也有该非转授权 EXECUTE，但 `current-publication-catalog.mjs` 未列入该角色。修复仅同步这一函数的可接受授权名单，不修改函数、迁移 SQL 或生产 ACL。
 - 新增目录级正负回归，以及实际执行正式角色授权脚本后的完整 `verifyDatabaseContract` 回归。撤回此名单修复时两项测试均复现同一函数契约错误；恢复修复后通过。必须在合并后单独执行生产 **`verify`**，不能重跑 `migrate`；尚不声称完整生产核验或导入上线完成。
+- PR #94 评审进一步要求不能仅信任角色名。完整核验在发现该可选直接授权时，于只读事务中复用正式授权脚本的独立 post-GRANT 断言块（不执行授权段或 COMMIT），检查角色属性、双向成员关系、所有权、跨库边界和完整有效／直接 ACL。原生回归覆盖角色属性、双向成员、额外原文列与缺失必要列的漂移，均拒绝；无该授权时仍允许尚未配置 reader。
 
 后续授权更新：操作者已明确回复“确认接受”，接受该新备份未验证恢复能力的风险，仅限 `0014` 迁移和导入角色最小授权。浏览器再次核对备份分支仍存在、父分支为 main、到期为 `2026-09-22T16:17:09Z`。此授权不是迁移或权限授予成功证明。
 

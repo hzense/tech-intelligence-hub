@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL, URL } from 'node:url';
 import pg from 'pg';
+import { verifyOptionalSignalAdminReaderContract } from './signal-admin-reader-catalog.mjs';
 import { productionDatabaseOptions, validateConnectionTarget } from './connection-policy.mjs';
 import { loadMigrations, planPendingMigrations, verifyMigrationManifest } from './migrate.mjs';
 import {
@@ -1057,6 +1058,7 @@ export async function verifyDatabaseContract({
     }
 
     await client.query('BEGIN READ ONLY');
+    await verifyOptionalSignalAdminReaderContract(client);
     const result = await collectSchemaProblems(client, migrations, vectorVersion, userName);
     await client.query('ROLLBACK');
     if (result.problems.length > 0) {

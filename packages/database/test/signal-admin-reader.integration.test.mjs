@@ -287,6 +287,52 @@ suite('Signal administrator has exact read-only PostgreSQL privileges', () => {
   });
 
   it.each([
+    [
+      'role attributes',
+      `ALTER ROLE ${quote(readerRole)} INHERIT`,
+      `ALTER ROLE ${quote(readerRole)} NOINHERIT`,
+    ],
+    [
+      'inbound membership',
+      `GRANT ${quote(readerRole)} TO ${quote(auxiliaryRole)}`,
+      `REVOKE ${quote(readerRole)} FROM ${quote(auxiliaryRole)}`,
+    ],
+    [
+      'outbound membership',
+      `GRANT ${quote(auxiliaryRole)} TO ${quote(readerRole)}`,
+      `REVOKE ${quote(auxiliaryRole)} FROM ${quote(readerRole)}`,
+    ],
+    [
+      'extra column',
+      `GRANT SELECT(excerpt) ON public.public_source_evidence TO ${quote(readerRole)}`,
+      `REVOKE SELECT(excerpt) ON public.public_source_evidence FROM ${quote(readerRole)}`,
+    ],
+    [
+      'missing column',
+      `REVOKE SELECT(title) ON public.signal_versions FROM ${quote(readerRole)}`,
+      `GRANT SELECT(title) ON public.signal_versions TO ${quote(readerRole)}`,
+    ],
+  ])(
+    'full schema verification rejects optional reader drift: %s',
+    async (_label, change, restore) => {
+      const verify = () =>
+        verifyDatabaseContract({
+          connectionString: urlFor(ownerRole),
+          profile: 'local-test',
+          expectedDatabase: database,
+          expectedUser: ownerRole,
+        });
+      await admin((client) => client.query(change));
+      try {
+        await expect(verify()).rejects.toThrow(/Signal workbench reader/);
+      } finally {
+        await admin((client) => client.query(restore));
+      }
+      await expect(verify()).resolves.toMatchObject({ migrationCount: 15, tableCount: 47 });
+    },
+  );
+
+  it.each([
     'SELECT * FROM public.signals',
     'SELECT excerpt FROM public.public_source_evidence',
     'SELECT locator FROM public.public_source_evidence',
