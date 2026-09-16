@@ -1,11 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sweepImportOriginals } from '../../../.github/scripts/import-retention.mjs';
+import {
+  retentionApplyMode,
+  sweepImportOriginals,
+} from '../../../.github/scripts/import-retention.mjs';
 import {
   originalExpired,
   IMPORT_RETENTION_MS,
 } from '../../../packages/ingestion/src/import-retention.mjs';
 const now = Date.parse('2026-09-15T12:00:00Z');
+test('manual dry run is independent of deletion enablement; apply remains fail closed', () => {
+  for (const enabled of [undefined, '', '0', '1', 'true']) {
+    assert.equal(
+      retentionApplyMode({
+        IMPORT_RETENTION_MODE: 'dry-run',
+        HZENSE_IMPORT_RETENTION_ENABLED: enabled,
+      }),
+      false,
+    );
+    if (enabled === '1')
+      assert.equal(
+        retentionApplyMode({
+          IMPORT_RETENTION_MODE: 'apply',
+          HZENSE_IMPORT_RETENTION_ENABLED: enabled,
+        }),
+        true,
+      );
+    else
+      assert.throws(
+        () =>
+          retentionApplyMode({
+            IMPORT_RETENTION_MODE: 'apply',
+            HZENSE_IMPORT_RETENTION_ENABLED: enabled,
+          }),
+        /not_configured/,
+      );
+  }
+  for (const mode of [undefined, '', 'dry_run', 'APPLY'])
+    assert.throws(
+      () =>
+        retentionApplyMode({ IMPORT_RETENTION_MODE: mode, HZENSE_IMPORT_RETENTION_ENABLED: '1' }),
+      /not_configured/,
+    );
+});
 const path = 'imports/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222';
 const token = 'vercel_blob_rw_synthetic_secret',
   storeId = 'synthetic';

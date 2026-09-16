@@ -88,18 +88,21 @@ export async function sweepImportOriginals({
   };
 }
 
+export function retentionApplyMode(env) {
+  if (env.IMPORT_RETENTION_MODE === 'dry-run') return false;
+  if (env.IMPORT_RETENTION_MODE === 'apply' && env.HZENSE_IMPORT_RETENTION_ENABLED === '1')
+    return true;
+  throw new Error('not_configured');
+}
+
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   try {
-    if (
-      process.env.HZENSE_IMPORT_RETENTION_ENABLED !== '1' ||
-      !['apply', 'dry-run'].includes(process.env.IMPORT_RETENTION_MODE)
-    )
-      throw new Error('not_configured');
+    const apply = retentionApplyMode(process.env);
     const require = createRequire(new URL('../../apps/web/package.json', import.meta.url));
     const result = await sweepImportOriginals({
       token: process.env.HZENSE_IMPORT_BLOB_TOKEN,
       storeId: process.env.HZENSE_IMPORT_BLOB_STORE_ID,
-      apply: process.env.IMPORT_RETENTION_MODE === 'apply',
+      apply,
       sdk: require('@vercel/blob'),
     });
     console.log(JSON.stringify(result));

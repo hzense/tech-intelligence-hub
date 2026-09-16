@@ -91,7 +91,7 @@ postgresql://hzense_import_admin:<URL编码后的密码>@<已核准的Neon-poole
 
 重新排队前按管理员归属检查当前原件元数据，不只依赖旧错误码。已经排队的原件在领取后发现过期或缺失、且尚未开始抓取／解析时，持久化确定性失败并释放日预算及批次预算；历史预留额仍可审计。处理已开始或结果不确定则不释放保守费用。原件存储请求的实际平台费用仍单独计算。
 
-`.github/workflows/import-retention.yml` 每小时运行一次；手动触发默认 `dry-run`。首次启用前须完成评审、main CI 及真实专用 Store 的空扫描验收，并设置仓库变量 `HZENSE_IMPORT_RETENTION_ENABLED=1`。工作流只接收专用 `HZENSE_IMPORT_BLOB_TOKEN` 和 `HZENSE_IMPORT_BLOB_STORE_ID`，不接收数据库或 AI 密钥。
+`.github/workflows/import-retention.yml` 每小时运行一次；手动触发默认 `dry-run`，在清理开关关闭时也可执行只读扫描。`apply` 和定时删除仍要求仓库变量 `HZENSE_IMPORT_RETENTION_ENABLED=1`；首次启用前须完成评审、main CI 及真实专用 Store 的扫描验收（确认无到期候选，或逐项核对待删除范围）。预演和正式清理都保留当前 main 与 CI 门禁。工作流只接收专用 `HZENSE_IMPORT_BLOB_TOKEN` 和 `HZENSE_IMPORT_BLOB_STORE_ID`，不接收数据库或 AI 密钥。
 
 清理先完整检查 `imports/<批次 UUID>/<输入项 UUID>` 列表、私有域名及时间，再按条重新核对年龄和 ETag，以条件删除避免删除被替换的对象；异常路径、凭据错配或分页异常均拒绝执行。无数据库记录的过期上传孤儿也包含在该固定路径范围内。日志只输出计数，不记录原件路径、内容或凭据。
 

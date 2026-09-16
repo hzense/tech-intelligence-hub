@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   retention:
-    if: github.ref == 'refs/heads/main' && vars.HZENSE_IMPORT_RETENTION_ENABLED == '1'
+    if: github.ref == 'refs/heads/main' && (vars.HZENSE_IMPORT_RETENTION_ENABLED == '1' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'dry-run'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
