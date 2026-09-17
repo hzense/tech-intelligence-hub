@@ -4,6 +4,7 @@ import {
   listAiConnections,
   listAiProfiles,
   listAiProbes,
+  resolveAiGenerationAccess,
   type AiConnection,
   type AiProfile,
   type AiProbe,
@@ -122,4 +123,16 @@ export async function executeAiAdmin(
     invoke: invokeAiProbe,
   });
   return execute(operation, command);
+}
+
+/** Server-only capability resolution; credentials are returned only for an admitted run. */
+export async function generationAiAccess(id: string, revision: number, credentials = false) {
+  const config = readAiBackendConfiguration(process.env);
+  return resolveAiGenerationAccess({
+    pool: restrictedPool,
+    id,
+    revision,
+    allowedHosts: config.allowedHosts,
+    ...(credentials ? { keyring: config.keyring } : {}),
+  });
 }

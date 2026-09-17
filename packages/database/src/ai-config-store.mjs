@@ -373,6 +373,44 @@ export async function resolveAiProfileForExecution({ pool, id }) {
     return profileDto(row, ready);
   });
 }
+/** Trusted server-only adapter. Never expose its optional apiKey in an HTTP DTO or snapshot.
+ * Resolves current capability proofs and pins both Profile and connection revisions.
+ * Generation admission/ledger is separate from the capability-probe ledger.
+ */
+export async function resolveAiGenerationAccess({ pool, id, revision, allowedHosts, keyring }) {
+  aiUuid(id);
+  aiInteger(revision, 1, 2147483647);
+  return transaction(pool, async (client) => {
+    const row = one(
+      await client.query(
+        `/* ai:profile */ SELECT ${profileColumns} FROM public.ai_profiles WHERE id=$1 FOR SHARE`,
+        [id],
+      ),
+    );
+    if (row.revision !== revision) aiFail('revision_conflict');
+    const ready = await readiness(client, row.stages, true);
+    if (!ready.ready) aiFail('profile_not_ready');
+    const current = await connection(client, row.stages.extract.connection_id);
+    validateAiBaseUrl(current.base_url, allowedHosts);
+    if (
+      !current.enabled ||
+      !current.encrypted_key ||
+      current.revision !== row.stages.extract.connection_revision
+    )
+      aiFail('connection_unavailable');
+    return {
+      profile: profileDto(row, ready),
+      connection: {
+        id: current.id,
+        revision: current.revision,
+        protocol: current.protocol,
+        base_url: current.base_url,
+        settings: current.settings,
+      },
+      ...(keyring ? { apiKey: decryptAiKey(current.encrypted_key, current.id, keyring) } : {}),
+    };
+  });
+}
 export async function getAiProbe({ pool, id }) {
   aiUuid(id);
   return transaction(pool, async (client) => {

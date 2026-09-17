@@ -1,0 +1,80 @@
+.main {
+  padding-block: 2rem 4rem;
+  max-width: 960px;
+}
+.main p {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.panel,
+.result {
+  border: 1px solid var(--line, #b7bcc5);
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-block: 1.5rem;
+  min-width: 0;
+}
+.panel label {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 1rem;
+}
+.panel select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.6rem;
+  border: 1px solid #9299a5;
+  border-radius: 6px;
+  background: var(--surface, #fff);
+  color: inherit;
+}
+.consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  line-height: 1.7;
+}
+.consent input {
+  flex-shrink: 0;
+  margin-top: 0.45rem;
+}
+.main button {
+  border: 1px solid #9299a5;
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  cursor: pointer;
+  margin: 0.2rem;
+  max-width: 100%;
+}
+.main button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.main button:focus-visible,
+.main select:focus-visible,
+.main input:focus-visible,
+.main summary:focus-visible {
+  outline: 3px solid #4262d6;
+  outline-offset: 3px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.run + .run,
+.candidate + .candidate {
+  border-top: 1px solid var(--line, #b7bcc5);
+  padding-top: 1rem;
+  margin-top: 1.5rem;
+}
+.id {
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.output {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 32rem;
+  overflow: auto;
+}

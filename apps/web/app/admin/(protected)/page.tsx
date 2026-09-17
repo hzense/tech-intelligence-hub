@@ -38,6 +38,9 @@ export default async function AdminHomePage() {
           <Link className={styles.backLink} href="/admin/signals">
             信号只读工作台
           </Link>
+          <Link className={styles.backLink} href="/admin/signal-generation">
+            AI 信号候选生成
+          </Link>
           <Link className={styles.backLink} href="/admin/ai">
             AI 连接与模型测试
           </Link>

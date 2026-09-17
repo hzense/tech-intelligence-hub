@@ -30,7 +30,7 @@ const migrationPath = resolve(
 
 describe('Private candidate verification and assembly schema', () => {
   it('pins two exact private tables and only database-generated statement time and xid defaults', () => {
-    expect(expectedTableNames.size).toBe(47);
+    expect(expectedTableNames.size).toBe(48);
     const dialect = new PgDialect();
     const defaults = new Map([
       ...candidateVerificationDefaults,

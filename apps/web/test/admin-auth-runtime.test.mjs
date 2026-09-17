@@ -312,6 +312,35 @@ test(
     );
 
     await t.test(
+      'private generation pages and API are protected and disabled without independent configuration',
+      async () => {
+        const cookie = await encryptedCookie(token);
+        for (const path of [
+          '/admin/signal-generation',
+          '/admin/signal-generation/11111111-1111-4111-8111-111111111111',
+        ]) {
+          assert.equal((await request(path)).status, 307);
+          const page = await request(path, { headers: { cookie } });
+          assert.equal(page.status, 200);
+          assert.match(page.headers.get('cache-control'), /no-store/);
+        }
+        for (const method of ['GET', 'POST']) {
+          const options =
+            method === 'GET'
+              ? {}
+              : { method, headers: { origin, 'content-type': 'application/json' }, body: '{}' };
+          assert.equal((await request('/api/admin/signal-generation', options)).status, 401);
+          const response = await request('/api/admin/signal-generation', {
+            ...options,
+            headers: { ...options.headers, cookie },
+          });
+          assert.equal(response.status, 503);
+          assert.deepEqual(await response.json(), { error: 'not_configured' });
+          assert.match(response.headers.get('cache-control'), /no-store/);
+        }
+      },
+    );
+    await t.test(
       'publication routes authenticate before parsing or opening a database connection',
       async () => {
         for (const operation of ['publish', 'withdraw']) {
