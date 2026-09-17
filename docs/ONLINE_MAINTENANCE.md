@@ -40,12 +40,12 @@
 选择 `production-maintenance`，在 **Environment secrets** 添加现有值。
 不要用 Repository secrets、普通 Variables、workflow inputs、Issue、聊天或提交文件传递凭据。
 
-| Secret                        | 用途                                                                                                            |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_DIRECT_URL`         | `hzense_migrator` 的生产 direct 连接，带显式端口，使用 `sslmode=verify-full`                                    |
-| `HZENSE_RUNTIME_DATABASE_URL` | 现有 `hzense_runtime` pooler 连接，带显式端口，只使用 `sslmode=verify-full&channel_binding=prefer` 两个查询参数 |
-| `MAINTENANCE_BACKUP_ID`       | 本次审核的真实备份 ID；严格路径验证恢复，风险路径核验存在性/目标/期限，仅写操作及 `acl-capture` 注入            |
-| `MAINTENANCE_APPROVAL`        | 针对一次写操作或 ACL 公开采集的受保护 JSON 审核记录，格式见下文                                                 |
+| Secret                        | 用途                                                                                                                         |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_DIRECT_URL`         | `hzense_migrator` 的生产 direct 连接，带显式端口，使用 `sslmode=verify-full`                                                 |
+| `HZENSE_RUNTIME_DATABASE_URL` | 现有 `hzense_runtime` pooler 连接，带显式端口，只使用 `sslmode=verify-full&channel_binding=prefer` 两个查询参数              |
+| `MAINTENANCE_BACKUP_ID`       | 本次审核的真实备份 ID；严格路径验证恢复，风险路径核验存在性/目标/期限；写操作、`acl-capture` 及只读 `preflight` 计划绑定使用 |
+| `MAINTENANCE_APPROVAL`        | 针对一次写操作或 ACL 公开采集的受保护 JSON 审核记录，格式见下文                                                              |
 
 不重置或轮换现有密码。直连与 Runtime 凭据不会在一个执行步骤同时注入。
 安装依赖、构建投影、检查源码及 CI 的步骤不接收生产凭据。
@@ -288,6 +288,39 @@ pending 清单均重新核对；整个迁移工件、运行、提交、备份、
 `SET=false` 的精确入向边；不接受任何 AI 角色的出向成员关系。管理员仍可重新授予
 该角色，这是云管理员控制边界，不是 AI 角色获得管理员权限。创建候选由操作者提交，
 只在 COMMIT 成功后使用返回密码；已有角色时拒绝，不重置密码或尝试反复创建。
+
+### AI 私有候选生成批次（0015）
+
+2026-09-17 准备新增独立策略 `accept-unverified-signal-generation`。**本节是待审的执行规程，不是生产迁移完成或风险接受记录。** 只覆盖 `0015_signal_generation.sql`：增加私有候选任务账本，不生成正式 Signal、不自动发布、不授权模型费用。实际状态见[准备记录](production-evidence/2026-09-17-generation-preparation.md)。
+
+固定整个 `0000–0015` 清单及每项 SQL 字节摘要，pending 必须恰好为 `0015_signal_generation.sql`。旧的 FTS、AI 配置或导入风险审批均不能执行本批；清单变化、未来迁移、已全部应用的空计划都拒绝。迁移前预检与持锁执行前均检查实际执行工件；持锁时重新读取同一连接的身份。
+
+使用上文完整 run-bound 审批格式，另填以下字段。下例只是不可执行的片段；确认真实备份、冻结窗口和本批风险后才能填写真实值：
+
+```json
+{
+  "recoveryPolicy": "accept-unverified-signal-generation",
+  "targetFingerprint": "同一SHA线上preflight生成的目标摘要",
+  "manifestFingerprint": "同一SHA线上preflight生成的清单摘要",
+  "planFingerprint": "同一SHA线上preflight生成的计划摘要",
+  "riskAcceptance": {
+    "scope": "signal-generation-production-launch",
+    "accepted": false,
+    "historicalAclGapAccepted": false,
+    "acknowledgement": "recovery-unverified-data-loss-or-prolonged-outage-accepted"
+  }
+}
+```
+
+此策略只允许 `migrate` 和独立的 `acl-capture`，不允许 `search-apply`。两者均绑定目标、备份摘要、SHA/run/attempt/operation、有效期及人工 Environment 审批。`migrate` 需要上述全部指纹和本次审核的双采集 `aclFingerprint`；`acl-capture` 需要 `targetFingerprint` 及公开归档批准，不要求尚未产生的 ACL 指纹和迁移计划字段。两次运行须各自批准，不复用 run 或 operation。
+
+`preflight` 仅在精确迁移范围且已有格式有效的 `MAINTENANCE_BACKUP_ID` 时给出本批指纹；缺失或超出范围只返回普通预检结果，不开放迁移。指纹把实际目标及备份引用绑定到计划，**不证明 Neon 备份存在、父分支正确、快照足够新或可恢复**。必须在受控网页核对新备份覆盖当前生产状态、目标和保留窗口；不能把导入之前的旧备份当作当前备份。
+
+风险路径保留 `backupVerified: false`、`restoreRehearsed: false`、`aclRecoveryReviewed: false`，不填 `restoreEvidenceFingerprint`；只有明确确认存在性、冻结和风险后才设相应声明为 true。严格 `verified` 路径保持不变。公开摘要和 ACL 附件均保留该批次策略、`recoveryVerified: false` 和审批摘要，不输出凭据、目标明文或备份 ID。
+
+执行顺序为：本批代码合并与 main CI → 核对新备份与维护冻结 → 同 SHA `preflight` → 独立 `acl-capture`／审核 → 独立 `migrate` → 独立 `verify`。若迁移执行后的核验失败，先检查迁移账本及表，不盲目重放；应用完毕的目标不再接受本批空迁移。
+
+迁移审批不创建角色、不授予 ACL、不保存密码。完成 Schema 核验后，角色创建和固定列授权仍须单独同意：先在 Neon `main/neondb` 以 `neondb_owner` 执行 `db/roles/create_generation_admin.sql`，再在 `main/hzense` 以 `hzense_migrator` 执行 `db/roles/configure_generation_admin.sql`。以脚本自身身份、数据库、迁移与权限检查为准；发现意外权限时停止，不自动修复。密码仅在 Neon 受控结果中产生和交接，禁止复制到仓库、聊天、日志或本地文件。生产环境变量、AI 预算、开关与真实供应商验收均在后续独立进行。
 
 ## 当前仓库 ACL 公开归档
 

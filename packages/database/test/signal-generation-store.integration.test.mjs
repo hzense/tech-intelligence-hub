@@ -29,6 +29,7 @@ const owner = 'test-generation-owner';
 let admin, pool, rolePool;
 let createdRole = false;
 let databaseCreated = false;
+const isolatedDatabases = [];
 const ddl = await readFile(
   new URL('../../../db/migrations/0015_signal_generation.sql', import.meta.url),
   'utf8',
@@ -129,6 +130,13 @@ suite('private AI generation PostgreSQL ledger', () => {
     if (admin) {
       if (databaseCreated) await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
       if (createdRole) await admin.query('DROP ROLE IF EXISTS hzense_generation_admin');
+      for (const database of isolatedDatabases) {
+        for (const privilege of database.privileges) {
+          if (!['CONNECT', 'CREATE', 'TEMPORARY'].includes(privilege))
+            throw new Error('Unexpected fixture privilege');
+          await admin.query(`GRANT ${privilege} ON DATABASE "${database.name}" TO PUBLIC`);
+        }
+      }
       await admin.end();
     }
   });
@@ -403,6 +411,20 @@ suite('private AI generation PostgreSQL ledger', () => {
       ).rejects.toMatchObject({ code: '23514' });
   });
   it('requires the exact restricted service role and denies unrelated/private access', async () => {
+    const ambient = (
+      await admin.query(
+        `SELECT d.datname AS name,array_agg(a.privilege_type) AS privileges
+        FROM pg_database d CROSS JOIN LATERAL aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a
+        WHERE d.datname<>$1 AND d.datallowconn AND a.grantee=0 GROUP BY d.datname`,
+        [name],
+      )
+    ).rows;
+    if (ambient.some((row) => !['postgres', 'template1'].includes(row.name)))
+      throw new Error('Refuse to change unrelated database ACLs');
+    for (const database of ambient) {
+      isolatedDatabases.push(database);
+      await admin.query(`REVOKE ALL ON DATABASE "${database.name}" FROM PUBLIC`);
+    }
     const rolePassword = randomUUID();
     await pool.query(
       `CREATE ROLE hzense_generation_admin LOGIN NOINHERIT CONNECTION LIMIT 2 PASSWORD '${rolePassword}'`,

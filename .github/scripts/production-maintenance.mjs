@@ -18,6 +18,7 @@ const digest = /^[a-f0-9]{64}$/;
 const unverifiedRecoveryPolicy = 'accept-unverified-fts1';
 const aiConfigRecoveryPolicy = 'accept-unverified-ai-config';
 const importTasksRecoveryPolicy = 'accept-unverified-import-tasks';
+const signalGenerationRecoveryPolicy = 'accept-unverified-signal-generation';
 
 // A reviewed one-time rollout boundary, NOT the moving repository manifest.
 // Keep historical checksums pinned too, so approval identifies the complete
@@ -207,6 +208,95 @@ export function requireImportTasksMigrationScope(preflight, migrations, approval
   return plan;
 }
 
+// Independent 0015 boundary. Neither the 0014 risk decision nor future repository
+// migrations may widen this artifact; target/backup binding is domain separated.
+const signalGenerationManifest = Object.freeze([
+  ...importTasksManifest,
+  Object.freeze([
+    '0015_signal_generation.sql',
+    '0c93078e520045e733824668d5eafe23064c48c60a0f0d52c72e00a9eae6b666',
+  ]),
+]);
+export function signalGenerationTargetBinding(policy, preflight, backupId) {
+  requireGate(
+    ['host', 'port', 'database', 'user'].every(
+      (key) => typeof policy?.[key] === 'string' && policy[key].length > 0,
+    ) &&
+      preflight?.database === policy.database &&
+      preflight?.user === policy.user,
+    'signal-generation-target-required',
+  );
+  requireGate(
+    typeof backupId === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._:/-]{7,255}$/.test(backupId) &&
+      !/(^|[._:/-])(none|null|todo|pending|placeholder|example|changeme)($|[._:/-])/i.test(
+        backupId,
+      ),
+    'reviewed-backup-required',
+  );
+  return {
+    targetFingerprint: createHash('sha256')
+      .update('hzense/signal-generation-target/v1\0')
+      .update(
+        JSON.stringify([
+          policy.host.toLowerCase(),
+          policy.port,
+          preflight.database,
+          preflight.user,
+        ]),
+      )
+      .digest('hex'),
+    backupIdSha256: createHash('sha256').update(backupId).digest('hex'),
+  };
+}
+export function signalGenerationMigrationPlan(pendingMigrations, migrations, binding) {
+  requireGate(
+    Array.isArray(migrations) &&
+      migrations.length === signalGenerationManifest.length &&
+      Array.from(migrations).every(
+        (entry, index) =>
+          entry?.name === signalGenerationManifest[index][0] &&
+          entry?.checksum === signalGenerationManifest[index][1] &&
+          typeof entry?.sql === 'string' &&
+          createHash('sha256').update(entry.sql).digest('hex') ===
+            signalGenerationManifest[index][1],
+      ),
+    'signal-generation-migration-manifest-required',
+  );
+  requireGate(
+    Array.isArray(pendingMigrations) &&
+      pendingMigrations.length === 1 &&
+      pendingMigrations[0] === '0015_signal_generation.sql',
+    'signal-generation-migration-scope-required',
+  );
+  requireGate(
+    digest.test(binding?.targetFingerprint ?? '') && digest.test(binding?.backupIdSha256 ?? ''),
+    'signal-generation-target-required',
+  );
+  const manifestFingerprint = createHash('sha256')
+    .update('hzense/signal-generation-migration-manifest/v1\0')
+    .update(JSON.stringify(signalGenerationManifest))
+    .digest('hex');
+  const { targetFingerprint, backupIdSha256 } = binding;
+  const planFingerprint = createHash('sha256')
+    .update('hzense/signal-generation-migration-plan/v1\0')
+    .update(
+      JSON.stringify({ manifestFingerprint, pendingMigrations, targetFingerprint, backupIdSha256 }),
+    )
+    .digest('hex');
+  return { manifestFingerprint, planFingerprint, targetFingerprint, backupIdSha256 };
+}
+export function requireSignalGenerationMigrationScope(preflight, migrations, approval, binding) {
+  const plan = signalGenerationMigrationPlan(preflight?.pendingMigrations, migrations, binding);
+  requireGate(
+    ['manifestFingerprint', 'planFingerprint', 'targetFingerprint', 'backupIdSha256'].every(
+      (key) => approval?.[key] === plan[key],
+    ),
+    'signal-generation-migration-plan-mismatch',
+  );
+  return plan;
+}
+
 // Explicit exception, not fabricated evidence of a successful restore. The
 // protected Environment review remains the authority; these are declarations.
 function validateRecoveryPolicy(approval, operation) {
@@ -215,21 +305,30 @@ function validateRecoveryPolicy(approval, operation) {
     policy === 'verified' ||
       policy === unverifiedRecoveryPolicy ||
       policy === aiConfigRecoveryPolicy ||
-      policy === importTasksRecoveryPolicy,
+      policy === importTasksRecoveryPolicy ||
+      policy === signalGenerationRecoveryPolicy,
     'unsupported-recovery-policy',
   );
   if (policy === 'verified') {
     requireGate(!Object.hasOwn(approval, 'riskAcceptance'), 'conflicting-recovery-approval');
     return policy;
   }
-  if (policy === aiConfigRecoveryPolicy || policy === importTasksRecoveryPolicy) {
-    if (policy === importTasksRecoveryPolicy)
-      requireGate(digest.test(approval.targetFingerprint ?? ''), 'import-tasks-target-required');
+  if (
+    [aiConfigRecoveryPolicy, importTasksRecoveryPolicy, signalGenerationRecoveryPolicy].includes(
+      policy,
+    )
+  ) {
+    const prefix =
+      policy === signalGenerationRecoveryPolicy
+        ? 'signal-generation'
+        : policy === importTasksRecoveryPolicy
+          ? 'import-tasks'
+          : 'ai-config';
+    if (policy !== aiConfigRecoveryPolicy)
+      requireGate(digest.test(approval.targetFingerprint ?? ''), `${prefix}-target-required`);
     requireGate(
       operation === 'migrate' || operation === 'acl-capture',
-      policy === importTasksRecoveryPolicy
-        ? 'import-tasks-operation-required'
-        : 'ai-config-operation-required',
+      `${prefix}-operation-required`,
     );
     if (operation === 'migrate') {
       requireGate(
@@ -237,9 +336,7 @@ function validateRecoveryPolicy(approval, operation) {
           digest.test(approval.manifestFingerprint) &&
           typeof approval.planFingerprint === 'string' &&
           digest.test(approval.planFingerprint),
-        policy === importTasksRecoveryPolicy
-          ? 'reviewed-import-tasks-plan-required'
-          : 'reviewed-ai-config-plan-required',
+        `reviewed-${prefix}-plan-required`,
       );
     }
   }
@@ -251,11 +348,13 @@ function validateRecoveryPolicy(approval, operation) {
       approval.aclRecoveryReviewed === false &&
       !Object.hasOwn(approval, 'restoreEvidenceFingerprint') &&
       acceptance?.scope ===
-        (policy === importTasksRecoveryPolicy
-          ? 'import-tasks-production-launch'
-          : policy === aiConfigRecoveryPolicy
-            ? 'ai-configuration-production-launch'
-            : 'fts1-production-launch') &&
+        (policy === signalGenerationRecoveryPolicy
+          ? 'signal-generation-production-launch'
+          : policy === importTasksRecoveryPolicy
+            ? 'import-tasks-production-launch'
+            : policy === aiConfigRecoveryPolicy
+              ? 'ai-configuration-production-launch'
+              : 'fts1-production-launch') &&
       acceptance.accepted === true &&
       acceptance.historicalAclGapAccepted === true &&
       acceptance.acknowledgement === 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
@@ -382,9 +481,12 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
 export function publicRecoveryAcceptance(request, rawApproval) {
   if (
     (writes.has(request.operation) || request.operation === 'acl-capture') &&
-    [unverifiedRecoveryPolicy, aiConfigRecoveryPolicy, importTasksRecoveryPolicy].includes(
-      request.approval?.recoveryPolicy,
-    )
+    [
+      unverifiedRecoveryPolicy,
+      aiConfigRecoveryPolicy,
+      importTasksRecoveryPolicy,
+      signalGenerationRecoveryPolicy,
+    ].includes(request.approval?.recoveryPolicy)
   ) {
     return {
       recoveryPolicy: request.approval.recoveryPolicy,
@@ -506,12 +608,15 @@ export async function verifyMaintenanceFreshness(env, { fetchImpl = globalThis.f
 async function executeOperation(env, { operation, approval }) {
   if (operation === 'acl-capture') {
     let binding;
-    if (approval?.recoveryPolicy === importTasksRecoveryPolicy) {
+    if (
+      [importTasksRecoveryPolicy, signalGenerationRecoveryPolicy].includes(approval?.recoveryPolicy)
+    ) {
       const { productionDatabaseOptions, validateConnectionTarget } =
         await import('../../packages/database/src/connection-policy.mjs');
       const { runDatabasePreflight } = await import('../../packages/database/src/preflight.mjs');
       const options = productionDatabaseOptions(env);
-      binding = importTasksTargetBinding(
+      const generation = approval.recoveryPolicy === signalGenerationRecoveryPolicy;
+      binding = (generation ? signalGenerationTargetBinding : importTasksTargetBinding)(
         validateConnectionTarget(options),
         await runDatabasePreflight(options),
         env.MAINTENANCE_BACKUP_ID,
@@ -519,7 +624,7 @@ async function executeOperation(env, { operation, approval }) {
       requireGate(
         binding.targetFingerprint === approval.targetFingerprint &&
           binding.backupIdSha256 === approval.backupIdSha256,
-        'import-tasks-target-mismatch',
+        generation ? 'signal-generation-target-mismatch' : 'import-tasks-target-mismatch',
       );
     }
     const { capturePublicAclEvidence } = await import('./public-acl-evidence.mjs');
@@ -550,6 +655,18 @@ async function executeOperation(env, { operation, approval }) {
     try {
       return {
         ...preflight,
+        ...signalGenerationMigrationPlan(
+          preflight.pendingMigrations,
+          migrations,
+          signalGenerationTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+        ),
+      };
+    } catch (error) {
+      if (!(error instanceof MaintenanceGateError)) throw error;
+    }
+    try {
+      return {
+        ...preflight,
         ...importTasksMigrationPlan(
           preflight.pendingMigrations,
           migrations,
@@ -577,18 +694,31 @@ async function executeOperation(env, { operation, approval }) {
     async function checkScope(preflight) {
       if (approval?.recoveryPolicy === unverifiedRecoveryPolicy)
         requireFts1MigrationScope(preflight);
-      if ([aiConfigRecoveryPolicy, importTasksRecoveryPolicy].includes(approval?.recoveryPolicy)) {
+      if (
+        [
+          aiConfigRecoveryPolicy,
+          importTasksRecoveryPolicy,
+          signalGenerationRecoveryPolicy,
+        ].includes(approval?.recoveryPolicy)
+      ) {
         const migrations = await loadMigrations();
         await verifyMigrationManifest(migrations);
         approvedPlan =
-          approval.recoveryPolicy === importTasksRecoveryPolicy
-            ? requireImportTasksMigrationScope(
+          approval.recoveryPolicy === signalGenerationRecoveryPolicy
+            ? requireSignalGenerationMigrationScope(
                 preflight,
                 migrations,
                 approval,
-                importTasksTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                signalGenerationTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
               )
-            : requireAiConfigMigrationScope(preflight, migrations, approval);
+            : approval.recoveryPolicy === importTasksRecoveryPolicy
+              ? requireImportTasksMigrationScope(
+                  preflight,
+                  migrations,
+                  approval,
+                  importTasksTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                )
+              : requireAiConfigMigrationScope(preflight, migrations, approval);
       }
     }
     await runMigrations({
@@ -605,25 +735,43 @@ async function executeOperation(env, { operation, approval }) {
         unverifiedRecoveryPolicy,
         aiConfigRecoveryPolicy,
         importTasksRecoveryPolicy,
+        signalGenerationRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
         ? async (pendingMigrations, artifact) => {
             if (
-              [aiConfigRecoveryPolicy, importTasksRecoveryPolicy].includes(approval?.recoveryPolicy)
+              [
+                aiConfigRecoveryPolicy,
+                importTasksRecoveryPolicy,
+                signalGenerationRecoveryPolicy,
+              ].includes(approval?.recoveryPolicy)
             ) {
               // The runner freezes this actual execution snapshot before opening
               // its connection. Do not substitute another filesystem reread.
-              if (approval.recoveryPolicy === importTasksRecoveryPolicy) {
+              if (
+                [importTasksRecoveryPolicy, signalGenerationRecoveryPolicy].includes(
+                  approval.recoveryPolicy,
+                )
+              ) {
                 // Re-read authenticated identity from the very same connection
                 // while holding the migration lock, not from approval fields.
                 const current = await inspectDatabasePreflight(migrationClient, {
                   ...options,
                   expectedHost: policy.host,
                 });
-                approvedPlan = requireImportTasksMigrationScope(
+                const generation = approval.recoveryPolicy === signalGenerationRecoveryPolicy;
+                approvedPlan = (
+                  generation
+                    ? requireSignalGenerationMigrationScope
+                    : requireImportTasksMigrationScope
+                )(
                   { ...current, pendingMigrations },
                   artifact?.migrations,
                   approval,
-                  importTasksTargetBinding(policy, current, env.MAINTENANCE_BACKUP_ID),
+                  (generation ? signalGenerationTargetBinding : importTasksTargetBinding)(
+                    policy,
+                    current,
+                    env.MAINTENANCE_BACKUP_ID,
+                  ),
                 );
               } else {
                 approvedPlan = requireAiConfigMigrationScope(

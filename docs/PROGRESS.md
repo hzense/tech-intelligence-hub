@@ -8,11 +8,15 @@
 
 ## 当前优先级：Signal-first v2 重构
 
-**当前执行批次（2026-09-17）：** 开发 [AI 信号候选生成 3a](AI_SIGNAL_GENERATION.md)：已解析资料选择、明确外发同意、当前 Profile 提取模型、持久化任务／预算／幂等、严格原文引用与人物／日期缺口、私有候选页面。新增 `0015` 仅为本地迁移候选；本批验证、PR、合并、生产授权／费用和真实模型验收分别记录，不计第三阶段整体完成，不开启自动发布。
+**当前执行批次（2026-09-17）：** [AI 信号候选生成 3a](AI_SIGNAL_GENERATION.md) 代码已合并部署：已解析资料选择、明确外发同意、当前 Profile 提取模型、持久化任务／预算／幂等、严格原文引用与人物／日期缺口、私有候选页面。现准备生产 `0015` 独立维护门禁与 `hzense_generation_admin` 最小列授权；实际迁移、角色创建、费用和真实模型验收尚未执行。见[生产数据库准备记录](production-evidence/2026-09-17-generation-preparation.md)。不计第三阶段整体完成，不开启自动发布。
 
 **3a 本地验证：** 全仓默认测试 2684 项通过；另行启用的真实 PostgreSQL 18／pgvector 原生迁移回归 583 项通过（含 SCRAM 密码认证），目标为 16 迁移／48 表；真实 Next.js 构建后的认证／HTTP 测试 21 项通过（1 项可选浏览器测试未启用），候选页面合成浏览器测试 12 项通过。类型、lint、构建与工作流校验通过。独立审查发现的预算收紧、来源错误提示、请求恢复、完整请求大小上限、过期任务查询恢复和配置修订冲突恢复问题已修复；首轮 CI 的测试角色密码缺失也已在隔离 SCRAM 环境复现并修正。默认测试中按环境跳过的数据库／浏览器／解析场景不计入通过数；这些结果没有调用真实供应商或修改生产库。以上为合并前的本地验证记录；PR、CI、合并与部署结果以对应交付记录为准，生产生成仍待独立授权与验收。
 
-**3a 交付跟踪：** [PR #100](https://github.com/hzense/tech-intelligence-hub/pull/100) 承载本批代码、测试和文档；评审、CI 与合并状态以该 PR 及其关联运行记录为准。代码交付不执行生产 `0015` 迁移、不扩大角色权限、不授权新增模型费用，也不启用生成或公开发布。
+**3a 交付跟踪：** [PR #100](https://github.com/hzense/tech-intelligence-hub/pull/100) 已合并为 `fd528ea`，合并后 [main CI 35226592286](https://github.com/hzense/tech-intelligence-hub/actions/runs/35226592286) 成功；对应 Production 部署 READY 并绑定 hzense.com。匿名访问后台重定向登录，API 拒绝匿名。代码交付不执行生产 `0015` 迁移、不扩大角色权限、不授权新增模型费用，也不启用生成或公开发布。此处部署结果已在本批交付时核验，后续数据库准备不重新发起部署。
+
+**3a 数据库准备核对：** 经用户审批的只读 [preflight 35228294932](https://github.com/hzense/tech-intelligence-hub/actions/runs/35228294932) 于 2026-09-17 13:44:48 UTC 成功，`pendingMigrationCount: 1`，对应待迁移 `0015`。尚未执行迁移或新角色授权；新增准备工件仍须 PR／CI／合并及本批独立审批。预检通过不等于生成已启用。
+
+**3a 准备工件验证：** 独立 `0015` 风险审批范围、生成角色创建／最小列授权、owner／runtime 权限审计和生产步骤已补齐；代码审查发现的 PUBLIC 重叠列泄露与额外 ACL 类别遗漏已修复。全仓默认 2810 项、完整原生 PostgreSQL 626 项通过，构建、lint、类型、格式和工作流检查通过；生成角色／创建身份的 SCRAM 认证及模拟 Neon 管理边另行验证。本批通过 `chore/generation-production-preparation` 分支交付，PR／CI／合并状态以对应记录为准，不是生产迁移或授权完成。
 
 **生产核对（2026-09-17，3a 提交前）：** PR #99 已合并为 `9845b5b`，main [CI 35121669913](https://github.com/hzense/tech-intelligence-hub/actions/runs/35121669913) 成功；Vercel `dpl_Hx4s9uint1yTR7AufqLCWeGDLEvY` READY 并绑定 hzense.com，版本一致。原件清理开关为 `1`，最新 [定时运行 35218090158](https://github.com/hzense/tech-intelligence-hub/actions/runs/35218090158) 成功，扫描 6、到期 0、删除 0；尚不能视为真实到期删除验收。以下 9 月 15 日条目保留为阶段历史，以本段及生产证据的后续结果为准。
 
