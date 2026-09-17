@@ -43,6 +43,7 @@ test(
     let commands = [];
     let droppedAction = null;
     let rejectedError = null;
+    let profileRevision = 2;
     let mismatchedCreate = false;
     const server = createServer(async (req, res) => {
       if (assets.has(req.url)) {
@@ -59,7 +60,7 @@ test(
               profiles: [
                 {
                   id: profileId,
-                  revision: 2,
+                  revision: profileRevision,
                   name: 'Synthetic private profile',
                   provider_host: 'synthetic-provider.example',
                   readiness: { ready: true, reasons: [] },
@@ -100,8 +101,15 @@ test(
         if (rejectedError) {
           const error = rejectedError;
           rejectedError = null;
-          res.statusCode = 400;
+          res.statusCode = ['invalid_request', 'input_too_large', 'invalid_source'].includes(error)
+            ? 400
+            : 409;
           res.end(JSON.stringify({ error, message: 'SYNTHETIC_RAW_PROVIDER_DIAGNOSTIC' }));
+          return;
+        }
+        if (command.action === 'create' && command.profileRevision !== profileRevision) {
+          res.statusCode = 409;
+          res.end('{"error":"revision_conflict"}');
           return;
         }
         let run = runs.find((entry) => entry.id === command.id);
@@ -201,6 +209,7 @@ test(
       commands = [];
       droppedAction = null;
       rejectedError = null;
+      profileRevision = 2;
       mismatchedCreate = false;
       const page = await browser.newPage();
       await page.route('**/*', (route) =>
@@ -569,6 +578,113 @@ test(
         await expect(page.getByRole('heading', { name: '待执行', exact: true })).toBeVisible();
         assert.notEqual(commands.at(-1).id, originalId);
         assert.equal(commands.at(-1).itemId, smallItemId);
+        assert.equal(commands.filter((command) => command.action === 'run').length, 0);
+        await page.close();
+      },
+    );
+
+    await t.test(
+      'a stale profile revision can be explicitly abandoned after a fresh not_found and refreshed for a new request',
+      async () => {
+        const page = await newPage();
+        await page.goto(origin);
+        await selectInput(page);
+        await page.getByRole('checkbox').check();
+        profileRevision = 3;
+        await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
+        await expect(page.getByText('模型配置版本已变化，', { exact: false })).toBeVisible();
+        const originalRequest = commands[0];
+        assert.equal(originalRequest.profileRevision, 2);
+        assert.equal(runs.length, 0);
+        assert.equal(commands.length, 1);
+        await expect(page.getByLabel('分阶段模型配置')).toBeDisabled();
+        const abandon = page.getByRole('button', { name: '核对并放弃未创建请求' });
+        await expect(abandon).toBeEnabled();
+        await page.getByRole('button', { name: '手动刷新列表' }).click();
+        await expect(page.getByText('列表已刷新；未调用 AI。')).toBeVisible();
+        await expect(
+          page.getByLabel('分阶段模型配置').getByRole('option', {
+            name: 'Synthetic private profile · r3',
+          }),
+        ).toHaveCount(1);
+        assert.deepEqual(
+          await page.evaluate(
+            (key) => JSON.parse(globalThis.sessionStorage.getItem(key)),
+            storageKey,
+          ),
+          {
+            id: originalRequest.id,
+            batchId,
+            itemId,
+            profileId,
+            profileRevision: 2,
+          },
+        );
+        assert.equal(commands.length, 1);
+        await abandon.click();
+        await expect(page.getByText('已核对服务器未创建原请求，', { exact: false })).toBeVisible();
+        assert.deepEqual(commands, [originalRequest, { action: 'detail', id: originalRequest.id }]);
+        assert.equal(
+          await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+          null,
+        );
+        await expect(page.getByLabel('分阶段模型配置')).toBeEnabled();
+        await expect(page.getByRole('checkbox')).not.toBeChecked();
+        await selectInput(page);
+        const create = page.getByRole('button', {
+          name: '创建生成任务（不调用 AI）',
+          exact: true,
+        });
+        await expect(create).toBeDisabled();
+        await page.getByRole('checkbox').check();
+        await create.click();
+        await expect(page.getByRole('heading', { name: '待执行', exact: true })).toBeVisible();
+        assert.notEqual(commands.at(-1).id, originalRequest.id);
+        assert.equal(commands.at(-1).profileRevision, 3);
+        assert.equal(commands.at(-1).itemId, itemId);
+        assert.equal(commands.length, 3);
+        assert.equal(commands.filter((command) => command.action === 'run').length, 0);
+        await page.close();
+      },
+    );
+
+    await t.test(
+      'commit_unknown after a revision rejection revokes abandonment and retains the same request',
+      async () => {
+        const page = await newPage();
+        await page.goto(origin);
+        await selectInput(page);
+        await page.getByRole('checkbox').check();
+        profileRevision = 3;
+        await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
+        const abandon = page.getByRole('button', { name: '核对并放弃未创建请求' });
+        await expect(abandon).toBeEnabled();
+        const originalRequest = commands[0];
+        const stored = await page.evaluate(
+          (key) => globalThis.sessionStorage.getItem(key),
+          storageKey,
+        );
+        rejectedError = 'commit_unknown';
+        await page.getByRole('button', { name: '使用原编号重新确认创建（不调用 AI）' }).click();
+        await expect(page.getByText('服务端尚无法确认任务记录，', { exact: false })).toBeVisible();
+        await expect(abandon).toHaveCount(0);
+        await expect(page.getByLabel('分阶段模型配置')).toBeDisabled();
+        assert.deepEqual(commands, [originalRequest, originalRequest]);
+        await page.getByRole('button', { name: '按原请求 ID 查询状态' }).click();
+        await expect(page.getByText('暂未查到原任务。', { exact: false })).toBeVisible();
+        await expect(abandon).toHaveCount(0);
+        assert.deepEqual(commands.at(-1), { action: 'detail', id: originalRequest.id });
+        assert.equal(commands.length, 3);
+        assert.equal(
+          await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+          stored,
+        );
+        await page.reload();
+        await expect(
+          page.getByRole('button', { name: '使用原编号重新确认创建（不调用 AI）' }),
+        ).toBeDisabled();
+        await expect(abandon).toHaveCount(0);
+        assert.equal(commands.length, 3);
         assert.equal(commands.filter((command) => command.action === 'run').length, 0);
         await page.close();
       },

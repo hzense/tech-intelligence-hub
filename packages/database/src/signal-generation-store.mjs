@@ -243,25 +243,40 @@ export async function createSignalGeneration({ pool, owner, request, snapshot, c
   });
 }
 export async function getSignalGeneration({ pool, owner, id }) {
-  return transaction(pool, (client) => run(client, owner, id), true);
+  ownerId(owner);
+  uuid(id);
+  return transaction(pool, async (client) => {
+    await expireRunning(client, owner, { id });
+    return run(client, owner, id);
+  });
+}
+async function expireRunning(client, owner, { id, batchId, itemId } = {}) {
+  // A query may recover a lost worker, but must never admit another provider call.
+  // Keep its lease and full reservation; a late completion remains fenced out.
+  await client.query(
+    `UPDATE public.signal_generation_runs
+    SET status='unknown',error_code='outcome_unknown',finished_at=clock_timestamp()
+    WHERE owner_id=$1 AND ($2::uuid IS NULL OR id=$2)
+    AND ($3::uuid IS NULL OR batch_id=$3) AND ($4::uuid IS NULL OR item_id=$4)
+    AND status='running' AND lease_until<=clock_timestamp()`,
+    [owner, id ?? null, batchId ?? null, itemId ?? null],
+  );
 }
 export async function listSignalGenerations({ pool, owner, batchId, itemId }) {
   ownerId(owner);
   if (batchId !== undefined) uuid(batchId);
   if (itemId !== undefined) uuid(itemId);
-  return transaction(
-    pool,
-    async (client) =>
-      (
-        await client.query(
-          `SELECT ${columns} FROM public.signal_generation_runs
+  return transaction(pool, async (client) => {
+    await expireRunning(client, owner, { batchId, itemId });
+    return (
+      await client.query(
+        `SELECT ${columns} FROM public.signal_generation_runs
     WHERE owner_id=$1 AND ($2::uuid IS NULL OR batch_id=$2) AND ($3::uuid IS NULL OR item_id=$3)
     ORDER BY created_at DESC,id DESC LIMIT 50`,
-          [owner, batchId ?? null, itemId ?? null],
-        )
-      ).rows,
-    true,
-  );
+        [owner, batchId ?? null, itemId ?? null],
+      )
+    ).rows;
+  });
 }
 export async function claimSignalGeneration({ pool, owner, id, currentLimits }) {
   object(currentLimits, ['batchLimitMicrousd', 'dailyLimitMicrousd'], 'invalid_configuration');

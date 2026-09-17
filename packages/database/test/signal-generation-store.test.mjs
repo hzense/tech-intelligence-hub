@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   createSignalGeneration,
+  getSignalGeneration,
+  listSignalGenerations,
   finishSignalGeneration,
   signalGenerationSourceHash,
 } from '../src/signal-generation-store.mjs';
@@ -100,6 +102,17 @@ describe('private generation input boundaries', () => {
         code: 'invalid_configuration',
       });
     }
+  });
+  it('rejects invalid recovery owners and selectors before contacting the DB', async () => {
+    const pool = input().pool;
+    for (const operation of [
+      () => getSignalGeneration({ pool, owner: '', id: randomUUID() }),
+      () => getSignalGeneration({ pool, owner: 'owner', id: 'invalid' }),
+      () => listSignalGenerations({ pool, owner: 'owner\n' }),
+      () => listSignalGenerations({ pool, owner: 'owner', batchId: 'invalid' }),
+      () => listSignalGenerations({ pool, owner: 'owner', itemId: 'invalid' }),
+    ])
+      await expect(operation()).rejects.toMatchObject({ code: 'invalid_request' });
   });
   it('refuses unclassified/public/credential-bearing or huge outputs', async () => {
     for (const result of [

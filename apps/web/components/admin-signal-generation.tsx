@@ -48,7 +48,8 @@ const errorMessages: Record<string, string> = {
   invalid_source: '解析结果格式无效。请在导入页核对资料是否完整解析。',
   source_unavailable: '所选资料尚不可用，可能未完成解析或已被取消。',
   profile_not_ready: '模型配置尚未就绪。请核对抽取阶段模型、连接及能力测试。',
-  revision_conflict: '模型配置版本已变化，原任务不能使用新版本替代。请先按原编号核对任务。',
+  revision_conflict:
+    '模型配置版本已变化，原请求不能直接改用新版本。请核对任务；仅未创建的请求可放弃编号后刷新配置。',
   budget_exceeded: '预算不足，暂不能执行生成。请核对批次、每日及连接预算，不要重复提交。',
   not_configured: 'AI 信号生成尚未完成生产授权或配置，请联系管理员核对。',
   invalid_request: '请求参数未通过校验。请保留原请求编号并联系管理员核对。',
@@ -352,9 +353,12 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
       } catch (error) {
         if (
           error instanceof SafeRequestError &&
-          error.status === 400 &&
-          ['input_too_large', 'invalid_source', 'invalid_request'].includes(error.code)
+          ((error.status === 400 &&
+            ['input_too_large', 'invalid_source', 'invalid_request'].includes(error.code)) ||
+            (error.status === 409 && error.code === 'revision_conflict'))
         )
+          // These create-time rejections occur before the task write. Abandonment
+          // still requires an explicit action, a fresh not_found and a storage CAS.
           setRejectedCreateId(request.id);
         throw error;
       }
@@ -453,7 +457,7 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
       setConsent(false);
       setItemId('');
       setMessage(
-        '已核对服务器未创建原请求，并放弃该编号。可以选择其他资料；新任务仍需重新确认授权。',
+        '已核对服务器未创建原请求，并放弃该编号。可以重新选择资料或刷新模型配置；新任务仍需重新确认授权。',
       );
     });
   }

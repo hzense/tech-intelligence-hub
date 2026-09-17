@@ -197,6 +197,43 @@ test('SDK fetch cannot move credentials to another endpoint, origin, query or re
   await assert.rejects(() => redirects(`${baseUrl}/models`), { code: 'redirect_blocked' });
 });
 
+test('transport keeps probe request limits and separately bounds generation before DNS or wire calls', async () => {
+  for (const [requestPurpose, maximum] of [
+    [undefined, 32768],
+    ['probe', 32768],
+    ['signal-generation', 256 * 1024],
+  ]) {
+    let dnsCalls = 0;
+    let wireCalls = 0;
+    const transport = createPinnedAiFetch(
+      { ...config(), requestPurpose },
+      {
+        resolve: async () => {
+          dnsCalls++;
+          return resolve();
+        },
+        request: async () => {
+          wireCalls++;
+          return Response.json({ data: [] });
+        },
+      },
+    );
+    await assert.rejects(
+      () =>
+        transport(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          body: 'x'.repeat(maximum + 1),
+        }),
+      { code: 'invalid_configuration' },
+    );
+    assert.equal(dnsCalls, 0);
+    assert.equal(wireCalls, 0);
+    await transport(`${baseUrl}/chat/completions`, { method: 'POST', body: 'x'.repeat(maximum) });
+    assert.equal(dnsCalls, 1);
+    assert.equal(wireCalls, 1);
+  }
+});
+
 test('transport bounds responses and redacts echoed keys including JSON escapes', async () => {
   const huge = createPinnedAiFetch(config(), {
     resolve,

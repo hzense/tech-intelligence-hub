@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import { createSignalGenerationInvoker } from '../lib/signal-generation-provider.ts';
 import { createGenerationExecutor, generationDto } from '../lib/signal-generation-core.ts';
 import { createGenerationHandler } from '../lib/admin-signal-generation-handler.ts';
@@ -125,8 +126,15 @@ function providerFixture(value = result) {
   });
   return {
     calls,
-    invoke: () =>
-      invoke({ source, stage, connection, apiKey, allowedHosts: ['api.provider.example.com'] }),
+    invoke: (overrides = {}) =>
+      invoke({
+        source,
+        stage,
+        connection,
+        apiKey,
+        allowedHosts: ['api.provider.example.com'],
+        ...overrides,
+      }),
   };
 }
 test('real SDK structured extraction yields only private candidates and exact evidence', async () => {
@@ -140,6 +148,28 @@ test('real SDK structured extraction yields only private candidates and exact ev
   ]);
   assert.equal(value.input_tokens, 200);
   assert.equal(f.calls.length, 1);
+});
+test('legal large sources and maximum extraction prompts fit the bounded SDK request after JSON escaping', async () => {
+  for (const [text, prompt] of [
+    ['x'.repeat(19000), 'p'.repeat(16000)],
+    ['"\\'.repeat(4750), '"\\'.repeat(8000)],
+    ['中'.repeat(6500), '中'.repeat(16000)],
+    ['x'.repeat(19000), '\ud800'.repeat(16000)],
+  ]) {
+    const largeSource = buildGenerationSource(
+      parseImportOutput({
+        fragments: [1, 2].map((paragraph) => ({ text, locator: { paragraph } })),
+      }),
+    );
+    const sourceBytes = Buffer.byteLength(JSON.stringify(largeSource));
+    assert.ok(sourceBytes > 32768 && sourceBytes <= 48000);
+    const f = providerFixture({ candidates: [], reason: 'No supported event.' });
+    const value = await f.invoke({ source: largeSource, stage: { ...stage, prompt } });
+    assert.equal(value.success, true);
+    assert.equal(f.calls.length, 1);
+    const wireBytes = Buffer.byteLength(f.calls[0].body);
+    assert.ok(wireBytes > 32768 && wireBytes <= 256 * 1024);
+  }
 });
 test('fabricated quotes, injected status, and credential echo cannot become saved candidates', async () => {
   for (const mutation of [

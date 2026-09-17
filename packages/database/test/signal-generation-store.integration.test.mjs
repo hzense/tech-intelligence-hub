@@ -27,6 +27,8 @@ const suite = adminUrl ? describe.sequential : describe.skip;
 const name = `hzense_generation_${process.pid}_${Date.now()}`;
 const owner = 'test-generation-owner';
 let admin, pool, rolePool;
+let createdRole = false;
+let databaseCreated = false;
 const ddl = await readFile(
   new URL('../../../db/migrations/0015_signal_generation.sql', import.meta.url),
   'utf8',
@@ -103,9 +105,16 @@ function uncertainCommit(basePool) {
 }
 suite('private AI generation PostgreSQL ledger', () => {
   beforeAll(async () => {
+    if (process.env.RUNTIME_READER_TEST_ISOLATED_CLUSTER !== '1')
+      throw new Error('Generation role tests require an explicitly isolated disposable cluster');
     admin = new pg.Client({ connectionString: adminUrl });
     await admin.connect();
+    if (
+      (await admin.query("SELECT 1 FROM pg_roles WHERE rolname='hzense_generation_admin'")).rowCount
+    )
+      throw new Error('Refusing to modify pre-existing fixture role hzense_generation_admin');
     await admin.query(`CREATE DATABASE "${name}" TEMPLATE template0 ENCODING 'UTF8'`);
+    databaseCreated = true;
     const url = new URL(adminUrl);
     url.pathname = `/${name}`;
     pool = new pg.Pool({ connectionString: url.toString(), max: 5 });
@@ -118,8 +127,8 @@ suite('private AI generation PostgreSQL ledger', () => {
     await rolePool?.end();
     await pool?.end();
     if (admin) {
-      await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
-      await admin.query('DROP ROLE IF EXISTS hzense_generation_admin');
+      if (databaseCreated) await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      if (createdRole) await admin.query('DROP ROLE IF EXISTS hzense_generation_admin');
       await admin.end();
     }
   });
@@ -199,6 +208,90 @@ suite('private AI generation PostgreSQL ledger', () => {
     expect(after.run.status).toBe('unknown');
     expect(after.run.reserved_microusd).toBe('10');
     expect((await claimSignalGeneration(args(a))).claimed).toBe(false);
+  });
+  it('recovers an expired worker through owner detail queries while retaining its lease and budget', async () => {
+    const a = await claimed();
+    const expired = (
+      await pool.query(
+        `UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second'
+        WHERE id=$1 RETURNING *`,
+        [a.id],
+      )
+    ).rows[0];
+    await expect(getSignalGeneration({ ...args(a), owner: 'another-owner' })).rejects.toMatchObject(
+      {
+        code: 'not_found',
+      },
+    );
+    expect(
+      (await pool.query('SELECT status FROM public.signal_generation_runs WHERE id=$1', [a.id]))
+        .rows[0].status,
+    ).toBe('running');
+    const recovered = await getSignalGeneration(args(a));
+    expect(recovered.status).toBe('unknown');
+    expect(recovered.error_code).toBe('outcome_unknown');
+    for (const key of [
+      'lease_token',
+      'lease_until',
+      'budget_day',
+      'reserved_microusd',
+      'charged_microusd',
+    ])
+      expect(recovered[key]).toEqual(expired[key]);
+    expect(recovered.finished_at).not.toBeNull();
+    expect((await getSignalGeneration(args(a))).finished_at).toEqual(recovered.finished_at);
+    expect((await claimSignalGeneration(args(a))).claimed).toBe(false);
+    await expect(
+      finishSignalGeneration({ ...args(a), token: a.lease_token, outcome: 'completed', result }),
+    ).rejects.toMatchObject({ code: 'stale_attempt' });
+  });
+  it('list recovery respects owner and filters while preserving cancelled, pending and live runs', async () => {
+    const expired = await claimed();
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [expired.id],
+    );
+    const cancelled = await claimed();
+    await cancelSignalGeneration(args(cancelled));
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [cancelled.id],
+    );
+    const other = await createSignalGeneration(input({ owner: 'another-owner' }));
+    await claimSignalGeneration({ ...args(other), owner: 'another-owner' });
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [other.id],
+    );
+    const live = await claimed();
+    const pending = await createSignalGeneration(input());
+    expect(
+      await listSignalGenerations({ pool, owner, batchId: live.batch_id, itemId: live.item_id }),
+    ).toMatchObject([{ id: live.id, status: 'running' }]);
+    expect(
+      (
+        await pool.query('SELECT status FROM public.signal_generation_runs WHERE id=$1', [
+          expired.id,
+        ])
+      ).rows[0].status,
+    ).toBe('running');
+    const listed = await listSignalGenerations({ pool, owner });
+    expect(new Map(listed.map((run) => [run.id, run.status]))).toEqual(
+      new Map([
+        [expired.id, 'unknown'],
+        [cancelled.id, 'cancelled'],
+        [live.id, 'running'],
+        [pending.id, 'pending'],
+      ]),
+    );
+    expect(
+      (await pool.query('SELECT status FROM public.signal_generation_runs WHERE id=$1', [other.id]))
+        .rows[0].status,
+    ).toBe('running');
+    const cancelledAfter = await getSignalGeneration(args(cancelled));
+    expect(cancelledAfter.status).toBe('cancelled');
+    expect(cancelledAfter.lease_token).toBe(cancelled.lease_token);
+    expect(cancelledAfter.reserved_microusd).toBe(cancelled.reserved_microusd);
   });
   it('persists private candidate receipts and token usage without publication writes', async () => {
     const a = await claimed();
@@ -310,8 +403,12 @@ suite('private AI generation PostgreSQL ledger', () => {
       ).rejects.toMatchObject({ code: '23514' });
   });
   it('requires the exact restricted service role and denies unrelated/private access', async () => {
+    const rolePassword = randomUUID();
+    await pool.query(
+      `CREATE ROLE hzense_generation_admin LOGIN NOINHERIT CONNECTION LIMIT 2 PASSWORD '${rolePassword}'`,
+    );
+    createdRole = true;
     await pool.query(`REVOKE ALL ON SCHEMA public FROM PUBLIC; REVOKE TEMPORARY ON DATABASE "${name}" FROM PUBLIC;
-      CREATE ROLE hzense_generation_admin LOGIN NOINHERIT CONNECTION LIMIT 2;
       GRANT CONNECT ON DATABASE "${name}" TO hzense_generation_admin;
       GRANT USAGE ON SCHEMA public TO hzense_generation_admin;
       CREATE TABLE public.unrelated_private(secret text)`);
@@ -322,11 +419,20 @@ suite('private AI generation PostgreSQL ledger', () => {
     const url = new URL(adminUrl);
     url.pathname = `/${name}`;
     url.username = 'hzense_generation_admin';
+    url.password = rolePassword;
     rolePool = new pg.Pool({ connectionString: url.toString(), max: 1 });
     await expect(assertGenerationRole(rolePool)).resolves.toBeUndefined();
     const value = input({ pool: rolePool });
     const a = await createSignalGeneration(value);
     expect((await claimSignalGeneration({ ...args(a), pool: rolePool })).claimed).toBe(true);
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [a.id],
+    );
+    expect((await getSignalGeneration({ ...args(a), pool: rolePool })).status).toBe('unknown');
+    expect(await listSignalGenerations({ pool: rolePool, owner })).toMatchObject([
+      { id: a.id, status: 'unknown' },
+    ]);
     for (const sql of [
       'SELECT * FROM public.unrelated_private',
       'DELETE FROM public.signal_generation_runs',

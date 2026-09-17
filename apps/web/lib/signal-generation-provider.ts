@@ -78,6 +78,7 @@ export function createSignalGenerationInvoker(
             apiKey: input.apiKey,
             allowedHosts: input.allowedHosts,
             signal: controller.signal,
+            requestPurpose: 'signal-generation',
           },
           dependencies,
         ),
