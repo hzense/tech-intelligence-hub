@@ -102,6 +102,17 @@ export interface AiKeyring {
   active: string;
   keys: Readonly<Record<string, string>>;
 }
+export function resolveAiGenerationAccess(args: {
+  pool: unknown;
+  id: string;
+  revision: number;
+  allowedHosts: AiAllowedHosts;
+  keyring?: AiKeyring;
+}): Promise<{
+  profile: AiProfile;
+  connection: Pick<AiConnection, 'id' | 'revision' | 'protocol' | 'base_url' | 'settings'>;
+  apiKey?: string;
+}>;
 export type AiAllowedHosts = readonly string[] | ReadonlySet<string>;
 export type AiProbeInvoker = (input: {
   connection: Pick<AiConnection, 'id' | 'revision' | 'protocol' | 'base_url' | 'settings'>;

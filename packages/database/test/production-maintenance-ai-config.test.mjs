@@ -149,11 +149,14 @@ beforeEach(() => {
 });
 
 describe('independent 0014 import rollout gate', () => {
-  const full = Object.entries(currentManifest).map(([name, checksum]) => ({
-    name,
-    checksum,
-    sql: readFileSync(new URL(name, directory), 'utf8'),
-  }));
+  // Historical 0000–0014 approval is not authorization for generation migration 0015.
+  const full = Object.entries(currentManifest)
+    .filter(([name]) => name < '0015_')
+    .map(([name, checksum]) => ({
+      name,
+      checksum,
+      sql: readFileSync(new URL(name, directory), 'utf8'),
+    }));
   const onlyImport = ['0014_import_tasks.sql'];
   const identity = { database: 'hzense', user: 'migrator' };
   const binding = importTasksTargetBinding(

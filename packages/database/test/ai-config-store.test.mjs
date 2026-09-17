@@ -11,6 +11,7 @@ import {
   listAiProfiles,
   getAiProfileHistory,
   resolveAiProfileForExecution,
+  resolveAiGenerationAccess,
   runAiProbe,
   getAiProbe,
   listAiProbes,
@@ -782,6 +783,26 @@ describe('AI profile capability readiness', () => {
     await expect(
       resolveAiProfileForExecution({ pool: f.pool, id: saved.id }),
     ).rejects.toMatchObject({ code: 'profile_not_ready' });
+  });
+  it('resolves generation metadata without keys and decrypts only explicit admitted execution requests', async () => {
+    const f = fake();
+    const saved = await saveAiProfile({ pool: f.pool, request: profileCreate() });
+    const args = { pool: f.pool, id: saved.id, revision: saved.revision, allowedHosts };
+    const metadata = await resolveAiGenerationAccess(args);
+    expect(metadata.apiKey).toBeUndefined();
+    expect(metadata.connection).not.toHaveProperty('encrypted_key');
+    expect(JSON.stringify(metadata)).not.toContain(key);
+    expect((await resolveAiGenerationAccess({ ...args, keyring })).apiKey).toBe(key);
+    await expect(
+      resolveAiGenerationAccess({ ...args, revision: 2, keyring }),
+    ).rejects.toMatchObject({ code: 'revision_conflict' });
+    await expect(
+      resolveAiGenerationAccess({ ...args, allowedHosts: ['other.example'], keyring }),
+    ).rejects.toBeDefined();
+    f.state.connections[0].enabled = false;
+    await expect(resolveAiGenerationAccess({ ...args, keyring })).rejects.toMatchObject({
+      code: 'profile_not_ready',
+    });
   });
   it.each([[[]], [['connection']], [['structured_output']]])(
     'does not accept incomplete capability evidence %j',

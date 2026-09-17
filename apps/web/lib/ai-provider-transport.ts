@@ -307,6 +307,7 @@ export function createPinnedAiFetch(
     allowedHosts: readonly string[];
     apiKey: string;
     signal: AbortSignal;
+    requestPurpose?: 'probe' | 'signal-generation';
   },
   dependencies: { resolve?: AiResolver; request?: AiWireRequest } = {},
 ): typeof fetch {
@@ -321,6 +322,9 @@ export function createPinnedAiFetch(
   const basePath = base.pathname.replace(/\/$/, '');
   const resolve = dependencies.resolve ?? defaultResolver;
   const request = dependencies.request ?? defaultWireRequest;
+  // Server-owned presets: keep probes small while allowing a bounded source,
+  // extraction prompt and schema after the SDK's JSON serialization.
+  const requestMaximumBytes = config.requestPurpose === 'signal-generation' ? 256 * 1024 : 32_768;
   return async (input, init) => {
     if (!(typeof input === 'string' || input instanceof URL)) return fail('blocked_target');
     const raw = String(input);
@@ -346,7 +350,7 @@ export function createPinnedAiFetch(
       return fail('blocked_target');
     if (
       (init?.body !== undefined && typeof init.body !== 'string') ||
-      (typeof init?.body === 'string' && Buffer.byteLength(init.body) > 32_768)
+      (typeof init?.body === 'string' && Buffer.byteLength(init.body) > requestMaximumBytes)
     )
       return fail('invalid_configuration');
     const signal = init?.signal ? AbortSignal.any([config.signal, init.signal]) : config.signal;
