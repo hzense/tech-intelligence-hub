@@ -39,7 +39,7 @@
 
 ## 生产启用前的独立审批
 
-新增迁移、角色和预算尚未在生产执行。旧的 `accept-unverified-import-tasks` 仅覆盖截至 `0014` 的固定清单，不能用旧风险审批执行 `0015`；本轮不放宽维护门禁。
+新增迁移、角色和预算尚未在生产执行。PR #100 已交付生成代码；生产数据库准备另见[准备记录](production-evidence/2026-09-17-generation-preparation.md)和[独立维护门禁](ONLINE_MAINTENANCE.md#ai-私有候选生成批次0015)。旧的 `accept-unverified-import-tasks` 仅覆盖截至 `0014` 的固定清单，不能用旧风险审批执行 `0015`。新门禁和 SQL 候选须先经 PR、合并及 main CI；代码准备不等于操作者已接受新一批风险。
 
 | 配置                                     | 含义                                                                                      |
 | ---------------------------------------- | ----------------------------------------------------------------------------------------- |
@@ -49,6 +49,10 @@
 | `HZENSE_GENERATION_DAILY_LIMIT_MICROUSD` | UTC 日全局 AI 生成估算上限，必填，无默认                                                  |
 
 不扩大 `hzense_import_admin`、`hzense_ai_admin`、Runtime 或 Publisher 权限。导入正文和 AI 凭据分别经现有服务端受限连接读取；生成角色不能读取这些表。新角色须独立评审最小列授权，严禁复用 migrator／owner 连接。不得为本功能下载生产密钥到本地。
+
+角色配置候选为 `db/roles/create_generation_admin.sql`（Neon 管理身份创建全新空角色）和 `db/roles/configure_generation_admin.sql`（目标库 owner 审核并授予固定列权限）。先迁移并独立核验，再按各脚本规定的数据库和身份执行；不要合并为一段在错误数据库中运行。脚本不轮换已有密码，不清洗 PUBLIC ACL，发现已有越权即拒绝。`assertGenerationRoleProvisioned` 供受控线上 owner 只读复核目录权限，`assertGenerationRole` 以专用角色自身核对；目录检查不能替代真实 Production 凭据、TLS 和目标连接验收。
+
+这些目录检查只验证目标库权限及其他数据库的数据库级 ACL；允许精确 Neon 保留库形态，但不连接 `postgres`／`template1` 深检内部对象。应用库中扩展所属函数沿现有策略豁免，不能据此声称所有扩展函数都已安全审计。SQL 本身也无法辨认 Neon 分支，操作者仍须核对 `main` 与目标连接；新增未知扩展或保留库变化须另行检查。
 
 ## 代码与验证入口
 

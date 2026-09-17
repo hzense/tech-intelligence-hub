@@ -11,6 +11,8 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 ## 当前部署
 
+> **2026-09-17 AI 私有候选生成：** PR #100 已合并为 `fd528ea`，main [CI 35226592286](https://github.com/hzense/tech-intelligence-hub/actions/runs/35226592286) 成功，Production 已部署该代码。生产数据库最新完成的独立核验仍为 `0014`（15 迁移／47 表）；生成所需 `0015`、专用角色、独立 AI 预算和开关尚未启用。当前准备独立维护门禁、最小列授权及只读核验，见[本批准备记录](production-evidence/2026-09-17-generation-preparation.md)。代码已部署不等于真实 AI 生成可用；以下历史条目不代表当前管理员／AI 配置或导入仍不可用。
+
 > **2026-09-14 AI 配置启用检查：** PR #79 交付后台，后续 PR #80 已合并为 `5a03b1e`，对应 main CI／Production 部署成功。生产已按新备份保护下的独立 AI 风险审批升级至 `0013`；迁移后核验及独立 `verify` 均为 14 个迁移／40 张表。Production 域名白名单已部署生效并经真实管理员页面确认，但 AI 专用角色和两个 Secret 仍未创建配置，`/admin/ai` 表单继续关闭。恢复能力仍未演练；未扩大 Runtime 权限、未切换 Signal 新读取或自动发布、未调用 AI。具体状态见[本次记录](production-evidence/2026-09-14-ai-configuration.md)，执行规则见[AI 批次风险门禁](ONLINE_MAINTENANCE.md#ai-配置批次的显式风险接受)。下述早期开发边界保留为历史；其中“未迁移”不是当前状态。
 
 > **2026-09-13 开发边界：** [V2-1a 数据底座](SIGNAL_V3_FOUNDATION.md) 的 `0004` 与[任职增量](PERSON_ORGANIZATION_AFFILIATIONS.md) 的 `0005` 已合并；[事件身份增量](SIGNAL_EVENT_IDENTITY.md) 追加 `0006_signal_event_identity.sql`，只建私有登记表、不自动回填。普通 Web 部署仍使用旧 Seed 读取。要求最新 schema 的维护预检会将未应用的 `0004`–`0006` 视为 pending，不能自动跳过或直接应用来解除阻塞。`0005` 的日期约束影响全部旧 `relations`，上线前需核验遗留日期；不自动清洗。本轮未执行生产迁移或授予新增业务权限，正式迁移需另行审批并复核维护流程对该版本的支持；不开放新版自动发表，也不重跑已取消的恢复演练。
