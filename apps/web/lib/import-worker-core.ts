@@ -90,7 +90,7 @@ export async function runImportProcessing(
         ? error.code === 'source_expired'
           ? 'source_unavailable'
           : error.code
-        : undefined;
+        : 'outcome_unknown';
     const known =
       error instanceof ImportIOError &&
       [
@@ -100,7 +100,7 @@ export async function runImportProcessing(
         'limit_exceeded',
         'ocr_required',
         'source_unavailable',
-      ].includes(errorCode!);
+      ].includes(errorCode);
     completion = {
       fence: claim.attempt.fence,
       outcome: known ? 'failed' : 'unknown',

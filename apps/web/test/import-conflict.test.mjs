@@ -7,6 +7,7 @@ import {
 import { importError } from '../lib/admin-import-core.ts';
 import { ImportTaskError } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 import {
   ImportClientError,
   canUploadAfterConfirmError,
