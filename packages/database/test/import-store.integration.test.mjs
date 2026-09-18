@@ -409,7 +409,7 @@ suite('private import PostgreSQL persistence', () => {
     ]);
     for (let n = 0; n < 51; n++) {
       const b = await created({ owner });
-      await cancelImportBatch({ pool, owner, batchId: b.id });
+      await cancelImportBatch({ pool, owner, id: b.id });
     }
     const current = await listImportBatches({ pool, owner, view: 'current' });
     expect(current.map((b) => b.id).sort()).toEqual(
