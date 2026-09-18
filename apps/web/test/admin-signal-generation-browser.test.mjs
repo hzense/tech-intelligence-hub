@@ -45,15 +45,45 @@ test(
     let rejectedError = null;
     let profileRevision = 2;
     let mismatchedCreate = false;
+    let dashboardRequests = 0;
+    let preflightRequests = [];
+    let preflightWait = null;
+    let preflightResponse;
+    let preflightStatus = 200;
+    const passedPreflight = () => ({
+      status: 'ok',
+      checks: {
+        configuration: true,
+        connection: true,
+        tls: true,
+        identity: true,
+        readOnly: true,
+        permissions: true,
+      },
+    });
     const server = createServer(async (req, res) => {
       if (assets.has(req.url)) {
         res.setHeader('Content-Type', req.url.endsWith('.css') ? 'text/css' : 'text/javascript');
         res.end(assets.get(req.url));
         return;
       }
+      if (req.url === '/api/admin/signal-generation/preflight') {
+        const chunks = [];
+        for await (const chunk of req) chunks.push(chunk);
+        preflightRequests.push({
+          method: req.method,
+          body: JSON.parse(Buffer.concat(chunks).toString()),
+        });
+        if (preflightWait) await preflightWait;
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = preflightStatus;
+        res.end(JSON.stringify(preflightResponse));
+        return;
+      }
       if (req.url === '/api/admin/signal-generation') {
         res.setHeader('Content-Type', 'application/json');
         if (req.method === 'GET') {
+          dashboardRequests += 1;
           res.end(
             JSON.stringify({
               runs,
@@ -211,6 +241,11 @@ test(
       rejectedError = null;
       profileRevision = 2;
       mismatchedCreate = false;
+      dashboardRequests = 0;
+      preflightRequests = [];
+      preflightWait = null;
+      preflightResponse = passedPreflight();
+      preflightStatus = 200;
       const page = await browser.newPage();
       await page.route('**/*', (route) =>
         route.request().url().startsWith(origin) ? route.continue() : route.abort(),
@@ -222,6 +257,99 @@ test(
       await page.getByLabel('已完成解析的资料').selectOption(itemId);
       await page.getByLabel('分阶段模型配置').selectOption(profileId);
     }
+
+    await t.test(
+      'disabled generation permits explicit read-only preflight without dashboard or model requests',
+      async () => {
+        const page = await newPage();
+        await page.goto(`${origin}/?off`);
+        const preflight = page.getByRole('button', { name: '运行只读连接预检', exact: true });
+        await expect(preflight).toBeEnabled();
+        assert.equal(preflightRequests.length, 0);
+        assert.equal(dashboardRequests, 0);
+        assert.equal(commands.length, 0);
+        let release;
+        preflightWait = new Promise((resolve) => {
+          release = resolve;
+        });
+        try {
+          await preflight.click();
+          await expect.poll(() => preflightRequests.length).toBe(1);
+          await expect(preflight).toBeDisabled();
+          assert.deepEqual(preflightRequests, [{ method: 'POST', body: {} }]);
+          release();
+          await expect(page.getByText('只读连接预检通过', { exact: false })).toBeVisible();
+          await expect(preflight).toBeEnabled();
+          assert.equal(dashboardRequests, 0);
+          assert.equal(commands.length, 0);
+          await expect(
+            page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }),
+          ).toBeDisabled();
+        } finally {
+          release();
+          await page.close();
+        }
+      },
+    );
+
+    await t.test(
+      'preflight failures and incomplete checks never expose raw diagnostics or claim success',
+      async () => {
+        const page = await newPage();
+        await page.goto(`${origin}/?off`);
+        const preflight = page.getByRole('button', { name: '运行只读连接预检', exact: true });
+        const secret = 'SYNTHETIC_PREFLIGHT_SECRET';
+        for (const fixture of [
+          {
+            status: 503,
+            response: {
+              status: 'unavailable',
+              error: `<script>${secret}</script>`,
+              message: `postgresql://user:${secret}@synthetic.invalid/private`,
+              checks: { ...passedPreflight().checks, connection: false },
+            },
+          },
+          {
+            status: 200,
+            response: {
+              status: 'ok',
+              checks: { configuration: true, connection: true },
+              error: secret,
+            },
+          },
+          {
+            status: 200,
+            response: {
+              status: 'ok',
+              checks: { ...passedPreflight().checks, permissions: false },
+            },
+          },
+        ]) {
+          preflightStatus = fixture.status;
+          preflightResponse = fixture.response;
+          let release;
+          preflightWait = new Promise((resolve) => {
+            release = resolve;
+          });
+          const expectedRequests = preflightRequests.length + 1;
+          try {
+            await preflight.click();
+            await expect.poll(() => preflightRequests.length).toBe(expectedRequests);
+            await expect(preflight).toBeDisabled();
+            release();
+            await expect(preflight).toBeEnabled();
+            await expect(page.getByText('只读连接预检通过', { exact: false })).toHaveCount(0);
+            await expect(page.getByText(secret, { exact: false })).toHaveCount(0);
+            assert.equal(dashboardRequests, 0);
+            assert.equal(commands.length, 0);
+          } finally {
+            release();
+          }
+        }
+        assert.equal(preflightRequests.length, 3);
+        await page.close();
+      },
+    );
 
     await t.test(
       'no automatic model calls, consent gate, private cards and mobile layout',

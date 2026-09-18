@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { ImportBatch } from '../../../packages/database/src/import-store.mjs';
 import styles from './admin-signal-generation.module.css';
+import { AdminGenerationPreflight } from './admin-generation-preflight';
 
 type Profile = {
   id: string;
@@ -479,6 +480,7 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
     <main className={`section-shell ${styles.main}`}>
       <Link href="/admin">返回管理后台</Link>
       <h1>AI 信号生成</h1>
+      <AdminGenerationPreflight />
       <p>
         从已完成解析的私有资料生成候选信号。创建任务与调用 AI 分开执行，不自动重试，不发布到网站。
       </p>
