@@ -57,8 +57,8 @@ test('worker persists original before parsing and finishes with the claimed fenc
     'put',
     'confirm:3',
     'parse',
-    'finish',
     'remove',
+    'finish',
   ]);
   assert.equal(result.original_cleanup, 'deleted');
 });
@@ -70,6 +70,29 @@ test('failed budget claim performs no external work', async () => {
   });
   await assert.rejects(runImportProcessing(path, 100, deps));
   assert.deepEqual(events, ['expire']);
+});
+test('failed URL cleanup finishes before a retry can observe the committed failed state', async () => {
+  let original = null;
+  let removals = 0;
+  const { deps } = fixture({
+    fetch: async () => {
+      throw new ImportIOError('fetch_failed');
+    },
+    remove: async () => {
+      removals++;
+      original = null;
+    },
+    finish: async (completion) => {
+      assert.equal(removals, 1);
+      assert.equal(completion.outcome, 'failed');
+      // Simulate another request requeueing and uploading immediately on commit.
+      original = 'new-retry-original';
+      return completion;
+    },
+  });
+  await runImportProcessing(path, 100, deps);
+  assert.equal(original, 'new-retry-original');
+  assert.equal(removals, 1);
 });
 test('immutable receipt mismatch prevents parse; unknown external errors require reconciliation', async () => {
   const { events, deps } = fixture({
@@ -166,7 +189,7 @@ test('cleanup runs after file parse failures, not only URL successes', async () 
   const result = await runImportProcessing(path, 100, deps);
   assert.equal(result.outcome, 'failed');
   assert.equal(result.original_cleanup, 'deleted');
-  assert.deepEqual(events.slice(-2), ['finish', 'remove']);
+  assert.deepEqual(events.slice(-2), ['remove', 'finish']);
 });
 test('invalid parser output durably fails exactly once despite a positive reservation', async () => {
   for (const output of [

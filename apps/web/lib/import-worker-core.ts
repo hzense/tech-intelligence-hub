@@ -101,20 +101,18 @@ export async function runImportProcessing(
         known && error.code === 'source_unavailable' && !processingStarted ? 0 : reserve,
     };
   }
-  // An ambiguous completion commit must not trigger a second competing completion.
-  let result: Record<string, unknown>;
+  // Clean while this attempt still owns the running state. Committing a failed
+  // URL first would allow a retry to upload a new original that this old attempt
+  // could then delete. No original is needed after parsing has finished.
   let cleanupPending = false;
   try {
-    result = await deps.finish(completion);
-  } finally {
-    // Also clean after an ambiguous commit; never retry the completion or discard
-    // its original error. A terminated process is covered by the orphan sweeper.
-    try {
-      await deps.remove(path);
-    } catch {
-      cleanupPending = true;
-      deps.cleanupFailed();
-    }
+    await deps.remove(path);
+  } catch {
+    cleanupPending = true;
+    deps.cleanupFailed();
   }
+  // An ambiguous completion commit must not trigger a second competing completion.
+  // Cleanup has already run; process termination is covered by the orphan sweeper.
+  const result = await deps.finish(completion);
   return { ...result, original_cleanup: cleanupPending ? 'pending' : 'deleted' };
 }
