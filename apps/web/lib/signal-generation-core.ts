@@ -13,6 +13,11 @@ import {
   type GenerationProviderInput,
   type GenerationProviderResult,
 } from './signal-generation-provider.ts';
+import {
+  generationElapsedMs,
+  generationTimeoutMs,
+  safeGenerationDiagnosticCode,
+} from './signal-generation-diagnostics.ts';
 
 export class GenerationError extends Error {
   readonly code: string;
@@ -68,6 +73,15 @@ export interface GenerationDependencies {
   cancel(owner: string, id: string): Promise<SignalGenerationRun>;
   invoke(input: GenerationProviderInput): Promise<GenerationProviderResult>;
   allowedHosts: readonly string[];
+  report?(event: {
+    event: 'signal_generation';
+    run_id: string;
+    phase: 'provider' | 'preflight' | 'postflight' | 'completion';
+    outcome: 'completed' | 'failed' | 'unknown' | 'cancelled';
+    code: string | null;
+    elapsed_ms: number;
+    timeout_ms: number;
+  }): void;
 }
 export function generationCost(input: number, output: number, settings: AiConnection['settings']) {
   if (
@@ -169,6 +183,27 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
     let access: GenerationAccess | undefined;
     let sent = false;
     let charged: number | undefined;
+    let phase: 'preflight' | 'provider' | 'postflight' = 'preflight';
+    let phaseStarted = performance.now();
+    const report = (
+      at: 'provider' | 'preflight' | 'postflight' | 'completion',
+      outcome: 'completed' | 'failed' | 'unknown' | 'cancelled',
+      code: string | null,
+    ) => {
+      try {
+        deps.report?.({
+          event: 'signal_generation',
+          run_id: id,
+          phase: at,
+          outcome,
+          code,
+          elapsed_ms: generationElapsedMs(phaseStarted),
+          timeout_ms: generationTimeoutMs,
+        });
+      } catch {
+        /* Logging cannot change accounting, trigger retries or discard completion. */
+      }
+    };
     let completion: Parameters<GenerationDependencies['finish']>[1];
     try {
       const currentSource = await deps.source(owner, run.batch_id, run.item_id);
@@ -189,6 +224,8 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       if (latest.status !== 'running' || latest.lease_token !== run.lease_token)
         return generationDto(latest);
       sent = true;
+      phase = 'provider';
+      phaseStarted = performance.now();
       const result = await deps.invoke({
         source,
         stage: access.profile.stages.extract,
@@ -197,11 +234,25 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
         allowedHosts: deps.allowedHosts,
       });
       delete access.apiKey;
+      const outcome =
+        result.success && result.output
+          ? 'completed'
+          : result.error_code === 'generation_unknown'
+            ? 'unknown'
+            : 'failed';
+      const code =
+        outcome === 'completed'
+          ? null
+          : (safeGenerationDiagnosticCode(result.diagnostic?.code) ??
+            (outcome === 'unknown' ? 'generation_unknown' : 'generation_failed'));
+      report('provider', outcome, code);
       charged =
         result.input_tokens !== null && result.output_tokens !== null
           ? generationCost(result.input_tokens, result.output_tokens, access.connection.settings)
           : undefined;
       // Re-check evidence ownership/cancellation and capability state after the external call.
+      phase = 'postflight';
+      phaseStarted = performance.now();
       await deps.source(owner, run.batch_id, run.item_id);
       const after = await deps.access(run.profile_id, run.profile_revision);
       if (
@@ -212,12 +263,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       completion = {
         id,
         token: run.lease_token!,
-        outcome:
-          result.success && result.output
-            ? 'completed'
-            : result.error_code === 'generation_unknown'
-              ? 'unknown'
-              : 'failed',
+        outcome,
         ...(result.success && result.output
           ? {
               result: {
@@ -230,21 +276,46 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
             }
           : {}),
         ...(charged === undefined ? {} : { chargedMicrousd: charged }),
-        ...(result.error_code ? { errorCode: result.error_code } : {}),
+        ...(code ? { errorCode: code } : {}),
       };
     } catch {
+      const code = !sent
+        ? 'preflight_failed'
+        : phase === 'postflight'
+          ? 'generation_postflight_failed'
+          : 'generation_unknown';
+      report(phase, sent ? 'unknown' : 'failed', code);
       completion = {
         id,
         token: run.lease_token!,
         outcome: sent ? 'unknown' : 'failed',
         ...(charged === undefined ? {} : { chargedMicrousd: charged }),
-        errorCode: sent ? 'generation_unknown' : 'preflight_failed',
+        errorCode: code,
       };
     } finally {
       if (access) delete access.apiKey;
     }
     // Exactly one completion attempt. An uncertain acknowledgement must be recovered by GET,
     // not by a second, contradictory finish or a second provider invocation.
-    return generationDto(await deps.finish(owner, completion));
+    phaseStarted = performance.now();
+    try {
+      const finished = await deps.finish(owner, completion);
+      const persisted =
+        finished.status === 'completed' ||
+        finished.status === 'failed' ||
+        finished.status === 'cancelled'
+          ? finished.status
+          : 'unknown';
+      report(
+        'completion',
+        persisted,
+        persisted === 'cancelled' ? 'cancelled' : (completion.errorCode ?? null),
+      );
+      return generationDto(finished);
+    } catch (error) {
+      report('completion', 'unknown', 'completion_unconfirmed');
+      // The response and persisted task are uncertain; never attempt a second completion/call.
+      throw error;
+    }
   };
 }

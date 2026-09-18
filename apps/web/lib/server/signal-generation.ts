@@ -102,6 +102,7 @@ export async function executeGeneration(owner: string, body: unknown) {
     access: generationAiAccess,
     invoke: invokeSignalGeneration,
     allowedHosts: ai.allowedHosts,
+    report: (event) => console.info(JSON.stringify(event)),
     create: (owner, args) =>
       store.createSignalGeneration({
         pool: generationPool,

@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { createSignalGenerationInvoker } from '../lib/signal-generation-provider.ts';
+import { generationTimeoutMs } from '../lib/signal-generation-diagnostics.ts';
+import { AiProbeError } from '../lib/ai-provider-transport.ts';
+import { createAiProbeInvoker } from '../lib/ai-provider.ts';
 import { createGenerationExecutor, generationDto } from '../lib/signal-generation-core.ts';
 import { createGenerationHandler } from '../lib/admin-signal-generation-handler.ts';
 import { readGenerationConfiguration } from '../lib/signal-generation-config.ts';
@@ -108,7 +111,7 @@ test('generation requires explicit production enablement, dedicated target ident
       code: 'not_configured',
     });
 });
-function providerFixture(value = result) {
+function providerFixture(value = result, overrides = {}) {
   const calls = [];
   const invoke = createSignalGenerationInvoker({
     resolve: async () => [{ address: '93.184.216.34', family: 4 }],
@@ -123,6 +126,7 @@ function providerFixture(value = result) {
         usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 },
       });
     },
+    ...overrides,
   });
   return {
     calls,
@@ -148,6 +152,184 @@ test('real SDK structured extraction yields only private candidates and exact ev
   ]);
   assert.equal(value.input_tokens, 200);
   assert.equal(f.calls.length, 1);
+  assert.equal(value.diagnostic.code, null);
+  assert.equal(value.diagnostic.timeout_ms, 45000);
+  assert.ok(Number.isSafeInteger(value.diagnostic.elapsed_ms));
+});
+
+test('business generation survives the old 10s probe cutoff without changing its connection', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let release, wire;
+  const ready = Promise.withResolvers();
+  let calls = 0;
+  const f = providerFixture(result, {
+    request: async (args) => {
+      calls++;
+      wire = args;
+      ready.resolve();
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    },
+  });
+  const pending = f.invoke({
+    connection: { ...connection, settings: { ...settings, timeout_ms: 10000 } },
+  });
+  await ready.promise;
+  t.mock.timers.tick(11000);
+  assert.equal(wire.signal.aborted, false);
+  release(
+    Response.json({
+      id: 'fixture',
+      model: stage.model_id,
+      choices: [
+        { message: { role: 'assistant', content: JSON.stringify(result) }, finish_reason: 'stop' },
+      ],
+      usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 },
+    }),
+  );
+  assert.equal((await pending).success, true);
+  assert.equal(calls, 1);
+  const body = JSON.parse(wire.body);
+  assert.equal(body.max_tokens, stage.max_output_tokens);
+  assert.equal(body.tools, undefined);
+});
+
+test('business deadline aborts exactly once, retains unknown usage and never retries a late response', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const ready = Promise.withResolvers();
+  let calls = 0,
+    wire,
+    release;
+  const f = providerFixture(result, {
+    request: async (args) => {
+      calls++;
+      wire = args;
+      ready.resolve();
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    },
+  });
+  const pending = f.invoke();
+  await ready.promise;
+  t.mock.timers.tick(generationTimeoutMs - 1);
+  assert.equal(wire.signal.aborted, false);
+  t.mock.timers.tick(1);
+  const value = await pending;
+  assert.equal(wire.signal.aborted, true);
+  assert.equal(value.success, false);
+  assert.equal(value.error_code, 'generation_unknown');
+  assert.equal(value.diagnostic.code, 'generation_timeout');
+  assert.equal(value.input_tokens, null);
+  assert.equal(value.output, undefined);
+  release(Response.json({ private: apiKey }));
+  await Promise.resolve();
+  assert.equal(calls, 1);
+  assert.equal(value.output, undefined);
+  assert.equal(JSON.stringify(value).includes(apiKey), false);
+});
+
+test('business deadline also bounds DNS without reaching the wire', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const ready = Promise.withResolvers();
+  const f = providerFixture(result, {
+    resolve: async () => {
+      ready.resolve();
+      return new Promise(() => {});
+    },
+  });
+  const pending = f.invoke();
+  await ready.promise;
+  t.mock.timers.tick(generationTimeoutMs);
+  assert.equal((await pending).diagnostic.code, 'generation_timeout');
+  assert.equal(f.calls.length, 0);
+});
+
+test('capability probes retain their separate connection-specific deadline', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const ready = Promise.withResolvers();
+  let calls = 0;
+  const invoke = createAiProbeInvoker({
+    resolve: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async () => {
+      calls++;
+      ready.resolve();
+      return new Promise(() => {});
+    },
+  });
+  const pending = invoke({
+    connection,
+    apiKey,
+    kind: 'connection',
+    modelId: stage.model_id,
+    allowedHosts: ['api.provider.example.com'],
+  });
+  await ready.promise;
+  t.mock.timers.tick(settings.timeout_ms);
+  const value = await pending;
+  assert.equal(value.error_code, 'timeout');
+  assert.equal(calls, 1);
+});
+
+test('transport and SDK failures keep bounded classifications without raw messages or retries', async () => {
+  for (const code of [
+    'provider_rejected',
+    'network_error',
+    'dns_failed',
+    'timeout',
+    'blocked_target',
+    'redirect_blocked',
+    'response_too_large',
+    'invalid_response',
+  ]) {
+    let calls = 0;
+    const f = providerFixture(result, {
+      request: async () => {
+        calls++;
+        const cause = new AiProbeError(code);
+        cause.message = `${apiKey} private source https://secret.example`;
+        throw new Error('raw SDK wrapper', { cause });
+      },
+    });
+    const value = await f.invoke();
+    assert.equal(value.diagnostic.code, `generation_${code}`);
+    assert.equal(value.error_code, 'generation_unknown');
+    assert.equal(calls, 1);
+    assert.doesNotMatch(
+      JSON.stringify(value),
+      /synthetic-generation-key|private source|secret\.example|raw SDK wrapper/,
+    );
+  }
+  const f = providerFixture(result, {
+    request: async () => {
+      throw new Error(apiKey);
+    },
+  });
+  assert.equal((await f.invoke()).diagnostic.code, 'generation_sdk_error');
+});
+
+test('invalid candidate structure and evidence have a separate output classification', async () => {
+  for (const bad of [
+    { not_candidates: apiKey },
+    {
+      ...result,
+      candidates: [
+        {
+          ...candidate,
+          claims: [
+            { text: 'x', evidence: [{ fragment_id: 'fragment-1', quote: 'invented quote' }] },
+          ],
+        },
+      ],
+    },
+  ]) {
+    const value = await providerFixture(bad).invoke();
+    assert.equal(value.success, false);
+    assert.equal(value.diagnostic.code, 'generation_invalid_output');
+    assert.equal(value.output, undefined);
+    assert.equal(JSON.stringify(value).includes(apiKey), false);
+  }
 });
 test('legal large sources and maximum extraction prompts fit the bounded SDK request after JSON escaping', async () => {
   for (const [text, prompt] of [
@@ -325,6 +507,94 @@ test('unknown completion commit never retries provider or submits contradictory 
   await assert.rejects(f.execute('admin', { action: 'run', id: f.run().id }));
   assert.equal(f.calls(), 1);
   assert.equal(finishes, 1);
+});
+
+test('persisted diagnostic classification does not change unknown accounting or replay safety', async () => {
+  const events = [];
+  let calls = 0;
+  const f = coreFixture({
+    report: (event) => events.push(event),
+    invoke: async () => {
+      calls++;
+      return {
+        success: false,
+        input_tokens: null,
+        output_tokens: null,
+        error_code: 'generation_unknown',
+        diagnostic: { code: 'generation_timeout', elapsed_ms: 45000, timeout_ms: 45000 },
+      };
+    },
+  });
+  const id = f.run().id;
+  await f.execute('admin', { action: 'run', id });
+  await f.execute('admin', { action: 'run', id });
+  assert.equal(calls, 1);
+  assert.equal(f.finishes.length, 1);
+  assert.equal(f.finishes[0].outcome, 'unknown');
+  assert.equal(f.finishes[0].errorCode, 'generation_timeout');
+  assert.equal(f.finishes[0].chargedMicrousd, undefined);
+  assert.deepEqual(
+    events.map(({ phase }) => phase),
+    ['provider', 'completion'],
+  );
+  assert.deepEqual(
+    Object.keys(events[0]).sort(),
+    ['event', 'run_id', 'phase', 'outcome', 'code', 'elapsed_ms', 'timeout_ms'].sort(),
+  );
+  assert.equal(events[0].run_id, id);
+  assert.equal(events[0].code, 'generation_timeout');
+  assert.doesNotMatch(
+    JSON.stringify(events),
+    /synthetic-generation-key|Alice|api\.provider|snapshot|lease_token/,
+  );
+});
+
+test('untrusted diagnostic strings and broken logging cannot change completion or expose secrets', async () => {
+  const f = coreFixture({
+    report: () => {
+      throw new Error('logger failed');
+    },
+    invoke: async () => ({
+      success: false,
+      input_tokens: null,
+      output_tokens: null,
+      error_code: 'generation_unknown',
+      diagnostic: { code: apiKey },
+    }),
+  });
+  await f.execute('admin', { action: 'run', id: f.run().id });
+  assert.equal(f.finishes.length, 1);
+  assert.equal(f.finishes[0].errorCode, 'generation_unknown');
+});
+
+test('postflight failures and completion uncertainty are distinguishable without logging raw errors', async () => {
+  const events = [];
+  let checks = 0;
+  const f = coreFixture({
+    report: (event) => events.push(event),
+    source: async () => {
+      if (++checks === 2) throw new Error(apiKey);
+      return { fence: 1, output };
+    },
+  });
+  await f.execute('admin', { action: 'run', id: f.run().id });
+  assert.equal(f.finishes[0].outcome, 'unknown');
+  assert.equal(f.finishes[0].errorCode, 'generation_postflight_failed');
+  assert.deepEqual(
+    events.map(({ phase }) => phase),
+    ['provider', 'postflight', 'completion'],
+  );
+  assert.equal(JSON.stringify(events).includes(apiKey), false);
+  const uncertain = coreFixture({
+    report: (event) => events.push(event),
+    finish: async () => {
+      throw new Error(apiKey);
+    },
+  });
+  await assert.rejects(uncertain.execute('admin', { action: 'run', id: uncertain.run().id }));
+  assert.equal(events.at(-1).code, 'completion_unconfirmed');
+  assert.equal(uncertain.calls(), 1);
+  assert.equal(JSON.stringify(events).includes(apiKey), false);
 });
 test('generation API denies anonymous, cross-site, host spoofing and client source before dispatch', async () => {
   let called = 0;
