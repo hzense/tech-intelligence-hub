@@ -45,6 +45,23 @@ const statuses: Record<GenerationRun['status'], string> = {
   cancelled: '已取消',
 };
 const errorMessages: Record<string, string> = {
+  generation_timeout:
+    '生成达到独立的 45 秒截止时间，未能确认完整结果。请先对账原任务，不要重复调用。',
+  generation_provider_rejected: '供应商拒绝了生成请求。请核对模型与接口配置；该分类不代表未计费。',
+  generation_network_error: '生成请求发生网络错误，结果与费用需核对，不要重复调用。',
+  generation_dns_failed: '供应商域名解析失败。请核对服务端网络，不要重复提交任务。',
+  generation_blocked_target: '供应商目标未通过安全校验，请核对已授权域名和地址。',
+  generation_redirect_blocked: '供应商返回了不允许的跳转，请核对接口基础地址。',
+  generation_response_too_large: '供应商响应超出安全大小限制，未采用结果；费用仍需核对。',
+  generation_invalid_response: '供应商响应格式不符合要求，未采用结果；费用仍需核对。',
+  generation_invalid_configuration: '生成配置未通过调用前校验，请核对连接和模型配置版本。',
+  generation_invalid_output:
+    '生成结果未通过结构或原文证据校验，未保存为可用候选。请先核对原任务及费用。',
+  generation_output_rejected: '生成结果触发内容安全校验，未保存为可用候选。',
+  generation_sdk_error: '模型调用发生未分类异常，请按任务编号核对脱敏日志与费用，不要重复调用。',
+  generation_postflight_failed: '模型调用后的资料或配置复核失败，结果未交付；请核对原任务及费用。',
+  generation_unknown: '旧记录未保留具体调用失败分类，结果及费用待核对，不要重复调用。',
+  generation_failed: '生成未得到可用候选，请核对原任务及费用。',
   input_too_large: '解析文本超过首版 48,000 字节上限。请先拆分资料；此页面不会自动截断或调用模型。',
   invalid_source: '解析结果格式无效。请在导入页核对资料是否完整解析。',
   source_unavailable: '所选资料尚不可用，可能未完成解析或已被取消。',

@@ -259,6 +259,39 @@ test(
     }
 
     await t.test(
+      'timeout diagnosis is actionable, retains unknown status and offers no model retry',
+      async () => {
+        const page = await newPage();
+        runs = [
+          {
+            id: '55555555-5555-4555-8555-555555555555',
+            batch_id: batchId,
+            item_id: itemId,
+            profile_id: profileId,
+            profile_revision: 2,
+            status: 'unknown',
+            error_code: 'generation_timeout',
+            reserved_microusd: '203730',
+            charged_microusd: '203730',
+            result: null,
+          },
+        ];
+        await page.goto(origin);
+        await expect(
+          page.getByText('生成达到独立的 45 秒截止时间', { exact: false }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('heading', { name: '结果未知，待对账', exact: true }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('button', { name: '执行生成（调用 AI，可能计费）', exact: true }),
+        ).toHaveCount(0);
+        assert.equal(commands.length, 0);
+        await page.close();
+      },
+    );
+
+    await t.test(
       'disabled generation permits explicit read-only preflight without dashboard or model requests',
       async () => {
         const page = await newPage();
