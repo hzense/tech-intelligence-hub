@@ -51,7 +51,13 @@ test(
         if (req.method === 'GET') {
           const before = requestUrl.searchParams.get('before');
           const offset = before ? batches.findIndex((batch) => batch.id === before) + 1 : 0;
-          res.end(JSON.stringify({ batches: batches.slice(offset, offset + 50) }));
+          const view = requestUrl.searchParams.get('view');
+          const filtered = batches
+            .slice(offset)
+            .filter(
+              (batch) => ['completed', 'cancelled'].includes(batch.status) === (view === 'history'),
+            );
+          res.end(JSON.stringify({ batches: filtered.slice(0, 50) }));
           return;
         }
         const chunks = [];
@@ -201,6 +207,13 @@ test(
     await expect(page.getByRole('button', { name: '处理（使用已配置预算）' })).toBeVisible();
     assert.equal(commands[0].request.intent, 'preview');
     await page.getByRole('button', { name: '处理（使用已配置预算）' }).click();
+    await expect(page.getByText('暂无当前任务。可新建导入，或查看历史记录。')).toBeVisible();
+    await page.getByRole('button', { name: '历史记录', exact: true }).click();
+    await expect(page.getByRole('button', { name: '历史记录', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expect(page.getByRole('button', { name: '取消未完成项' })).toHaveCount(0);
     await page.getByRole('button', { name: '查看私有解析结果' }).click();
     await expect(page.getByRole('heading', { name: '私有解析结果' })).toBeVisible();
     await expect(page.getByRole('dialog')).toBeVisible();
@@ -226,8 +239,6 @@ test(
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).not.toBeVisible();
     await expect(page.getByRole('button', { name: '查看私有解析结果' })).toBeFocused();
-    await page.getByRole('button', { name: '取消未完成项' }).click();
-    await expect(page.getByRole('heading', { name: '已取消' })).toBeVisible();
     assert.equal(commands.filter((c) => c.action === 'run').length, 1);
     batches = Array.from({ length: 51 }, (_, index) => ({
       id: `batch-${index}`,
@@ -250,11 +261,17 @@ test(
     await expect(page.getByText('已达 5 次尝试上限，不能再次重试。')).toBeVisible();
     await expect(page.getByRole('button', { name: /重试/ })).toHaveCount(0);
     await page.getByRole('button', { name: '取消未完成项' }).click();
-    await expect(page.getByRole('heading', { name: '已取消' })).toBeVisible();
+    await expect(page.getByText('本页暂无任务，可返回较新批次。')).toBeVisible();
     await expect(page.getByText('第 2 页')).toBeVisible();
     await page.getByRole('button', { name: '较新批次' }).click();
     await expect(page.getByText('批次 batch-0', { exact: true })).toBeVisible();
     await expect(page.getByText('第 1 页')).toBeVisible();
+    await page.getByRole('button', { name: '历史记录', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '已取消' })).toBeVisible();
+    await expect(page.getByText('第 1 页')).toBeVisible();
+    await expect(page.getByRole('button', { name: '更早批次' })).toBeDisabled();
+    await page.getByRole('button', { name: '当前任务', exact: true }).click();
+    await expect(page.getByText('批次 batch-0', { exact: true })).toBeVisible();
     batches = [
       {
         id: 'expired-batch',

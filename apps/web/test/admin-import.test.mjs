@@ -33,6 +33,14 @@ test('list cursor is forwarded without allowing extra or repeated query fields',
   });
   assert.equal((await h(new Request(`${origin}/api/admin/imports?before=example`))).status, 200);
   assert.deepEqual(received, { before: 'example' });
+  assert.equal(
+    (await h(new Request(`${origin}/api/admin/imports?view=history&before=example`))).status,
+    200,
+  );
+  assert.deepEqual(received, { view: 'history', before: 'example' });
+  assert.equal((await h(new Request(`${origin}/api/admin/imports?view=current`))).status, 200);
+  for (const query of ['view=all', 'view=', 'view=current&view=history'])
+    assert.equal((await h(new Request(`${origin}/api/admin/imports?${query}`))).status, 400);
   assert.equal((await h(new Request(`${origin}/api/admin/imports?before=a&before=b`))).status, 400);
   assert.equal((await h(new Request(`${origin}/api/admin/imports?owner=someone`))).status, 400);
 });
