@@ -77,7 +77,7 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Verify import workbench with isolated browser fixtures
-        run: HZENSE_IMPORT_BROWSER_TEST=1 node --test apps/web/test/admin-import-browser.test.mjs
+        run: HZENSE_IMPORT_BROWSER_TEST=1 node --test apps/web/test/admin-import-browser.test.mjs apps/web/test/admin-controls-browser.test.mjs
       - name: Verify private signal generation with isolated browser fixtures
         run: HZENSE_SIGNAL_GENERATION_BROWSER_TEST=1 node --test apps/web/test/admin-signal-generation-browser.test.mjs
       - name: Run production browser smoke tests

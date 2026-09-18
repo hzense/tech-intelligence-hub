@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import controls from './admin-controls.module.css';
 
 export function AdminPublicationForm({
   configured,
@@ -79,7 +80,7 @@ export function AdminPublicationForm({
   }
 
   return (
-    <section className="admin-publication" aria-labelledby="publication-title">
+    <section className={`admin-publication ${controls.scope}`} aria-labelledby="publication-title">
       <h2 id="publication-title">受限信号发布</h2>
       <p>
         只接受已核验且已封存组装的候选版本，不接受正文、核验结论或人物身份覆盖。采集任务配置界面仍待开发。

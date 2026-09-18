@@ -12,20 +12,14 @@
   gap: 12px 24px;
 }
 
-.navigation a,
-.pagination a,
-.textLink,
-.card a {
+.card a:not(.linkButton) {
   color: var(--brand);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
 
-.navigation a,
-.pagination a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
+.linkButton {
+  composes: button from './admin-controls.module.css';
 }
 
 .header {
@@ -92,6 +86,7 @@
 }
 
 .button {
+  composes: button from './admin-controls.module.css';
   font: inherit;
   cursor: pointer;
   border: 1px solid var(--brand);

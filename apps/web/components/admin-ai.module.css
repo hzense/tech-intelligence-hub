@@ -21,7 +21,7 @@
   align-items: center;
   margin-block: 16px;
 }
-.actions a {
+.actions a:not(.button) {
   color: var(--brand);
   text-decoration: underline;
   text-underline-offset: 4px;
@@ -96,6 +96,7 @@
   gap: 14px;
 }
 .button {
+  composes: button from './admin-controls.module.css';
   font: inherit;
   cursor: pointer;
   border: 1px solid var(--line);

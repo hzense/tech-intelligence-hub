@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import controls from '@/components/admin-controls.module.css';
 import { requireAdminSession } from '@/lib/server/admin-auth';
 import { generationDetail } from '@/lib/server/signal-generation';
 export const metadata: Metadata = {
@@ -35,7 +36,9 @@ export default async function GenerationDetailPage({
       ) : (
         <p>记录不存在、无权访问或生成服务尚未配置。</p>
       )}
-      <Link href="/admin/signal-generation">返回候选生成工作台</Link>
+      <Link className={controls.button} href="/admin/signal-generation">
+        返回候选生成工作台
+      </Link>
     </main>
   );
 }

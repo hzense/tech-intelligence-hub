@@ -81,11 +81,7 @@
 }
 
 .backLink {
-  display: inline-flex;
+  composes: button from './admin-controls.module.css';
   min-height: 52px;
-  align-items: center;
-  color: var(--muted);
   font-size: 14px;
-  text-decoration: underline;
-  text-underline-offset: 4px;
 }

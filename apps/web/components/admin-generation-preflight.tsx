@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import type { GenerationPreflightResult } from '../lib/signal-generation-preflight';
 import styles from './admin-signal-generation.module.css';
+import controls from './admin-controls.module.css';
 
 const labels = {
   configuration: 'Production 连接配置',
@@ -76,7 +77,13 @@ export function AdminGenerationPreflight() {
       <p>
         生成关闭时也可检查。只验证连接、TLS、身份及权限，不读取候选正文、不更新任务、不调用 AI。
       </p>
-      <button type="button" disabled={busy} aria-busy={busy} onClick={() => void run()}>
+      <button
+        className={controls.button}
+        type="button"
+        disabled={busy}
+        aria-busy={busy}
+        onClick={() => void run()}
+      >
         运行只读连接预检
       </button>
       <p role="status">{message}</p>

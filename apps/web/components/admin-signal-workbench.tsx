@@ -99,8 +99,14 @@ function WorkbenchFrame({
   return (
     <main className={`section-shell ${styles.main}`}>
       <nav className={styles.navigation} aria-label="信号工作台导航">
-        <a href="/admin">返回管理后台</a>
-        {detail && <a href="/admin/signals">返回信号列表</a>}
+        <a className={styles.linkButton} href="/admin">
+          返回管理后台
+        </a>
+        {detail && (
+          <a className={styles.linkButton} href="/admin/signals">
+            返回信号列表
+          </a>
+        )}
       </nav>
       <header className={styles.header}>
         <p className="kicker">管理后台 · SIGNALS</p>
@@ -156,7 +162,7 @@ function FailureNotice({ status }: { status: WorkbenchFailure | 'not_found' }) {
     <section className={styles.card} role="status">
       <h2>{message.title}</h2>
       <p className={styles.muted}>{message.body}</p>
-      <a className={styles.textLink} href="/admin/signals">
+      <a className={styles.linkButton} href="/admin/signals">
         重新打开信号列表
       </a>
     </section>
@@ -225,7 +231,7 @@ export function AdminSignalWorkbenchList({
             筛选
           </button>
           {(query || after) && (
-            <a href="/admin/signals" className={styles.textLink}>
+            <a href="/admin/signals" className={styles.linkButton}>
               清除筛选与分页
             </a>
           )}
@@ -276,8 +282,16 @@ export function AdminSignalWorkbenchList({
             </ul>
           )}
           <nav className={styles.pagination} aria-label="信号分页">
-            {after && <a href={listHref(query)}>回到第一页</a>}
-            {state.data.next_after && <a href={listHref(query, state.data.next_after)}>下一页</a>}
+            {after && (
+              <a className={styles.linkButton} href={listHref(query)}>
+                回到第一页
+              </a>
+            )}
+            {state.data.next_after && (
+              <a className={styles.linkButton} href={listHref(query, state.data.next_after)}>
+                下一页
+              </a>
+            )}
           </nav>
         </section>
       )}
