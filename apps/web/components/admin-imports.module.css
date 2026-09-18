@@ -64,6 +64,11 @@
 .tasks {
   margin-top: 2rem;
 }
+.tasks button[aria-pressed='true'] {
+  background: var(--brand, #0047ab);
+  border-color: var(--brand, #0047ab);
+  color: #fff;
+}
 .main h2 {
   font-size: 1.25rem;
   font-weight: 700;

@@ -243,10 +243,13 @@ export async function executeImportAdmin(owner: string, method: string, body: un
   if (method === 'GET') {
     const before =
       body && typeof body === 'object' && 'before' in body ? importUuid(body.before) : undefined;
+    const view = body && typeof body === 'object' && 'view' in body ? body.view : 'all';
+    if (view !== 'all' && view !== 'current' && view !== 'history') importFail();
     return {
       batches: await store.listImportBatches({
         pool: importPool,
         owner,
+        view,
         ...(before === undefined ? {} : { before }),
       }),
     };

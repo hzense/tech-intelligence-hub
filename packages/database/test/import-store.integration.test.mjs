@@ -376,6 +376,66 @@ suite('private import PostgreSQL persistence', () => {
       listImportBatches({ pool, owner: 'intruder', before: first[0].id }),
     ).rejects.toMatchObject({ code: 'not_found' });
   });
+  it('filters history before pagination while keeping anomalies current and preserving records', async () => {
+    const owner = 'history-pager';
+    const active = await created({ owner });
+    const failed = await created({ owner });
+    await pool.query("UPDATE public.import_items SET status='failed' WHERE batch_id=$1", [
+      failed.id,
+    ]);
+    const completed = await created({ owner });
+    const unknown = await created({ owner });
+    await pool.query("UPDATE public.import_items SET status='unknown' WHERE batch_id=$1", [
+      unknown.id,
+    ]);
+    const partial = await created({
+      owner,
+      request: {
+        ...request(),
+        manifest: {
+          files: [
+            { clientItemId: 'a', name: 'one.txt', size: 5 },
+            { clientItemId: 'b', name: 'two.txt', size: 5 },
+          ],
+        },
+      },
+    });
+    await pool.query(
+      "UPDATE public.import_items SET status=CASE WHEN position=0 THEN 'completed' ELSE 'failed' END WHERE batch_id=$1",
+      [partial.id],
+    );
+    await pool.query("UPDATE public.import_items SET status='completed' WHERE batch_id=$1", [
+      completed.id,
+    ]);
+    for (let n = 0; n < 51; n++) {
+      const b = await created({ owner });
+      await cancelImportBatch({ pool, owner, batchId: b.id });
+    }
+    const current = await listImportBatches({ pool, owner, view: 'current' });
+    expect(current.map((b) => b.id).sort()).toEqual(
+      [active.id, failed.id, unknown.id, partial.id].sort(),
+    );
+    const first = await listImportBatches({ pool, owner, view: 'history' });
+    const second = await listImportBatches({
+      pool,
+      owner,
+      view: 'history',
+      before: first.at(-1).id,
+    });
+    expect(first).toHaveLength(50);
+    expect(second).toHaveLength(2);
+    expect([...first, ...second].every((b) => ['completed', 'cancelled'].includes(b.status))).toBe(
+      true,
+    );
+    expect(new Set([...first, ...second].map((b) => b.id)).size).toBe(52);
+    expect((await getImportBatch({ pool, owner, id: completed.id })).status).toBe('completed');
+    await expect(
+      listImportBatches({ pool, owner: 'intruder', view: 'history', before: first[0].id }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    await expect(listImportBatches({ pool, owner, view: 'invalid' })).rejects.toMatchObject({
+      code: 'invalid_request',
+    });
+  });
   it('filters incompatible and exhausted batches before bounding the worker queue', async () => {
     for (let n = 0; n < 12; n++)
       await created({

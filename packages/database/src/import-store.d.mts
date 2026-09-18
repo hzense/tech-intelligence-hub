@@ -58,7 +58,9 @@ export function createImportBatch(
   },
 ): Promise<ImportBatch>;
 export function getImportBatch(args: Owned & { id: string }): Promise<ImportBatch>;
-export function listImportBatches(args: Owned & { before?: string }): Promise<ImportBatch[]>;
+export function listImportBatches(
+  args: Owned & { before?: string; view?: 'all' | 'current' | 'history' },
+): Promise<ImportBatch[]>;
 export function cancelImportBatch(args: Owned & { id: string }): Promise<ImportBatch>;
 export function confirmImportDocument(
   args: ItemArgs & { document: ImportDocument; fence?: number },

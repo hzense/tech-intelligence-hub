@@ -148,16 +148,24 @@ export async function createImportBatch({ pool, owner, request, capabilities, co
 export async function getImportBatch({ pool, owner, id }) {
   return transaction(pool, async (client) => detail(client, await batch(client, id, owner)), true);
 }
-export async function listImportBatches({ pool, owner, before }) {
+export async function listImportBatches({ pool, owner, before, view = 'all' }) {
   importOwner(owner);
+  if (!['all', 'current', 'history'].includes(view)) importFail();
   return transaction(
     pool,
     async (client) => {
       const cursor = before === undefined ? null : await batch(client, before, owner);
       const rows = (
         await client.query(
-          `SELECT ${selectColumns('import_batches')} FROM public.import_batches WHERE owner_id=$1 AND ($2::uuid IS NULL OR (created_at,id)<(SELECT c.created_at,c.id FROM public.import_batches c WHERE c.id=$2::uuid AND c.owner_id=$1)) ORDER BY created_at DESC,id DESC LIMIT 50`,
-          [owner, cursor?.id ?? null],
+          `SELECT ${selectColumns('import_batches', 'b.')} FROM public.import_batches b
+           WHERE b.owner_id=$1
+           AND ($3::text='all' OR
+             (b.cancelled OR NOT EXISTS (
+               SELECT 1 FROM public.import_items i WHERE i.batch_id=b.id AND i.status<>'completed'
+             )) = ($3::text='history'))
+           AND ($2::uuid IS NULL OR (b.created_at,b.id)<(SELECT c.created_at,c.id FROM public.import_batches c WHERE c.id=$2::uuid AND c.owner_id=$1))
+           ORDER BY b.created_at DESC,b.id DESC LIMIT 50`,
+          [owner, cursor?.id ?? null, view],
         )
       ).rows;
       const result = [];

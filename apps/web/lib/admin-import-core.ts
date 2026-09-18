@@ -67,7 +67,12 @@ export function createImportAdminHandler(deps: ImportAdminDependencies) {
       if (!['GET', 'POST'].includes(request.method))
         return importResponse({ error: 'method_not_allowed' }, 405);
       const query = new URL(request.url).searchParams;
-      if ([...query.keys()].some((k) => k !== 'before') || query.getAll('before').length > 1)
+      if (
+        [...query.keys()].some((k) => !['before', 'view'].includes(k)) ||
+        query.getAll('before').length > 1 ||
+        query.getAll('view').length > 1 ||
+        (query.has('view') && !['current', 'history'].includes(query.get('view')!))
+      )
         return importResponse({ error: 'invalid_request' }, 400);
       return importResponse(
         await deps.execute(
@@ -75,8 +80,8 @@ export function createImportAdminHandler(deps: ImportAdminDependencies) {
           request.method,
           request.method === 'POST'
             ? await readImportJSON(request)
-            : query.has('before')
-              ? { before: query.get('before') }
+            : query.size
+              ? Object.fromEntries(query)
               : null,
         ),
       );

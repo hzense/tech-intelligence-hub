@@ -27,9 +27,12 @@ const labels: Record<string, string> = {
   unknown: '结果未知，待对账',
   cancelled: '已取消',
 };
-async function api(body?: unknown, before?: string) {
+type TaskView = 'current' | 'history';
+async function api(body?: unknown, before?: string, view: TaskView = 'current') {
+  const query = new URLSearchParams({ view });
+  if (before) query.set('before', before);
   const response = await fetch(
-    `/api/admin/imports${before ? `?before=${encodeURIComponent(before)}` : ''}`,
+    `/api/admin/imports${body ? '' : `?${query}`}`,
     body
       ? {
           method: 'POST',
@@ -53,7 +56,7 @@ export function AdminImports({
   const [files, setFiles] = useState<File[]>([]),
     [urls, setUrls] = useState('');
   const [batches, setBatches] = useState<ImportBatch[]>([]),
-    [busy, setBusy] = useState(false),
+    [busy, setBusy] = useState(configured),
     [message, setMessage] = useState(''),
     [output, setOutput] = useState<{ name: string; data: ImportOutput } | null>(null);
   const resultDialog = useRef<HTMLDialogElement>(null);
@@ -68,6 +71,7 @@ export function AdminImports({
   }, [output]);
   const requestId = useRef<string | null>(null);
   const [pageCursors, setPageCursors] = useState<string[]>([]);
+  const [view, setView] = useState<TaskView>('current');
   const manifest = {
     files: files.map((file, i) => ({
       clientItemId: `file-${i}`,
@@ -77,12 +81,26 @@ export function AdminImports({
     urlLines: urls,
   };
   const validation = validateImportManifest(manifest, { capabilities });
-  const refresh = async () => setBatches((await api(undefined, pageCursors.at(-1))).batches);
+  const refresh = async () => setBatches((await api(undefined, pageCursors.at(-1), view)).batches);
+  async function changeView(next: TaskView) {
+    setBusy(true);
+    try {
+      setBatches((await api(undefined, undefined, next)).batches);
+      setView(next);
+      setPageCursors([]);
+      setOutput(null);
+      setMessage(next === 'current' ? '已显示当前任务。' : '已显示历史记录。');
+    } catch {
+      setMessage('任务列表读取失败，已保留原列表。');
+    } finally {
+      setBusy(false);
+    }
+  }
   async function turnPage(older: boolean) {
     const next = older ? [...pageCursors, batches.at(-1)!.id] : pageCursors.slice(0, -1);
     setBusy(true);
     try {
-      setBatches((await api(undefined, next.at(-1))).batches);
+      setBatches((await api(undefined, next.at(-1), view)).batches);
       setPageCursors(next);
       setOutput(null);
       setMessage('批次页面已更新。');
@@ -93,10 +111,27 @@ export function AdminImports({
     }
   }
   useEffect(() => {
-    if (configured)
+    let active = true;
+    if (configured) {
+      setBusy(true);
       void api()
-        .then((data) => setBatches(data.batches))
-        .catch(() => setMessage('导入服务暂不可用，请检查生产配置与权限。'));
+        .then((data) => {
+          if (active) {
+            setBatches(data.batches);
+            setView('current');
+            setPageCursors([]);
+          }
+        })
+        .catch(() => {
+          if (active) setMessage('导入服务暂不可用，请检查生产配置与权限。');
+        })
+        .finally(() => {
+          if (active) setBusy(false);
+        });
+    } else setBusy(false);
+    return () => {
+      active = false;
+    };
   }, [configured]);
   async function action(body: unknown) {
     setBusy(true);
@@ -152,6 +187,7 @@ export function AdminImports({
         await api({ action: 'confirm', batchId: batch.id, itemId: item.id });
       }
       setBatches((await api()).batches);
+      setView('current');
       setPageCursors([]);
       setMessage('原件已接收。点击「处理」执行隔离解析；不会自动发布。');
       requestId.current = null;
@@ -283,8 +319,37 @@ export function AdminImports({
             刷新任务状态
           </button>
         </div>
+        <div className={controls.group} role="group" aria-label="任务视图">
+          <button
+            disabled={!configured || busy}
+            aria-pressed={view === 'current'}
+            onClick={() => void changeView('current')}
+          >
+            当前任务
+          </button>
+          <button
+            disabled={!configured || busy}
+            aria-pressed={view === 'history'}
+            onClick={() => void changeView('history')}
+          >
+            历史记录
+          </button>
+        </div>
+        <p>
+          {view === 'current'
+            ? '显示待处理、处理中及异常任务；已完成和已取消的批次请到历史记录查看。'
+            : '仅显示已完成、已取消的批次。保留解析结果与审计记录，不代表上传原件仍被保存。'}
+        </p>
         {batches.length === 0 && (
-          <p className={styles.empty}>暂无导入任务。可在上方选择文件或填写链接。</p>
+          <p className={styles.empty}>
+            {busy
+              ? '正在读取任务…'
+              : pageCursors.length > 0
+                ? '本页暂无任务，可返回较新批次。'
+                : view === 'current'
+                  ? '暂无当前任务。可新建导入，或查看历史记录。'
+                  : '暂无历史记录。'}
+          </p>
         )}
         {batches.map((batch) => (
           <section className={styles.panel} key={batch.id}>
@@ -293,7 +358,7 @@ export function AdminImports({
               <span>{batch.items.length} 项资料</span>
             </div>
             <p className={styles.id}>批次 {batch.id}</p>
-            {!batch.cancelled && (
+            {!batch.cancelled && batch.status !== 'completed' && (
               <button
                 disabled={busy}
                 onClick={() => void action({ action: 'cancel', batchId: batch.id })}
