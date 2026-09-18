@@ -103,7 +103,7 @@ async function inspectImportOriginal(path: string) {
     if (error instanceof BlobNotFoundError) throw new ImportIOError('source_unavailable');
     throw error;
   }
-  if (originalExpired(metadata.uploadedAt)) throw new ImportIOError('source_unavailable');
+  if (originalExpired(metadata.uploadedAt)) throw new ImportIOError('source_expired');
   assertImportBlobMetadata(path, metadata);
   return metadata;
 }

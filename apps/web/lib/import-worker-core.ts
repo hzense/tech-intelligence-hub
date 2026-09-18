@@ -83,6 +83,14 @@ export async function runImportProcessing(
       chargedMicrousd: reserve,
     };
   } catch (error) {
+    // Receipt confirmation distinguishes expiry for the UI; worker accounting
+    // keeps the existing unavailable-source outcome and zero-charge semantics.
+    const errorCode =
+      error instanceof ImportIOError
+        ? error.code === 'source_expired'
+          ? 'source_unavailable'
+          : error.code
+        : undefined;
     const known =
       error instanceof ImportIOError &&
       [
@@ -92,13 +100,13 @@ export async function runImportProcessing(
         'limit_exceeded',
         'ocr_required',
         'source_unavailable',
-      ].includes(error.code);
+      ].includes(errorCode!);
     completion = {
       fence: claim.attempt.fence,
       outcome: known ? 'failed' : 'unknown',
-      errorCode: known ? error.code : 'outcome_unknown',
+      errorCode: known ? errorCode : 'outcome_unknown',
       chargedMicrousd:
-        known && error.code === 'source_unavailable' && !processingStarted ? 0 : reserve,
+        known && errorCode === 'source_unavailable' && !processingStarted ? 0 : reserve,
     };
   }
   // Clean while this attempt still owns the running state. Committing a failed

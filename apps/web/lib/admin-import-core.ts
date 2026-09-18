@@ -26,6 +26,7 @@ const exposed = new Set([
   'commit_unknown',
   'ocr_required',
   'source_unavailable',
+  'source_expired',
   'unsupported_content',
 ]);
 export function importError(error: unknown) {

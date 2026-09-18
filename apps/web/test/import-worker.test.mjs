@@ -7,6 +7,23 @@ import { ImportIOError } from '../lib/import-io.ts';
 const path = 'imports/batch/item',
   bytes = Buffer.from('hello'),
   sha256 = createHash('sha256').update(bytes).digest('hex');
+test('expired source keeps deterministic failure and zero parsing charge', async () => {
+  const { deps, events } = fixture({
+    claim: async () => ({
+      item: { kind: 'file' },
+      attempt: { fence: 1 },
+      document: { object_key: path },
+    }),
+    read: async () => {
+      throw new ImportIOError('source_expired');
+    },
+  });
+  const result = await runImportProcessing(path, 100, deps);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(result.errorCode, 'source_unavailable');
+  assert.equal(result.chargedMicrousd, 0);
+  assert.equal(events.includes('parse'), false);
+});
 function fixture(overrides = {}) {
   const events = [];
   const deps = {

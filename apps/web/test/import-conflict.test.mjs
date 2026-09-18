@@ -6,6 +6,7 @@ import {
 } from '../lib/import-blob-validation.ts';
 import { importError } from '../lib/admin-import-core.ts';
 import { ImportTaskError } from '../../../packages/ingestion/src/import-task-contract.mjs';
+import { readFileSync } from 'node:fs';
 import {
   ImportClientError,
   canUploadAfterConfirmError,
@@ -45,6 +46,7 @@ test('confirmation conflict or unavailable service never falls through to anothe
     new ImportClientError('document_conflict'),
     new ImportClientError('unavailable'),
     new ImportClientError('cancelled'),
+    new ImportClientError('source_expired'),
   ]) {
     assert.equal(canUploadAfterConfirmError(error), false);
   }
@@ -52,4 +54,12 @@ test('confirmation conflict or unavailable service never falls through to anothe
   assert.match(error.message, /blob_etag_mismatch/);
   assert.match(importFailureHint(error), /已停止重传/);
   assert.equal(new ImportClientError('document_conflict', 'secret').message, 'document_conflict');
+  assert.match(importFailureHint(new ImportClientError('source_expired')), /不能在原批次重传/);
+});
+test('production reader classifies existing expired originals separately from missing ones', () => {
+  const source = readFileSync(new URL('../lib/server/import-service.ts', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /originalExpired\(metadata.uploadedAt\)\) throw new ImportIOError\('source_expired'\)/,
+  );
 });
