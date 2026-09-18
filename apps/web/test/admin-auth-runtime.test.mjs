@@ -341,6 +341,77 @@ test(
       },
     );
     await t.test(
+      'generation preflight requires an administrator and stays safely unavailable without its own configuration',
+      async () => {
+        const path = '/api/admin/signal-generation/preflight';
+        const options = {
+          method: 'POST',
+          headers: { origin, 'content-type': 'application/json' },
+          body: '{}',
+        };
+        const anonymous = await request(path, options);
+        assert.equal(anonymous.status, 401);
+        assert.deepEqual(await anonymous.json(), { error: 'unauthorized' });
+        assert.match(anonymous.headers.get('cache-control'), /no-store/);
+
+        const cookie = await encryptedCookie(token);
+        const response = await request(path, {
+          ...options,
+          headers: { ...options.headers, cookie },
+        });
+        assert.equal(response.status, 503);
+        assert.deepEqual(await response.json(), {
+          status: 'unavailable',
+          checks: {
+            configuration: false,
+            connection: false,
+            tls: false,
+            identity: false,
+            readOnly: false,
+            permissions: false,
+          },
+          error: 'configuration_invalid',
+        });
+        assert.match(response.headers.get('cache-control'), /no-store/);
+        assert.equal(response.headers.get('x-robots-tag'), 'noindex, nofollow');
+      },
+    );
+    await t.test(
+      'generation preflight rejects cross-site requests, input parameters and GET requests',
+      async () => {
+        const path = '/api/admin/signal-generation/preflight';
+        const cookie = await encryptedCookie(token);
+        const options = {
+          method: 'POST',
+          headers: { origin, cookie, 'content-type': 'application/json' },
+          body: '{}',
+        };
+        for (const headers of [
+          { ...options.headers, origin: 'https://attacker.example' },
+          { cookie, 'content-type': 'application/json' },
+          { ...options.headers, 'sec-fetch-site': 'cross-site' },
+        ]) {
+          const response = await request(path, { ...options, headers });
+          assert.equal(response.status, 403);
+          assert.deepEqual(await response.json(), { error: 'forbidden' });
+          assert.match(response.headers.get('cache-control'), /no-store/);
+        }
+        for (const [suffix, body] of [
+          ['?unexpected=synthetic-private-marker', '{}'],
+          ['', '{"connectionString":"synthetic-private-marker"}'],
+          ['', '[]'],
+          ['', 'null'],
+        ]) {
+          const response = await request(`${path}${suffix}`, { ...options, body });
+          assert.equal(response.status, 400);
+          assert.deepEqual(await response.json(), { error: 'invalid_request' });
+          assert.match(response.headers.get('cache-control'), /no-store/);
+        }
+        const get = await request(path, { headers: { cookie, origin } });
+        assert.equal(get.status, 405);
+      },
+    );
+    await t.test(
       'publication routes authenticate before parsing or opening a database connection',
       async () => {
         for (const operation of ['publish', 'withdraw']) {

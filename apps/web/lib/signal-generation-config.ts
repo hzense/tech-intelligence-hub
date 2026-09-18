@@ -1,10 +1,11 @@
 import { readRuntimeReaderConfig } from './runtime-reader-core.ts';
 import { GenerationError } from './signal-generation-core.ts';
 
-/** No default activation or budget. Production must explicitly approve a new AI spend scope. */
-export function readGenerationConfiguration(env: Readonly<Record<string, string | undefined>>) {
+/** Connection-only policy for read-only preflight; never authorizes generation. */
+export function readGenerationDatabaseConfiguration(
+  env: Readonly<Record<string, string | undefined>>,
+) {
   try {
-    if (env.HZENSE_SIGNAL_GENERATION_ENABLED !== '1') throw new Error();
     const connectionString = env.HZENSE_GENERATION_DATABASE_URL;
     if (
       !connectionString ||
@@ -15,7 +16,18 @@ export function readGenerationConfiguration(env: Readonly<Record<string, string 
     const url = new URL(connectionString);
     if (decodeURIComponent(url.username) !== 'hzense_generation_admin') throw new Error();
     url.username = 'hzense_runtime';
-    readRuntimeReaderConfig({ ...env, HZENSE_RUNTIME_DATABASE_URL: url.toString() });
+    const target = readRuntimeReaderConfig({ ...env, HZENSE_RUNTIME_DATABASE_URL: url.toString() });
+    return { ...target, connectionString, user: 'hzense_generation_admin' as const };
+  } catch {
+    throw new GenerationError('not_configured');
+  }
+}
+
+/** No default activation or budget. Production must explicitly approve a new AI spend scope. */
+export function readGenerationConfiguration(env: Readonly<Record<string, string | undefined>>) {
+  try {
+    if (env.HZENSE_SIGNAL_GENERATION_ENABLED !== '1') throw new Error();
+    const { connectionString } = readGenerationDatabaseConfiguration(env);
     const money = (raw: string | undefined) => {
       if (!raw || !/^[1-9][0-9]*$/.test(raw)) throw new Error();
       const value = Number(raw);
