@@ -14,6 +14,7 @@ test('store business conflicts retain their actual codes rather than becoming se
     'daily_batch_limit',
     'stale_attempt',
     'source_unavailable',
+    'source_expired',
   ]) {
     const response = importError(new ImportTaskError(code));
     assert.equal(response.status, 409);

@@ -207,16 +207,16 @@ export async function confirmImportDocument({ pool, owner, batchId, itemId, docu
           (key) => old[key] !== document[key],
         )
       )
-        importFail('document_conflict');
+        importFail('document_conflict', 'receipt_mismatch');
       return { item_id: i.id, received: true };
     }
-    if (
-      i.kind === 'file' &&
-      (i.status !== 'awaiting_upload' ||
-        i.declaration.size !== document.byte_size ||
-        i.declaration.format !== document.format)
-    )
-      importFail('document_conflict');
+    if (i.kind === 'file') {
+      if (i.status !== 'awaiting_upload') importFail('document_conflict', 'item_state_mismatch');
+      if (i.declaration.size !== document.byte_size)
+        importFail('document_conflict', 'declared_size_mismatch');
+      if (i.declaration.format !== document.format)
+        importFail('document_conflict', 'declared_format_mismatch');
+    }
     const bytes = (
       await client.query(
         'SELECT COALESCE(sum(d.byte_size),0)::text AS n FROM public.import_documents d JOIN public.import_items i ON i.id=d.item_id WHERE i.batch_id=$1',

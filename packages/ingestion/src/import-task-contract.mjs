@@ -5,13 +5,14 @@ const hasControl = (value) =>
   [...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
 
 export class ImportTaskError extends Error {
-  constructor(code) {
+  constructor(code, reason) {
     super(code);
     this.code = code;
+    this.reason = reason;
   }
 }
-export function importFail(code = 'invalid_request') {
-  throw new ImportTaskError(code);
+export function importFail(code = 'invalid_request', reason) {
+  throw new ImportTaskError(code, reason);
 }
 export function importUuid(value) {
   if (

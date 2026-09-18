@@ -1,9 +1,10 @@
 import type { ImportCapabilities } from './import-manifest.mjs';
 export class ImportTaskError extends Error {
   code: string;
-  constructor(code: string);
+  reason?: string;
+  constructor(code: string, reason?: string);
 }
-export function importFail(code?: string): never;
+export function importFail(code?: string, reason?: string): never;
 export function importUuid(value: unknown): string;
 export function importOwner(value: unknown): string;
 export function parseImportCreate(
