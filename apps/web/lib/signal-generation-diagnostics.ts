@@ -1,7 +1,8 @@
 /** Server-owned business deadline; independent of the 3–20s capability probe setting.
- * Leaves 15s of the route's 60s maximum for bookkeeping. No retries or token-limit changes.
+ * Leaves 15s of the route's 300s maximum for other work (not a bookkeeping guarantee).
+ * Requires Fluid Compute. No retries or token-limit changes.
  */
-export const generationTimeoutMs = 45_000;
+export const generationTimeoutMs = 285_000;
 
 export const generationDiagnosticCodes = [
   'generation_timeout',

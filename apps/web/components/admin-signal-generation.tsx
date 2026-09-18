@@ -48,7 +48,7 @@ const statuses: Record<GenerationRun['status'], string> = {
 };
 const errorMessages: Record<string, string> = {
   generation_timeout:
-    '生成达到独立的 45 秒截止时间，未能确认完整结果。请先对账原任务，不要重复调用。',
+    '生成达到本次任务的截止时间，未能确认完整结果。请先对账原任务，不要重复调用。',
   generation_provider_rejected: '供应商拒绝了生成请求。请核对模型与接口配置；该分类不代表未计费。',
   generation_network_error: '生成请求发生网络错误，结果与费用需核对，不要重复调用。',
   generation_dns_failed: '供应商域名解析失败。请核对服务端网络，不要重复提交任务。',
@@ -534,6 +534,7 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
       </p>
       <p>候选中的摘要、事件发生时间、证据、人物与组织均需核验；没有足够依据时可以不生成候选。</p>
       <p>首版每次处理一份资料，解析文本最多 48,000 字节；超限会停止，不自动截断。</p>
+      <p>当前接口总时限 5 分钟，模型最多等待 4 分 45 秒，预留时间用于校验和保存；不会自动重试。</p>
       {!configured && (
         <p role="status">
           AI 信号生成尚未完成生产授权与配置。请配置专用权限、生成预算及可用模型后启用。

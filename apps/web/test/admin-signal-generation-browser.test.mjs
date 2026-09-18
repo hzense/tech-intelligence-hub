@@ -324,8 +324,9 @@ test(
           },
         ];
         await page.goto(origin);
+        await expect(page.getByText('生成达到本次任务的截止时间', { exact: false })).toBeVisible();
         await expect(
-          page.getByText('生成达到独立的 45 秒截止时间', { exact: false }),
+          page.getByText('当前接口总时限 5 分钟，模型最多等待 4 分 45 秒', { exact: false }),
         ).toBeVisible();
         await expect(
           page.getByRole('heading', { name: '结果未知，待对账', exact: true }),
