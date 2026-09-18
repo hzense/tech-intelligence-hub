@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { Buffer } from 'node:buffer';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath, URL } from 'node:url';
 import process from 'node:process';
 import { build } from 'esbuild';
@@ -28,6 +29,11 @@ test(
     });
     const assets = new Map(
       compiled.outputFiles.map((f) => [`/${f.path.split('/').at(-1)}`, f.contents]),
+    );
+    // Include the production reset: it removes native file-button borders and backgrounds.
+    assets.set(
+      '/preflight.css',
+      await readFile(fileURLToPath(import.meta.resolve('tailwindcss/preflight.css'))),
     );
     let batches = [];
     const commands = [];
@@ -100,7 +106,7 @@ test(
       }
       res.setHeader('Content-Type', 'text/html');
       res.end(
-        '<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/entry.css"><div id="root"></div><script type="module" src="/entry.js"></script></html>',
+        '<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/preflight.css"><link rel="stylesheet" href="/entry.css"><div id="root"></div><script type="module" src="/entry.js"></script></html>',
       );
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -117,7 +123,61 @@ test(
     await page.goto(`${origin}/?off`);
     await expect(page.getByRole('heading', { name: '文档与链接批量导入' })).toBeVisible();
     await expect(page.getByRole('button', { name: '创建并上传' })).toBeDisabled();
+    const fileInput = page.getByLabel('上传文档（最多 20 个，每个 25 MiB）');
+    await expect(fileInput).toBeDisabled();
+    await expect(fileInput).toHaveCSS('opacity', '0.5');
     await page.goto(origin);
+    await expect(fileInput).toBeEnabled();
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await page.mouse.move(0, 0);
+      const buttonStyle = await fileInput.evaluate((input) => {
+        const style = globalThis.getComputedStyle(input, '::file-selector-button');
+        return {
+          background: style.backgroundColor,
+          border: style.borderTopWidth,
+          minHeight: style.minHeight,
+        };
+      });
+      assert.deepEqual(buttonStyle, {
+        background: 'rgb(0, 71, 171)',
+        border: '1px',
+        minHeight: '44px',
+      });
+      await page.getByLabel('HTTPS 链接').focus();
+      await page.keyboard.press('Shift+Tab');
+      await expect(fileInput).toBeFocused();
+      await expect(fileInput).toHaveCSS('outline-style', 'solid');
+      const chooserEvent = page.waitForEvent('filechooser');
+      if (width === 1280) await fileInput.click({ position: { x: 20, y: 20 } });
+      else await fileInput.press('Enter');
+      const chooser = await chooserEvent;
+      assert.equal(chooser.isMultiple(), true);
+      await chooser.setFiles([
+        {
+          name: 'sample-one.md',
+          mimeType: 'text/markdown',
+          buffer: Buffer.from('Synthetic sample one'),
+        },
+        {
+          name: 'sample-two.txt',
+          mimeType: 'text/plain',
+          buffer: Buffer.from('Synthetic sample two'),
+        },
+      ]);
+      await expect(
+        page.getByText('已选择 2 个文件、0 个不重复链接。整个批次须通过检查才能提交。'),
+      ).toBeVisible();
+      assert.equal(
+        await page.evaluate(
+          () => globalThis.document.documentElement.scrollWidth <= globalThis.innerWidth,
+        ),
+        true,
+      );
+      assert.equal(commands.length, 0, 'Selecting files must not create a batch or upload');
+      await fileInput.setInputFiles([]);
+    }
+    await page.setViewportSize({ width: 1280, height: 844 });
     await page
       .getByLabel('HTTPS 链接')
       .fill('https://example.com/research\nhttps://example.com/research');
