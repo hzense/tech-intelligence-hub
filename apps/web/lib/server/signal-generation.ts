@@ -15,7 +15,10 @@ import {
   generationDto,
   GenerationError,
 } from '../signal-generation-core';
-import { readGenerationConfiguration } from '../signal-generation-config';
+import {
+  readGenerationConfiguration,
+  readGenerationDatabaseConfiguration,
+} from '../signal-generation-config';
 import { invokeSignalGeneration } from '../signal-generation-provider';
 import { createGenerationSourceInspector } from '../signal-generation-source-inspection';
 
@@ -23,7 +26,8 @@ let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
 const generationPool = {
   async connect() {
-    const config = readGenerationConfiguration(process.env);
+    // A database connection authorizes neither task mutation nor provider spending.
+    const config = readGenerationDatabaseConfiguration(process.env);
     if (poolUrl && poolUrl !== config.connectionString) throw new GenerationError('not_configured');
     if (!pool) {
       poolUrl = config.connectionString;
@@ -58,6 +62,14 @@ export function generationConfigured() {
     return false;
   }
 }
+export function generationHistoryConfigured() {
+  try {
+    readGenerationDatabaseConfiguration(process.env);
+    return true;
+  } catch {
+    return false;
+  }
+}
 async function source(owner: string, batchId: string, itemId: string) {
   const batch = await getImportBatch({ pool: importPool, owner, id: batchId });
   const item = batch.items.find((row) => row.id === itemId);
@@ -69,16 +81,22 @@ async function source(owner: string, batchId: string, itemId: string) {
   };
 }
 export async function generationDashboard(owner: string) {
-  if (!generationConfigured()) throw new GenerationError('not_configured');
+  if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
+  // History does not depend on import, AI credentials, budgets or the spend switch.
+  if (!generationConfigured()) {
+    const runs = await store.listSignalGenerations({ pool: generationPool, owner, readOnly: true });
+    return { runs: runs.map(generationDto), profiles: [], batches: [] };
+  }
   const [runs, ai, batches] = await Promise.all([
-    store.listSignalGenerations({ pool: generationPool, owner }),
-    getAiDashboard(),
-    listImportBatches({ pool: importPool, owner }),
+    store.listSignalGenerations({ pool: generationPool, owner, readOnly: true }),
+    // Selection data is optional: an ancillary outage must not hide saved runs.
+    getAiDashboard().catch(() => null),
+    listImportBatches({ pool: importPool, owner }).catch(() => []),
   ]);
   return {
     runs: runs.map(generationDto),
-    profiles: ai.profiles.map(({ id, revision, name, readiness, stages }) => {
-      const connection = ai.connections.find((item) => item.id === stages.extract.connection_id);
+    profiles: (ai?.profiles ?? []).map(({ id, revision, name, readiness, stages }) => {
+      const connection = ai?.connections.find((item) => item.id === stages.extract.connection_id);
       return {
         id,
         revision,
@@ -95,8 +113,10 @@ export async function inspectGenerationInput(owner: string, body: unknown) {
   return createGenerationSourceInspector(source)(owner, body);
 }
 export async function generationDetail(owner: string, id: string) {
-  if (!generationConfigured()) throw new GenerationError('not_configured');
-  return generationDto(await store.getSignalGeneration({ pool: generationPool, owner, id }));
+  if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
+  return generationDto(
+    await store.getSignalGeneration({ pool: generationPool, owner, id, readOnly: true }),
+  );
 }
 export async function executeGeneration(owner: string, body: unknown) {
   if (!generationConfigured()) throw new GenerationError('not_configured');

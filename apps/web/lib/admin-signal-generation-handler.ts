@@ -1,6 +1,6 @@
 import { GenerationError } from './signal-generation-core.ts';
 import { SignalGenerationError } from '../../../packages/database/src/signal-generation-store.mjs';
-import { AiConfigError } from '../../../packages/database/src/ai-config-contract.mjs';
+import { AiConfigError, aiUuid } from '../../../packages/database/src/ai-config-contract.mjs';
 import { ImportTaskError } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { SignalGenerationError as GenerationContractError } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { importResponse, readImportJSON, ImportIOError } from './import-io.ts';
@@ -30,6 +30,7 @@ export function createGenerationHandler(deps: {
   origin(): string | undefined;
   dashboard(owner: string): Promise<unknown>;
   execute(owner: string, body: unknown): Promise<unknown>;
+  detail?(owner: string, id: string): Promise<unknown>;
   inspectSource?(owner: string, body: unknown): Promise<unknown>;
 }) {
   return async (request: Request) => {
@@ -52,6 +53,17 @@ export function createGenerationHandler(deps: {
       if (request.method === 'GET') return importResponse(await deps.dashboard(session.user.id));
       if (request.method !== 'POST') return importResponse({ error: 'method_not_allowed' }, 405);
       const body = await readImportJSON(request, 4096);
+      if (body && typeof body === 'object' && 'action' in body && body.action === 'detail') {
+        if (
+          Array.isArray(body) ||
+          Object.keys(body).sort().join(',') !== 'action,id' ||
+          !('id' in body)
+        )
+          throw new GenerationError('invalid_request');
+        const id = aiUuid(body.id);
+        if (!deps.detail) throw new GenerationError('not_configured');
+        return importResponse({ run: await deps.detail(session.user.id, id) });
+      }
       if (
         body &&
         typeof body === 'object' &&

@@ -242,13 +242,17 @@ export async function createSignalGeneration({ pool, owner, request, snapshot, c
     ).rows[0];
   });
 }
-export async function getSignalGeneration({ pool, owner, id }) {
+export async function getSignalGeneration({ pool, owner, id, readOnly = false }) {
   ownerId(owner);
   uuid(id);
-  return transaction(pool, async (client) => {
-    await expireRunning(client, owner, { id });
-    return run(client, owner, id);
-  });
+  return transaction(
+    pool,
+    async (client) => {
+      if (!readOnly) await expireRunning(client, owner, { id });
+      return run(client, owner, id);
+    },
+    readOnly,
+  );
 }
 async function expireRunning(client, owner, { id, batchId, itemId } = {}) {
   // A query may recover a lost worker, but must never admit another provider call.
@@ -262,21 +266,25 @@ async function expireRunning(client, owner, { id, batchId, itemId } = {}) {
     [owner, id ?? null, batchId ?? null, itemId ?? null],
   );
 }
-export async function listSignalGenerations({ pool, owner, batchId, itemId }) {
+export async function listSignalGenerations({ pool, owner, batchId, itemId, readOnly = false }) {
   ownerId(owner);
   if (batchId !== undefined) uuid(batchId);
   if (itemId !== undefined) uuid(itemId);
-  return transaction(pool, async (client) => {
-    await expireRunning(client, owner, { batchId, itemId });
-    return (
-      await client.query(
-        `SELECT ${columns} FROM public.signal_generation_runs
+  return transaction(
+    pool,
+    async (client) => {
+      if (!readOnly) await expireRunning(client, owner, { batchId, itemId });
+      return (
+        await client.query(
+          `SELECT ${columns} FROM public.signal_generation_runs
     WHERE owner_id=$1 AND ($2::uuid IS NULL OR batch_id=$2) AND ($3::uuid IS NULL OR item_id=$3)
     ORDER BY created_at DESC,id DESC LIMIT 50`,
-        [owner, batchId ?? null, itemId ?? null],
-      )
-    ).rows;
-  });
+          [owner, batchId ?? null, itemId ?? null],
+        )
+      ).rows;
+    },
+    readOnly,
+  );
 }
 export async function claimSignalGeneration({ pool, owner, id, currentLimits }) {
   object(currentLimits, ['batchLimitMicrousd', 'dailyLimitMicrousd'], 'invalid_configuration');
