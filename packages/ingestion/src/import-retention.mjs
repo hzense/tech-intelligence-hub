@@ -1,5 +1,6 @@
-// Approved 2026-09-15: original objects only. Derived outputs/audits are retained.
-export const IMPORT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+// Temporary originals only; the worker deletes on completion/failure. This is the
+// fallback read cutoff for abandoned uploads or interrupted cleanup, not archival retention.
+export const IMPORT_RETENTION_MS = 24 * 60 * 60 * 1000;
 export function originalExpired(uploadedAt, now = Date.now()) {
   const time = new Date(uploadedAt).getTime();
   if (!Number.isFinite(time) || !Number.isFinite(now)) throw new Error('invalid_retention_time');

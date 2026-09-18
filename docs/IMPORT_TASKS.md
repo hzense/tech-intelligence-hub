@@ -62,7 +62,7 @@
 | `HZENSE_IMPORT_DATABASE_URL`         | 专用 `hzense_import_admin` Neon pooled DSN，显式端口及 `sslmode=verify-full&channel_binding=prefer` 必填；沿用 `HZENSE_RUNTIME_EXPECTED_HOST/PORT/NAME` 目标核对 |
 | `HZENSE_IMPORT_BLOB_TOKEN`           | 仅专用私有 Blob Store 的服务端令牌                                                                                                                               |
 | `HZENSE_IMPORT_BLOB_STORE_ID`        | 专用 Store ID，必须与令牌中的 Store ID 一致；错配拒绝启动                                                                                                        |
-| `HZENSE_IMPORT_RETENTION_DAYS=7`     | 原件读取保留期限；当前只接受批准的 7 天                                                                                                                          |
+| `HZENSE_IMPORT_RETENTION_DAYS`       | 可移除或设为 `1`；旧值 `7` 仅兼容部署，不再控制保留天数。原件处理结束立即清理，异常遗留读取上限固定为 24 小时                                                    |
 | `HZENSE_IMPORT_PARSER_SNAPSHOT_ID`   | 无凭据、预装固定解析依赖的批准镜像                                                                                                                               |
 | `HZENSE_IMPORT_RESERVE_MICROUSD`     | 每次领取的保守费用预留，正整数                                                                                                                                   |
 | `HZENSE_IMPORT_DAILY_LIMIT_MICROUSD` | UTC 日应用预算，正整数                                                                                                                                           |
@@ -71,7 +71,7 @@
 
 Sandbox 使用 Vercel 运行环境的服务认证；上述配置只能放在服务端 Production Secret，不填入文档或浏览器表单。预算是应用侧保守预留，不冒称 Vercel 实际账单或平台硬支出上限；Blob 存储与网络费用须另行评估。未知结果禁止重试，待人工对账。
 
-2026-09-15 操作者批准单批 **10 美元**、UTC 日全局 **50 美元**、原件 **7 天**。对应预算值分别为 `10000000`、`50000000` microUSD；每次解析暂按 `100000` microUSD（0.10 美元）保守预留。当前不调用 AI/OCR，因此这些数值不是模型费用的实测账单。开通进度见[生产准备记录](production-evidence/2026-09-15-import-production.md)。
+2026-09-15 操作者批准单批 **10 美元**、UTC 日全局 **50 美元**、原件 **7 天**；2026-09-18 改为允许处理期间临时存放、处理结束立即删除，旧七天规则不再适用。解析预算值不变，分别为 `10000000`、`50000000` microUSD；每次解析暂按 `100000` microUSD（0.10 美元）保守预留。此入口不调用 AI/OCR，因此这些数值不是模型费用的实测账单。开通进度见[生产准备记录](production-evidence/2026-09-15-import-production.md)。
 
 ### 关闭开关时排查配置
 
@@ -85,17 +85,23 @@ postgresql://hzense_import_admin:<URL编码后的密码>@<已核准的Neon-poole
 
 `database_tls` 时核对两项 TLS 参数及证书校验；`database_host_mismatch`、`database_port_missing`、`database_port_mismatch`、`database_name_mismatch` 分别表示主机不匹配、缺少显式端口、端口不匹配、库名不匹配；`database_pooled_endpoint` 表示不是受支持的 Neon pooled 地址。多个目标问题可以同时展示，无法细分时保留 `database_target`。这些提示均不显示实际或预期值；`blob_binding` 时核对专用 Store 与令牌是否匹配。不得为消除提示而降级 TLS、放宽目标绑定或扩大角色授权。敏感配置仅在 Vercel Production 中更正，不复制到聊天、日志、代码或本地环境文件。更正后需重新部署，再检查诊断；导入开关仍须单独审批。
 
-## 原件到期与云端清理
+## 导入页面布局
 
-原件年龄以 Blob 服务端 `uploadedAt` 为准，满 7×24 小时后，接收确认及解析读取均拒绝返回内容。已清理原件和读取过程中发现原件消失统一返回 `source_unavailable`；任务不能直接重试，管理员需新建导入。已经保存的私有解析正文、定位、原件元数据和审计不在本次删除范围内。
+`/admin/imports` 顶部展示标题、返回按钮与简洁配置状态，诊断细节默认折叠。新建批次在桌面端并排展示文件与链接输入，在手机端纵向排列；仅提交 `preview` 意图，移除尚未接通的生成／发布选项。下方是独立任务列表与分页。解析结果以可关闭、支持 Escape 与焦点恢复的侧栏展示，正文按定位片段阅读，JSON 默认折叠；“前往 AI 信号生成”只是导航，进入后仍需选择资料、配置和确认预算，不会触发模型调用或发布。
 
-重新排队前按管理员归属检查当前原件元数据，不只依赖旧错误码。已经排队的原件在领取后发现过期或缺失、且尚未开始抓取／解析时，持久化确定性失败并释放日预算及批次预算；历史预留额仍可审计。处理已开始或结果不确定则不释放保守费用。原件存储请求的实际平台费用仍单独计算。
+## 临时原件与云端清理
+
+**原件不归档。** 上传原件和链接抓取原文仅在私有 Blob 临时存放；Worker 在解析成功或失败后、提交终态前，按精确对象路径及 ETag 条件删除，防止旧任务在新重试上传后误删新原件。提交结果不确定时，清理也已尝试且不重复提交。删除失败不覆盖解析状态，返回 `original_cleanup=pending` 并输出固定脱敏告警 `import_original_cleanup_pending`；页面不得宣称已删除。取消批次同样触发清理，取消／处理完成后的迟到上传回调也清理对应对象。Sandbox 在解析后停止，异常中断另有平台超时兜底。
+
+未处理、上传中断或清理中断的原件，以 Blob 服务端 `uploadedAt` 为准，满 24 小时后接收确认及解析读取拒绝返回内容，并由每小时清理任务兜底。不是所有原件再保留一天：正常处理结束即删除。已清理原件返回 `source_unavailable`；文件失败或已接收原文的链接失败均需新建导入，仅尚未接收到原文的链接抓取失败可重新排队。已经保存的私有解析正文、定位、原件元数据和审计不在本次删除范围内。
+
+重新排队仍先校验管理员归属和任务状态，不允许靠清理失败暂时留下的原件继续重试。已经排队的原件在领取后发现过期或缺失、且尚未开始抓取／解析时，持久化确定性失败并释放日预算及批次预算；历史预留额仍可审计。处理已开始或结果不确定则不释放保守费用。原件存储请求的实际平台费用仍单独计算。
 
 `.github/workflows/import-retention.yml` 每小时运行一次；手动触发默认 `dry-run`，在清理开关关闭时也可执行只读扫描。`apply` 和定时删除仍要求仓库变量 `HZENSE_IMPORT_RETENTION_ENABLED=1`；首次启用前须完成评审、main CI 及真实专用 Store 的扫描验收（确认无到期候选，或逐项核对待删除范围）。预演和正式清理都保留当前 main 与 CI 门禁。工作流只接收专用 `HZENSE_IMPORT_BLOB_TOKEN` 和 `HZENSE_IMPORT_BLOB_STORE_ID`，不接收数据库或 AI 密钥。
 
 清理先完整检查 `imports/<批次 UUID>/<输入项 UUID>` 列表、私有域名及时间，再按条重新核对年龄和 ETag，以条件删除避免删除被替换的对象；异常路径、凭据错配或分页异常均拒绝执行。无数据库记录的过期上传孤儿也包含在该固定路径范围内。日志只输出计数，不记录原件路径、内容或凭据。
 
-**7 天是读取截止时间，不是平台保证的物理销毁期限。** 小时任务可能受调度延迟、main CI 失败或平台故障影响，物理删除可能晚于截止时间；失败时应查看 Actions 运行状态并修复，不能据一次成功运行宣称长期保留策略已满足。删除不可由 Blob 直接撤销，重新处理需要重新上传；当前没有为原件创建额外备份。
+**即时删除是应用的主动操作，不是平台保证的物理销毁期限。** 进程终止、存储故障可能留下原件；兜底小时任务也可能受调度延迟、main CI 失败或平台故障影响。失败时应检查脱敏告警及 Actions 状态，不能把处理完成等同于确认删除。24 小时为读取截止，不保证物理销毁时刻。新兜底规则部署后也会覆盖既有超龄原件；本地开发不执行生产删除。删除不可由 Blob 直接撤销，重新处理需要重新上传；当前没有为原件创建额外备份。
 
 专用角色要求 `LOGIN NOINHERIT CONNECTION LIMIT 2`、无高权限和角色／数据库设置、无应用 schema CREATE、数据库 CREATE/TEMP、其它业务表／列／序列／非扩展函数权限。成员关系检查双向拒绝，仅保留既有 Neon 规则允许的精确管理边：cloud_admin 授予 neondb_owner 对目标角色的 ADMIN-only，且 INHERIT／SET 均为 false。七张导入私表按 `import-role-columns.mjs` 的固定列白名单授予 SELECT／INSERT，禁止整表授权。UPDATE 仅允许 batches.cancelled、items.status/fence、attempts.status/error_code/charged_microusd/finished_at 和 daily_usage 的两项预算计数；不能改写归属、配置、声明、解析版本、租约或预算归属。原件、结果、审计禁止 UPDATE／DELETE，新增字段不自动获得权限，也拒绝 MAINTAIN 等额外能力。生产授权需先核验现有公共权限和完整 Schema，拒绝隐式修复 PUBLIC 或复用旧审批。
 

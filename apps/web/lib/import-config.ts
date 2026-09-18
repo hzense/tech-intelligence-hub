@@ -24,7 +24,8 @@ export const importConfigurationMessages = {
   database_parameters: '数据库连接参数不合法；只允许单个 sslmode 和 channel_binding 参数。',
   blob_binding: 'HZENSE_IMPORT_BLOB_TOKEN 与 HZENSE_IMPORT_BLOB_STORE_ID 缺失或不匹配。',
   parser_snapshot: 'HZENSE_IMPORT_PARSER_SNAPSHOT_ID 缺失。',
-  retention: 'HZENSE_IMPORT_RETENTION_DAYS 必须为 7。',
+  retention:
+    '原件不归档；HZENSE_IMPORT_RETENTION_DAYS 可移除或设为 1。旧值 7 仅兼容，不延长临时存放期限。',
   reserve: 'HZENSE_IMPORT_RESERVE_MICROUSD 必须为正安全整数。',
   daily: 'HZENSE_IMPORT_DAILY_LIMIT_MICROUSD 必须为正安全整数。',
   batch: 'HZENSE_IMPORT_BATCH_LIMIT_MICROUSD 必须为正安全整数。',
@@ -68,7 +69,9 @@ export function diagnoseImportConfiguration(env: Environment): ImportConfigurati
     issues.push('blob_binding');
   }
   if (!env.HZENSE_IMPORT_PARSER_SNAPSHOT_ID?.trim()) issues.push('parser_snapshot');
-  if (env.HZENSE_IMPORT_RETENTION_DAYS !== '7') issues.push('retention');
+  // The lifecycle is fixed in code. Accept the former production value during
+  // rollout, but it no longer opts in to seven-day storage.
+  if (![undefined, '1', '7'].includes(env.HZENSE_IMPORT_RETENTION_DAYS)) issues.push('retention');
   for (const [field, code] of [
     ['HZENSE_IMPORT_RESERVE_MICROUSD', 'reserve'],
     ['HZENSE_IMPORT_DAILY_LIMIT_MICROUSD', 'daily'],
