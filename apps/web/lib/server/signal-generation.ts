@@ -89,13 +89,14 @@ export async function generationDashboard(owner: string) {
   }
   const [runs, ai, batches] = await Promise.all([
     store.listSignalGenerations({ pool: generationPool, owner, readOnly: true }),
-    getAiDashboard(),
-    listImportBatches({ pool: importPool, owner }),
+    // Selection data is optional: an ancillary outage must not hide saved runs.
+    getAiDashboard().catch(() => null),
+    listImportBatches({ pool: importPool, owner }).catch(() => []),
   ]);
   return {
     runs: runs.map(generationDto),
-    profiles: ai.profiles.map(({ id, revision, name, readiness, stages }) => {
-      const connection = ai.connections.find((item) => item.id === stages.extract.connection_id);
+    profiles: (ai?.profiles ?? []).map(({ id, revision, name, readiness, stages }) => {
+      const connection = ai?.connections.find((item) => item.id === stages.extract.connection_id);
       return {
         id,
         revision,
