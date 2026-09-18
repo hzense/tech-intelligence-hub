@@ -23,7 +23,7 @@ test(
   async (t) => {
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {AdminSignalGeneration} from './components/admin-signal-generation';createRoot(document.getElementById('root')).render(<AdminSignalGeneration configured={!location.search.includes('off')}/>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {AdminSignalGeneration} from './components/admin-signal-generation';createRoot(document.getElementById('root')).render(<AdminSignalGeneration configured={!location.search.includes('off')} historyConfigured={!location.search.includes('nohistory')}/>);`,
         resolveDir: fileURLToPath(new URL('..', import.meta.url)),
         loader: 'tsx',
       },
@@ -340,10 +340,97 @@ test(
     );
 
     await t.test(
-      'disabled generation permits explicit read-only preflight without dashboard or model requests',
+      'disabled generation still lists and displays saved candidates without mutations',
       async () => {
         const page = await newPage();
+        const id = '55555555-5555-4555-8555-555555555555';
+        runs = [
+          {
+            id,
+            batch_id: batchId,
+            item_id: itemId,
+            profile_id: profileId,
+            profile_revision: 2,
+            status: 'completed',
+            reserved_microusd: 10,
+            charged_microusd: 10,
+            result: {
+              candidates: [
+                {
+                  title: 'Saved historical candidate',
+                  summary: 'Saved historical summary',
+                  event_date: '2024-04-24',
+                  persons: [
+                    {
+                      name: 'Saved person',
+                      role: 'Researcher',
+                      organization: 'Saved organization',
+                      evidence: [{ fragment_id: 'fragment-1', quote: 'Original person quote' }],
+                    },
+                  ],
+                  claims: [
+                    {
+                      text: 'Saved claim',
+                      evidence: [{ fragment_id: 'fragment-2', quote: 'Original claim quote' }],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          {
+            id: pendingItemId,
+            batch_id: batchId,
+            item_id: itemId,
+            profile_id: profileId,
+            profile_revision: 2,
+            status: 'pending',
+            reserved_microusd: 10,
+            charged_microusd: 0,
+          },
+        ];
         await page.goto(`${origin}/?off`);
+        await expect(
+          page.getByText('仍可查看历史任务与已保存候选', { exact: false }),
+        ).toBeVisible();
+        await expect(page.getByRole('link', { name: '固定链接' })).toHaveCount(2);
+        await expect.poll(() => dashboardRequests).toBe(1);
+        assert.equal(commands.length, 0);
+        await expect(
+          page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }),
+        ).toBeDisabled();
+        await expect(
+          page.getByRole('button', { name: '执行生成（调用 AI，可能计费）', exact: true }),
+        ).toBeDisabled();
+        await expect(
+          page.getByRole('button', { name: '取消未执行任务', exact: true }),
+        ).toBeDisabled();
+        await page.getByRole('button', { name: '手动刷新列表', exact: true }).click();
+        await expect.poll(() => dashboardRequests).toBe(2);
+        await page.getByRole('button', { name: '查看任务与私有候选', exact: true }).first().click();
+        await expect(
+          page.getByRole('heading', { name: 'Saved historical candidate' }),
+        ).toBeVisible();
+        await expect(page.getByText('Saved historical summary', { exact: true })).toBeVisible();
+        await expect(
+          page.getByText('Saved person · Researcher · Saved organization', { exact: true }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('listitem').filter({ hasText: 'Original claim quote' }),
+        ).toBeVisible();
+        assert.deepEqual(commands, [{ action: 'detail', id }]);
+        await page.reload();
+        await expect(page.getByRole('link', { name: '固定链接' })).toHaveCount(2);
+        assert.deepEqual(commands, [{ action: 'detail', id }]);
+        await page.close();
+      },
+    );
+
+    await t.test(
+      'unconfigured history still permits explicit preflight without dashboard or model requests',
+      async () => {
+        const page = await newPage();
+        await page.goto(`${origin}/?off&nohistory`);
         const preflight = page.getByRole('button', { name: '运行只读连接预检', exact: true });
         await expect(preflight).toBeEnabled();
         assert.equal(preflightRequests.length, 0);
@@ -377,7 +464,7 @@ test(
       'preflight failures and incomplete checks never expose raw diagnostics or claim success',
       async () => {
         const page = await newPage();
-        await page.goto(`${origin}/?off`);
+        await page.goto(`${origin}/?off&nohistory`);
         const preflight = page.getByRole('button', { name: '运行只读连接预检', exact: true });
         const secret = 'SYNTHETIC_PREFLIGHT_SECRET';
         for (const fixture of [
@@ -440,7 +527,7 @@ test(
         page.on('pageerror', (error) => errors.push(error.message));
         await page.goto(`${origin}/?off`);
         await expect(
-          page.getByText('AI 信号生成尚未完成生产授权与配置。', { exact: false }),
+          page.getByText('AI 信号生成已关闭或尚未完成配置', { exact: false }),
         ).toBeVisible();
         await expect(
           page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }),

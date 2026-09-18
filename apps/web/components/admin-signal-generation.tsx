@@ -7,6 +7,7 @@ import type { GenerationSourceInspection } from '../../../packages/ingestion/src
 import styles from './admin-signal-generation.module.css';
 import controls from './admin-controls.module.css';
 import { AdminGenerationPreflight } from './admin-generation-preflight';
+import { PrivateResult } from './private-generation-result';
 
 type Profile = {
   id: string;
@@ -185,85 +186,13 @@ function money(value: number | string) {
   return Number.isFinite(amount) && amount >= 0 ? `$${(amount / 1_000_000).toFixed(4)}` : '待核对';
 }
 
-function objectRows(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value)
-    ? value.filter((row) => row && typeof row === 'object' && !Array.isArray(row))
-    : [];
-}
-
-function Evidence({ value }: { value: unknown }) {
-  return (
-    <ul>
-      {objectRows(value).map((entry, index) => (
-        <li key={index}>
-          原文片段{' '}
-          {typeof entry.fragment_id === 'number' || typeof entry.fragment_id === 'string'
-            ? entry.fragment_id
-            : '待核对'}
-          ：{typeof entry.quote === 'string' ? entry.quote : '无有效引用'}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function PrivateResult({ result }: { result: unknown }) {
-  if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
-  const row = result as Record<string, unknown>;
-  const candidates = Array.isArray(row.candidates) ? row.candidates : [];
-  return (
-    <section aria-label="私有候选结果" className={styles.result}>
-      <h3>私有候选结果 · 尚未审核或发布</h3>
-      {typeof row.reason === 'string' && <p>{row.reason}</p>}
-      {candidates.length === 0 && <p>本次没有生成可供审核的候选信号。</p>}
-      {candidates.map((candidate: unknown, index: number) => {
-        const data =
-          candidate && typeof candidate === 'object' && !Array.isArray(candidate)
-            ? (candidate as Record<string, unknown>)
-            : {};
-        return (
-          <article className={styles.candidate} key={index}>
-            <h4>{typeof data.title === 'string' ? data.title : `候选信号 ${index + 1}`}</h4>
-            {typeof data.summary === 'string' && <p>{data.summary}</p>}
-            <p>
-              事件发生时间：
-              {typeof data.event_date === 'string' ? data.event_date : '来源未提供，待核对'}
-            </p>
-            <Evidence value={data.event_date_evidence} />
-            <h5>关键人物（待核对）</h5>
-            {objectRows(data.persons).map((person, personIndex) => (
-              <div key={personIndex}>
-                <p>
-                  {typeof person.name === 'string' ? person.name : '姓名待核对'}
-                  {typeof person.role === 'string' ? ` · ${person.role}` : ''}
-                  {typeof person.organization === 'string' ? ` · ${person.organization}` : ''}
-                </p>
-                <Evidence value={person.evidence} />
-              </div>
-            ))}
-            <h5>主张与来源证据（未独立核验）</h5>
-            {objectRows(data.claims).map((claim, claimIndex) => (
-              <div key={claimIndex}>
-                <p>{typeof claim.text === 'string' ? claim.text : '主张待核对'}</p>
-                <Evidence value={claim.evidence} />
-              </div>
-            ))}
-            <p>
-              引用匹配只证明内容来自原文，不代表事实已经验证。AI
-              提及人物不等于已建立正式关系，当前候选尚未审核或发布。
-            </p>
-            <details>
-              <summary>查看候选完整字段（含证据与人物）</summary>
-              <pre className={styles.output}>{JSON.stringify(candidate, null, 2)}</pre>
-            </details>
-          </article>
-        );
-      })}
-    </section>
-  );
-}
-
-export function AdminSignalGeneration({ configured }: { configured: boolean }) {
+export function AdminSignalGeneration({
+  configured,
+  historyConfigured = configured,
+}: {
+  configured: boolean;
+  historyConfigured?: boolean;
+}) {
   const [data, setData] = useState<ListResponse>({ runs: [], profiles: [], batches: [] });
   const [batchId, setBatchId] = useState('');
   const [itemId, setItemId] = useState('');
@@ -312,7 +241,7 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
   }, []);
 
   useEffect(() => {
-    if (!configured) return;
+    if (!historyConfigured) return;
     let active = true;
     void requestApi()
       .then((result: ListResponse) => {
@@ -324,7 +253,7 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
     return () => {
       active = false;
     };
-  }, [configured]);
+  }, [historyConfigured, configured]);
 
   function acceptRun(run: GenerationRun) {
     setData((previous) => ({
@@ -334,8 +263,8 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
     setDetail(run);
   }
 
-  async function perform(operation: () => Promise<void>) {
-    if (busyRef.current || !configured) return;
+  async function perform(operation: () => Promise<void>, readOnly = false) {
+    if (busyRef.current || !(readOnly ? historyConfigured : configured)) return;
     busyRef.current = true;
     setBusy(true);
     try {
@@ -436,7 +365,7 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
           ? '已查询原任务，不触发 AI 调用。'
           : '任务状态已更新。结果仅管理员可见，不会发布。',
       );
-    });
+    }, action === 'detail');
   }
 
   function finishTracking() {
@@ -537,7 +466,10 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
       <p>当前接口总时限 5 分钟，模型最多等待 4 分 45 秒，预留时间用于校验和保存；不会自动重试。</p>
       {!configured && (
         <p role="status">
-          AI 信号生成尚未完成生产授权与配置。请配置专用权限、生成预算及可用模型后启用。
+          AI 信号生成已关闭或尚未完成配置，不可创建或执行新任务。
+          {historyConfigured
+            ? '仍可查看历史任务与已保存候选，不调用 AI。'
+            : '历史记录数据库尚未配置，请联系管理员核对。'}
         </p>
       )}
       <nav className={controls.group} aria-label="候选生成相关管理">
@@ -549,13 +481,13 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
         </Link>
       </nav>
       <button
-        disabled={!configured || busy}
+        disabled={!historyConfigured || busy}
         onClick={() =>
           void perform(async () => {
             setData(await requestApi());
             setConsent(false);
             setMessage('列表已刷新；未调用 AI。');
-          })
+          }, true)
         }
       >
         手动刷新列表
@@ -692,7 +624,10 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
           <p className={styles.id}>
             资料：{pending.itemId} · 配置：{pending.profileId} r{pending.profileRevision}
           </p>
-          <button disabled={!configured || busy} onClick={() => void command('detail', pending.id)}>
+          <button
+            disabled={!historyConfigured || busy}
+            onClick={() => void command('detail', pending.id)}
+          >
             按原请求 ID 查询状态
           </button>
           <button disabled={busy || !terminal || !storageReady} onClick={finishTracking}>
@@ -713,6 +648,9 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
       </p>
       <section className={styles.panel} aria-label="生成任务列表">
         <h2>生成任务</h2>
+        <p>
+          显示已保存状态；查看不会改写任务。长期停留“生成中”或结果未知的任务需人工对账，不要重复调用。
+        </p>
         {data.runs.length === 0 && <p>暂无生成任务。</p>}
         {data.runs.map((run) => (
           <article key={run.id} className={styles.run}>
@@ -734,7 +672,10 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
               >
                 固定链接
               </Link>
-              <button disabled={!configured || busy} onClick={() => void command('detail', run.id)}>
+              <button
+                disabled={!historyConfigured || busy}
+                onClick={() => void command('detail', run.id)}
+              >
                 查看任务与私有候选
               </button>
               {run.status === 'pending' && (

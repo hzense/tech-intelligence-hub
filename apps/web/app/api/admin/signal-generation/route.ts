@@ -3,6 +3,7 @@ import { getAdminSession } from '@/lib/server/admin-auth';
 import { parseAdminAuthEnvironment } from '@/lib/admin-auth-policy';
 import {
   generationDashboard,
+  generationDetail,
   executeGeneration,
   inspectGenerationInput,
 } from '@/lib/server/signal-generation';
@@ -14,6 +15,7 @@ export const GET = createGenerationHandler({
   session: getAdminSession,
   origin: () => parseAdminAuthEnvironment(process.env)?.origin,
   dashboard: generationDashboard,
+  detail: generationDetail,
   execute: executeGeneration,
   inspectSource: inspectGenerationInput,
 });
