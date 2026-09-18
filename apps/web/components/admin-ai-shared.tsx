@@ -70,9 +70,15 @@ export const usd = (micros: string | number) => `$${(Number(micros) / 1_000_000)
 export function AiNavigation() {
   return (
     <nav className={styles.actions} aria-label="AI 后台导航">
-      <Link href="/admin">管理后台</Link>
-      <Link href="/admin/ai">AI 连接与测试</Link>
-      <Link href="/admin/ai/profiles">分阶段模型配置</Link>
+      <Link className={styles.button} href="/admin">
+        管理后台
+      </Link>
+      <Link className={styles.button} href="/admin/ai">
+        AI 连接与测试
+      </Link>
+      <Link className={styles.button} href="/admin/ai/profiles">
+        分阶段模型配置
+      </Link>
     </nav>
   );
 }

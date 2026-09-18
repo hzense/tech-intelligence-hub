@@ -5,6 +5,7 @@ import { upload } from '@vercel/blob/client';
 import type { ImportBatch } from '../../../packages/database/src/import-store.mjs';
 import { validateImportManifest } from '../../../packages/ingestion/src/import-manifest.mjs';
 import styles from './admin-imports.module.css';
+import controls from './admin-controls.module.css';
 const capabilities = {
   parsers: ['pdf', 'docx', 'markdown', 'text', 'html', 'csv', 'xlsx'] as const,
   ocr: false,
@@ -138,7 +139,9 @@ export function AdminImports({ configured }: { configured: boolean }) {
   }
   return (
     <main className={`section-shell ${styles.main}`}>
-      <Link href="/admin">返回管理后台</Link>
+      <Link className={controls.button} href="/admin">
+        返回管理后台
+      </Link>
       <h1>文档与链接批量导入</h1>
       <p>原件与解析结果仅管理员可见。接收、解析、AI 生成与发布是不同步骤；此入口目前完成前两步。</p>
       <p>原件自上传起保留 7 天，到期停止读取并由定时任务清理；解析结果和审计记录不随原件删除。</p>

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { ImportBatch } from '../../../packages/database/src/import-store.mjs';
 import styles from './admin-signal-generation.module.css';
+import controls from './admin-controls.module.css';
 import { AdminGenerationPreflight } from './admin-generation-preflight';
 
 type Profile = {
@@ -495,7 +496,9 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
 
   return (
     <main className={`section-shell ${styles.main}`}>
-      <Link href="/admin">返回管理后台</Link>
+      <Link className={controls.button} href="/admin">
+        返回管理后台
+      </Link>
       <h1>AI 信号生成</h1>
       <AdminGenerationPreflight />
       <p>
@@ -508,10 +511,14 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
           AI 信号生成尚未完成生产授权与配置。请配置专用权限、生成预算及可用模型后启用。
         </p>
       )}
-      <p>
-        <Link href="/admin/imports">导入与解析资料</Link> ·{' '}
-        <Link href="/admin/ai/profiles">管理分阶段模型配置</Link>
-      </p>
+      <nav className={controls.group} aria-label="候选生成相关管理">
+        <Link className={controls.button} href="/admin/imports">
+          导入与解析资料
+        </Link>
+        <Link className={controls.button} href="/admin/ai/profiles">
+          管理分阶段模型配置
+        </Link>
+      </nav>
       <button
         disabled={!configured || busy}
         onClick={() =>
@@ -657,7 +664,11 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
             </p>
             {knownErrorMessage(run.error_code) && <p>{knownErrorMessage(run.error_code)}</p>}
             <div className={styles.actions}>
-              <Link href={`/admin/signal-generation/${run.id}`} prefetch={false}>
+              <Link
+                className={controls.button}
+                href={`/admin/signal-generation/${run.id}`}
+                prefetch={false}
+              >
                 固定链接
               </Link>
               <button disabled={!configured || busy} onClick={() => void command('detail', run.id)}>

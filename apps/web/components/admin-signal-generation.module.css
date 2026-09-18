@@ -1,4 +1,5 @@
 .main {
+  composes: scope from './admin-controls.module.css';
   padding-block: 2rem 4rem;
   max-width: 960px;
 }
@@ -39,18 +40,8 @@
   margin-top: 0.45rem;
 }
 .main button {
-  border: 1px solid #9299a5;
-  border-radius: 6px;
-  padding: 0.6rem 0.8rem;
-  cursor: pointer;
   margin: 0.2rem;
-  max-width: 100%;
 }
-.main button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.main button:focus-visible,
 .main select:focus-visible,
 .main input:focus-visible,
 .main summary:focus-visible {
