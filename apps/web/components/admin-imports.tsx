@@ -7,6 +7,11 @@ import type { ImportOutput } from '../../../packages/ingestion/src/import-task-c
 import { validateImportManifest } from '../../../packages/ingestion/src/import-manifest.mjs';
 import styles from './admin-imports.module.css';
 import controls from './admin-controls.module.css';
+import {
+  ImportClientError,
+  canUploadAfterConfirmError,
+  importFailureHint,
+} from '../lib/import-client-error';
 const capabilities = {
   parsers: ['pdf', 'docx', 'markdown', 'text', 'html', 'csv', 'xlsx'] as const,
   ocr: false,
@@ -35,7 +40,7 @@ async function api(body?: unknown, before?: string) {
       : { cache: 'no-store' },
   );
   const result = await response.json();
-  if (!response.ok) throw new Error(result.error ?? 'unavailable');
+  if (!response.ok) throw new ImportClientError(result.error ?? 'unavailable', result.reason);
   return result;
 }
 export function AdminImports({
@@ -134,8 +139,8 @@ export function AdminImports({
         try {
           await api({ action: 'confirm', batchId: batch.id, itemId: item.id });
           continue;
-        } catch {
-          /* Not received yet. */
+        } catch (error) {
+          if (!canUploadAfterConfirmError(error)) throw error;
         }
         await upload(`imports/${batch.id}/${item.id}`, file, {
           access: 'private',
@@ -155,7 +160,7 @@ export function AdminImports({
       if (fileInput.current) fileInput.current.value = '';
     } catch (error) {
       setMessage(
-        `导入未完全完成：${error instanceof Error ? error.message : 'unavailable'}。保留原输入再次提交可续传同一批次。`,
+        `导入未完全完成：${error instanceof Error ? error.message : 'unavailable'}。${importFailureHint(error)}`,
       );
       await refresh().catch(() => {});
     } finally {

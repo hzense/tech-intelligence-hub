@@ -12,6 +12,7 @@ import {
 } from '../../../../packages/ingestion/src/import-task-contract.mjs';
 import { diagnoseImportConfiguration } from '../import-config';
 import { ImportIOError, readImportBytes } from '../import-io';
+import { assertImportBlobMetadata, assertImportBlobVersion } from '../import-blob-validation';
 import { fetchImportURL } from '../import-fetch';
 import { runImportProcessing } from '../import-worker-core';
 import { retryImportWithSourceCheck } from '../import-retry';
@@ -103,8 +104,7 @@ async function inspectImportOriginal(path: string) {
     throw error;
   }
   if (originalExpired(metadata.uploadedAt)) throw new ImportIOError('source_unavailable');
-  if (metadata.pathname !== path || metadata.size > 25 * 1024 * 1024 || metadata.size < 1)
-    importFail('document_conflict');
+  assertImportBlobMetadata(path, metadata);
   return metadata;
 }
 export async function readImportObject(path: string) {
@@ -118,10 +118,9 @@ export async function readImportObject(path: string) {
     throw error;
   }
   if (!result) throw new ImportIOError('source_unavailable');
-  if (result.statusCode !== 200 || result.blob.etag !== metadata.etag)
-    importFail('document_conflict');
+  assertImportBlobVersion(result.statusCode, result.blob.etag, metadata.etag);
   const bytes = await readImportBytes(result.stream, 25 * 1024 * 1024);
-  if (bytes.length !== metadata.size) importFail('document_conflict');
+  if (bytes.length !== metadata.size) importFail('document_conflict', 'blob_byte_size_mismatch');
   return {
     bytes,
     version: metadata.etag,

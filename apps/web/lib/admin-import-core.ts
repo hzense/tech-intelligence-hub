@@ -1,5 +1,6 @@
 import { ImportTaskError } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { ImportIOError, importResponse, readImportJSON } from './import-io.ts';
+import { safeImportConflictReason } from './import-conflict.ts';
 
 export interface ImportAdminDependencies {
   session(): Promise<{ user: { id: string } } | null>;
@@ -32,8 +33,13 @@ export function importError(error: unknown) {
     (error instanceof ImportTaskError || error instanceof ImportIOError) && exposed.has(error.code)
       ? error.code
       : 'unavailable';
+  const reason =
+    code === 'document_conflict' && error instanceof ImportTaskError
+      ? safeImportConflictReason(error.reason)
+      : undefined;
+  if (reason) console.warn('import_document_conflict', { reason });
   return importResponse(
-    { error: code },
+    { error: code, ...(reason ? { reason } : {}) },
     code === 'not_found'
       ? 404
       : code === 'not_configured' || code === 'unavailable'
