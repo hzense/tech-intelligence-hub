@@ -5,6 +5,8 @@ export const GENERATION_LIMITS = Object.freeze({
   sourceBytes: 48000,
   outputBytes: 96000,
   candidates: 5,
+  titleCharacters: 50,
+  summaryCharacters: 800,
   references: 8,
   quoteCharacters: 500,
 });
@@ -26,7 +28,7 @@ export const generationCandidateJsonSchema = Object.freeze({
   properties: {
     candidates: {
       type: 'array',
-      maxItems: 5,
+      maxItems: GENERATION_LIMITS.candidates,
       items: {
         type: 'object',
         additionalProperties: false,
@@ -40,8 +42,8 @@ export const generationCandidateJsonSchema = Object.freeze({
           'claims',
         ],
         properties: {
-          title: { type: 'string', minLength: 1, maxLength: 200 },
-          summary: { type: 'string', minLength: 1, maxLength: 2000 },
+          title: { type: 'string', minLength: 1, maxLength: GENERATION_LIMITS.titleCharacters },
+          summary: { type: 'string', minLength: 1, maxLength: GENERATION_LIMITS.summaryCharacters },
           event_date: {
             anyOf: [
               { type: 'string', pattern: '^(?!0000)\\d{4}-\\d{2}-\\d{2}$' },
@@ -151,7 +153,7 @@ function boundedBytes(value, maximum, code) {
 }
 
 /** Source IDs and classification are server-owned; no filenames or URLs are added. */
-export function buildGenerationSource(importOutput) {
+function normalizeGenerationSource(importOutput) {
   const code = 'invalid_generation_source';
   record(importOutput, ['classification', 'fragments', 'warnings'], code);
   if (importOutput.classification !== 'private') fail(code);
@@ -174,8 +176,26 @@ export function buildGenerationSource(importOutput) {
       locator,
     })),
   };
+  return source;
+}
+
+export function buildGenerationSource(importOutput) {
+  const source = normalizeGenerationSource(importOutput);
   boundedBytes(source, GENERATION_LIMITS.sourceBytes, 'generation_source_too_large');
   return source;
+}
+
+/** Read-only readiness metadata. Never returns source text or bypasses generation limits. */
+export function inspectGenerationSource(importOutput) {
+  const source = normalizeGenerationSource(importOutput);
+  const sourceBytes = new TextEncoder().encode(JSON.stringify(source)).length;
+  return {
+    ready: sourceBytes <= GENERATION_LIMITS.sourceBytes,
+    sourceBytes,
+    limitBytes: GENERATION_LIMITS.sourceBytes,
+    fragmentCount: source.fragments.length,
+    locators: source.fragments.slice(0, 3).map(({ id, locator }) => ({ id, locator })),
+  };
 }
 
 export function validateGenerationSource(source) {
@@ -230,8 +250,8 @@ export function normalizeGeneratedCandidates(value, source) {
         'organizations',
         'claims',
       ]);
-      const title = string(candidate.title, 200);
-      const summary = string(candidate.summary, 2000);
+      const title = string(candidate.title, GENERATION_LIMITS.titleCharacters);
+      const summary = string(candidate.summary, GENERATION_LIMITS.summaryCharacters);
       const event_date = eventDate(candidate.event_date);
       const event_date_evidence = references(
         candidate.event_date_evidence,

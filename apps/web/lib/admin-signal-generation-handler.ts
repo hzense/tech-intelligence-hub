@@ -30,6 +30,7 @@ export function createGenerationHandler(deps: {
   origin(): string | undefined;
   dashboard(owner: string): Promise<unknown>;
   execute(owner: string, body: unknown): Promise<unknown>;
+  inspectSource?(owner: string, body: unknown): Promise<unknown>;
 }) {
   return async (request: Request) => {
     try {
@@ -50,9 +51,17 @@ export function createGenerationHandler(deps: {
       if (url.search || url.hash) return importResponse({ error: 'invalid_request' }, 400);
       if (request.method === 'GET') return importResponse(await deps.dashboard(session.user.id));
       if (request.method !== 'POST') return importResponse({ error: 'method_not_allowed' }, 405);
-      return importResponse({
-        run: await deps.execute(session.user.id, await readImportJSON(request, 4096)),
-      });
+      const body = await readImportJSON(request, 4096);
+      if (
+        body &&
+        typeof body === 'object' &&
+        'action' in body &&
+        body.action === 'inspect_source'
+      ) {
+        if (!deps.inspectSource) throw new GenerationError('not_configured');
+        return importResponse({ inspection: await deps.inspectSource(session.user.id, body) });
+      }
+      return importResponse({ run: await deps.execute(session.user.id, body) });
     } catch (error) {
       const trusted =
         error instanceof GenerationError ||

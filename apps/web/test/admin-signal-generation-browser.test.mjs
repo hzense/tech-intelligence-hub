@@ -143,6 +143,23 @@ test(
           return;
         }
         let run = runs.find((entry) => entry.id === command.id);
+        if (command.action === 'inspect_source') {
+          res.end(
+            JSON.stringify({
+              inspection: {
+                batchId: command.batchId,
+                itemId: command.itemId,
+                fence: 1,
+                ready: command.itemId === smallItemId,
+                sourceBytes: command.itemId === smallItemId ? 500 : 60000,
+                limitBytes: 48000,
+                fragmentCount: 4,
+                locators: [{ id: 'fragment-1', locator: { paragraph: 1 } }],
+              },
+            }),
+          );
+          return;
+        }
         if (command.action === 'create') {
           run ??= runs.find(
             (entry) =>
@@ -257,6 +274,36 @@ test(
       await page.getByLabel('已完成解析的资料').selectOption(itemId);
       await page.getByLabel('分阶段模型配置').selectOption(profileId);
     }
+
+    await t.test(
+      'source inspection is explicit, blocks oversized creation and resets on input change',
+      async () => {
+        const page = await newPage();
+        await page.goto(origin);
+        await selectInput(page);
+        assert.equal(commands.length, 0);
+        await page.getByRole('button', { name: '检查生成资料（不调用 AI）' }).click();
+        await expect(page.getByRole('heading', { name: '资料超出单次生成上限' })).toBeVisible();
+        await page.getByRole('checkbox').last().check();
+        await expect(
+          page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }),
+        ).toBeDisabled();
+        assert.deepEqual(
+          commands.map((c) => c.action),
+          ['inspect_source'],
+        );
+        await page.getByLabel('已完成解析的资料').selectOption(smallItemId);
+        await expect(page.getByRole('heading', { name: '资料超出单次生成上限' })).toHaveCount(0);
+        await page.getByRole('button', { name: '检查生成资料（不调用 AI）' }).click();
+        await expect(page.getByRole('heading', { name: '资料大小符合生成要求' })).toBeVisible();
+        assert.equal(runs.length, 0);
+        assert.deepEqual(
+          commands.map((c) => c.action),
+          ['inspect_source', 'inspect_source'],
+        );
+        await page.close();
+      },
+    );
 
     await t.test(
       'timeout diagnosis is actionable, retains unknown status and offers no model retry',

@@ -152,6 +152,10 @@ test('real SDK structured extraction yields only private candidates and exact ev
   ]);
   assert.equal(value.input_tokens, 200);
   assert.equal(f.calls.length, 1);
+  const request = JSON.parse(f.calls[0].body);
+  const system = request.messages.find((message) => message.role === 'system').content;
+  assert.match(system, /单次最多 5 条候选/);
+  assert.match(system, /标题最多 50 字，摘要最多 800 字/);
   assert.equal(value.diagnostic.code, null);
   assert.equal(value.diagnostic.timeout_ms, 45000);
   assert.ok(Number.isSafeInteger(value.diagnostic.elapsed_ms));
@@ -312,6 +316,9 @@ test('transport and SDK failures keep bounded classifications without raw messag
 test('invalid candidate structure and evidence have a separate output classification', async () => {
   for (const bad of [
     { not_candidates: apiKey },
+    { ...result, candidates: [{ ...candidate, title: '中'.repeat(51) }] },
+    { ...result, candidates: [{ ...candidate, summary: '中'.repeat(801) }] },
+    { ...result, candidates: Array.from({ length: 6 }, () => ({ ...candidate })) },
     {
       ...result,
       candidates: [

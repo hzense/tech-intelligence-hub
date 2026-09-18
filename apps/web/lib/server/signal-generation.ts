@@ -17,6 +17,7 @@ import {
 } from '../signal-generation-core';
 import { readGenerationConfiguration } from '../signal-generation-config';
 import { invokeSignalGeneration } from '../signal-generation-provider';
+import { createGenerationSourceInspector } from '../signal-generation-source-inspection';
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
@@ -88,6 +89,10 @@ export async function generationDashboard(owner: string) {
     }),
     batches,
   };
+}
+export async function inspectGenerationInput(owner: string, body: unknown) {
+  if (!generationConfigured()) throw new GenerationError('not_configured');
+  return createGenerationSourceInspector(source)(owner, body);
 }
 export async function generationDetail(owner: string, id: string) {
   if (!generationConfigured()) throw new GenerationError('not_configured');
