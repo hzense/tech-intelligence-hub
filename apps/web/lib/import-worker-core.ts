@@ -26,7 +26,9 @@ export interface ImportWorkerDependencies {
   put(path: string, bytes: Buffer): Promise<unknown>;
   confirm(document: ImportDocument, fence: number): Promise<unknown>;
   parse(bytes: Buffer, format: string): Promise<unknown>;
-  finish(completion: Completion): Promise<unknown>;
+  finish(completion: Completion): Promise<Record<string, unknown>>;
+  remove(path: string): Promise<void>;
+  cleanupFailed(): void;
 }
 export async function runImportProcessing(
   path: string,
@@ -100,5 +102,19 @@ export async function runImportProcessing(
     };
   }
   // An ambiguous completion commit must not trigger a second competing completion.
-  return deps.finish(completion);
+  let result: Record<string, unknown>;
+  let cleanupPending = false;
+  try {
+    result = await deps.finish(completion);
+  } finally {
+    // Also clean after an ambiguous commit; never retry the completion or discard
+    // its original error. A terminated process is covered by the orphan sweeper.
+    try {
+      await deps.remove(path);
+    } catch {
+      cleanupPending = true;
+      deps.cleanupFailed();
+    }
+  }
+  return { ...result, original_cleanup: cleanupPending ? 'pending' : 'deleted' };
 }

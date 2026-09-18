@@ -14,7 +14,7 @@ test(
   async (t) => {
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {AdminImports} from './components/admin-imports';createRoot(document.getElementById('root')).render(<AdminImports configured={!location.search.includes('off')} />);`,
+        contents: `import {createRoot} from 'react-dom/client';import {AdminImports} from './components/admin-imports';createRoot(document.getElementById('root')).render(<AdminImports configured={!location.search.includes('off')} diagnostics={{enabled:!location.search.includes('off'),valid:true,issues:[]}} />);`,
         resolveDir: fileURLToPath(new URL('..', import.meta.url)),
         loader: 'tsx',
       },
@@ -35,6 +35,8 @@ test(
       '/preflight.css',
       await readFile(fileURLToPath(import.meta.resolve('tailwindcss/preflight.css'))),
     );
+    const globals = await readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+    assets.set('/globals.css', globals.replace(/^@import\s+['"]tailwindcss['"];\s*/m, ''));
     let batches = [];
     const commands = [];
     const server = createServer(async (req, res) => {
@@ -106,7 +108,7 @@ test(
       }
       res.setHeader('Content-Type', 'text/html');
       res.end(
-        '<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/preflight.css"><link rel="stylesheet" href="/entry.css"><div id="root"></div><script type="module" src="/entry.js"></script></html>',
+        '<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/preflight.css"><link rel="stylesheet" href="/globals.css"><link rel="stylesheet" href="/entry.css"><div id="root"></div><script type="module" src="/entry.js"></script></html>',
       );
     });
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -127,6 +129,14 @@ test(
     await expect(fileInput).toBeDisabled();
     await expect(fileInput).toHaveCSS('opacity', '0.5');
     await page.goto(origin);
+    await expect(
+      page.getByText('仅检查配置格式，不代表数据库认证、权限及解析验收已通过。'),
+    ).not.toBeVisible();
+    await page.getByText('配置详情', { exact: true }).click();
+    await expect(
+      page.getByText('仅检查配置格式，不代表数据库认证、权限及解析验收已通过。'),
+    ).toBeVisible();
+    await page.getByText('配置详情', { exact: true }).click();
     await expect(fileInput).toBeEnabled();
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
@@ -178,6 +188,9 @@ test(
       await fileInput.setInputFiles([]);
     }
     await page.setViewportSize({ width: 1280, height: 844 });
+    await expect(page.getByLabel('后续意图')).toHaveCount(0);
+    if (process.env.HZENSE_IMPORT_SCREENSHOTS === '1')
+      await page.screenshot({ path: '/tmp/hzense-import-layout-desktop.png', fullPage: true });
     await page
       .getByLabel('HTTPS 链接')
       .fill('https://example.com/research\nhttps://example.com/research');
@@ -190,14 +203,29 @@ test(
     await page.getByRole('button', { name: '处理（使用已配置预算）' }).click();
     await page.getByRole('button', { name: '查看私有解析结果' }).click();
     await expect(page.getByRole('heading', { name: '私有解析结果' })).toBeVisible();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    if (process.env.HZENSE_IMPORT_SCREENSHOTS === '1')
+      await page.screenshot({ path: '/tmp/hzense-import-result-desktop.png' });
+    await expect(page.getByRole('link', { name: '前往 AI 信号生成' })).toHaveAttribute(
+      'href',
+      '/admin/signal-generation',
+    );
+    await expect(
+      page.getByText('<script>window.hacked=true</script>', { exact: true }),
+    ).toBeVisible();
     assert.equal(await page.evaluate(() => globalThis.hacked), undefined);
     await page.setViewportSize({ width: 390, height: 844 });
+    if (process.env.HZENSE_IMPORT_SCREENSHOTS === '1')
+      await page.screenshot({ path: '/tmp/hzense-import-result-mobile.png' });
     assert.equal(
       await page.evaluate(
         () => globalThis.document.documentElement.scrollWidth <= globalThis.innerWidth,
       ),
       true,
     );
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await expect(page.getByRole('button', { name: '查看私有解析结果' })).toBeFocused();
     await page.getByRole('button', { name: '取消未完成项' }).click();
     await expect(page.getByRole('heading', { name: '已取消' })).toBeVisible();
     assert.equal(commands.filter((c) => c.action === 'run').length, 1);
@@ -250,7 +278,8 @@ test(
     await expect(page.getByRole('button', { name: '重新排队' })).toHaveCount(0);
     batches[0].items[0].error_code = 'worker_unavailable';
     await page.reload();
-    await expect(page.getByRole('button', { name: '重新排队' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '重新排队' })).toHaveCount(0);
+    await expect(page.getByText('原件不保留，请新建批次重新导入。')).toBeVisible();
     assert.deepEqual(errors, []);
   },
 );

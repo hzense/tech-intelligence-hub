@@ -16,7 +16,7 @@ function configuration() {
     HZENSE_IMPORT_BLOB_STORE_ID: 'synthetic',
     HZENSE_IMPORT_BLOB_TOKEN: 'vercel_blob_rw_synthetic_testsecret',
     HZENSE_IMPORT_PARSER_SNAPSHOT_ID: 'snap_synthetic',
-    HZENSE_IMPORT_RETENTION_DAYS: '7',
+    HZENSE_IMPORT_RETENTION_DAYS: '1',
     HZENSE_IMPORT_RESERVE_MICROUSD: '100000',
     HZENSE_IMPORT_DAILY_LIMIT_MICROUSD: '50000000',
     HZENSE_IMPORT_BATCH_LIMIT_MICROUSD: '10000000',
@@ -31,6 +31,16 @@ test('closed gate diagnoses valid config without enabling it or mutating environ
     issues: [],
   });
   assert.equal(diagnoseImportConfiguration({ ...env, HZENSE_IMPORT_ENABLED: '1' }).ready, true);
+});
+test('temporary-only policy accepts removed or legacy retention config without enabling import', () => {
+  for (const retention of [undefined, '1', '7']) {
+    const result = diagnoseImportConfiguration({
+      ...configuration(),
+      HZENSE_IMPORT_RETENTION_DAYS: retention,
+    });
+    assert.equal(result.valid, true);
+    assert.equal(result.enabled, false);
+  }
 });
 test('missing channel binding is diagnosed and never silently repaired', () => {
   const env = configuration();

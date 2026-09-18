@@ -1,7 +1,7 @@
 import 'server-only';
 import pg from 'pg';
 import { createHash } from 'node:crypto';
-import { get, head, put, BlobNotFoundError } from '@vercel/blob';
+import { get, head, put, del, BlobNotFoundError } from '@vercel/blob';
 import { Sandbox } from '@vercel/sandbox';
 import { importParserSource } from '../../../../packages/ingestion/src/import-parser-source.mjs';
 import * as store from '../../../../packages/database/src/import-store.mjs';
@@ -16,6 +16,7 @@ import { fetchImportURL } from '../import-fetch';
 import { runImportProcessing } from '../import-worker-core';
 import { retryImportWithSourceCheck } from '../import-retry';
 import { originalExpired } from '../../../../packages/ingestion/src/import-retention.mjs';
+import { removeImportOriginal, cleanCancelledImportOriginals } from '../import-original-cleanup';
 export const importCapabilities = {
   parsers: ['pdf', 'docx', 'markdown', 'text', 'html', 'csv', 'xlsx'] as const,
   ocr: false,
@@ -80,6 +81,18 @@ export const importPool = {
 function key(batchId: string, itemId: string) {
   return `imports/${importUuid(batchId)}/${importUuid(itemId)}`;
 }
+async function removeOriginal(path: string) {
+  const { token } = importConfig();
+  await removeImportOriginal(path, {
+    head: (pathname) => head(pathname, { token, abortSignal: AbortSignal.timeout(15000) }),
+    del: (pathname, etag) =>
+      del(pathname, { token, ifMatch: etag, abortSignal: AbortSignal.timeout(15000) }),
+    isMissing: (error) => error instanceof BlobNotFoundError,
+  });
+}
+function cleanupFailed() {
+  console.error('import_original_cleanup_pending');
+}
 async function inspectImportOriginal(path: string) {
   const { token } = importConfig();
   let metadata;
@@ -125,7 +138,12 @@ export async function uploadItem(owner: string, batchId: string, itemId: string)
 export async function confirmImportUpload(owner: string, batchId: string, itemId: string) {
   const batch = await store.getImportBatch({ pool: importPool, owner, id: importUuid(batchId) });
   const item = batch.items.find((i) => i.id === importUuid(itemId));
-  if (batch.cancelled || !item || item.kind !== 'file') importFail('not_claimable');
+  if (!item || item.kind !== 'file') importFail('not_claimable');
+  if (batch.cancelled || ['completed', 'failed', 'unknown', 'cancelled'].includes(item.status)) {
+    // A signed upload callback can arrive after cancellation or processing.
+    await removeOriginal(key(batchId, itemId));
+    return { item_id: item.id, received: true };
+  }
   const path = key(batchId, itemId),
     object = await readImportObject(path);
   return store.confirmImportDocument({
@@ -209,6 +227,8 @@ export async function runImportItem(owner: string, batchId: string, itemId: stri
     parse: parseIsolated,
     confirm: (document, fence) => store.confirmImportDocument({ ...args, document, fence }),
     finish: (completion) => store.finishImportAttempt({ ...args, ...completion }),
+    remove: removeOriginal,
+    cleanupFailed,
     put: (path, bytes) =>
       put(path, bytes, {
         access: 'private',
@@ -248,15 +268,20 @@ export async function executeImportAdmin(owner: string, method: string, body: un
   const batchId = importUuid(value.batchId);
   if (value.action === 'detail')
     return store.getImportBatch({ pool: importPool, owner, id: batchId });
-  if (value.action === 'cancel')
-    return store.cancelImportBatch({ pool: importPool, owner, id: batchId });
+  if (value.action === 'cancel') {
+    return cleanCancelledImportOriginals(batchId, {
+      cancel: () => store.cancelImportBatch({ pool: importPool, owner, id: batchId }),
+      remove: removeOriginal,
+      now: Date.now,
+      cleanupFailed,
+    });
+  }
   const itemId = importUuid(value.itemId),
     args = { pool: importPool, owner, batchId, itemId };
   if (value.action === 'confirm') return confirmImportUpload(owner, batchId, itemId);
   if (value.action === 'retry')
     return retryImportWithSourceCheck(itemId, {
       getBatch: () => store.getImportBatch({ pool: importPool, owner, id: batchId }),
-      checkOriginal: () => inspectImportOriginal(key(batchId, itemId)),
       retry: () => store.retryImportItem(args),
     });
   if (value.action === 'recover') return store.expireImportAttempt(args);

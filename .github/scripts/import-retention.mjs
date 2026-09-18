@@ -81,7 +81,7 @@ export async function sweepImportOriginals({
     }
   return {
     mode: apply ? 'apply' : 'dry-run',
-    retentionDays: 7,
+    retentionDays: 1,
     scanned,
     eligible: candidates.size,
     deleted,

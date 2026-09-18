@@ -34,6 +34,12 @@ function fixture(overrides = {}) {
       events.push('finish');
       return value;
     },
+    remove: async () => {
+      events.push('remove');
+    },
+    cleanupFailed: () => {
+      events.push('cleanup_pending');
+    },
     ...overrides,
   };
   return { events, deps };
@@ -44,7 +50,17 @@ test('worker persists original before parsing and finishes with the claimed fenc
   assert.equal(result.fence, 3);
   assert.equal(result.outcome, 'completed');
   assert.equal(result.chargedMicrousd, 100);
-  assert.deepEqual(events, ['expire', 'claim', 'fetch', 'put', 'confirm:3', 'parse', 'finish']);
+  assert.deepEqual(events, [
+    'expire',
+    'claim',
+    'fetch',
+    'put',
+    'confirm:3',
+    'parse',
+    'finish',
+    'remove',
+  ]);
+  assert.equal(result.original_cleanup, 'deleted');
 });
 test('failed budget claim performs no external work', async () => {
   const { events, deps } = fixture({
@@ -97,16 +113,60 @@ test('source errors after processing starts retain the conservative charge', asy
   });
   assert.equal((await runImportProcessing(path, 100, deps)).chargedMicrousd, 100);
 });
-test('ambiguous completion is never replayed as a second completion', async () => {
+test('ambiguous completion cleans original without replaying or masking the commit error', async () => {
   let calls = 0;
-  const { deps } = fixture({
+  const { deps, events } = fixture({
     finish: async () => {
       calls++;
       throw new Error('commit_unknown');
     },
   });
-  await assert.rejects(runImportProcessing(path, 100, deps));
+  await assert.rejects(runImportProcessing(path, 100, deps), /commit_unknown/);
   assert.equal(calls, 1);
+  assert.ok(events.includes('remove'));
+});
+test('cleanup failure preserves the parse outcome and explicitly reports pending cleanup', async () => {
+  for (const fail of [false, true]) {
+    const { deps, events } = fixture({
+      ...(fail
+        ? {
+            parse: async () => {
+              throw new ImportIOError('parse_failed');
+            },
+          }
+        : {}),
+      remove: async () => {
+        throw new Error('storage unavailable');
+      },
+    });
+    const result = await runImportProcessing(path, 100, deps);
+    assert.equal(result.outcome, fail ? 'failed' : 'completed');
+    assert.equal(result.original_cleanup, 'pending');
+    assert.equal(events.filter((event) => event === 'finish').length, 1);
+    assert.ok(events.includes('cleanup_pending'));
+  }
+});
+test('cleanup runs after file parse failures, not only URL successes', async () => {
+  const { deps, events } = fixture({
+    claim: async () => ({
+      item: { kind: 'file' },
+      attempt: { fence: 1 },
+      document: {
+        object_key: path,
+        object_version: 'v1',
+        sha256,
+        byte_size: bytes.length,
+        format: 'text',
+      },
+    }),
+    parse: async () => {
+      throw new ImportIOError('parse_failed');
+    },
+  });
+  const result = await runImportProcessing(path, 100, deps);
+  assert.equal(result.outcome, 'failed');
+  assert.equal(result.original_cleanup, 'deleted');
+  assert.deepEqual(events.slice(-2), ['finish', 'remove']);
 });
 test('invalid parser output durably fails exactly once despite a positive reservation', async () => {
   for (const output of [

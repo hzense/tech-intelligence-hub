@@ -70,7 +70,8 @@ function fixture(overrides = {}) {
     },
   };
 }
-test('retention cutoff is exactly seven days and rejects invalid timestamps', () => {
+test('abandoned temporary original cutoff is exactly 24 hours and rejects invalid timestamps', () => {
+  assert.equal(IMPORT_RETENTION_MS, 24 * 60 * 60 * 1000);
   assert.equal(originalExpired(now - IMPORT_RETENTION_MS, now), true);
   assert.equal(originalExpired(now - IMPORT_RETENTION_MS + 1, now), false);
   assert.throws(() => originalExpired('invalid', now));
