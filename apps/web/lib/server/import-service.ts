@@ -13,6 +13,7 @@ import {
 import { diagnoseImportConfiguration } from '../import-config';
 import { ImportIOError, readImportBytes } from '../import-io';
 import { assertImportBlobMetadata, assertImportBlobVersion } from '../import-blob-validation';
+import { importBlobReadOptions } from '../import-blob-read-options';
 import { fetchImportURL } from '../import-fetch';
 import { runImportProcessing } from '../import-worker-core';
 import { retryImportWithSourceCheck } from '../import-retry';
@@ -112,7 +113,7 @@ export async function readImportObject(path: string) {
   const metadata = await inspectImportOriginal(path);
   let result;
   try {
-    result = await get(path, { access: 'private', token, useCache: false });
+    result = await get(path, importBlobReadOptions(token));
   } catch (error) {
     if (error instanceof BlobNotFoundError) throw new ImportIOError('source_unavailable');
     throw error;
