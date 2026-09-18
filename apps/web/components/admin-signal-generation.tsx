@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { ImportBatch } from '../../../packages/database/src/import-store.mjs';
+import type { GenerationSourceInspection } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import styles from './admin-signal-generation.module.css';
 import controls from './admin-controls.module.css';
 import { AdminGenerationPreflight } from './admin-generation-preflight';
@@ -275,6 +276,11 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
   const busyRef = useRef(false);
   const [message, setMessage] = useState('');
   const [detail, setDetail] = useState<GenerationRun | null>(null);
+  const [inspection, setInspection] = useState<
+    (GenerationSourceInspection & { batchId: string; itemId: string; fence: number }) | null
+  >(null);
+  const [inspectionError, setInspectionError] = useState('');
+  const sourceBlocked = Boolean(inspectionError || (inspection && !inspection.ready));
   const profile = data.profiles.find((entry) => entry.id === profileId);
   const batches = data.batches.filter(
     (batch) => !batch.cancelled && batch.items.some((item) => item.status === 'completed'),
@@ -348,6 +354,7 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
     if (
       !storageReady ||
       !consent ||
+      (!pending && sourceBlocked) ||
       (!pending && (!profile?.readiness.ready || !items.some((item) => item.id === itemId)))
     )
       return;
@@ -494,6 +501,27 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
     setMessage('已选择原任务。请核对接收方并重新确认外发授权；未调用 AI。');
   }
 
+  async function inspectSource() {
+    await perform(async () => {
+      setInspection(null);
+      setInspectionError('');
+      try {
+        const result = await requestApi({ action: 'inspect_source', batchId, itemId });
+        if (result.inspection?.batchId !== batchId || result.inspection?.itemId !== itemId)
+          throw new SafeRequestError('response_identity_mismatch');
+        setInspection(result.inspection);
+        setMessage('资料检查完成，未创建任务、预留预算或调用 AI。检查通过不代表事实已核验。');
+      } catch (error) {
+        setInspectionError(
+          error instanceof SafeRequestError
+            ? (knownErrorMessage(error.code) ?? '资料检查失败，请稍后手动重试。')
+            : '资料检查失败，请稍后手动重试。',
+        );
+        setMessage('资料检查未通过，未创建任务或调用 AI。');
+      }
+    });
+  }
+
   return (
     <main className={`section-shell ${styles.main}`}>
       <Link className={controls.button} href="/admin">
@@ -541,6 +569,8 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
               setBatchId(event.target.value);
               setItemId('');
               setConsent(false);
+              setInspection(null);
+              setInspectionError('');
             }}
           >
             <option value="">请选择批次</option>
@@ -558,6 +588,8 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
             onChange={(event) => {
               setItemId(event.target.value);
               setConsent(false);
+              setInspection(null);
+              setInspectionError('');
             }}
           >
             <option value="">请选择资料</option>
@@ -590,6 +622,35 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
           <p role="status">配置尚未就绪：{profile.readiness.reasons.join('、')}</p>
         )}
         {configured && batches.length === 0 && <p>暂无已完成解析的资料，请先在导入页完成解析。</p>}
+        <button type="button" disabled={!batchId || !itemId} onClick={() => void inspectSource()}>
+          检查生成资料（不调用 AI）
+        </button>
+        {inspectionError && <p role="alert">{inspectionError}</p>}
+        {inspection && (
+          <section aria-label="生成资料检查结果">
+            <h2>{inspection.ready ? '资料大小符合生成要求' : '资料超出单次生成上限'}</h2>
+            <p>
+              {inspection.fragmentCount} 个片段 · 输入 {inspection.sourceBytes.toLocaleString()}{' '}
+              字节 / 上限 {inspection.limitBytes.toLocaleString()} 字节 · 解析版本{' '}
+              {inspection.fence}
+            </p>
+            <p>大小按包含片段编号和定位的 UTF-8 来源 JSON 计算，不是原文件大小或 token 数。</p>
+            <ul>
+              {inspection.locators.map(({ id, locator }) => (
+                <li key={id}>
+                  {id}：{JSON.stringify(locator)}
+                </li>
+              ))}
+            </ul>
+            <p>上方仅展示前 3 个片段的定位；未展示或外发正文。</p>
+            {!inspection.ready && (
+              <p>
+                请先拆分资料并重新导入。当前不支持长文切片，不会静默截断；此次检查不产生模型费用。
+              </p>
+            )}
+            <p>创建和执行时仍会重新检查资料、模型与预算。此结果不是发布资格证明。</p>
+          </section>
+        )}
       </fieldset>
       {(profile || pending) && (
         <p>
@@ -616,6 +677,7 @@ export function AdminSignalGeneration({ configured }: { configured: boolean }) {
           !storageReady ||
           !consent ||
           Boolean(tracked) ||
+          (!pending && sourceBlocked) ||
           (!pending && (!profile?.readiness.ready || !items.some((item) => item.id === itemId)))
         }
         onClick={() => void create()}

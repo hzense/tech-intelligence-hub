@@ -188,7 +188,7 @@ test('unknown/missing keys, oversized collections, blank text and model authorit
   }
   for (const alteration of [
     { claims: [] },
-    { title: 'a'.repeat(201) },
+    { title: 'a'.repeat(51) },
     { title: '\u0000' },
     { summary: '\ud800' },
     { organizations: ['same', 'same'] },
@@ -229,10 +229,46 @@ test('provider JSON Schema and runtime agree about keys and leave authority fiel
   assert.deepEqual(schema.required, ['candidates', 'reason']);
   assert.equal(schema.additionalProperties, false);
   assert.equal(schema.properties.candidates.maxItems, 5);
+  assert.equal(schema.properties.candidates.items.properties.title.maxLength, 50);
+  assert.equal(schema.properties.candidates.items.properties.summary.maxLength, 800);
   assert.deepEqual(schema.properties.candidates.items.required, Object.keys(candidate()));
   assert.equal(schema.properties.candidates.items.additionalProperties, false);
   assert.ok(!('status' in schema.properties.candidates.items.properties));
   assert.doesNotThrow(() => JSON.stringify(schema));
+});
+
+test('titles allow 50 code points and summaries 800, rejecting overflow without truncation', () => {
+  for (const [field, limit] of [
+    ['title', 50],
+    ['summary', 800],
+  ]) {
+    for (const character of ['中', '𠮷', '😀', 'a', '。']) {
+      const value = output();
+      value.candidates[0][field] = character.repeat(limit);
+      assert.equal(normalize(value).candidates[0][field], character.repeat(limit));
+      value.candidates[0][field] += character;
+      assert.throws(() => normalize(value), { code: 'invalid_generation_output' });
+    }
+    const mixed = output();
+    mixed.candidates[0][field] = '中'.repeat(limit - 3) + ' A。';
+    assert.equal(normalize(mixed).candidates[0][field], mixed.candidates[0][field]);
+    mixed.candidates[0][field] += ' ';
+    assert.throws(() => normalize(mixed), { code: 'invalid_generation_output' });
+  }
+});
+
+test('one generation allows zero through five candidates but never six', () => {
+  for (let count = 0; count <= 5; count++) {
+    assert.equal(
+      normalize({ ...output(), candidates: Array.from({ length: count }, candidate) }).candidates
+        .length,
+      count,
+    );
+  }
+  assert.throws(
+    () => normalize({ ...output(), candidates: Array.from({ length: 6 }, candidate) }),
+    { code: 'invalid_generation_output' },
+  );
 });
 
 test('aggregate model output size is bounded even when each candidate and quotation is valid', () => {

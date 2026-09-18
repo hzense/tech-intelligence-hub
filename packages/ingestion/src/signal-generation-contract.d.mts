@@ -2,6 +2,8 @@ export const GENERATION_LIMITS: Readonly<{
   sourceBytes: 48000;
   outputBytes: 96000;
   candidates: 5;
+  titleCharacters: 50;
+  summaryCharacters: 800;
   references: 8;
   quoteCharacters: 500;
 }>;
@@ -46,6 +48,14 @@ export interface GeneratedCandidates {
   reason: string;
 }
 export function buildGenerationSource(importOutput: unknown): GenerationSource;
+export interface GenerationSourceInspection {
+  ready: boolean;
+  sourceBytes: number;
+  limitBytes: number;
+  fragmentCount: number;
+  locators: { id: string; locator: Record<string, string | number> }[];
+}
+export function inspectGenerationSource(importOutput: unknown): GenerationSourceInspection;
 export function validateGenerationSource(source: unknown): GenerationSource;
 export function normalizeGeneratedCandidates(
   value: unknown,
