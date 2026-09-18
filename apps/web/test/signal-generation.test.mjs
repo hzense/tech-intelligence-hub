@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import { readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 import { createSignalGenerationInvoker } from '../lib/signal-generation-provider.ts';
 import { generationTimeoutMs } from '../lib/signal-generation-diagnostics.ts';
 import { AiProbeError } from '../lib/ai-provider-transport.ts';
@@ -157,11 +159,11 @@ test('real SDK structured extraction yields only private candidates and exact ev
   assert.match(system, /单次最多 5 条候选/);
   assert.match(system, /标题最多 50 字，摘要最多 800 字/);
   assert.equal(value.diagnostic.code, null);
-  assert.equal(value.diagnostic.timeout_ms, 45000);
+  assert.equal(value.diagnostic.timeout_ms, 285000);
   assert.ok(Number.isSafeInteger(value.diagnostic.elapsed_ms));
 });
 
-test('business generation survives the old 10s probe cutoff without changing its connection', async (t) => {
+test('business generation survives the old probe and 45s cutoffs without changing its connection', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let release, wire;
   const ready = Promise.withResolvers();
@@ -180,7 +182,7 @@ test('business generation survives the old 10s probe cutoff without changing its
     connection: { ...connection, settings: { ...settings, timeout_ms: 10000 } },
   });
   await ready.promise;
-  t.mock.timers.tick(11000);
+  t.mock.timers.tick(284999);
   assert.equal(wire.signal.aborted, false);
   release(
     Response.json({
@@ -197,6 +199,25 @@ test('business generation survives the old 10s probe cutoff without changing its
   const body = JSON.parse(wire.body);
   assert.equal(body.max_tokens, stage.max_output_tokens);
   assert.equal(body.tools, undefined);
+});
+
+test('five-minute route leaves bookkeeping headroom and fits the existing lease', () => {
+  const route = readFileSync(
+    new URL('../app/api/admin/signal-generation/route.ts', import.meta.url),
+    'utf8',
+  );
+  const store = readFileSync(
+    new URL('../../../packages/database/src/signal-generation-store.mjs', import.meta.url),
+    'utf8',
+  );
+  const routeSeconds = Number(route.match(/export const maxDuration = (\d+);/)[1]);
+  const leaseMinutes = Number(
+    store.match(/lease_until=clock_timestamp\(\)\+interval '(\d+) minutes'/)[1],
+  );
+  assert.equal(routeSeconds, 300);
+  assert.equal(generationTimeoutMs, 285000);
+  assert.equal(routeSeconds * 1000 - generationTimeoutMs, 15000);
+  assert.ok(leaseMinutes * 60 > routeSeconds);
 });
 
 test('business deadline aborts exactly once, retains unknown usage and never retries a late response', async (t) => {
@@ -528,7 +549,7 @@ test('persisted diagnostic classification does not change unknown accounting or 
         input_tokens: null,
         output_tokens: null,
         error_code: 'generation_unknown',
-        diagnostic: { code: 'generation_timeout', elapsed_ms: 45000, timeout_ms: 45000 },
+        diagnostic: { code: 'generation_timeout', elapsed_ms: 285000, timeout_ms: 285000 },
       };
     },
   });

@@ -8,7 +8,8 @@ import {
 } from '@/lib/server/signal-generation';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// Fluid Compute: 285s provider deadline plus 15s for pre/postflight and persistence.
+export const maxDuration = 300;
 export const GET = createGenerationHandler({
   session: getAdminSession,
   origin: () => parseAdminAuthEnvironment(process.env)?.origin,
