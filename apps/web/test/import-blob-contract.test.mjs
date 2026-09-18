@@ -3,10 +3,47 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { handleUpload, getPayloadFromClientToken } from '@vercel/blob/client';
-import { del } from '@vercel/blob';
+import { del, get } from '@vercel/blob';
+import { importBlobReadOptions } from '../lib/import-blob-read-options.ts';
+import { assertImportBlobVersion } from '../lib/import-blob-validation.ts';
 const { Request } = globalThis;
 // Synthetic token: cryptographic contract only; never contacts a Blob store.
 const token = 'vercel_blob_rw_synthetic_store_secret';
+test('private original reads request identity encoding through the installed SDK and retain ETag rejection', async (t) => {
+  const require = createRequire(import.meta.url);
+  const { MockAgent, getGlobalDispatcher, setGlobalDispatcher } = createRequire(
+    require.resolve('@vercel/blob'),
+  )('undici');
+  const previous = getGlobalDispatcher(),
+    agent = new MockAgent();
+  agent.disableNetConnect();
+  setGlobalDispatcher(agent);
+  t.after(async () => {
+    setGlobalDispatcher(previous);
+    await agent.close();
+  });
+  const options = importBlobReadOptions(token);
+  assert.equal(options.access, 'private');
+  assert.equal(options.useCache, false);
+  assert.equal(options.abortSignal.aborted, false);
+  agent
+    .get('https://synthetic.private.blob.vercel-storage.com')
+    .intercept({
+      path: '/imports/batch/item?cache=0',
+      method: 'GET',
+      headers: { 'accept-encoding': 'identity', authorization: `Bearer ${token}` },
+    })
+    .reply(200, 'hello', { headers: { etag: '"original-v1"', 'content-length': '5' } });
+  const result = await get('imports/batch/item', options);
+  assert.equal(result.statusCode, 200);
+  assertImportBlobVersion(result.statusCode, result.blob.etag, '"original-v1"');
+  assert.throws(
+    () => assertImportBlobVersion(200, result.blob.etag, '"other-version"'),
+    (e) => e.reason === 'blob_etag_mismatch',
+  );
+  await result.stream.cancel();
+  agent.assertNoPendingInterceptors();
+});
 test('installed Blob SDK transmits conditional deletion rather than ignoring ifMatch', async (t) => {
   const require = createRequire(import.meta.url);
   const { MockAgent, getGlobalDispatcher, setGlobalDispatcher } = createRequire(
