@@ -460,7 +460,15 @@ export async function retryImportItem({ pool, owner, batchId, itemId }) {
   return transaction(pool, async (client) => {
     const b = await batch(client, batchId, owner, true),
       i = await item(client, b.id, itemId);
-    if (b.cancelled || i.status !== 'failed' || i.fence >= 5) importFail('retry_not_allowed');
+    if (b.cancelled || i.status !== 'failed' || i.fence >= 5 || i.kind !== 'url')
+      importFail('retry_not_allowed');
+    // The service snapshot is only an early rejection. Recheck under the same
+    // batch/item locks used by document confirmation and worker completion.
+    const received = await client.query(
+      'SELECT item_id FROM public.import_documents WHERE item_id=$1',
+      [i.id],
+    );
+    if (received.rows.length) importFail('retry_not_allowed');
     const previous = (
       await client.query(
         'SELECT error_code FROM public.import_attempts WHERE item_id=$1 AND fence=$2',

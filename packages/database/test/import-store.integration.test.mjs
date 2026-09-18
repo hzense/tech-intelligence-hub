@@ -251,7 +251,13 @@ suite('private import PostgreSQL persistence', () => {
     await finishImportAttempt({ ...args(next), fence: 1, outcome: 'completed', output });
   });
   it('expired free work can retry with a new fence; old workers cannot submit', async () => {
-    const b = await ready();
+    const b = await created({
+      request: {
+        id: randomUUID(),
+        intent: 'preview',
+        manifest: { urlLines: 'https://example.com/unreceived' },
+      },
+    });
     await claimImportItem({ ...args(b), parserVersion: 'text/v1' });
     await pool.query(
       "UPDATE public.import_attempts SET lease_until=now()-interval '1 second' WHERE item_id=$1",
@@ -263,7 +269,40 @@ suite('private import PostgreSQL persistence', () => {
     await expect(
       finishImportAttempt({ ...args(b), fence: 1, outcome: 'completed', output }),
     ).rejects.toMatchObject({ code: 'stale_attempt' });
+    await confirmImportDocument({ ...args(b), document: document(b), fence: 2 });
     await finishImportAttempt({ ...args(b), fence: 2, outcome: 'completed', output });
+  });
+  it('locked retry rejects a document received after an earlier source-free snapshot', async () => {
+    const b = await created({
+      request: {
+        id: randomUUID(),
+        intent: 'preview',
+        manifest: { urlLines: 'https://example.com/retry-race' },
+      },
+    });
+    await claimImportItem({ ...args(b), parserVersion: 'text/v1' });
+    await finishImportAttempt({
+      ...args(b),
+      fence: 1,
+      outcome: 'failed',
+      errorCode: 'fetch_failed',
+    });
+    const stale = await getImportBatch({ pool, owner, id: b.id });
+    expect(stale.items[0].sha256).toBeNull();
+    await retryImportItem(args(b));
+    await claimImportItem({ ...args(b), parserVersion: 'text/v1' });
+    await confirmImportDocument({ ...args(b), document: document(b), fence: 2 });
+    await finishImportAttempt({
+      ...args(b),
+      fence: 2,
+      outcome: 'failed',
+      errorCode: 'parse_failed',
+    });
+    // The delayed request reaches persistence with its old service snapshot.
+    await expect(retryImportItem(args(stale))).rejects.toMatchObject({ code: 'retry_not_allowed' });
+    const current = await getImportBatch({ pool, owner, id: b.id });
+    expect(current.items[0].status).toBe('failed');
+    expect(current.items[0].fence).toBe(2);
   });
   it('atomically enforces global budgets across batches and preserves unknown charges', async () => {
     const configuration = { parserVersion: 'ocr/v1', batchLimitMicrousd: 100 };
