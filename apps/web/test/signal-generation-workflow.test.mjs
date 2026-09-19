@@ -6,6 +6,18 @@ import process from 'node:process';
 import { Buffer } from 'node:buffer';
 import { URL } from 'node:url';
 
+test('Turbo restores the private worker required by the Workflow output trace', async () => {
+  const turbo = JSON.parse(await readFile(new URL('../../../turbo.json', import.meta.url), 'utf8'));
+  const outputs = (turbo.tasks['@hzense/web#build'] ?? turbo.tasks.build).outputs;
+  assert.ok(outputs.includes('.generation-worker/**'));
+  assert.ok(outputs.includes('.next/**'));
+  const next = await readFile(new URL('../next.config.ts', import.meta.url), 'utf8');
+  assert.match(
+    next,
+    /'\/.well-known\/workflow\/v1\/step': \['\.\/.generation-worker\/worker.cjs'\]/,
+  );
+});
+
 test('short steps poll detached work and never replay an uncertain invocation', async () => {
   const source = await readFile(
     new URL('../workflows/signal-generation.ts', import.meta.url),

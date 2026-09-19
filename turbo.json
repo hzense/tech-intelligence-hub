@@ -3,7 +3,10 @@
   "globalDependencies": ["content/**", "data/seed/**", "data/taxonomy/**"],
   "globalEnv": ["HZENSE_SIGNAL_READ_MODE"],
   "tasks": {
-    "build": { "dependsOn": ["^build"], "outputs": ["dist/**", ".next/**", "!.next/cache/**"] },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**", ".generation-worker/**"]
+    },
     "@hzense/ingestion#build": { "dependsOn": ["^build"], "outputs": [] },
     "lint": { "dependsOn": ["^lint"] },
     "typecheck": { "dependsOn": ["^typecheck"] },
