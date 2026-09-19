@@ -6,6 +6,7 @@ import {
   buildGenerationSource,
   generationCandidateJsonSchema,
   normalizeGeneratedCandidates,
+  assessGeneratedCandidates,
   validateGenerationSource,
 } from '../src/signal-generation-contract.mjs';
 
@@ -26,6 +27,55 @@ const candidate = () => ({
 });
 const output = () => ({ candidates: [candidate()], reason: '从合成资料提取，仍待独立核验。' });
 const normalize = (value) => normalizeGeneratedCandidates(value, buildGenerationSource(input()));
+
+test('partial assessment preserves good siblings and original indexes with multiple fixed field errors', () => {
+  const bad = { ...candidate(), title: 'a'.repeat(81), event_date: null };
+  const value = { candidates: [bad, candidate()], reason: 'synthetic batch' };
+  const result = assessGeneratedCandidates(value, buildGenerationSource(input()));
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].index, 1);
+  assert.equal(result.candidates[0].status, 'needs_review');
+  assert.deepEqual(result.rejected, [
+    {
+      index: 0,
+      classification: 'private',
+      status: 'rejected',
+      errors: [
+        { field: 'title', code: 'title_too_long' },
+        { field: 'event_date_evidence', code: 'unknown_date_has_evidence' },
+      ],
+    },
+  ]);
+  assert.equal(JSON.stringify(result.rejected).includes(bad.title), false);
+  assert.throws(() => normalize(value));
+});
+
+test('partial assessment does not accept invented quotes, authority fields or invalid dates', () => {
+  for (const bad of [
+    { ...candidate(), claims: [{ text: 'unsupported', evidence: [ref('invented')] }] },
+    { ...candidate(), verified: true },
+    { ...candidate(), event_date: '2026-02-30' },
+    null,
+  ]) {
+    const result = assessGeneratedCandidates(
+      { candidates: [bad], reason: 'test' },
+      buildGenerationSource(input()),
+    );
+    assert.equal(result.candidates.length, 0);
+    assert.equal(result.rejected.length, 1);
+  }
+  for (const value of [
+    { ...output(), extra: true },
+    { ...output(), candidates: Array(6).fill(candidate()) },
+    { ...output(), candidates: [{ title: 'x'.repeat(96001) }] },
+  ])
+    assert.throws(() => assessGeneratedCandidates(value, buildGenerationSource(input())));
+  assert.equal(
+    assessGeneratedCandidates({ candidates: [], reason: 'none' }, buildGenerationSource(input()))
+      .rejected.length,
+    0,
+  );
+});
 
 test('source retains exact text and locators, with server-assigned IDs and no sensitive metadata', () => {
   const parsed = input();
@@ -188,7 +238,7 @@ test('unknown/missing keys, oversized collections, blank text and model authorit
   }
   for (const alteration of [
     { claims: [] },
-    { title: 'a'.repeat(51) },
+    { title: 'a'.repeat(81) },
     { title: '\u0000' },
     { summary: '\ud800' },
     { organizations: ['same', 'same'] },
@@ -229,7 +279,7 @@ test('provider JSON Schema and runtime agree about keys and leave authority fiel
   assert.deepEqual(schema.required, ['candidates', 'reason']);
   assert.equal(schema.additionalProperties, false);
   assert.equal(schema.properties.candidates.maxItems, 5);
-  assert.equal(schema.properties.candidates.items.properties.title.maxLength, 50);
+  assert.equal(schema.properties.candidates.items.properties.title.maxLength, 80);
   assert.equal(schema.properties.candidates.items.properties.summary.maxLength, 500);
   assert.deepEqual(schema.properties.candidates.items.required, Object.keys(candidate()));
   assert.equal(schema.properties.candidates.items.additionalProperties, false);
@@ -237,9 +287,9 @@ test('provider JSON Schema and runtime agree about keys and leave authority fiel
   assert.doesNotThrow(() => JSON.stringify(schema));
 });
 
-test('titles allow 50 code points and summaries 500, rejecting overflow without truncation', () => {
+test('titles allow 80 code points and summaries 500, rejecting overflow without truncation', () => {
   for (const [field, limit] of [
-    ['title', 50],
+    ['title', 80],
     ['summary', 500],
   ]) {
     for (const character of ['中', '𠮷', '😀', 'a', '。']) {

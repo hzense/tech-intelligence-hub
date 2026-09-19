@@ -300,7 +300,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
         id,
         token: run.lease_token!,
         outcome,
-        ...(result.success && result.output
+        ...(result.output && (outcome === 'completed' || code === 'generation_invalid_output')
           ? {
               result: {
                 ...result.output,

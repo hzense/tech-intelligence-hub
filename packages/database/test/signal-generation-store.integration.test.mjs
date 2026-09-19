@@ -615,6 +615,41 @@ suite('private AI generation PostgreSQL ledger', () => {
     expect(failed.result).toBeNull();
     expect((await claimSignalGeneration(args(a))).claimed).toBe(false);
   });
+  it('persists all-rejected private diagnostics through the actual failed-result constraint', async () => {
+    const a = await claimed();
+    const rejectedResult = {
+      classification: 'private',
+      validation_version: 1,
+      candidates: [],
+      reason: 'synthetic',
+      rejected: [
+        {
+          index: 0,
+          classification: 'private',
+          status: 'rejected',
+          errors: [{ field: 'title', code: 'title_too_long' }],
+        },
+      ],
+      usage: { input_tokens: 200, output_tokens: 100 },
+    };
+    const completion = {
+      ...args(a),
+      token: a.lease_token,
+      outcome: 'failed',
+      errorCode: 'generation_invalid_output',
+      result: rejectedResult,
+      chargedMicrousd: 1,
+    };
+    const failed = await finishSignalGeneration(completion);
+    expect(failed.status).toBe('failed');
+    expect(failed.charged_microusd).toBe('10');
+    expect((await getSignalGeneration(args(a))).result).toEqual(rejectedResult);
+    expect((await finishSignalGeneration(completion)).result).toEqual(rejectedResult);
+    expect((await claimSignalGeneration(args(a))).claimed).toBe(false);
+    expect(
+      await getSignalGeneration({ ...args(a), owner: 'another' }).catch((error) => error.code),
+    ).toBe('not_found');
+  });
   it('counts pending external/unknown costs in the global UTC daily cap across owners', async () => {
     const value = input();
     value.configuration.dailyLimitMicrousd = 10;

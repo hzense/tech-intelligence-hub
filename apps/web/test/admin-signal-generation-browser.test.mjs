@@ -584,6 +584,74 @@ test(
     );
 
     await t.test(
+      'saved mixed and rejected results show bounded field diagnostics without invoking AI',
+      async () => {
+        for (const mixed of [true, false]) {
+          const page = await newPage();
+          const id = '55555555-5555-4555-8555-555555555555';
+          runs = [
+            {
+              id,
+              batch_id: batchId,
+              item_id: itemId,
+              profile_id: profileId,
+              profile_revision: 2,
+              status: mixed ? 'completed' : 'failed',
+              error_code: mixed ? null : 'generation_invalid_output',
+              result: {
+                classification: 'private',
+                validation_version: 1,
+                reason: '合成验收',
+                candidates: mixed
+                  ? [
+                      {
+                        index: 0,
+                        title: '保留的合格候选',
+                        summary: '<script>unsafe()</script>',
+                        persons: [],
+                        claims: [],
+                      },
+                    ]
+                  : [],
+                rejected: [
+                  {
+                    index: 1,
+                    classification: 'private',
+                    status: 'rejected',
+                    errors: [
+                      { field: 'title', code: 'title_too_long' },
+                      { field: 'event_date_evidence', code: 'unknown_date_has_evidence' },
+                    ],
+                  },
+                ],
+              },
+            },
+          ];
+          await page.goto(`${origin}/?off`);
+          await page.getByRole('button', { name: '查看任务与私有候选', exact: true }).click();
+          await expect(
+            page.getByText(`结构与引用校验通过 ${mixed ? 1 : 0} 条，拒绝 1 条。`, { exact: false }),
+          ).toBeVisible();
+          await expect(
+            page.getByRole('heading', { name: '原始候选 2', exact: true }),
+          ).toBeVisible();
+          await expect(page.getByText('title：标题超过 80 个字符', { exact: false })).toBeVisible();
+          await expect(
+            page.getByText('event_date_evidence：日期未知时', { exact: false }),
+          ).toBeVisible();
+          if (mixed) {
+            await expect(page.getByRole('heading', { name: '保留的合格候选' })).toBeVisible();
+            await expect(
+              page.getByText('<script>unsafe()</script>', { exact: true }),
+            ).toBeVisible();
+          }
+          assert.ok(commands.every((command) => command.action === 'detail'));
+          await page.close();
+        }
+      },
+    );
+
+    await t.test(
       'unconfigured history still permits explicit preflight without dashboard or model requests',
       async () => {
         const page = await newPage();

@@ -431,8 +431,21 @@ export async function finishSignalGeneration({
       (typeof errorCode !== 'string' || !/^[a-z][a-z0-9_]{0,79}$/.test(errorCode)))
   )
     fail();
-  const safeResult = outcome === 'completed' ? bounded(result, 512000, 'invalid_result') : null;
-  if (outcome === 'completed' && safeResult?.classification !== 'private') fail('invalid_result');
+  const retainRejected =
+    outcome === 'failed' && errorCode === 'generation_invalid_output' && result !== undefined;
+  const safeResult =
+    outcome === 'completed' || retainRejected ? bounded(result, 512000, 'invalid_result') : null;
+  if ((outcome === 'completed' || retainRejected) && safeResult?.classification !== 'private')
+    fail('invalid_result');
+  if (
+    retainRejected &&
+    (safeResult.validation_version !== 1 ||
+      !Array.isArray(safeResult.candidates) ||
+      safeResult.candidates.length ||
+      !Array.isArray(safeResult.rejected) ||
+      !safeResult.rejected.length)
+  )
+    fail('invalid_result');
   return transaction(pool, async (client) => {
     const row = await run(client, owner, id, true);
     if (row.lease_token !== token) fail('stale_attempt');

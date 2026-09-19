@@ -2,7 +2,7 @@ export const GENERATION_LIMITS: Readonly<{
   sourceBytes: 48000;
   outputBytes: 96000;
   candidates: 5;
-  titleCharacters: 50;
+  titleCharacters: 80;
   summaryCharacters: 500;
   references: 8;
   quoteCharacters: 500;
@@ -46,7 +46,19 @@ export interface GeneratedCandidates {
   classification: 'private';
   candidates: GeneratedCandidate[];
   reason: string;
+  validation_version?: 1;
+  rejected?: {
+    index: number;
+    classification: 'private';
+    status: 'rejected';
+    errors: { field: string; code: string }[];
+  }[];
 }
+export function assessGeneratedCandidates(
+  value: unknown,
+  source: GenerationSource,
+): GeneratedCandidates;
+export function validateGenerationEnvelope(value: unknown): unknown;
 export function buildGenerationSource(importOutput: unknown): GenerationSource;
 export interface GenerationSourceInspection {
   ready: boolean;

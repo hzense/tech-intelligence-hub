@@ -160,7 +160,8 @@ test('real SDK structured extraction yields only private candidates and exact ev
   const request = JSON.parse(f.calls[0].body);
   const system = request.messages.find((message) => message.role === 'system').content;
   assert.match(system, /单次最多 5 条候选/);
-  assert.match(system, /标题最多 50 字，摘要最多 500 字/);
+  assert.match(system, /标题最多 80 字，摘要最多 500 字/);
+  assert.match(system, /event_date 为 null 时 event_date_evidence 必须为 \[\]/);
   assert.equal(value.diagnostic.code, null);
   assert.equal(value.diagnostic.timeout_ms, 1500000);
   assert.ok(Number.isSafeInteger(value.diagnostic.elapsed_ms));
@@ -366,7 +367,7 @@ test('transport and SDK failures keep bounded classifications without raw messag
 test('invalid candidate structure and evidence have a separate output classification', async () => {
   for (const bad of [
     { not_candidates: apiKey },
-    { ...result, candidates: [{ ...candidate, title: '中'.repeat(51) }] },
+    { ...result, candidates: [{ ...candidate, title: '中'.repeat(81) }] },
     { ...result, candidates: [{ ...candidate, summary: '中'.repeat(501) }] },
     { ...result, candidates: Array.from({ length: 6 }, () => ({ ...candidate })) },
     {
@@ -384,7 +385,12 @@ test('invalid candidate structure and evidence have a separate output classifica
     const value = await providerFixture(bad).invoke();
     assert.equal(value.success, false);
     assert.equal(value.diagnostic.code, 'generation_invalid_output');
-    assert.equal(value.output, undefined);
+    if (Array.isArray(bad.candidates) && bad.candidates.length <= 5) {
+      assert.equal(value.output.candidates.length, 0);
+      assert.equal(value.output.rejected.length, 1);
+    } else assert.equal(value.output, undefined);
+    assert.equal(value.input_tokens, 200);
+    assert.equal(value.output_tokens, 100);
     assert.equal(JSON.stringify(value).includes(apiKey), false);
   }
 });
@@ -424,7 +430,11 @@ test('fabricated quotes, injected status, and credential echo cannot become save
     const f = providerFixture({ ...result, candidates: [mutation] });
     const value = await f.invoke();
     assert.equal(value.success, false, JSON.stringify({ mutation, value }));
-    assert.equal(value.output, undefined);
+    if (mutation.title === apiKey) assert.equal(value.output, undefined);
+    else {
+      assert.equal(value.output.candidates.length, 0);
+      assert.equal(value.output.rejected.length, 1);
+    }
     assert.equal(f.calls.length, 1);
     assert.equal(JSON.stringify(value).includes(apiKey), false);
   }
@@ -496,6 +506,29 @@ function coreFixture(overrides = {}) {
     finishes,
   };
 }
+test('mixed output saves valid siblings; all-rejected output saves private diagnostics with failed status and usage', async () => {
+  for (const mixed of [true, false]) {
+    const bad = {
+      ...candidate,
+      title: 'x'.repeat(81),
+      event_date_evidence: candidate.claims[0].evidence,
+    };
+    const provider = providerFixture({
+      candidates: mixed ? [bad, candidate] : [bad],
+      reason: 'synthetic',
+    });
+    const f = coreFixture({ invoke: () => provider.invoke() });
+    const dto = await f.execute('admin', { action: 'run', id: f.run().id });
+    assert.equal(dto.status, mixed ? 'completed' : 'failed');
+    assert.equal(dto.error_code, mixed ? null : 'generation_invalid_output');
+    assert.equal(dto.result.candidates.length, mixed ? 1 : 0);
+    assert.equal(dto.result.rejected[0].errors.length, 2);
+    assert.deepEqual(dto.result.usage, { input_tokens: 200, output_tokens: 100 });
+    assert.equal(f.finishes.length, 1);
+    assert.equal(provider.calls.length, 1);
+    assert.ok(f.finishes[0].chargedMicrousd > 0);
+  }
+});
 test('progress gates admission but advisory updates cannot discard a paid valid result', async () => {
   const phases = [];
   const f = coreFixture({

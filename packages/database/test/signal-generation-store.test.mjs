@@ -56,6 +56,91 @@ function input() {
   };
 }
 describe('private generation input boundaries', () => {
+  it('atomically retains failed validation diagnostics without reducing the reservation', async () => {
+    const token = randomUUID();
+    const id = randomUUID();
+    const result = {
+      classification: 'private',
+      validation_version: 1,
+      candidates: [],
+      rejected: [
+        {
+          index: 0,
+          classification: 'private',
+          status: 'rejected',
+          errors: [{ field: 'title', code: 'title_too_long' }],
+        },
+      ],
+      reason: 'test',
+      usage: { input_tokens: 200, output_tokens: 100 },
+    };
+    const writes = [];
+    const row = {
+      id,
+      status: 'running',
+      lease_token: token,
+      reserved_microusd: '1000',
+      lease_until: new Date(Date.now() + 60000),
+    };
+    const client = {
+      release() {},
+      async query(sql, values) {
+        if (sql.includes('SELECT $1::timestamptz')) return { rows: [{ live: true }] };
+        if (sql.includes('FROM public.signal_generation_runs')) return { rows: [row] };
+        if (sql.startsWith('UPDATE public.signal_generation_runs SET status=$2,result=')) {
+          writes.push(values);
+          Object.assign(row, {
+            status: values[1],
+            result: JSON.parse(values[2]),
+            error_code: values[3],
+            charged_microusd: values[4],
+          });
+          return { rows: [row] };
+        }
+        return { rows: [] };
+      },
+    };
+    const args = {
+      pool: { connect: async () => client },
+      owner: 'owner',
+      id,
+      token,
+      outcome: 'failed',
+      errorCode: 'generation_invalid_output',
+      chargedMicrousd: 400,
+      result,
+    };
+    const saved = await finishSignalGeneration(args);
+    expect(saved.result).toEqual(result);
+    expect(saved.charged_microusd).toBe('1000');
+    await finishSignalGeneration(args);
+    expect(writes).toHaveLength(1);
+  });
+  it('rejects invalid or credential-bearing failed validation records before the DB', async () => {
+    for (const result of [
+      { classification: 'public' },
+      { classification: 'private', validation_version: 1, candidates: [{}], rejected: [{}] },
+      { classification: 'private', validation_version: 1, candidates: [], rejected: [] },
+      {
+        classification: 'private',
+        validation_version: 1,
+        candidates: [],
+        rejected: [{}],
+        api_key: 'bad',
+      },
+    ])
+      await expect(
+        finishSignalGeneration({
+          pool: input().pool,
+          owner: 'owner',
+          id: randomUUID(),
+          token: randomUUID(),
+          outcome: 'failed',
+          errorCode: 'generation_invalid_output',
+          result,
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_result' });
+  });
   it('hashes objects without depending on JSON property order', () => {
     expect(signalGenerationSourceHash({ a: 1, b: 2 })).toBe(
       signalGenerationSourceHash({ b: 2, a: 1 }),
