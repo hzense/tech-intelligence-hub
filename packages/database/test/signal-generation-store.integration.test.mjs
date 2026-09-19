@@ -650,6 +650,53 @@ suite('private AI generation PostgreSQL ledger', () => {
       await getSignalGeneration({ ...args(a), owner: 'another' }).catch((error) => error.code),
     ).toBe('not_found');
   });
+  it('persists v1 mixed and deliberate zero-candidate completions with exact diagnostics', async () => {
+    const candidate = {
+      index: 1,
+      classification: 'private',
+      status: 'needs_review',
+      issues: ['needs_public_evidence', 'needs_event_time', 'needs_person_evidence'],
+      title: 'Synthetic',
+      summary: 'Synthetic summary',
+      event_date: null,
+      event_date_evidence: [],
+      persons: [],
+      organizations: [],
+      claims: [
+        {
+          text: 'Synthetic claim',
+          evidence: [{ fragment_id: 'fragment-1', quote: 'safe source' }],
+        },
+      ],
+    };
+    const rejected = {
+      index: 0,
+      classification: 'private',
+      status: 'rejected',
+      errors: [{ field: 'title', code: 'title_too_long' }],
+    };
+    for (const mixed of [true, false]) {
+      const a = await claimed();
+      const result = {
+        classification: 'private',
+        validation_version: 1,
+        candidates: mixed ? [candidate] : [],
+        rejected: mixed ? [rejected] : [],
+        reason: 'synthetic',
+        usage: { input_tokens: 1, output_tokens: null },
+      };
+      const saved = await finishSignalGeneration({
+        ...args(a),
+        token: a.lease_token,
+        outcome: 'completed',
+        result,
+        chargedMicrousd: 1,
+      });
+      expect(saved.status).toBe('completed');
+      expect((await getSignalGeneration(args(a))).result).toEqual(result);
+      expect((await claimSignalGeneration(args(a))).claimed).toBe(false);
+    }
+  });
   it('counts pending external/unknown costs in the global UTC daily cap across owners', async () => {
     const value = input();
     value.configuration.dailyLimitMicrousd = 10;

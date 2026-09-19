@@ -56,6 +56,73 @@ function input() {
   };
 }
 describe('private generation input boundaries', () => {
+  it('rejects malformed diagnostic shapes, fields, codes, indexes and usage before any DB access', async () => {
+    const rejected = {
+      index: 0,
+      classification: 'private',
+      status: 'rejected',
+      errors: [{ field: 'title', code: 'title_too_long' }],
+    };
+    const base = {
+      classification: 'private',
+      validation_version: 1,
+      candidates: [],
+      rejected: [rejected],
+      reason: 'test',
+      usage: { input_tokens: 1, output_tokens: null },
+    };
+    const malformed = [
+      { rejected: ['raw private candidate text'] },
+      { rejected: [{ ...rejected, text: 'raw private candidate text' }] },
+      {
+        rejected: [
+          { ...rejected, errors: [{ field: 'title', code: 'title_too_long', quote: 'raw' }] },
+        ],
+      },
+      { rejected: [{ ...rejected, errors: [{ field: 'raw field', code: 'title_too_long' }] }] },
+      { rejected: [{ ...rejected, errors: [{ field: 'title', code: 'raw reason' }] }] },
+      { rejected: [{ ...rejected, errors: [{ field: 'title', code: 'invalid_event_date' }] }] },
+      { rejected: [{ ...rejected, errors: [{ field: 'toString', code: 'invalid_field' }] }] },
+      { rejected: [{ ...rejected, errors: [] }] },
+      { rejected: [{ ...rejected, errors: [...rejected.errors, ...rejected.errors] }] },
+      { rejected: [{ ...rejected, index: -1 }] },
+      { rejected: [{ ...rejected, index: 5 }] },
+      { rejected: [{ ...rejected, index: 1 }] },
+      { rejected: [rejected, rejected] },
+      { rejected: [{ ...rejected, classification: 'public' }] },
+      { rejected: [{ ...rejected, status: 'needs_review' }] },
+      { usage: { input_tokens: -1, output_tokens: null } },
+      { usage: { input_tokens: 1, output_tokens: null, raw: 'text' } },
+      { reason: 'x'.repeat(1001) },
+      { raw: 'raw output' },
+      { validation_version: 2 },
+    ];
+    for (const change of malformed) {
+      for (const outcome of ['failed', 'completed']) {
+        await expect(
+          finishSignalGeneration({
+            pool: input().pool,
+            owner: 'owner',
+            id: randomUUID(),
+            token: randomUUID(),
+            outcome,
+            errorCode: 'generation_invalid_output',
+            result: { ...base, ...change },
+          }),
+        ).rejects.toMatchObject({ code: 'invalid_result' });
+      }
+    }
+    await expect(
+      finishSignalGeneration({
+        pool: input().pool,
+        owner: 'owner',
+        id: randomUUID(),
+        token: randomUUID(),
+        outcome: 'completed',
+        result: base,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_result' });
+  });
   it('atomically retains failed validation diagnostics without reducing the reservation', async () => {
     const token = randomUUID();
     const id = randomUUID();
