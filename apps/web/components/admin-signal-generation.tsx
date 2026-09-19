@@ -90,7 +90,8 @@ const errorMessages: Record<string, string> = {
   not_found: '暂未查到原任务。请保留原编号；确认配置后可使用原编号重新确认创建，不会自动调用 AI。',
   cancelled: '该资料或任务已取消，不能继续生成。',
   task_active: '任务仍在执行或等待对账，请先取消或完成对账后删除。',
-  task_deleted: '同一资料与配置的任务已删除；为避免重复调用，不能再次执行。',
+  task_deleted:
+    '同一资料与配置的任务已删除，不能重复生成。可点击“核对并放弃未创建请求”解除当前请求跟踪，再选择其他资料；此操作不会重新调用 AI。',
   duplicate_source: '该资料与已有解析内容重复，请从列表选择保留的资料。',
   limit_exceeded: '请求超出允许范围，请核对资料及配置限制。',
   unauthorized: '管理员登录已失效。请重新登录后按原请求编号核对。',
@@ -324,10 +325,11 @@ export function AdminSignalGeneration({
           error instanceof SafeRequestError &&
           ((error.status === 400 &&
             ['input_too_large', 'invalid_source', 'invalid_request'].includes(error.code)) ||
-            (error.status === 409 && error.code === 'revision_conflict'))
+            (error.status === 409 && ['revision_conflict', 'task_deleted'].includes(error.code)))
         )
-          // These create-time rejections occur before the task write. Abandonment
-          // still requires an explicit action, a fresh not_found and a storage CAS.
+          // These rejections do not create a new task. A deleted receipt remains
+          // protected by server deduplication. Clearing local tracking still needs
+          // an explicit action, a fresh not_found and a storage CAS.
           setRejectedCreateId(request.id);
         throw error;
       }
