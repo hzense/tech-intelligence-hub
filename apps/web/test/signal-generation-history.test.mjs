@@ -100,6 +100,8 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   assert.equal(service.generationConfigured(), false);
   assert.equal(service.generationHistoryConfigured(), true);
   const detail = await service.generationDetail('admin', service.id);
+  assert.equal(detail.can_delete, false);
+  await assert.rejects(service.deleteGeneration('admin', service.id), { code: 'not_configured' });
   assert.equal(detail.result.candidates[0].title, 'Saved candidate');
   assert.doesNotMatch(
     JSON.stringify(detail),

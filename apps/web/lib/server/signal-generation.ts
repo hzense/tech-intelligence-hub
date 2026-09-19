@@ -113,6 +113,8 @@ async function historyDtos(owner: string, runs: store.SignalGenerationRun[]) {
   const names = new Map(labels.map((item) => [item.id, item.name ?? item.url ?? '未命名资料']));
   return runs.map((run) => ({
     ...generationDto(run),
+    // Compatibility mode is deliberately read-only until 0019/ACL enablement.
+    ...(process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1' ? { can_delete: false } : {}),
     ...(names.has(run.item_id) ? { source_name: names.get(run.item_id) } : {}),
   }));
 }
@@ -195,7 +197,8 @@ export async function executeGeneration(owner: string, body: unknown) {
 }
 
 export async function deleteGeneration(owner: string, id: string) {
-  if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
+  if (!generationHistoryConfigured() || process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1')
+    throw new GenerationError('not_configured');
   return store.deleteSignalGeneration({ pool: generationPool, owner, id });
 }
 
