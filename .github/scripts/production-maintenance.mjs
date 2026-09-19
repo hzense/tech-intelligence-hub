@@ -19,6 +19,7 @@ const unverifiedRecoveryPolicy = 'accept-unverified-fts1';
 const aiConfigRecoveryPolicy = 'accept-unverified-ai-config';
 const importTasksRecoveryPolicy = 'accept-unverified-import-tasks';
 const signalGenerationRecoveryPolicy = 'accept-unverified-signal-generation';
+const taskManagementRecoveryPolicy = 'accept-unverified-task-management';
 
 // A reviewed one-time rollout boundary, NOT the moving repository manifest.
 // Keep historical checksums pinned too, so approval identifies the complete
@@ -297,6 +298,108 @@ export function requireSignalGenerationMigrationScope(preflight, migrations, app
   return plan;
 }
 
+// Independent 0016–0018 batch; historical approvals retain their frozen manifests.
+const taskManagementManifest = Object.freeze([
+  ...signalGenerationManifest,
+  Object.freeze([
+    '0016_generation_cancelled_recreation.sql',
+    '91fed92118f856d3eecdfd7c7ec5394f6e36a93958282fb70958cbdcda849c4b',
+  ]),
+  Object.freeze([
+    '0017_import_task_visibility.sql',
+    'fef4f88c9592e03f79259787f31ab5974c187bdf6c8f9e9697c6b8faf5983012',
+  ]),
+  Object.freeze([
+    '0018_generation_task_visibility.sql',
+    '5a945ab6271cfbab0f58e3e11e78d7ff3eeb61041eec18f449b4ef44a4bc15e9',
+  ]),
+]);
+export function taskManagementTargetBinding(policy, preflight, backupId) {
+  requireGate(
+    ['host', 'port', 'database', 'user'].every(
+      (key) => typeof policy?.[key] === 'string' && policy[key].length > 0,
+    ) &&
+      preflight?.database === policy.database &&
+      preflight?.user === policy.user,
+    'task-management-target-required',
+  );
+  requireGate(
+    typeof backupId === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._:/-]{7,255}$/.test(backupId) &&
+      !/(^|[._:/-])(none|null|todo|pending|placeholder|example|changeme)($|[._:/-])/i.test(
+        backupId,
+      ),
+    'reviewed-backup-required',
+  );
+  return {
+    targetFingerprint: createHash('sha256')
+      .update('hzense/task-management-target/v1\0')
+      .update(
+        JSON.stringify([
+          policy.host.toLowerCase(),
+          policy.port,
+          preflight.database,
+          preflight.user,
+        ]),
+      )
+      .digest('hex'),
+    backupIdSha256: createHash('sha256').update(backupId).digest('hex'),
+  };
+}
+export function taskManagementMigrationPlan(pendingMigrations, migrations, binding) {
+  requireGate(
+    Array.isArray(migrations) &&
+      migrations.length === taskManagementManifest.length &&
+      Array.from(migrations).every(
+        (entry, index) =>
+          entry?.name === taskManagementManifest[index][0] &&
+          entry?.checksum === taskManagementManifest[index][1] &&
+          typeof entry?.sql === 'string' &&
+          createHash('sha256').update(entry.sql).digest('hex') === taskManagementManifest[index][1],
+      ),
+    'task-management-migration-manifest-required',
+  );
+  requireGate(
+    Array.isArray(pendingMigrations) &&
+      pendingMigrations.length > 0 &&
+      pendingMigrations.length <= 3 &&
+      pendingMigrations.every(
+        (name, index) =>
+          name ===
+          taskManagementManifest[
+            taskManagementManifest.length - pendingMigrations.length + index
+          ][0],
+      ),
+    'task-management-migration-scope-required',
+  );
+  requireGate(
+    digest.test(binding?.targetFingerprint ?? '') && digest.test(binding?.backupIdSha256 ?? ''),
+    'task-management-target-required',
+  );
+  const manifestFingerprint = createHash('sha256')
+    .update('hzense/task-management-migration-manifest/v1\0')
+    .update(JSON.stringify(taskManagementManifest))
+    .digest('hex');
+  const { targetFingerprint, backupIdSha256 } = binding;
+  const planFingerprint = createHash('sha256')
+    .update('hzense/task-management-migration-plan/v1\0')
+    .update(
+      JSON.stringify({ manifestFingerprint, pendingMigrations, targetFingerprint, backupIdSha256 }),
+    )
+    .digest('hex');
+  return { manifestFingerprint, planFingerprint, targetFingerprint, backupIdSha256 };
+}
+export function requireTaskManagementMigrationScope(preflight, migrations, approval, binding) {
+  const plan = taskManagementMigrationPlan(preflight?.pendingMigrations, migrations, binding);
+  requireGate(
+    ['manifestFingerprint', 'planFingerprint', 'targetFingerprint', 'backupIdSha256'].every(
+      (key) => approval?.[key] === plan[key],
+    ),
+    'task-management-migration-plan-mismatch',
+  );
+  return plan;
+}
+
 // Explicit exception, not fabricated evidence of a successful restore. The
 // protected Environment review remains the authority; these are declarations.
 function validateRecoveryPolicy(approval, operation) {
@@ -306,7 +409,8 @@ function validateRecoveryPolicy(approval, operation) {
       policy === unverifiedRecoveryPolicy ||
       policy === aiConfigRecoveryPolicy ||
       policy === importTasksRecoveryPolicy ||
-      policy === signalGenerationRecoveryPolicy,
+      policy === signalGenerationRecoveryPolicy ||
+      policy === taskManagementRecoveryPolicy,
     'unsupported-recovery-policy',
   );
   if (policy === 'verified') {
@@ -314,16 +418,21 @@ function validateRecoveryPolicy(approval, operation) {
     return policy;
   }
   if (
-    [aiConfigRecoveryPolicy, importTasksRecoveryPolicy, signalGenerationRecoveryPolicy].includes(
-      policy,
-    )
+    [
+      aiConfigRecoveryPolicy,
+      importTasksRecoveryPolicy,
+      signalGenerationRecoveryPolicy,
+      taskManagementRecoveryPolicy,
+    ].includes(policy)
   ) {
     const prefix =
-      policy === signalGenerationRecoveryPolicy
-        ? 'signal-generation'
-        : policy === importTasksRecoveryPolicy
-          ? 'import-tasks'
-          : 'ai-config';
+      policy === taskManagementRecoveryPolicy
+        ? 'task-management'
+        : policy === signalGenerationRecoveryPolicy
+          ? 'signal-generation'
+          : policy === importTasksRecoveryPolicy
+            ? 'import-tasks'
+            : 'ai-config';
     if (policy !== aiConfigRecoveryPolicy)
       requireGate(digest.test(approval.targetFingerprint ?? ''), `${prefix}-target-required`);
     requireGate(
@@ -348,13 +457,15 @@ function validateRecoveryPolicy(approval, operation) {
       approval.aclRecoveryReviewed === false &&
       !Object.hasOwn(approval, 'restoreEvidenceFingerprint') &&
       acceptance?.scope ===
-        (policy === signalGenerationRecoveryPolicy
-          ? 'signal-generation-production-launch'
-          : policy === importTasksRecoveryPolicy
-            ? 'import-tasks-production-launch'
-            : policy === aiConfigRecoveryPolicy
-              ? 'ai-configuration-production-launch'
-              : 'fts1-production-launch') &&
+        (policy === taskManagementRecoveryPolicy
+          ? 'task-management-production-launch'
+          : policy === signalGenerationRecoveryPolicy
+            ? 'signal-generation-production-launch'
+            : policy === importTasksRecoveryPolicy
+              ? 'import-tasks-production-launch'
+              : policy === aiConfigRecoveryPolicy
+                ? 'ai-configuration-production-launch'
+                : 'fts1-production-launch') &&
       acceptance.accepted === true &&
       acceptance.historicalAclGapAccepted === true &&
       acceptance.acknowledgement === 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
@@ -486,6 +597,7 @@ export function publicRecoveryAcceptance(request, rawApproval) {
       aiConfigRecoveryPolicy,
       importTasksRecoveryPolicy,
       signalGenerationRecoveryPolicy,
+      taskManagementRecoveryPolicy,
     ].includes(request.approval?.recoveryPolicy)
   ) {
     return {
@@ -609,14 +721,25 @@ async function executeOperation(env, { operation, approval }) {
   if (operation === 'acl-capture') {
     let binding;
     if (
-      [importTasksRecoveryPolicy, signalGenerationRecoveryPolicy].includes(approval?.recoveryPolicy)
+      [
+        importTasksRecoveryPolicy,
+        signalGenerationRecoveryPolicy,
+        taskManagementRecoveryPolicy,
+      ].includes(approval?.recoveryPolicy)
     ) {
       const { productionDatabaseOptions, validateConnectionTarget } =
         await import('../../packages/database/src/connection-policy.mjs');
       const { runDatabasePreflight } = await import('../../packages/database/src/preflight.mjs');
       const options = productionDatabaseOptions(env);
       const generation = approval.recoveryPolicy === signalGenerationRecoveryPolicy;
-      binding = (generation ? signalGenerationTargetBinding : importTasksTargetBinding)(
+      const taskManagement = approval.recoveryPolicy === taskManagementRecoveryPolicy;
+      binding = (
+        taskManagement
+          ? taskManagementTargetBinding
+          : generation
+            ? signalGenerationTargetBinding
+            : importTasksTargetBinding
+      )(
         validateConnectionTarget(options),
         await runDatabasePreflight(options),
         env.MAINTENANCE_BACKUP_ID,
@@ -624,7 +747,11 @@ async function executeOperation(env, { operation, approval }) {
       requireGate(
         binding.targetFingerprint === approval.targetFingerprint &&
           binding.backupIdSha256 === approval.backupIdSha256,
-        generation ? 'signal-generation-target-mismatch' : 'import-tasks-target-mismatch',
+        taskManagement
+          ? 'task-management-target-mismatch'
+          : generation
+            ? 'signal-generation-target-mismatch'
+            : 'import-tasks-target-mismatch',
       );
     }
     const { capturePublicAclEvidence } = await import('./public-acl-evidence.mjs');
@@ -652,6 +779,18 @@ async function executeOperation(env, { operation, approval }) {
       await import('../../packages/database/src/migrate.mjs');
     const migrations = await loadMigrations();
     await verifyMigrationManifest(migrations);
+    try {
+      return {
+        ...preflight,
+        ...taskManagementMigrationPlan(
+          preflight.pendingMigrations,
+          migrations,
+          taskManagementTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+        ),
+      };
+    } catch (error) {
+      if (!(error instanceof MaintenanceGateError)) throw error;
+    }
     try {
       return {
         ...preflight,
@@ -699,26 +838,34 @@ async function executeOperation(env, { operation, approval }) {
           aiConfigRecoveryPolicy,
           importTasksRecoveryPolicy,
           signalGenerationRecoveryPolicy,
+          taskManagementRecoveryPolicy,
         ].includes(approval?.recoveryPolicy)
       ) {
         const migrations = await loadMigrations();
         await verifyMigrationManifest(migrations);
         approvedPlan =
-          approval.recoveryPolicy === signalGenerationRecoveryPolicy
-            ? requireSignalGenerationMigrationScope(
+          approval.recoveryPolicy === taskManagementRecoveryPolicy
+            ? requireTaskManagementMigrationScope(
                 preflight,
                 migrations,
                 approval,
-                signalGenerationTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                taskManagementTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
               )
-            : approval.recoveryPolicy === importTasksRecoveryPolicy
-              ? requireImportTasksMigrationScope(
+            : approval.recoveryPolicy === signalGenerationRecoveryPolicy
+              ? requireSignalGenerationMigrationScope(
                   preflight,
                   migrations,
                   approval,
-                  importTasksTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                  signalGenerationTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                 )
-              : requireAiConfigMigrationScope(preflight, migrations, approval);
+              : approval.recoveryPolicy === importTasksRecoveryPolicy
+                ? requireImportTasksMigrationScope(
+                    preflight,
+                    migrations,
+                    approval,
+                    importTasksTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                  )
+                : requireAiConfigMigrationScope(preflight, migrations, approval);
       }
     }
     await runMigrations({
@@ -736,6 +883,7 @@ async function executeOperation(env, { operation, approval }) {
         aiConfigRecoveryPolicy,
         importTasksRecoveryPolicy,
         signalGenerationRecoveryPolicy,
+        taskManagementRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
         ? async (pendingMigrations, artifact) => {
             if (
@@ -743,14 +891,17 @@ async function executeOperation(env, { operation, approval }) {
                 aiConfigRecoveryPolicy,
                 importTasksRecoveryPolicy,
                 signalGenerationRecoveryPolicy,
+                taskManagementRecoveryPolicy,
               ].includes(approval?.recoveryPolicy)
             ) {
               // The runner freezes this actual execution snapshot before opening
               // its connection. Do not substitute another filesystem reread.
               if (
-                [importTasksRecoveryPolicy, signalGenerationRecoveryPolicy].includes(
-                  approval.recoveryPolicy,
-                )
+                [
+                  importTasksRecoveryPolicy,
+                  signalGenerationRecoveryPolicy,
+                  taskManagementRecoveryPolicy,
+                ].includes(approval.recoveryPolicy)
               ) {
                 // Re-read authenticated identity from the very same connection
                 // while holding the migration lock, not from approval fields.
@@ -759,19 +910,22 @@ async function executeOperation(env, { operation, approval }) {
                   expectedHost: policy.host,
                 });
                 const generation = approval.recoveryPolicy === signalGenerationRecoveryPolicy;
+                const taskManagement = approval.recoveryPolicy === taskManagementRecoveryPolicy;
                 approvedPlan = (
-                  generation
-                    ? requireSignalGenerationMigrationScope
-                    : requireImportTasksMigrationScope
+                  taskManagement
+                    ? requireTaskManagementMigrationScope
+                    : generation
+                      ? requireSignalGenerationMigrationScope
+                      : requireImportTasksMigrationScope
                 )(
                   { ...current, pendingMigrations },
                   artifact?.migrations,
                   approval,
-                  (generation ? signalGenerationTargetBinding : importTasksTargetBinding)(
-                    policy,
-                    current,
-                    env.MAINTENANCE_BACKUP_ID,
-                  ),
+                  (taskManagement
+                    ? taskManagementTargetBinding
+                    : generation
+                      ? signalGenerationTargetBinding
+                      : importTasksTargetBinding)(policy, current, env.MAINTENANCE_BACKUP_ID),
                 );
               } else {
                 approvedPlan = requireAiConfigMigrationScope(
