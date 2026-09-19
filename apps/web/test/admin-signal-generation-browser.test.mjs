@@ -9,6 +9,7 @@ import { chromium, expect } from '@playwright/test';
 
 const enabled = process.env.HZENSE_SIGNAL_GENERATION_BROWSER_TEST === '1';
 const storageKey = 'hzense.signal-generation.pending.v1';
+const recoveryKey = 'hzense.signal-generation.rejection.v1';
 const batchId = '11111111-1111-4111-8111-111111111111';
 const itemId = '22222222-2222-4222-8222-222222222222';
 const profileId = '33333333-3333-4333-8333-333333333333';
@@ -1119,12 +1120,14 @@ test(
         await page.reload();
         await expect(page.getByRole('heading', { name: '当前请求', exact: true })).toBeVisible();
         assert.equal(commands.length, 1);
-        await expect(abandon).toHaveCount(0);
-        await page.getByRole('checkbox').check();
-        rejectedError = 'task_deleted';
-        await page.getByRole('button', { name: '使用原编号重新确认创建（不调用 AI）' }).click();
         await expect(abandon).toBeEnabled();
-        assert.equal(commands.at(-1).id, originalId);
+        await expect(page.getByRole('checkbox')).not.toBeChecked();
+        await expect(
+          page.getByRole('button', { name: '重新生成（创建新任务，不调用 AI）', exact: true }),
+        ).toBeDisabled();
+        await expect(
+          page.getByText('已恢复原请求及创建拒绝原因：', { exact: false }),
+        ).toBeVisible();
 
         rejectedError = 'commit_unknown';
         await abandon.click();
@@ -1132,12 +1135,16 @@ test(
         await expect(page.getByLabel('已完成解析的资料')).toBeDisabled();
         await abandon.click();
         await expect(page.getByRole('heading', { name: '当前请求', exact: true })).toHaveCount(0);
-        assert.deepEqual(commands.slice(2), [
+        assert.deepEqual(commands.slice(1), [
           { action: 'detail', id: originalId },
           { action: 'detail', id: originalId },
         ]);
         assert.equal(
           await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+          null,
+        );
+        assert.equal(
+          await page.evaluate((key) => globalThis.sessionStorage.getItem(key), recoveryKey),
           null,
         );
         await expect(page.getByRole('checkbox')).not.toBeChecked();
@@ -1150,6 +1157,147 @@ test(
         assert.notEqual(commands.at(-1).id, originalId);
         assert.equal(commands.at(-1).itemId, smallItemId);
         assert.equal(commands.filter((command) => command.action === 'run').length, 0);
+        await page.close();
+      },
+    );
+
+    await t.test(
+      'restored rejection allows an explicit linked retry but never restores consent or executes AI',
+      async () => {
+        const page = await newPage();
+        await page.goto(origin);
+        await selectInput(page);
+        await page.getByRole('checkbox').check();
+        rejectedError = 'task_deleted';
+        await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
+        await expect(page.getByRole('button', { name: '核对并放弃未创建请求' })).toBeEnabled();
+        const originalId = commands[0].id;
+        await page.reload();
+        const retry = page.getByRole('button', {
+          name: '重新生成（创建新任务，不调用 AI）',
+          exact: true,
+        });
+        await expect(retry).toBeDisabled();
+        assert.equal(commands.length, 1);
+        await page.getByRole('checkbox').check();
+        page.once('dialog', (dialog) => dialog.accept());
+        await retry.click();
+        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
+        assert.equal(commands.length, 2);
+        assert.equal(commands[1].retryOf, pendingItemId);
+        assert.notEqual(commands[1].id, originalId);
+        assert.equal(commands[1].action, 'create');
+        assert.equal(
+          await page.evaluate((key) => globalThis.sessionStorage.getItem(key), recoveryKey),
+          null,
+        );
+        await page.close();
+      },
+    );
+
+    await t.test(
+      'legacy missing-task recovery explains same-ID confirmation without unlocking from a 404',
+      async () => {
+        const page = await newPage();
+        await page.goto(origin);
+        await selectInput(page);
+        await page.getByRole('checkbox').check();
+        rejectedError = 'task_deleted';
+        await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
+        await expect(page.getByRole('button', { name: '核对并放弃未创建请求' })).toBeEnabled();
+        const originalRequest = commands[0];
+        await page.evaluate((key) => globalThis.sessionStorage.removeItem(key), recoveryKey);
+        await page.reload();
+        await page.getByRole('button', { name: '按原请求 ID 查询状态' }).click();
+        await expect(page.getByText('暂未查到原任务。', { exact: false })).toBeVisible();
+        await expect(
+          page.getByText('当前保留原请求，暂不能更换资料。', { exact: false }),
+        ).toBeVisible();
+        await expect(page.getByRole('button', { name: '核对并放弃未创建请求' })).toHaveCount(0);
+        await expect(page.getByLabel('导入批次')).toBeDisabled();
+        await page.getByRole('checkbox').check();
+        rejectedError = 'task_deleted';
+        await page.getByRole('button', { name: '使用原编号重新确认创建（不调用 AI）' }).click();
+        await expect(page.getByRole('button', { name: '核对并放弃未创建请求' })).toBeEnabled();
+        assert.deepEqual(commands.at(-1), originalRequest);
+        assert.equal(commands.filter((entry) => entry.action === 'run').length, 0);
+        await page.close();
+      },
+    );
+
+    await t.test(
+      'corrupt, mismatched and unrecognized rejection receipts never unlock recovery',
+      async () => {
+        for (const variant of [
+          'broken-json',
+          'wrong-request',
+          'unknown-code',
+          'extra-field',
+          'bad-parent',
+        ]) {
+          const page = await newPage();
+          await page.goto(origin);
+          await selectInput(page);
+          await page.getByRole('checkbox').check();
+          rejectedError = 'task_deleted';
+          await page
+            .getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true })
+            .click();
+          await expect(page.getByRole('button', { name: '核对并放弃未创建请求' })).toBeEnabled();
+          await page.evaluate(
+            ({ key, variant, otherId }) => {
+              const receipt = JSON.parse(globalThis.sessionStorage.getItem(key));
+              if (variant === 'wrong-request') receipt.request.itemId = otherId;
+              if (variant === 'unknown-code') receipt.code = 'SYNTHETIC_RAW_SECRET';
+              if (variant === 'extra-field') receipt.raw = 'SYNTHETIC_RAW_SECRET';
+              if (variant === 'bad-parent') receipt.previousId = 'SYNTHETIC_RAW_SECRET';
+              globalThis.sessionStorage.setItem(
+                key,
+                variant === 'broken-json' ? '{' : JSON.stringify(receipt),
+              );
+            },
+            { key: recoveryKey, variant, otherId: smallItemId },
+          );
+          await page.reload();
+          await expect(page.getByRole('heading', { name: '当前请求', exact: true })).toBeVisible();
+          await expect(page.getByRole('button', { name: '核对并放弃未创建请求' })).toHaveCount(0);
+          await expect(
+            page.getByRole('button', { name: '重新生成（创建新任务，不调用 AI）', exact: true }),
+          ).toHaveCount(0);
+          await expect(page.getByLabel('导入批次')).toBeDisabled();
+          assert.equal(commands.length, 1);
+          assert.equal(
+            (await page.locator('body').innerText()).includes('SYNTHETIC_RAW_SECRET'),
+            false,
+          );
+          await page.close();
+        }
+      },
+    );
+
+    await t.test(
+      'recovery storage failure blocks re-confirmation before sending a new create request',
+      async () => {
+        const page = await newPage();
+        await page.goto(origin);
+        await selectInput(page);
+        await page.getByRole('checkbox').check();
+        rejectedError = 'invalid_source';
+        await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
+        await expect(page.getByRole('button', { name: '核对并放弃未创建请求' })).toBeEnabled();
+        await page.evaluate((key) => {
+          const original = globalThis.Storage.prototype.removeItem;
+          globalThis.Storage.prototype.removeItem = function (name) {
+            if (name === key) throw new Error('synthetic_storage_failure');
+            return original.call(this, name);
+          };
+        }, recoveryKey);
+        await page.getByRole('button', { name: '使用原编号重新确认创建（不调用 AI）' }).click();
+        await expect(page.getByText('恢复记录未能安全更新，', { exact: false })).toBeVisible();
+        assert.equal(commands.length, 1);
+        await expect(
+          page.getByRole('button', { name: '使用原编号重新确认创建（不调用 AI）' }),
+        ).toBeDisabled();
         await page.close();
       },
     );
@@ -1332,6 +1480,8 @@ test(
         await page.getByRole('button', { name: '使用原编号重新确认创建（不调用 AI）' }).click();
         await expect(page.getByText('解析结果格式无效。', { exact: false })).toBeVisible();
         const id = commands[0].id;
+        await page.reload();
+        await expect(page.getByRole('button', { name: '核对并放弃未创建请求' })).toBeEnabled();
         runs = [
           {
             id,
@@ -1360,6 +1510,10 @@ test(
         );
         await expect(page.getByLabel('已完成解析的资料')).toBeDisabled();
         await expect(page.getByRole('button', { name: '核对并放弃未创建请求' })).toHaveCount(0);
+        assert.equal(
+          await page.evaluate((key) => globalThis.sessionStorage.getItem(key), recoveryKey),
+          null,
+        );
         await page.close();
       },
     );
