@@ -71,11 +71,19 @@ export function generationHistoryConfigured() {
     return false;
   }
 }
-async function source(owner: string, batchId: string, itemId: string) {
+async function source(
+  owner: string,
+  batchId: string,
+  itemId: string,
+  options?: { requireCanonical?: boolean },
+) {
   const batch = await getImportBatch({ pool: importPool, owner, id: batchId });
   const item = batch.items.find((row) => row.id === itemId);
   if (batch.cancelled || batch.deleted_at) throw new GenerationError('cancelled');
-  if (item?.duplicate_of) throw new GenerationError('duplicate_source');
+  // Duplicate ranking can change while a billable call is in flight. It only
+  // controls admission; existing tasks retain their pinned evidence checks.
+  if (options?.requireCanonical && item?.duplicate_of)
+    throw new GenerationError('duplicate_source');
   if (!item || item.status !== 'completed') throw new GenerationError('source_unavailable');
   return {
     fence: item.fence,

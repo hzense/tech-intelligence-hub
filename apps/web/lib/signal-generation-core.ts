@@ -39,6 +39,7 @@ export interface GenerationDependencies {
     owner: string,
     batchId: string,
     itemId: string,
+    options?: { requireCanonical?: boolean },
   ): Promise<{ fence: number; output: unknown }>;
   access(profileId: string, revision: number, credentials?: boolean): Promise<GenerationAccess>;
   create(
@@ -143,7 +144,9 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       const batchId = aiUuid(body.batchId),
         itemId = aiUuid(body.itemId),
         profileId = aiUuid(body.profileId);
-      const { fence, output } = await deps.source(owner, batchId, itemId);
+      const { fence, output } = await deps.source(owner, batchId, itemId, {
+        requireCanonical: true,
+      });
       const source = buildGenerationSource(output);
       const access = await deps.access(profileId, Number(body.profileRevision));
       const stage = access.profile.stages.extract;
