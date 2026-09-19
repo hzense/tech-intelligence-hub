@@ -28,6 +28,9 @@ export const signalGenerationColumns = {
     created_at: required('timestamp with time zone'),
     finished_at: ['timestamp with time zone', false],
     deleted_at: ['timestamp with time zone', false],
+    progress_phase: ['text', false],
+    progress_at: ['timestamp with time zone', false],
+    started_at: ['timestamp with time zone', false],
   },
 };
 export const signalGenerationPrimaryKeys = ['signal_generation_runs|id'];
@@ -35,6 +38,10 @@ export const signalGenerationForeignKeys = [];
 const forms = (...sql) => sql.map((value) => canonical(`CHECK (${value})`));
 export const signalGenerationChecks = {
   signal_generation_runs: [
+    forms(
+      "progress_phase IS NULL OR progress_phase IN ('queued','preparing','generating','validating','saving')",
+      "((progress_phase IS NULL) OR (progress_phase = ANY (ARRAY['queued'::text, 'preparing'::text, 'generating'::text, 'validating'::text, 'saving'::text])))",
+    ),
     forms('source_fence > 0', '(source_fence > 0)'),
     forms('profile_revision > 0', '(profile_revision > 0)'),
     ...['source_hash', 'fingerprint'].map((column) =>

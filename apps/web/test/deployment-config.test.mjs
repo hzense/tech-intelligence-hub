@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
-import nextConfig from '../next.config.ts';
+import { nextConfig } from '../next.config.ts';
 
 test('traces repository content required by deployed routes', () => {
   assert.equal(nextConfig.outputFileTracingRoot, resolve(import.meta.dirname, '../../..'));

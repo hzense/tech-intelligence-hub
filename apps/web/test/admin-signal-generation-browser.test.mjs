@@ -23,7 +23,7 @@ test(
   async (t) => {
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {AdminSignalGeneration} from './components/admin-signal-generation';createRoot(document.getElementById('root')).render(<AdminSignalGeneration configured={!location.search.includes('off')} historyConfigured={!location.search.includes('nohistory')}/>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {AdminSignalGeneration} from './components/admin-signal-generation';import {GenerationLiveDetail} from './components/generation-live-detail';createRoot(document.getElementById('root')).render(location.search.includes('live-detail') ? <GenerationLiveDetail initialRun={{id:'77777777-7777-4777-8777-777777777777',status:'running',progress_phase:'generating'}}/> : <AdminSignalGeneration configured={!location.search.includes('off')} historyConfigured={!location.search.includes('nohistory')}/>);`,
         resolveDir: fileURLToPath(new URL('..', import.meta.url)),
         loader: 'tsx',
       },
@@ -78,6 +78,13 @@ test(
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = preflightStatus;
         res.end(JSON.stringify(preflightResponse));
+        return;
+      }
+      if (req.url.startsWith('/api/admin/signal-generation?id=')) {
+        const id = new URL(req.url, 'http://fixture').searchParams.get('id');
+        commands.push({ action: 'detail', id });
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ run: runs.find((run) => run.id === id) }));
         return;
       }
       if (req.url === '/api/admin/signal-generation') {
@@ -290,6 +297,104 @@ test(
     }
 
     await t.test(
+      'queued and running phases refresh read-only, terminal results stop polling',
+      async () => {
+        const page = await newPage();
+        runs = [
+          {
+            id: '77777777-7777-4777-8777-777777777777',
+            status: 'pending',
+            progress_phase: 'queued',
+            batch_id: batchId,
+            item_id: itemId,
+            profile_id: profileId,
+            profile_revision: 2,
+            reserved_microusd: 0,
+            charged_microusd: 0,
+            created_at: new Date().toISOString(),
+          },
+        ];
+        await page.clock.install();
+        await page.goto(origin);
+        await expect(page.getByText('排队中', { exact: true })).toBeVisible();
+        await expect(page.getByRole('progressbar', { name: '已完成的任务阶段' })).toHaveAttribute(
+          'value',
+          '0',
+        );
+        runs[0] = {
+          ...runs[0],
+          status: 'running',
+          progress_phase: 'generating',
+          started_at: new Date().toISOString(),
+        };
+        await page.clock.fastForward(5100);
+        await expect(page.getByText('模型生成中', { exact: true })).toBeVisible();
+        await expect(page.getByRole('progressbar', { name: '已完成的任务阶段' })).toHaveAttribute(
+          'value',
+          '2',
+        );
+        await expect(page.getByRole('progressbar', { name: '模型生成中' })).not.toHaveAttribute(
+          'value',
+        );
+        assert.ok(commands.every((command) => command.action === 'detail'));
+        runs[0] = {
+          ...runs[0],
+          status: 'completed',
+          progress_phase: 'saving',
+          finished_at: new Date().toISOString(),
+        };
+        await page.clock.fastForward(5100);
+        await expect(page.getByText('已完成', { exact: true })).toBeVisible();
+        await expect(page.getByRole('progressbar', { name: '已完成的任务阶段' })).toHaveAttribute(
+          'value',
+          '5',
+        );
+        const count = commands.length;
+        await page.clock.fastForward(15000);
+        assert.equal(commands.length, count);
+        await page.close();
+      },
+    );
+    await t.test(
+      'fixed-link detail refreshes persisted candidates and stops polling at completion',
+      async () => {
+        const page = await newPage();
+        await page.setViewportSize({ width: 390, height: 844 });
+        runs = [
+          {
+            id: '77777777-7777-4777-8777-777777777777',
+            status: 'running',
+            progress_phase: 'generating',
+          },
+        ];
+        await page.clock.install();
+        await page.goto(`${origin}/?live-detail`);
+        await expect(page.getByText('模型生成中', { exact: true })).toBeVisible();
+        runs[0] = {
+          ...runs[0],
+          status: 'completed',
+          result: { classification: 'private', candidates: [], reason: 'Synthetic saved result' },
+        };
+        await page.clock.fastForward(5100);
+        await expect(page.getByText('Synthetic saved result', { exact: true })).toBeVisible();
+        await expect(page.getByRole('progressbar', { name: '已完成的任务阶段' })).toHaveAttribute(
+          'value',
+          '5',
+        );
+        assert.equal(
+          await page.evaluate(
+            () => globalThis.document.documentElement.scrollWidth <= globalThis.innerWidth,
+          ),
+          true,
+        );
+        const count = commands.length;
+        await page.clock.fastForward(15000);
+        assert.equal(commands.length, count);
+        assert.ok(commands.every((command) => command.action === 'detail'));
+        await page.close();
+      },
+    );
+    await t.test(
       'name-first selection and confirmed task deletion clear the pending request without calling AI',
       async () => {
         const page = await newPage();
@@ -367,7 +472,7 @@ test(
         await page.goto(origin);
         await expect(page.getByText('生成达到本次任务的截止时间', { exact: false })).toBeVisible();
         await expect(
-          page.getByText('当前接口总时限 5 分钟，模型最多等待 4 分 45 秒', { exact: false }),
+          page.getByText('执行后立即提交后台长任务，模型最多等待 25 分钟', { exact: false }),
         ).toBeVisible();
         await expect(page.getByRole('heading', { name: /失败$/ })).toBeVisible();
         await expect(

@@ -1265,6 +1265,8 @@ Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNo
 
 ## 40.2 仓库已实现表清单
 
+**2026-09-19 长任务进度增量（0019，待生产迁移）：** `signal_generation_runs` 新增可空 `progress_phase text`、`progress_at timestamptz`、`started_at timestamptz`。阶段 CHECK 仅允许 queued/preparing/generating/validating/saving 或 NULL；完成／失败仍由既有 `status` 与 `finished_at` 表达。原记录保持 NULL，不猜测历史进度。进度与账本使用同一 owner／lease token 约束；此迁移不授予权限，专用角色三列 SELECT／UPDATE 必须单独审批。无新增公开表或自动发布能力。
+
 **2026-09-17 私有导入与生成增量：** 原有表清单之外，`0014` 新增 `import_batches`、`import_items`、`import_documents`、`import_attempts`、`import_outputs`、`import_audit`、`import_daily_usage`，职责与列契约见 [IMPORT_TASKS.md](IMPORT_TASKS.md)。`0015` 新增 `signal_generation_runs`，详见 [AI_SIGNAL_GENERATION.md](AI_SIGNAL_GENERATION.md)：UUID 主键、owner 隔离；`batch_id/item_id/source_fence/source_hash` 与 `profile_id/profile_revision/generation_version` 固定来源及配置；脱敏 `snapshot`、预算 `configuration` 与费用／用量／私有结果保存；状态为 pending/running/completed/failed/unknown/cancelled，租约 token 防止旧执行写回。来源和 Profile 由各自最小权限连接读取并服务端验证，生成表不授予跨表读权，也不以外键伪装事实核验；语义唯一索引由 owner、item、source fence/hash、profile/revision、generation version 组成。仅新增私有预览记录，未创建正式 Signal、人物或公开许可；迁移默认 owner-only，生产授权另行审查。
 
 | 领域               | 表                         | 职责与关键字段                                                                                      | 主键、唯一约束与核心关系                                                                          |

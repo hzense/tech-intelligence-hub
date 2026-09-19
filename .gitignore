@@ -13,3 +13,7 @@ playwright-report/
 test-results/
 .DS_Store
 .vercel
+.workflow-data/
+apps/web/app/.well-known/workflow/
+# Build-pinned private Sandbox worker (never a public asset).
+apps/web/.generation-worker/

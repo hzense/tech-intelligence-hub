@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "predev": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build",
+    "predev": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build && node scripts/build-generation-worker.mjs",
     "dev": "next dev",
     "start": "next start",
-    "prebuild": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build",
+    "prebuild": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build && node scripts/build-generation-worker.mjs",
     "build": "next build",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
@@ -26,7 +26,8 @@
     "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "workflow": "4.8.9"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",

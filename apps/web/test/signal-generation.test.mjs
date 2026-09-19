@@ -162,7 +162,7 @@ test('real SDK structured extraction yields only private candidates and exact ev
   assert.match(system, /单次最多 5 条候选/);
   assert.match(system, /标题最多 50 字，摘要最多 500 字/);
   assert.equal(value.diagnostic.code, null);
-  assert.equal(value.diagnostic.timeout_ms, 285000);
+  assert.equal(value.diagnostic.timeout_ms, 1500000);
   assert.ok(Number.isSafeInteger(value.diagnostic.elapsed_ms));
 });
 
@@ -221,7 +221,7 @@ test('business generation survives the old probe and 45s cutoffs without changin
   assert.equal(body.tools, undefined);
 });
 
-test('five-minute route leaves bookkeeping headroom and fits the existing lease', () => {
+test('short admission route dispatches a long worker with bookkeeping and lease headroom', () => {
   const route = readFileSync(
     new URL('../app/api/admin/signal-generation/route.ts', import.meta.url),
     'utf8',
@@ -234,10 +234,19 @@ test('five-minute route leaves bookkeeping headroom and fits the existing lease'
   const leaseMinutes = Number(
     store.match(/lease_until=clock_timestamp\(\)\+interval '(\d+) minutes'/)[1],
   );
-  assert.equal(routeSeconds, 300);
-  assert.equal(generationTimeoutMs, 285000);
-  assert.equal(routeSeconds * 1000 - generationTimeoutMs, 15000);
-  assert.ok(leaseMinutes * 60 > routeSeconds);
+  const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  const workerSeconds = config.functions['app/.well-known/workflow/v1/step/route.js'].maxDuration;
+  assert.equal(routeSeconds, 60);
+  assert.equal(generationTimeoutMs, 1500000);
+  assert.equal(workerSeconds, 300);
+  const sandbox = readFileSync(
+    new URL('../lib/server/generation-sandbox.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(sandbox, /generationSandboxTimeoutMs = 30 \* 60 \* 1000/);
+  assert.ok(30 * 60 * 1000 > generationTimeoutMs);
+  assert.ok(leaseMinutes > 30);
+  assert.match(route, /await start\(signalGenerationWorkflow, \[owner, id\]\)/);
 });
 
 test('business deadline aborts exactly once, retains unknown usage and never retries a late response', async (t) => {
@@ -487,6 +496,30 @@ function coreFixture(overrides = {}) {
     finishes,
   };
 }
+test('progress gates admission but advisory updates cannot discard a paid valid result', async () => {
+  const phases = [];
+  const f = coreFixture({
+    progress: async (_owner, _id, _token, phase) => {
+      phases.push(phase);
+      if (phase !== 'generating') throw new Error('progress unavailable');
+    },
+  });
+  const dto = await f.execute('admin', { action: 'run', id: f.run().id });
+  assert.equal(dto.status, 'completed');
+  assert.equal(f.calls(), 1);
+  assert.equal(f.finishes.length, 1);
+  assert.deepEqual(phases, ['generating', 'validating', 'saving']);
+  const blocked = coreFixture({
+    progress: async () => {
+      throw new Error('stale_attempt');
+    },
+  });
+  assert.equal(
+    (await blocked.execute('admin', { action: 'run', id: blocked.run().id })).status,
+    'failed',
+  );
+  assert.equal(blocked.calls(), 0);
+});
 test('explicit retry pins a predecessor during creation without fetching credentials or invoking AI', async () => {
   const retryOf = randomUUID();
   let created;
@@ -689,7 +722,9 @@ test('legacy unknown tasks expose failed status and deletion only after their ex
   assert.equal(dto.reserved_microusd, '203730');
   assert.equal('lease_until' in dto, false);
   assert.equal(run.status, 'unknown');
-  assert.equal(generationDto({ ...run, status: 'running' }).can_delete, false);
+  assert.equal(generationDto({ ...run, status: 'running' }).can_delete, true);
+  assert.equal(generationDto({ ...run, status: 'running' }).status, 'failed');
+  assert.equal(generationDto({ ...run, status: 'running' }).error_code, 'outcome_unknown');
 });
 
 test('untrusted diagnostic strings and broken logging cannot change completion or expose secrets', async () => {
@@ -779,6 +814,59 @@ test('generation API denies anonymous, cross-site, host spoofing and client sour
   assert.equal(good.status, 200);
   assert.match(good.headers.get('cache-control'), /no-store/);
   assert.equal(called, 1);
+});
+test('run returns 202 after dispatch only and read-only progress never executes a task', async () => {
+  const id = randomUUID();
+  let dispatched = 0,
+    read = 0;
+  const handler = createGenerationHandler({
+    session: async () => ({ user: { id: 'owner' } }),
+    origin: () => 'https://hzense.com',
+    execute: async () => {
+      throw new Error('must not execute synchronously');
+    },
+    dashboard: async () => ({}),
+    enqueue: async (owner, target) => {
+      assert.equal(owner, 'owner');
+      assert.equal(target, id);
+      dispatched++;
+      return { id, status: 'pending', progress_phase: 'queued' };
+    },
+    detail: async (owner, target) => {
+      assert.equal(owner, 'owner');
+      assert.equal(target, id);
+      read++;
+      return { id, status: 'running', progress_phase: 'generating' };
+    },
+  });
+  const response = await handler(
+    new Request('https://hzense.com/api/admin/signal-generation', {
+      method: 'POST',
+      headers: {
+        host: 'hzense.com',
+        origin: 'https://hzense.com',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'run', id }),
+    }),
+  );
+  assert.equal(response.status, 202);
+  assert.equal(dispatched, 1);
+  const detail = await handler(
+    new Request(`https://hzense.com/api/admin/signal-generation?id=${id}`, {
+      headers: { host: 'hzense.com' },
+    }),
+  );
+  assert.equal(detail.status, 200);
+  assert.equal(read, 1);
+  assert.equal(dispatched, 1);
+  const bad = await handler(
+    new Request(`https://hzense.com/api/admin/signal-generation?id=${id}&id=${id}`, {
+      headers: { host: 'hzense.com' },
+    }),
+  );
+  assert.equal(bad.status, 400);
+  assert.equal(read, 1);
 });
 test('only owner-checked deleted-task errors expose a predecessor for explicit retry', async () => {
   const previousId = randomUUID();

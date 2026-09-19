@@ -36,6 +36,7 @@ export function createGenerationHandler(deps: {
   delete?(owner: string, id: string): Promise<unknown>;
   detail?(owner: string, id: string): Promise<unknown>;
   inspectSource?(owner: string, body: unknown): Promise<unknown>;
+  enqueue?(owner: string, id: string): Promise<unknown>;
 }) {
   return async (request: Request) => {
     try {
@@ -53,10 +54,27 @@ export function createGenerationHandler(deps: {
       )
         return importResponse({ error: 'forbidden' }, 403);
       // Next reconstructs an internal URL; authority comes from actual Host and fixed auth origin.
+      if (request.method === 'GET' && url.searchParams.has('id') && !url.hash) {
+        if ([...url.searchParams.keys()].join(',') !== 'id' || !deps.detail)
+          throw new GenerationError('invalid_request');
+        return importResponse({
+          run: await deps.detail(session.user.id, aiUuid(url.searchParams.get('id'))),
+        });
+      }
       if (url.search || url.hash) return importResponse({ error: 'invalid_request' }, 400);
       if (request.method === 'GET') return importResponse(await deps.dashboard(session.user.id));
       if (request.method !== 'POST') return importResponse({ error: 'method_not_allowed' }, 405);
       const body = await readImportJSON(request, 4096);
+      if (body && typeof body === 'object' && 'action' in body && body.action === 'run') {
+        if (
+          Array.isArray(body) ||
+          Object.keys(body).sort().join(',') !== 'action,id' ||
+          !('id' in body)
+        )
+          throw new GenerationError('invalid_request');
+        if (!deps.enqueue) throw new GenerationError('not_configured');
+        return importResponse({ run: await deps.enqueue(session.user.id, aiUuid(body.id)) }, 202);
+      }
       if (body && typeof body === 'object' && 'action' in body && body.action === 'detail') {
         if (
           Array.isArray(body) ||

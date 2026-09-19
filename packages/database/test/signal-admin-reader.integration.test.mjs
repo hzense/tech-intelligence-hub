@@ -278,7 +278,7 @@ suite('Signal administrator has exact read-only PostgreSQL privileges', () => {
       expectedDatabase: database,
       expectedUser: ownerRole,
     });
-    expect(result).toMatchObject({ migrationCount: 19, tableCount: 48 });
+    expect(result).toMatchObject({ migrationCount: 20, tableCount: 48 });
   });
 
   it('empty-role-only provisioning refuses a second grant run without changing valid rights', async () => {
@@ -333,7 +333,7 @@ suite('Signal administrator has exact read-only PostgreSQL privileges', () => {
       } finally {
         await admin((client) => client.query(restore));
       }
-      await expect(verify()).resolves.toMatchObject({ migrationCount: 19, tableCount: 48 });
+      await expect(verify()).resolves.toMatchObject({ migrationCount: 20, tableCount: 48 });
     },
   );
 

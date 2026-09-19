@@ -52,7 +52,10 @@ test('disabled generation history is owner-scoped, read-only and independent of 
         name: 'synthetic-backends',
         setup(b) {
           b.onResolve(
-            { filter: /^(server-only|pg|history-fixture|\.\/import-service|\.\/admin-ai)$/ },
+            {
+              filter:
+                /^(server-only|pg|history-fixture|\.\/generation-import-reader|\.\/admin-ai)$/,
+            },
             ({ path }) => ({ path, namespace: 'fixture' }),
           );
           b.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path }) => ({
@@ -63,7 +66,7 @@ test('disabled generation history is owner-scoped, read-only and independent of 
                   ? ''
                   : path === 'pg'
                     ? `import {Pool} from 'history-fixture'; export default {Pool};`
-                    : path === './import-service'
+                    : path === './generation-import-reader'
                       ? `export {importPool} from 'history-fixture'; export const importsConfigured=()=>true;`
                       : `import {forbidden,aiDashboard} from 'history-fixture'; export const getAiDashboard=aiDashboard; export const generationAiAccess=forbidden;`,
             loader: 'js',
@@ -97,6 +100,8 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   assert.equal(service.generationConfigured(), false);
   assert.equal(service.generationHistoryConfigured(), true);
   const detail = await service.generationDetail('admin', service.id);
+  assert.equal(detail.can_delete, false);
+  await assert.rejects(service.deleteGeneration('admin', service.id), { code: 'not_configured' });
   assert.equal(detail.result.candidates[0].title, 'Saved candidate');
   assert.doesNotMatch(
     JSON.stringify(detail),
@@ -106,15 +111,17 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   assert.deepEqual(dashboard, { runs: [detail], profiles: [], batches: [] });
   assert.equal(service.ancillary.aiReads, 0);
   assert.equal(service.ancillary.importReads, 0);
-  // An expired-looking run is displayed as stored, never recovered by a history read.
+  // Expired running is displayed as failed without mutating its stored state or ledger.
   service.row.status = 'running';
   service.row.lease_until = '2000-01-01T00:00:00Z';
-  assert.equal((await service.generationDetail('admin', service.id)).status, 'running');
+  assert.equal((await service.generationDetail('admin', service.id)).status, 'failed');
+  assert.equal(service.row.status, 'running');
   service.row.status = 'completed';
   assert.ok(
     service.queries.some((q) => q.sql === 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'),
   );
   assert.ok(!service.queries.some((q) => /^(UPDATE|INSERT|DELETE)/.test(q.sql)));
+  assert.ok(service.queries.some((q) => q.sql.includes('NULL::text AS progress_phase')));
   await assert.rejects(service.generationDetail('other-admin', service.id), { code: 'not_found' });
   assert.deepEqual((await service.generationDashboard('other-admin')).runs, []);
   const before = service.queries.length;
@@ -142,6 +149,8 @@ test('disabled generation history is owner-scoped, read-only and independent of 
     active: 'fixture',
     keys: { fixture: Buffer.alloc(32, 1).toString('base64') },
   });
+  assert.equal(service.generationConfigured(), false);
+  process.env.HZENSE_GENERATION_WORKFLOW_ENABLED = '1';
   assert.equal(service.generationConfigured(), true);
   for (const [aiFails, importFails] of [
     [true, false],
@@ -150,7 +159,7 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   ]) {
     Object.assign(service.ancillary, { aiFails, importFails });
     const value = await service.generationDashboard('admin');
-    assert.deepEqual(value, { runs: [detail], profiles: [], batches: [] });
+    assert.deepEqual(value, { runs: [{ ...detail, can_delete: true }], profiles: [], batches: [] });
     assert.doesNotMatch(JSON.stringify(value), /PRIVATE_AI_ERROR|PRIVATE_IMPORT_ERROR/);
   }
   assert.equal(service.ancillary.aiReads, 3);

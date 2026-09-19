@@ -1,6 +1,7 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
+import { withWorkflow } from 'workflow/next';
 
 const webRoot = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(webRoot, '../..');
@@ -17,7 +18,7 @@ const securityHeaders = [
   { key: 'X-Frame-Options', value: 'DENY' },
 ];
 
-const nextConfig: NextConfig = {
+export const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: '/:path*', headers: securityHeaders },
@@ -35,6 +36,7 @@ const nextConfig: NextConfig = {
   transpilePackages: ['@hzense/content'],
   outputFileTracingRoot: repositoryRoot,
   outputFileTracingIncludes: {
+    '/.well-known/workflow/v1/step': ['./.generation-worker/worker.cjs'],
     '/': contentTrace,
     '/daily': contentTrace,
     '/daily/[date]': contentTrace,
@@ -54,4 +56,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withWorkflow(nextConfig);

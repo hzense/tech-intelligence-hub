@@ -78,6 +78,12 @@ suite('one-time task visibility role upgrade', () => {
       let sql = (await load(`db/roles/configure_${kind}_admin.sql`))
         .replaceAll(',deleted_at', '')
         .replaceAll(',"deleted_at"', '');
+      // This suite verifies the historical 0017/0018 ACL transition, not 0019.
+      if (kind === 'generation')
+        sql = sql
+          .replaceAll(',progress_phase,progress_at,started_at', '')
+          .replaceAll(',"progress_phase","progress_at","started_at"', '')
+          .replace('a.grantee=target)<>51', 'a.grantee=target)<>45');
       sql = sql.replace(
         /(WHERE a.grantee=target\)<>)(\d+)/g,
         (_, prefix, count) => prefix + (Number(count) > 10 ? Number(count) - 2 : count),

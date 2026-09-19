@@ -4,6 +4,14 @@ const allowedColumns = Object.entries(signalGenerationRoleColumns)
   .flatMap(([privilege, columns]) => columns.map((column) => `('${column}','${privilege}')`))
   .join(',');
 
+const legacyAllowedColumns = Object.entries(signalGenerationRoleColumns)
+  .flatMap(([privilege, columns]) =>
+    columns
+      .filter((column) => !['progress_phase', 'progress_at', 'started_at'].includes(column))
+      .map((column) => `('${column}','${privilege}')`),
+  )
+  .join(',');
+
 // Shared read-only catalog check for runtime and owner maintenance. No SET ROLE,
 // ACL repair, secret reads or generation data reads are performed here.
 export const generationRoleCheckSQL = `WITH allowed(column_name,privilege) AS (VALUES ${allowedColumns})
@@ -91,3 +99,9 @@ SELECT r.rolcanlogin AND NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolcreate
     WHERE n.nspname!~'^pg_' AND n.nspname<>'information_schema' AND pg_catalog.has_function_privilege(r.oid,p.oid,'EXECUTE')
       AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid='pg_catalog.pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e'))
   AS safe FROM pg_catalog.pg_roles r WHERE r.rolname='hzense_generation_admin'`;
+
+// Frozen 0018 contract; not a relaxation of the new mutation contract.
+export const legacyGenerationRoleCheckSQL = generationRoleCheckSQL.replace(
+  `VALUES ${allowedColumns}`,
+  `VALUES ${legacyAllowedColumns}`,
+);

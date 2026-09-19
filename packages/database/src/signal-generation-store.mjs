@@ -5,7 +5,12 @@ import { Buffer } from 'node:buffer';
 // provider keys, Signal tables, verification attestations or publication state.
 const columns = `id,owner_id,batch_id,item_id,source_fence,source_hash,profile_id,profile_revision,
  generation_version,fingerprint,snapshot,configuration,status,lease_token,lease_until,budget_day,
- reserved_microusd,charged_microusd,result,error_code,created_at,finished_at,deleted_at`;
+ reserved_microusd,charged_microusd,result,error_code,created_at,finished_at,deleted_at,
+ progress_phase,progress_at,started_at`;
+const legacyColumns = columns.replace(
+  'progress_phase,progress_at,started_at',
+  'NULL::text AS progress_phase,NULL::timestamptz AS progress_at,NULL::timestamptz AS started_at',
+);
 const errorCodes = new Set([
   'task_deleted',
   'task_active',
@@ -175,10 +180,10 @@ async function transaction(pool, work, readOnly = false) {
     client?.release(discard);
   }
 }
-async function run(client, owner, id, locking = false) {
+async function run(client, owner, id, locking = false, legacyReadOnly = false) {
   const row = (
     await client.query(
-      `SELECT ${columns} FROM public.signal_generation_runs WHERE id=$1 AND owner_id=$2${locking ? ' FOR UPDATE' : ''}`,
+      `SELECT ${legacyReadOnly ? legacyColumns : columns} FROM public.signal_generation_runs WHERE id=$1 AND owner_id=$2${locking ? ' FOR UPDATE' : ''}`,
       [uuid(id), ownerId(owner)],
     )
   ).rows[0];
@@ -288,14 +293,21 @@ export async function createSignalGeneration({
     ).rows[0];
   });
 }
-export async function getSignalGeneration({ pool, owner, id, readOnly = false }) {
+export async function getSignalGeneration({
+  pool,
+  owner,
+  id,
+  readOnly = false,
+  legacyReadOnly = false,
+}) {
+  if (legacyReadOnly && !readOnly) fail('invalid_request');
   ownerId(owner);
   uuid(id);
   return transaction(
     pool,
     async (client) => {
       if (!readOnly) await expireRunning(client, owner, { id });
-      const row = await run(client, owner, id);
+      const row = await run(client, owner, id, false, legacyReadOnly);
       if (row.deleted_at) fail('not_found');
       return row;
     },
@@ -314,7 +326,15 @@ async function expireRunning(client, owner, { id, batchId, itemId } = {}) {
     [owner, id ?? null, batchId ?? null, itemId ?? null],
   );
 }
-export async function listSignalGenerations({ pool, owner, batchId, itemId, readOnly = false }) {
+export async function listSignalGenerations({
+  pool,
+  owner,
+  batchId,
+  itemId,
+  readOnly = false,
+  legacyReadOnly = false,
+}) {
+  if (legacyReadOnly && !readOnly) fail('invalid_request');
   ownerId(owner);
   if (batchId !== undefined) uuid(batchId);
   if (itemId !== undefined) uuid(itemId);
@@ -324,7 +344,7 @@ export async function listSignalGenerations({ pool, owner, batchId, itemId, read
       if (!readOnly) await expireRunning(client, owner, { batchId, itemId });
       return (
         await client.query(
-          `SELECT ${columns} FROM public.signal_generation_runs
+          `SELECT ${legacyReadOnly ? legacyColumns : columns} FROM public.signal_generation_runs
     WHERE owner_id=$1 AND deleted_at IS NULL AND ($2::uuid IS NULL OR batch_id=$2) AND ($3::uuid IS NULL OR item_id=$3)
     ORDER BY created_at DESC,id DESC LIMIT 50`,
           [owner, batchId ?? null, itemId ?? null],
@@ -384,7 +404,8 @@ export async function claimSignalGeneration({ pool, owner, id, currentLimits }) 
     row = (
       await client.query(
         `UPDATE public.signal_generation_runs SET status='running',lease_token=$2,
-      lease_until=clock_timestamp()+interval '7 minutes',budget_day=$3,reserved_microusd=$4
+      lease_until=clock_timestamp()+interval '32 minutes',budget_day=$3,reserved_microusd=$4,
+      progress_phase='preparing',progress_at=clock_timestamp(),started_at=clock_timestamp()
       WHERE id=$1 AND status='pending' RETURNING ${columns}`,
         [id, randomUUID(), day, reserve.toString()],
       )
@@ -464,6 +485,7 @@ export async function cancelSignalGeneration({ pool, owner, id }) {
 
 export async function deleteSignalGeneration({ pool, owner, id }) {
   return transaction(pool, async (client) => {
+    await expireRunning(client, owner, { id });
     const row = await run(client, owner, id, true);
     if (row.deleted_at) return { id: row.id, deleted: true };
     const active = (
@@ -480,5 +502,58 @@ export async function deleteSignalGeneration({ pool, owner, id }) {
       [id],
     );
     return { id: row.id, deleted: true };
+  });
+}
+
+export async function queueSignalGeneration({ pool, owner, id }) {
+  return transaction(pool, async (client) => {
+    const row = await run(client, owner, id, true);
+    if (row.deleted_at) fail('not_found');
+    if (row.status !== 'pending') return row;
+    return (
+      await client.query(
+        `UPDATE public.signal_generation_runs
+      SET progress_phase='queued',progress_at=COALESCE(progress_at,clock_timestamp())
+      WHERE id=$1 RETURNING ${columns}`,
+        [id],
+      )
+    ).rows[0];
+  });
+}
+
+// The same committed attempt owns progress and completion. A late/stale worker
+// cannot move a terminal task or overwrite another attempt's progress.
+export async function updateSignalGenerationProgress({ pool, owner, id, token, phase }) {
+  uuid(token);
+  const phases = ['preparing', 'generating', 'validating', 'saving'];
+  if (!phases.includes(phase) || phase === 'preparing') fail();
+  return transaction(pool, async (client) => {
+    const row = await run(client, owner, id, true);
+    if (
+      row.deleted_at ||
+      row.status !== 'running' ||
+      row.lease_token !== token ||
+      phases.indexOf(phase) < phases.indexOf(row.progress_phase)
+    )
+      fail('stale_attempt');
+    const result = await client.query(
+      `UPDATE public.signal_generation_runs
+      SET progress_phase=$3,progress_at=clock_timestamp()
+      WHERE id=$1 AND lease_token=$2 AND lease_until>clock_timestamp() RETURNING id`,
+      [id, token, phase],
+    );
+    if (!result.rows.length) fail('stale_attempt');
+  });
+}
+
+export async function failQueuedSignalGeneration({ pool, owner, id }) {
+  return transaction(pool, async (client) => {
+    await run(client, owner, id, true);
+    await client.query(
+      `UPDATE public.signal_generation_runs SET status='failed',
+      error_code='generation_dispatch_failed',finished_at=clock_timestamp()
+      WHERE id=$1 AND status='pending' AND deleted_at IS NULL`,
+      [id],
+    );
   });
 }
