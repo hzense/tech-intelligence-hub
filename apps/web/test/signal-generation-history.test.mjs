@@ -17,9 +17,9 @@ export const row = {id, owner_id:'admin',status:'completed',result:{classificati
 export let safeRole = true;
 export function setSafeRole(value) { safeRole=value; }
 export function forbidden() { throw new Error('Unexpected import or AI access'); }
-export const ancillary = {aiFails:true,importFails:true,aiReads:0,importReads:0};
+export const ancillary = {aiFails:true,importFails:true,aiReads:0,importReads:0,labels:[]};
 export async function aiDashboard() { ancillary.aiReads++; if(ancillary.aiFails) throw new Error('PRIVATE_AI_ERROR'); return {profiles:[],connections:[]}; }
-export const importPool = {async connect(){ ancillary.importReads++; if(ancillary.importFails) throw new Error('PRIVATE_IMPORT_ERROR'); return {async query(){return {rows:[]};},release(){}}; }};
+export const importPool = {async connect(){ ancillary.importReads++; if(ancillary.importFails) throw new Error('PRIVATE_IMPORT_ERROR'); return {async query(sql){return {rows:sql.includes("i.declaration->>'name'") ? ancillary.labels : []};},release(){}}; }};
 export class Pool {
   on() {}
   async connect() { return {release(){}, async query(sql, values) {
@@ -155,6 +155,23 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   }
   assert.equal(service.ancillary.aiReads, 3);
   assert.equal(service.ancillary.importReads, 3);
+  // History labels are fetched by the run item IDs, independently of the
+  // selectable source page (including deleted/duplicate/off-page imports).
+  service.row.item_id = '22222222-2222-4222-8222-222222222222';
+  Object.assign(service.ancillary, {
+    importFails: false,
+    labels: [{ id: service.row.item_id, name: 'Archived source.txt', url: null }],
+  });
+  process.env.HZENSE_SIGNAL_GENERATION_ENABLED = '0';
+  const namedHistory = await service.generationDashboard('admin');
+  assert.deepEqual(namedHistory.batches, []);
+  assert.equal(namedHistory.runs[0].source_name, 'Archived source.txt');
+  assert.equal(
+    (await service.generationDetail('admin', service.id)).source_name,
+    'Archived source.txt',
+  );
+  service.ancillary.importFails = true;
+  assert.equal((await service.generationDashboard('admin')).runs[0].status, 'completed');
   service.setSafeRole(false);
   await assert.rejects(service.generationDetail('admin', service.id), {
     code: 'database_unavailable',

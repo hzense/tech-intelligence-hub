@@ -19,6 +19,7 @@ type Profile = {
 };
 type GenerationRun = {
   id: string;
+  source_name?: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'unknown' | 'cancelled';
   batch_id: string;
   item_id: string;
@@ -692,7 +693,8 @@ export function AdminSignalGeneration({
         {data.runs.map((run) => (
           <article key={run.id} className={styles.run}>
             <h3>
-              {sourceNames.get(run.item_id) ?? '生成任务'} · {statuses[run.status]}
+              {run.source_name ?? sourceNames.get(run.item_id) ?? '生成任务'} ·{' '}
+              {statuses[run.status]}
             </h3>
             <p className={styles.id}>请求 ID：{run.id}</p>
             <p className={styles.id}>

@@ -9,6 +9,7 @@ import {
   createImportBatch,
   deleteImportBatch,
   getImportBatch,
+  getImportItemLabels,
   confirmImportDocument,
   claimImportItem,
   finishImportAttempt,
@@ -128,8 +129,55 @@ suite('private import PostgreSQL persistence', () => {
     expect((await listImportBatches({ pool, owner })).map((b) => b.id)).not.toContain(first.id);
     await expect(getImportOutput(args(first))).rejects.toMatchObject({ code: 'not_found' });
     expect((await getImportBatch({ pool, owner, id: second.id })).items[0].duplicate_of).toBeNull();
+    expect(
+      await getImportItemLabels({ pool, owner, itemIds: [first.items[0].id, other.items[0].id] }),
+    ).toEqual([{ id: first.items[0].id, name: 'note.txt', url: null }]);
     const remaining = await pool.query('SELECT count(*)::int AS n FROM public.import_outputs');
     expect(remaining.rows[0].n).toBe(4);
+  });
+  it('keeps an older canonical source selectable beyond fifty copies with a bounded number of list queries', async () => {
+    const sourceOwner = 'many-copies';
+    let first;
+    for (let index = 0; index < 55; index++) {
+      const b = await created({ owner: sourceOwner });
+      const owned = { ...args(b), owner: sourceOwner };
+      await confirmImportDocument({ ...owned, document: document(b) });
+      const claim = await claimImportItem({ ...owned, parserVersion: 'text/v1' });
+      await finishImportAttempt({
+        ...owned,
+        fence: claim.attempt.fence,
+        outcome: 'completed',
+        output,
+      });
+      first ??= b;
+    }
+    let reads = 0;
+    const observed = {
+      async connect() {
+        const client = await pool.connect();
+        return {
+          query(sql, values) {
+            if (/^(SELECT|WITH)/.test(sql)) reads++;
+            return client.query(sql, values);
+          },
+          release(error) {
+            client.release(error);
+          },
+        };
+      },
+    };
+    const page = await listImportBatches({ pool: observed, owner: sourceOwner });
+    expect(page).toHaveLength(50);
+    expect(page.every((batch) => batch.items[0].duplicate_of === first.items[0].id)).toBe(true);
+    expect(reads).toBe(2);
+    reads = 0;
+    const sources = await listImportBatches({
+      pool: observed,
+      owner: sourceOwner,
+      view: 'sources',
+    });
+    expect(sources.map((batch) => batch.id)).toEqual([first.id]);
+    expect(reads).toBe(2);
   });
   it('deletion cancels unstarted items, blocks active attempts and preserves request replay identity', async () => {
     const value = request();

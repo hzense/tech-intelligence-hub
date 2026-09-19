@@ -63,28 +63,67 @@ async function item(client, batchId, id) {
   if (!row) importFail('not_found');
   return row;
 }
-async function detail(client, row) {
+// Rank each owner's completed outputs once, rather than scanning all previous
+// outputs for every item. JSONB equality preserves exact fragment semantics.
+const canonicalItems = (ownerParameter) => `canonical_items AS MATERIALIZED (
+  SELECT i.id,
+    first_value(i.id) OVER identical AS canonical_id,
+    first_value(i.batch_id) OVER identical AS canonical_batch_id
+  FROM public.import_items i
+  JOIN public.import_batches b ON b.id=i.batch_id
+  JOIN public.import_outputs o ON o.item_id=i.id AND o.fence=i.fence
+  WHERE b.owner_id=${ownerParameter} AND b.deleted_at IS NULL AND NOT b.cancelled
+    AND i.status='completed'
+  WINDOW identical AS (PARTITION BY o.content->'fragments' ORDER BY i.created_at,i.id)
+)`;
+async function details(client, rows, owner) {
+  if (!rows.length) return [];
   const items = (
     await client.query(
-      `SELECT ${selectColumns('import_items', 'i.')}, d.sha256,d.byte_size,d.format, a.error_code,a.lease_until, duplicate.id AS duplicate_of, duplicate.batch_id AS duplicate_batch_id
-    FROM public.import_items i LEFT JOIN public.import_documents d ON d.item_id=i.id
-    LEFT JOIN public.import_attempts a ON a.item_id=i.id AND a.fence=i.fence
-    LEFT JOIN public.import_outputs own_output ON own_output.item_id=i.id AND own_output.fence=i.fence
-    LEFT JOIN LATERAL (
-      SELECT other.id, other.batch_id FROM public.import_items other
-      JOIN public.import_batches other_batch ON other_batch.id=other.batch_id
-      JOIN public.import_outputs other_output ON other_output.item_id=other.id AND other_output.fence=other.fence
-      WHERE other_batch.owner_id=$2 AND other_batch.deleted_at IS NULL AND NOT other_batch.cancelled
-        AND other.status='completed' AND i.status='completed'
-        AND other_output.content->'fragments'=own_output.content->'fragments'
-        AND (other.created_at,other.id)<(i.created_at,i.id)
-      ORDER BY other.created_at,other.id LIMIT 1
-    ) duplicate ON true
-    WHERE i.batch_id=$1 ORDER BY i.position`,
-      [row.id, row.owner_id],
+      `WITH ${canonicalItems('$2')}
+      SELECT ${selectColumns('import_items', 'i.')}, d.sha256,d.byte_size,d.format, a.error_code,a.lease_until,
+        NULLIF(c.canonical_id,i.id) AS duplicate_of,
+        CASE WHEN c.canonical_id<>i.id THEN c.canonical_batch_id END AS duplicate_batch_id
+      FROM public.import_items i LEFT JOIN public.import_documents d ON d.item_id=i.id
+      LEFT JOIN public.import_attempts a ON a.item_id=i.id AND a.fence=i.fence
+      LEFT JOIN canonical_items c ON c.id=i.id
+      WHERE i.batch_id=ANY($1::uuid[]) ORDER BY i.position`,
+      [rows.map((row) => row.id), owner],
     )
   ).rows;
-  return { ...row, status: importBatchStatus(row, items), items };
+  const byBatch = new Map();
+  for (const item of items) {
+    if (!byBatch.has(item.batch_id)) byBatch.set(item.batch_id, []);
+    byBatch.get(item.batch_id).push(item);
+  }
+  return rows.map((row) => {
+    const items = byBatch.get(row.id) ?? [];
+    return { ...row, status: importBatchStatus(row, items), items };
+  });
+}
+async function detail(client, row) {
+  return (await details(client, [row], row.owner_id))[0];
+}
+// Labels are retained for saved generation history even after an import is hidden.
+// Owner scope and the explicit item IDs prevent exposing another owner's labels.
+export async function getImportItemLabels({ pool, owner, itemIds }) {
+  importOwner(owner);
+  if (!Array.isArray(itemIds) || itemIds.length > 100) importFail();
+  const ids = [...new Set(itemIds.map(importUuid))];
+  if (!ids.length) return [];
+  return transaction(
+    pool,
+    async (client) =>
+      (
+        await client.query(
+          `SELECT i.id, i.declaration->>'name' AS name, i.declaration->>'url' AS url
+     FROM public.import_items i JOIN public.import_batches b ON b.id=i.batch_id
+     WHERE b.owner_id=$1 AND i.id=ANY($2::uuid[])`,
+          [owner, ids],
+        )
+      ).rows,
+    true,
+  );
 }
 export async function createImportBatch({ pool, owner, request, capabilities, configuration }) {
   importOwner(owner);
@@ -169,20 +208,13 @@ export async function listImportBatches({ pool, owner, before, view = 'all' }) {
       const cursor = before === undefined ? null : await batch(client, before, owner);
       const rows = (
         await client.query(
-          `SELECT ${selectColumns('import_batches', 'b.')} FROM public.import_batches b
+          `WITH ${canonicalItems('$1')}
+           SELECT ${selectColumns('import_batches', 'b.')} FROM public.import_batches b
            WHERE b.owner_id=$1 AND b.deleted_at IS NULL
            AND ($3::text='all' OR ($3::text='sources' AND NOT b.cancelled AND EXISTS (
              SELECT 1 FROM public.import_items source_item
-             JOIN public.import_outputs source_output ON source_output.item_id=source_item.id AND source_output.fence=source_item.fence
-             WHERE source_item.batch_id=b.id AND source_item.status='completed' AND NOT EXISTS (
-               SELECT 1 FROM public.import_items previous_item
-               JOIN public.import_batches previous_batch ON previous_batch.id=previous_item.batch_id
-               JOIN public.import_outputs previous_output ON previous_output.item_id=previous_item.id AND previous_output.fence=previous_item.fence
-               WHERE previous_batch.owner_id=b.owner_id AND previous_batch.deleted_at IS NULL AND NOT previous_batch.cancelled
-                 AND previous_item.status='completed'
-                 AND (previous_item.created_at,previous_item.id)<(source_item.created_at,source_item.id)
-                 AND previous_output.content->'fragments'=source_output.content->'fragments'
-             )
+             JOIN canonical_items c ON c.id=source_item.id AND c.canonical_id=source_item.id
+             WHERE source_item.batch_id=b.id
            )) OR ($3::text IN ('current','history') AND
              (b.cancelled OR NOT EXISTS (
                SELECT 1 FROM public.import_items i WHERE i.batch_id=b.id AND i.status<>'completed'
@@ -192,9 +224,7 @@ export async function listImportBatches({ pool, owner, before, view = 'all' }) {
           [owner, cursor?.id ?? null, view],
         )
       ).rows;
-      const result = [];
-      for (const row of rows) result.push(await detail(client, row));
-      return result;
+      return details(client, rows, owner);
     },
     true,
   );

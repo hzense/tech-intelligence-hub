@@ -4,6 +4,7 @@ import * as store from '../../../../packages/database/src/signal-generation-stor
 import { assertGenerationRole } from '../../../../packages/database/src/signal-generation-role.mjs';
 import {
   getImportBatch,
+  getImportItemLabels,
   getImportOutput,
   listImportBatches,
 } from '../../../../packages/database/src/import-store.mjs';
@@ -81,12 +82,24 @@ async function source(owner: string, batchId: string, itemId: string) {
     output: await getImportOutput({ pool: importPool, owner, batchId, itemId }),
   };
 }
+async function historyDtos(owner: string, runs: store.SignalGenerationRun[]) {
+  const itemIds = [...new Set(runs.map((run) => run.item_id).filter(Boolean))];
+  const labels =
+    importsConfigured() && itemIds.length
+      ? await getImportItemLabels({ pool: importPool, owner, itemIds }).catch(() => [])
+      : [];
+  const names = new Map(labels.map((item) => [item.id, item.name ?? item.url ?? '未命名资料']));
+  return runs.map((run) => ({
+    ...generationDto(run),
+    ...(names.has(run.item_id) ? { source_name: names.get(run.item_id) } : {}),
+  }));
+}
 export async function generationDashboard(owner: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
   // History does not depend on import, AI credentials, budgets or the spend switch.
   if (!generationConfigured()) {
     const runs = await store.listSignalGenerations({ pool: generationPool, owner, readOnly: true });
-    return { runs: runs.map(generationDto), profiles: [], batches: [] };
+    return { runs: await historyDtos(owner, runs), profiles: [], batches: [] };
   }
   const [runs, ai, batches] = await Promise.all([
     store.listSignalGenerations({ pool: generationPool, owner, readOnly: true }),
@@ -95,7 +108,7 @@ export async function generationDashboard(owner: string) {
     listImportBatches({ pool: importPool, owner, view: 'sources' }).catch(() => []),
   ]);
   return {
-    runs: runs.map(generationDto),
+    runs: await historyDtos(owner, runs),
     profiles: (ai?.profiles ?? []).map(({ id, revision, name, readiness, stages }) => {
       const connection = ai?.connections.find((item) => item.id === stages.extract.connection_id);
       return {
@@ -115,9 +128,11 @@ export async function inspectGenerationInput(owner: string, body: unknown) {
 }
 export async function generationDetail(owner: string, id: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
-  return generationDto(
-    await store.getSignalGeneration({ pool: generationPool, owner, id, readOnly: true }),
-  );
+  return (
+    await historyDtos(owner, [
+      await store.getSignalGeneration({ pool: generationPool, owner, id, readOnly: true }),
+    ])
+  )[0];
 }
 export async function executeGeneration(owner: string, body: unknown) {
   if (!generationConfigured()) throw new GenerationError('not_configured');

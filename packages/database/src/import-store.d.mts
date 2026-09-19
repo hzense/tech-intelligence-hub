@@ -90,3 +90,7 @@ export function getImportQueue(args: {
 export function getImportOutput(args: ItemArgs): Promise<unknown>;
 
 export function deleteImportBatch(args: Owned & { id: string }): Promise<ImportBatch>;
+
+export function getImportItemLabels(
+  args: Owned & { itemIds: string[] },
+): Promise<{ id: string; name: string | null; url: string | null }[]>;
