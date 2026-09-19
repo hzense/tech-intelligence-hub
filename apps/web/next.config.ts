@@ -36,6 +36,7 @@ export const nextConfig: NextConfig = {
   transpilePackages: ['@hzense/content'],
   outputFileTracingRoot: repositoryRoot,
   outputFileTracingIncludes: {
+    '/.well-known/workflow/v1/step': ['./.generation-worker/worker.cjs'],
     '/': contentTrace,
     '/daily': contentTrace,
     '/daily/[date]': contentTrace,

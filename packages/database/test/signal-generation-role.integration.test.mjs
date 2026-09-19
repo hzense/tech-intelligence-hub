@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import {
   assertGenerationRole,
+  assertGenerationHistoryRole,
   assertGenerationRoleProvisioned,
 } from '../src/signal-generation-role.mjs';
 import { signalGenerationRoleColumns } from '../src/signal-generation-role-columns.mjs';
@@ -431,6 +432,76 @@ suite('generation production role provisioning', () => {
       await assertGenerationRoleProvisioned(owner);
     } finally {
       await owner.query('DROP TABLE pg_temp.pg_roles,pg_temp.pg_database');
+    }
+  });
+  it('keeps 0018 history readable and atomically upgrades only six progress privileges', async () => {
+    const progressChecksum = '09a590ddc306a9b45960fb86f3c9f2cbd3707c891a33f85d1b3aae533ea208cc';
+    const sql = (
+      await readFile(
+        new URL('../../../db/roles/upgrade_generation_progress.sql', import.meta.url),
+        'utf8',
+      )
+    ).replace("current_database()<>'hzense'", "current_database()<>'neondb'");
+    await owner.query(
+      "INSERT INTO public.hzense_schema_migrations VALUES('0019_generation_progress.sql',$1)",
+      [progressChecksum],
+    );
+    await owner.query(
+      `REVOKE SELECT(progress_phase,progress_at,started_at), UPDATE(progress_phase,progress_at,started_at) ON public.signal_generation_runs FROM ${role}`,
+    );
+    try {
+      await owner.query(
+        'ALTER TABLE public.signal_generation_runs DROP COLUMN progress_phase, DROP COLUMN progress_at, DROP COLUMN started_at',
+      );
+      await assertGenerationHistoryRole(reader);
+      await expect(assertGenerationRole(reader)).rejects.toThrow('generation_role_invalid');
+      expect(
+        await listSignalGenerations({
+          pool: reader,
+          owner: 'compatibility',
+          readOnly: true,
+          legacyReadOnly: true,
+        }),
+      ).toEqual([]);
+      await owner.query(
+        await readFile(
+          new URL('../../../db/migrations/0019_generation_progress.sql', import.meta.url),
+          'utf8',
+        ),
+      );
+      await expect(
+        listSignalGenerations({ pool: reader, owner: 'compatibility', legacyReadOnly: true }),
+      ).rejects.toMatchObject({ code: 'invalid_request' });
+      await owner.query(`GRANT SELECT(progress_phase) ON public.signal_generation_runs TO ${role}`);
+      await expect(assertGenerationHistoryRole(reader)).rejects.toThrow('generation_role_invalid');
+      await expect(execute(owner, sql)).rejects.toThrow('pre-upgrade');
+      await owner.query(
+        `REVOKE SELECT(progress_phase) ON public.signal_generation_runs FROM ${role}`,
+      );
+      const broken = sql;
+      // Fault immediately before the postcondition: the preceding GRANT must roll back.
+      const postcheck = broken.lastIndexOf('  IF (WITH allowed');
+      await expect(
+        execute(
+          owner,
+          broken.slice(0, postcheck) +
+            `REVOKE UPDATE(started_at) ON public.signal_generation_runs FROM ${role};\n` +
+            broken.slice(postcheck),
+        ),
+      ).rejects.toThrow('post-upgrade');
+      await assertGenerationHistoryRole(reader);
+      await expect(assertGenerationRole(reader)).rejects.toThrow('generation_role_invalid');
+      await execute(owner, sql);
+      await checkBoth();
+      await assertGenerationHistoryRole(reader);
+      await expect(execute(owner, sql)).rejects.toThrow('pre-upgrade');
+    } finally {
+      await owner.query(
+        `GRANT SELECT(progress_phase,progress_at,started_at), UPDATE(progress_phase,progress_at,started_at) ON public.signal_generation_runs TO ${role}`,
+      );
+      await owner.query(
+        "DELETE FROM public.hzense_schema_migrations WHERE name='0019_generation_progress.sql'",
+      );
     }
   });
   it('runs the private lifecycle with pinned projections and rejects other private services', async () => {

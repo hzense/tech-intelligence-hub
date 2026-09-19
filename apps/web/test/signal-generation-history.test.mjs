@@ -52,7 +52,10 @@ test('disabled generation history is owner-scoped, read-only and independent of 
         name: 'synthetic-backends',
         setup(b) {
           b.onResolve(
-            { filter: /^(server-only|pg|history-fixture|\.\/import-service|\.\/admin-ai)$/ },
+            {
+              filter:
+                /^(server-only|pg|history-fixture|\.\/generation-import-reader|\.\/admin-ai)$/,
+            },
             ({ path }) => ({ path, namespace: 'fixture' }),
           );
           b.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path }) => ({
@@ -63,7 +66,7 @@ test('disabled generation history is owner-scoped, read-only and independent of 
                   ? ''
                   : path === 'pg'
                     ? `import {Pool} from 'history-fixture'; export default {Pool};`
-                    : path === './import-service'
+                    : path === './generation-import-reader'
                       ? `export {importPool} from 'history-fixture'; export const importsConfigured=()=>true;`
                       : `import {forbidden,aiDashboard} from 'history-fixture'; export const getAiDashboard=aiDashboard; export const generationAiAccess=forbidden;`,
             loader: 'js',
@@ -116,6 +119,7 @@ test('disabled generation history is owner-scoped, read-only and independent of 
     service.queries.some((q) => q.sql === 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'),
   );
   assert.ok(!service.queries.some((q) => /^(UPDATE|INSERT|DELETE)/.test(q.sql)));
+  assert.ok(service.queries.some((q) => q.sql.includes('NULL::text AS progress_phase')));
   await assert.rejects(service.generationDetail('other-admin', service.id), { code: 'not_found' });
   assert.deepEqual((await service.generationDashboard('other-admin')).runs, []);
   const before = service.queries.length;

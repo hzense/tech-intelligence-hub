@@ -1,4 +1,7 @@
-import { generationRoleCheckSQL } from './signal-generation-role-check.mjs';
+import {
+  generationRoleCheckSQL,
+  legacyGenerationRoleCheckSQL,
+} from './signal-generation-role-check.mjs';
 export { signalGenerationRoleColumns } from './signal-generation-role-columns.mjs';
 
 const deny = () => {
@@ -23,4 +26,19 @@ export async function assertGenerationRoleProvisioned(client) {
   ).rows[0];
   if (identity?.safe !== true) deny();
   await checkContract(client);
+}
+
+// Return schema capability only after validating one of two exact ACL matrices.
+// No partially upgraded / overprivileged role is accepted.
+export async function assertGenerationHistoryRole(client) {
+  if (
+    (
+      await client.query(
+        "SELECT current_user='hzense_generation_admin' AND session_user=current_user AS safe",
+      )
+    ).rows[0]?.safe !== true
+  )
+    deny();
+  if ((await client.query(generationRoleCheckSQL)).rows[0]?.safe === true) return;
+  if ((await client.query(legacyGenerationRoleCheckSQL)).rows[0]?.safe !== true) deny();
 }

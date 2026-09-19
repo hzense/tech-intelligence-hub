@@ -1,5 +1,5 @@
 /** Background step deadline; independent of the request and capability probe.
- * Requires a verified 1800s Workflow step runtime; leaves 5 minutes for bookkeeping.
+ * Runs in a detached 30-minute Sandbox; short Workflow steps never wait for AI.
  * Database lease is 32 minutes. No provider retries or token-limit changes.
  */
 export const generationTimeoutMs = 1_500_000;

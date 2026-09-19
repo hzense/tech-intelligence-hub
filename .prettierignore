@@ -6,3 +6,4 @@ db/migrations/generated
 pnpm-lock.yaml
 apps/web/app/.well-known/workflow
 .workflow-data
+apps/web/.generation-worker/

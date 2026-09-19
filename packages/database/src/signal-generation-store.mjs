@@ -7,6 +7,10 @@ const columns = `id,owner_id,batch_id,item_id,source_fence,source_hash,profile_i
  generation_version,fingerprint,snapshot,configuration,status,lease_token,lease_until,budget_day,
  reserved_microusd,charged_microusd,result,error_code,created_at,finished_at,deleted_at,
  progress_phase,progress_at,started_at`;
+const legacyColumns = columns.replace(
+  'progress_phase,progress_at,started_at',
+  'NULL::text AS progress_phase,NULL::timestamptz AS progress_at,NULL::timestamptz AS started_at',
+);
 const errorCodes = new Set([
   'task_deleted',
   'task_active',
@@ -176,10 +180,10 @@ async function transaction(pool, work, readOnly = false) {
     client?.release(discard);
   }
 }
-async function run(client, owner, id, locking = false) {
+async function run(client, owner, id, locking = false, legacyReadOnly = false) {
   const row = (
     await client.query(
-      `SELECT ${columns} FROM public.signal_generation_runs WHERE id=$1 AND owner_id=$2${locking ? ' FOR UPDATE' : ''}`,
+      `SELECT ${legacyReadOnly ? legacyColumns : columns} FROM public.signal_generation_runs WHERE id=$1 AND owner_id=$2${locking ? ' FOR UPDATE' : ''}`,
       [uuid(id), ownerId(owner)],
     )
   ).rows[0];
@@ -289,14 +293,21 @@ export async function createSignalGeneration({
     ).rows[0];
   });
 }
-export async function getSignalGeneration({ pool, owner, id, readOnly = false }) {
+export async function getSignalGeneration({
+  pool,
+  owner,
+  id,
+  readOnly = false,
+  legacyReadOnly = false,
+}) {
+  if (legacyReadOnly && !readOnly) fail('invalid_request');
   ownerId(owner);
   uuid(id);
   return transaction(
     pool,
     async (client) => {
       if (!readOnly) await expireRunning(client, owner, { id });
-      const row = await run(client, owner, id);
+      const row = await run(client, owner, id, false, legacyReadOnly);
       if (row.deleted_at) fail('not_found');
       return row;
     },
@@ -315,7 +326,15 @@ async function expireRunning(client, owner, { id, batchId, itemId } = {}) {
     [owner, id ?? null, batchId ?? null, itemId ?? null],
   );
 }
-export async function listSignalGenerations({ pool, owner, batchId, itemId, readOnly = false }) {
+export async function listSignalGenerations({
+  pool,
+  owner,
+  batchId,
+  itemId,
+  readOnly = false,
+  legacyReadOnly = false,
+}) {
+  if (legacyReadOnly && !readOnly) fail('invalid_request');
   ownerId(owner);
   if (batchId !== undefined) uuid(batchId);
   if (itemId !== undefined) uuid(itemId);
@@ -325,7 +344,7 @@ export async function listSignalGenerations({ pool, owner, batchId, itemId, read
       if (!readOnly) await expireRunning(client, owner, { batchId, itemId });
       return (
         await client.query(
-          `SELECT ${columns} FROM public.signal_generation_runs
+          `SELECT ${legacyReadOnly ? legacyColumns : columns} FROM public.signal_generation_runs
     WHERE owner_id=$1 AND deleted_at IS NULL AND ($2::uuid IS NULL OR batch_id=$2) AND ($3::uuid IS NULL OR item_id=$3)
     ORDER BY created_at DESC,id DESC LIMIT 50`,
           [owner, batchId ?? null, itemId ?? null],

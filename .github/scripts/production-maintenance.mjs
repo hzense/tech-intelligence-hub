@@ -20,6 +20,7 @@ const aiConfigRecoveryPolicy = 'accept-unverified-ai-config';
 const importTasksRecoveryPolicy = 'accept-unverified-import-tasks';
 const signalGenerationRecoveryPolicy = 'accept-unverified-signal-generation';
 const taskManagementRecoveryPolicy = 'accept-unverified-task-management';
+const generationProgressRecoveryPolicy = 'accept-unverified-generation-progress';
 
 // A reviewed one-time rollout boundary, NOT the moving repository manifest.
 // Keep historical checksums pinned too, so approval identifies the complete
@@ -400,6 +401,100 @@ export function requireTaskManagementMigrationScope(preflight, migrations, appro
   return plan;
 }
 
+const generationProgressManifest = Object.freeze([
+  ...taskManagementManifest,
+  Object.freeze([
+    '0019_generation_progress.sql',
+    '09a590ddc306a9b45960fb86f3c9f2cbd3707c891a33f85d1b3aae533ea208cc',
+  ]),
+]);
+export function generationProgressTargetBinding(policy, preflight, backupId) {
+  requireGate(
+    ['host', 'port', 'database', 'user'].every(
+      (key) => typeof policy?.[key] === 'string' && policy[key].length > 0,
+    ) &&
+      preflight?.database === policy.database &&
+      preflight?.user === policy.user,
+    'generation-progress-target-required',
+  );
+  requireGate(
+    typeof backupId === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._:/-]{7,255}$/.test(backupId) &&
+      !/(^|[._:/-])(none|null|todo|pending|placeholder|example|changeme)($|[._:/-])/i.test(
+        backupId,
+      ),
+    'reviewed-backup-required',
+  );
+  return {
+    targetFingerprint: createHash('sha256')
+      .update('hzense/generation-progress-target/v1\0')
+      .update(
+        JSON.stringify([
+          policy.host.toLowerCase(),
+          policy.port,
+          preflight.database,
+          preflight.user,
+        ]),
+      )
+      .digest('hex'),
+    backupIdSha256: createHash('sha256').update(backupId).digest('hex'),
+  };
+}
+export function generationProgressMigrationPlan(pendingMigrations, migrations, binding) {
+  requireGate(
+    Array.isArray(migrations) &&
+      migrations.length === generationProgressManifest.length &&
+      Array.from(migrations).every(
+        (entry, index) =>
+          entry?.name === generationProgressManifest[index][0] &&
+          entry?.checksum === generationProgressManifest[index][1] &&
+          typeof entry?.sql === 'string' &&
+          createHash('sha256').update(entry.sql).digest('hex') ===
+            generationProgressManifest[index][1],
+      ),
+    'generation-progress-migration-manifest-required',
+  );
+  requireGate(
+    Array.isArray(pendingMigrations) &&
+      pendingMigrations.length > 0 &&
+      pendingMigrations.length === 1 &&
+      pendingMigrations.every(
+        (name, index) =>
+          name ===
+          generationProgressManifest[
+            generationProgressManifest.length - pendingMigrations.length + index
+          ][0],
+      ),
+    'generation-progress-migration-scope-required',
+  );
+  requireGate(
+    digest.test(binding?.targetFingerprint ?? '') && digest.test(binding?.backupIdSha256 ?? ''),
+    'generation-progress-target-required',
+  );
+  const manifestFingerprint = createHash('sha256')
+    .update('hzense/generation-progress-migration-manifest/v1\0')
+    .update(JSON.stringify(generationProgressManifest))
+    .digest('hex');
+  const { targetFingerprint, backupIdSha256 } = binding;
+  const planFingerprint = createHash('sha256')
+    .update('hzense/generation-progress-migration-plan/v1\0')
+    .update(
+      JSON.stringify({ manifestFingerprint, pendingMigrations, targetFingerprint, backupIdSha256 }),
+    )
+    .digest('hex');
+  return { manifestFingerprint, planFingerprint, targetFingerprint, backupIdSha256 };
+}
+export function requireGenerationProgressMigrationScope(preflight, migrations, approval, binding) {
+  const plan = generationProgressMigrationPlan(preflight?.pendingMigrations, migrations, binding);
+  requireGate(
+    ['manifestFingerprint', 'planFingerprint', 'targetFingerprint', 'backupIdSha256'].every(
+      (key) => approval?.[key] === plan[key],
+    ),
+    'generation-progress-migration-plan-mismatch',
+  );
+  return plan;
+}
+
 // Explicit exception, not fabricated evidence of a successful restore. The
 // protected Environment review remains the authority; these are declarations.
 function validateRecoveryPolicy(approval, operation) {
@@ -410,7 +505,8 @@ function validateRecoveryPolicy(approval, operation) {
       policy === aiConfigRecoveryPolicy ||
       policy === importTasksRecoveryPolicy ||
       policy === signalGenerationRecoveryPolicy ||
-      policy === taskManagementRecoveryPolicy,
+      policy === taskManagementRecoveryPolicy ||
+      policy === generationProgressRecoveryPolicy,
     'unsupported-recovery-policy',
   );
   if (policy === 'verified') {
@@ -423,16 +519,19 @@ function validateRecoveryPolicy(approval, operation) {
       importTasksRecoveryPolicy,
       signalGenerationRecoveryPolicy,
       taskManagementRecoveryPolicy,
+      generationProgressRecoveryPolicy,
     ].includes(policy)
   ) {
     const prefix =
-      policy === taskManagementRecoveryPolicy
-        ? 'task-management'
-        : policy === signalGenerationRecoveryPolicy
-          ? 'signal-generation'
-          : policy === importTasksRecoveryPolicy
-            ? 'import-tasks'
-            : 'ai-config';
+      policy === generationProgressRecoveryPolicy
+        ? 'generation-progress'
+        : policy === taskManagementRecoveryPolicy
+          ? 'task-management'
+          : policy === signalGenerationRecoveryPolicy
+            ? 'signal-generation'
+            : policy === importTasksRecoveryPolicy
+              ? 'import-tasks'
+              : 'ai-config';
     if (policy !== aiConfigRecoveryPolicy)
       requireGate(digest.test(approval.targetFingerprint ?? ''), `${prefix}-target-required`);
     requireGate(
@@ -457,15 +556,17 @@ function validateRecoveryPolicy(approval, operation) {
       approval.aclRecoveryReviewed === false &&
       !Object.hasOwn(approval, 'restoreEvidenceFingerprint') &&
       acceptance?.scope ===
-        (policy === taskManagementRecoveryPolicy
-          ? 'task-management-production-launch'
-          : policy === signalGenerationRecoveryPolicy
-            ? 'signal-generation-production-launch'
-            : policy === importTasksRecoveryPolicy
-              ? 'import-tasks-production-launch'
-              : policy === aiConfigRecoveryPolicy
-                ? 'ai-configuration-production-launch'
-                : 'fts1-production-launch') &&
+        (policy === generationProgressRecoveryPolicy
+          ? 'generation-progress-production-launch'
+          : policy === taskManagementRecoveryPolicy
+            ? 'task-management-production-launch'
+            : policy === signalGenerationRecoveryPolicy
+              ? 'signal-generation-production-launch'
+              : policy === importTasksRecoveryPolicy
+                ? 'import-tasks-production-launch'
+                : policy === aiConfigRecoveryPolicy
+                  ? 'ai-configuration-production-launch'
+                  : 'fts1-production-launch') &&
       acceptance.accepted === true &&
       acceptance.historicalAclGapAccepted === true &&
       acceptance.acknowledgement === 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
@@ -598,6 +699,7 @@ export function publicRecoveryAcceptance(request, rawApproval) {
       importTasksRecoveryPolicy,
       signalGenerationRecoveryPolicy,
       taskManagementRecoveryPolicy,
+      generationProgressRecoveryPolicy,
     ].includes(request.approval?.recoveryPolicy)
   ) {
     return {
@@ -725,6 +827,7 @@ async function executeOperation(env, { operation, approval }) {
         importTasksRecoveryPolicy,
         signalGenerationRecoveryPolicy,
         taskManagementRecoveryPolicy,
+        generationProgressRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
     ) {
       const { productionDatabaseOptions, validateConnectionTarget } =
@@ -732,13 +835,16 @@ async function executeOperation(env, { operation, approval }) {
       const { runDatabasePreflight } = await import('../../packages/database/src/preflight.mjs');
       const options = productionDatabaseOptions(env);
       const generation = approval.recoveryPolicy === signalGenerationRecoveryPolicy;
+      const progress = approval.recoveryPolicy === generationProgressRecoveryPolicy;
       const taskManagement = approval.recoveryPolicy === taskManagementRecoveryPolicy;
       binding = (
-        taskManagement
-          ? taskManagementTargetBinding
-          : generation
-            ? signalGenerationTargetBinding
-            : importTasksTargetBinding
+        progress
+          ? generationProgressTargetBinding
+          : taskManagement
+            ? taskManagementTargetBinding
+            : generation
+              ? signalGenerationTargetBinding
+              : importTasksTargetBinding
       )(
         validateConnectionTarget(options),
         await runDatabasePreflight(options),
@@ -747,11 +853,13 @@ async function executeOperation(env, { operation, approval }) {
       requireGate(
         binding.targetFingerprint === approval.targetFingerprint &&
           binding.backupIdSha256 === approval.backupIdSha256,
-        taskManagement
-          ? 'task-management-target-mismatch'
-          : generation
-            ? 'signal-generation-target-mismatch'
-            : 'import-tasks-target-mismatch',
+        progress
+          ? 'generation-progress-target-mismatch'
+          : taskManagement
+            ? 'task-management-target-mismatch'
+            : generation
+              ? 'signal-generation-target-mismatch'
+              : 'import-tasks-target-mismatch',
       );
     }
     const { capturePublicAclEvidence } = await import('./public-acl-evidence.mjs');
@@ -779,6 +887,18 @@ async function executeOperation(env, { operation, approval }) {
       await import('../../packages/database/src/migrate.mjs');
     const migrations = await loadMigrations();
     await verifyMigrationManifest(migrations);
+    try {
+      return {
+        ...preflight,
+        ...generationProgressMigrationPlan(
+          preflight.pendingMigrations,
+          migrations,
+          generationProgressTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+        ),
+      };
+    } catch (error) {
+      if (!(error instanceof MaintenanceGateError)) throw error;
+    }
     try {
       return {
         ...preflight,
@@ -839,33 +959,41 @@ async function executeOperation(env, { operation, approval }) {
           importTasksRecoveryPolicy,
           signalGenerationRecoveryPolicy,
           taskManagementRecoveryPolicy,
+          generationProgressRecoveryPolicy,
         ].includes(approval?.recoveryPolicy)
       ) {
         const migrations = await loadMigrations();
         await verifyMigrationManifest(migrations);
         approvedPlan =
-          approval.recoveryPolicy === taskManagementRecoveryPolicy
-            ? requireTaskManagementMigrationScope(
+          approval.recoveryPolicy === generationProgressRecoveryPolicy
+            ? requireGenerationProgressMigrationScope(
                 preflight,
                 migrations,
                 approval,
-                taskManagementTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                generationProgressTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
               )
-            : approval.recoveryPolicy === signalGenerationRecoveryPolicy
-              ? requireSignalGenerationMigrationScope(
+            : approval.recoveryPolicy === taskManagementRecoveryPolicy
+              ? requireTaskManagementMigrationScope(
                   preflight,
                   migrations,
                   approval,
-                  signalGenerationTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                  taskManagementTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                 )
-              : approval.recoveryPolicy === importTasksRecoveryPolicy
-                ? requireImportTasksMigrationScope(
+              : approval.recoveryPolicy === signalGenerationRecoveryPolicy
+                ? requireSignalGenerationMigrationScope(
                     preflight,
                     migrations,
                     approval,
-                    importTasksTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                    signalGenerationTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                   )
-                : requireAiConfigMigrationScope(preflight, migrations, approval);
+                : approval.recoveryPolicy === importTasksRecoveryPolicy
+                  ? requireImportTasksMigrationScope(
+                      preflight,
+                      migrations,
+                      approval,
+                      importTasksTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                    )
+                  : requireAiConfigMigrationScope(preflight, migrations, approval);
       }
     }
     await runMigrations({
@@ -884,6 +1012,7 @@ async function executeOperation(env, { operation, approval }) {
         importTasksRecoveryPolicy,
         signalGenerationRecoveryPolicy,
         taskManagementRecoveryPolicy,
+        generationProgressRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
         ? async (pendingMigrations, artifact) => {
             if (
@@ -892,6 +1021,7 @@ async function executeOperation(env, { operation, approval }) {
                 importTasksRecoveryPolicy,
                 signalGenerationRecoveryPolicy,
                 taskManagementRecoveryPolicy,
+                generationProgressRecoveryPolicy,
               ].includes(approval?.recoveryPolicy)
             ) {
               // The runner freezes this actual execution snapshot before opening
@@ -901,6 +1031,7 @@ async function executeOperation(env, { operation, approval }) {
                   importTasksRecoveryPolicy,
                   signalGenerationRecoveryPolicy,
                   taskManagementRecoveryPolicy,
+                  generationProgressRecoveryPolicy,
                 ].includes(approval.recoveryPolicy)
               ) {
                 // Re-read authenticated identity from the very same connection
@@ -910,22 +1041,27 @@ async function executeOperation(env, { operation, approval }) {
                   expectedHost: policy.host,
                 });
                 const generation = approval.recoveryPolicy === signalGenerationRecoveryPolicy;
+                const progress = approval.recoveryPolicy === generationProgressRecoveryPolicy;
                 const taskManagement = approval.recoveryPolicy === taskManagementRecoveryPolicy;
                 approvedPlan = (
-                  taskManagement
-                    ? requireTaskManagementMigrationScope
-                    : generation
-                      ? requireSignalGenerationMigrationScope
-                      : requireImportTasksMigrationScope
+                  progress
+                    ? requireGenerationProgressMigrationScope
+                    : taskManagement
+                      ? requireTaskManagementMigrationScope
+                      : generation
+                        ? requireSignalGenerationMigrationScope
+                        : requireImportTasksMigrationScope
                 )(
                   { ...current, pendingMigrations },
                   artifact?.migrations,
                   approval,
-                  (taskManagement
-                    ? taskManagementTargetBinding
-                    : generation
-                      ? signalGenerationTargetBinding
-                      : importTasksTargetBinding)(policy, current, env.MAINTENANCE_BACKUP_ID),
+                  (progress
+                    ? generationProgressTargetBinding
+                    : taskManagement
+                      ? taskManagementTargetBinding
+                      : generation
+                        ? signalGenerationTargetBinding
+                        : importTasksTargetBinding)(policy, current, env.MAINTENANCE_BACKUP_ID),
                 );
               } else {
                 approvedPlan = requireAiConfigMigrationScope(

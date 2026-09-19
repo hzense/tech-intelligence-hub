@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "predev": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build",
+    "predev": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build && node scripts/build-generation-worker.mjs",
     "dev": "next dev",
     "start": "next start",
-    "prebuild": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build",
+    "prebuild": "pnpm --filter @hzense/content build && pnpm --filter @hzense/search build && node scripts/build-generation-worker.mjs",
     "build": "next build",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",

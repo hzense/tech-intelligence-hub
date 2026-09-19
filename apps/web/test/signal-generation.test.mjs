@@ -238,8 +238,14 @@ test('short admission route dispatches a long worker with bookkeeping and lease 
   const workerSeconds = config.functions['app/.well-known/workflow/v1/step/route.js'].maxDuration;
   assert.equal(routeSeconds, 60);
   assert.equal(generationTimeoutMs, 1500000);
-  assert.equal(workerSeconds * 1000 - generationTimeoutMs, 300000);
-  assert.ok(leaseMinutes * 60 > workerSeconds);
+  assert.equal(workerSeconds, 300);
+  const sandbox = readFileSync(
+    new URL('../lib/server/generation-sandbox.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(sandbox, /generationSandboxTimeoutMs = 30 \* 60 \* 1000/);
+  assert.ok(30 * 60 * 1000 > generationTimeoutMs);
+  assert.ok(leaseMinutes > 30);
   assert.match(route, /await start\(signalGenerationWorkflow, \[owner, id\]\)/);
 });
 

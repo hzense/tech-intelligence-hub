@@ -36,24 +36,26 @@
 
 调用前重新检查来源、取消状态、当前 Profile、连接启停／修订及 24 小时内能力证明；调用后再次核对配置和来源状态，变更时不交付可用候选。配置检查和外网请求不构成跨供应商原子事务，已发送的请求不能因随后撤销自动退款。
 
-调用复用现有 HTTPS 域名白名单、DNS 公网检查、固定地址和证书验证，禁止重定向；SDK 不重试、不调用工具，保持 1 MiB 响应上限。2026-09-19 长任务改造将同步请求改为 Workflow：入口 `maxDuration=60` 秒只负责排队，后台 Step 申请 1800 秒，模型截止 **1500 秒（25 分钟）**，保留 5 分钟给检查与记账，数据库租约为 32 分钟。连接能力测试仍独立使用 3–20 秒设置。模型、Profile 修订、8192 token 默认额度、预算均不因本次改造而修改。旧生产 285 秒任务不会被自动重新执行。
+调用复用现有 HTTPS 域名白名单、DNS 公网检查、固定地址和证书验证，禁止重定向；SDK 不重试、不调用工具，保持 1 MiB 响应上限。2026-09-19 长任务改造保留当前套餐：入口 `maxDuration=60` 秒只负责排队，Workflow Step 上限 **300 秒**，只派发／查询／清理独立 Sandbox，不等待模型响应。Sandbox 硬截止 30 分钟，模型截止 **1500 秒（25 分钟）**，数据库租约为 32 分钟。连接能力测试仍独立使用 3–20 秒设置。模型、Profile 修订、8192 token 默认额度、预算均不因本次改造而修改。旧生产 285 秒任务不会被自动重新执行。
 
-启用前必须确认目标团队支持 1800 秒 Node Functions、Fluid Compute 和 Workflow；[Vercel 2026-06-15 公告](https://vercel.com/changelog/vercel-functions-can-now-run-up-to-30-minutes)说明该上限适用于 Pro／Enterprise，超过 800 秒为 beta。构建成功不能证明生产套餐和执行时限已生效；不支持时保持新开关关闭，不偷偷回退到同步调用。本次本地代码尚未部署，不表示生产已延长等待时间。
+不再申请 Pro／Enterprise 的 1800 秒 Functions。按 [Sandbox 时限说明](https://vercel.com/kb/guide/vercel-sandbox-duration-and-persistence)，Hobby 单次上限为 45 分钟，所选 30 分钟在此范围内。启用前仍须核验实际项目的 Sandbox/OIDC 资格、限额、网络策略与费用；不升级套餐不等于基础设施免费。Workflow 和 Sandbox 用量不属于每批 5／每日 10 美元的模型记账预算；不可将代码构建通过算作生产验收。
 
 ### 后台执行与阶段进度（0019，待生产启用）
 
-- Workflow 参数只有管理员标识和任务 ID，Step 返回状态，不把正文、密钥或候选放进 Workflow 事件输出。来源与配置在 Step 中按原快照重新核对；执行凭据只在服务端读取。
+- Workflow 事件只有管理员标识、任务 ID、Sandbox 名称／命令 ID 和状态，不存正文、密钥或候选。构建时打包固定的 `workers/signal-generation.ts`，通过非公开 `.generation-worker/worker.cjs` 随部署追踪；运行时不安装依赖、不执行文档里的代码。Sandbox 内复用现有执行器，重新核对来源和配置，原子 claim 后才调用模型，直接保存进度和结果至 Neon。
+- Worker 仅接收明确列举的生成／来源／AI 配置连接、解密 keyring、白名单、目标约束及预算；不转发上传 Blob token、登录密钥、Vercel token、迁移连接或全部环境。私有任务文件读入即删，不写入命令参数或 Workflow 日志。Sandbox 不暴露端口、不保留快照，出站仅允许验证后的数据库和 AI 白名单域名；命令结束清理，异常时最多保留至 30 分钟硬截止。
 - `runGenerationStep.maxRetries=0`、供应商 SDK `maxRetries=0`。重复投递须通过数据库的同一任务原子 claim，已获租约或终态任务不再调用模型。仅 `worker_busy`（尚未获执行资格）每 30 秒等候一次，最多 60 次；其它错误不自动重试。
 - 页面显示排队、准备、生成、校验、保存、完成。阶段条不是 token 完成率；等待期间另显示不定进度条和已执行时间。列表与详情每 5 秒只读轮询，结束停止；网络失败停留最后状态并提示刷新，不自动重新执行。
 - 进度写入受同一 lease token、未过期状态和单调阶段约束。模型返回后的进度写入是辅助信息，失败不能代替最终结果保存。有效结果仍须完成原文／结构／配置校验，不自动发布。
 - Worker 中断、结果提交不明或租约失效时，不自动重新请求模型。只读页面可将过期 running 显示为失败／待核对，底层状态与账本不被 GET 修改；人工对账仍不可省略。此版本不支持恢复被中断的供应商输出。
-- 派发确认丢失时保留同一任务编号，可查询后手动重新提交原任务；数据库 claim 防止重复 AI 调用，但可能产生重复的轻量 Workflow 排队记录。没有自动重建任务 ID。
+- 派发确认丢失时保留同一任务编号，可查询后手动重新提交原任务；数据库 claim 防止重复 AI 调用，但可能产生重复的 Workflow／Sandbox 基础设施用量。没有自动重建任务 ID。Workflow 每 30 秒只读检查命令，查询可以重试，启动不可重试；`Sandbox.get` 显式 `resume:false`，不会因查询恢复已停止的进程。Sandbox 被中断仍属于待核对状态，不宣称供应商调用可断点续传。
+- 新开关关闭时，历史查询支持严格的旧 45 项或新 51 项列 ACL，使用不引用新增三列的只读投影；部分升级或超权限仍拒绝。新任务／执行维持关闭，新写入路径始终要求新合约。上线前可先部署兼容代码，无须先改生产数据库。
 
 生产上线顺序（本轮尚未执行）：
 
-1. 维护窗口内停止新生成，等待在途任务结束；备份并应用 `0019_generation_progress.sql`，核对迁移 checksum 和 Schema。新增三个可空字段，不修改旧内容／费用。
-2. 既有 `hzense_generation_admin` 仅补 `signal_generation_runs` 的 `progress_phase, progress_at, started_at` 三列 SELECT／UPDATE；使用当前最小权限验证器核验，无新角色、密码轮换或表级授权。新建空角色的完整配置在 `configure_generation_admin.sql`，不要对已授权生产角色重跑它。
-3. 部署长任务代码，检查生成的 `/.well-known/workflow/v1/step` 队列触发器、OIDC、运行区域与实际 1800 秒配置。Workflow 只保存 ID／状态，但属于新增托管执行能力；其基础设施费用不计入现有模型费用预算，确认费用与平台资格后，显式设置 `HZENSE_GENERATION_WORKFLOW_ENABLED=1`。旧 `HZENSE_SIGNAL_GENERATION_ENABLED` 与批／日预算门禁仍必须满足。
+1. 维护窗口内停止新生成，等待在途任务结束；新建备份，独立审批 `accept-unverified-generation-progress` 后应用 `0019_generation_progress.sql`。策略固定完整 0000–0019 checksum，pending 只能是 0019，绑定目标、备份、计划、当前 main／CI 和环境审批；旧 task-management 审批不适用。新增三个可空字段，不修改旧内容／费用；未演练恢复的风险须重新接受，不能沿用历史同意。
+2. 使用 `db/roles/upgrade_generation_progress.sql` 单事务校验旧 45 项矩阵、授予三列 SELECT／UPDATE、核验新 51 项矩阵，任一漂移整体回滚。无新角色、密码轮换或表级授权。新建空角色的完整配置在 `configure_generation_admin.sql`，不要对既有角色重跑它。
+3. 检查生成的 `/.well-known/workflow/v1/step` 队列触发器、OIDC、运行区域、实际 300 秒配置和私有 Worker 构建产物。确认 Sandbox 权限、费用与网络后，显式设置 `HZENSE_GENERATION_WORKFLOW_ENABLED=1`。旧 `HZENSE_SIGNAL_GENERATION_ENABLED` 与批／日预算门禁仍必须满足。
 4. 先做不调用 AI 的鉴权／只读测试，再经授权执行一次合成资料验收，核对 202、阶段、候选落库、刷新恢复与实际供应商请求次数。未完成这一步不得宣称生产长任务可用。
 
 回退：停止新派发并保留正在执行部署，等待任务终止和账本核对。额外列权限会使旧精确 ACL 合约拒绝连接，不能直接回滚旧代码；应先审查在途任务，再单独批准撤销这三列权限或部署兼容版本，禁止直接删表或清空账本。

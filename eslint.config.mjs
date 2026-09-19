@@ -10,6 +10,7 @@ export default tseslint.config(
       'db/migrations/**',
       '**/.well-known/workflow/**',
       '**/.workflow-data/**',
+      '**/.generation-worker/**',
     ],
   },
   js.configs.recommended,

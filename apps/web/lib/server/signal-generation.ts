@@ -1,14 +1,17 @@
 import 'server-only';
 import pg from 'pg';
 import * as store from '../../../../packages/database/src/signal-generation-store.mjs';
-import { assertGenerationRole } from '../../../../packages/database/src/signal-generation-role.mjs';
+import {
+  assertGenerationRole,
+  assertGenerationHistoryRole,
+} from '../../../../packages/database/src/signal-generation-role.mjs';
 import {
   getImportBatch,
   getImportItemLabels,
   getImportOutput,
   listImportBatches,
 } from '../../../../packages/database/src/import-store.mjs';
-import { importPool, importsConfigured } from './import-service';
+import { importPool, importsConfigured } from './generation-import-reader';
 import { generationAiAccess, getAiDashboard } from './admin-ai';
 import { readAiBackendConfiguration } from '../admin-ai-core';
 import {
@@ -25,35 +28,45 @@ import { createGenerationSourceInspector } from '../signal-generation-source-ins
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
-const generationPool = {
-  async connect() {
-    // A database connection authorizes neither task mutation nor provider spending.
-    const config = readGenerationDatabaseConfiguration(process.env);
-    if (poolUrl && poolUrl !== config.connectionString) throw new GenerationError('not_configured');
-    if (!pool) {
-      poolUrl = config.connectionString;
-      pool = new pg.Pool({
-        connectionString: poolUrl,
-        max: 1,
-        idleTimeoutMillis: 10000,
-        connectionTimeoutMillis: 3500,
-        query_timeout: 15000,
-        allowExitOnIdle: true,
-        enableChannelBinding: true,
-        application_name: 'hzense-private-generation',
-      });
-      pool.on('error', () => console.error('generation_pool_unavailable'));
-    }
-    const client = await pool.connect();
-    try {
-      await assertGenerationRole(client);
-      return client;
-    } catch (error) {
-      client.release(true);
-      throw error;
-    }
-  },
-};
+function makeGenerationPool(history = false) {
+  return {
+    async connect() {
+      // A database connection authorizes neither task mutation nor provider spending.
+      const config = readGenerationDatabaseConfiguration(process.env);
+      if (poolUrl && poolUrl !== config.connectionString)
+        throw new GenerationError('not_configured');
+      if (!pool) {
+        poolUrl = config.connectionString;
+        pool = new pg.Pool({
+          connectionString: poolUrl,
+          max: 1,
+          idleTimeoutMillis: 10000,
+          connectionTimeoutMillis: 3500,
+          query_timeout: 15000,
+          allowExitOnIdle: true,
+          enableChannelBinding: true,
+          application_name: 'hzense-private-generation',
+        });
+        pool.on('error', () => console.error('generation_pool_unavailable'));
+      }
+      const client = await pool.connect();
+      try {
+        await (history ? assertGenerationHistoryRole : assertGenerationRole)(client);
+        return client;
+      } catch (error) {
+        client.release(true);
+        throw error;
+      }
+    },
+  };
+}
+const generationPool = makeGenerationPool();
+const generationHistoryPool = makeGenerationPool(true);
+const historyOptions = () => ({
+  pool: generationHistoryPool,
+  readOnly: true,
+  legacyReadOnly: process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1',
+});
 export function generationConfigured() {
   try {
     if (process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1') return false;
@@ -107,11 +120,11 @@ export async function generationDashboard(owner: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
   // History does not depend on import, AI credentials, budgets or the spend switch.
   if (!generationConfigured()) {
-    const runs = await store.listSignalGenerations({ pool: generationPool, owner, readOnly: true });
+    const runs = await store.listSignalGenerations({ ...historyOptions(), owner });
     return { runs: await historyDtos(owner, runs), profiles: [], batches: [] };
   }
   const [runs, ai, batches] = await Promise.all([
-    store.listSignalGenerations({ pool: generationPool, owner, readOnly: true }),
+    store.listSignalGenerations({ ...historyOptions(), owner }),
     // Selection data is optional: an ancillary outage must not hide saved runs.
     getAiDashboard().catch(() => null),
     listImportBatches({ pool: importPool, owner, view: 'sources' }).catch(() => []),
@@ -138,9 +151,7 @@ export async function inspectGenerationInput(owner: string, body: unknown) {
 export async function generationDetail(owner: string, id: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
   return (
-    await historyDtos(owner, [
-      await store.getSignalGeneration({ pool: generationPool, owner, id, readOnly: true }),
-    ])
+    await historyDtos(owner, [await store.getSignalGeneration({ ...historyOptions(), owner, id })])
   )[0];
 }
 export async function executeGeneration(owner: string, body: unknown) {

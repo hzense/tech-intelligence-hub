@@ -69,10 +69,10 @@ export function createSignalGeneration(
   },
 ): Promise<SignalGenerationRun>;
 export function getSignalGeneration(
-  args: RunArgs & { readOnly?: boolean },
+  args: RunArgs & { readOnly?: boolean; legacyReadOnly?: boolean },
 ): Promise<SignalGenerationRun>;
 export function listSignalGenerations(
-  args: Owned & { batchId?: string; itemId?: string; readOnly?: boolean },
+  args: Owned & { batchId?: string; itemId?: string; readOnly?: boolean; legacyReadOnly?: boolean },
 ): Promise<SignalGenerationRun[]>;
 export function claimSignalGeneration(
   args: RunArgs & { currentLimits: { batchLimitMicrousd: number; dailyLimitMicrousd: number } },
