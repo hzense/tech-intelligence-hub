@@ -48,6 +48,19 @@ type PendingRequest = {
 };
 type ListResponse = { runs: GenerationRun[]; profiles: Profile[]; batches: ImportBatch[] };
 const storageKey = 'hzense.signal-generation.pending.v1';
+const recoveryKey = 'hzense.signal-generation.rejection.v1';
+const rejectionCodes = [
+  'input_too_large',
+  'invalid_source',
+  'invalid_request',
+  'revision_conflict',
+  'task_deleted',
+] as const;
+type CreateRejection = {
+  request: PendingRequest;
+  code: (typeof rejectionCodes)[number];
+  previousId?: string;
+};
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const statuses: Record<GenerationRun['status'], string> = {
   pending: '待执行',
@@ -152,9 +165,51 @@ function storePending(request: PendingRequest): boolean {
   }
 }
 
+// A receipt restores UI choices, not authority to forget a task. Abandonment
+// still requires a fresh server not_found; retries still use server deduplication.
+function readRejection(request: PendingRequest): CreateRejection | null {
+  const raw = sessionStorage.getItem(recoveryKey);
+  if (raw === null || raw.length > 2048) return null;
+  try {
+    const value = JSON.parse(raw);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    if (
+      Object.keys(value).sort().join(',') !==
+        (Object.hasOwn(value, 'previousId') ? 'code,previousId,request' : 'code,request') ||
+      !rejectionCodes.includes(value.code) ||
+      !pendingRequest(value.request) ||
+      JSON.stringify(value.request) !== JSON.stringify(request) ||
+      (Object.hasOwn(value, 'previousId') &&
+        (value.code !== 'task_deleted' ||
+          typeof value.previousId !== 'string' ||
+          !uuid.test(value.previousId)))
+    )
+      return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function storeRejection(request: PendingRequest, rejection: CreateRejection | null): boolean {
+  try {
+    if (sessionStorage.getItem(storageKey) !== JSON.stringify(request)) return false;
+    if (rejection === null) {
+      sessionStorage.removeItem(recoveryKey);
+      return sessionStorage.getItem(recoveryKey) === null;
+    }
+    const encoded = JSON.stringify(rejection);
+    sessionStorage.setItem(recoveryKey, encoded);
+    return sessionStorage.getItem(recoveryKey) === encoded;
+  } catch {
+    return false;
+  }
+}
+
 function replacePending(expected: PendingRequest, replacement: PendingRequest | null): boolean {
   try {
     if (sessionStorage.getItem(storageKey) !== JSON.stringify(expected)) return false;
+    if (!storeRejection(expected, null)) return false;
     if (replacement === null) {
       sessionStorage.removeItem(storageKey);
       return sessionStorage.getItem(storageKey) === null;
@@ -308,8 +363,20 @@ export function AdminSignalGeneration({
       if (raw !== null && restored === null) throw new Error('invalid_pending');
       setPending(restored);
       setStorageReady(true);
-      if (restored) setMessage('已恢复原请求 ID。请先查询状态；不会自动调用 AI 或重试。');
+      if (restored) {
+        const rejection = readRejection(restored);
+        if (rejection) {
+          setRejectedCreateId(restored.id);
+          setRetryTarget(rejection.previousId ?? null);
+          setMessage(
+            `已恢复原请求及创建拒绝原因：${errorMessages[rejection.code]} 不会自动创建任务或调用 AI。`,
+          );
+        } else {
+          setMessage('已恢复原请求 ID。请先查询状态；不会自动调用 AI 或重试。');
+        }
+      }
     } catch {
+      setStorageReady(false);
       setMessage('无法安全保存或恢复请求 ID，生成操作已关闭。请保留原浏览器会话并联系管理员核对。');
     }
   }, []);
@@ -330,6 +397,11 @@ export function AdminSignalGeneration({
   }, [historyConfigured, configured]);
 
   function acceptRun(run: GenerationRun) {
+    if (pending?.id === run.id) {
+      setRejectedCreateId(null);
+      setRetryTarget(null);
+      if (!storeRejection(pending, null)) setStorageReady(false);
+    }
     setData((previous) => ({
       ...previous,
       runs: [run, ...previous.runs.filter((entry) => entry.id !== run.id)],
@@ -387,22 +459,41 @@ export function AdminSignalGeneration({
       setPending(request);
       setRejectedCreateId(null);
       setRetryTarget(null);
+      // Revoke an older definite rejection before any new request is sent.
+      // A lost/unknown response must never restore stale abandonment rights.
+      if (!storeRejection(request, null)) {
+        setStorageReady(false);
+        setMessage('恢复记录未能安全更新，未发送创建或 AI 请求。请保留原编号核对。');
+        return;
+      }
       let run: GenerationRun;
       try {
         ({ run } = await requestApi({ action: 'create', ...request, consent: true }));
       } catch (error) {
-        if (error instanceof SafeRequestError && error.code === 'task_deleted' && error.previousId)
-          setRetryTarget(error.previousId);
         if (
           error instanceof SafeRequestError &&
           ((error.status === 400 &&
             ['input_too_large', 'invalid_source', 'invalid_request'].includes(error.code)) ||
             (error.status === 409 && ['revision_conflict', 'task_deleted'].includes(error.code)))
-        )
+        ) {
           // These rejections do not create a new task. A deleted receipt remains
           // protected by server deduplication. Clearing local tracking still needs
           // an explicit action, a fresh not_found and a storage CAS.
+          const rejection: CreateRejection = {
+            request,
+            code: error.code as CreateRejection['code'],
+            ...(error.code === 'task_deleted' && error.previousId
+              ? { previousId: error.previousId }
+              : {}),
+          };
+          if (!storeRejection(request, rejection)) {
+            setStorageReady(false);
+            setMessage('创建已拒绝，但恢复记录未能安全保存。请保留原编号核对，未调用 AI。');
+            return;
+          }
           setRejectedCreateId(request.id);
+          setRetryTarget(rejection.previousId ?? null);
+        }
         throw error;
       }
       if (
@@ -471,8 +562,7 @@ export function AdminSignalGeneration({
         try {
           const stored = pendingRequest(JSON.parse(sessionStorage.getItem(storageKey) ?? 'null'));
           if (stored?.id !== id) throw new Error('pending_mismatch');
-          sessionStorage.removeItem(storageKey);
-          if (sessionStorage.getItem(storageKey) !== null) throw new Error('pending_not_removed');
+          if (!replacePending(pending, null)) throw new Error('pending_not_removed');
           setPending(null);
           setConsent(false);
         } catch {
@@ -490,8 +580,7 @@ export function AdminSignalGeneration({
     try {
       const stored = pendingRequest(JSON.parse(sessionStorage.getItem(storageKey) ?? 'null'));
       if (stored?.id !== pending.id) throw new Error('pending_mismatch');
-      sessionStorage.removeItem(storageKey);
-      if (sessionStorage.getItem(storageKey) !== null) throw new Error('pending_not_removed');
+      if (!replacePending(pending, null)) throw new Error('pending_not_removed');
       setPending(null);
       setConsent(false);
       setMessage('已结束本次任务跟踪。新任务需重新选择输入并确认外发授权。');
@@ -747,6 +836,14 @@ export function AdminSignalGeneration({
           <p className={styles.id}>
             资料：{pending.itemId} · 配置：{pending.profileId} r{pending.profileRevision}
           </p>
+          {!tracked && rejectedCreateId !== pending.id && (
+            <p>
+              当前保留原请求，暂不能更换资料。请先查询状态；若仍未找到，请重新勾选上方授权，再点击
+              “使用原编号重新确认创建（不调用
+              AI）”。该操作只确认或创建任务，不执行模型；若明确被拒绝，
+              将显示安全退出入口。仅凭未找到或网络异常不会放弃原编号。
+            </p>
+          )}
           <button
             disabled={!historyConfigured || busy}
             onClick={() => void command('detail', pending.id)}
