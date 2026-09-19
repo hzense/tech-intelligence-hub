@@ -12,10 +12,7 @@ const workflowFiles = (await readdir(workflowRoot))
   .sort();
 const issues = [];
 let pinnedActions = 0;
-const allowedWritePermissions = new Map([
-  ['continuous-daily.yml:publish', ['actions', 'contents', 'pull-requests']],
-  ['production-health.yml:health-incident', ['issues']],
-]);
+const allowedWritePermissions = new Map([['production-health.yml:health-incident', ['issues']]]);
 
 function validateUses(file, location, uses) {
   if (typeof uses !== 'string') return;
