@@ -430,6 +430,7 @@ function coreFixture(overrides = {}) {
     snapshot: { source, profile, connection },
     status: 'pending',
     lease_token: randomUUID(),
+    lease_until: new Date(Date.now() + 420000),
     reserved_microusd: '2000',
     charged_microusd: '2000',
     result: null,
@@ -456,6 +457,7 @@ function coreFixture(overrides = {}) {
       finishes.push(args);
       run.status = args.outcome;
       run.result = args.result;
+      run.error_code = args.errorCode ?? null;
       return run;
     },
     cancel: async () => {
@@ -587,7 +589,7 @@ test('unknown completion commit never retries provider or submits contradictory 
   assert.equal(finishes, 1);
 });
 
-test('persisted diagnostic classification does not change unknown accounting or replay safety', async () => {
+test('unknown outcomes are failed tasks while accounting and replay protection remain intact', async () => {
   const events = [];
   let calls = 0;
   const f = coreFixture({
@@ -604,7 +606,9 @@ test('persisted diagnostic classification does not change unknown accounting or 
     },
   });
   const id = f.run().id;
-  await f.execute('admin', { action: 'run', id });
+  const displayed = await f.execute('admin', { action: 'run', id });
+  assert.equal(displayed.status, 'failed');
+  assert.equal(displayed.error_code, 'generation_timeout');
   await f.execute('admin', { action: 'run', id });
   assert.equal(calls, 1);
   assert.equal(f.finishes.length, 1);
@@ -625,6 +629,28 @@ test('persisted diagnostic classification does not change unknown accounting or 
     JSON.stringify(events),
     /synthetic-generation-key|Alice|api\.provider|snapshot|lease_token/,
   );
+});
+
+test('legacy unknown tasks expose failed status and deletion only after their execution lease ends', () => {
+  const run = {
+    ...coreFixture().run(),
+    status: 'unknown',
+    error_code: 'generation_unknown',
+    lease_until: new Date(Date.now() + 60000),
+    reserved_microusd: '203730',
+    charged_microusd: '203730',
+  };
+  assert.equal(generationDto(run).status, 'failed');
+  assert.equal(generationDto(run).can_delete, false);
+  run.lease_until = new Date(Date.now() - 60000);
+  const dto = generationDto(run);
+  assert.equal(dto.can_delete, true);
+  assert.equal(dto.error_code, 'generation_unknown');
+  assert.equal(dto.charged_microusd, '203730');
+  assert.equal(dto.reserved_microusd, '203730');
+  assert.equal('lease_until' in dto, false);
+  assert.equal(run.status, 'unknown');
+  assert.equal(generationDto({ ...run, status: 'running' }).can_delete, false);
 });
 
 test('untrusted diagnostic strings and broken logging cannot change completion or expose secrets', async () => {

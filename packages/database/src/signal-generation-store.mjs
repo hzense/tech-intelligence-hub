@@ -428,7 +428,9 @@ export async function deleteSignalGeneration({ pool, owner, id }) {
     const active = (
       await client.query('SELECT $1::timestamptz>clock_timestamp() AS active', [row.lease_until])
     ).rows[0].active;
-    if (['running', 'unknown'].includes(row.status) || (row.status === 'cancelled' && active))
+    // Unknown outcomes are handled as failed tasks once the original execution
+    // lease ends. Soft deletion preserves the uncertainty, budget and dedup key.
+    if (row.status === 'running' || (['unknown', 'cancelled'].includes(row.status) && active))
       fail('task_active');
     await client.query(
       `UPDATE public.signal_generation_runs

@@ -196,6 +196,48 @@ suite('private AI generation PostgreSQL ledger', () => {
     ).rows[0];
     expect(BigInt(saved.charged_microusd)).toBeGreaterThan(0n);
   });
+  it('deletes expired unknown outcomes as failed tasks without releasing costs or admitting replay', async () => {
+    const value = input();
+    const row = await createSignalGeneration(value);
+    const claimed = await claimSignalGeneration(args(row));
+    await finishSignalGeneration({
+      ...args(row),
+      token: claimed.run.lease_token,
+      outcome: 'unknown',
+      errorCode: 'generation_timeout',
+    });
+    await expect(deleteSignalGeneration(args(row))).rejects.toMatchObject({ code: 'task_active' });
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [row.id],
+    );
+    await expect(deleteSignalGeneration({ ...args(row), owner: 'other' })).rejects.toMatchObject({
+      code: 'not_found',
+    });
+    const before = (
+      await pool.query('SELECT * FROM public.signal_generation_runs WHERE id=$1', [row.id])
+    ).rows[0];
+    await deleteSignalGeneration(args(row));
+    await deleteSignalGeneration(args(row));
+    expect(await listSignalGenerations({ pool, owner, readOnly: true })).toEqual([]);
+    await expect(getSignalGeneration({ ...args(row), readOnly: true })).rejects.toMatchObject({
+      code: 'not_found',
+    });
+    await expect(
+      createSignalGeneration({ ...value, request: { ...value.request, id: randomUUID() } }),
+    ).rejects.toMatchObject({ code: 'task_deleted' });
+    const after = (
+      await pool.query('SELECT * FROM public.signal_generation_runs WHERE id=$1', [row.id])
+    ).rows[0];
+    expect(after.deleted_at).not.toBeNull();
+    expect({ ...after, deleted_at: null }).toEqual(before);
+    const blocked = await createSignalGeneration(
+      input({ configuration: { ...value.configuration, dailyLimitMicrousd: 10 } }),
+    );
+    await expect(claimSignalGeneration(args(blocked))).rejects.toMatchObject({
+      code: 'budget_exceeded',
+    });
+  });
   it('owner-bound deletion of pending runs permits a fresh request but never replays a deleted UUID', async () => {
     const value = input();
     const row = await createSignalGeneration(value);
@@ -562,6 +604,8 @@ suite('private AI generation PostgreSQL ledger', () => {
     expect(await listSignalGenerations({ pool: rolePool, owner })).toMatchObject([
       { id: a.id, status: 'unknown' },
     ]);
+    await deleteSignalGeneration({ ...args(a), pool: rolePool });
+    expect(await listSignalGenerations({ pool: rolePool, owner, readOnly: true })).toEqual([]);
     for (const sql of [
       'SELECT * FROM public.unrelated_private',
       'DELETE FROM public.signal_generation_runs',
