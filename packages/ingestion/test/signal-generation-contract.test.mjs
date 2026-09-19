@@ -230,17 +230,17 @@ test('provider JSON Schema and runtime agree about keys and leave authority fiel
   assert.equal(schema.additionalProperties, false);
   assert.equal(schema.properties.candidates.maxItems, 5);
   assert.equal(schema.properties.candidates.items.properties.title.maxLength, 50);
-  assert.equal(schema.properties.candidates.items.properties.summary.maxLength, 800);
+  assert.equal(schema.properties.candidates.items.properties.summary.maxLength, 500);
   assert.deepEqual(schema.properties.candidates.items.required, Object.keys(candidate()));
   assert.equal(schema.properties.candidates.items.additionalProperties, false);
   assert.ok(!('status' in schema.properties.candidates.items.properties));
   assert.doesNotThrow(() => JSON.stringify(schema));
 });
 
-test('titles allow 50 code points and summaries 800, rejecting overflow without truncation', () => {
+test('titles allow 50 code points and summaries 500, rejecting overflow without truncation', () => {
   for (const [field, limit] of [
     ['title', 50],
-    ['summary', 800],
+    ['summary', 500],
   ]) {
     for (const character of ['中', '𠮷', '😀', 'a', '。']) {
       const value = output();

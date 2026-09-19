@@ -3,7 +3,13 @@ import test from 'node:test';
 import {
   aiProfileDefaultTemperature,
   aiProfileDefaultPrompts,
+  aiProfileDefaultOutputTokens,
 } from '../lib/admin-ai-profile-defaults.ts';
+
+test('new extraction profiles allow 8192 tokens without changing other stage defaults', () => {
+  assert.deepEqual(aiProfileDefaultOutputTokens, { extract: 8192, verify: 2048, analyze: 2048 });
+  assert.equal(Object.isFrozen(aiProfileDefaultOutputTokens), true);
+});
 
 test('profile defaults expose a bounded shared temperature and three separate editable texts', () => {
   assert.equal(aiProfileDefaultTemperature, 0.7);

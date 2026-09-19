@@ -2,6 +2,12 @@
 // Sources: docs/DESIGN.md §§1,7,11,19; docs/AUTONOMOUS_SIGNAL_PIPELINE.md §§4.1,5.4,6;
 // docs/SIGNAL_FIRST_REDESIGN.md §5; docs/SIGNAL_V3_FOUNDATION.md evidence/import boundaries.
 export const aiProfileDefaultTemperature = 0.7;
+// New profiles only. Existing revisions keep their explicit output budgets.
+export const aiProfileDefaultOutputTokens = Object.freeze({
+  extract: 8192,
+  verify: 2048,
+  analyze: 2048,
+});
 
 export const aiProfileDefaultPrompts = Object.freeze({
   extract: `你是 HZense 的信号候选提取助手。Signal 是唯一的新增情报事实入口。只从本次任务明确提供且允许处理的资料中发现独立技术事件，输出可追溯的候选，不把摘要、宣传、计划或推测直接写成已经发生的事实。

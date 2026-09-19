@@ -14,6 +14,7 @@ import { isValidAiModelId } from '../../../packages/database/src/ai-model-id.mjs
 import {
   aiProfileDefaultPrompts,
   aiProfileDefaultTemperature,
+  aiProfileDefaultOutputTokens,
 } from '../lib/admin-ai-profile-defaults';
 import styles from './admin-ai.module.css';
 
@@ -389,7 +390,10 @@ export function AdminAiProfiles({
                           min="128"
                           max="8192"
                           step="1"
-                          defaultValue={editing?.stages[key].max_output_tokens ?? 2048}
+                          defaultValue={
+                            editing?.stages[key].max_output_tokens ??
+                            aiProfileDefaultOutputTokens[key]
+                          }
                         />
                       </label>
                     </div>
