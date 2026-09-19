@@ -104,13 +104,19 @@ export function generationCost(input: number, output: number, settings: AiConnec
 }
 /** Excludes source text, credentials, lease tokens, owner and internal configuration. */
 export function generationDto(run: SignalGenerationRun) {
+  // Unknown provider outcomes are failed tasks for users. Keep the stored
+  // diagnostic and accounting state intact; uncertainty never permits a retry.
+  const leaseReleased =
+    run.lease_until === null || new Date(run.lease_until).getTime() <= Date.now();
   return {
     id: run.id,
     batch_id: run.batch_id,
     item_id: run.item_id,
     profile_id: run.profile_id,
     profile_revision: run.profile_revision,
-    status: run.status,
+    status: run.status === 'unknown' ? 'failed' : run.status,
+    can_delete:
+      run.status !== 'running' && (!['unknown', 'cancelled'].includes(run.status) || leaseReleased),
     result: run.result,
     error_code: run.error_code,
     created_at: run.created_at,

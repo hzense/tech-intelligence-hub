@@ -30,6 +30,7 @@ type GenerationRun = {
   error_code?: string | null;
   reserved_microusd: number | string;
   charged_microusd: number | string;
+  can_delete?: boolean;
 };
 type PendingRequest = {
   id: string;
@@ -46,7 +47,7 @@ const statuses: Record<GenerationRun['status'], string> = {
   running: '生成中',
   completed: '生成完成（私有候选）',
   failed: '失败',
-  unknown: '结果未知，待对账',
+  unknown: '失败',
   cancelled: '已取消',
 };
 const errorMessages: Record<string, string> = {
@@ -66,6 +67,7 @@ const errorMessages: Record<string, string> = {
   generation_sdk_error: '模型调用发生未分类异常，请按任务编号核对脱敏日志与费用，不要重复调用。',
   generation_postflight_failed: '模型调用后的资料或配置复核失败，结果未交付；请核对原任务及费用。',
   generation_unknown: '旧记录未保留具体调用失败分类，结果及费用待核对，不要重复调用。',
+  outcome_unknown: '执行已超时，未确认完整结果，按失败处理；费用记录保留。',
   generation_failed: '生成未得到可用候选，请核对原任务及费用。',
   input_too_large: '解析文本超过首版 48,000 字节上限。请先拆分资料；此页面不会自动截断或调用模型。',
   invalid_source: '解析结果格式无效。请在导入页核对资料是否完整解析。',
@@ -720,7 +722,11 @@ export function AdminSignalGeneration({
                 查看任务与私有候选
               </button>
               <button
-                disabled={!historyConfigured || busy || ['running', 'unknown'].includes(run.status)}
+                disabled={
+                  !historyConfigured ||
+                  busy ||
+                  !(run.can_delete ?? !['running', 'unknown'].includes(run.status))
+                }
                 onClick={() => void deleteTask(run.id)}
               >
                 删除任务
@@ -752,8 +758,8 @@ export function AdminSignalGeneration({
                 </>
               )}
             </div>
-            {run.status === 'unknown' && (
-              <p>供应商调用结果尚未确认，禁止重复执行。请先人工对账；刷新与查询不会调用模型。</p>
+            {run.can_delete === false && run.status !== 'running' && (
+              <p>执行保护期尚未结束，暂不能删除；稍后手动刷新列表。</p>
             )}
           </article>
         ))}

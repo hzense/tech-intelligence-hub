@@ -187,7 +187,8 @@ test(
           return;
         }
         if (command.action === 'run') {
-          run.status = droppedAction === 'run' ? 'unknown' : 'completed';
+          run.status = droppedAction === 'run' ? 'failed' : 'completed';
+          run.can_delete = droppedAction !== 'run';
           run.result = {
             classification: 'private',
             candidates: [
@@ -337,7 +338,7 @@ test(
     );
 
     await t.test(
-      'timeout diagnosis is actionable, retains unknown status and offers no model retry',
+      'uncertain outcomes are failed tasks and can be deleted after the execution lease ends',
       async () => {
         const page = await newPage();
         runs = [
@@ -347,7 +348,8 @@ test(
             item_id: itemId,
             profile_id: profileId,
             profile_revision: 2,
-            status: 'unknown',
+            status: 'failed',
+            can_delete: false,
             error_code: 'generation_timeout',
             reserved_microusd: '203730',
             charged_microusd: '203730',
@@ -359,11 +361,24 @@ test(
         await expect(
           page.getByText('当前接口总时限 5 分钟，模型最多等待 4 分 45 秒', { exact: false }),
         ).toBeVisible();
-        await expect(page.getByRole('heading', { name: /结果未知，待对账$/ })).toBeVisible();
+        await expect(page.getByRole('heading', { name: /失败$/ })).toBeVisible();
         await expect(
           page.getByRole('button', { name: '执行生成（调用 AI，可能计费）', exact: true }),
         ).toHaveCount(0);
         assert.equal(commands.length, 0);
+        await expect(page.getByRole('button', { name: '删除任务', exact: true })).toBeDisabled();
+        await expect(page.getByText('执行保护期尚未结束', { exact: false })).toBeVisible();
+        runs[0].can_delete = true;
+        await page.getByRole('button', { name: '手动刷新列表' }).click();
+        await expect(page.getByRole('button', { name: '删除任务', exact: true })).toBeEnabled();
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.getByRole('button', { name: '删除任务', exact: true }).click();
+        await expect(page.getByText('任务已删除。', { exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: /失败$/ })).toHaveCount(0);
+        assert.deepEqual(
+          commands.map((command) => command.action),
+          ['delete'],
+        );
         await page.close();
       },
     );
@@ -654,8 +669,9 @@ test(
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
         await expect(page.getByText('请求未确认完成。', { exact: false })).toBeVisible();
         await page.reload();
-        await expect(page.getByRole('heading', { name: /结果未知，待对账$/ })).toBeVisible();
-        await expect(page.getByRole('button', { name: '已核对，准备下一次生成' })).toBeDisabled();
+        await expect(page.getByRole('heading', { name: /失败$/ })).toBeVisible();
+        await expect(page.getByRole('button', { name: '已核对，准备下一次生成' })).toBeEnabled();
+        await expect(page.getByRole('button', { name: '删除任务', exact: true })).toBeDisabled();
         await expect(
           page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }),
         ).toHaveCount(0);
