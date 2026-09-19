@@ -919,6 +919,61 @@ test(
     );
 
     await t.test(
+      'deleted-task rejection can recover after reload without bypassing deduplication or calling AI',
+      async () => {
+        const page = await newPage();
+        await page.goto(origin);
+        await selectInput(page);
+        await page.getByRole('checkbox').check();
+        rejectedError = 'task_deleted';
+        await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
+        await expect(
+          page.getByText('同一资料与配置的任务已删除，', { exact: false }),
+        ).toBeVisible();
+        const originalId = commands[0].id;
+        const abandon = page.getByRole('button', { name: '核对并放弃未创建请求' });
+        await expect(abandon).toBeEnabled();
+        await expect(page.getByLabel('已完成解析的资料')).toBeDisabled();
+
+        await page.reload();
+        await expect(page.getByRole('heading', { name: '当前请求', exact: true })).toBeVisible();
+        assert.equal(commands.length, 1);
+        await expect(abandon).toHaveCount(0);
+        await page.getByRole('checkbox').check();
+        rejectedError = 'task_deleted';
+        await page.getByRole('button', { name: '使用原编号重新确认创建（不调用 AI）' }).click();
+        await expect(abandon).toBeEnabled();
+        assert.equal(commands.at(-1).id, originalId);
+
+        rejectedError = 'commit_unknown';
+        await abandon.click();
+        await expect(page.getByText('服务端尚无法确认任务记录，', { exact: false })).toBeVisible();
+        await expect(page.getByLabel('已完成解析的资料')).toBeDisabled();
+        await abandon.click();
+        await expect(page.getByRole('heading', { name: '当前请求', exact: true })).toHaveCount(0);
+        assert.deepEqual(commands.slice(2), [
+          { action: 'detail', id: originalId },
+          { action: 'detail', id: originalId },
+        ]);
+        assert.equal(
+          await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+          null,
+        );
+        await expect(page.getByRole('checkbox')).not.toBeChecked();
+        await page.getByLabel('导入批次').selectOption(batchId);
+        await page.getByLabel('已完成解析的资料').selectOption(smallItemId);
+        await page.getByLabel('分阶段模型配置').selectOption(profileId);
+        await page.getByRole('checkbox').check();
+        await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
+        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
+        assert.notEqual(commands.at(-1).id, originalId);
+        assert.equal(commands.at(-1).itemId, smallItemId);
+        assert.equal(commands.filter((command) => command.action === 'run').length, 0);
+        await page.close();
+      },
+    );
+
+    await t.test(
       'a stale profile revision can be explicitly abandoned after a fresh not_found and refreshed for a new request',
       async () => {
         const page = await newPage();
