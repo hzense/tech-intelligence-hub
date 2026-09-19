@@ -106,10 +106,11 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   assert.deepEqual(dashboard, { runs: [detail], profiles: [], batches: [] });
   assert.equal(service.ancillary.aiReads, 0);
   assert.equal(service.ancillary.importReads, 0);
-  // An expired-looking run is displayed as stored, never recovered by a history read.
+  // Expired running is displayed as failed without mutating its stored state or ledger.
   service.row.status = 'running';
   service.row.lease_until = '2000-01-01T00:00:00Z';
-  assert.equal((await service.generationDetail('admin', service.id)).status, 'running');
+  assert.equal((await service.generationDetail('admin', service.id)).status, 'failed');
+  assert.equal(service.row.status, 'running');
   service.row.status = 'completed';
   assert.ok(
     service.queries.some((q) => q.sql === 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'),
@@ -142,6 +143,8 @@ test('disabled generation history is owner-scoped, read-only and independent of 
     active: 'fixture',
     keys: { fixture: Buffer.alloc(32, 1).toString('base64') },
   });
+  assert.equal(service.generationConfigured(), false);
+  process.env.HZENSE_GENERATION_WORKFLOW_ENABLED = '1';
   assert.equal(service.generationConfigured(), true);
   for (const [aiFails, importFails] of [
     [true, false],

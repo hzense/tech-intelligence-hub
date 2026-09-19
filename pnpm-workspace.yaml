@@ -2,7 +2,16 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+# Workflow currently pins older transitive clients/IDs; retain their major API
+# while applying the upstream security patches required by the production audit.
+overrides:
+  '@workflow/world-local>undici': '7.29.0'
+  '@workflow/world-vercel>undici': '7.29.0'
+  '@workflow/core>nanoid': '5.1.16'
+
 allowBuilds:
+  '@swc/core': true
+  cbor-extract: false
   esbuild: true
   sharp: true
   unrs-resolver: true

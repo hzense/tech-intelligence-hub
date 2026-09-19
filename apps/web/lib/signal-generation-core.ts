@@ -84,6 +84,12 @@ export interface GenerationDependencies {
     elapsed_ms: number;
     timeout_ms: number;
   }): void;
+  progress?(
+    owner: string,
+    id: string,
+    token: string,
+    phase: 'generating' | 'validating' | 'saving',
+  ): Promise<void>;
 }
 export function generationCost(input: number, output: number, settings: AiConnection['settings']) {
   if (
@@ -109,6 +115,7 @@ export function generationDto(run: SignalGenerationRun) {
   // diagnostic and accounting state intact. Retries need a separate explicit request.
   const leaseReleased =
     run.lease_until === null || new Date(run.lease_until).getTime() <= Date.now();
+  const expired = run.status === 'running' && leaseReleased;
   return {
     id: run.id,
     retry_of: run.generation_version?.split('/retry/')[1] ?? null,
@@ -116,11 +123,16 @@ export function generationDto(run: SignalGenerationRun) {
     item_id: run.item_id,
     profile_id: run.profile_id,
     profile_revision: run.profile_revision,
-    status: run.status === 'unknown' ? 'failed' : run.status,
+    status: expired || run.status === 'unknown' ? 'failed' : run.status,
     can_delete:
-      run.status !== 'running' && (!['unknown', 'cancelled'].includes(run.status) || leaseReleased),
+      (run.status !== 'running' || expired) &&
+      (!['unknown', 'cancelled'].includes(run.status) || leaseReleased),
     result: run.result,
-    error_code: run.error_code,
+    error_code: expired ? 'outcome_unknown' : run.error_code,
+    progress_phase: run.progress_phase ?? null,
+    progress_at: run.progress_at ?? null,
+    started_at: run.started_at ?? null,
+    finished_at: run.finished_at,
     created_at: run.created_at,
     reserved_microusd: run.reserved_microusd,
     charged_microusd: run.charged_microusd,
@@ -245,6 +257,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       const latest = await deps.get(owner, id);
       if (latest.status !== 'running' || latest.lease_token !== run.lease_token)
         return generationDto(latest);
+      await deps.progress?.(owner, id, run.lease_token!, 'generating');
       sent = true;
       phase = 'provider';
       phaseStarted = performance.now();
@@ -275,6 +288,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       // Re-check evidence ownership/cancellation and capability state after the external call.
       phase = 'postflight';
       phaseStarted = performance.now();
+      await deps.progress?.(owner, id, run.lease_token!, 'validating').catch(() => {});
       await deps.source(owner, run.batch_id, run.item_id);
       const after = await deps.access(run.profile_id, run.profile_revision);
       if (
@@ -321,6 +335,8 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
     // not by a second, contradictory finish or a second provider invocation.
     phaseStarted = performance.now();
     try {
+      // Progress is advisory here: failure to record it must not discard a paid result.
+      await deps.progress?.(owner, id, run.lease_token!, 'saving').catch(() => {});
       const finished = await deps.finish(owner, completion);
       const persisted =
         finished.status === 'completed' ||

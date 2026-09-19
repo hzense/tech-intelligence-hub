@@ -1,8 +1,8 @@
-/** Server-owned business deadline; independent of the 3–20s capability probe setting.
- * Leaves 15s of the route's 300s maximum for other work (not a bookkeeping guarantee).
- * Requires Fluid Compute. No retries or token-limit changes.
+/** Background step deadline; independent of the request and capability probe.
+ * Requires a verified 1800s Workflow step runtime; leaves 5 minutes for bookkeeping.
+ * Database lease is 32 minutes. No provider retries or token-limit changes.
  */
-export const generationTimeoutMs = 285_000;
+export const generationTimeoutMs = 1_500_000;
 
 export const generationDiagnosticCodes = [
   'generation_timeout',

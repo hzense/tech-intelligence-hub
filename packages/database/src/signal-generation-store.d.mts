@@ -48,6 +48,9 @@ export interface SignalGenerationRun {
   created_at: Date | string;
   finished_at: Date | string | null;
   deleted_at?: Date | string | null;
+  progress_phase?: 'queued' | 'preparing' | 'generating' | 'validating' | 'saving' | null;
+  progress_at?: Date | string | null;
+  started_at?: Date | string | null;
 }
 interface Owned {
   pool: ImportPool;
@@ -86,3 +89,11 @@ export function finishSignalGeneration(
 export function cancelSignalGeneration(args: RunArgs): Promise<SignalGenerationRun>;
 
 export function deleteSignalGeneration(args: RunArgs): Promise<{ id: string; deleted: boolean }>;
+export function queueSignalGeneration(args: RunArgs): Promise<SignalGenerationRun>;
+export function updateSignalGenerationProgress(
+  args: RunArgs & {
+    token: string;
+    phase: 'generating' | 'validating' | 'saving';
+  },
+): Promise<void>;
+export function failQueuedSignalGeneration(args: RunArgs): Promise<void>;

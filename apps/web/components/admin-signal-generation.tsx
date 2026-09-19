@@ -9,6 +9,7 @@ import styles from './admin-signal-generation.module.css';
 import controls from './admin-controls.module.css';
 import { AdminGenerationPreflight } from './admin-generation-preflight';
 import { PrivateResult } from './private-generation-result';
+import { GenerationProgress, generationIsActive } from './generation-progress';
 
 type Profile = {
   id: string;
@@ -32,6 +33,10 @@ type GenerationRun = {
   charged_microusd: number | string;
   can_delete?: boolean;
   retry_of?: string | null;
+  progress_phase?: string | null;
+  progress_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
 };
 type PendingRequest = {
   id: string;
@@ -53,6 +58,7 @@ const statuses: Record<GenerationRun['status'], string> = {
   cancelled: '已取消',
 };
 const errorMessages: Record<string, string> = {
+  generation_dispatch_failed: '后台任务未能开始或排队已超时，未自动重试。请核对任务与配置。',
   generation_timeout:
     '生成达到本次任务的截止时间，未能确认完整结果。请先对账原任务，不要重复调用。',
   generation_provider_rejected: '供应商拒绝了生成请求。请核对模型与接口配置；该分类不代表未计费。',
@@ -162,9 +168,10 @@ function replacePending(expected: PendingRequest, replacement: PendingRequest | 
   }
 }
 
-async function requestApi(body?: unknown) {
+async function requestApi(body?: unknown, signal?: AbortSignal) {
   const response = await fetch('/api/admin/signal-generation', {
     cache: 'no-store',
+    ...(signal ? { signal } : {}),
     ...(body
       ? {
           method: 'POST',
@@ -253,6 +260,45 @@ export function AdminSignalGeneration({
       )
     : profile;
   const terminal = tracked && ['completed', 'failed', 'cancelled'].includes(tracked.status);
+  const activeIds = data.runs
+    .filter(generationIsActive)
+    .map((run) => run.id)
+    .sort()
+    .join(',');
+  const [pollError, setPollError] = useState(false);
+
+  useEffect(() => {
+    if (!historyConfigured || busy || !activeIds) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        // Read existing task IDs only; never dispatch, retry or create from polling.
+        const updates: GenerationRun[] = [];
+        for (const id of activeIds.split(',')) {
+          const { run } = await requestApi({ action: 'detail', id }, controller.signal);
+          if (!run || run.id !== id) throw new Error('identity_mismatch');
+          updates.push(run);
+        }
+        if (controller.signal.aborted) return;
+        const byId = new Map(updates.map((run) => [run.id, run]));
+        setData((previous) => ({
+          ...previous,
+          runs: previous.runs.map((run) => byId.get(run.id) ?? run),
+        }));
+        setDetail((previous) => (previous ? (byId.get(previous.id) ?? previous) : null));
+        setPollError(false);
+        timer = setTimeout(poll, 5000);
+      } catch {
+        if (!controller.signal.aborted) setPollError(true);
+      }
+    }
+    timer = setTimeout(poll, 5000);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [activeIds, historyConfigured, busy]);
 
   useEffect(() => {
     try {
@@ -535,7 +581,10 @@ export function AdminSignalGeneration({
       </p>
       <p>候选中的摘要、事件发生时间、证据、人物与组织均需核验；没有足够依据时可以不生成候选。</p>
       <p>首版每次处理一份资料，解析文本最多 48,000 字节；超限会停止，不自动截断。</p>
-      <p>当前接口总时限 5 分钟，模型最多等待 4 分 45 秒，预留时间用于校验和保存；不会自动重试。</p>
+      <p>
+        执行后立即提交后台长任务，模型最多等待 25
+        分钟。可关闭页面，重新打开查看进度；不会自动重试模型调用。
+      </p>
       {!configured && (
         <p role="status">
           AI 信号生成已关闭或尚未完成配置，不可创建或执行新任务。
@@ -730,6 +779,9 @@ export function AdminSignalGeneration({
       </p>
       <section className={styles.panel} aria-label="生成任务列表">
         <h2>生成任务</h2>
+        {pollError && (
+          <p role="alert">进度刷新失败，显示最后一次状态。请手动刷新核对；不会重复调用 AI。</p>
+        )}
         <p>
           显示已保存状态；查看不会改写任务。长期停留“生成中”或结果未知的任务需人工对账，不要重复调用。
         </p>
@@ -741,6 +793,7 @@ export function AdminSignalGeneration({
               {statuses[run.status]}
             </h3>
             <p className={styles.id}>请求 ID：{run.id}</p>
+            <GenerationProgress run={run} />
             {run.retry_of && (
               <p className={styles.id}>重新生成自任务：{run.retry_of}；旧费用保留。</p>
             )}
@@ -792,7 +845,9 @@ export function AdminSignalGeneration({
                     }
                     onClick={() => void command('run', run.id)}
                   >
-                    执行生成（调用 AI，可能计费）
+                    {run.progress_phase === 'queued'
+                      ? '核对后重新提交原任务（不重复调用）'
+                      : '执行生成（调用 AI，可能计费）'}
                   </button>
                   <button
                     disabled={!configured || busy}

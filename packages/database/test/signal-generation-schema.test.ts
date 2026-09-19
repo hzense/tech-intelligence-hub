@@ -17,6 +17,10 @@ const ddl = await readFile(
   new URL('../../../db/migrations/0015_signal_generation.sql', import.meta.url),
   'utf8',
 );
+const progressDdl = await readFile(
+  new URL('../../../db/migrations/0019_generation_progress.sql', import.meta.url),
+  'utf8',
+);
 it('pins the private generation SQL, typed schema and independent catalog together', () => {
   const config = getTableConfig(signalGenerationRuns),
     dialect = new PgDialect();
@@ -30,7 +34,9 @@ it('pins the private generation SQL, typed schema and independent catalog togeth
   expect(config.checks).toHaveLength(signalGenerationChecks.signal_generation_runs.length);
   config.checks.forEach((c, i) => {
     const expression = dialect.sqlToQuery(c.value).sql.replace(/"[a-z_]+"\."([a-z0-9_]+)"/g, '$1');
-    expect(ddl.replace(/\s+/g, ' ')).toContain(`CONSTRAINT ${c.name} CHECK (${expression})`);
+    expect((ddl + progressDdl).replace(/\s+/g, ' ')).toContain(
+      `CONSTRAINT ${c.name} CHECK (${expression})`,
+    );
     expect(signalGenerationChecks.signal_generation_runs[i]).toContain(
       canonicalPublicationControlCheck(`CHECK (${expression})`),
     );

@@ -41,8 +41,15 @@ export const signalGenerationRuns = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    progressPhase: text('progress_phase'),
+    progressAt: timestamp('progress_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
   },
   (t) => [
+    check(
+      'signal_generation_progress_ck',
+      sql`${t.progressPhase} IS NULL OR ${t.progressPhase} IN ('queued','preparing','generating','validating','saving')`,
+    ),
     check('signal_generation_source_fence_ck', sql`${t.sourceFence} > 0`),
     check('signal_generation_profile_revision_ck', sql`${t.profileRevision} > 0`),
     check('signal_generation_source_hash_ck', sql`${t.sourceHash} ~ '^[a-f0-9]{64}$'`),

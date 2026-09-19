@@ -13,6 +13,9 @@ import {
   claimSignalGeneration,
   finishSignalGeneration,
   cancelSignalGeneration,
+  queueSignalGeneration,
+  updateSignalGenerationProgress,
+  failQueuedSignalGeneration,
   signalGenerationSourceHash,
 } from '../src/signal-generation-store.mjs';
 import {
@@ -48,6 +51,10 @@ const ddl =
   identityDdl +
   (await readFile(
     new URL('../../../db/migrations/0018_generation_task_visibility.sql', import.meta.url),
+    'utf8',
+  )) +
+  (await readFile(
+    new URL('../../../db/migrations/0019_generation_progress.sql', import.meta.url),
     'utf8',
   ));
 function input(overrides = {}) {
@@ -139,6 +146,48 @@ suite('private AI generation PostgreSQL ledger', () => {
   });
   beforeEach(async () => {
     await pool.query('TRUNCATE public.signal_generation_runs');
+  });
+  it('queues without spending and fences monotonic progress across duplicate delivery and completion', async () => {
+    const task = await createSignalGeneration(input());
+    const args = { pool, owner, id: task.id };
+    await expect(queueSignalGeneration({ ...args, owner: 'another-owner' })).rejects.toThrow();
+    const queued = await queueSignalGeneration(args);
+    expect(queued.status).toBe('pending');
+    expect(queued.progress_phase).toBe('queued');
+    expect(Number(queued.reserved_microusd)).toBe(0);
+    const claim = await claimSignalGeneration({
+      ...args,
+      currentLimits: { batchLimitMicrousd: 5000000, dailyLimitMicrousd: 10000000 },
+    });
+    expect(claim.claimed).toBe(true);
+    expect(claim.run.progress_phase).toBe('preparing');
+    expect(new Date(claim.run.lease_until) - new Date(claim.run.started_at)).toBeGreaterThan(
+      1800000,
+    );
+    const duplicate = await claimSignalGeneration({
+      ...args,
+      currentLimits: { batchLimitMicrousd: 5000000, dailyLimitMicrousd: 10000000 },
+    });
+    expect(duplicate.claimed).toBe(false);
+    const progress = { ...args, token: claim.run.lease_token };
+    await expect(
+      updateSignalGenerationProgress({ ...progress, token: randomUUID(), phase: 'generating' }),
+    ).rejects.toThrow('stale_attempt');
+    await updateSignalGenerationProgress({ ...progress, phase: 'generating' });
+    await updateSignalGenerationProgress({ ...progress, phase: 'validating' });
+    await expect(
+      updateSignalGenerationProgress({ ...progress, phase: 'generating' }),
+    ).rejects.toThrow('stale_attempt');
+    await failQueuedSignalGeneration(args);
+    expect((await getSignalGeneration({ ...args, readOnly: true })).status).toBe('running');
+    await finishSignalGeneration({
+      ...progress,
+      outcome: 'failed',
+      errorCode: 'synthetic_failure',
+    });
+    await expect(updateSignalGenerationProgress({ ...progress, phase: 'saving' })).rejects.toThrow(
+      'stale_attempt',
+    );
   });
   afterAll(async () => {
     await rolePool?.end();

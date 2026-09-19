@@ -91,7 +91,7 @@ BEGIN
 END;
 $generation_admin$;
 GRANT USAGE ON SCHEMA public TO hzense_generation_admin;
-GRANT SELECT(id,owner_id,batch_id,item_id,source_fence,source_hash,profile_id,profile_revision,generation_version,fingerprint,snapshot,configuration,status,lease_token,lease_until,budget_day,reserved_microusd,charged_microusd,result,error_code,created_at,finished_at,deleted_at),INSERT(id,owner_id,batch_id,item_id,source_fence,source_hash,profile_id,profile_revision,generation_version,fingerprint,snapshot,configuration),UPDATE(status,lease_token,lease_until,budget_day,reserved_microusd,charged_microusd,result,error_code,finished_at,deleted_at) ON public.signal_generation_runs TO hzense_generation_admin;
+GRANT SELECT(id,owner_id,batch_id,item_id,source_fence,source_hash,profile_id,profile_revision,generation_version,fingerprint,snapshot,configuration,status,lease_token,lease_until,budget_day,reserved_microusd,charged_microusd,result,error_code,created_at,finished_at,deleted_at,progress_phase,progress_at,started_at),INSERT(id,owner_id,batch_id,item_id,source_fence,source_hash,profile_id,profile_revision,generation_version,fingerprint,snapshot,configuration),UPDATE(status,lease_token,lease_until,budget_day,reserved_microusd,charged_microusd,result,error_code,finished_at,deleted_at,progress_phase,progress_at,started_at) ON public.signal_generation_runs TO hzense_generation_admin;
 DO $generation_admin_verify$
 DECLARE
   target oid := 'hzense_generation_admin'::regrole;
@@ -100,7 +100,7 @@ DECLARE
   column_info record;
   checked_privilege text;
   expected boolean;
-  allowed_columns jsonb := '{"signal_generation_runs":{"SELECT":["id","owner_id","batch_id","item_id","source_fence","source_hash","profile_id","profile_revision","generation_version","fingerprint","snapshot","configuration","status","lease_token","lease_until","budget_day","reserved_microusd","charged_microusd","result","error_code","created_at","finished_at","deleted_at"],"INSERT":["id","owner_id","batch_id","item_id","source_fence","source_hash","profile_id","profile_revision","generation_version","fingerprint","snapshot","configuration"],"UPDATE":["status","lease_token","lease_until","budget_day","reserved_microusd","charged_microusd","result","error_code","finished_at","deleted_at"]}}'::jsonb;
+  allowed_columns jsonb := '{"signal_generation_runs":{"SELECT":["id","owner_id","batch_id","item_id","source_fence","source_hash","profile_id","profile_revision","generation_version","fingerprint","snapshot","configuration","status","lease_token","lease_until","budget_day","reserved_microusd","charged_microusd","result","error_code","created_at","finished_at","deleted_at","progress_phase","progress_at","started_at"],"INSERT":["id","owner_id","batch_id","item_id","source_fence","source_hash","profile_id","profile_revision","generation_version","fingerprint","snapshot","configuration"],"UPDATE":["status","lease_token","lease_until","budget_day","reserved_microusd","charged_microusd","result","error_code","finished_at","deleted_at","progress_phase","progress_at","started_at"]}}'::jsonb;
 BEGIN
   -- Re-read role attributes and memberships after GRANT. No role mutation is
   -- allowed to bypass the commit gate; this does not prevent later drift.
@@ -209,7 +209,7 @@ BEGIN
     RAISE EXCEPTION 'Generation administrator public data ACL contract mismatch';
   END IF;
   IF EXISTS(SELECT 1 FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE a.grantee=target)
-    OR (SELECT count(*) FROM pg_attribute c CROSS JOIN LATERAL aclexplode(c.attacl) a WHERE a.grantee=target)<>45
+    OR (SELECT count(*) FROM pg_attribute c CROSS JOIN LATERAL aclexplode(c.attacl) a WHERE a.grantee=target)<>51
     OR EXISTS(SELECT 1 FROM pg_attribute col JOIN pg_class c ON c.oid=col.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace
       CROSS JOIN LATERAL aclexplode(col.attacl) a WHERE a.grantee=target AND
       (n.nspname<>'public' OR c.relkind<>'r' OR col.attnum<=0 OR col.attisdropped

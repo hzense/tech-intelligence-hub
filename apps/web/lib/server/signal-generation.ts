@@ -56,6 +56,7 @@ const generationPool = {
 };
 export function generationConfigured() {
   try {
+    if (process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1') return false;
     readGenerationConfiguration(process.env);
     readAiBackendConfiguration(process.env);
     return importsConfigured();
@@ -152,6 +153,8 @@ export async function executeGeneration(owner: string, body: unknown) {
     invoke: invokeSignalGeneration,
     allowedHosts: ai.allowedHosts,
     report: (event) => console.info(JSON.stringify(event)),
+    progress: (owner, id, token, phase) =>
+      store.updateSignalGenerationProgress({ pool: generationPool, owner, id, token, phase }),
     create: (owner, args) =>
       store.createSignalGeneration({
         pool: generationPool,
@@ -183,4 +186,14 @@ export async function executeGeneration(owner: string, body: unknown) {
 export async function deleteGeneration(owner: string, id: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
   return store.deleteSignalGeneration({ pool: generationPool, owner, id });
+}
+
+export async function queueGeneration(owner: string, id: string) {
+  if (!generationConfigured() || process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1')
+    throw new GenerationError('not_configured');
+  return generationDto(await store.queueSignalGeneration({ pool: generationPool, owner, id }));
+}
+
+export async function failQueuedGeneration(owner: string, id: string) {
+  await store.failQueuedSignalGeneration({ pool: generationPool, owner, id });
 }

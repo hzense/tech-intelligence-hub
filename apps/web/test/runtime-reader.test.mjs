@@ -566,6 +566,7 @@ test('route and server module preserve the Node-only, request-time deployment bo
   assert.deepEqual(vercelConfig, {
     $schema: 'https://openapi.vercel.sh/vercel.json',
     regions: ['iad1'],
+    functions: { 'app/.well-known/workflow/v1/step/route.js': { maxDuration: 1800 } },
   });
   assert.match(serverSource, /import 'server-only'/);
   assert.match(serverSource, /new Pool\(options\)/);

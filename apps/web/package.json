@@ -26,7 +26,8 @@
     "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "workflow": "4.8.9"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",

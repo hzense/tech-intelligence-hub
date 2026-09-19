@@ -17,5 +17,6 @@
   "0015_signal_generation.sql": "0c93078e520045e733824668d5eafe23064c48c60a0f0d52c72e00a9eae6b666",
   "0016_generation_cancelled_recreation.sql": "91fed92118f856d3eecdfd7c7ec5394f6e36a93958282fb70958cbdcda849c4b",
   "0017_import_task_visibility.sql": "fef4f88c9592e03f79259787f31ab5974c187bdf6c8f9e9697c6b8faf5983012",
-  "0018_generation_task_visibility.sql": "5a945ab6271cfbab0f58e3e11e78d7ff3eeb61041eec18f449b4ef44a4bc15e9"
+  "0018_generation_task_visibility.sql": "5a945ab6271cfbab0f58e3e11e78d7ff3eeb61041eec18f449b4ef44a4bc15e9",
+  "0019_generation_progress.sql": "09a590ddc306a9b45960fb86f3c9f2cbd3707c891a33f85d1b3aae533ea208cc"
 }
