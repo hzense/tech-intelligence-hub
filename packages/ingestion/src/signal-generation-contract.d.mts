@@ -8,6 +8,7 @@ export const GENERATION_LIMITS: Readonly<{
   quoteCharacters: 500;
 }>;
 export const generationCandidateJsonSchema: Readonly<Record<string, unknown>>;
+export const REJECTED_CANDIDATES_REASON: string;
 export class SignalGenerationError extends Error {
   code: string;
   constructor(code: string);

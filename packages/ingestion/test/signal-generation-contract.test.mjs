@@ -7,6 +7,7 @@ import {
   generationCandidateJsonSchema,
   normalizeGeneratedCandidates,
   assessGeneratedCandidates,
+  REJECTED_CANDIDATES_REASON,
   validateGenerationSource,
 } from '../src/signal-generation-contract.mjs';
 
@@ -27,6 +28,18 @@ const candidate = () => ({
 });
 const output = () => ({ candidates: [candidate()], reason: '从合成资料提取，仍待独立核验。' });
 const normalize = (value) => normalizeGeneratedCandidates(value, buildGenerationSource(input()));
+
+test('rejected batches never retain model-provided reason text, including mixed batches', () => {
+  const bad = { ...candidate(), title: 'a'.repeat(81) };
+  for (const candidates of [[bad], [bad, candidate()]]) {
+    const result = assessGeneratedCandidates(
+      { candidates, reason: 'private rejected raw text' },
+      buildGenerationSource(input()),
+    );
+    assert.equal(result.reason, REJECTED_CANDIDATES_REASON);
+    assert.equal(JSON.stringify(result).includes('private rejected raw text'), false);
+  }
+});
 
 test('partial assessment preserves good siblings and original indexes with multiple fixed field errors', () => {
   const bad = { ...candidate(), title: 'a'.repeat(81), event_date: null };

@@ -1,5 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import { isDeepStrictEqual } from 'node:util';
+import {
+  normalizeGeneratedCandidates,
+  REJECTED_CANDIDATES_REASON,
+} from '../../ingestion/src/signal-generation-contract.mjs';
 
 // Private, preview-only generation receipts. This role cannot access imports,
 // provider keys, Signal tables, verification attestations or publication state.
@@ -183,6 +188,29 @@ function validateAssessedResult(result, outcome) {
   for (let i = 0; i < indexes.size; i++) if (!indexes.has(i)) invalid();
   const allRejected = result.rejected.length > 0 && result.candidates.length === 0;
   if ((outcome === 'failed') !== allRejected) invalid();
+  if (result.rejected.length && result.reason !== REJECTED_CANDIDATES_REASON) invalid();
+}
+function validateSavedCandidates(result, source) {
+  // Reuse the same full structural, Unicode, date and exact-quotation contract,
+  // binding accepted candidates to the immutable, owner-checked task snapshot.
+  try {
+    for (const candidate of result.candidates) {
+      const { index, classification, status, issues, ...input } = candidate;
+      const normalized = normalizeGeneratedCandidates(
+        { candidates: [input], reason: result.reason },
+        source,
+      ).candidates[0];
+      if (
+        !isDeepStrictEqual(
+          { ...normalized, index },
+          { ...input, index, classification, status, issues },
+        )
+      )
+        fail('invalid_result');
+    }
+  } catch {
+    fail('invalid_result');
+  }
 }
 const digest = (value) =>
   createHash('sha256')
@@ -535,6 +563,8 @@ export async function finishSignalGeneration({
   return transaction(pool, async (client) => {
     const row = await run(client, owner, id, true);
     if (row.lease_token !== token) fail('stale_attempt');
+    if (safeResult?.validation_version === 1)
+      validateSavedCandidates(safeResult, row.snapshot.source);
     if (row.status !== 'running') {
       if (
         row.status === outcome &&

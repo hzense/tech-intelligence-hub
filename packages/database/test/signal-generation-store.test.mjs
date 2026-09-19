@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { REJECTED_CANDIDATES_REASON } from '../../ingestion/src/signal-generation-contract.mjs';
 import {
   createSignalGeneration,
   getSignalGeneration,
@@ -68,7 +69,7 @@ describe('private generation input boundaries', () => {
       validation_version: 1,
       candidates: [],
       rejected: [rejected],
-      reason: 'test',
+      reason: REJECTED_CANDIDATES_REASON,
       usage: { input_tokens: 1, output_tokens: null },
     };
     const malformed = [
@@ -94,6 +95,7 @@ describe('private generation input boundaries', () => {
       { usage: { input_tokens: -1, output_tokens: null } },
       { usage: { input_tokens: 1, output_tokens: null, raw: 'text' } },
       { reason: 'x'.repeat(1001) },
+      { reason: 'raw rejected candidate text' },
       { raw: 'raw output' },
       { validation_version: 2 },
     ];
@@ -138,7 +140,7 @@ describe('private generation input boundaries', () => {
           errors: [{ field: 'title', code: 'title_too_long' }],
         },
       ],
-      reason: 'test',
+      reason: REJECTED_CANDIDATES_REASON,
       usage: { input_tokens: 200, output_tokens: 100 },
     };
     const writes = [];
@@ -147,6 +149,7 @@ describe('private generation input boundaries', () => {
       status: 'running',
       lease_token: token,
       reserved_microusd: '1000',
+      snapshot: { source },
       lease_until: new Date(Date.now() + 60000),
     };
     const client = {

@@ -10,6 +10,7 @@ export const GENERATION_LIMITS = Object.freeze({
   references: 8,
   quoteCharacters: 500,
 });
+export const REJECTED_CANDIDATES_REASON = '候选校验未全部通过；请查看逐条校验记录。';
 
 const referenceSchema = {
   type: 'object',
@@ -357,7 +358,7 @@ function normalizeCandidates(value, source, partial = false) {
   const result = {
     classification: 'private',
     candidates: candidates.filter(Boolean),
-    reason,
+    reason: partial && rejected.length ? REJECTED_CANDIDATES_REASON : reason,
     ...(partial ? { validation_version: 1, rejected } : {}),
   };
   boundedBytes(result, GENERATION_LIMITS.outputBytes, 'generation_output_too_large');
