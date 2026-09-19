@@ -31,6 +31,7 @@ type GenerationRun = {
   reserved_microusd: number | string;
   charged_microusd: number | string;
   can_delete?: boolean;
+  retry_of?: string | null;
 };
 type PendingRequest = {
   id: string;
@@ -38,6 +39,7 @@ type PendingRequest = {
   itemId: string;
   profileId: string;
   profileRevision: number;
+  retryOf?: string;
 };
 type ListResponse = { runs: GenerationRun[]; profiles: Profile[]; batches: ImportBatch[] };
 const storageKey = 'hzense.signal-generation.pending.v1';
@@ -89,9 +91,9 @@ const errorMessages: Record<string, string> = {
   commit_unknown: '服务端尚无法确认任务记录，请保持原编号并查询，不要新建重复任务。',
   not_found: '暂未查到原任务。请保留原编号；确认配置后可使用原编号重新确认创建，不会自动调用 AI。',
   cancelled: '该资料或任务已取消，不能继续生成。',
-  task_active: '任务仍在执行或等待对账，请先取消或完成对账后删除。',
+  task_active: '任务仍在执行或执行保护期未结束，暂不能删除或重新生成；请稍后查询状态。',
   task_deleted:
-    '同一资料与配置的任务已删除，不能重复生成。可点击“核对并放弃未创建请求”解除当前请求跟踪，再选择其他资料；此操作不会重新调用 AI。',
+    '同一资料与配置的任务已删除。可手动创建重新生成任务，执行时可能再次计费；也可点击“核对并放弃未创建请求”选择其他资料。',
   duplicate_source: '该资料与已有解析内容重复，请从列表选择保留的资料。',
   limit_exceeded: '请求超出允许范围，请核对资料及配置限制。',
   unauthorized: '管理员登录已失效。请重新登录后按原请求编号核对。',
@@ -101,6 +103,7 @@ class SafeRequestError extends Error {
   constructor(
     readonly code: string,
     readonly status?: number,
+    readonly previousId?: string,
   ) {
     super('request_failed');
   }
@@ -115,7 +118,10 @@ function pendingRequest(value: unknown): PendingRequest | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
   if (
-    Object.keys(row).sort().join(',') !== 'batchId,id,itemId,profileId,profileRevision' ||
+    Object.keys(row).sort().join(',') !==
+      `batchId,id,itemId,profileId,profileRevision${Object.hasOwn(row, 'retryOf') ? ',retryOf' : ''}` ||
+    (Object.hasOwn(row, 'retryOf') &&
+      (typeof row.retryOf !== 'string' || !uuid.test(row.retryOf) || row.retryOf === row.id)) ||
     !['id', 'batchId', 'itemId', 'profileId'].every(
       (key) => typeof row[key] === 'string' && uuid.test(row[key]),
     ) ||
@@ -174,6 +180,11 @@ async function requestApi(body?: unknown) {
     throw new SafeRequestError(
       knownErrorMessage(result?.error) ? result.error : 'request_failed',
       response.status,
+      result?.error === 'task_deleted' &&
+        typeof result.previous_id === 'string' &&
+        uuid.test(result.previous_id)
+        ? result.previous_id
+        : undefined,
     );
   }
   return response.json();
@@ -186,6 +197,7 @@ function requestFor(run: GenerationRun): PendingRequest {
     itemId: run.item_id,
     profileId: run.profile_id,
     profileRevision: run.profile_revision,
+    ...(run.retry_of ? { retryOf: run.retry_of } : {}),
   };
 }
 
@@ -208,6 +220,7 @@ export function AdminSignalGeneration({
   const [consent, setConsent] = useState(false);
   const [pending, setPending] = useState<PendingRequest | null>(null);
   const [rejectedCreateId, setRejectedCreateId] = useState<string | null>(null);
+  const [retryTarget, setRetryTarget] = useState<string | null>(null);
   const [storageReady, setStorageReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -294,33 +307,46 @@ export function AdminSignalGeneration({
     }
   }
 
-  async function create() {
+  async function create(retry = false) {
     if (
       !storageReady ||
       !consent ||
+      (retry && (!pending || !retryTarget || rejectedCreateId !== pending.id)) ||
       (!pending && sourceBlocked) ||
       (!pending && (!profile?.readiness.ready || !items.some((item) => item.id === itemId)))
     )
       return;
+    if (
+      retry &&
+      !window.confirm(
+        '创建重新生成任务？旧结果和费用会保留；手动执行新任务将再次调用 AI，并可能再次计费。',
+      )
+    )
+      return;
     await perform(async () => {
-      const request = pending ?? {
-        id: crypto.randomUUID(),
-        batchId,
-        itemId,
-        profileId,
-        profileRevision: profile!.revision,
-      };
-      if (!storePending(request)) {
+      const request = retry
+        ? { ...pending!, id: crypto.randomUUID(), retryOf: retryTarget! }
+        : (pending ?? {
+            id: crypto.randomUUID(),
+            batchId,
+            itemId,
+            profileId,
+            profileRevision: profile!.revision,
+          });
+      if (!(retry ? replacePending(pending!, request) : storePending(request))) {
         setStorageReady(false);
         setMessage('请求 ID 保存失败，未发送创建或 AI 请求。');
         return;
       }
       setPending(request);
       setRejectedCreateId(null);
+      setRetryTarget(null);
       let run: GenerationRun;
       try {
         ({ run } = await requestApi({ action: 'create', ...request, consent: true }));
       } catch (error) {
+        if (error instanceof SafeRequestError && error.code === 'task_deleted' && error.previousId)
+          setRetryTarget(error.previousId);
         if (
           error instanceof SafeRequestError &&
           ((error.status === 400 &&
@@ -340,7 +366,8 @@ export function AdminSignalGeneration({
         run.batch_id !== request.batchId ||
         run.item_id !== request.itemId ||
         run.profile_id !== request.profileId ||
-        run.profile_revision !== request.profileRevision
+        run.profile_revision !== request.profileRevision ||
+        (run.retry_of ?? undefined) !== request.retryOf
       )
         throw new SafeRequestError('response_identity_mismatch');
       const canonical = { ...request, id: run.id };
@@ -354,7 +381,9 @@ export function AdminSignalGeneration({
       acceptRun(run);
       setMessage(
         canonical.id === request.id
-          ? '任务已创建。尚未调用 AI；请核对任务与外发授权，再手动执行生成。'
+          ? request.retryOf
+            ? '重新生成任务已创建，旧任务与费用保留。尚未调用 AI；手动执行将再次调用模型，并可能再次计费。'
+            : '任务已创建。尚未调用 AI；请核对任务与外发授权，再手动执行生成。'
           : '已复用相同资料与配置的原任务，并对齐原任务编号。本次未调用 AI；请核对已有结果或重新确认外发授权。',
       );
     });
@@ -451,6 +480,7 @@ export function AdminSignalGeneration({
       }
       setPending(null);
       setRejectedCreateId(null);
+      setRetryTarget(null);
       setConsent(false);
       setItemId('');
       setMessage(
@@ -644,7 +674,9 @@ export function AdminSignalGeneration({
           供应商，并了解手动执行可能产生费用；仅生成私有候选，不授权发布。
         </span>
       </label>
-      <p>费用受服务端预算控制。预留金额不等于最终账单；结果未知时需先对账，不得重复调用。</p>
+      <p>
+        费用受服务端预算控制，预留金额不等于最终账单。重新生成会保留旧费用，并可能再次计费；不会自动重试。
+      </p>
       <button
         disabled={
           !configured ||
@@ -683,6 +715,14 @@ export function AdminSignalGeneration({
               核对并放弃未创建请求
             </button>
           )}
+          {retryTarget && rejectedCreateId === pending.id && !tracked && (
+            <button
+              disabled={!configured || busy || !storageReady || !consent}
+              onClick={() => void create(true)}
+            >
+              重新生成（创建新任务，不调用 AI）
+            </button>
+          )}
         </section>
       )}
       <p role="status" aria-live="polite">
@@ -701,6 +741,9 @@ export function AdminSignalGeneration({
               {statuses[run.status]}
             </h3>
             <p className={styles.id}>请求 ID：{run.id}</p>
+            {run.retry_of && (
+              <p className={styles.id}>重新生成自任务：{run.retry_of}；旧费用保留。</p>
+            )}
             <p className={styles.id}>
               资料：{run.item_id} · 配置：{run.profile_id} r{run.profile_revision}
             </p>

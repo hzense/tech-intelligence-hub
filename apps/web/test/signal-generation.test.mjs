@@ -12,7 +12,10 @@ import { createGenerationExecutor, generationDto } from '../lib/signal-generatio
 import { createGenerationHandler } from '../lib/admin-signal-generation-handler.ts';
 import { readGenerationConfiguration } from '../lib/signal-generation-config.ts';
 import { SignalGenerationError as ContractError } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
-import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
+import {
+  signalGenerationSourceHash,
+  SignalGenerationError as StoreError,
+} from '../../../packages/database/src/signal-generation-store.mjs';
 import { buildGenerationSource } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
 const { Response, Request, structuredClone } = globalThis;
@@ -484,6 +487,42 @@ function coreFixture(overrides = {}) {
     finishes,
   };
 }
+test('explicit retry pins a predecessor during creation without fetching credentials or invoking AI', async () => {
+  const retryOf = randomUUID();
+  let created;
+  const f = coreFixture({
+    access: async (_id, _revision, credentials) => {
+      assert.notEqual(credentials, true);
+      return { profile, connection };
+    },
+    create: async (_owner, args) => {
+      created = args;
+      return {
+        ...f.run(),
+        id: args.request.id,
+        generation_version: `private-candidate-v1/retry/${args.retryOf}`,
+      };
+    },
+  });
+  const request = {
+    action: 'create',
+    id: randomUUID(),
+    batchId: randomUUID(),
+    itemId: randomUUID(),
+    profileId: profile.id,
+    profileRevision: profile.revision,
+    consent: true,
+    retryOf,
+  };
+  const dto = await f.execute('admin', request);
+  assert.equal(created.retryOf, retryOf);
+  assert.equal(dto.retry_of, retryOf);
+  assert.equal(f.calls(), 0);
+  for (const invalid of [null, true, 'arbitrary']) {
+    await assert.rejects(f.execute('admin', { ...request, retryOf: invalid }));
+  }
+  await assert.rejects(f.execute('admin', { ...request, consent: false }));
+});
 test('committed admission precedes one model call, replay and detail never regenerate', async () => {
   const f = coreFixture(),
     id = f.run().id;
@@ -740,6 +779,38 @@ test('generation API denies anonymous, cross-site, host spoofing and client sour
   assert.equal(good.status, 200);
   assert.match(good.headers.get('cache-control'), /no-store/);
   assert.equal(called, 1);
+});
+test('only owner-checked deleted-task errors expose a predecessor for explicit retry', async () => {
+  const previousId = randomUUID();
+  const trusted = new StoreError('task_deleted');
+  trusted.previousId = previousId;
+  for (const error of [trusted, { code: 'task_deleted', previousId }]) {
+    const handler = createGenerationHandler({
+      session: async () => ({ user: { id: 'admin' } }),
+      origin: () => 'https://hzense.com',
+      dashboard: async () => ({}),
+      execute: async () => {
+        throw error;
+      },
+    });
+    const response = await handler(
+      new Request('https://hzense.com/api/admin/signal-generation', {
+        method: 'POST',
+        headers: {
+          host: 'hzense.com',
+          origin: 'https://hzense.com',
+          'content-type': 'application/json',
+        },
+        body: '{}',
+      }),
+    );
+    assert.deepEqual(
+      await response.json(),
+      error === trusted
+        ? { error: 'task_deleted', previous_id: previousId }
+        : { error: 'unavailable' },
+    );
+  }
 });
 test('source contract failures have bounded actionable 400 responses', async () => {
   for (const [code, expected] of [

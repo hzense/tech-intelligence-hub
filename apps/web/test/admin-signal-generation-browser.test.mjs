@@ -134,7 +134,13 @@ test(
           res.statusCode = ['invalid_request', 'input_too_large', 'invalid_source'].includes(error)
             ? 400
             : 409;
-          res.end(JSON.stringify({ error, message: 'SYNTHETIC_RAW_PROVIDER_DIAGNOSTIC' }));
+          res.end(
+            JSON.stringify({
+              error,
+              ...(error === 'task_deleted' ? { previous_id: pendingItemId } : {}),
+              message: 'SYNTHETIC_RAW_PROVIDER_DIAGNOSTIC',
+            }),
+          );
           return;
         }
         if (command.action === 'create' && command.profileRevision !== profileRevision) {
@@ -166,7 +172,8 @@ test(
               entry.batch_id === command.batchId &&
               entry.item_id === command.itemId &&
               entry.profile_id === command.profileId &&
-              entry.profile_revision === command.profileRevision,
+              entry.profile_revision === command.profileRevision &&
+              (entry.retry_of ?? undefined) === command.retryOf,
           );
           run ??= {
             id: command.id,
@@ -175,6 +182,7 @@ test(
             item_id: command.itemId,
             profile_id: command.profileId,
             profile_revision: command.profileRevision,
+            retry_of: command.retryOf ?? null,
             reserved_microusd: 50000,
             charged_microusd: 0,
             created_at: '2026-09-17T12:00:00Z',
@@ -928,7 +936,7 @@ test(
         rejectedError = 'task_deleted';
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
         await expect(
-          page.getByText('同一资料与配置的任务已删除，', { exact: false }),
+          page.getByText('同一资料与配置的任务已删除。', { exact: false }),
         ).toBeVisible();
         const originalId = commands[0].id;
         const abandon = page.getByRole('button', { name: '核对并放弃未创建请求' });
@@ -969,6 +977,62 @@ test(
         assert.notEqual(commands.at(-1).id, originalId);
         assert.equal(commands.at(-1).itemId, smallItemId);
         assert.equal(commands.filter((command) => command.action === 'run').length, 0);
+        await page.close();
+      },
+    );
+
+    await t.test(
+      'explicit retry creates a linked task, survives a lost response and reload, and never auto-runs AI',
+      async () => {
+        const page = await newPage();
+        await page.goto(origin);
+        await selectInput(page);
+        await page.getByRole('checkbox').check();
+        rejectedError = 'task_deleted';
+        await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
+        const retry = page.getByRole('button', {
+          name: '重新生成（创建新任务，不调用 AI）',
+          exact: true,
+        });
+        await expect(retry).toBeEnabled();
+        const rejectedId = commands[0].id;
+        page.once('dialog', (dialog) => dialog.dismiss());
+        await retry.click();
+        assert.equal(commands.length, 1);
+        await page.getByRole('checkbox').uncheck();
+        await expect(retry).toBeDisabled();
+        await page.getByRole('checkbox').check();
+        page.once('dialog', (dialog) => dialog.accept());
+        droppedAction = 'create';
+        await retry.click();
+        await expect(page.getByText('请求未确认完成。', { exact: false })).toBeVisible();
+        const retryId = commands.at(-1).id;
+        assert.notEqual(retryId, rejectedId);
+        assert.equal(commands.at(-1).retryOf, pendingItemId);
+        await page.reload();
+        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
+        await expect(
+          page.getByText(`重新生成自任务：${pendingItemId}；旧费用保留。`),
+        ).toBeVisible();
+        const stored = await page.evaluate(
+          (key) => JSON.parse(globalThis.sessionStorage.getItem(key)),
+          storageKey,
+        );
+        assert.equal(stored.id, retryId);
+        assert.equal(stored.retryOf, pendingItemId);
+        assert.equal(commands.length, 2);
+        await expect(
+          page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }),
+        ).toBeDisabled();
+        await page.getByRole('button', { name: '按原请求 ID 查询状态' }).click();
+        await expect(page.getByText('已查询原任务，不触发 AI 调用。')).toBeVisible();
+        assert.deepEqual(commands.at(-1), { action: 'detail', id: retryId });
+        assert.equal(commands.filter((command) => command.action === 'run').length, 0);
+        await page.getByRole('checkbox').check();
+        await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
+        await expect(page.getByRole('heading', { name: /生成完成（私有候选）$/ })).toBeVisible();
+        assert.deepEqual(commands.at(-1), { action: 'run', id: retryId });
+        assert.equal(commands.filter((command) => command.action === 'run').length, 1);
         await page.close();
       },
     );

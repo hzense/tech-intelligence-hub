@@ -1,6 +1,7 @@
 import type { ImportPool } from './import-store.mjs';
 export class SignalGenerationError extends Error {
   code: string;
+  previousId?: string;
   constructor(code: string);
 }
 export interface SignalGenerationConfiguration {
@@ -61,6 +62,7 @@ export function createSignalGeneration(
     request: SignalGenerationRequest;
     snapshot: SignalGenerationSnapshot;
     configuration: SignalGenerationConfiguration;
+    retryOf?: string;
   },
 ): Promise<SignalGenerationRun>;
 export function getSignalGeneration(

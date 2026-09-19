@@ -158,6 +158,7 @@ export async function executeGeneration(owner: string, body: unknown) {
         owner,
         request: args.request,
         snapshot: args.snapshot,
+        ...(args.retryOf ? { retryOf: args.retryOf } : {}),
         configuration: {
           version: 'private-candidate-v1',
           batchLimitMicrousd: config.batch,

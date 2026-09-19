@@ -238,6 +238,91 @@ suite('private AI generation PostgreSQL ledger', () => {
       code: 'budget_exceeded',
     });
   });
+  it('explicit retries preserve deleted completed receipts and deduplicate concurrent requests', async () => {
+    const value = input();
+    const parent = await claimed(value);
+    await finishSignalGeneration({
+      ...args(parent),
+      token: parent.lease_token,
+      outcome: 'completed',
+      result,
+    });
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [parent.id],
+    );
+    await deleteSignalGeneration(args(parent));
+    const before = (
+      await pool.query('SELECT * FROM public.signal_generation_runs WHERE id=$1', [parent.id])
+    ).rows[0];
+    const retry = { ...value, request: { ...value.request, id: randomUUID() }, retryOf: parent.id };
+    await expect(createSignalGeneration({ ...retry, retryOf: undefined })).rejects.toMatchObject({
+      code: 'task_deleted',
+      previousId: parent.id,
+    });
+    await expect(createSignalGeneration({ ...retry, owner: 'other' })).rejects.toMatchObject({
+      code: 'not_found',
+    });
+    await expect(
+      createSignalGeneration({ ...retry, request: { ...retry.request, itemId: randomUUID() } }),
+    ).rejects.toMatchObject({ code: 'request_id_conflict' });
+    const [a, b] = await Promise.all([
+      createSignalGeneration(retry),
+      createSignalGeneration({ ...retry, request: { ...retry.request, id: randomUUID() } }),
+    ]);
+    expect(a.id).toBe(b.id);
+    expect(a.id).not.toBe(parent.id);
+    expect(a.status).toBe('pending');
+    expect(a.generation_version).toBe(`test-v1/retry/${parent.id}`);
+    expect((await createSignalGeneration(retry)).id).toBe(a.id);
+    expect(
+      (await pool.query('SELECT * FROM public.signal_generation_runs WHERE id=$1', [parent.id]))
+        .rows[0],
+    ).toEqual(before);
+    await expect(
+      claimSignalGeneration({
+        ...args(a),
+        currentLimits: { batchLimitMicrousd: 10, dailyLimitMicrousd: 100 },
+      }),
+    ).rejects.toMatchObject({ code: 'budget_exceeded' });
+    await expect(
+      claimSignalGeneration({
+        ...args(a),
+        currentLimits: { batchLimitMicrousd: 100, dailyLimitMicrousd: 10 },
+      }),
+    ).rejects.toMatchObject({ code: 'budget_exceeded' });
+    expect((await claimSignalGeneration(args(a))).claimed).toBe(true);
+    expect((await claimSignalGeneration(args(a))).claimed).toBe(false);
+  });
+  it('retry requires a terminal predecessor with an expired lease and recovers uncertain create commits', async () => {
+    const value = input();
+    const parent = await createSignalGeneration(value);
+    const retry = { ...value, request: { ...value.request, id: randomUUID() }, retryOf: parent.id };
+    await expect(createSignalGeneration(retry)).rejects.toMatchObject({ code: 'task_active' });
+    const admission = await claimSignalGeneration(args(parent));
+    await expect(createSignalGeneration(retry)).rejects.toMatchObject({ code: 'task_active' });
+    await finishSignalGeneration({
+      ...args(parent),
+      token: admission.run.lease_token,
+      outcome: 'unknown',
+    });
+    await expect(createSignalGeneration(retry)).rejects.toMatchObject({ code: 'task_active' });
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [parent.id],
+    );
+    await expect(
+      createSignalGeneration({ ...retry, pool: uncertainCommit(pool) }),
+    ).rejects.toMatchObject({ code: 'commit_unknown' });
+    const recovered = await createSignalGeneration(retry);
+    expect(recovered.id).toBe(retry.request.id);
+    expect(
+      (await pool.query('SELECT count(*) FROM public.signal_generation_runs')).rows[0].count,
+    ).toBe('2');
+    await expect(createSignalGeneration({ ...retry, retryOf: undefined })).rejects.toMatchObject({
+      code: 'request_id_conflict',
+    });
+  });
   it('owner-bound deletion of pending runs permits a fresh request but never replays a deleted UUID', async () => {
     const value = input();
     const row = await createSignalGeneration(value);
@@ -606,6 +691,13 @@ suite('private AI generation PostgreSQL ledger', () => {
     ]);
     await deleteSignalGeneration({ ...args(a), pool: rolePool });
     expect(await listSignalGenerations({ pool: rolePool, owner, readOnly: true })).toEqual([]);
+    const retry = await createSignalGeneration({
+      ...value,
+      request: { ...value.request, id: randomUUID() },
+      retryOf: a.id,
+    });
+    expect(retry.status).toBe('pending');
+    expect(retry.generation_version).toBe(`test-v1/retry/${a.id}`);
     for (const sql of [
       'SELECT * FROM public.unrelated_private',
       'DELETE FROM public.signal_generation_runs',
