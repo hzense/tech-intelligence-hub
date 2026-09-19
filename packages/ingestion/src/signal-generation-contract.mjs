@@ -5,11 +5,12 @@ export const GENERATION_LIMITS = Object.freeze({
   sourceBytes: 48000,
   outputBytes: 96000,
   candidates: 5,
-  titleCharacters: 50,
+  titleCharacters: 80,
   summaryCharacters: 500,
   references: 8,
   quoteCharacters: 500,
 });
+export const REJECTED_CANDIDATES_REASON = '候选校验未全部通过；请查看逐条校验记录。';
 
 const referenceSchema = {
   type: 'object',
@@ -234,46 +235,108 @@ function eventDate(value) {
 }
 
 /** Structural/quotation validation only: this does not establish factual or public eligibility. */
-export function normalizeGeneratedCandidates(value, source) {
+function normalizeCandidates(value, source, partial = false) {
   const validatedSource = validateGenerationSource(source);
   const fragments = new Map(validatedSource.fragments.map((fragment) => [fragment.id, fragment]));
   record(value, ['candidates', 'reason']);
+  boundedBytes(value, GENERATION_LIMITS.outputBytes, 'generation_output_too_large');
   const reason = string(value.reason, 1000);
+  const rejected = [];
   const candidates = list(value.candidates, GENERATION_LIMITS.candidates).map(
     (candidate, index) => {
-      record(candidate, [
-        'title',
-        'summary',
-        'event_date',
-        'event_date_evidence',
-        'persons',
-        'organizations',
-        'claims',
-      ]);
-      const title = string(candidate.title, GENERATION_LIMITS.titleCharacters);
-      const summary = string(candidate.summary, GENERATION_LIMITS.summaryCharacters);
-      const event_date = eventDate(candidate.event_date);
-      const event_date_evidence = references(
-        candidate.event_date_evidence,
-        fragments,
-        event_date === null ? 0 : 1,
+      const errors = [];
+      const check = (field, work, code = 'invalid_field') => {
+        try {
+          return work();
+        } catch (error) {
+          if (!partial || !(error instanceof SignalGenerationError)) throw error;
+          errors.push({ field, code });
+          return undefined;
+        }
+      };
+      const reject = () => {
+        rejected.push({ index, classification: 'private', status: 'rejected', errors });
+        return null;
+      };
+      const shape = check(
+        'candidate',
+        () =>
+          record(candidate, [
+            'title',
+            'summary',
+            'event_date',
+            'event_date_evidence',
+            'persons',
+            'organizations',
+            'claims',
+          ]),
+        'invalid_candidate_shape',
       );
-      if (event_date === null && event_date_evidence.length) fail();
-      const persons = list(candidate.persons, 12).map((person) => {
-        record(person, ['name', 'role', 'organization', 'evidence']);
-        return {
-          name: string(person.name, 150),
-          role: string(person.role, 200),
-          organization: person.organization === null ? null : string(person.organization, 200),
-          evidence: references(person.evidence, fragments),
-        };
+      if (!shape) return reject();
+      const title = check(
+        'title',
+        () => string(candidate.title, GENERATION_LIMITS.titleCharacters),
+        typeof candidate.title === 'string' &&
+          [...candidate.title].length > GENERATION_LIMITS.titleCharacters
+          ? 'title_too_long'
+          : 'invalid_field',
+      );
+      const summary = check(
+        'summary',
+        () => string(candidate.summary, GENERATION_LIMITS.summaryCharacters),
+        typeof candidate.summary === 'string' &&
+          [...candidate.summary].length > GENERATION_LIMITS.summaryCharacters
+          ? 'summary_too_long'
+          : 'invalid_field',
+      );
+      const event_date = check(
+        'event_date',
+        () => eventDate(candidate.event_date),
+        'invalid_event_date',
+      );
+      const event_date_evidence = check(
+        'event_date_evidence',
+        () => {
+          if (
+            candidate.event_date === null &&
+            Array.isArray(candidate.event_date_evidence) &&
+            candidate.event_date_evidence.length
+          )
+            fail();
+          return references(candidate.event_date_evidence, fragments, event_date === null ? 0 : 1);
+        },
+        candidate.event_date === null &&
+          Array.isArray(candidate.event_date_evidence) &&
+          candidate.event_date_evidence.length
+          ? 'unknown_date_has_evidence'
+          : 'invalid_evidence',
+      );
+      const persons = check('persons', () =>
+        list(candidate.persons, 12).map((person) => {
+          record(person, ['name', 'role', 'organization', 'evidence']);
+          return {
+            name: string(person.name, 150),
+            role: string(person.role, 200),
+            organization: person.organization === null ? null : string(person.organization, 200),
+            evidence: references(person.evidence, fragments),
+          };
+        }),
+      );
+      const organizations = check('organizations', () => {
+        const names = list(candidate.organizations, 12).map((name) => string(name, 200));
+        if (new Set(names).size !== names.length) fail();
+        return names;
       });
-      const organizations = list(candidate.organizations, 12).map((name) => string(name, 200));
-      if (new Set(organizations).size !== organizations.length) fail();
-      const claims = list(candidate.claims, 12, 1).map((claim) => {
-        record(claim, ['text', 'evidence']);
-        return { text: string(claim.text, 1200), evidence: references(claim.evidence, fragments) };
-      });
+      const claims = check('claims', () =>
+        list(candidate.claims, 12, 1).map((claim) => {
+          record(claim, ['text', 'evidence']);
+          return {
+            text: string(claim.text, 1200),
+            evidence: references(claim.evidence, fragments),
+          };
+        }),
+      );
+      if (errors.length) return reject();
       const issues = ['needs_public_evidence'];
       if (!persons.length) issues.push('needs_person_evidence');
       if (event_date === null) issues.push('needs_event_time');
@@ -292,7 +355,30 @@ export function normalizeGeneratedCandidates(value, source) {
       };
     },
   );
-  const result = { classification: 'private', candidates, reason };
+  const result = {
+    classification: 'private',
+    candidates: candidates.filter(Boolean),
+    reason: partial && rejected.length ? REJECTED_CANDIDATES_REASON : reason,
+    ...(partial ? { validation_version: 1, rejected } : {}),
+  };
   boundedBytes(result, GENERATION_LIMITS.outputBytes, 'generation_output_too_large');
   return result;
+}
+
+export function normalizeGeneratedCandidates(value, source) {
+  return normalizeCandidates(value, source);
+}
+
+/** Reject candidates independently; diagnostics contain only server-owned codes, never raw output. */
+export function assessGeneratedCandidates(value, source) {
+  return normalizeCandidates(value, source, true);
+}
+
+/** Validate only the bounded envelope in the SDK; business validation runs after usage is captured. */
+export function validateGenerationEnvelope(value) {
+  record(value, ['candidates', 'reason']);
+  string(value.reason, 1000);
+  list(value.candidates, GENERATION_LIMITS.candidates);
+  boundedBytes(value, GENERATION_LIMITS.outputBytes, 'generation_output_too_large');
+  return value;
 }

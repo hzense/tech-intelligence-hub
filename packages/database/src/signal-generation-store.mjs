@@ -1,5 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import { isDeepStrictEqual } from 'node:util';
+import {
+  normalizeGeneratedCandidates,
+  REJECTED_CANDIDATES_REASON,
+} from '../../ingestion/src/signal-generation-contract.mjs';
 
 // Private, preview-only generation receipts. This role cannot access imports,
 // provider keys, Signal tables, verification attestations or publication state.
@@ -95,6 +100,117 @@ function bounded(value, limit, code) {
   const out = canonical(value, code);
   if (Buffer.byteLength(JSON.stringify(out), 'utf8') > limit) fail(code);
   return out;
+}
+// Persisted v1 diagnostics are server-owned metadata, not a free-form output channel.
+function validateAssessedResult(result, outcome) {
+  const invalid = () => fail('invalid_result');
+  const shape = (value, fields) => object(value, fields, 'invalid_result');
+  shape(result, [
+    'classification',
+    'validation_version',
+    'candidates',
+    'rejected',
+    'reason',
+    'usage',
+  ]);
+  if (
+    result.classification !== 'private' ||
+    result.validation_version !== 1 ||
+    typeof result.reason !== 'string' ||
+    !result.reason.trim() ||
+    [...result.reason].length > 1000 ||
+    !Array.isArray(result.candidates) ||
+    !Array.isArray(result.rejected) ||
+    result.candidates.length + result.rejected.length > 5
+  )
+    invalid();
+  shape(result.usage, ['input_tokens', 'output_tokens']);
+  for (const value of Object.values(result.usage))
+    if (value !== null && (!Number.isSafeInteger(value) || value < 0)) invalid();
+  const indexes = new Set();
+  const index = (value) => {
+    if (!Number.isSafeInteger(value) || value < 0 || value >= 5 || indexes.has(value)) invalid();
+    indexes.add(value);
+  };
+  for (const candidate of result.candidates) {
+    shape(candidate, [
+      'index',
+      'classification',
+      'status',
+      'issues',
+      'title',
+      'summary',
+      'event_date',
+      'event_date_evidence',
+      'persons',
+      'organizations',
+      'claims',
+    ]);
+    index(candidate.index);
+    if (candidate.classification !== 'private' || candidate.status !== 'needs_review') invalid();
+  }
+  const codes = {
+    candidate: ['invalid_candidate_shape'],
+    title: ['title_too_long', 'invalid_field'],
+    summary: ['summary_too_long', 'invalid_field'],
+    event_date: ['invalid_event_date'],
+    event_date_evidence: ['unknown_date_has_evidence', 'invalid_evidence'],
+    persons: ['invalid_field'],
+    organizations: ['invalid_field'],
+    claims: ['invalid_field'],
+  };
+  for (const rejected of result.rejected) {
+    shape(rejected, ['index', 'classification', 'status', 'errors']);
+    index(rejected.index);
+    if (
+      rejected.classification !== 'private' ||
+      rejected.status !== 'rejected' ||
+      !Array.isArray(rejected.errors) ||
+      !rejected.errors.length ||
+      rejected.errors.length > 7
+    )
+      invalid();
+    const fields = new Set();
+    for (const error of rejected.errors) {
+      shape(error, ['field', 'code']);
+      if (
+        typeof error.field !== 'string' ||
+        typeof error.code !== 'string' ||
+        !Object.hasOwn(codes, error.field) ||
+        !codes[error.field].includes(error.code) ||
+        fields.has(error.field)
+      )
+        invalid();
+      fields.add(error.field);
+    }
+    if (fields.has('candidate') && fields.size !== 1) invalid();
+  }
+  for (let i = 0; i < indexes.size; i++) if (!indexes.has(i)) invalid();
+  const allRejected = result.rejected.length > 0 && result.candidates.length === 0;
+  if ((outcome === 'failed') !== allRejected) invalid();
+  if (result.rejected.length && result.reason !== REJECTED_CANDIDATES_REASON) invalid();
+}
+function validateSavedCandidates(result, source) {
+  // Reuse the same full structural, Unicode, date and exact-quotation contract,
+  // binding accepted candidates to the immutable, owner-checked task snapshot.
+  try {
+    for (const candidate of result.candidates) {
+      const { index, classification, status, issues, ...input } = candidate;
+      const normalized = normalizeGeneratedCandidates(
+        { candidates: [input], reason: result.reason },
+        source,
+      ).candidates[0];
+      if (
+        !isDeepStrictEqual(
+          { ...normalized, index },
+          { ...input, index, classification, status, issues },
+        )
+      )
+        fail('invalid_result');
+    }
+  } catch {
+    fail('invalid_result');
+  }
 }
 const digest = (value) =>
   createHash('sha256')
@@ -431,11 +547,24 @@ export async function finishSignalGeneration({
       (typeof errorCode !== 'string' || !/^[a-z][a-z0-9_]{0,79}$/.test(errorCode)))
   )
     fail();
-  const safeResult = outcome === 'completed' ? bounded(result, 512000, 'invalid_result') : null;
-  if (outcome === 'completed' && safeResult?.classification !== 'private') fail('invalid_result');
+  const retainRejected =
+    outcome === 'failed' && errorCode === 'generation_invalid_output' && result !== undefined;
+  const safeResult =
+    outcome === 'completed' || retainRejected ? bounded(result, 512000, 'invalid_result') : null;
+  if ((outcome === 'completed' || retainRejected) && safeResult?.classification !== 'private')
+    fail('invalid_result');
+  if (
+    safeResult &&
+    (retainRejected ||
+      Object.hasOwn(safeResult, 'validation_version') ||
+      Object.hasOwn(safeResult, 'rejected'))
+  )
+    validateAssessedResult(safeResult, outcome);
   return transaction(pool, async (client) => {
     const row = await run(client, owner, id, true);
     if (row.lease_token !== token) fail('stale_attempt');
+    if (safeResult?.validation_version === 1)
+      validateSavedCandidates(safeResult, row.snapshot.source);
     if (row.status !== 'running') {
       if (
         row.status === outcome &&

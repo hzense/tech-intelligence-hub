@@ -3,6 +3,10 @@ import process from 'node:process';
 import { randomUUID } from 'node:crypto';
 import { URL } from 'node:url';
 import pg from 'pg';
+import {
+  REJECTED_CANDIDATES_REASON,
+  assessGeneratedCandidates,
+} from '../../ingestion/src/signal-generation-contract.mjs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import {
@@ -60,8 +64,7 @@ const ddl =
 function input(overrides = {}) {
   const source = {
     classification: 'private',
-    fragments: [{ index: 0, text: 'Synthetic source', locator: { paragraph: 1 } }],
-    warnings: [],
+    fragments: [{ id: 'fragment-1', text: 'Synthetic source', locator: { paragraph: 1 } }],
   };
   const connection = {
     id: randomUUID(),
@@ -614,6 +617,164 @@ suite('private AI generation PostgreSQL ledger', () => {
     expect(failed.charged_microusd).toBe('10');
     expect(failed.result).toBeNull();
     expect((await claimSignalGeneration(args(a))).claimed).toBe(false);
+  });
+  it('persists all-rejected private diagnostics through the actual failed-result constraint', async () => {
+    const a = await claimed();
+    const rejectedResult = {
+      classification: 'private',
+      validation_version: 1,
+      candidates: [],
+      reason: REJECTED_CANDIDATES_REASON,
+      rejected: [
+        {
+          index: 0,
+          classification: 'private',
+          status: 'rejected',
+          errors: [{ field: 'title', code: 'title_too_long' }],
+        },
+      ],
+      usage: { input_tokens: 200, output_tokens: 100 },
+    };
+    const completion = {
+      ...args(a),
+      token: a.lease_token,
+      outcome: 'failed',
+      errorCode: 'generation_invalid_output',
+      result: rejectedResult,
+      chargedMicrousd: 1,
+    };
+    const failed = await finishSignalGeneration(completion);
+    expect(failed.status).toBe('failed');
+    expect(failed.charged_microusd).toBe('10');
+    expect((await getSignalGeneration(args(a))).result).toEqual(rejectedResult);
+    expect((await finishSignalGeneration(completion)).result).toEqual(rejectedResult);
+    expect((await claimSignalGeneration(args(a))).claimed).toBe(false);
+    expect(
+      await getSignalGeneration({ ...args(a), owner: 'another' }).catch((error) => error.code),
+    ).toBe('not_found');
+  });
+  it('persists v1 mixed and deliberate zero-candidate completions with exact diagnostics', async () => {
+    const candidate = {
+      index: 1,
+      classification: 'private',
+      status: 'needs_review',
+      issues: ['needs_public_evidence', 'needs_person_evidence', 'needs_event_time'],
+      title: 'Synthetic',
+      summary: 'Synthetic summary',
+      event_date: null,
+      event_date_evidence: [],
+      persons: [],
+      organizations: [],
+      claims: [
+        {
+          text: 'Synthetic claim',
+          evidence: [{ fragment_id: 'fragment-1', quote: 'Synthetic source' }],
+        },
+      ],
+    };
+    const rejected = {
+      index: 0,
+      classification: 'private',
+      status: 'rejected',
+      errors: [{ field: 'title', code: 'title_too_long' }],
+    };
+    for (const mixed of [true, false]) {
+      const a = await claimed();
+      const result = {
+        classification: 'private',
+        validation_version: 1,
+        candidates: mixed ? [candidate] : [],
+        rejected: mixed ? [rejected] : [],
+        reason: mixed ? REJECTED_CANDIDATES_REASON : 'synthetic',
+        usage: { input_tokens: 1, output_tokens: null },
+      };
+      const saved = await finishSignalGeneration({
+        ...args(a),
+        token: a.lease_token,
+        outcome: 'completed',
+        result,
+        chargedMicrousd: 1,
+      });
+      expect(saved.status).toBe('completed');
+      expect((await getSignalGeneration(args(a))).result).toEqual(result);
+      expect((await claimSignalGeneration(args(a))).claimed).toBe(false);
+    }
+  });
+  it('revalidates every v1 candidate field and quotation against its frozen source before saving', async () => {
+    const value = input();
+    const a = await claimed(value);
+    const candidate = {
+      title: 'Synthetic',
+      summary: 'Synthetic summary',
+      event_date: null,
+      event_date_evidence: [],
+      persons: [],
+      organizations: [],
+      claims: [
+        {
+          text: 'Synthetic claim',
+          evidence: [{ fragment_id: 'fragment-1', quote: 'Synthetic source' }],
+        },
+      ],
+    };
+    const result = {
+      ...assessGeneratedCandidates(
+        { candidates: [candidate], reason: 'test' },
+        value.snapshot.source,
+      ),
+      usage: { input_tokens: 1, output_tokens: 1 },
+    };
+    const mutations = [
+      { title: 7 },
+      { title: 'x'.repeat(81) },
+      { summary: 'x'.repeat(501) },
+      { event_date: '2026-02-30' },
+      { event_date_evidence: candidate.claims[0].evidence },
+      { issues: ['verified'] },
+      { organizations: ['duplicate', 'duplicate'] },
+      {
+        persons: [
+          {
+            name: 'Alice',
+            role: 'speaker',
+            organization: null,
+            evidence: candidate.claims[0].evidence,
+            extra: 'raw',
+          },
+        ],
+      },
+      { claims: [{ ...candidate.claims[0], extra: 'raw' }] },
+      { claims: [{ text: 'claim', evidence: [{ fragment_id: 'fragment-1', quote: 'invented' }] }] },
+      {
+        claims: [
+          {
+            text: 'claim',
+            evidence: [{ fragment_id: 'fragment-1', quote: 'Synthetic source', extra: 'raw' }],
+          },
+        ],
+      },
+    ];
+    for (const mutation of mutations) {
+      await expect(
+        finishSignalGeneration({
+          ...args(a),
+          token: a.lease_token,
+          outcome: 'completed',
+          result: { ...result, candidates: [{ ...result.candidates[0], ...mutation }] },
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_result' });
+      expect((await getSignalGeneration(args(a))).status).toBe('running');
+    }
+    expect(
+      (
+        await finishSignalGeneration({
+          ...args(a),
+          token: a.lease_token,
+          outcome: 'completed',
+          result,
+        })
+      ).result,
+    ).toEqual(result);
   });
   it('counts pending external/unknown costs in the global UTC daily cap across owners', async () => {
     const value = input();
