@@ -17,9 +17,9 @@ export const row = {id, owner_id:'admin',status:'completed',result:{classificati
 export let safeRole = true;
 export function setSafeRole(value) { safeRole=value; }
 export function forbidden() { throw new Error('Unexpected import or AI access'); }
-export const ancillary = {aiFails:true,importFails:true,aiReads:0,importReads:0};
+export const ancillary = {aiFails:true,importFails:true,aiReads:0,importReads:0,labels:[]};
 export async function aiDashboard() { ancillary.aiReads++; if(ancillary.aiFails) throw new Error('PRIVATE_AI_ERROR'); return {profiles:[],connections:[]}; }
-export const importPool = {async connect(){ ancillary.importReads++; if(ancillary.importFails) throw new Error('PRIVATE_IMPORT_ERROR'); return {async query(){return {rows:[]};},release(){}}; }};
+export const importPool = {async connect(){ ancillary.importReads++; if(ancillary.importFails) throw new Error('PRIVATE_IMPORT_ERROR'); return {async query(sql){return {rows:sql.includes("i.declaration->>'name'") ? ancillary.labels : []};},release(){}}; }};
 export class Pool {
   on() {}
   async connect() { return {release(){}, async query(sql, values) {
@@ -155,6 +155,23 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   }
   assert.equal(service.ancillary.aiReads, 3);
   assert.equal(service.ancillary.importReads, 3);
+  // History labels are fetched by the run item IDs, independently of the
+  // selectable source page (including deleted/duplicate/off-page imports).
+  service.row.item_id = '22222222-2222-4222-8222-222222222222';
+  Object.assign(service.ancillary, {
+    importFails: false,
+    labels: [{ id: service.row.item_id, name: 'Archived source.txt', url: null }],
+  });
+  process.env.HZENSE_SIGNAL_GENERATION_ENABLED = '0';
+  const namedHistory = await service.generationDashboard('admin');
+  assert.deepEqual(namedHistory.batches, []);
+  assert.equal(namedHistory.runs[0].source_name, 'Archived source.txt');
+  assert.equal(
+    (await service.generationDetail('admin', service.id)).source_name,
+    'Archived source.txt',
+  );
+  service.ancillary.importFails = true;
+  assert.equal((await service.generationDashboard('admin')).runs[0].status, 'completed');
   service.setSafeRole(false);
   await assert.rejects(service.generationDetail('admin', service.id), {
     code: 'database_unavailable',
@@ -217,4 +234,44 @@ test('history HTTP lookup authenticates, validates exact input and never dispatc
   })(request());
   assert.equal(denied.status, 503);
   assert.deepEqual(await denied.json(), { error: 'unavailable' });
+});
+
+test('task deletion is authenticated, owner-scoped and separate from the AI executor', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  let deleted = 0;
+  const deps = {
+    session: async () => ({ user: { id: 'admin' } }),
+    origin: () => 'https://hzense.com',
+    dashboard: async () => ({}),
+    execute: async () => assert.fail('must not invoke AI executor'),
+    delete: async (owner, taskId) => {
+      assert.equal(owner, 'admin');
+      assert.equal(taskId, id);
+      deleted++;
+      return { id, deleted: true };
+    },
+  };
+  const request = (body = { action: 'delete', id }, origin = 'https://hzense.com') =>
+    new Request('https://hzense.com/api/admin/signal-generation', {
+      method: 'POST',
+      headers: { host: 'hzense.com', origin, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  assert.equal(
+    (await createGenerationHandler({ ...deps, session: async () => null })(request())).status,
+    401,
+  );
+  const handler = createGenerationHandler(deps);
+  assert.equal((await handler(request(undefined, 'https://evil.example'))).status, 403);
+  for (const body of [
+    { action: 'delete', id, owner: 'other' },
+    { action: 'delete' },
+    { action: 'delete', id: 'bad' },
+  ])
+    assert.equal((await handler(request(body))).status, 400);
+  assert.equal(deleted, 0);
+  const response = await handler(request());
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { id, deleted: true });
+  assert.equal(deleted, 1);
 });

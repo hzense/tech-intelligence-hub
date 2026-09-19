@@ -192,3 +192,8 @@
     padding: 1rem;
   }
 }
+
+.main h3 {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}

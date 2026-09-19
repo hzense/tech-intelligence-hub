@@ -16,6 +16,7 @@ export const importColumns = {
     configuration: json,
     cancelled: required('boolean'),
     created_at: time,
+    deleted_at: ['timestamp with time zone', false],
   },
   import_items: {
     id: uuid,

@@ -63,17 +63,67 @@ async function item(client, batchId, id) {
   if (!row) importFail('not_found');
   return row;
 }
-async function detail(client, row) {
+// Rank each owner's completed outputs once, rather than scanning all previous
+// outputs for every item. JSONB equality preserves exact fragment semantics.
+const canonicalItems = (ownerParameter) => `canonical_items AS MATERIALIZED (
+  SELECT i.id,
+    first_value(i.id) OVER identical AS canonical_id,
+    first_value(i.batch_id) OVER identical AS canonical_batch_id
+  FROM public.import_items i
+  JOIN public.import_batches b ON b.id=i.batch_id
+  JOIN public.import_outputs o ON o.item_id=i.id AND o.fence=i.fence
+  WHERE b.owner_id=${ownerParameter} AND b.deleted_at IS NULL AND NOT b.cancelled
+    AND i.status='completed'
+  WINDOW identical AS (PARTITION BY o.content->'fragments' ORDER BY i.created_at,i.id)
+)`;
+async function details(client, rows, owner) {
+  if (!rows.length) return [];
   const items = (
     await client.query(
-      `SELECT ${selectColumns('import_items', 'i.')}, d.sha256,d.byte_size,d.format, a.error_code,a.lease_until
-    FROM public.import_items i LEFT JOIN public.import_documents d ON d.item_id=i.id
-    LEFT JOIN public.import_attempts a ON a.item_id=i.id AND a.fence=i.fence
-    WHERE i.batch_id=$1 ORDER BY i.position`,
-      [row.id],
+      `WITH ${canonicalItems('$2')}
+      SELECT ${selectColumns('import_items', 'i.')}, d.sha256,d.byte_size,d.format, a.error_code,a.lease_until,
+        NULLIF(c.canonical_id,i.id) AS duplicate_of,
+        CASE WHEN c.canonical_id<>i.id THEN c.canonical_batch_id END AS duplicate_batch_id
+      FROM public.import_items i LEFT JOIN public.import_documents d ON d.item_id=i.id
+      LEFT JOIN public.import_attempts a ON a.item_id=i.id AND a.fence=i.fence
+      LEFT JOIN canonical_items c ON c.id=i.id
+      WHERE i.batch_id=ANY($1::uuid[]) ORDER BY i.position`,
+      [rows.map((row) => row.id), owner],
     )
   ).rows;
-  return { ...row, status: importBatchStatus(row, items), items };
+  const byBatch = new Map();
+  for (const item of items) {
+    if (!byBatch.has(item.batch_id)) byBatch.set(item.batch_id, []);
+    byBatch.get(item.batch_id).push(item);
+  }
+  return rows.map((row) => {
+    const items = byBatch.get(row.id) ?? [];
+    return { ...row, status: importBatchStatus(row, items), items };
+  });
+}
+async function detail(client, row) {
+  return (await details(client, [row], row.owner_id))[0];
+}
+// Labels are retained for saved generation history even after an import is hidden.
+// Owner scope and the explicit item IDs prevent exposing another owner's labels.
+export async function getImportItemLabels({ pool, owner, itemIds }) {
+  importOwner(owner);
+  if (!Array.isArray(itemIds) || itemIds.length > 100) importFail();
+  const ids = [...new Set(itemIds.map(importUuid))];
+  if (!ids.length) return [];
+  return transaction(
+    pool,
+    async (client) =>
+      (
+        await client.query(
+          `SELECT i.id, i.declaration->>'name' AS name, i.declaration->>'url' AS url
+     FROM public.import_items i JOIN public.import_batches b ON b.id=i.batch_id
+     WHERE b.owner_id=$1 AND i.id=ANY($2::uuid[])`,
+          [owner, ids],
+        )
+      ).rows,
+    true,
+  );
 }
 export async function createImportBatch({ pool, owner, request, capabilities, configuration }) {
   importOwner(owner);
@@ -113,6 +163,7 @@ export async function createImportBatch({ pool, owner, request, capabilities, co
     if (old) {
       if (old.owner_id !== owner || old.fingerprint !== parsed.fingerprint)
         importFail('request_id_conflict');
+      if (old.deleted_at) importFail('task_deleted');
       return detail(client, old);
     }
     const count = (
@@ -150,27 +201,30 @@ export async function getImportBatch({ pool, owner, id }) {
 }
 export async function listImportBatches({ pool, owner, before, view = 'all' }) {
   importOwner(owner);
-  if (!['all', 'current', 'history'].includes(view)) importFail();
+  if (!['all', 'current', 'history', 'sources'].includes(view)) importFail();
   return transaction(
     pool,
     async (client) => {
       const cursor = before === undefined ? null : await batch(client, before, owner);
       const rows = (
         await client.query(
-          `SELECT ${selectColumns('import_batches', 'b.')} FROM public.import_batches b
-           WHERE b.owner_id=$1
-           AND ($3::text='all' OR
+          `WITH ${canonicalItems('$1')}
+           SELECT ${selectColumns('import_batches', 'b.')} FROM public.import_batches b
+           WHERE b.owner_id=$1 AND b.deleted_at IS NULL
+           AND ($3::text='all' OR ($3::text='sources' AND NOT b.cancelled AND EXISTS (
+             SELECT 1 FROM public.import_items source_item
+             JOIN canonical_items c ON c.id=source_item.id AND c.canonical_id=source_item.id
+             WHERE source_item.batch_id=b.id
+           )) OR ($3::text IN ('current','history') AND
              (b.cancelled OR NOT EXISTS (
                SELECT 1 FROM public.import_items i WHERE i.batch_id=b.id AND i.status<>'completed'
-             )) = ($3::text='history'))
+             )) = ($3::text='history')))
            AND ($2::uuid IS NULL OR (b.created_at,b.id)<(SELECT c.created_at,c.id FROM public.import_batches c WHERE c.id=$2::uuid AND c.owner_id=$1))
            ORDER BY b.created_at DESC,b.id DESC LIMIT 50`,
           [owner, cursor?.id ?? null, view],
         )
       ).rows;
-      const result = [];
-      for (const row of rows) result.push(await detail(client, row));
-      return result;
+      return details(client, rows, owner);
     },
     true,
   );
@@ -198,7 +252,7 @@ export async function confirmImportDocument({ pool, owner, batchId, itemId, docu
   return transaction(pool, async (client) => {
     const b = await batch(client, batchId, owner, true);
     const i = await item(client, b.id, itemId);
-    if (b.cancelled) importFail('cancelled');
+    if (b.cancelled || b.deleted_at) importFail('cancelled');
     if (i.kind === 'url') {
       if (i.status !== 'running' || i.fence !== fence) importFail('stale_attempt');
       await liveAttempt(client, i);
@@ -287,7 +341,7 @@ export async function claimImportItem({
   return transaction(pool, async (client) => {
     const b = await batch(client, batchId, owner, true),
       i = await item(client, b.id, itemId);
-    if (b.cancelled) importFail('cancelled');
+    if (b.cancelled || b.deleted_at) importFail('cancelled');
     if (i.status !== 'queued' || i.fence >= 5) importFail('not_claimable');
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtextextended('import:worker-capacity',0))",
@@ -431,7 +485,8 @@ export async function getImportOutput({ pool, owner, batchId, itemId }) {
   return transaction(
     pool,
     async (client) => {
-      await batch(client, batchId, owner);
+      const b = await batch(client, batchId, owner);
+      if (b.deleted_at) importFail('not_found');
       const row = (
         await client.query(
           `SELECT o.content FROM public.import_outputs o JOIN public.import_items i ON i.id=o.item_id
@@ -511,5 +566,33 @@ export async function expireImportAttempt({ pool, owner, batchId, itemId }) {
     await client.query('UPDATE public.import_items SET status=$2 WHERE id=$1', [i.id, outcome]);
     await audit(client, b.id, i.id, outcome);
     return { changed: true, status: outcome };
+  });
+}
+
+export async function deleteImportBatch({ pool, owner, id }) {
+  return transaction(pool, async (client) => {
+    const b = await batch(client, id, owner, true);
+    if (b.deleted_at) return detail(client, b);
+    const active = await client.query(
+      `SELECT 1 FROM public.import_items i
+       LEFT JOIN public.import_attempts a ON a.item_id=i.id
+       WHERE i.batch_id=$1 AND (i.status IN ('running','unknown') OR
+         (a.status IN ('running','cancelled','unknown') AND a.lease_until>clock_timestamp())) LIMIT 1`,
+      [id],
+    );
+    if (active.rows.length) importFail('task_active');
+    await client.query(
+      "UPDATE public.import_items SET status='cancelled',fence=fence+1 WHERE batch_id=$1 AND status IN ('awaiting_upload','queued')",
+      [id],
+    );
+    const row = (
+      await client.query(
+        `UPDATE public.import_batches SET cancelled=true,deleted_at=clock_timestamp() WHERE id=$1 RETURNING ${selectColumns('import_batches')}`,
+        [id],
+      )
+    ).rows[0];
+    // Existing audit vocabulary and original cleanup remain unchanged.
+    await audit(client, id, null, 'cancelled');
+    return detail(client, row);
   });
 }

@@ -40,6 +40,7 @@ export const signalGenerationRuns = pgTable(
     errorCode: text('error_code'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => [
     check('signal_generation_source_fence_ck', sql`${t.sourceFence} > 0`),
@@ -58,15 +59,19 @@ export const signalGenerationRuns = pgTable(
       'signal_generation_result_ck',
       sql`${t.result} IS NULL OR (jsonb_typeof(${t.result}) = 'object' AND ${t.result}->>'classification' IS NOT DISTINCT FROM 'private')`,
     ),
-    uniqueIndex('signal_generation_source_profile_idx').on(
-      t.ownerId,
-      t.itemId,
-      t.sourceFence,
-      t.sourceHash,
-      t.profileId,
-      t.profileRevision,
-      t.generationVersion,
-    ),
+    uniqueIndex('signal_generation_source_profile_idx')
+      .on(
+        t.ownerId,
+        t.itemId,
+        t.sourceFence,
+        t.sourceHash,
+        t.profileId,
+        t.profileRevision,
+        t.generationVersion,
+      )
+      .where(
+        sql`NOT (${t.status} = 'cancelled' AND ${t.leaseToken} IS NULL AND ${t.leaseUntil} IS NULL AND ${t.budgetDay} IS NULL AND ${t.reservedMicrousd} = 0 AND ${t.chargedMicrousd} = 0)`,
+      ),
     index('signal_generation_owner_created_idx').on(t.ownerId, t.createdAt),
     index('signal_generation_budget_day_idx').on(t.budgetDay),
     index('signal_generation_batch_idx').on(t.batchId),

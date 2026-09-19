@@ -220,6 +220,11 @@ test(
             reason: 'Private preview only',
           };
         }
+        if (command.action === 'delete') {
+          runs = runs.filter((entry) => entry.id !== command.id);
+          res.end(JSON.stringify({ id: command.id, deleted: true }));
+          return;
+        }
         if (command.action === 'cancel') run.status = 'cancelled';
         if (droppedAction === command.action) {
           droppedAction = null;
@@ -276,6 +281,32 @@ test(
     }
 
     await t.test(
+      'name-first selection and confirmed task deletion clear the pending request without calling AI',
+      async () => {
+        const page = await newPage();
+        await page.goto(origin);
+        await selectInput(page);
+        await expect(page.getByLabel('导入批次').locator('option:checked')).not.toHaveText(batchId);
+        await page.getByRole('checkbox', { name: /我允许/ }).check();
+        await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
+        await expect(page.getByRole('link', { name: '任务详情', exact: true })).toHaveCount(1);
+        page.once('dialog', (dialog) => dialog.dismiss());
+        await page.getByRole('button', { name: '删除任务', exact: true }).click();
+        await expect(page.getByRole('link', { name: '任务详情', exact: true })).toHaveCount(1);
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.getByRole('button', { name: '删除任务', exact: true }).click();
+        await expect(page.getByText('暂无生成任务。')).toBeVisible();
+        await expect(page.getByLabel('导入批次')).toBeEnabled();
+        assert.equal(
+          await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+          null,
+        );
+        assert.equal(commands.filter((entry) => entry.action === 'run').length, 0);
+        await page.close();
+      },
+    );
+
+    await t.test(
       'source inspection is explicit, blocks oversized creation and resets on input change',
       async () => {
         const page = await newPage();
@@ -328,9 +359,7 @@ test(
         await expect(
           page.getByText('当前接口总时限 5 分钟，模型最多等待 4 分 45 秒', { exact: false }),
         ).toBeVisible();
-        await expect(
-          page.getByRole('heading', { name: '结果未知，待对账', exact: true }),
-        ).toBeVisible();
+        await expect(page.getByRole('heading', { name: /结果未知，待对账$/ })).toBeVisible();
         await expect(
           page.getByRole('button', { name: '执行生成（调用 AI，可能计费）', exact: true }),
         ).toHaveCount(0);
@@ -393,7 +422,7 @@ test(
         await expect(
           page.getByText('仍可查看历史任务与已保存候选', { exact: false }),
         ).toBeVisible();
-        await expect(page.getByRole('link', { name: '固定链接' })).toHaveCount(2);
+        await expect(page.getByRole('link', { name: '任务详情' })).toHaveCount(2);
         await expect.poll(() => dashboardRequests).toBe(1);
         assert.equal(commands.length, 0);
         await expect(
@@ -420,7 +449,7 @@ test(
         ).toBeVisible();
         assert.deepEqual(commands, [{ action: 'detail', id }]);
         await page.reload();
-        await expect(page.getByRole('link', { name: '固定链接' })).toHaveCount(2);
+        await expect(page.getByRole('link', { name: '任务详情' })).toHaveCount(2);
         assert.deepEqual(commands, [{ action: 'detail', id }]);
         await page.close();
       },
@@ -545,11 +574,11 @@ test(
         assert.equal(commands.length, 0);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
-        await expect(page.getByRole('heading', { name: '待执行', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
         assert.equal(commands.length, 1);
         assert.equal(commands[0].consent, true);
         assert.equal(commands[0].profileRevision, 2);
-        await expect(page.getByRole('link', { name: '固定链接', exact: true })).toHaveAttribute(
+        await expect(page.getByRole('link', { name: '任务详情', exact: true })).toHaveAttribute(
           'href',
           `/admin/signal-generation/${commands[0].id}`,
         );
@@ -560,9 +589,7 @@ test(
         ).toBeDisabled();
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
-        await expect(
-          page.getByRole('heading', { name: '生成完成（私有候选）', exact: true }),
-        ).toBeVisible();
+        await expect(page.getByRole('heading', { name: /生成完成（私有候选）$/ })).toBeVisible();
         await expect(
           page.getByText('Synthetic Person · Researcher · Synthetic Organization'),
         ).toBeVisible();
@@ -614,7 +641,7 @@ test(
         ]);
         assert.equal(commands.length, 1);
         await page.reload();
-        await expect(page.getByRole('heading', { name: '待执行', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
         assert.equal(commands.length, 1);
         await expect(
           page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }),
@@ -627,9 +654,7 @@ test(
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
         await expect(page.getByText('请求未确认完成。', { exact: false })).toBeVisible();
         await page.reload();
-        await expect(
-          page.getByRole('heading', { name: '结果未知，待对账', exact: true }),
-        ).toBeVisible();
+        await expect(page.getByRole('heading', { name: /结果未知，待对账$/ })).toBeVisible();
         await expect(page.getByRole('button', { name: '已核对，准备下一次生成' })).toBeDisabled();
         await expect(
           page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }),
@@ -716,7 +741,7 @@ test(
           page.getByText('SYNTHETIC_RAW_PROVIDER_DIAGNOSTIC', { exact: false }),
         ).toHaveCount(0);
         await confirm.click();
-        await expect(page.getByRole('heading', { name: '待执行', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
         assert.equal(commands.length, 4);
         for (const command of commands) assert.deepEqual(command, originalRequest);
         assert.equal(commands.filter((command) => command.action === 'run').length, 0);
@@ -753,9 +778,7 @@ test(
         assert.equal(commands.length, 0);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
-        await expect(
-          page.getByRole('heading', { name: '生成完成（私有候选）', exact: true }),
-        ).toBeVisible();
+        await expect(page.getByRole('heading', { name: /生成完成（私有候选）$/ })).toBeVisible();
         assert.deepEqual(commands, [{ action: 'run', id }]);
         await page.close();
       },
@@ -871,7 +894,7 @@ test(
         await page.getByLabel('已完成解析的资料').selectOption(smallItemId);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
-        await expect(page.getByRole('heading', { name: '待执行', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
         assert.notEqual(commands.at(-1).id, originalId);
         assert.equal(commands.at(-1).itemId, smallItemId);
         assert.equal(commands.filter((command) => command.action === 'run').length, 0);
@@ -934,7 +957,7 @@ test(
         await expect(create).toBeDisabled();
         await page.getByRole('checkbox').check();
         await create.click();
-        await expect(page.getByRole('heading', { name: '待执行', exact: true })).toBeVisible();
+        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
         assert.notEqual(commands.at(-1).id, originalRequest.id);
         assert.equal(commands.at(-1).profileRevision, 3);
         assert.equal(commands.at(-1).itemId, itemId);

@@ -7,7 +7,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import {
   createImportBatch,
+  deleteImportBatch,
   getImportBatch,
+  getImportItemLabels,
   confirmImportDocument,
   claimImportItem,
   finishImportAttempt,
@@ -27,10 +29,16 @@ const suite = adminUrl ? describe.sequential : describe.skip;
 const name = `hzense_import_${process.pid}_${Date.now()}`;
 const owner = 'test-admin';
 const capabilities = { parsers: ['text'], urlFetch: true };
-const ddl = await readFile(
+const originalDdl = await readFile(
   new URL('../../../db/migrations/0014_import_tasks.sql', import.meta.url),
   'utf8',
 );
+const ddl =
+  originalDdl +
+  (await readFile(
+    new URL('../../../db/migrations/0017_import_task_visibility.sql', import.meta.url),
+    'utf8',
+  ));
 let admin, pool;
 const request = () => ({
   id: randomUUID(),
@@ -67,6 +75,133 @@ async function ready(overrides = {}) {
 const output = { fragments: [{ text: 'hello', locator: { paragraph: 1 } }] };
 
 suite('private import PostgreSQL persistence', () => {
+  it('deduplicates parsed content across batches, isolates owners, and promotes a remaining copy after deletion', async () => {
+    const complete = async (overrides = {}, text = 'hello') => {
+      const b = await ready(overrides);
+      const c = await claimImportItem({
+        ...args(b),
+        owner: overrides.owner ?? owner,
+        parserVersion: 'text/v1',
+      });
+      await finishImportAttempt({
+        ...args(b),
+        owner: overrides.owner ?? owner,
+        fence: c.attempt.fence,
+        outcome: 'completed',
+        output: { fragments: [{ text, locator: { paragraph: 1 } }] },
+      });
+      return b;
+    };
+    const first = await complete();
+    const renamed = request();
+    renamed.manifest.files[0].name = 'renamed-copy.txt';
+    const second = await complete({ request: renamed });
+    const different = await complete({}, 'different content');
+    const otherOwner = 'separate-admin';
+    const other = await created({ owner: otherOwner });
+    const otherArgs = { ...args(other), owner: otherOwner };
+    await confirmImportDocument({ ...otherArgs, document: document(other) });
+    const otherClaim = await claimImportItem({ ...otherArgs, parserVersion: 'text/v1' });
+    await finishImportAttempt({
+      ...otherArgs,
+      fence: otherClaim.attempt.fence,
+      outcome: 'completed',
+      output,
+    });
+    expect(
+      (await getImportBatch({ pool, owner: otherOwner, id: other.id })).items[0].duplicate_of,
+    ).toBeNull();
+    expect(
+      (await listImportBatches({ pool, owner, view: 'sources' })).map((b) => b.id).sort(),
+    ).toEqual([first.id, different.id].sort());
+    expect((await getImportBatch({ pool, owner, id: first.id })).items[0].duplicate_of).toBeNull();
+    expect((await getImportBatch({ pool, owner, id: second.id })).items[0].duplicate_of).toBe(
+      first.items[0].id,
+    );
+    expect(
+      (await getImportBatch({ pool, owner, id: different.id })).items[0].duplicate_of,
+    ).toBeNull();
+    await expect(deleteImportBatch({ pool, owner: 'another', id: first.id })).rejects.toMatchObject(
+      { code: 'not_found' },
+    );
+    await deleteImportBatch({ pool, owner, id: first.id });
+    await deleteImportBatch({ pool, owner, id: first.id });
+    expect((await listImportBatches({ pool, owner })).map((b) => b.id)).not.toContain(first.id);
+    await expect(getImportOutput(args(first))).rejects.toMatchObject({ code: 'not_found' });
+    expect((await getImportBatch({ pool, owner, id: second.id })).items[0].duplicate_of).toBeNull();
+    expect(
+      await getImportItemLabels({ pool, owner, itemIds: [first.items[0].id, other.items[0].id] }),
+    ).toEqual([{ id: first.items[0].id, name: 'note.txt', url: null }]);
+    const remaining = await pool.query('SELECT count(*)::int AS n FROM public.import_outputs');
+    expect(remaining.rows[0].n).toBe(4);
+  });
+  it('keeps an older canonical source selectable beyond fifty copies with a bounded number of list queries', async () => {
+    const sourceOwner = 'many-copies';
+    let first;
+    for (let index = 0; index < 55; index++) {
+      const b = await created({ owner: sourceOwner });
+      const owned = { ...args(b), owner: sourceOwner };
+      await confirmImportDocument({ ...owned, document: document(b) });
+      const claim = await claimImportItem({ ...owned, parserVersion: 'text/v1' });
+      await finishImportAttempt({
+        ...owned,
+        fence: claim.attempt.fence,
+        outcome: 'completed',
+        output,
+      });
+      first ??= b;
+    }
+    let reads = 0;
+    const observed = {
+      async connect() {
+        const client = await pool.connect();
+        return {
+          query(sql, values) {
+            if (/^(SELECT|WITH)/.test(sql)) reads++;
+            return client.query(sql, values);
+          },
+          release(error) {
+            client.release(error);
+          },
+        };
+      },
+    };
+    const page = await listImportBatches({ pool: observed, owner: sourceOwner });
+    expect(page).toHaveLength(50);
+    expect(page.every((batch) => batch.items[0].duplicate_of === first.items[0].id)).toBe(true);
+    expect(reads).toBe(2);
+    reads = 0;
+    const sources = await listImportBatches({
+      pool: observed,
+      owner: sourceOwner,
+      view: 'sources',
+    });
+    expect(sources.map((batch) => batch.id)).toEqual([first.id]);
+    expect(reads).toBe(2);
+  });
+  it('deletion cancels unstarted items, blocks active attempts and preserves request replay identity', async () => {
+    const value = request();
+    const pending = await created({ request: value });
+    await deleteImportBatch({ pool, owner, id: pending.id });
+    await expect(created({ request: value })).rejects.toMatchObject({ code: 'task_deleted' });
+    await expect(
+      confirmImportDocument({ ...args(pending), document: document(pending) }),
+    ).rejects.toMatchObject({ code: 'cancelled' });
+    const running = await ready();
+    await claimImportItem({ ...args(running), parserVersion: 'text/v1' });
+    await expect(deleteImportBatch({ pool, owner, id: running.id })).rejects.toMatchObject({
+      code: 'task_active',
+    });
+    await cancelImportBatch({ pool, owner, id: running.id });
+    await expect(deleteImportBatch({ pool, owner, id: running.id })).rejects.toMatchObject({
+      code: 'task_active',
+    });
+    await pool.query(
+      "UPDATE public.import_attempts SET lease_until=clock_timestamp()-interval '1 second' WHERE item_id=$1",
+      [running.items[0].id],
+    );
+    await deleteImportBatch({ pool, owner, id: running.id });
+  });
   it('releases daily and batch reservations for a missing source before processing', async () => {
     const input = request();
     input.manifest.files.push({ clientItemId: 'b', name: 'second.txt', size: 5 });

@@ -74,6 +74,12 @@ suite('dedicated import service role', () => {
     );
     await owner.query('CREATE TABLE public.unrelated_secret(secret text)');
     // The separately verified production schema is represented by its reviewed ledger entry here.
+    await owner.query(
+      await readFile(
+        new URL('../../../db/migrations/0017_import_task_visibility.sql', import.meta.url),
+        'utf8',
+      ),
+    );
     await owner.query(`CREATE TABLE public.hzense_schema_migrations(name text,checksum text);
       INSERT INTO public.hzense_schema_migrations VALUES('0014_import_tasks.sql','ae84c8eb9c212c48bde256eda199238f8d43579f2caa969b76fcc248709eda8a')`);
     await owner.query(roleSql);

@@ -102,6 +102,7 @@ import {
   signalGenerationDefaults,
   signalGenerationIndexes,
   signalGenerationUniqueIndexes,
+  signalGenerationIdentityPredicates,
 } from './signal-generation-catalog.mjs';
 
 const { Client } = pg;
@@ -875,6 +876,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
               ARRAY[]::text[]
             ) AS columns,
             index_info.indpred IS NULL AS predicate_free,
+            pg_get_expr(index_info.indpred, index_info.indrelid) AS predicate,
             index_info.indexprs IS NULL AS expression_free,
             index_info.indisvalid AS valid,
             index_info.indisready AS ready
@@ -892,6 +894,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
      GROUP BY table_info.relname, index_info.indexrelid, index_info.indisunique,
               index_info.indimmediate,
               access_method.amname, (index_info.indpred IS NULL),
+              pg_get_expr(index_info.indpred, index_info.indrelid),
               (index_info.indexprs IS NULL), index_info.indnkeyatts,
               index_info.indisvalid, index_info.indisready
      ORDER BY table_info.relname, index_info.indexrelid`,
@@ -899,7 +902,10 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
   const indexSignature = (row) => `${row.table_name}|${row.columns.join(',')}`;
   const isHealthyRequiredIndex = (row, requireImmediate) =>
     row.access_method === 'btree' &&
-    row.predicate_free === true &&
+    (signalGenerationUniqueIndexes.includes(indexSignature(row))
+      ? typeof row.predicate === 'string' &&
+        signalGenerationIdentityPredicates.includes(canonicalPublicationControlCheck(row.predicate))
+      : row.predicate_free === true) &&
     row.expression_free === true &&
     row.valid === true &&
     row.ready === true &&

@@ -23,6 +23,7 @@ export const signalGenerationRoleColumns = {
     'error_code',
     'created_at',
     'finished_at',
+    'deleted_at',
   ],
   INSERT: [
     'id',
@@ -48,5 +49,6 @@ export const signalGenerationRoleColumns = {
     'result',
     'error_code',
     'finished_at',
+    'deleted_at',
   ],
 };

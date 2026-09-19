@@ -8,6 +8,8 @@ export interface ImportAdminDependencies {
   execute(owner: string, method: string, body: unknown): Promise<unknown>;
 }
 const exposed = new Set([
+  'task_active',
+  'task_deleted',
   'invalid_request',
   'manifest_rejected',
   'not_found',

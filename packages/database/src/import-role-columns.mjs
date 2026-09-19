@@ -1,9 +1,18 @@
 // Pinned to migration 0014: new columns do not inherit service privileges.
 export const importRoleColumns = {
   import_batches: {
-    SELECT: ['id', 'owner_id', 'fingerprint', 'intent', 'configuration', 'cancelled', 'created_at'],
+    SELECT: [
+      'id',
+      'owner_id',
+      'fingerprint',
+      'intent',
+      'configuration',
+      'cancelled',
+      'created_at',
+      'deleted_at',
+    ],
     INSERT: ['id', 'owner_id', 'fingerprint', 'intent', 'configuration'],
-    UPDATE: ['cancelled'],
+    UPDATE: ['cancelled', 'deleted_at'],
   },
   import_items: {
     SELECT: ['id', 'batch_id', 'position', 'kind', 'declaration', 'status', 'fence', 'created_at'],

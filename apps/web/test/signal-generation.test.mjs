@@ -495,6 +495,39 @@ test('committed admission precedes one model call, replay and detail never regen
   for (const key of ['owner_id', 'snapshot', 'lease_token', 'source_hash'])
     assert.equal(key in dto, false);
 });
+test('duplicate eligibility only controls creation and cannot discard an in-flight result', async () => {
+  let duplicate = false;
+  const f = coreFixture({
+    source: async (_owner, _batch, _item, options) => {
+      if (duplicate && options?.requireCanonical)
+        throw Object.assign(new Error('duplicate'), { code: 'duplicate_source' });
+      return { fence: 1, output };
+    },
+  });
+  const create = {
+    action: 'create',
+    id: randomUUID(),
+    batchId: f.run().batch_id,
+    itemId: f.run().item_id,
+    profileId: profile.id,
+    profileRevision: 1,
+    consent: true,
+  };
+  await f.execute('admin', create);
+  const invoke = f.deps.invoke;
+  f.deps.invoke = async (...args) => {
+    duplicate = true;
+    return invoke(...args);
+  };
+  const completed = await f.execute('admin', { action: 'run', id: f.run().id });
+  assert.equal(completed.status, 'completed');
+  assert.equal(f.calls(), 1);
+  assert.equal(completed.result.classification, 'private');
+  await assert.rejects(f.execute('admin', { ...create, id: randomUUID() }), {
+    code: 'duplicate_source',
+  });
+  assert.equal(f.calls(), 1);
+});
 test('unknown reservation commit, changed source, revoked profile and cancellation block external calls', async () => {
   for (const overrides of [
     {
