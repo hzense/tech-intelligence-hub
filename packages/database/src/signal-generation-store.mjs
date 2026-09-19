@@ -185,13 +185,46 @@ async function run(client, owner, id, locking = false) {
   if (!row) fail('not_found');
   return row;
 }
-export async function createSignalGeneration({ pool, owner, request, snapshot, configuration }) {
+export async function createSignalGeneration({
+  pool,
+  owner,
+  request,
+  snapshot,
+  configuration,
+  retryOf,
+}) {
+  if (retryOf !== undefined) {
+    uuid(retryOf);
+    if (retryOf === request.id) fail('request_id_conflict');
+    // Each explicitly selected predecessor gets one attempt namespace. The
+    // existing unique index deduplicates concurrent/new-UUID submissions for it.
+    configuration = { ...configuration, version: `${configuration.version}/retry/${retryOf}` };
+  }
   const parsed = inputs(owner, request, snapshot, configuration);
   return transaction(pool, async (client) => {
     // One owner lock makes UUID replay and semantic (different UUID) replay atomic.
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
       `generation:create:${owner}`,
     ]);
+    if (retryOf !== undefined) {
+      const parent = await run(client, owner, retryOf, true);
+      if (
+        parent.batch_id !== request.batchId ||
+        parent.item_id !== request.itemId ||
+        parent.source_fence !== request.sourceFence ||
+        parent.source_hash !== request.sourceHash ||
+        parent.profile_id !== request.profileId ||
+        parent.profile_revision !== request.profileRevision
+      )
+        fail('request_id_conflict');
+      const active = (
+        await client.query('SELECT $1::timestamptz>clock_timestamp() AS active', [
+          parent.lease_until,
+        ])
+      ).rows[0].active;
+      if (!['completed', 'failed', 'unknown', 'cancelled'].includes(parent.status) || active)
+        fail('task_active');
+    }
     const old = (
       await client.query(`SELECT ${columns} FROM public.signal_generation_runs WHERE id=$1`, [
         request.id,
@@ -200,7 +233,11 @@ export async function createSignalGeneration({ pool, owner, request, snapshot, c
     if (old) {
       if (old.owner_id !== owner || old.fingerprint !== parsed.fingerprint)
         fail('request_id_conflict');
-      if (old.deleted_at) fail('task_deleted');
+      if (old.deleted_at) {
+        const error = new SignalGenerationError('task_deleted');
+        error.previousId = old.id;
+        throw error;
+      }
       return old;
     }
     const previous = (
@@ -221,7 +258,11 @@ export async function createSignalGeneration({ pool, owner, request, snapshot, c
     ).rows[0];
     if (previous) {
       if (previous.fingerprint !== parsed.fingerprint) fail('request_id_conflict');
-      if (previous.deleted_at) fail('task_deleted');
+      if (previous.deleted_at) {
+        const error = new SignalGenerationError('task_deleted');
+        error.previousId = previous.id;
+        throw error;
+      }
       return previous;
     }
     return (

@@ -56,6 +56,7 @@ export interface GenerationDependencies {
       };
       snapshot: SignalGenerationSnapshot;
       reserveMicrousd: number;
+      retryOf?: string;
     },
   ): Promise<SignalGenerationRun>;
   get(owner: string, id: string): Promise<SignalGenerationRun>;
@@ -105,11 +106,12 @@ export function generationCost(input: number, output: number, settings: AiConnec
 /** Excludes source text, credentials, lease tokens, owner and internal configuration. */
 export function generationDto(run: SignalGenerationRun) {
   // Unknown provider outcomes are failed tasks for users. Keep the stored
-  // diagnostic and accounting state intact; uncertainty never permits a retry.
+  // diagnostic and accounting state intact. Retries need a separate explicit request.
   const leaseReleased =
     run.lease_until === null || new Date(run.lease_until).getTime() <= Date.now();
   return {
     id: run.id,
+    retry_of: run.generation_version?.split('/retry/')[1] ?? null,
     batch_id: run.batch_id,
     item_id: run.item_id,
     profile_id: run.profile_id,
@@ -132,7 +134,16 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
     const body = input as Record<string, unknown>;
     const fields =
       body.action === 'create'
-        ? ['action', 'id', 'batchId', 'itemId', 'profileId', 'profileRevision', 'consent']
+        ? [
+            'action',
+            'id',
+            'batchId',
+            'itemId',
+            'profileId',
+            'profileRevision',
+            'consent',
+            ...(Object.hasOwn(body, 'retryOf') ? ['retryOf'] : []),
+          ]
         : ['action', 'id'];
     if (
       Object.keys(body).some((key) => !fields.includes(key)) ||
@@ -150,6 +161,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       const batchId = aiUuid(body.batchId),
         itemId = aiUuid(body.itemId),
         profileId = aiUuid(body.profileId);
+      const retryOf = Object.hasOwn(body, 'retryOf') ? aiUuid(body.retryOf) : undefined;
       const { fence, output } = await deps.source(owner, batchId, itemId, {
         requireCanonical: true,
       });
@@ -179,6 +191,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
           },
           snapshot: { source, profile: access.profile, connection: access.connection },
           reserveMicrousd,
+          ...(retryOf ? { retryOf } : {}),
         }),
       );
     }

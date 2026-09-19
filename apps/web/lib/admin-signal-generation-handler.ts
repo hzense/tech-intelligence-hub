@@ -105,7 +105,12 @@ export function createGenerationHandler(deps: {
             : raw;
       const code = exposed.has(mapped) ? mapped : 'unavailable';
       return importResponse(
-        { error: code },
+        {
+          error: code,
+          ...(code === 'task_deleted' && error instanceof SignalGenerationError && error.previousId
+            ? { previous_id: error.previousId }
+            : {}),
+        },
         code === 'not_found'
           ? 404
           : code === 'invalid_request' ||
