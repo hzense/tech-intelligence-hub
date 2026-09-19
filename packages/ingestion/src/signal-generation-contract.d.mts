@@ -3,7 +3,7 @@ export const GENERATION_LIMITS: Readonly<{
   outputBytes: 96000;
   candidates: 5;
   titleCharacters: 50;
-  summaryCharacters: 800;
+  summaryCharacters: 500;
   references: 8;
   quoteCharacters: 500;
 }>;

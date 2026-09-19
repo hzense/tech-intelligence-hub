@@ -157,10 +157,27 @@ test('real SDK structured extraction yields only private candidates and exact ev
   const request = JSON.parse(f.calls[0].body);
   const system = request.messages.find((message) => message.role === 'system').content;
   assert.match(system, /单次最多 5 条候选/);
-  assert.match(system, /标题最多 50 字，摘要最多 800 字/);
+  assert.match(system, /标题最多 50 字，摘要最多 500 字/);
   assert.equal(value.diagnostic.code, null);
   assert.equal(value.diagnostic.timeout_ms, 285000);
   assert.ok(Number.isSafeInteger(value.diagnostic.elapsed_ms));
+});
+
+test('extraction forwards the configured 8192 token allowance and enforces 500 character summaries', async () => {
+  const f = providerFixture({
+    ...result,
+    candidates: [{ ...candidate, summary: '中'.repeat(500) }],
+  });
+  const value = await f.invoke({ stage: { ...stage, max_output_tokens: 8192 } });
+  assert.equal(value.success, true);
+  const request = JSON.parse(f.calls[0].body);
+  assert.equal(request.max_tokens, 8192);
+  assert.equal(
+    request.response_format.json_schema.schema.properties.candidates.items.properties.summary
+      .maxLength,
+    500,
+  );
+  assert.equal(f.calls.length, 1);
 });
 
 test('business generation survives the old probe and 45s cutoffs without changing its connection', async (t) => {
@@ -338,7 +355,7 @@ test('invalid candidate structure and evidence have a separate output classifica
   for (const bad of [
     { not_candidates: apiKey },
     { ...result, candidates: [{ ...candidate, title: '中'.repeat(51) }] },
-    { ...result, candidates: [{ ...candidate, summary: '中'.repeat(801) }] },
+    { ...result, candidates: [{ ...candidate, summary: '中'.repeat(501) }] },
     { ...result, candidates: Array.from({ length: 6 }, () => ({ ...candidate })) },
     {
       ...result,

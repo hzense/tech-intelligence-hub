@@ -350,6 +350,9 @@ test(
           await expect(model(stage)).toHaveCount(1);
           await expect(model(stage)).toHaveAttribute('name', `${stage}.model`);
           await expect(prompt(stage)).toHaveValue(aiProfileDefaultPrompts[stage]);
+          await expect(
+            group(stage).getByRole('spinbutton', { name: '输出 token 上限' }),
+          ).toHaveValue(stage === 'extract' ? '8192' : '2048');
           inputIds.push(await model(stage).getAttribute('id'));
           await connection(stage).selectOption(connectionA.id);
           await group(stage).getByRole('button', { name: '展开模型列表', exact: true }).click();
@@ -750,6 +753,9 @@ test(
         await page.getByRole('button', { name: '编辑新修订', exact: true }).click();
         for (const stage of Object.keys(stageLabels)) {
           await expect(prompt(stage)).toHaveValue(historicalProfile.stages[stage].prompt);
+          await expect(
+            group(stage).getByRole('spinbutton', { name: '输出 token 上限' }),
+          ).toHaveValue('2048');
           await expect(model(stage)).toHaveValue(modelsA[0]);
         }
         await barrier();
@@ -769,6 +775,7 @@ test(
         assert.equal(request.expected_revision, historicalProfile.revision);
         for (const stage of Object.keys(stageLabels)) {
           assert.equal(request.stages[stage].temperature, 0.7);
+          assert.equal(request.stages[stage].max_output_tokens, 2048);
           assert.equal(
             request.stages[stage].prompt,
             stage === 'extract'
