@@ -297,7 +297,10 @@ test(
         await page.getByRole('button', { name: '删除任务', exact: true }).click();
         await expect(page.getByText('暂无生成任务。')).toBeVisible();
         await expect(page.getByLabel('导入批次')).toBeEnabled();
-        assert.equal(await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey), null);
+        assert.equal(
+          await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+          null,
+        );
         assert.equal(commands.filter((entry) => entry.action === 'run').length, 0);
         await page.close();
       },
