@@ -955,7 +955,10 @@ test(
           { action: 'detail', id: originalId },
           { action: 'detail', id: originalId },
         ]);
-        assert.equal(await page.evaluate((key) => sessionStorage.getItem(key), storageKey), null);
+        assert.equal(
+          await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+          null,
+        );
         await expect(page.getByRole('checkbox')).not.toBeChecked();
         await page.getByLabel('导入批次').selectOption(batchId);
         await page.getByLabel('已完成解析的资料').selectOption(smallItemId);
