@@ -859,7 +859,11 @@ export function AdminSignalGeneration({
               )}
             </div>
             {run.can_delete === false && run.status !== 'running' && (
-              <p>执行保护期尚未结束，暂不能删除；稍后手动刷新列表。</p>
+              <p>
+                {configured
+                  ? '执行保护期尚未结束，暂不能删除；稍后手动刷新列表。'
+                  : '当前处于只读或受限状态，暂不能删除任务。'}
+              </p>
             )}
           </article>
         ))}
