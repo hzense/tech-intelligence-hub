@@ -1,4 +1,6 @@
-# Continuous Daily
+# Continuous Daily（已永久停用）
+
+2026-09-19，按操作者要求永久停用并删除 Continuous Daily candidate 工作流。定时运行、手动触发和自动候选 Draft PR 创建入口均已移除，专用发布变量 `CONTINUOUS_DAILY_PUBLISH_ENABLED` 已删除。现有日报内容、历史执行记录及内容校验规则保留。下文仅作为历史实现与内容兼容说明，不代表仍有自动任务运行。
 
 Continuous Daily turns reviewed Signals into a deterministic candidate while preserving a hard human publication boundary.
 
@@ -48,26 +50,11 @@ pnpm daily:publication-check
 
 The second command intentionally fails while any Daily remains `draft` or `review`. It succeeds only after a human chooses `published`, or intentionally chooses `archived` for a rollback.
 
-## Scheduled workflow
+## 工作流已删除
 
-`.github/workflows/continuous-daily.yml` runs at 07:17 and 07:47 Europe/Berlin. The second run is an idempotent recovery attempt for delayed or dropped schedules. `workflow_dispatch` supports a historical date and a `dry_run` mode.
+`.github/workflows/continuous-daily.yml` 及其专用写权限白名单已删除，原 07:17、07:47 Europe/Berlin 调度和 `workflow_dispatch` 入口不再存在。删除前已在 GitHub 停用该工作流；当前没有待处理候选 PR。
 
-The workflow separates authority:
-
-1. `generate` has read-only repository access. It installs dependencies, creates one candidate and manifest in a temporary directory, then validates formatting, content, Seed data and content tests.
-2. `publish` receives only the validated artifact. It does not install dependencies or execute repository code. It verifies the exact path, base commit and SHA-256 before pushing `automation/daily-YYYY-MM-DD` and opening a Draft PR. This job also requires the repository variable `CONTINUOUS_DAILY_PUBLISH_ENABLED=true`.
-
-The publishing job uses only job-scoped `contents: write`, `pull-requests: write` and `actions: write`. It never force-pushes. An existing open PR is preserved; an orphan branch is accepted only if its diff and candidate checksum match the artifact. A push made with `GITHUB_TOKEN` does not start another workflow run, so the job explicitly dispatches `ci.yml` for the candidate commit.
-
-That explicit dispatch reports `daily-candidate-validation`, which validates draft structure without impersonating the required publication check. Only pull-request and `main` push events report `daily-publication-gate`; on a candidate PR it intentionally remains red while the Daily is `draft` or `review`.
-
-Repository Actions settings keep the default workflow token permission at read-only. Automatic Draft PR creation additionally requires the organization to allow “GitHub Actions to create and approve pull requests”; the workflow receives PR write permission but contains no approval operation.
-
-As of 2026-09-04, the repository reports `default_workflow_permissions=read`, `can_approve_pull_request_reviews=false` and no `CONTINUOUS_DAILY_PUBLISH_ENABLED` variable. A repository-scoped request that preserved the read-only default and attempted to enable only the Actions pull-request capability returned HTTP `409`: the organization does not allow GitHub Actions to create or approve pull requests. The request changed no setting, and the fail-closed sequence stopped before setting the variable or dispatching the workflow; it created no automation branch or Draft PR. This is now a confirmed organization-policy blocker that requires an organization owner, rather than an unknown repository configuration issue. See the [sanitized operations checkpoint](./production-evidence/2026-09-04-operations-checkpoint.md).
-
-The latest observed scheduled runs on 2026-09-03 completed as zero-candidate no-ops, so they created no artifact, branch or Draft PR. Scheduled and manual runs can generate, validate and retain an artifact when eligible Signals exist, but the publication jobs remain gated. The 2026-08-20 dry-run has been independently verified through its manifest and SHA-256.
-
-GitHub references: [timezone-aware schedules](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onschedule), [`GITHUB_TOKEN` event behavior](https://docs.github.com/en/actions/concepts/security/github_token), and [repository Actions permissions](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository).
+历史生成工具和发布校验继续保留，用于已有 Daily 内容的审计与兼容；它们不会自行调度或创建 PR。重新引入任何自动任务需要单独的明确授权和代码变更。
 
 ## Human publication checklist
 
