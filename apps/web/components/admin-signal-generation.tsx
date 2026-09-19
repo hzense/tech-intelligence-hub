@@ -1,5 +1,6 @@
 'use client';
 
+import { importBatchLabel, importItemName } from '../lib/import-labels';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { ImportBatch } from '../../../packages/database/src/import-store.mjs';
@@ -85,6 +86,9 @@ const errorMessages: Record<string, string> = {
   commit_unknown: '服务端尚无法确认任务记录，请保持原编号并查询，不要新建重复任务。',
   not_found: '暂未查到原任务。请保留原编号；确认配置后可使用原编号重新确认创建，不会自动调用 AI。',
   cancelled: '该资料或任务已取消，不能继续生成。',
+  task_active: '任务仍在执行或等待对账，请先取消或完成对账后删除。',
+  task_deleted: '同一资料与配置的任务已删除；为避免重复调用，不能再次执行。',
+  duplicate_source: '该资料与已有解析内容重复，请从列表选择保留的资料。',
   limit_exceeded: '请求超出允许范围，请核对资料及配置限制。',
   unauthorized: '管理员登录已失效。请重新登录后按原请求编号核对。',
   forbidden: '当前请求未通过访问校验，请从本站管理页面重新进入并核对原请求。',
@@ -212,12 +216,19 @@ export function AdminSignalGeneration({
   const sourceBlocked = Boolean(inspectionError || (inspection && !inspection.ready));
   const profile = data.profiles.find((entry) => entry.id === profileId);
   const batches = data.batches.filter(
-    (batch) => !batch.cancelled && batch.items.some((item) => item.status === 'completed'),
+    (batch) =>
+      !batch.cancelled &&
+      batch.items.some((item) => item.status === 'completed' && !item.duplicate_of),
   );
   const items =
     batches
       .find((batch) => batch.id === batchId)
-      ?.items.filter((item) => item.status === 'completed') ?? [];
+      ?.items.filter((item) => item.status === 'completed' && !item.duplicate_of) ?? [];
+  const sourceNames = new Map(
+    data.batches.flatMap((batch) =>
+      batch.items.map((item) => [item.id, importItemName(item)] as const),
+    ),
+  );
   const tracked = data.runs.find((run) => run.id === pending?.id);
   const recipientProfile = pending
     ? data.profiles.find(
@@ -263,8 +274,8 @@ export function AdminSignalGeneration({
     setDetail(run);
   }
 
-  async function perform(operation: () => Promise<void>, readOnly = false) {
-    if (busyRef.current || !(readOnly ? historyConfigured : configured)) return;
+  async function perform(operation: () => Promise<void>, allowWithoutGeneration = false) {
+    if (busyRef.current || !(allowWithoutGeneration ? historyConfigured : configured)) return;
     busyRef.current = true;
     setBusy(true);
     try {
@@ -366,6 +377,32 @@ export function AdminSignalGeneration({
           : '任务状态已更新。结果仅管理员可见，不会发布。',
       );
     }, action === 'detail');
+  }
+
+  async function deleteTask(id: string) {
+    if (!window.confirm('删除此任务？任务将从列表移除，必要的费用和防重复调用记录会保留。')) return;
+    await perform(async () => {
+      const deleted = await requestApi({ action: 'delete', id });
+      if (deleted.id !== id || deleted.deleted !== true)
+        throw new SafeRequestError('response_identity_mismatch');
+      setData((current) => ({ ...current, runs: current.runs.filter((run) => run.id !== id) }));
+      if (detail?.id === id) setDetail(null);
+      if (pending?.id === id) {
+        try {
+          const stored = pendingRequest(JSON.parse(sessionStorage.getItem(storageKey) ?? 'null'));
+          if (stored?.id !== id) throw new Error('pending_mismatch');
+          sessionStorage.removeItem(storageKey);
+          if (sessionStorage.getItem(storageKey) !== null) throw new Error('pending_not_removed');
+          setPending(null);
+          setConsent(false);
+        } catch {
+          setStorageReady(false);
+          setMessage('任务已删除，但浏览器请求记录未能安全清除，已暂停新建。请保留请求编号核对。');
+          return;
+        }
+      }
+      setMessage('任务已删除。');
+    }, true);
   }
 
   function finishTracking() {
@@ -509,7 +546,7 @@ export function AdminSignalGeneration({
             <option value="">请选择批次</option>
             {batches.map((batch) => (
               <option key={batch.id} value={batch.id}>
-                {batch.id}
+                {importBatchLabel(batch)}
               </option>
             ))}
           </select>
@@ -654,7 +691,9 @@ export function AdminSignalGeneration({
         {data.runs.length === 0 && <p>暂无生成任务。</p>}
         {data.runs.map((run) => (
           <article key={run.id} className={styles.run}>
-            <h3>{statuses[run.status]}</h3>
+            <h3>
+              {sourceNames.get(run.item_id) ?? '生成任务'} · {statuses[run.status]}
+            </h3>
             <p className={styles.id}>请求 ID：{run.id}</p>
             <p className={styles.id}>
               资料：{run.item_id} · 配置：{run.profile_id} r{run.profile_revision}
@@ -670,13 +709,19 @@ export function AdminSignalGeneration({
                 href={`/admin/signal-generation/${run.id}`}
                 prefetch={false}
               >
-                固定链接
+                任务详情
               </Link>
               <button
                 disabled={!historyConfigured || busy}
                 onClick={() => void command('detail', run.id)}
               >
                 查看任务与私有候选
+              </button>
+              <button
+                disabled={!historyConfigured || busy || ['running', 'unknown'].includes(run.status)}
+                onClick={() => void deleteTask(run.id)}
+              >
+                删除任务
               </button>
               {run.status === 'pending' && (
                 <>

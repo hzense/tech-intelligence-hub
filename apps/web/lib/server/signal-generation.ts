@@ -73,7 +73,8 @@ export function generationHistoryConfigured() {
 async function source(owner: string, batchId: string, itemId: string) {
   const batch = await getImportBatch({ pool: importPool, owner, id: batchId });
   const item = batch.items.find((row) => row.id === itemId);
-  if (batch.cancelled) throw new GenerationError('cancelled');
+  if (batch.cancelled || batch.deleted_at) throw new GenerationError('cancelled');
+  if (item?.duplicate_of) throw new GenerationError('duplicate_source');
   if (!item || item.status !== 'completed') throw new GenerationError('source_unavailable');
   return {
     fence: item.fence,
@@ -91,7 +92,7 @@ export async function generationDashboard(owner: string) {
     store.listSignalGenerations({ pool: generationPool, owner, readOnly: true }),
     // Selection data is optional: an ancillary outage must not hide saved runs.
     getAiDashboard().catch(() => null),
-    listImportBatches({ pool: importPool, owner }).catch(() => []),
+    listImportBatches({ pool: importPool, owner, view: 'sources' }).catch(() => []),
   ]);
   return {
     runs: runs.map(generationDto),
@@ -153,4 +154,9 @@ export async function executeGeneration(owner: string, body: unknown) {
     cancel: (owner, id) => store.cancelSignalGeneration({ pool: generationPool, owner, id }),
   });
   return execute(owner, body);
+}
+
+export async function deleteGeneration(owner: string, id: string) {
+  if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
+  return store.deleteSignalGeneration({ pool: generationPool, owner, id });
 }

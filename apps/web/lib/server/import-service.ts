@@ -269,8 +269,19 @@ export async function executeImportAdmin(owner: string, method: string, body: un
     });
   }
   const batchId = importUuid(value.batchId);
-  if (value.action === 'detail')
-    return store.getImportBatch({ pool: importPool, owner, id: batchId });
+  if (value.action === 'detail') {
+    const batch = await store.getImportBatch({ pool: importPool, owner, id: batchId });
+    if (batch.deleted_at) importFail('not_found');
+    return batch;
+  }
+  if (value.action === 'delete') {
+    return cleanCancelledImportOriginals(batchId, {
+      cancel: () => store.deleteImportBatch({ pool: importPool, owner, id: batchId }),
+      remove: removeOriginal,
+      now: Date.now,
+      cleanupFailed,
+    });
+  }
   if (value.action === 'cancel') {
     return cleanCancelledImportOriginals(batchId, {
       cancel: () => store.cancelImportBatch({ pool: importPool, owner, id: batchId }),

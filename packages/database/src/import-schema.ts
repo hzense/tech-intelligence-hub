@@ -26,6 +26,7 @@ export const importBatches = pgTable(
     configuration: jsonb('configuration').notNull(),
     cancelled: boolean('cancelled').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => [
     check('import_batches_fingerprint_ck', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),

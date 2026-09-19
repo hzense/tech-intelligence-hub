@@ -69,3 +69,8 @@
   max-height: 32rem;
   overflow: auto;
 }
+
+.main h3 {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}

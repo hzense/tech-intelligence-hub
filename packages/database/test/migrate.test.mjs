@@ -32,6 +32,9 @@ describe('database migration runner', () => {
       '0013_ai_configuration.sql',
       '0014_import_tasks.sql',
       '0015_signal_generation.sql',
+      '0016_generation_cancelled_recreation.sql',
+      '0017_import_task_visibility.sql',
+      '0018_generation_task_visibility.sql',
     ]);
     expect(migrations.every((migration) => migration.checksum.length === 64)).toBe(true);
     await expect(verifyMigrationManifest(migrations)).resolves.toBeUndefined();

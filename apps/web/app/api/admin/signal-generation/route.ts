@@ -4,6 +4,7 @@ import { parseAdminAuthEnvironment } from '@/lib/admin-auth-policy';
 import {
   generationDashboard,
   generationDetail,
+  deleteGeneration,
   executeGeneration,
   inspectGenerationInput,
 } from '@/lib/server/signal-generation';
@@ -16,6 +17,7 @@ export const GET = createGenerationHandler({
   origin: () => parseAdminAuthEnvironment(process.env)?.origin,
   dashboard: generationDashboard,
   detail: generationDetail,
+  delete: deleteGeneration,
   execute: executeGeneration,
   inspectSource: inspectGenerationInput,
 });

@@ -5,8 +5,10 @@ import { Buffer } from 'node:buffer';
 // provider keys, Signal tables, verification attestations or publication state.
 const columns = `id,owner_id,batch_id,item_id,source_fence,source_hash,profile_id,profile_revision,
  generation_version,fingerprint,snapshot,configuration,status,lease_token,lease_until,budget_day,
- reserved_microusd,charged_microusd,result,error_code,created_at,finished_at`;
+ reserved_microusd,charged_microusd,result,error_code,created_at,finished_at,deleted_at`;
 const errorCodes = new Set([
+  'task_deleted',
+  'task_active',
   'invalid_request',
   'invalid_snapshot',
   'invalid_configuration',
@@ -198,12 +200,14 @@ export async function createSignalGeneration({ pool, owner, request, snapshot, c
     if (old) {
       if (old.owner_id !== owner || old.fingerprint !== parsed.fingerprint)
         fail('request_id_conflict');
+      if (old.deleted_at) fail('task_deleted');
       return old;
     }
     const previous = (
       await client.query(
         `SELECT ${columns} FROM public.signal_generation_runs
-      WHERE owner_id=$1 AND item_id=$2 AND source_fence=$3 AND source_hash=$4 AND profile_id=$5 AND profile_revision=$6 AND generation_version=$7`,
+      WHERE owner_id=$1 AND item_id=$2 AND source_fence=$3 AND source_hash=$4 AND profile_id=$5 AND profile_revision=$6 AND generation_version=$7
+      AND NOT (status = 'cancelled' AND lease_token IS NULL AND lease_until IS NULL AND budget_day IS NULL AND reserved_microusd = 0 AND charged_microusd = 0)`,
         [
           owner,
           request.itemId,
@@ -217,6 +221,7 @@ export async function createSignalGeneration({ pool, owner, request, snapshot, c
     ).rows[0];
     if (previous) {
       if (previous.fingerprint !== parsed.fingerprint) fail('request_id_conflict');
+      if (previous.deleted_at) fail('task_deleted');
       return previous;
     }
     return (
@@ -249,7 +254,9 @@ export async function getSignalGeneration({ pool, owner, id, readOnly = false })
     pool,
     async (client) => {
       if (!readOnly) await expireRunning(client, owner, { id });
-      return run(client, owner, id);
+      const row = await run(client, owner, id);
+      if (row.deleted_at) fail('not_found');
+      return row;
     },
     readOnly,
   );
@@ -260,7 +267,7 @@ async function expireRunning(client, owner, { id, batchId, itemId } = {}) {
   await client.query(
     `UPDATE public.signal_generation_runs
     SET status='unknown',error_code='outcome_unknown',finished_at=clock_timestamp()
-    WHERE owner_id=$1 AND ($2::uuid IS NULL OR id=$2)
+    WHERE owner_id=$1 AND deleted_at IS NULL AND ($2::uuid IS NULL OR id=$2)
     AND ($3::uuid IS NULL OR batch_id=$3) AND ($4::uuid IS NULL OR item_id=$4)
     AND status='running' AND lease_until<=clock_timestamp()`,
     [owner, id ?? null, batchId ?? null, itemId ?? null],
@@ -277,7 +284,7 @@ export async function listSignalGenerations({ pool, owner, batchId, itemId, read
       return (
         await client.query(
           `SELECT ${columns} FROM public.signal_generation_runs
-    WHERE owner_id=$1 AND ($2::uuid IS NULL OR batch_id=$2) AND ($3::uuid IS NULL OR item_id=$3)
+    WHERE owner_id=$1 AND deleted_at IS NULL AND ($2::uuid IS NULL OR batch_id=$2) AND ($3::uuid IS NULL OR item_id=$3)
     ORDER BY created_at DESC,id DESC LIMIT 50`,
           [owner, batchId ?? null, itemId ?? null],
         )
@@ -295,6 +302,7 @@ export async function claimSignalGeneration({ pool, owner, id, currentLimits }) 
       "SELECT pg_advisory_xact_lock(hashtextextended('generation:capacity-and-budget',0))",
     );
     let row = await run(client, owner, id, true);
+    if (row.deleted_at) fail('not_found');
     if (row.status === 'running') {
       row =
         (
@@ -410,5 +418,24 @@ export async function cancelSignalGeneration({ pool, owner, id }) {
         [id],
       )
     ).rows[0];
+  });
+}
+
+export async function deleteSignalGeneration({ pool, owner, id }) {
+  return transaction(pool, async (client) => {
+    const row = await run(client, owner, id, true);
+    if (row.deleted_at) return { id: row.id, deleted: true };
+    const active = (
+      await client.query('SELECT $1::timestamptz>clock_timestamp() AS active', [row.lease_until])
+    ).rows[0].active;
+    if (['running', 'unknown'].includes(row.status) || (row.status === 'cancelled' && active))
+      fail('task_active');
+    await client.query(
+      `UPDATE public.signal_generation_runs
+      SET deleted_at=clock_timestamp(),status=CASE WHEN status='pending' THEN 'cancelled' ELSE status END,
+      finished_at=COALESCE(finished_at,clock_timestamp()) WHERE id=$1`,
+      [id],
+    );
+    return { id: row.id, deleted: true };
   });
 }

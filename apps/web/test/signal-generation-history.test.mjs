@@ -218,3 +218,43 @@ test('history HTTP lookup authenticates, validates exact input and never dispatc
   assert.equal(denied.status, 503);
   assert.deepEqual(await denied.json(), { error: 'unavailable' });
 });
+
+test('task deletion is authenticated, owner-scoped and separate from the AI executor', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  let deleted = 0;
+  const deps = {
+    session: async () => ({ user: { id: 'admin' } }),
+    origin: () => 'https://hzense.com',
+    dashboard: async () => ({}),
+    execute: async () => assert.fail('must not invoke AI executor'),
+    delete: async (owner, taskId) => {
+      assert.equal(owner, 'admin');
+      assert.equal(taskId, id);
+      deleted++;
+      return { id, deleted: true };
+    },
+  };
+  const request = (body = { action: 'delete', id }, origin = 'https://hzense.com') =>
+    new Request('https://hzense.com/api/admin/signal-generation', {
+      method: 'POST',
+      headers: { host: 'hzense.com', origin, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  assert.equal(
+    (await createGenerationHandler({ ...deps, session: async () => null })(request())).status,
+    401,
+  );
+  const handler = createGenerationHandler(deps);
+  assert.equal((await handler(request(undefined, 'https://evil.example'))).status, 403);
+  for (const body of [
+    { action: 'delete', id, owner: 'other' },
+    { action: 'delete' },
+    { action: 'delete', id: 'bad' },
+  ])
+    assert.equal((await handler(request(body))).status, 400);
+  assert.equal(deleted, 0);
+  const response = await handler(request());
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { id, deleted: true });
+  assert.equal(deleted, 1);
+});

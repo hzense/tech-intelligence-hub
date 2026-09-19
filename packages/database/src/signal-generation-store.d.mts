@@ -46,6 +46,7 @@ export interface SignalGenerationRun {
   error_code: string | null;
   created_at: Date | string;
   finished_at: Date | string | null;
+  deleted_at?: Date | string | null;
 }
 interface Owned {
   pool: ImportPool;
@@ -81,3 +82,5 @@ export function finishSignalGeneration(
   },
 ): Promise<SignalGenerationRun>;
 export function cancelSignalGeneration(args: RunArgs): Promise<SignalGenerationRun>;
+
+export function deleteSignalGeneration(args: RunArgs): Promise<{ id: string; deleted: boolean }>;

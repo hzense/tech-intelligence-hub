@@ -6,6 +6,9 @@ import { SignalGenerationError as GenerationContractError } from '../../../packa
 import { importResponse, readImportJSON, ImportIOError } from './import-io.ts';
 
 const exposed = new Set([
+  'task_active',
+  'task_deleted',
+  'duplicate_source',
   'invalid_request',
   'not_configured',
   'not_found',
@@ -30,6 +33,7 @@ export function createGenerationHandler(deps: {
   origin(): string | undefined;
   dashboard(owner: string): Promise<unknown>;
   execute(owner: string, body: unknown): Promise<unknown>;
+  delete?(owner: string, id: string): Promise<unknown>;
   detail?(owner: string, id: string): Promise<unknown>;
   inspectSource?(owner: string, body: unknown): Promise<unknown>;
 }) {
@@ -63,6 +67,16 @@ export function createGenerationHandler(deps: {
         const id = aiUuid(body.id);
         if (!deps.detail) throw new GenerationError('not_configured');
         return importResponse({ run: await deps.detail(session.user.id, id) });
+      }
+      if (body && typeof body === 'object' && 'action' in body && body.action === 'delete') {
+        if (
+          Array.isArray(body) ||
+          Object.keys(body).sort().join(',') !== 'action,id' ||
+          !('id' in body)
+        )
+          throw new GenerationError('invalid_request');
+        if (!deps.delete) throw new GenerationError('not_configured');
+        return importResponse(await deps.delete(session.user.id, aiUuid(body.id)));
       }
       if (
         body &&

@@ -143,6 +143,18 @@ suite('generation production role provisioning', () => {
       ),
     );
     await owner.query(
+      await readFile(
+        new URL('../../../db/migrations/0016_generation_cancelled_recreation.sql', import.meta.url),
+        'utf8',
+      ),
+    );
+    await owner.query(
+      await readFile(
+        new URL('../../../db/migrations/0018_generation_task_visibility.sql', import.meta.url),
+        'utf8',
+      ),
+    );
+    await owner.query(
       `CREATE TABLE public.hzense_schema_migrations(name text,checksum text); INSERT INTO public.hzense_schema_migrations VALUES('0015_signal_generation.sql','${checksum}')`,
     );
     for (const name of [
@@ -495,6 +507,6 @@ suite('generation production role provisioning', () => {
       await owner.query('ALTER TABLE public.signal_generation_runs DROP COLUMN future_secret');
     }
     await checkBoth();
-    expect(Object.values(signalGenerationRoleColumns).flat()).toHaveLength(43);
+    expect(Object.values(signalGenerationRoleColumns).flat()).toHaveLength(45);
   });
 });

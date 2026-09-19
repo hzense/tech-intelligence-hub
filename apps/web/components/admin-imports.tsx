@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { importBatchName } from '../lib/import-labels';
 import { upload } from '@vercel/blob/client';
 import type { ImportBatch } from '../../../packages/database/src/import-store.mjs';
 import type { ImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
@@ -53,6 +54,7 @@ export function AdminImports({
   configured: boolean;
   diagnostics?: { enabled: boolean; valid: boolean; issues: string[] };
 }) {
+  const [showDuplicates, setShowDuplicates] = useState(false);
   const [files, setFiles] = useState<File[]>([]),
     [urls, setUrls] = useState('');
   const [batches, setBatches] = useState<ImportBatch[]>([]),
@@ -351,107 +353,147 @@ export function AdminImports({
                   : '暂无历史记录。'}
           </p>
         )}
-        {batches.map((batch) => (
-          <section className={styles.panel} key={batch.id}>
-            <div className={styles.toolbar}>
-              <h3>{labels[batch.status] ?? batch.status}</h3>
-              <span>{batch.items.length} 项资料</span>
-            </div>
-            <p className={styles.id}>批次 {batch.id}</p>
-            {!batch.cancelled && batch.status !== 'completed' && (
+        {batches.some((batch) => batch.items.some((item) => item.duplicate_of)) && (
+          <p>
+            本页已合并{' '}
+            {batches.flatMap((batch) => batch.items).filter((item) => item.duplicate_of).length}{' '}
+            份重复资料。勾选下方选项可查看或删除重复任务。
+          </p>
+        )}
+        <label>
+          <input
+            type="checkbox"
+            checked={showDuplicates}
+            onChange={(event) => setShowDuplicates(event.target.checked)}
+          />
+          显示重复资料（相同解析片段默认合并）
+        </label>
+        {batches
+          .filter((batch) => showDuplicates || batch.items.some((item) => !item.duplicate_of))
+          .map((batch) => (
+            <section className={styles.panel} key={batch.id}>
+              <div className={styles.toolbar}>
+                <h3>{importBatchName(batch)}</h3>
+                <span>{labels[batch.status] ?? batch.status}</span>
+                <span>{batch.items.length} 项资料</span>
+              </div>
+              <p className={styles.id}>批次 {batch.id}</p>
               <button
-                disabled={busy}
-                onClick={() => void action({ action: 'cancel', batchId: batch.id })}
+                disabled={
+                  busy || batch.items.some((item) => ['running', 'unknown'].includes(item.status))
+                }
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      `删除“${importBatchName(batch)}”？该任务和资料将从列表移除，必要的费用记录会保留。`,
+                    )
+                  )
+                    void action({ action: 'delete', batchId: batch.id });
+                }}
               >
-                取消未完成项
+                删除任务
               </button>
-            )}
-            <ul>
-              {batch.items.map((item) => (
-                <li key={item.id}>
-                  <p className={styles.name}>{item.declaration.name ?? item.declaration.url}</p>
-                  <p>
-                    {labels[item.status] ?? item.status}
-                    {item.error_code ? ` · ${item.error_code}` : ''}
-                  </p>
-                  {item.status === 'queued' && !batch.cancelled && (
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        void action({ action: 'run', batchId: batch.id, itemId: item.id })
-                      }
-                    >
-                      处理（使用已配置预算）
-                    </button>
-                  )}
-                  {item.status === 'running' && !batch.cancelled && (
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        void action({ action: 'recover', batchId: batch.id, itemId: item.id })
-                      }
-                    >
-                      核对超时状态
-                    </button>
-                  )}
-                  {item.status === 'failed' && item.fence >= 5 && (
-                    <p>已达 5 次尝试上限，不能再次重试。</p>
-                  )}
-                  {item.error_code === 'source_unavailable' && (
-                    <p>原件已过期或不存在，请新建批次重新导入。</p>
-                  )}
-                  {item.status === 'failed' && (item.kind === 'file' || item.sha256) && (
-                    <p>原件不保留，请新建批次重新导入。</p>
-                  )}
-                  {item.status === 'failed' &&
-                    item.kind === 'url' &&
-                    !item.sha256 &&
-                    item.fence < 5 &&
-                    item.error_code !== 'source_unavailable' &&
-                    !batch.cancelled && (
-                      <button
-                        disabled={busy}
-                        onClick={() =>
-                          void action({ action: 'retry', batchId: batch.id, itemId: item.id })
-                        }
-                      >
-                        重新排队
-                      </button>
-                    )}
-                  {item.status === 'awaiting_upload' && !batch.cancelled && (
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        void action({ action: 'confirm', batchId: batch.id, itemId: item.id })
-                      }
-                    >
-                      确认已上传原件
-                    </button>
-                  )}
-                  {item.status === 'completed' && (
-                    <button
-                      disabled={busy}
-                      onClick={(event) => {
-                        resultOpener.current = event.currentTarget;
-                        void action({ action: 'output', batchId: batch.id, itemId: item.id }).then(
-                          (result) => {
-                            if (result)
-                              setOutput({
-                                name: item.declaration.name ?? item.declaration.url ?? '导入资料',
-                                data: result,
-                              });
-                          },
-                        );
-                      }}
-                    >
-                      查看私有解析结果
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+              {!batch.cancelled && batch.status !== 'completed' && (
+                <button
+                  disabled={busy}
+                  onClick={() => void action({ action: 'cancel', batchId: batch.id })}
+                >
+                  取消未完成项
+                </button>
+              )}
+              <ul>
+                {batch.items
+                  .filter((item) => showDuplicates || !item.duplicate_of)
+                  .map((item) => (
+                    <li key={item.id}>
+                      <p className={styles.name}>{item.declaration.name ?? item.declaration.url}</p>
+                      {item.duplicate_of && (
+                        <p>重复资料：解析片段与已有资料相同，生成页已自动去重。</p>
+                      )}
+                      <p>
+                        {labels[item.status] ?? item.status}
+                        {item.error_code ? ` · ${item.error_code}` : ''}
+                      </p>
+                      {item.status === 'queued' && !batch.cancelled && (
+                        <button
+                          disabled={busy}
+                          onClick={() =>
+                            void action({ action: 'run', batchId: batch.id, itemId: item.id })
+                          }
+                        >
+                          处理（使用已配置预算）
+                        </button>
+                      )}
+                      {item.status === 'running' && !batch.cancelled && (
+                        <button
+                          disabled={busy}
+                          onClick={() =>
+                            void action({ action: 'recover', batchId: batch.id, itemId: item.id })
+                          }
+                        >
+                          核对超时状态
+                        </button>
+                      )}
+                      {item.status === 'failed' && item.fence >= 5 && (
+                        <p>已达 5 次尝试上限，不能再次重试。</p>
+                      )}
+                      {item.error_code === 'source_unavailable' && (
+                        <p>原件已过期或不存在，请新建批次重新导入。</p>
+                      )}
+                      {item.status === 'failed' && (item.kind === 'file' || item.sha256) && (
+                        <p>原件不保留，请新建批次重新导入。</p>
+                      )}
+                      {item.status === 'failed' &&
+                        item.kind === 'url' &&
+                        !item.sha256 &&
+                        item.fence < 5 &&
+                        item.error_code !== 'source_unavailable' &&
+                        !batch.cancelled && (
+                          <button
+                            disabled={busy}
+                            onClick={() =>
+                              void action({ action: 'retry', batchId: batch.id, itemId: item.id })
+                            }
+                          >
+                            重新排队
+                          </button>
+                        )}
+                      {item.status === 'awaiting_upload' && !batch.cancelled && (
+                        <button
+                          disabled={busy}
+                          onClick={() =>
+                            void action({ action: 'confirm', batchId: batch.id, itemId: item.id })
+                          }
+                        >
+                          确认已上传原件
+                        </button>
+                      )}
+                      {item.status === 'completed' && (
+                        <button
+                          disabled={busy}
+                          onClick={(event) => {
+                            resultOpener.current = event.currentTarget;
+                            void action({
+                              action: 'output',
+                              batchId: batch.id,
+                              itemId: item.id,
+                            }).then((result) => {
+                              if (result)
+                                setOutput({
+                                  name: item.declaration.name ?? item.declaration.url ?? '导入资料',
+                                  data: result,
+                                });
+                            });
+                          }}
+                        >
+                          查看私有解析结果
+                        </button>
+                      )}
+                    </li>
+                  ))}
+              </ul>
+            </section>
+          ))}
         <nav aria-label="批次分页">
           <button
             disabled={!configured || busy || pageCursors.length === 0}

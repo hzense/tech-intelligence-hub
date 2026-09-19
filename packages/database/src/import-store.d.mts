@@ -14,6 +14,8 @@ export interface ImportItem {
   };
   status: string;
   fence: number;
+  duplicate_of?: string | null;
+  duplicate_batch_id?: string | null;
   error_code?: string | null;
   sha256?: string | null;
   lease_until?: string | null;
@@ -23,6 +25,7 @@ export interface ImportBatch {
   owner_id: string;
   intent: 'preview' | 'generate_publish';
   cancelled: boolean;
+  deleted_at?: Date | string | null;
   status: string;
   created_at: Date | string;
   items: ImportItem[];
@@ -59,7 +62,7 @@ export function createImportBatch(
 ): Promise<ImportBatch>;
 export function getImportBatch(args: Owned & { id: string }): Promise<ImportBatch>;
 export function listImportBatches(
-  args: Owned & { before?: string; view?: 'all' | 'current' | 'history' },
+  args: Owned & { before?: string; view?: 'all' | 'current' | 'history' | 'sources' },
 ): Promise<ImportBatch[]>;
 export function cancelImportBatch(args: Owned & { id: string }): Promise<ImportBatch>;
 export function confirmImportDocument(
@@ -85,3 +88,5 @@ export function getImportQueue(args: {
   reserveMicrousd?: number;
 }): Promise<{ owner: string; batchId: string; itemId: string; status: string }[]>;
 export function getImportOutput(args: ItemArgs): Promise<unknown>;
+
+export function deleteImportBatch(args: Owned & { id: string }): Promise<ImportBatch>;

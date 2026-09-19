@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import {
   createSignalGeneration,
+  deleteSignalGeneration,
   getSignalGeneration,
   listSignalGenerations,
   claimSignalGeneration,
@@ -14,7 +15,10 @@ import {
   cancelSignalGeneration,
   signalGenerationSourceHash,
 } from '../src/signal-generation-store.mjs';
-import { signalGenerationChecks } from '../src/signal-generation-catalog.mjs';
+import {
+  signalGenerationChecks,
+  signalGenerationIdentityPredicates,
+} from '../src/signal-generation-catalog.mjs';
 import { canonicalPublicationControlCheck } from '../src/signal-publication-control-catalog.mjs';
 import {
   assertGenerationRole,
@@ -30,10 +34,22 @@ let admin, pool, rolePool;
 let createdRole = false;
 let databaseCreated = false;
 const isolatedDatabases = [];
-const ddl = await readFile(
+const baseDdl = await readFile(
   new URL('../../../db/migrations/0015_signal_generation.sql', import.meta.url),
   'utf8',
 );
+const identityDdl =
+  baseDdl +
+  (await readFile(
+    new URL('../../../db/migrations/0016_generation_cancelled_recreation.sql', import.meta.url),
+    'utf8',
+  ));
+const ddl =
+  identityDdl +
+  (await readFile(
+    new URL('../../../db/migrations/0018_generation_task_visibility.sql', import.meta.url),
+    'utf8',
+  ));
 function input(overrides = {}) {
   const source = {
     classification: 'private',
@@ -152,6 +168,49 @@ suite('private AI generation PostgreSQL ledger', () => {
         rows.some((r) => alternatives.includes(canonicalPublicationControlCheck(r.definition))),
       ).toBe(true);
   });
+  it('deletes from history without dropping budget records or permitting another AI call', async () => {
+    const value = input();
+    const row = await createSignalGeneration(value);
+    const claimed = await claimSignalGeneration(args(row));
+    await expect(deleteSignalGeneration(args(row))).rejects.toMatchObject({ code: 'task_active' });
+    await finishSignalGeneration({
+      ...args(row),
+      token: claimed.run.lease_token,
+      outcome: 'completed',
+      result,
+    });
+    // Completion is terminal even though its original lease timestamp has not elapsed.
+    await deleteSignalGeneration(args(row));
+    await deleteSignalGeneration(args(row));
+    expect(await listSignalGenerations({ pool, owner, readOnly: true })).toEqual([]);
+    await expect(getSignalGeneration({ ...args(row), readOnly: true })).rejects.toMatchObject({
+      code: 'not_found',
+    });
+    await expect(
+      createSignalGeneration({ ...value, request: { ...value.request, id: randomUUID() } }),
+    ).rejects.toMatchObject({ code: 'task_deleted' });
+    const saved = (
+      await pool.query('SELECT charged_microusd FROM public.signal_generation_runs WHERE id=$1', [
+        row.id,
+      ])
+    ).rows[0];
+    expect(BigInt(saved.charged_microusd)).toBeGreaterThan(0n);
+  });
+  it('owner-bound deletion of pending runs permits a fresh request but never replays a deleted UUID', async () => {
+    const value = input();
+    const row = await createSignalGeneration(value);
+    await expect(deleteSignalGeneration({ ...args(row), owner: 'other' })).rejects.toMatchObject({
+      code: 'not_found',
+    });
+    await deleteSignalGeneration(args(row));
+    await expect(createSignalGeneration(value)).rejects.toMatchObject({ code: 'task_deleted' });
+    const next = await createSignalGeneration({
+      ...value,
+      request: { ...value.request, id: randomUUID() },
+    });
+    expect(next.status).toBe('pending');
+    expect(next.id).not.toBe(row.id);
+  });
   it('deduplicates identical source/profile with concurrent different UUIDs', async () => {
     const first = input();
     const second = { ...first, request: { ...first.request, id: randomUUID() } };
@@ -168,6 +227,54 @@ suite('private AI generation PostgreSQL ledger', () => {
     expect(
       (await pool.query('SELECT count(*)::int AS n FROM public.signal_generation_runs')).rows[0].n,
     ).toBe(1);
+  });
+  it('upgrades the existing index without changing cancelled records and pins its catalog predicate', async () => {
+    await pool.query(
+      'DROP INDEX public.signal_generation_source_profile_idx; CREATE UNIQUE INDEX signal_generation_source_profile_idx ON public.signal_generation_runs(owner_id,item_id,source_fence,source_hash,profile_id,profile_revision,generation_version)',
+    );
+    const first = input();
+    const row = await createSignalGeneration(first);
+    const cancelled = await cancelSignalGeneration(args(row));
+    await pool.query(
+      await readFile(
+        new URL('../../../db/migrations/0016_generation_cancelled_recreation.sql', import.meta.url),
+        'utf8',
+      ),
+    );
+    expect(await getSignalGeneration(args(row))).toEqual(cancelled);
+    const replacement = await createSignalGeneration({
+      ...first,
+      request: { ...first.request, id: randomUUID() },
+    });
+    expect(replacement.id).not.toBe(row.id);
+    const { rows } = await pool.query(
+      "SELECT pg_get_expr(indpred,indrelid) AS predicate FROM pg_index WHERE indexrelid='public.signal_generation_source_profile_idx'::regclass",
+    );
+    expect(signalGenerationIdentityPredicates).toContain(
+      canonicalPublicationControlCheck(rows[0].predicate),
+    );
+  });
+  it('recreates only never-claimed cancelled tasks, preserving UUID replay and concurrent deduplication', async () => {
+    const first = input();
+    const cancelled = await createSignalGeneration(first);
+    await cancelSignalGeneration(args(cancelled));
+    expect((await createSignalGeneration(first)).id).toBe(cancelled.id);
+    const replacement = () =>
+      createSignalGeneration({ ...first, request: { ...first.request, id: randomUUID() } });
+    const [a, b] = await Promise.all([replacement(), replacement()]);
+    expect(a.id).not.toBe(cancelled.id);
+    expect(b.id).toBe(a.id);
+    expect(a.status).toBe('pending');
+    expect((await getSignalGeneration(args(cancelled))).status).toBe('cancelled');
+    expect((await claimSignalGeneration(args(cancelled))).claimed).toBe(false);
+    await claimSignalGeneration(args(a));
+    await cancelSignalGeneration(args(a));
+    expect((await replacement()).id).toBe(a.id);
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [a.id],
+    );
+    expect((await replacement()).id).toBe(a.id);
   });
   it('binds request UUID and every read/cancel/claim to the authenticated owner', async () => {
     const value = input();

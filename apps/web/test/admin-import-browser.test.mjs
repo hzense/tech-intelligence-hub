@@ -101,6 +101,11 @@ test(
           );
           return;
         }
+        if (value.action === 'delete') {
+          batches = batches.filter((batch) => batch.id !== value.batchId);
+          res.end('{}');
+          return;
+        }
         if (value.action === 'cancel') {
           const batch = batches.find((entry) => entry.id === value.batchId);
           batch.cancelled = true;
@@ -267,7 +272,7 @@ test(
     await expect(page.getByText('批次 batch-0', { exact: true })).toBeVisible();
     await expect(page.getByText('第 1 页')).toBeVisible();
     await page.getByRole('button', { name: '历史记录', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '已取消' })).toBeVisible();
+    await expect(page.getByText('已取消', { exact: true })).toBeVisible();
     await expect(page.getByText('第 1 页')).toBeVisible();
     await expect(page.getByRole('button', { name: '更早批次' })).toBeDisabled();
     await page.getByRole('button', { name: '当前任务', exact: true }).click();
@@ -297,6 +302,45 @@ test(
     await page.reload();
     await expect(page.getByRole('button', { name: '重新排队' })).toHaveCount(0);
     await expect(page.getByText('原件不保留，请新建批次重新导入。')).toBeVisible();
+    batches = [
+      {
+        id: 'canonical',
+        status: 'completed',
+        cancelled: false,
+        items: [{ id: 'one', status: 'completed', declaration: { name: '原始资料.txt' } }],
+      },
+      {
+        id: 'duplicate',
+        status: 'completed',
+        cancelled: false,
+        items: [
+          {
+            id: 'two',
+            status: 'completed',
+            duplicate_of: 'one',
+            declaration: { name: '重复副本.txt' },
+          },
+        ],
+      },
+    ];
+    await page.reload();
+    await page.getByRole('button', { name: '历史记录', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '原始资料.txt', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '重复副本.txt', exact: true })).toHaveCount(0);
+    await page.getByRole('checkbox', { name: /显示重复资料/ }).check();
+    const duplicate = page
+      .locator('section')
+      .filter({ has: page.getByRole('heading', { name: '重复副本.txt', exact: true }) })
+      .last();
+    await expect(duplicate).toBeVisible();
+    page.once('dialog', (dialog) => dialog.dismiss());
+    await duplicate.getByRole('button', { name: '删除任务', exact: true }).click();
+    await expect(duplicate).toBeVisible();
+    page.once('dialog', (dialog) => dialog.accept());
+    await duplicate.getByRole('button', { name: '删除任务', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '重复副本.txt', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '原始资料.txt', exact: true })).toBeVisible();
+    assert.equal(commands.filter((command) => command.action === 'delete').length, 1);
     assert.deepEqual(errors, []);
   },
 );

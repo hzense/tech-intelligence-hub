@@ -27,6 +27,7 @@ export const signalGenerationColumns = {
     error_code: ['text', false],
     created_at: required('timestamp with time zone'),
     finished_at: ['timestamp with time zone', false],
+    deleted_at: ['timestamp with time zone', false],
   },
 };
 export const signalGenerationPrimaryKeys = ['signal_generation_runs|id'];
@@ -69,3 +70,9 @@ export const signalGenerationIndexes = [
   'signal_generation_runs|budget_day',
   'signal_generation_runs|batch_id',
 ];
+
+// Keep literals and operators exact when accepting the one partial unique index.
+export const signalGenerationIdentityPredicates = [
+  "NOT (status = 'cancelled' AND lease_token IS NULL AND lease_until IS NULL AND budget_day IS NULL AND reserved_microusd = 0 AND charged_microusd = 0)",
+  "(NOT ((status = 'cancelled'::text) AND (lease_token IS NULL) AND (lease_until IS NULL) AND (budget_day IS NULL) AND (reserved_microusd = 0) AND (charged_microusd = 0)))",
+].map(canonical);

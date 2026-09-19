@@ -9,6 +9,7 @@ import {
   signalGenerationDefaults,
   signalGenerationIndexes,
   signalGenerationUniqueIndexes,
+  signalGenerationIdentityPredicates,
 } from '../src/signal-generation-catalog.mjs';
 import { canonicalPublicationControlCheck } from '../src/signal-publication-control-catalog.mjs';
 import { canonicalCatalogExpression, expectedTableNames } from '../src/verify.mjs';
@@ -51,6 +52,7 @@ it('pins the private generation SQL, typed schema and independent catalog togeth
   }));
   expect(indexes.filter((i) => i.unique).map((i) => i.value)).toEqual(
     signalGenerationUniqueIndexes,
+    signalGenerationIdentityPredicates,
   );
   expect(indexes.filter((i) => !i.unique).map((i) => i.value)).toEqual(signalGenerationIndexes);
 });
@@ -61,4 +63,17 @@ it('grants no role permissions and changes no existing public or sealed material
   );
   expect(executable).toContain('a.grantee<>r.relowner');
   expect(executable).toContain('FROM PUBLIC');
+});
+
+it('pins the replacement index predicate to the schema and verifier', async () => {
+  const migration = await readFile(
+    new URL('../../../db/migrations/0016_generation_cancelled_recreation.sql', import.meta.url),
+    'utf8',
+  );
+  const index = getTableConfig(signalGenerationRuns).indexes.find(({ config }) => config.unique)!;
+  const predicate = new PgDialect()
+    .sqlToQuery(index.config.where!)
+    .sql.replace(/"[a-z_]+"\."([a-z0-9_]+)"/g, '$1');
+  expect(migration).toContain(`WHERE ${predicate};`);
+  expect(signalGenerationIdentityPredicates).toContain(canonicalPublicationControlCheck(predicate));
 });
