@@ -134,8 +134,12 @@ function matchesConnectionCreate(row, request, keyring) {
     )
   )
     return false;
+  return matchesConnectionKey(row, request.api_key, keyring);
+}
+function matchesConnectionKey(row, apiKey, keyring) {
+  if (!row.encrypted_key) return false;
   const actual = Buffer.from(decryptAiKey(row.encrypted_key, row.id, keyring));
-  const expected = Buffer.from(request.api_key);
+  const expected = Buffer.from(apiKey);
   try {
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   } finally {
@@ -199,8 +203,16 @@ export async function updateAiConnection({ pool, request, keyring, allowedHosts 
     if (v.revoke_key) {
       next.encrypted_key = null;
       next.enabled = false;
-    } else if (v.api_key) next.encrypted_key = encryptAiKey(v.api_key, v.id, keyring);
+    } else if (v.api_key && !matchesConnectionKey(old, v.api_key, keyring))
+      next.encrypted_key = encryptAiKey(v.api_key, v.id, keyring);
     if (next.enabled && !next.encrypted_key) aiFail('key_unavailable');
+    // Preserve capability proofs on a no-op, but only after CAS and safety checks.
+    if (
+      ['name', 'protocol', 'base_url', 'enabled', 'settings', 'encrypted_key'].every((field) =>
+        isDeepStrictEqual(old[field], next[field]),
+      )
+    )
+      return connectionDto(old);
     const row = one(
       await client.query(
         `/* ai:connection-update */ UPDATE public.ai_connections SET revision=$2,name=$3,protocol=$4,base_url=$5,enabled=$6,settings=$7::jsonb,encrypted_key=$8::jsonb,updated_at=clock_timestamp()

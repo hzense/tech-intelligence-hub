@@ -322,6 +322,31 @@ test(
     );
 
     await t.test(
+      'only the newest three tests are displayed without deleting older model evidence',
+      async () => {
+        const newer = [1, 2, 3].map((day) => ({
+          ...savedModelProbe,
+          id: `42345678-1234-4123-8123-123456789ab${day}`,
+          kind: 'connection',
+          model_id: fixedModel,
+          result: {},
+          created_at: `2026-01-0${day + 1}T00:00:00.000Z`,
+        }));
+        await mount({
+          connections: [savedConnection],
+          probes: [newer[1], savedModelProbe, newer[0], newer[2]],
+        });
+        const history = page.getByRole('region', { name: '最近模型测试' });
+        await expect(history.getByRole('link')).toHaveCount(3);
+        await expect(history.getByRole('link')).toHaveText([newer[2].id, newer[1].id, newer[0].id]);
+        await expect(
+          page.getByText('当前连接 r1 的列表包含 2 个模型；选择后只填写模型 ID，不自动测试。'),
+        ).toBeVisible();
+        await expectNoWrites();
+      },
+    );
+
+    await t.test(
       'unapproved provider is explained and blocked before any HTTP mutation',
       async () => {
         await mount({ allowedHosts: ['ai-gateway.vercel.sh'] });

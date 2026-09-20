@@ -1205,6 +1205,14 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
         keyring,
         allowedHosts,
       });
+      await expect(create()).resolves.toMatchObject({ revision: 1 });
+      expect(await getAiConnectionHistory({ pool, id: request.id })).toHaveLength(1);
+      await updateAiConnection({
+        pool,
+        request: { id: request.id, expected_revision: 1, name: 'Actual renamed connection' },
+        keyring,
+        allowedHosts,
+      });
       await expect(create()).rejects.toMatchObject({ code: 'request_id_conflict' });
       await updateAiConnection({
         pool,
@@ -1349,6 +1357,22 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
           invoke: async () => result('structured_output'),
         }),
       ).rejects.toMatchObject({ code: 'request_id_conflict' });
+      const unchanged = await updateAiConnection({
+        pool,
+        request: {
+          id: connection.id,
+          expected_revision: 1,
+          name: input.name,
+          api_key: input.api_key,
+        },
+        keyring,
+        allowedHosts,
+      });
+      expect(unchanged.revision).toBe(1);
+      expect(
+        (await listAiProfiles({ pool })).find((row) => row.id === profile.id).readiness.ready,
+      ).toBe(true);
+      expect(await getAiConnectionHistory({ pool, id: connection.id })).toHaveLength(1);
       await updateAiConnection({
         pool,
         request: { id: connection.id, expected_revision: 1, name: 'Changed' },
