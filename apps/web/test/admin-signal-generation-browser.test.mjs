@@ -235,7 +235,7 @@ test(
                 issues: ['needs_public_evidence'],
               },
             ],
-            reason: 'Private preview only',
+            reason: 'PRIVATE_THINKING_SENTINEL',
           };
         }
         if (command.action === 'delete') {
@@ -406,7 +406,10 @@ test(
           result: { classification: 'private', candidates: [], reason: 'Synthetic saved result' },
         };
         await page.clock.fastForward(5100);
-        await expect(page.getByText('Synthetic saved result', { exact: true })).toBeVisible();
+        await expect(page.getByText('Synthetic saved result', { exact: true })).toHaveCount(0);
+        await expect(
+          page.getByText('本次没有生成可供审核的候选信号。', { exact: true }),
+        ).toBeVisible();
         await expect(page.getByRole('progressbar', { name: '已完成的任务阶段' })).toHaveAttribute(
           'value',
           '5',
@@ -816,6 +819,7 @@ test(
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
         await expect(page.getByRole('heading', { name: /生成完成（私有候选）$/ })).toBeVisible();
+        await expect(page.getByText('PRIVATE_THINKING_SENTINEL', { exact: true })).toHaveCount(0);
         await expect(
           page.getByText('Synthetic Person · Researcher · Synthetic Organization'),
         ).toBeVisible();
