@@ -52,6 +52,12 @@ importers:
       '@hzense/content':
         specifier: workspace:*
         version: link:../../packages/content
+      '@hzense/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@hzense/ingestion':
+        specifier: workspace:*
+        version: link:../../packages/ingestion
       '@hzense/search':
         specifier: workspace:*
         version: link:../../packages/search
@@ -132,6 +138,9 @@ importers:
 
   packages/database:
     dependencies:
+      '@hzense/ingestion':
+        specifier: workspace:*
+        version: link:../ingestion
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
