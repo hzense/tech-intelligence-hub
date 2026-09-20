@@ -217,6 +217,43 @@ const digest = (value) =>
     .update(JSON.stringify(canonical(value)))
     .digest('hex');
 export const signalGenerationSourceHash = (source) => digest(source);
+// Readiness is a live admission decision, not immutable model configuration.
+// Keep it in saved snapshots for audit, but never use it as task identity.
+export function signalGenerationProfileIdentity(profile) {
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile)) return profile;
+  const identity = { ...profile };
+  delete identity.readiness;
+  return identity;
+}
+function generationFingerprint(identity) {
+  return digest({
+    ...identity,
+    snapshot: {
+      ...identity.snapshot,
+      profile: signalGenerationProfileIdentity(identity.snapshot.profile),
+    },
+  });
+}
+function matchesGenerationIdentity(row, fingerprint) {
+  const identity = {
+    owner: row.owner_id,
+    batchId: row.batch_id,
+    itemId: row.item_id,
+    sourceFence: row.source_fence,
+    sourceHash: row.source_hash,
+    profileId: row.profile_id,
+    profileRevision: row.profile_revision,
+    snapshot: row.snapshot,
+    configuration: row.configuration,
+  };
+  const normalized = generationFingerprint(identity);
+  // Accept old hashes only when they still authenticate the complete saved
+  // snapshot. Compare normalized identities without rewriting historical rows.
+  return (
+    (row.fingerprint === normalized || row.fingerprint === digest(identity)) &&
+    normalized === fingerprint
+  );
+}
 function inputs(owner, request, snapshot, configuration) {
   ownerId(owner);
   object(request, [
@@ -268,7 +305,7 @@ function inputs(owner, request, snapshot, configuration) {
   const config = canonical(configuration);
   const identity = { owner, ...request, snapshot: safe, configuration: config };
   delete identity.id;
-  return { snapshot: safe, configuration: config, fingerprint: digest(identity) };
+  return { snapshot: safe, configuration: config, fingerprint: generationFingerprint(identity) };
 }
 async function transaction(pool, work, readOnly = false) {
   let client,
@@ -352,7 +389,7 @@ export async function createSignalGeneration({
       ])
     ).rows[0];
     if (old) {
-      if (old.owner_id !== owner || old.fingerprint !== parsed.fingerprint)
+      if (old.owner_id !== owner || !matchesGenerationIdentity(old, parsed.fingerprint))
         fail('request_id_conflict');
       if (old.deleted_at) {
         const error = new SignalGenerationError('task_deleted');
@@ -378,7 +415,7 @@ export async function createSignalGeneration({
       )
     ).rows[0];
     if (previous) {
-      if (previous.fingerprint !== parsed.fingerprint) fail('request_id_conflict');
+      if (!matchesGenerationIdentity(previous, parsed.fingerprint)) fail('request_id_conflict');
       if (previous.deleted_at) {
         const error = new SignalGenerationError('task_deleted');
         error.previousId = previous.id;

@@ -602,6 +602,83 @@ test('committed admission precedes one model call, replay and detail never regen
   for (const key of ['owner_id', 'snapshot', 'lease_token', 'source_hash'])
     assert.equal(key in dto, false);
 });
+test('readiness warnings may age or clear before and after generation without changing task identity', async () => {
+  for (const savedReadiness of [
+    undefined,
+    { ready: true, reasons: [] },
+    { ready: true, reasons: [], warnings: [] },
+    { ready: true, reasons: [], warnings: ['extract:connection_test_old'] },
+  ]) {
+    let checks = 0;
+    const f = coreFixture({
+      access: async (_id, _revision, credentials) => {
+        checks++;
+        return structuredClone({
+          profile: {
+            ...profile,
+            readiness: {
+              ready: true,
+              reasons: [],
+              warnings: checks === 1 ? ['extract:structured_output_test_old'] : [],
+            },
+          },
+          connection,
+          ...(credentials ? { apiKey } : {}),
+        });
+      },
+    });
+    const savedProfile = structuredClone(profile);
+    if (savedReadiness) savedProfile.readiness = savedReadiness;
+    else delete savedProfile.readiness;
+    f.run().snapshot = { source, profile: savedProfile, connection };
+    const before = structuredClone(f.run().snapshot);
+    const dto = await f.execute('admin', { action: 'run', id: f.run().id });
+    assert.equal(dto.status, 'completed');
+    assert.equal(f.calls(), 1);
+    assert.equal(checks, 2);
+    assert.deepEqual(f.run().snapshot, before);
+  }
+});
+test('stable profile/connection changes and revoked readiness still stop or reject generation', async () => {
+  for (const phase of ['preflight', 'postflight']) {
+    for (const mutate of [
+      (access) => {
+        access.profile.stages.extract.model_id = 'different-model';
+      },
+      (access) => {
+        access.profile.stages.extract.prompt = 'different prompt';
+      },
+      (access) => {
+        access.profile.stages.extract.max_output_tokens += 1;
+      },
+      (access) => {
+        access.connection.revision += 1;
+      },
+      () => {
+        throw new Error('profile_not_ready');
+      },
+    ]) {
+      let checks = 0;
+      const f = coreFixture({
+        access: async (_id, _revision, credentials) => {
+          const access = structuredClone({
+            profile,
+            connection,
+            ...(credentials ? { apiKey } : {}),
+          });
+          checks++;
+          if (checks === (phase === 'preflight' ? 1 : 2)) mutate(access);
+          return access;
+        },
+      });
+      const dto = await f.execute('admin', { action: 'run', id: f.run().id });
+      assert.notEqual(dto.status, 'completed');
+      assert.equal(f.calls(), phase === 'preflight' ? 0 : 1);
+      assert.equal(f.finishes.length, 1);
+      assert.equal(f.finishes[0].result, undefined);
+    }
+  }
+});
 test('duplicate eligibility only controls creation and cannot discard an in-flight result', async () => {
   let duplicate = false;
   const f = coreFixture({

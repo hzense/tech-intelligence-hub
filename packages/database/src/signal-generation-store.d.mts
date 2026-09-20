@@ -60,6 +60,7 @@ interface RunArgs extends Owned {
   id: string;
 }
 export function signalGenerationSourceHash(source: unknown): string;
+export function signalGenerationProfileIdentity(profile: unknown): unknown;
 export function createSignalGeneration(
   args: Owned & {
     request: SignalGenerationRequest;

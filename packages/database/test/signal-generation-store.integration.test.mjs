@@ -33,6 +33,7 @@ import {
 } from '../src/signal-generation-role.mjs';
 
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
+const { structuredClone } = globalThis;
 if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
 const suite = adminUrl ? describe.sequential : describe.skip;
 const name = `hzense_generation_${process.pid}_${Date.now()}`;
@@ -403,6 +404,130 @@ suite('private AI generation PostgreSQL ledger', () => {
       claimSignalGeneration(args(a)),
     ]);
     expect(claims.filter((entry) => entry.claimed)).toHaveLength(1);
+    expect(
+      (await pool.query('SELECT count(*)::int AS n FROM public.signal_generation_runs')).rows[0].n,
+    ).toBe(1);
+  });
+  for (const legacy of [false, true]) {
+    it(`ignores live readiness in ${legacy ? 'legacy' : 'new'} identity without rewriting receipts`, async () => {
+      const value = input();
+      value.snapshot.profile.readiness = { ready: true, reasons: [] };
+      const row = await createSignalGeneration(value);
+      if (legacy) {
+        const request = { ...value.request };
+        delete request.id;
+        const fingerprint = signalGenerationSourceHash({
+          owner,
+          ...request,
+          snapshot: value.snapshot,
+          configuration: value.configuration,
+        });
+        await pool.query('UPDATE public.signal_generation_runs SET fingerprint=$2 WHERE id=$1', [
+          row.id,
+          fingerprint,
+        ]);
+      }
+      const before = (
+        await pool.query('SELECT * FROM public.signal_generation_runs WHERE id=$1', [row.id])
+      ).rows[0];
+      const changed = {
+        ...value,
+        snapshot: structuredClone(value.snapshot),
+      };
+      changed.snapshot.profile.readiness.warnings = ['extract:connection_test_old'];
+      expect((await createSignalGeneration(changed)).id).toBe(row.id);
+      const semantic = { ...changed, request: { ...changed.request, id: randomUUID() } };
+      expect((await createSignalGeneration(semantic)).id).toBe(row.id);
+      expect(
+        (await pool.query('SELECT * FROM public.signal_generation_runs WHERE id=$1', [row.id]))
+          .rows[0],
+      ).toEqual(before);
+      const admission = await claimSignalGeneration(args(row));
+      await finishSignalGeneration({
+        ...args(row),
+        token: admission.run.lease_token,
+        outcome: 'failed',
+      });
+      await deleteSignalGeneration(args(row));
+      for (const replay of [changed, semantic]) {
+        await expect(createSignalGeneration(replay)).rejects.toMatchObject({
+          code: 'task_deleted',
+          previousId: row.id,
+        });
+      }
+      await pool.query(
+        "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+        [row.id],
+      );
+      const retry = { ...semantic, retryOf: row.id };
+      const recreated = await createSignalGeneration(retry);
+      expect(recreated.status).toBe('pending');
+      expect(Number(recreated.charged_microusd)).toBe(0);
+      changed.snapshot.profile.readiness.warnings = [];
+      expect((await createSignalGeneration(retry)).id).toBe(recreated.id);
+      expect(
+        (await pool.query('SELECT count(*)::int AS n FROM public.signal_generation_runs')).rows[0]
+          .n,
+      ).toBe(2);
+    });
+  }
+  it('retains conflict protection for actual input/configuration changes and corrupt legacy hashes', async () => {
+    const value = input();
+    value.snapshot.profile.readiness = { ready: true, reasons: [] };
+    const row = await createSignalGeneration(value);
+    for (const mutate of [
+      (v) => {
+        v.snapshot.profile.stages.extract.model_id = 'another-model';
+      },
+      (v) => {
+        v.snapshot.profile.stages.extract.prompt = 'another prompt';
+      },
+      (v) => {
+        v.snapshot.profile.stages.extract.max_output_tokens = 123;
+      },
+      (v) => {
+        v.snapshot.connection.revision = 2;
+        v.snapshot.profile.stages.extract.connection_revision = 2;
+      },
+      (v) => {
+        v.snapshot.connection.base_url = 'https://other.example/v1';
+      },
+      (v) => {
+        v.configuration.reserveMicrousd += 1;
+      },
+      (v) => {
+        v.request.batchId = randomUUID();
+      },
+      (v) => {
+        v.snapshot.source.fragments[0].text = 'Different source';
+      },
+    ]) {
+      for (const sameId of [true, false]) {
+        const changed = {
+          ...value,
+          request: structuredClone(value.request),
+          snapshot: structuredClone(value.snapshot),
+          configuration: { ...value.configuration },
+        };
+        if (!sameId) changed.request.id = randomUUID();
+        mutate(changed);
+        // Source hash changes represent a new semantic input; a forged unchanged
+        // hash is rejected before the database, not normalized away.
+        await expect(createSignalGeneration(changed)).rejects.toMatchObject({
+          code:
+            changed.snapshot.source.fragments[0].text === 'Different source'
+              ? 'invalid_snapshot'
+              : 'request_id_conflict',
+        });
+      }
+    }
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET fingerprint=repeat('0',64) WHERE id=$1",
+      [row.id],
+    );
+    await expect(createSignalGeneration(value)).rejects.toMatchObject({
+      code: 'request_id_conflict',
+    });
     expect(
       (await pool.query('SELECT count(*)::int AS n FROM public.signal_generation_runs')).rows[0].n,
     ).toBe(1);
