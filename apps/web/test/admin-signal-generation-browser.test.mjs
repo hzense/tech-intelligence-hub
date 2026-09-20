@@ -327,6 +327,7 @@ test(
         await picker.selectOption(otherItemId);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
+        await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
         assert.equal(commands.length, 1);
         assert.equal(commands[0].batchId, otherBatchId);
         assert.equal(commands[0].itemId, otherItemId);
