@@ -59,6 +59,12 @@ interface Owned {
 interface RunArgs extends Owned {
   id: string;
 }
+export interface SignalGenerationDailyUsage {
+  day: string;
+  charged_microusd: string;
+  budget_used_microusd: string;
+}
+export function getSignalGenerationDailyUsage(args: Owned): Promise<SignalGenerationDailyUsage>;
 export function signalGenerationSourceHash(source: unknown): string;
 export function signalGenerationProfileIdentity(profile: unknown): unknown;
 export function createSignalGeneration(
@@ -84,6 +90,7 @@ export function finishSignalGeneration(
     outcome: 'completed' | 'failed' | 'unknown';
     result?: unknown;
     chargedMicrousd?: number;
+    providerCostMicrousd?: number;
     errorCode?: string | null;
   },
 ): Promise<SignalGenerationRun>;

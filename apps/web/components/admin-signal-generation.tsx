@@ -4,6 +4,7 @@ import { importItemName } from '../lib/import-labels';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { ImportBatch } from '../../../packages/database/src/import-store.mjs';
+import type { SignalGenerationDailyUsage } from '../../../packages/database/src/signal-generation-store.mjs';
 import type { GenerationSourceInspection } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import styles from './admin-signal-generation.module.css';
 import controls from './admin-controls.module.css';
@@ -46,7 +47,12 @@ type PendingRequest = {
   profileRevision: number;
   retryOf?: string;
 };
-type ListResponse = { runs: GenerationRun[]; profiles: Profile[]; batches: ImportBatch[] };
+type ListResponse = {
+  runs: GenerationRun[];
+  profiles: Profile[];
+  batches: ImportBatch[];
+  dailyUsage?: SignalGenerationDailyUsage | null;
+};
 const storageKey = 'hzense.signal-generation.pending.v1';
 const recoveryKey = 'hzense.signal-generation.rejection.v1';
 const rejectionCodes = [
@@ -695,6 +701,23 @@ export function AdminSignalGeneration({
         返回管理后台
       </Link>
       <h1>AI 信号生成</h1>
+      <section className={styles.panel} aria-label="今日 AI 调用费用">
+        <h2>今日 AI 调用费用总额</h2>
+        <p>
+          <strong>{data.dailyUsage ? money(data.dailyUsage.charged_microusd) : '暂不可用'}</strong>
+          （美元 · 系统记账）
+        </p>
+        {data.dailyUsage && (
+          <p>
+            {data.dailyUsage.day}（UTC） · 含预留的预算占用：
+            {money(data.dailyUsage.budget_used_microusd)}
+          </p>
+        )}
+        <p>
+          统计当前管理员当天执行的信号生成，包含失败及已删除任务，不含连接能力测试。API
+          返回费用优先，缺失时使用预估；历史记录可能为预估，合计并非全部已确认实际费用。进行中的调用可能仅有预留。打开页面或手动刷新列表时更新。
+        </p>
+      </section>
       <p>
         从已完成解析的私有资料生成候选信号。创建任务与调用 AI 分开执行，不自动重试，不发布到网站。
       </p>

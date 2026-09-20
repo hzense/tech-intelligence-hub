@@ -108,7 +108,7 @@ test('disabled generation history is owner-scoped, read-only and independent of 
     /PRIVATE_SOURCE|PRIVATE_LEASE|owner_id|snapshot|configuration/,
   );
   const dashboard = await service.generationDashboard('admin');
-  assert.deepEqual(dashboard, { runs: [detail], profiles: [], batches: [] });
+  assert.deepEqual(dashboard, { runs: [detail], profiles: [], batches: [], dailyUsage: undefined });
   assert.equal(service.ancillary.aiReads, 0);
   assert.equal(service.ancillary.importReads, 0);
   // Expired running is displayed as failed without mutating its stored state or ledger.
@@ -159,7 +159,12 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   ]) {
     Object.assign(service.ancillary, { aiFails, importFails });
     const value = await service.generationDashboard('admin');
-    assert.deepEqual(value, { runs: [{ ...detail, can_delete: true }], profiles: [], batches: [] });
+    assert.deepEqual(value, {
+      runs: [{ ...detail, can_delete: true }],
+      profiles: [],
+      batches: [],
+      dailyUsage: undefined,
+    });
     assert.doesNotMatch(JSON.stringify(value), /PRIVATE_AI_ERROR|PRIVATE_IMPORT_ERROR/);
   }
   assert.equal(service.ancillary.aiReads, 3);

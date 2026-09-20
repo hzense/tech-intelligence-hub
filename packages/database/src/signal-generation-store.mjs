@@ -525,6 +525,28 @@ async function expireRunning(client, owner, { id, batchId, itemId } = {}) {
     [owner, id ?? null, batchId ?? null, itemId ?? null],
   );
 }
+export async function getSignalGenerationDailyUsage({ pool, owner }) {
+  ownerId(owner);
+  return transaction(
+    pool,
+    async (client) =>
+      (
+        await client.query(
+          `WITH today AS (
+      SELECT (statement_timestamp() AT TIME ZONE 'UTC')::date AS day
+    ) SELECT today.day::text AS day,
+      COALESCE(sum(r.charged_microusd),0)::text AS charged_microusd,
+      COALESCE(sum(greatest(r.reserved_microusd,r.charged_microusd)),0)::text AS budget_used_microusd
+      FROM today LEFT JOIN public.signal_generation_runs r
+        ON r.budget_day=today.day AND r.owner_id=$1
+      GROUP BY today.day`,
+          [owner],
+        )
+      ).rows[0],
+    true,
+  );
+}
+
 export async function listSignalGenerations({
   pool,
   owner,
@@ -620,10 +642,12 @@ export async function finishSignalGeneration({
   outcome,
   result,
   chargedMicrousd = 0,
+  providerCostMicrousd,
   errorCode = null,
 }) {
   uuid(token);
   integer(chargedMicrousd);
+  if (providerCostMicrousd !== undefined) integer(providerCostMicrousd);
   if (
     !['completed', 'failed', 'unknown'].includes(outcome) ||
     (errorCode !== null &&
@@ -662,9 +686,11 @@ export async function finishSignalGeneration({
     ).rows[0].live;
     if (!live) fail('stale_attempt');
     const charged =
-      BigInt(chargedMicrousd) > BigInt(row.reserved_microusd)
-        ? BigInt(chargedMicrousd)
-        : BigInt(row.reserved_microusd);
+      providerCostMicrousd !== undefined
+        ? BigInt(providerCostMicrousd)
+        : BigInt(chargedMicrousd) > BigInt(row.reserved_microusd)
+          ? BigInt(chargedMicrousd)
+          : BigInt(row.reserved_microusd);
     return (
       await client.query(
         `UPDATE public.signal_generation_runs SET status=$2,result=$3::jsonb,

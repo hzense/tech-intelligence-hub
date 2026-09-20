@@ -70,6 +70,7 @@ export interface GenerationDependencies {
       outcome: 'completed' | 'failed' | 'unknown';
       result?: Record<string, unknown>;
       chargedMicrousd?: number;
+      providerCostMicrousd?: number;
       errorCode?: string;
     },
   ): Promise<SignalGenerationRun>;
@@ -218,6 +219,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
     let access: GenerationAccess | undefined;
     let sent = false;
     let charged: number | undefined;
+    let providerCost: number | undefined;
     let phase: 'preflight' | 'provider' | 'postflight' = 'preflight';
     let phaseStarted = performance.now();
     const report = (
@@ -285,10 +287,17 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
           : (safeGenerationDiagnosticCode(result.diagnostic?.code) ??
             (outcome === 'unknown' ? 'generation_unknown' : 'generation_failed'));
       report('provider', outcome, code);
-      charged =
-        result.input_tokens !== null && result.output_tokens !== null
-          ? generationCost(result.input_tokens, result.output_tokens, access.connection.settings)
+      providerCost =
+        typeof result.provider_cost_microusd === 'number' &&
+        Number.isSafeInteger(result.provider_cost_microusd) &&
+        result.provider_cost_microusd >= 0
+          ? result.provider_cost_microusd
           : undefined;
+      charged =
+        providerCost ??
+        (result.input_tokens !== null && result.output_tokens !== null
+          ? generationCost(result.input_tokens, result.output_tokens, access.connection.settings)
+          : undefined);
       // Re-check evidence ownership/cancellation and capability state after the external call.
       phase = 'postflight';
       phaseStarted = performance.now();
@@ -319,6 +328,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
             }
           : {}),
         ...(charged === undefined ? {} : { chargedMicrousd: charged }),
+        ...(providerCost === undefined ? {} : { providerCostMicrousd: providerCost }),
         ...(code ? { errorCode: code } : {}),
       };
     } catch {
@@ -333,6 +343,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
         token: run.lease_token!,
         outcome: sent ? 'unknown' : 'failed',
         ...(charged === undefined ? {} : { chargedMicrousd: charged }),
+        ...(providerCost === undefined ? {} : { providerCostMicrousd: providerCost }),
         errorCode: code,
       };
     } finally {

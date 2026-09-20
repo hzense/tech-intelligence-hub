@@ -489,9 +489,11 @@ function safeProviderResult(value, kind, modelId) {
     const v = aiObject(
       value,
       ['success', 'model_id', 'input_tokens', 'output_tokens', 'result'],
-      ['error_code'],
+      ['error_code', 'provider_cost_microusd'],
     );
     if (typeof v.success !== 'boolean' || v.model_id !== (modelId ?? null)) throw Error();
+    if (v.provider_cost_microusd != null)
+      aiInteger(v.provider_cost_microusd, 0, Number.MAX_SAFE_INTEGER);
     for (const key of ['input_tokens', 'output_tokens'])
       if (v[key] !== null) aiInteger(v[key], 0, 2147483647);
     if (!v.success)
@@ -706,8 +708,13 @@ export async function runAiProbe({ pool, request, keyring, allowedHosts, invoke 
         outcome.input_tokens === null || outcome.output_tokens === null
           ? 0n
           : cost(outcome.input_tokens, outcome.output_tokens, prepared.connection.settings);
+      const apiCost = outcome.provider_cost_microusd;
       const charged =
-        measured > BigInt(current.reserved_microusd) ? measured : BigInt(current.reserved_microusd);
+        Number.isSafeInteger(apiCost) && apiCost >= 0
+          ? BigInt(apiCost)
+          : measured > BigInt(current.reserved_microusd)
+            ? measured
+            : BigInt(current.reserved_microusd);
       const saved = one(
         await client.query(
           `/* ai:probe-finish */ UPDATE public.ai_probe_runs SET status=$2,charged_microusd=$3,input_tokens=$4,output_tokens=$5,result=$6::jsonb,error_code=$7,finished_at=clock_timestamp()

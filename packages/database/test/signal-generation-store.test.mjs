@@ -6,10 +6,73 @@ import {
   createSignalGeneration,
   getSignalGeneration,
   listSignalGenerations,
+  getSignalGenerationDailyUsage,
   finishSignalGeneration,
   signalGenerationSourceHash,
 } from '../src/signal-generation-store.mjs';
 
+it('daily usage reads the full owner ledger in UTC without excluding deleted tasks', async () => {
+  const queries = [];
+  const expected = { day: '2026-09-21', charged_microusd: '1234', budget_used_microusd: '5000' };
+  const client = {
+    query: async (sql, params) => {
+      queries.push({ sql, params });
+      return { rows: sql.startsWith('WITH today') ? [expected] : [] };
+    },
+    release: vi.fn(),
+  };
+  expect(
+    await getSignalGenerationDailyUsage({ pool: { connect: async () => client }, owner: 'admin' }),
+  ).toEqual(expected);
+  const aggregate = queries.find((q) => q.sql.startsWith('WITH today'));
+  expect(aggregate.params).toEqual(['admin']);
+  expect(aggregate.sql).toContain("AT TIME ZONE 'UTC'");
+  expect(aggregate.sql).not.toMatch(/LIMIT|deleted_at|created_at/);
+  expect(queries[0].sql).toContain('READ ONLY');
+  expect(client.release).toHaveBeenCalled();
+});
+it.each([undefined, 0, 1, 30])(
+  'persists API amount %s without changing reservation',
+  async (amount) => {
+    const token = randomUUID();
+    const id = randomUUID();
+    let saved;
+    const client = {
+      query: async (sql, params) => {
+        if (sql.includes('FOR UPDATE'))
+          return {
+            rows: [
+              {
+                id,
+                lease_token: token,
+                status: 'running',
+                lease_until: new Date(Date.now() + 60000),
+                reserved_microusd: '10',
+              },
+            ],
+          };
+        if (sql.includes(' AS live')) return { rows: [{ live: true }] };
+        if (sql.startsWith('UPDATE public.signal_generation_runs')) {
+          saved = params;
+          return { rows: [{ charged_microusd: params[4] }] };
+        }
+        return { rows: [] };
+      },
+      release() {},
+    };
+    const row = await finishSignalGeneration({
+      pool: { connect: async () => client },
+      owner: 'admin',
+      id,
+      token,
+      outcome: 'failed',
+      chargedMicrousd: 3,
+      ...(amount === undefined ? {} : { providerCostMicrousd: amount }),
+    });
+    expect(row.charged_microusd).toBe(String(amount ?? 10));
+    expect(saved[4]).toBe(String(amount ?? 10));
+  },
+);
 const source = {
   classification: 'private',
   fragments: [{ index: 0, text: 'safe source', locator: { paragraph: 1 } }],

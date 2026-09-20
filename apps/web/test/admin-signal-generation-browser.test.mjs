@@ -98,6 +98,11 @@ test(
           res.end(
             JSON.stringify({
               runs,
+              dailyUsage: {
+                day: '2026-09-21',
+                charged_microusd: '1234567',
+                budget_used_microusd: '2000000',
+              },
               profiles: [
                 {
                   id: profileId,
@@ -311,6 +316,10 @@ test(
       return page;
     }
     async function selectInput(page) {
+      await expect(page.getByRole('region', { name: '今日 AI 调用费用' })).toContainText('$1.2346');
+      await expect(page.getByRole('region', { name: '今日 AI 调用费用' })).toContainText(
+        '2026-09-21（UTC）',
+      );
       await page.getByLabel('导入已解析资料').selectOption(itemId);
       await page.getByLabel('分阶段模型配置').selectOption(profileId);
     }

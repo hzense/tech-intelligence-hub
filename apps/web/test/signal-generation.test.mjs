@@ -116,6 +116,21 @@ test('generation requires explicit production enablement, dedicated target ident
       code: 'not_configured',
     });
 });
+test('core preserves API costs including zero for failed generation', async () => {
+  for (const cost of [0, 1234]) {
+    const f = coreFixture({
+      invoke: async () => ({
+        success: false,
+        input_tokens: 2,
+        output_tokens: 3,
+        provider_cost_microusd: cost,
+        error_code: 'generation_failed',
+      }),
+    });
+    await f.execute('admin', { action: 'run', id: f.run().id });
+    assert.equal(f.finishes[0].providerCostMicrousd, cost);
+  }
+});
 function providerFixture(value = result, overrides = {}) {
   const calls = [];
   const invoke = createSignalGenerationInvoker({
@@ -180,6 +195,34 @@ test('real SDK structured extraction yields only private candidates and exact ev
   assert.ok(Number.isSafeInteger(value.diagnostic.elapsed_ms));
 });
 
+test('OpenRouter cost survives malformed structured output', async () => {
+  const f = providerFixture(undefined, {
+    request: async (args) =>
+      args.url.pathname.endsWith('/models')
+        ? Response.json({
+            data: [
+              {
+                id: stage.model_id,
+                supported_parameters: ['max_tokens', 'response_format', 'structured_outputs'],
+              },
+            ],
+          })
+        : Response.json({
+            id: 'failed-output',
+            model: stage.model_id,
+            choices: [
+              { message: { role: 'assistant', content: 'not JSON' }, finish_reason: 'stop' },
+            ],
+            usage: { prompt_tokens: 200, completion_tokens: 10, cost: 0.002 },
+          }),
+  });
+  const value = await f.invoke({
+    connection: { ...connection, base_url: 'https://openrouter.ai/api/v1' },
+    allowedHosts: ['openrouter.ai'],
+  });
+  assert.equal(value.success, false);
+  assert.equal(value.provider_cost_microusd, 2000);
+});
 test('OpenRouter excludes reasoning and persists only final candidates and fixed outcome text', async () => {
   let wire;
   const marker = 'PRIVATE_THINKING_SENTINEL';
@@ -209,7 +252,7 @@ test('OpenRouter excludes reasoning and persists only final candidates and fixed
             finish_reason: 'stop',
           },
         ],
-        usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 },
+        usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300, cost: 0.001234 },
       });
     },
   });
@@ -223,6 +266,7 @@ test('OpenRouter excludes reasoning and persists only final candidates and fixed
   assert.equal(value.output.reason, '已生成私有候选，待人工审核。');
   assert.equal(JSON.stringify(value).includes(marker), false);
   assert.equal(value.output_tokens, 100, 'do not erase usage for hidden reasoning');
+  assert.equal(value.provider_cost_microusd, 1234);
 });
 
 test('extraction forwards the configured 8192 token allowance and enforces 500 character summaries', async () => {
