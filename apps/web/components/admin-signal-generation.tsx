@@ -293,6 +293,8 @@ export function AdminSignalGeneration({
   const [storageReady, setStorageReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const taskListRef = useRef<HTMLElement>(null);
+  const [listNavigation, setListNavigation] = useState(0);
   const [message, setMessage] = useState('');
   const [detail, setDetail] = useState<GenerationRun | null>(null);
   const [inspection, setInspection] = useState<
@@ -333,6 +335,25 @@ export function AdminSignalGeneration({
     .sort()
     .join(',');
   const [pollError, setPollError] = useState(false);
+
+  useEffect(() => {
+    if (!listNavigation) return;
+    taskListRef.current?.focus({ preventScroll: true });
+    taskListRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+  }, [listNavigation]);
+
+  useEffect(() => {
+    if (busy || !pending || !terminal || !storageReady) return;
+    if (!replacePending(pending, null)) {
+      setStorageReady(false);
+      setMessage('浏览器请求记录未能安全清除，已暂停新任务；请保留原请求编号核对。');
+      return;
+    }
+    setPending(null);
+    setConsent(false);
+    setRejectedCreateId(null);
+    setRetryTarget(null);
+  }, [busy, pending, terminal, storageReady]);
 
   useEffect(() => {
     if (!historyConfigured || busy || !activeIds) return;
@@ -528,6 +549,9 @@ export function AdminSignalGeneration({
       setPending(canonical);
       if (canonical.id !== request.id) setConsent(false);
       acceptRun(run);
+      setTaskQuery('');
+      setTaskStatus('all');
+      setListNavigation((value) => value + 1);
       setMessage(
         canonical.id === request.id
           ? request.retryOf
@@ -585,21 +609,6 @@ export function AdminSignalGeneration({
       }
       setMessage('任务已删除。');
     }, true);
-  }
-
-  function finishTracking() {
-    if (!pending || !terminal) return;
-    try {
-      const stored = pendingRequest(JSON.parse(sessionStorage.getItem(storageKey) ?? 'null'));
-      if (stored?.id !== pending.id) throw new Error('pending_mismatch');
-      if (!replacePending(pending, null)) throw new Error('pending_not_removed');
-      setPending(null);
-      setConsent(false);
-      setMessage('已结束本次任务跟踪。新任务需重新选择输入并确认外发授权。');
-    } catch {
-      setStorageReady(false);
-      setMessage('请求记录未能安全清除，已暂停新任务；请保留原请求 ID 进行核对。');
-    }
   }
 
   async function abandonRejected() {
@@ -838,9 +847,9 @@ export function AdminSignalGeneration({
       >
         {pending ? '使用原编号重新确认创建（不调用 AI）' : '创建生成任务（不调用 AI）'}
       </button>
-      {pending && (
-        <section className={styles.panel} aria-label="当前请求">
-          <h2>当前请求</h2>
+      {pending && !tracked && (
+        <section className={styles.panel} aria-label="请求恢复">
+          <h2>请求恢复</h2>
           <p className={styles.id}>请求 ID：{pending.id}</p>
           <p className={styles.id}>
             资料：{pending.itemId} · 配置：{pending.profileId} r{pending.profileRevision}
@@ -858,9 +867,6 @@ export function AdminSignalGeneration({
             onClick={() => void command('detail', pending.id)}
           >
             按原请求 ID 查询状态
-          </button>
-          <button disabled={busy || !terminal || !storageReady} onClick={finishTracking}>
-            已核对，准备下一次生成
           </button>
           {rejectedCreateId === pending.id && !tracked && (
             <button
@@ -883,7 +889,12 @@ export function AdminSignalGeneration({
       <p role="status" aria-live="polite">
         {message}
       </p>
-      <section className={styles.taskSection} aria-label="生成任务列表">
+      <section
+        ref={taskListRef}
+        tabIndex={-1}
+        className={styles.taskSection}
+        aria-label="生成任务列表"
+      >
         <h2>生成任务</h2>
         <div className={styles.tableToolbar}>
           <label>
