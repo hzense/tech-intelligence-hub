@@ -1,4 +1,5 @@
 import styles from './admin-signal-generation.module.css';
+import preview from './private-generation-result.module.css';
 
 function objectRows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
@@ -7,15 +8,19 @@ function objectRows(value: unknown): Record<string, unknown>[] {
 }
 
 function Evidence({ value }: { value: unknown }) {
+  const entries = objectRows(value);
+  if (!entries.length) return <p className={preview.missing}>未提供原文证据，需人工补充核对。</p>;
   return (
-    <ul>
-      {objectRows(value).map((entry, index) => (
+    <ul className={preview.evidenceList}>
+      {entries.map((entry, index) => (
         <li key={index}>
-          原文片段{' '}
-          {typeof entry.fragment_id === 'number' || typeof entry.fragment_id === 'string'
-            ? entry.fragment_id
-            : '待核对'}
-          ：{typeof entry.quote === 'string' ? entry.quote : '无有效引用'}
+          <span className={preview.fragment}>
+            原文片段{' '}
+            {typeof entry.fragment_id === 'number' || typeof entry.fragment_id === 'string'
+              ? entry.fragment_id
+              : '待核对'}
+          </span>
+          <blockquote>{typeof entry.quote === 'string' ? entry.quote : '无有效引用'}</blockquote>
         </li>
       ))}
     </ul>
@@ -53,39 +58,111 @@ export function PrivateResult({ result }: { result: unknown }) {
           candidate && typeof candidate === 'object' && !Array.isArray(candidate)
             ? (candidate as Record<string, unknown>)
             : {};
+        const people = objectRows(data.persons);
+        const claims = objectRows(data.claims);
+        const candidateNumber = typeof data.index === 'number' ? data.index + 1 : index + 1;
+        const organizations = Array.isArray(data.organizations)
+          ? data.organizations.filter(
+              (value): value is string => typeof value === 'string' && value.trim().length > 0,
+            )
+          : [];
         return (
-          <article className={styles.candidate} key={index}>
-            <p>原始候选序号：{typeof data.index === 'number' ? data.index + 1 : index + 1}</p>
-            <h4>{typeof data.title === 'string' ? data.title : `候选信号 ${index + 1}`}</h4>
-            {typeof data.summary === 'string' && <p>{data.summary}</p>}
-            <p>
-              事件发生时间：
-              {typeof data.event_date === 'string' ? data.event_date : '来源未提供，待核对'}
-            </p>
-            <Evidence value={data.event_date_evidence} />
-            <h5>关键人物（待核对）</h5>
-            {objectRows(data.persons).map((person, personIndex) => (
-              <div key={personIndex}>
-                <p>
-                  {typeof person.name === 'string' ? person.name : '姓名待核对'}
-                  {typeof person.role === 'string' ? ` · ${person.role}` : ''}
-                  {typeof person.organization === 'string' ? ` · ${person.organization}` : ''}
-                </p>
-                <Evidence value={person.evidence} />
+          <article
+            className={preview.signal}
+            key={index}
+            aria-label={`候选信号 ${candidateNumber}`}
+          >
+            <header className={preview.header}>
+              <div className={preview.meta}>
+                <span className={preview.badge}>待审核 · 未发布</span>
+                <span>候选 {candidateNumber}</span>
               </div>
-            ))}
-            <h5>主张与来源证据（未独立核验）</h5>
-            {objectRows(data.claims).map((claim, claimIndex) => (
-              <div key={claimIndex}>
-                <p>{typeof claim.text === 'string' ? claim.text : '主张待核对'}</p>
-                <Evidence value={claim.evidence} />
-              </div>
-            ))}
-            <p>
-              引用匹配只证明内容来自原文，不代表事实已经验证。AI
-              提及人物不等于已建立正式关系，当前候选尚未审核或发布。
-            </p>
-            <details>
+              <h4 className={preview.title}>
+                {typeof data.title === 'string' ? data.title : `候选信号 ${candidateNumber}`}
+              </h4>
+              <p className={preview.date}>
+                事件发生时间：
+                {typeof data.event_date === 'string' ? data.event_date : '来源未提供，待核对'}
+              </p>
+              <p className={preview.summary}>
+                {typeof data.summary === 'string' && data.summary.trim()
+                  ? data.summary
+                  : '摘要未提供，需人工补充。'}
+              </p>
+            </header>
+            <div className={preview.layout}>
+              <section className={preview.body} aria-label="信号要点与证据">
+                <h5>核心要点</h5>
+                <p className={preview.hint}>以下为候选主张；展开证据，对照原文判断是否成立。</p>
+                {claims.length === 0 && <p className={preview.missing}>未提供可核对的主张。</p>}
+                {claims.map((claim, claimIndex) => (
+                  <section key={claimIndex} className={preview.claim}>
+                    <p className={preview.claimText}>
+                      <span className={preview.number}>{claimIndex + 1}</span>
+                      {typeof claim.text === 'string' ? claim.text : '主张待核对'}
+                    </p>
+                    <details className={preview.evidence}>
+                      <summary>
+                        核对要点 {claimIndex + 1} 的原文证据（{objectRows(claim.evidence).length}{' '}
+                        条引用）
+                      </summary>
+                      <Evidence value={claim.evidence} />
+                    </details>
+                  </section>
+                ))}
+              </section>
+              <aside className={preview.context} aria-label="候选核对辅助信息">
+                <section>
+                  <h5>关键人物与组织</h5>
+                  <p className={preview.hint}>来源提及，关系尚待核实。</p>
+                  {people.length === 0 && (
+                    <p className={preview.missing}>未识别关键人物，需补充核对。</p>
+                  )}
+                  {people.map((person, personIndex) => (
+                    <div key={personIndex} className={preview.person}>
+                      <p>
+                        {typeof person.name === 'string' ? person.name : '姓名待核对'}
+                        {typeof person.role === 'string' ? ` · ${person.role}` : ''}
+                        {typeof person.organization === 'string' ? ` · ${person.organization}` : ''}
+                      </p>
+                      <details className={preview.evidence}>
+                        <summary>核对人物 {personIndex + 1} 的来源依据</summary>
+                        <Evidence value={person.evidence} />
+                      </details>
+                    </div>
+                  ))}
+                </section>
+                <section>
+                  <h5>时间依据</h5>
+                  <details className={preview.evidence}>
+                    <summary>核对事件日期的来源依据</summary>
+                    <Evidence value={data.event_date_evidence} />
+                  </details>
+                </section>
+                <section>
+                  <h5>相关组织（待核对）</h5>
+                  {organizations.length > 0 ? (
+                    <ul className={preview.organizations}>
+                      {organizations.map((name, organizationIndex) => (
+                        <li key={organizationIndex}>{name}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>未识别相关组织，需补充核对。</p>
+                  )}
+                </section>
+                <section className={preview.reviewNote}>
+                  <h5>决策前需确认</h5>
+                  <ul>
+                    <li>主张是否被原文充分支持</li>
+                    <li>日期是否为事件发生时间</li>
+                    <li>人物及组织是否与事件直接相关</li>
+                  </ul>
+                  <p>引用匹配不代表独立事实核验。本页仅供阅读核对，不会保存审核决定或发布。</p>
+                </section>
+              </aside>
+            </div>
+            <details className={preview.raw}>
               <summary>查看候选完整字段（含证据与人物）</summary>
               <pre className={styles.output}>{JSON.stringify(candidate, null, 2)}</pre>
             </details>

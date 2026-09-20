@@ -647,6 +647,7 @@ test(
         await expect(
           page.getByText('Saved person · Researcher · Saved organization', { exact: true }),
         ).toBeVisible();
+        await page.getByText(/核对要点 1 的原文证据/).click();
         await expect(
           page.getByRole('listitem').filter({ hasText: 'Original claim quote' }),
         ).toBeVisible();
@@ -680,10 +681,11 @@ test(
                 candidates: mixed
                   ? [
                       {
-                        index: 0,
+                        index: 2,
                         title: '保留的合格候选',
                         summary: '<script>unsafe()</script>',
                         persons: [],
+                        organizations: [],
                         claims: [],
                       },
                     ]
@@ -716,7 +718,17 @@ test(
             page.getByText('event_date_evidence：日期未知时', { exact: false }),
           ).toBeVisible();
           if (mixed) {
+            await expect(
+              page.getByRole('article', { name: '候选信号 3', exact: true }),
+            ).toBeVisible();
+            await expect(page.getByText('候选 3', { exact: true })).toBeVisible();
+            await expect(page.getByText('未识别相关组织，需补充核对。')).toBeVisible();
             await expect(page.getByRole('heading', { name: '保留的合格候选' })).toBeVisible();
+            await expect(page.getByText('未提供可核对的主张。')).toBeVisible();
+            await expect(page.getByText('未识别关键人物，需补充核对。')).toBeVisible();
+            await expect(page.getByText('来源未提供，待核对', { exact: false })).toBeVisible();
+            await page.getByText('核对事件日期的来源依据', { exact: true }).click();
+            await expect(page.getByText('未提供原文证据，需人工补充核对。')).toBeVisible();
             await expect(
               page.getByText('<script>unsafe()</script>', { exact: true }),
             ).toBeVisible();
@@ -900,13 +912,31 @@ test(
         await expect(
           page.getByText('Synthetic Person · Researcher · Synthetic Organization'),
         ).toBeVisible();
+        const candidate = page.getByRole('article', { name: '候选信号 1', exact: true });
+        await expect(candidate.getByText('待审核 · 未发布', { exact: true })).toBeVisible();
         await expect(
-          page.getByText('原文片段 3：<img src=x onerror=globalThis.hacked=true>'),
+          candidate.getByText('<img src=x onerror=globalThis.hacked=true>', { exact: true }),
+        ).not.toBeVisible();
+        await candidate.getByText(/核对要点 1 的原文证据/).click();
+        await expect(
+          candidate.getByText('<img src=x onerror=globalThis.hacked=true>', { exact: true }),
         ).toBeVisible();
         assert.equal(await page.evaluate(() => globalThis.hacked), undefined);
+        await expect(
+          candidate.getByRole('complementary', { name: '候选核对辅助信息' }),
+        ).toBeVisible();
+        await expect(candidate.getByText('本页仅供阅读核对', { exact: false })).toBeVisible();
+        if (process.env.HZENSE_CANDIDATE_SCREENSHOT) {
+          await candidate.scrollIntoViewIfNeeded();
+          await page.screenshot({ path: '/tmp/hzense-candidate-desktop.png' });
+        }
         assert.equal(commands.filter((entry) => entry.action === 'run').length, 1);
         await page.setViewportSize({ width: 390, height: 844 });
         await expect(page.getByRole('region', { name: '生成任务表格，可横向滚动' })).toBeVisible();
+        if (process.env.HZENSE_CANDIDATE_SCREENSHOT) {
+          await candidate.scrollIntoViewIfNeeded();
+          await page.screenshot({ path: '/tmp/hzense-candidate-mobile.png' });
+        }
         if (process.env.HZENSE_TABLE_SCREENSHOT)
           await page.screenshot({ path: '/tmp/hzense-generation-table-mobile.png' });
         assert.equal(
