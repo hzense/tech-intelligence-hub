@@ -156,8 +156,9 @@ export function AdminAiProfiles({
     <>
       <AiAvailability configured={configured} available={available} />
       <p className={styles.notice}>
-        三个阶段可以选择不同连接和模型。保存前必须通过同一连接修订、同一模型的基础连接与结构化输出测试；启用工具要求时还需通过工具调用测试。测试证明有效期
-        24 小时，修改连接后需重新测试。这里保存配置，不创建采集、核验或分析任务。
+        三个阶段可以选择不同连接和模型。保存前必须通过同一连接修订、同一模型的基础连接与结构化输出测试；启用工具要求时还需通过工具调用测试。超过
+        24
+        小时仅提醒，不自动失效；连接修订或模型变更后须具备匹配的测试记录。这里保存配置，不创建采集、核验或分析任务。
       </p>
       <p className={styles.muted}>
         选择 AI
@@ -235,6 +236,11 @@ export function AdminAiProfiles({
                   ))}
                 </ul>
               ) : null}
+              {!!profile.readiness.warnings?.length && (
+                <p className={styles.notice} role="status">
+                  部分能力测试已超过 24 小时，建议按需复测；此提醒不阻止生成，也不会自动调用模型。
+                </p>
+              )}
               <dl className={styles.facts}>
                 {stages.map(([key, label]) => (
                   <div key={key}>

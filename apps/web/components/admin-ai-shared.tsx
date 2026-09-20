@@ -27,7 +27,7 @@ const messages: Record<string, string> = {
   connection_unavailable: '连接不可用，请检查启用状态及密钥。',
   keyring_unavailable: '服务端加密密钥暂不可用，请联系管理员。',
   profile_not_ready:
-    '模型需要通过当前连接修订、同一模型的连接及结构化输出测试；要求工具调用时还需通过工具测试。证明有效期为 24 小时。',
+    '模型需要通过当前连接修订、同一模型的连接及结构化输出测试；要求工具调用时还需通过工具测试。测试超过 24 小时仅提醒，不会因此禁止生成。',
   daily_budget_exceeded: '已达到本连接的每日估算预算。',
   concurrency_limit: '已有测试运行中，请稍后查询结果。',
   daily_probe_limit: '已达到每日测试次数限制。',

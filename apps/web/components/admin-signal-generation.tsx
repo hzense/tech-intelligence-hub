@@ -16,7 +16,7 @@ type Profile = {
   revision: number;
   name: string;
   provider_host?: string;
-  readiness: { ready: boolean; reasons: string[] };
+  readiness: { ready: boolean; reasons: string[]; warnings?: string[] };
 };
 type GenerationRun = {
   id: string;
@@ -763,6 +763,11 @@ export function AdminSignalGeneration({
         </label>
         {profile && !profile.readiness.ready && (
           <p role="status">配置尚未就绪：{profile.readiness.reasons.join('、')}</p>
+        )}
+        {!!profile?.readiness.warnings?.length && (
+          <p role="status">
+            部分能力测试已超过 24 小时，建议按需复测；此提醒不阻止生成，也不会自动调用模型。
+          </p>
         )}
         {configured && batches.length === 0 && <p>暂无已完成解析的资料，请先在导入页完成解析。</p>}
         <button type="button" disabled={!batchId || !itemId} onClick={() => void inspectSource()}>

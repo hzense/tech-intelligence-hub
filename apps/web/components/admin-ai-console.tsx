@@ -489,8 +489,8 @@ export function AdminAiConsole({
           </fieldset>
         </div>
         <p className={styles.muted}>
-          基础连接成功不代表支持结构化输出或工具调用。分阶段配置必须绑定当前连接修订、相同模型及最近
-          24 小时内的独立测试。更换模型时请先核对估算单价。
+          基础连接成功不代表支持结构化输出或工具调用。分阶段配置必须绑定当前连接修订、相同模型及通过的独立测试。超过
+          24 小时仅提醒，不自动失效；更换模型时请先核对匹配测试及估算单价。
         </p>
         {pending ? (
           <div className={styles.notice}>

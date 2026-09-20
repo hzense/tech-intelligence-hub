@@ -45,6 +45,7 @@ test(
     let droppedAction = null;
     let rejectedError = null;
     let profileRevision = 2;
+    let profileWarnings = [];
     let mismatchedCreate = false;
     let dashboardRequests = 0;
     let preflightRequests = [];
@@ -101,7 +102,7 @@ test(
                   revision: profileRevision,
                   name: 'Synthetic private profile',
                   provider_host: 'synthetic-provider.example',
-                  readiness: { ready: true, reasons: [] },
+                  readiness: { ready: true, reasons: [], warnings: profileWarnings },
                 },
               ],
               batches: [
@@ -279,6 +280,7 @@ test(
       droppedAction = null;
       rejectedError = null;
       profileRevision = 2;
+      profileWarnings = [];
       mismatchedCreate = false;
       dashboardRequests = 0;
       preflightRequests = [];
@@ -296,6 +298,33 @@ test(
       await page.getByLabel('已完成解析的资料').selectOption(itemId);
       await page.getByLabel('分阶段模型配置').selectOption(profileId);
     }
+
+    await t.test(
+      'old capability warnings do not block creating a task or call AI automatically',
+      async () => {
+        const page = await newPage();
+        profileWarnings = ['extract:structured_output_test_old'];
+        await page.goto(origin);
+        await selectInput(page);
+        await page.getByLabel('已完成解析的资料').selectOption(smallItemId);
+        await expect(
+          page.getByRole('status').filter({ hasText: '部分能力测试已超过 24 小时' }),
+        ).toBeVisible();
+        await page.getByRole('button', { name: '检查生成资料（不调用 AI）', exact: true }).click();
+        await expect(
+          page.getByText(
+            '资料检查完成，未创建任务、预留预算或调用 AI。检查通过不代表事实已核验。',
+            { exact: true },
+          ),
+        ).toBeVisible();
+        await page.getByRole('checkbox').check();
+        await expect(
+          page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }),
+        ).toBeEnabled();
+        assert.equal(commands.filter((c) => ['create', 'execute'].includes(c.action)).length, 0);
+        await page.close();
+      },
+    );
 
     await t.test(
       'queued and running phases refresh read-only, terminal results stop polling',
