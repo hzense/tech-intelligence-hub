@@ -13,6 +13,7 @@ export class AiConfigError extends Error {
   readonly code: string;
 }
 export const aiConfigErrorCodes: readonly string[];
+export const AI_PROBE_OUTPUT_TOKENS: number;
 export function aiFail(code?: string): never;
 export function aiObject(
   value: unknown,

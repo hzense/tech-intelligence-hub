@@ -3,6 +3,8 @@ import { isIP } from 'node:net';
 import { URL } from 'node:url';
 import { isValidAiModelId } from './ai-model-id.mjs';
 
+export const AI_PROBE_OUTPUT_TOKENS = 2048;
+
 export const aiConfigErrorCodes = Object.freeze([
   'invalid_request',
   'invalid_configuration',
