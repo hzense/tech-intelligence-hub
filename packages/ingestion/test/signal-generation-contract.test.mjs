@@ -287,6 +287,13 @@ test('source identity cannot be replaced with model-supplied URLs or public clas
     assert.throws(() => normalizeGeneratedCandidates(output(), changed));
 });
 
+test('provider schema omits uniqueItems while runtime still rejects duplicate organizations', () => {
+  assert.doesNotMatch(JSON.stringify(generationCandidateJsonSchema), /"uniqueItems"\s*:/);
+  const value = output();
+  value.candidates[0].organizations = ['示例研究所', '示例研究所'];
+  assert.throws(() => normalize(value), { code: 'invalid_generation_output' });
+});
+
 test('provider JSON Schema and runtime agree about keys and leave authority fields server-owned', () => {
   const schema = generationCandidateJsonSchema;
   assert.deepEqual(schema.required, ['candidates', 'reason']);
