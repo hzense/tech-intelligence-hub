@@ -842,6 +842,7 @@ test(
         const callsBeforeFiltering = commands.length;
         await page.getByLabel('搜索已加载任务').fill('not-a-matching-source');
         await expect(table.getByText('没有匹配的已加载任务。')).toBeVisible();
+        await expect(table.getByRole('status')).toHaveText('显示 0 / 1 条已加载记录');
         await page.getByLabel('搜索已加载任务').fill('Synthetic source');
         await expect(table.getByRole('link', { name: '任务详情' })).toHaveCount(1);
         await page.getByLabel('任务状态', { exact: true }).selectOption('failed');
@@ -849,6 +850,11 @@ test(
         await page.getByLabel('任务状态', { exact: true }).selectOption('all');
         await page.getByLabel('搜索已加载任务').fill('');
         assert.equal(commands.length, callsBeforeFiltering);
+        profileRevision = 3;
+        await page.getByRole('button', { name: '手动刷新列表' }).click();
+        await expect(table.getByText('历史配置', { exact: true })).toBeVisible();
+        await expect(table.getByText('Synthetic private profile', { exact: true })).toHaveCount(0);
+        await expect(table.getByText('r2', { exact: true })).toBeVisible();
         await table.scrollIntoViewIfNeeded();
         if (process.env.HZENSE_TABLE_SCREENSHOT)
           await page.screenshot({ path: '/tmp/hzense-generation-table-desktop.png' });

@@ -934,7 +934,10 @@ export function AdminSignalGeneration({
         >
           <table className={styles.taskTable}>
             <caption>
-              生成任务 · 显示 {visibleRuns.length} / {data.runs.length} 条已加载记录
+              生成任务 ·{' '}
+              <span role="status" aria-live="polite" aria-atomic="true">
+                显示 {visibleRuns.length} / {data.runs.length} 条已加载记录
+              </span>
             </caption>
             <thead>
               <tr>
@@ -978,8 +981,11 @@ export function AdminSignalGeneration({
                   </td>
                   <td>
                     <span>
-                      {data.profiles.find((profile) => profile.id === run.profile_id)?.name ??
-                        '历史配置'}
+                      {data.profiles.find(
+                        (profile) =>
+                          profile.id === run.profile_id &&
+                          profile.revision === run.profile_revision,
+                      )?.name ?? '历史配置'}
                     </span>
                     <span className={styles.taskId}>r{run.profile_revision}</span>
                   </td>

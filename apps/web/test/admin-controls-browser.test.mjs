@@ -35,6 +35,8 @@ test(
           '/publication',
         ]) {
           await page.goto(`${fixture.origin}${path}?theme=${theme}`);
+          if (path === '/generation')
+            await page.getByText('诊断与使用说明', { exact: true }).click();
           await expect(page.locator('button, a').first()).toBeVisible();
           const controls = await page.locator('button, a').all();
           for (const control of controls) {
@@ -63,6 +65,8 @@ test(
           );
           const enabledControl = page.locator('a, button:enabled').first();
           if (await enabledControl.count()) {
+            // Restore keyboard modality after opening a disclosure by pointer.
+            await page.keyboard.press('Tab');
             await enabledControl.focus();
             await expect(enabledControl).toBeFocused();
             await expect(enabledControl).toHaveCSS('outline-style', 'solid');
