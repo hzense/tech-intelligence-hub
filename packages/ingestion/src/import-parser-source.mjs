@@ -18,8 +18,55 @@ def emit(text,locator):
  total+=len(text.encode('utf-8'))
  if total>1000000 or len(fragments)>=10000: fail('limit_exceeded')
  fragments.append({'text':text,'locator':locator})
-def paragraphs(text):
- for i,p in enumerate(re.split(r'\n\s*\n',text),1): emit(p,{'paragraph':i})
+def pieces(text):
+ # Bounded chunks, prefer sentence/line boundaries without dropping source text.
+ offset=0
+ while len(text)-offset>1600:
+  window=text[offset:offset+1600]
+  ends=[m.end() for m in re.finditer(r'[。！？!?；;]\s*|[.]\s+|\n',window) if m.end()>=800]
+  end=ends[-1] if ends else 1600
+  yield text[offset:offset+end],offset
+  offset+=end
+ if text[offset:]: yield text[offset:],offset
+def blocks(items,base=None):
+ pending=[]; start=0; last=0; size=0
+ def flush():
+  if pending:
+   loc=dict(base or {}); loc.update({'paragraph':start,'region':'paragraphs %d-%d'%(start,last)})
+   emit('\n\n'.join(pending),loc)
+ for number,text,heading in items:
+  text=text.strip()
+  if not text: continue
+  if '\x00' in text: fail('limit_exceeded')
+  if pending and (heading or size>=800 or size+2+len(text)>1600):
+   flush(); pending=[]; size=0
+  if len(text)>1600:
+   for part,offset in pieces(text):
+    loc=dict(base or {}); loc.update({'paragraph':number,'region':'paragraph %d chars %d-%d'%(number,offset+1,offset+len(part))})
+    emit(part,loc)
+  else:
+   if not pending: start=number
+   pending.append(text); last=number; size+=len(text)+(2 if len(pending)>1 else 0)
+ flush()
+def paragraphs(text,base=None,markdown=False):
+ text=text.replace('\r\n','\n').replace('\r','\n')
+ items=[]; lines=[]; heading=False; fence=None
+ def finish():
+  if lines: items.append((len(items)+1,'\n'.join(lines),heading))
+ for line in text.split('\n'):
+  marker=re.match(r'^ {0,3}(\x60{3,}|~{3,})',line) if markdown else None
+  if fence:
+   lines.append(line)
+   if re.fullmatch(r' {0,3}'+re.escape(fence[0])+'{'+str(len(fence))+r',}\s*',line): fence=None
+   continue
+  is_heading=markdown and bool(re.match(r'^ {0,3}#{1,6}\s',line))
+  if not line.strip() or is_heading:
+   finish(); lines=[]; heading=False
+  if line.strip():
+   lines.append(line); heading=heading or is_heading
+  if marker: fence=marker[1]
+ finish()
+ blocks(items,base)
 def xml(data):
  if b'\x00' in data or b'<!DOCTYPE' in data.upper() or b'<!ENTITY' in data.upper(): fail('unsupported_content')
  return ET.fromstring(data)
@@ -32,12 +79,21 @@ def archive(data):
  if len({i.filename for i in infos})!=len(infos): fail('unsupported_content')
  return z
 class HTMLText(HTMLParser):
- def __init__(self): super().__init__(convert_charrefs=True); self.skip=0; self.parts=[]
+ def __init__(self): super().__init__(convert_charrefs=True); self.skip=0; self.parts=[]; self.items=[]; self.heading=False
+ def boundary(self):
+  text=re.sub(r'\s+',' ',''.join(self.parts)).strip()
+  if text: self.items.append((len(self.items)+1,text,self.heading))
+  self.parts=[]; self.heading=False
  def handle_starttag(self,tag,attrs):
   if tag in ('script','style','noscript','template'): self.skip+=1
-  if tag in ('p','div','br','h1','h2','h3','li','tr'): self.parts.append('\n\n')
+  if self.skip: return
+  if tag in ('p','div','section','article','h1','h2','h3','h4','h5','h6','li','tr','blockquote','pre'):
+   self.boundary(); self.heading=tag in ('h1','h2','h3','h4','h5','h6')
+  elif tag in ('br','td','th'): self.parts.append(' ')
  def handle_endtag(self,tag):
-  if tag in ('script','style','noscript','template') and self.skip: self.skip-=1
+  if tag in ('script','style','noscript','template') and self.skip:
+   self.skip-=1; return
+  if not self.skip and tag in ('p','div','section','article','h1','h2','h3','h4','h5','h6','li','tr','blockquote','pre'): self.boundary()
  def handle_data(self,data):
   if not self.skip: self.parts.append(data)
 try:
@@ -47,17 +103,22 @@ try:
   if data.startswith((b'%PDF-',b'PK\x03\x04',b'\x89PNG',b'\xff\xd8')): fail('unsupported_content')
   text=data.decode('utf-8-sig',errors='strict')
   if fmt=='html':
-   p=HTMLText(); p.feed(text); paragraphs(''.join(p.parts))
+   p=HTMLText(); p.feed(text); p.close(); p.boundary(); blocks(p.items)
   elif fmt=='csv':
    csv.field_size_limit(20000)
    for row,values in enumerate(csv.reader(io.StringIO(text)),1):
     if row>1000000: fail('limit_exceeded')
     for col,value in enumerate(values,1): emit(value,{'row':row,'column':col})
-  else: paragraphs(text)
+  else: paragraphs(text,markdown=fmt=='markdown')
  elif fmt=='docx':
   z=archive(data); root=xml(z.read('word/document.xml'))
-  for i,p in enumerate(root.iter('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}p'),1):
-   emit(''.join(t.text or '' for t in p.iter('{http://schemas.openxmlformats.org/wordprocessingml/2006/main}t')),{'paragraph':i})
+  ns='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+  items=[]
+  for i,p in enumerate(root.iter(ns+'p'),1):
+   style=p.find(ns+'pPr/'+ns+'pStyle')
+   heading=style is not None and bool(re.match(r'(?i)^(heading|title)',style.get(ns+'val','')))
+   items.append((i,''.join(t.text or '' for t in p.iter(ns+'t')),heading))
+  blocks(items)
  elif fmt=='xlsx':
   z=archive(data); ns={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
   strings=[]
@@ -91,7 +152,7 @@ try:
   for i,page in enumerate(reader.pages,1):
    text=page.extract_text() or ''
    if not text.strip(): fail('ocr_required')
-   emit(text,{'page':i})
+   paragraphs(text,{'page':i})
   if not fragments: fail('ocr_required')
  else: fail('unsupported_content')
  if not fragments: fail('unsupported_content')
