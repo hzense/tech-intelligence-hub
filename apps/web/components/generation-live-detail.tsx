@@ -1,5 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import controls from './admin-controls.module.css';
 import {
   GenerationProgress,
   generationIsActive,
@@ -50,6 +52,11 @@ export function GenerationLiveDetail({
         <p role="alert">状态刷新失败，显示最后一次已保存状态。请刷新页面核对；不会重新调用 AI。</p>
       )}
       <PrivateResult result={run.result} />
+      {run.status === 'completed' && (
+        <Link className={controls.button} href="/admin/signal-review">
+          进入候选审核工作台
+        </Link>
+      )}
       <details>
         <summary>查看完整任务记录</summary>
         <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>

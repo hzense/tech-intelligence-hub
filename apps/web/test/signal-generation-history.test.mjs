@@ -6,6 +6,8 @@ import process from 'node:process';
 import { Buffer } from 'node:buffer';
 import { build } from 'esbuild';
 import { createGenerationHandler } from '../lib/admin-signal-generation-handler.ts';
+import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
+import { assessGeneratedCandidates } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 const { Request } = globalThis;
 
 // Exercise the real server adapter, configuration policy, DTO and SQL store.
@@ -186,6 +188,50 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   );
   service.ancillary.importFails = true;
   assert.equal((await service.generationDashboard('admin')).runs[0].status, 'completed');
+  // Review uses the same owner-scoped read-only path with generation disabled.
+  const reviewSource = {
+    classification: 'private',
+    fragments: [{ id: 'fragment-1', text: '公开宣布产品', locator: { paragraph: 1 } }],
+  };
+  service.row.snapshot = { source: reviewSource };
+  service.row.source_hash = signalGenerationSourceHash(reviewSource);
+  service.row.result = assessGeneratedCandidates(
+    {
+      candidates: [
+        {
+          title: '产品发布',
+          summary: '公开宣布产品',
+          event_date: null,
+          event_date_evidence: [],
+          persons: [],
+          organizations: [],
+          claims: [
+            {
+              text: '公开宣布产品',
+              evidence: [{ fragment_id: 'fragment-1', quote: '公开宣布产品' }],
+            },
+          ],
+        },
+      ],
+      reason: 'fixture',
+    },
+    reviewSource,
+  );
+  const aiReads = service.ancillary.aiReads;
+  const reviewStart = service.queries.length;
+  assert.equal((await service.candidateReviewDetail('admin', service.id, 0)).canPublish, false);
+  assert.equal((await service.candidateReviewQueue('admin')).length, 1);
+  await assert.rejects(service.candidateReviewDetail('other-admin', service.id, 0), {
+    code: 'not_found',
+  });
+  assert.deepEqual(await service.candidateReviewQueue('other-admin'), []);
+  service.row.deleted_at = '2026-09-21';
+  await assert.rejects(service.candidateReviewDetail('admin', service.id, 0), {
+    code: 'not_found',
+  });
+  service.row.deleted_at = null;
+  assert.equal(service.ancillary.aiReads, aiReads);
+  assert.ok(!service.queries.slice(reviewStart).some((q) => /^(UPDATE|INSERT|DELETE)/.test(q.sql)));
   service.setSafeRole(false);
   await assert.rejects(service.generationDetail('admin', service.id), {
     code: 'database_unavailable',
