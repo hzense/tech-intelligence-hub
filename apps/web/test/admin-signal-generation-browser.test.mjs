@@ -374,11 +374,10 @@ test(
           finished_at: new Date().toISOString(),
         };
         await page.clock.fastForward(5100);
-        await expect(page.getByText('已完成', { exact: true })).toBeVisible();
-        await expect(page.getByRole('progressbar', { name: '已完成的任务阶段' })).toHaveAttribute(
-          'value',
-          '5',
-        );
+        await expect(
+          page.getByRole('table').getByText('生成完成（私有候选）', { exact: true }),
+        ).toBeVisible();
+        await expect(page.getByRole('progressbar', { name: '已完成的任务阶段' })).toHaveCount(0);
         const count = commands.length;
         await page.clock.fastForward(15000);
         assert.equal(commands.length, count);
@@ -438,6 +437,7 @@ test(
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
         await expect(page.getByRole('link', { name: '任务详情', exact: true })).toHaveCount(1);
         page.once('dialog', (dialog) => dialog.dismiss());
+        await page.getByText('更多操作', { exact: true }).click();
         await page.getByRole('button', { name: '删除任务', exact: true }).click();
         await expect(page.getByRole('link', { name: '任务详情', exact: true })).toHaveCount(1);
         page.once('dialog', (dialog) => dialog.accept());
@@ -504,14 +504,16 @@ test(
         ];
         await page.goto(origin);
         await expect(page.getByText('生成达到本次任务的截止时间', { exact: false })).toBeVisible();
+        await page.getByText('诊断与使用说明', { exact: true }).click();
         await expect(
           page.getByText('执行后立即提交后台长任务，模型最多等待 25 分钟', { exact: false }),
         ).toBeVisible();
-        await expect(page.getByRole('heading', { name: /失败$/ })).toBeVisible();
+        await expect(page.getByRole('table').getByText('失败', { exact: true })).toBeVisible();
         await expect(
           page.getByRole('button', { name: '执行生成（调用 AI，可能计费）', exact: true }),
         ).toHaveCount(0);
         assert.equal(commands.length, 0);
+        await page.getByText('更多操作', { exact: true }).click();
         await expect(page.getByRole('button', { name: '删除任务', exact: true })).toBeDisabled();
         await expect(page.getByText('执行保护期尚未结束', { exact: false })).toBeVisible();
         runs[0].can_delete = true;
@@ -520,7 +522,7 @@ test(
         page.once('dialog', (dialog) => dialog.accept());
         await page.getByRole('button', { name: '删除任务', exact: true }).click();
         await expect(page.getByText('任务已删除。', { exact: true })).toBeVisible();
-        await expect(page.getByRole('heading', { name: /失败$/ })).toHaveCount(0);
+        await expect(page.getByRole('table').getByText('失败', { exact: true })).toHaveCount(0);
         assert.deepEqual(
           commands.map((command) => command.action),
           ['delete'],
@@ -597,6 +599,7 @@ test(
         ).toBeDisabled();
         await page.getByRole('button', { name: '手动刷新列表', exact: true }).click();
         await expect.poll(() => dashboardRequests).toBe(2);
+        await page.getByText('更多操作', { exact: true }).first().click();
         await page.getByRole('button', { name: '查看任务与私有候选', exact: true }).first().click();
         await expect(
           page.getByRole('heading', { name: 'Saved historical candidate' }),
@@ -661,6 +664,7 @@ test(
             },
           ];
           await page.goto(`${origin}/?off`);
+          await page.getByText('更多操作', { exact: true }).click();
           await page.getByRole('button', { name: '查看任务与私有候选', exact: true }).click();
           await expect(
             page.getByText(`结构与引用校验通过 ${mixed ? 1 : 0} 条，拒绝 1 条。`, { exact: false }),
@@ -689,6 +693,7 @@ test(
       async () => {
         const page = await newPage();
         await page.goto(`${origin}/?off&nohistory`);
+        await page.getByText('诊断与使用说明', { exact: true }).click();
         const preflight = page.getByRole('button', { name: '运行只读连接预检', exact: true });
         await expect(preflight).toBeEnabled();
         assert.equal(preflightRequests.length, 0);
@@ -723,6 +728,7 @@ test(
       async () => {
         const page = await newPage();
         await page.goto(`${origin}/?off&nohistory`);
+        await page.getByText('诊断与使用说明', { exact: true }).click();
         const preflight = page.getByRole('button', { name: '运行只读连接预检', exact: true });
         const secret = 'SYNTHETIC_PREFLIGHT_SECRET';
         for (const fixture of [
@@ -803,7 +809,7 @@ test(
         assert.equal(commands.length, 0);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
-        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
+        await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
         assert.equal(commands.length, 1);
         assert.equal(commands[0].consent, true);
         assert.equal(commands[0].profileRevision, 2);
@@ -818,8 +824,40 @@ test(
         ).toBeDisabled();
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
-        await expect(page.getByRole('heading', { name: /生成完成（私有候选）$/ })).toBeVisible();
+        await expect(
+          page.getByRole('table').getByText('生成完成（私有候选）', { exact: true }),
+        ).toBeVisible();
         await expect(page.getByText('PRIVATE_THINKING_SENTINEL', { exact: true })).toHaveCount(0);
+        const table = page.getByRole('table', { name: /生成任务/ });
+        await expect(table).toBeVisible();
+        assert.deepEqual(await table.getByRole('columnheader').allTextContents(), [
+          '资料 / 任务',
+          '状态',
+          '模型配置',
+          '创建时间',
+          '费用',
+          '操作',
+        ]);
+        await expect(page.getByRole('button', { name: '删除任务', exact: true })).toHaveCount(0);
+        const callsBeforeFiltering = commands.length;
+        await page.getByLabel('搜索已加载任务').fill('not-a-matching-source');
+        await expect(table.getByText('没有匹配的已加载任务。')).toBeVisible();
+        await expect(table.getByRole('status')).toHaveText('显示 0 / 1 条已加载记录');
+        await page.getByLabel('搜索已加载任务').fill('Synthetic source');
+        await expect(table.getByRole('link', { name: '任务详情' })).toHaveCount(1);
+        await page.getByLabel('任务状态', { exact: true }).selectOption('failed');
+        await expect(table.getByText('没有匹配的已加载任务。')).toBeVisible();
+        await page.getByLabel('任务状态', { exact: true }).selectOption('all');
+        await page.getByLabel('搜索已加载任务').fill('');
+        assert.equal(commands.length, callsBeforeFiltering);
+        profileRevision = 3;
+        await page.getByRole('button', { name: '手动刷新列表' }).click();
+        await expect(table.getByText('历史配置', { exact: true })).toBeVisible();
+        await expect(table.getByText('Synthetic private profile', { exact: true })).toHaveCount(0);
+        await expect(table.getByText('r2', { exact: true })).toBeVisible();
+        await table.scrollIntoViewIfNeeded();
+        if (process.env.HZENSE_TABLE_SCREENSHOT)
+          await page.screenshot({ path: '/tmp/hzense-generation-table-desktop.png' });
         await expect(
           page.getByText('Synthetic Person · Researcher · Synthetic Organization'),
         ).toBeVisible();
@@ -829,6 +867,9 @@ test(
         assert.equal(await page.evaluate(() => globalThis.hacked), undefined);
         assert.equal(commands.filter((entry) => entry.action === 'run').length, 1);
         await page.setViewportSize({ width: 390, height: 844 });
+        await expect(page.getByRole('region', { name: '生成任务表格，可横向滚动' })).toBeVisible();
+        if (process.env.HZENSE_TABLE_SCREENSHOT)
+          await page.screenshot({ path: '/tmp/hzense-generation-table-mobile.png' });
         assert.equal(
           await page.evaluate(
             () => globalThis.document.documentElement.scrollWidth <= globalThis.innerWidth,
@@ -871,7 +912,7 @@ test(
         ]);
         assert.equal(commands.length, 1);
         await page.reload();
-        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
+        await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
         assert.equal(commands.length, 1);
         await expect(
           page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }),
@@ -884,8 +925,9 @@ test(
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
         await expect(page.getByText('请求未确认完成。', { exact: false })).toBeVisible();
         await page.reload();
-        await expect(page.getByRole('heading', { name: /失败$/ })).toBeVisible();
+        await expect(page.getByRole('table').getByText('失败', { exact: true })).toBeVisible();
         await expect(page.getByRole('button', { name: '已核对，准备下一次生成' })).toBeEnabled();
+        await page.getByText('更多操作', { exact: true }).click();
         await expect(page.getByRole('button', { name: '删除任务', exact: true })).toBeDisabled();
         await expect(
           page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }),
@@ -972,7 +1014,7 @@ test(
           page.getByText('SYNTHETIC_RAW_PROVIDER_DIAGNOSTIC', { exact: false }),
         ).toHaveCount(0);
         await confirm.click();
-        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
+        await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
         assert.equal(commands.length, 4);
         for (const command of commands) assert.deepEqual(command, originalRequest);
         assert.equal(commands.filter((command) => command.action === 'run').length, 0);
@@ -1009,7 +1051,9 @@ test(
         assert.equal(commands.length, 0);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
-        await expect(page.getByRole('heading', { name: /生成完成（私有候选）$/ })).toBeVisible();
+        await expect(
+          page.getByRole('table').getByText('生成完成（私有候选）', { exact: true }),
+        ).toBeVisible();
         assert.deepEqual(commands, [{ action: 'run', id }]);
         await page.close();
       },
@@ -1125,7 +1169,7 @@ test(
         await page.getByLabel('已完成解析的资料').selectOption(smallItemId);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
-        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
+        await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
         assert.notEqual(commands.at(-1).id, originalId);
         assert.equal(commands.at(-1).itemId, smallItemId);
         assert.equal(commands.filter((command) => command.action === 'run').length, 0);
@@ -1186,7 +1230,7 @@ test(
         await page.getByLabel('分阶段模型配置').selectOption(profileId);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
-        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
+        await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
         assert.notEqual(commands.at(-1).id, originalId);
         assert.equal(commands.at(-1).itemId, smallItemId);
         assert.equal(commands.filter((command) => command.action === 'run').length, 0);
@@ -1215,7 +1259,7 @@ test(
         await page.getByRole('checkbox').check();
         page.once('dialog', (dialog) => dialog.accept());
         await retry.click();
-        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
+        await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
         assert.equal(commands.length, 2);
         assert.equal(commands[1].retryOf, pendingItemId);
         assert.notEqual(commands[1].id, originalId);
@@ -1364,7 +1408,8 @@ test(
         assert.notEqual(retryId, rejectedId);
         assert.equal(commands.at(-1).retryOf, pendingItemId);
         await page.reload();
-        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
+        await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
+        await page.getByText('更多操作', { exact: true }).click();
         await expect(
           page.getByText(`重新生成自任务：${pendingItemId}；旧费用保留。`),
         ).toBeVisible();
@@ -1384,7 +1429,9 @@ test(
         assert.equal(commands.filter((command) => command.action === 'run').length, 0);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
-        await expect(page.getByRole('heading', { name: /生成完成（私有候选）$/ })).toBeVisible();
+        await expect(
+          page.getByRole('table').getByText('生成完成（私有候选）', { exact: true }),
+        ).toBeVisible();
         assert.deepEqual(commands.at(-1), { action: 'run', id: retryId });
         assert.equal(commands.filter((command) => command.action === 'run').length, 1);
         await page.close();
@@ -1446,7 +1493,7 @@ test(
         await expect(create).toBeDisabled();
         await page.getByRole('checkbox').check();
         await create.click();
-        await expect(page.getByRole('heading', { name: /待执行$/ })).toBeVisible();
+        await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
         assert.notEqual(commands.at(-1).id, originalRequest.id);
         assert.equal(commands.at(-1).profileRevision, 3);
         assert.equal(commands.at(-1).itemId, itemId);

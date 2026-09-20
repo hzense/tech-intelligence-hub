@@ -67,7 +67,7 @@ const statuses: Record<GenerationRun['status'], string> = {
   running: '生成中',
   completed: '生成完成（私有候选）',
   failed: '失败',
-  unknown: '失败',
+  unknown: '结果待核对',
   cancelled: '已取消',
 };
 const errorMessages: Record<string, string> = {
@@ -276,6 +276,8 @@ export function AdminSignalGeneration({
   historyConfigured?: boolean;
 }) {
   const [data, setData] = useState<ListResponse>({ runs: [], profiles: [], batches: [] });
+  const [taskQuery, setTaskQuery] = useState('');
+  const [taskStatus, setTaskStatus] = useState('all');
   const [batchId, setBatchId] = useState('');
   const [itemId, setItemId] = useState('');
   const [profileId, setProfileId] = useState('');
@@ -658,22 +660,32 @@ export function AdminSignalGeneration({
     });
   }
 
+  const visibleRuns = data.runs.filter(
+    (run) =>
+      (taskStatus === 'all' || run.status === taskStatus) &&
+      `${run.source_name ?? sourceNames.get(run.item_id) ?? '生成任务'} ${run.id}`
+        .toLowerCase()
+        .includes(taskQuery.trim().toLowerCase()),
+  );
   return (
     <main className={`section-shell ${styles.main}`}>
       <Link className={controls.button} href="/admin">
         返回管理后台
       </Link>
       <h1>AI 信号生成</h1>
-      <AdminGenerationPreflight />
       <p>
         从已完成解析的私有资料生成候选信号。创建任务与调用 AI 分开执行，不自动重试，不发布到网站。
       </p>
-      <p>候选中的摘要、事件发生时间、证据、人物与组织均需核验；没有足够依据时可以不生成候选。</p>
-      <p>首版每次处理一份资料，解析文本最多 48,000 字节；超限会停止，不自动截断。</p>
-      <p>
-        执行后立即提交后台长任务，模型最多等待 25
-        分钟。可关闭页面，重新打开查看进度；不会自动重试模型调用。
-      </p>
+      <details className={styles.diagnostics}>
+        <summary>诊断与使用说明</summary>
+        <AdminGenerationPreflight />
+        <p>候选中的摘要、事件发生时间、证据、人物与组织均需核验；没有足够依据时可以不生成候选。</p>
+        <p>首版每次处理一份资料，解析文本最多 48,000 字节；超限会停止，不自动截断。</p>
+        <p>
+          执行后立即提交后台长任务，模型最多等待 25
+          分钟。可关闭页面，重新打开查看进度；不会自动重试模型调用。
+        </p>
+      </details>
       {!configured && (
         <p role="status">
           AI 信号生成已关闭或尚未完成配置，不可创建或执行新任务。
@@ -879,8 +891,34 @@ export function AdminSignalGeneration({
       <p role="status" aria-live="polite">
         {message}
       </p>
-      <section className={styles.panel} aria-label="生成任务列表">
+      <section className={styles.taskSection} aria-label="生成任务列表">
         <h2>生成任务</h2>
+        <div className={styles.tableToolbar}>
+          <label>
+            搜索已加载任务
+            <input
+              type="search"
+              placeholder="资料名称或任务编号"
+              value={taskQuery}
+              onChange={(event) => setTaskQuery(event.target.value)}
+            />
+          </label>
+          <label>
+            任务状态
+            <select
+              aria-label="任务状态"
+              value={taskStatus}
+              onChange={(event) => setTaskStatus(event.target.value)}
+            >
+              <option value="all">全部状态</option>
+              {Object.entries(statuses).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         {pollError && (
           <p role="alert">进度刷新失败，显示最后一次状态。请手动刷新核对；不会重复调用 AI。</p>
         )}
@@ -888,87 +926,167 @@ export function AdminSignalGeneration({
           显示已保存状态；查看不会改写任务。长期停留“生成中”或结果未知的任务需人工对账，不要重复调用。
         </p>
         {data.runs.length === 0 && <p>暂无生成任务。</p>}
-        {data.runs.map((run) => (
-          <article key={run.id} className={styles.run}>
-            <h3>
-              {run.source_name ?? sourceNames.get(run.item_id) ?? '生成任务'} ·{' '}
-              {statuses[run.status]}
-            </h3>
-            <p className={styles.id}>请求 ID：{run.id}</p>
-            <GenerationProgress run={run} />
-            {run.retry_of && (
-              <p className={styles.id}>重新生成自任务：{run.retry_of}；旧费用保留。</p>
-            )}
-            <p className={styles.id}>
-              资料：{run.item_id} · 配置：{run.profile_id} r{run.profile_revision}
-            </p>
-            <p>
-              预留：{money(run.reserved_microusd)} · 记账金额：{money(run.charged_microusd)}
-              （非供应商最终账单）
-            </p>
-            {knownErrorMessage(run.error_code) && <p>{knownErrorMessage(run.error_code)}</p>}
-            <div className={styles.actions}>
-              <Link
-                className={controls.button}
-                href={`/admin/signal-generation/${run.id}`}
-                prefetch={false}
-              >
-                任务详情
-              </Link>
-              <button
-                disabled={!historyConfigured || busy}
-                onClick={() => void command('detail', run.id)}
-              >
-                查看任务与私有候选
-              </button>
-              <button
-                disabled={
-                  !historyConfigured ||
-                  busy ||
-                  !(run.can_delete ?? !['running', 'unknown'].includes(run.status))
-                }
-                onClick={() => void deleteTask(run.id)}
-              >
-                删除任务
-              </button>
-              {run.status === 'pending' && (
-                <>
-                  {!pending && (
-                    <button
-                      disabled={!configured || busy || !storageReady}
-                      onClick={() => trackRun(run)}
-                    >
-                      选择此任务并核对接收方
-                    </button>
-                  )}
-                  <button
-                    disabled={
-                      !configured || busy || !consent || !storageReady || pending?.id !== run.id
-                    }
-                    onClick={() => void command('run', run.id)}
-                  >
-                    {run.progress_phase === 'queued'
-                      ? '核对后重新提交原任务（不重复调用）'
-                      : '执行生成（调用 AI，可能计费）'}
-                  </button>
-                  <button
-                    disabled={!configured || busy}
-                    onClick={() => void command('cancel', run.id)}
-                  >
-                    取消未执行任务
-                  </button>
-                </>
+        <div
+          className={styles.tableScroll}
+          role="region"
+          aria-label="生成任务表格，可横向滚动"
+          tabIndex={0}
+        >
+          <table className={styles.taskTable}>
+            <caption>
+              生成任务 ·{' '}
+              <span role="status" aria-live="polite" aria-atomic="true">
+                显示 {visibleRuns.length} / {data.runs.length} 条已加载记录
+              </span>
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">资料 / 任务</th>
+                <th scope="col">状态</th>
+                <th scope="col">模型配置</th>
+                <th scope="col">创建时间</th>
+                <th scope="col">费用</th>
+                <th scope="col">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleRuns.length === 0 && (
+                <tr>
+                  <td colSpan={6}>没有匹配的已加载任务。</td>
+                </tr>
               )}
-            </div>
-            {run.can_delete === false && run.status !== 'running' && (
-              <p>
-                {configured
-                  ? '执行保护期尚未结束，暂不能删除；稍后手动刷新列表。'
-                  : '当前处于只读或受限状态，暂不能删除任务。'}
-              </p>
-            )}
-          </article>
-        ))}
+              {visibleRuns.map((run) => (
+                <tr key={run.id}>
+                  <th scope="row" className={styles.sourceCell}>
+                    <Link
+                      href={`/admin/signal-generation/${run.id}`}
+                      prefetch={false}
+                      className={styles.sourceTitle}
+                    >
+                      {run.source_name ?? sourceNames.get(run.item_id) ?? '生成任务'}
+                    </Link>
+                    <span className={styles.taskId} title={run.id}>
+                      {run.id.slice(0, 8)}
+                    </span>
+                  </th>
+                  <td>
+                    <span className={styles.statusBadge} data-status={run.status}>
+                      <span aria-hidden="true" className={styles.statusDot} />
+                      {statuses[run.status]}
+                    </span>
+                    {generationIsActive(run) && <GenerationProgress run={run} />}
+                    {knownErrorMessage(run.error_code) && (
+                      <p className={styles.taskError}>{knownErrorMessage(run.error_code)}</p>
+                    )}
+                  </td>
+                  <td>
+                    <span>
+                      {data.profiles.find(
+                        (profile) =>
+                          profile.id === run.profile_id &&
+                          profile.revision === run.profile_revision,
+                      )?.name ?? '历史配置'}
+                    </span>
+                    <span className={styles.taskId}>r{run.profile_revision}</span>
+                  </td>
+                  <td className={styles.timeCell}>
+                    {Number.isFinite(Date.parse(run.created_at)) ? (
+                      <time dateTime={run.created_at}>
+                        {new Date(run.created_at).toISOString().slice(0, 16).replace('T', ' ')} UTC
+                      </time>
+                    ) : (
+                      '时间未记录'
+                    )}
+                  </td>
+                  <td className={styles.costCell}>
+                    <strong>{money(run.charged_microusd)}</strong>
+                    <span className={styles.taskId}>记账金额</span>
+                    <span className={styles.taskId}>预留 {money(run.reserved_microusd)}</span>
+                  </td>
+                  <td>
+                    <div className={styles.actions}>
+                      <Link
+                        className={controls.button}
+                        href={`/admin/signal-generation/${run.id}`}
+                        prefetch={false}
+                      >
+                        任务详情
+                      </Link>
+                      <details className={styles.moreActions}>
+                        <summary>更多操作</summary>
+                        <p className={styles.id}>请求 ID：{run.id}</p>
+                        {run.retry_of && (
+                          <p className={styles.id}>重新生成自任务：{run.retry_of}；旧费用保留。</p>
+                        )}
+                        <p className={styles.id}>
+                          资料：{run.item_id} · 配置：{run.profile_id} r{run.profile_revision}
+                        </p>
+                        <button
+                          disabled={!historyConfigured || busy}
+                          onClick={() => void command('detail', run.id)}
+                        >
+                          查看任务与私有候选
+                        </button>
+                        <button
+                          disabled={
+                            !historyConfigured ||
+                            busy ||
+                            !(run.can_delete ?? !['running', 'unknown'].includes(run.status))
+                          }
+                          onClick={() => void deleteTask(run.id)}
+                        >
+                          删除任务
+                        </button>
+                      </details>
+                      {run.status === 'pending' && (
+                        <>
+                          {!pending && (
+                            <button
+                              disabled={!configured || busy || !storageReady}
+                              onClick={() => trackRun(run)}
+                            >
+                              选择此任务并核对接收方
+                            </button>
+                          )}
+                          <button
+                            disabled={
+                              !configured ||
+                              busy ||
+                              !consent ||
+                              !storageReady ||
+                              pending?.id !== run.id
+                            }
+                            onClick={() => void command('run', run.id)}
+                          >
+                            {run.progress_phase === 'queued'
+                              ? '核对后重新提交原任务（不重复调用）'
+                              : '执行生成（调用 AI，可能计费）'}
+                          </button>
+                          <button
+                            disabled={!configured || busy}
+                            onClick={() => void command('cancel', run.id)}
+                          >
+                            取消未执行任务
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    {run.can_delete === false && run.status !== 'running' && (
+                      <p>
+                        {configured
+                          ? '执行保护期尚未结束，暂不能删除；稍后手动刷新列表。'
+                          : '当前处于只读或受限状态，暂不能删除任务。'}
+                      </p>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className={styles.tableNote}>
+          窄屏可横向滚动表格。费用为系统记账与预留金额，并非供应商最终账单。候选尚未审核或发布。
+        </p>
       </section>
       {detail?.result !== undefined && <PrivateResult result={detail.result} />}
     </main>
