@@ -778,7 +778,23 @@ suite('private AI generation PostgreSQL ledger', () => {
       ),
     ).toEqual([a.id]);
   });
-  it('retains max(reserved, actual) for failures and prohibits a new paid retry', async () => {
+  it.each([0, 1, 25])(
+    'persists API cost %s independently of budget reservation',
+    async (amount) => {
+      const a = await claimed();
+      const saved = await finishSignalGeneration({
+        ...args(a),
+        token: a.lease_token,
+        outcome: 'failed',
+        errorCode: 'generation_invalid_output',
+        chargedMicrousd: 100,
+        providerCostMicrousd: amount,
+      });
+      expect(saved.charged_microusd).toBe(String(amount));
+      expect(saved.reserved_microusd).toBe('10');
+    },
+  );
+  it('retains max(reserved, estimate) for failures and prohibits a new paid retry', async () => {
     const a = await claimed();
     const failed = await finishSignalGeneration({
       ...args(a),

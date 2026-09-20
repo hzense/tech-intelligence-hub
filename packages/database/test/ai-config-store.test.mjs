@@ -756,6 +756,14 @@ describe('AI probe reservation and exactly-once external attempt', () => {
     const result = await run(f, request(), async () => output);
     expect(result).toMatchObject({ status: 'failed', error_code: 'invalid_response', result: {} });
   });
+  it.each([0, 123, 100000])('prefers API cost %s over the reservation', async (amount) => {
+    const f = fake();
+    const saved = await run(f, request(), async () => ({
+      ...success(),
+      provider_cost_microusd: amount,
+    }));
+    expect(saved.charged_microusd).toBe(String(amount));
+  });
   it('never retries an external call after a final database failure', async () => {
     const options = { failTag: 'probe-finish' },
       f = fake(options),

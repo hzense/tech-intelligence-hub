@@ -639,10 +639,16 @@ test('OpenRouter probes share catalog routing and keep their budgeted output lim
       assert.equal(body.max_tokens, 2048);
       assert.equal(body.temperature, undefined);
       assert.equal(body.response_format.json_schema.schema.properties.ok.enum, undefined);
-      return response(JSON.stringify({ sentinel: aiProbeSentinel, ok: true }));
+      const returned = await response(
+        JSON.stringify({ sentinel: aiProbeSentinel, ok: true }),
+      ).json();
+      returned.usage.cost = 0.001234;
+      return Response.json(returned);
     },
   });
-  assert.equal((await invoke(input)).success, true);
+  const result = await invoke(input);
+  assert.equal(result.success, true);
+  assert.equal(result.provider_cost_microusd, 1234);
   assert.equal(posts, 1);
 });
 

@@ -7,6 +7,7 @@ import {
   type LanguageModelUsage,
 } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { readApiCostMicrousd } from './ai-response-cost.ts';
 import { openRouterOptions, portableJsonSchema } from './ai-model-compatibility.ts';
 import {
   GENERATION_LIMITS,
@@ -46,6 +47,7 @@ export interface GenerationProviderResult {
   output?: ReturnType<typeof assessGeneratedCandidates>;
   input_tokens: number | null;
   output_tokens: number | null;
+  provider_cost_microusd?: number | null;
   error_code?: 'generation_failed' | 'generation_unknown';
   diagnostic?: { code: GenerationDiagnosticCode | null; elapsed_ms: number; timeout_ms: number };
 }
@@ -90,11 +92,13 @@ export function createSignalGenerationInvoker(
     let timer: ReturnType<typeof setTimeout> | undefined;
     let expired = false;
     let generationAttempted = false;
+    let providerCost: number | null = null;
     const complete = (
       result: GenerationProviderResult,
       code: GenerationDiagnosticCode | null,
     ): GenerationProviderResult => ({
       ...result,
+      provider_cost_microusd: providerCost,
       diagnostic: {
         code,
         elapsed_ms: generationElapsedMs(started),
@@ -139,11 +143,14 @@ export function createSignalGenerationInvoker(
         baseURL: input.connection.base_url,
         apiKey: input.apiKey,
         supportsStructuredOutputs: true,
-        fetch: (url, init) => {
+        fetch: async (url, init) => {
           // Catalog GET failures are definite no-generation outcomes. Once the
           // SDK attempts a POST, retain conservative unknown-outcome handling.
           if (init?.method === 'POST') generationAttempted = true;
-          return transport(url, init);
+          const response = await transport(url, init);
+          if (init?.method === 'POST')
+            providerCost = await readApiCostMicrousd(response, input.connection.base_url);
+          return response;
         },
       });
       const operation = async (): Promise<GenerationProviderResult> => {

@@ -120,10 +120,14 @@ async function historyDtos(owner: string, runs: store.SignalGenerationRun[]) {
 }
 export async function generationDashboard(owner: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
+  // Keep history available if accounting cannot be read; never substitute zero.
+  const dailyUsage = await store
+    .getSignalGenerationDailyUsage({ pool: generationHistoryPool, owner })
+    .catch(() => null);
   // History does not depend on import, AI credentials, budgets or the spend switch.
   if (!generationConfigured()) {
     const runs = await store.listSignalGenerations({ ...historyOptions(), owner });
-    return { runs: await historyDtos(owner, runs), profiles: [], batches: [] };
+    return { runs: await historyDtos(owner, runs), profiles: [], batches: [], dailyUsage };
   }
   const [runs, ai, batches] = await Promise.all([
     store.listSignalGenerations({ ...historyOptions(), owner }),
@@ -133,6 +137,7 @@ export async function generationDashboard(owner: string) {
   ]);
   return {
     runs: await historyDtos(owner, runs),
+    dailyUsage,
     profiles: (ai?.profiles ?? []).map(({ id, revision, name, readiness, stages }) => {
       const connection = ai?.connections.find((item) => item.id === stages.extract.connection_id);
       return {

@@ -121,6 +121,7 @@ export type AiProbeInvoker = (input: {
   modelId?: string;
   allowedHosts: AiAllowedHosts;
 }) => Promise<{
+  provider_cost_microusd?: number | null;
   success: boolean;
   model_id: string | null;
   input_tokens: number | null;

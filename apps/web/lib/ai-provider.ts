@@ -1,5 +1,6 @@
 import { generateText, Output, jsonSchema, tool, isStepCount, type LanguageModelUsage } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { readApiCostMicrousd } from './ai-response-cost.ts';
 import { Buffer } from 'node:buffer';
 import { openRouterOptions, portableJsonSchema } from './ai-model-compatibility.ts';
 import { isValidAiModelId } from '../../../packages/database/src/ai-model-id.mjs';
@@ -28,6 +29,7 @@ export interface AiProbeInput {
   allowedHosts: readonly string[] | ReadonlySet<string>;
 }
 export interface AiProbeResult {
+  provider_cost_microusd?: number | null;
   success: boolean;
   model_id: string | null;
   input_tokens: number | null;
@@ -185,7 +187,14 @@ export function createAiProbeInvoker(
           name: 'hzense-compatible',
           baseURL: input.connection.base_url,
           apiKey: input.apiKey,
-          fetch: transport,
+          fetch: async (url, init) => {
+            const response = await transport(url, init);
+            if (init?.method === 'POST') {
+              const cost = await readApiCostMicrousd(response, input.connection.base_url);
+              if (cost !== null) base.provider_cost_microusd = cost;
+            }
+            return response;
+          },
           supportsStructuredOutputs: true,
         });
         const common = {
