@@ -72,7 +72,7 @@ export const generationCandidateJsonSchema = Object.freeze({
           organizations: {
             type: 'array',
             maxItems: 12,
-            uniqueItems: true,
+            // Enforce uniqueness in runtime validation; some providers reject uniqueItems.
             items: { type: 'string', minLength: 1, maxLength: 200 },
           },
           claims: {
