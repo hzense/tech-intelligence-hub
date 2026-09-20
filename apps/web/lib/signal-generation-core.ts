@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { aiUuid } from '../../../packages/database/src/ai-config-contract.mjs';
 import {
   signalGenerationSourceHash,
+  signalGenerationProfileIdentity,
   type SignalGenerationRun,
   type SignalGenerationSnapshot,
 } from '../../../packages/database/src/signal-generation-store.mjs';
@@ -250,7 +251,10 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       access = await deps.access(run.profile_id, run.profile_revision, true);
       if (
         !access.apiKey ||
-        !isDeepStrictEqual(access.profile, run.snapshot.profile) ||
+        !isDeepStrictEqual(
+          signalGenerationProfileIdentity(access.profile),
+          signalGenerationProfileIdentity(run.snapshot.profile),
+        ) ||
         !isDeepStrictEqual(access.connection, run.snapshot.connection)
       )
         return fail('configuration_changed');
@@ -292,7 +296,10 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       await deps.source(owner, run.batch_id, run.item_id);
       const after = await deps.access(run.profile_id, run.profile_revision);
       if (
-        !isDeepStrictEqual(after.profile, run.snapshot.profile) ||
+        !isDeepStrictEqual(
+          signalGenerationProfileIdentity(after.profile),
+          signalGenerationProfileIdentity(run.snapshot.profile),
+        ) ||
         !isDeepStrictEqual(after.connection, run.snapshot.connection)
       )
         return fail('configuration_changed');
