@@ -6,9 +6,10 @@ import { importParserSource } from '../src/import-parser-source.mjs';
 import { parseImportOutput } from '../src/import-task-contract.mjs';
 // Synthetic files only; Python creates/removes its own bounded temporary fixtures.
 function parse(format, source, setup = '') {
-  const harness = `import tempfile,os,sys,json,io,zipfile\nwith tempfile.TemporaryDirectory(prefix='hzense-parser-test-') as d:\n os.chdir(d)\n source=${JSON.stringify(source)}\n ${setup || "open('input','wb').write(source.encode('utf-8'))"}\n sys.argv=['parser','input',${JSON.stringify(format)},'output']\n exec(${JSON.stringify(importParserSource)})\n print(open('output').read())`;
+  const harness = `import tempfile,os,sys,json,io,zipfile\nwith tempfile.TemporaryDirectory(prefix='hzense-parser-test-') as d:\n os.chdir(d)\n source=json.loads(sys.stdin.read())\n ${setup || "open('input','wb').write(source.encode('utf-8'))"}\n sys.argv=['parser','input',${JSON.stringify(format)},'output']\n exec(${JSON.stringify(importParserSource)})\n print(open('output').read())`;
   const result = spawnSync(process.env.HZENSE_PARSER_TEST_PYTHON ?? 'python3', ['-c', harness], {
     encoding: 'utf8',
+    input: JSON.stringify(source),
     timeout: 10000,
     maxBuffer: 2000000,
   });
@@ -71,6 +72,26 @@ test('packing preserves all short blocks and normalizes CRLF', () => {
   assert.ok(out.fragments.length < 10);
   assert.equal(out.fragments.map((f) => f.text).join('\n\n'), paragraphs.join('\n\n'));
   assert.equal(parse('text', '正文\u0000尾部').error, 'limit_exceeded');
+});
+test('chunk boundaries retain whitespace and exact character ranges', () => {
+  const source = 'A'.repeat(900) + '.  \n  ' + 'B'.repeat(900);
+  const out = parseImportOutput(parse('text', source).output);
+  assert.equal(out.fragments.map((f) => f.text).join(''), source);
+  for (const fragment of out.fragments) {
+    const [, start, end] = fragment.locator.region.match(/chars (\d+)-(\d+)/);
+    assert.equal(
+      fragment.text,
+      Array.from(source)
+        .slice(Number(start) - 1, Number(end))
+        .join(''),
+    );
+  }
+});
+test('HTML pre blocks retain internal whitespace and inline markup text', () => {
+  const out = parseImportOutput(
+    parse('html', '<p>背景</p><pre>a\n  <code>b</code>\n\n    c</pre><p>结论</p>').output,
+  );
+  assert.equal(out.fragments[0].text, '背景\n\na\n  b\n\n    c\n\n结论');
 });
 test('Markdown fenced code is not mistaken for a new section', () => {
   const source = '# 章节\n\n~~~python\n# comment\n\nprint(1)\n~~~\n\n解释';

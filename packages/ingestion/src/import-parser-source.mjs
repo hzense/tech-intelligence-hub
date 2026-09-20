@@ -8,9 +8,9 @@ if sys.platform=='linux': resource.setrlimit(resource.RLIMIT_AS,(768*1024*1024,7
 resource.setrlimit(resource.RLIMIT_FSIZE,(4*1024*1024,4*1024*1024))
 fragments=[]; warnings=[]; total=0
 def fail(code): raise ValueError(code)
-def emit(text,locator):
+def emit(text,locator,trim=True):
  global total
- text=text.strip()
+ if trim: text=text.strip()
  if not text: return
  for key,value in locator.items():
   if key in ('page','paragraph','row','column') and (value<1 or value>(300 if key=='page' else 1000000)): fail('limit_exceeded')
@@ -43,7 +43,7 @@ def blocks(items,base=None):
   if len(text)>1600:
    for part,offset in pieces(text):
     loc=dict(base or {}); loc.update({'paragraph':number,'region':'paragraph %d chars %d-%d'%(number,offset+1,offset+len(part))})
-    emit(part,loc)
+    emit(part,loc,trim=False)
   else:
    if not pending: start=number
    pending.append(text); last=number; size+=len(text)+(2 if len(pending)>1 else 0)
@@ -79,9 +79,11 @@ def archive(data):
  if len({i.filename for i in infos})!=len(infos): fail('unsupported_content')
  return z
 class HTMLText(HTMLParser):
- def __init__(self): super().__init__(convert_charrefs=True); self.skip=0; self.parts=[]; self.items=[]; self.heading=False
+ def __init__(self): super().__init__(convert_charrefs=True); self.skip=0; self.parts=[]; self.items=[]; self.heading=False; self.pre=0
  def boundary(self):
-  text=re.sub(r'\s+',' ',''.join(self.parts)).strip()
+  text=''.join(self.parts)
+  if not self.pre: text=re.sub(r'\s+',' ',text)
+  text=text.strip()
   if text: self.items.append((len(self.items)+1,text,self.heading))
   self.parts=[]; self.heading=False
  def handle_starttag(self,tag,attrs):
@@ -89,11 +91,13 @@ class HTMLText(HTMLParser):
   if self.skip: return
   if tag in ('p','div','section','article','h1','h2','h3','h4','h5','h6','li','tr','blockquote','pre'):
    self.boundary(); self.heading=tag in ('h1','h2','h3','h4','h5','h6')
-  elif tag in ('br','td','th'): self.parts.append(' ')
+   if tag=='pre': self.pre+=1
+  elif tag in ('br','td','th'): self.parts.append('\n' if self.pre and tag=='br' else ' ')
  def handle_endtag(self,tag):
   if tag in ('script','style','noscript','template') and self.skip:
    self.skip-=1; return
   if not self.skip and tag in ('p','div','section','article','h1','h2','h3','h4','h5','h6','li','tr','blockquote','pre'): self.boundary()
+  if not self.skip and tag=='pre' and self.pre: self.pre-=1
  def handle_data(self,data):
   if not self.skip: self.parts.append(data)
 try:
