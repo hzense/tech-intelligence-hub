@@ -257,7 +257,10 @@ test(
           res.end(JSON.stringify({ id: command.id, deleted: true }));
           return;
         }
-        if (command.action === 'cancel') run.status = 'cancelled';
+        if (command.action === 'cancel') {
+          run.status = 'cancelled';
+          run.can_delete = true;
+        }
         if (droppedAction === command.action) {
           droppedAction = null;
           // Simulate a proxy failure after the server accepted the command.
@@ -529,50 +532,55 @@ test(
       },
     );
 
-    await t.test('legacy unknown tracking clears only after the server lease ends', async () => {
-      const page = await newPage();
-      const id = '55555555-5555-4555-8555-555555555555';
-      runs = [
-        {
-          id,
-          batch_id: batchId,
-          item_id: itemId,
-          profile_id: profileId,
-          profile_revision: 2,
-          status: 'unknown',
-          can_delete: false,
-          reserved_microusd: '203730',
-          charged_microusd: '203730',
-          result: null,
+    for (const terminalStatus of ['unknown', 'failed', 'cancelled', 'completed']) {
+      await t.test(
+        `${terminalStatus} tracking clears only after the server lease ends`,
+        async () => {
+          const page = await newPage();
+          const id = '55555555-5555-4555-8555-555555555555';
+          runs = [
+            {
+              id,
+              batch_id: batchId,
+              item_id: itemId,
+              profile_id: profileId,
+              profile_revision: 2,
+              status: terminalStatus,
+              can_delete: false,
+              reserved_microusd: '203730',
+              charged_microusd: '203730',
+              result: null,
+            },
+          ];
+          await page.goto(origin);
+          await page.evaluate(
+            ({ key, value }) => globalThis.sessionStorage.setItem(key, JSON.stringify(value)),
+            {
+              key: storageKey,
+              value: { id, batchId, itemId, profileId, profileRevision: 2 },
+            },
+          );
+          await page.reload();
+          await expect(page.getByLabel('导入已解析资料')).toBeDisabled();
+          assert.notEqual(
+            await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+            null,
+          );
+          runs[0].can_delete = true;
+          await page.getByRole('button', { name: '手动刷新列表' }).click();
+          await expect(page.getByLabel('导入已解析资料')).toBeEnabled();
+          assert.equal(
+            await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+            null,
+          );
+          await expect(page.getByRole('checkbox').last()).not.toBeChecked();
+          assert.equal(runs.length, 1);
+          assert.equal(runs[0].charged_microusd, '203730');
+          assert.equal(commands.length, 0);
+          await page.close();
         },
-      ];
-      await page.goto(origin);
-      await page.evaluate(
-        ({ key, value }) => globalThis.sessionStorage.setItem(key, JSON.stringify(value)),
-        {
-          key: storageKey,
-          value: { id, batchId, itemId, profileId, profileRevision: 2 },
-        },
       );
-      await page.reload();
-      await expect(page.getByLabel('导入已解析资料')).toBeDisabled();
-      assert.notEqual(
-        await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
-        null,
-      );
-      runs[0].can_delete = true;
-      await page.getByRole('button', { name: '手动刷新列表' }).click();
-      await expect(page.getByLabel('导入已解析资料')).toBeEnabled();
-      assert.equal(
-        await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
-        null,
-      );
-      await expect(page.getByRole('checkbox').last()).not.toBeChecked();
-      assert.equal(runs.length, 1);
-      assert.equal(runs[0].charged_microusd, '203730');
-      assert.equal(commands.length, 0);
-      await page.close();
-    });
+    }
 
     await t.test(
       'uncertain outcomes are failed tasks and can be deleted after the execution lease ends',
@@ -1190,6 +1198,7 @@ test(
           {
             id: canonicalId,
             status: 'completed',
+            can_delete: true,
             batch_id: batchId,
             item_id: itemId,
             profile_id: profileId,

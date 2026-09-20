@@ -330,8 +330,8 @@ export function AdminSignalGeneration({
     : profile;
   const terminal =
     tracked &&
-    (['completed', 'failed', 'cancelled'].includes(tracked.status) ||
-      (tracked.status === 'unknown' && tracked.can_delete === true));
+    ['completed', 'failed', 'cancelled', 'unknown'].includes(tracked.status) &&
+    tracked.can_delete === true;
   const activeIds = data.runs
     .filter(generationIsActive)
     .map((run) => run.id)
