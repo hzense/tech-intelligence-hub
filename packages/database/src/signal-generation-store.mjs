@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import console from 'node:console';
 import { Buffer } from 'node:buffer';
 import { isDeepStrictEqual } from 'node:util';
 import {
@@ -252,14 +253,46 @@ function matchesGenerationIdentity(row, parsed) {
   const normalized = generationFingerprint(identity);
   // Accept old hashes only when they still authenticate the complete saved
   // snapshot. Compare normalized identities without rewriting historical rows.
-  return (
+  const matches =
     (row.fingerprint === normalized || row.fingerprint === digest(identity)) &&
     (normalized === parsed.fingerprint ||
       // A deleted receipt is never reused or executed here: it only returns
       // task_deleted. Server-derived estimates may change with framing rules;
       // require every other input and both budget ceilings to match exactly.
-      (row.deleted_at && generationFingerprint(identity, true) === parsed.recoveryFingerprint))
-  );
+      (row.deleted_at && generationFingerprint(identity, true) === parsed.recoveryFingerprint));
+  if (!matches) {
+    const fields = Object.keys(identity).filter((key) => {
+      if (key === 'snapshot' || key === 'configuration') return false;
+      return !isDeepStrictEqual(identity[key], parsed.identity[key]);
+    });
+    for (const key of ['source', 'profile', 'connection']) {
+      const normalize = key === 'profile' ? signalGenerationProfileIdentity : (value) => value;
+      if (
+        !isDeepStrictEqual(
+          normalize(identity.snapshot[key]),
+          normalize(parsed.identity.snapshot[key]),
+        )
+      )
+        fields.push(`snapshot.${key}`);
+    }
+    for (const key of ['version', 'batchLimitMicrousd', 'dailyLimitMicrousd', 'reserveMicrousd']) {
+      if (key === 'reserveMicrousd' && row.deleted_at) continue;
+      if (identity.configuration[key] !== parsed.configuration[key])
+        fields.push(`configuration.${key}`);
+    }
+    // Fixed field names and booleans only. Never log values, hashes, source text,
+    // account identifiers, credentials, request bodies or historical snapshots.
+    console.warn(
+      JSON.stringify({
+        event: 'signal_generation_identity_conflict',
+        stored_fingerprint_valid:
+          row.fingerprint === normalized || row.fingerprint === digest(identity),
+        deleted: Boolean(row.deleted_at),
+        fields,
+      }),
+    );
+  }
+  return matches;
 }
 function inputs(owner, request, snapshot, configuration) {
   ownerId(owner);
@@ -313,6 +346,7 @@ function inputs(owner, request, snapshot, configuration) {
   const identity = { owner, ...request, snapshot: safe, configuration: config };
   delete identity.id;
   return {
+    identity,
     snapshot: safe,
     configuration: config,
     fingerprint: generationFingerprint(identity),
