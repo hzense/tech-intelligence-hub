@@ -328,7 +328,10 @@ export function AdminSignalGeneration({
         (entry) => entry.id === pending.profileId && entry.revision === pending.profileRevision,
       )
     : profile;
-  const terminal = tracked && ['completed', 'failed', 'cancelled'].includes(tracked.status);
+  const terminal =
+    tracked &&
+    (['completed', 'failed', 'cancelled'].includes(tracked.status) ||
+      (tracked.status === 'unknown' && tracked.can_delete === true));
   const activeIds = data.runs
     .filter(generationIsActive)
     .map((run) => run.id)
