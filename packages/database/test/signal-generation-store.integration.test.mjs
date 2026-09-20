@@ -455,14 +455,62 @@ suite('private AI generation PostgreSQL ledger', () => {
           previousId: row.id,
         });
       }
+      const deletedBefore = (
+        await pool.query('SELECT * FROM public.signal_generation_runs WHERE id=$1', [row.id])
+      ).rows[0];
+      for (const replay of [changed, semantic]) {
+        const updatedEstimate = {
+          ...replay,
+          configuration: { ...replay.configuration, reserveMicrousd: 11 },
+        };
+        await expect(createSignalGeneration(updatedEstimate)).rejects.toMatchObject({
+          code: 'task_deleted',
+          previousId: row.id,
+        });
+        for (const forbidden of [
+          {
+            ...updatedEstimate,
+            owner: 'another-owner',
+            request: { ...updatedEstimate.request, id: row.id },
+          },
+          {
+            ...updatedEstimate,
+            configuration: { ...updatedEstimate.configuration, batchLimitMicrousd: 90 },
+          },
+          {
+            ...updatedEstimate,
+            configuration: { ...updatedEstimate.configuration, dailyLimitMicrousd: 90 },
+          },
+          {
+            ...updatedEstimate,
+            snapshot: {
+              ...updatedEstimate.snapshot,
+              profile: { ...updatedEstimate.snapshot.profile, name: 'changed config' },
+            },
+          },
+          { ...updatedEstimate, request: { ...updatedEstimate.request, batchId: randomUUID() } },
+        ])
+          await expect(createSignalGeneration(forbidden)).rejects.toMatchObject({
+            code: 'request_id_conflict',
+          });
+      }
+      expect(
+        (await pool.query('SELECT * FROM public.signal_generation_runs WHERE id=$1', [row.id]))
+          .rows[0],
+      ).toEqual(deletedBefore);
       await pool.query(
         "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
         [row.id],
       );
-      const retry = { ...semantic, retryOf: row.id };
+      const retry = {
+        ...semantic,
+        retryOf: row.id,
+        configuration: { ...semantic.configuration, reserveMicrousd: 11 },
+      };
       const recreated = await createSignalGeneration(retry);
       expect(recreated.status).toBe('pending');
       expect(Number(recreated.charged_microusd)).toBe(0);
+      expect(recreated.configuration.reserveMicrousd).toBe(11);
       changed.snapshot.profile.readiness.warnings = [];
       expect((await createSignalGeneration(retry)).id).toBe(recreated.id);
       expect(

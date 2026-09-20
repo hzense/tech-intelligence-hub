@@ -225,16 +225,19 @@ export function signalGenerationProfileIdentity(profile) {
   delete identity.readiness;
   return identity;
 }
-function generationFingerprint(identity) {
+function generationFingerprint(identity, omitEstimate = false) {
+  const configuration = { ...identity.configuration };
+  if (omitEstimate) delete configuration.reserveMicrousd;
   return digest({
     ...identity,
+    configuration,
     snapshot: {
       ...identity.snapshot,
       profile: signalGenerationProfileIdentity(identity.snapshot.profile),
     },
   });
 }
-function matchesGenerationIdentity(row, fingerprint) {
+function matchesGenerationIdentity(row, parsed) {
   const identity = {
     owner: row.owner_id,
     batchId: row.batch_id,
@@ -251,7 +254,11 @@ function matchesGenerationIdentity(row, fingerprint) {
   // snapshot. Compare normalized identities without rewriting historical rows.
   return (
     (row.fingerprint === normalized || row.fingerprint === digest(identity)) &&
-    normalized === fingerprint
+    (normalized === parsed.fingerprint ||
+      // A deleted receipt is never reused or executed here: it only returns
+      // task_deleted. Server-derived estimates may change with framing rules;
+      // require every other input and both budget ceilings to match exactly.
+      (row.deleted_at && generationFingerprint(identity, true) === parsed.recoveryFingerprint))
   );
 }
 function inputs(owner, request, snapshot, configuration) {
@@ -305,7 +312,12 @@ function inputs(owner, request, snapshot, configuration) {
   const config = canonical(configuration);
   const identity = { owner, ...request, snapshot: safe, configuration: config };
   delete identity.id;
-  return { snapshot: safe, configuration: config, fingerprint: generationFingerprint(identity) };
+  return {
+    snapshot: safe,
+    configuration: config,
+    fingerprint: generationFingerprint(identity),
+    recoveryFingerprint: generationFingerprint(identity, true),
+  };
 }
 async function transaction(pool, work, readOnly = false) {
   let client,
@@ -389,7 +401,7 @@ export async function createSignalGeneration({
       ])
     ).rows[0];
     if (old) {
-      if (old.owner_id !== owner || !matchesGenerationIdentity(old, parsed.fingerprint))
+      if (old.owner_id !== owner || !matchesGenerationIdentity(old, parsed))
         fail('request_id_conflict');
       if (old.deleted_at) {
         const error = new SignalGenerationError('task_deleted');
@@ -415,7 +427,7 @@ export async function createSignalGeneration({
       )
     ).rows[0];
     if (previous) {
-      if (!matchesGenerationIdentity(previous, parsed.fingerprint)) fail('request_id_conflict');
+      if (!matchesGenerationIdentity(previous, parsed)) fail('request_id_conflict');
       if (previous.deleted_at) {
         const error = new SignalGenerationError('task_deleted');
         error.previousId = previous.id;
