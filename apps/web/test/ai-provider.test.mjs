@@ -572,7 +572,7 @@ test('DNS failures and mixed invalid answers do not fall back to another resolve
   assert.equal(requests, 0);
 });
 
-test('connection uses current SDK once, fixed sentinel, 128 tokens and no automatic fallback', async () => {
+test('connection uses current SDK once, fixed sentinel, 2048 tokens and no automatic fallback', async () => {
   let calls = 0;
   const invoke = createAiProbeInvoker({
     resolve,
@@ -581,7 +581,7 @@ test('connection uses current SDK once, fixed sentinel, 128 tokens and no automa
       const body = JSON.parse(request.body);
       assert.equal(request.url.pathname, '/v1/chat/completions');
       assert.equal(body.model, 'provider/fixture-model');
-      assert.equal(body.max_tokens, 128);
+      assert.equal(body.max_tokens, 2048);
       assert.equal(body.stream, undefined);
       assert.equal(body.messages.at(-1).content.includes(aiProbeSentinel), true);
       return response(aiProbeSentinel);
@@ -609,6 +609,43 @@ test('connection uses current SDK once, fixed sentinel, 128 tokens and no automa
   assert.equal(JSON.stringify(result).includes(apiKey), false);
 });
 
+test('OpenRouter probes share catalog routing and keep their budgeted output limit', async () => {
+  let posts = 0;
+  const input = fixture('structured_output');
+  input.connection.base_url = 'https://openrouter.ai/api/v1';
+  input.allowedHosts = ['openrouter.ai'];
+  const invoke = createAiProbeInvoker({
+    resolve,
+    request: async (request) => {
+      if (request.url.pathname.endsWith('/models'))
+        return Response.json({
+          data: [
+            {
+              id: input.modelId,
+              supported_parameters: [
+                'max_tokens',
+                'response_format',
+                'structured_outputs',
+                'reasoning',
+              ],
+              reasoning: { mandatory: true, supported_efforts: ['low', 'high'] },
+            },
+          ],
+        });
+      posts++;
+      const body = JSON.parse(request.body);
+      assert.deepEqual(body.provider, { require_parameters: true });
+      assert.deepEqual(body.reasoning, { exclude: true, effort: 'low' });
+      assert.equal(body.max_tokens, 2048);
+      assert.equal(body.temperature, undefined);
+      assert.equal(body.response_format.json_schema.schema.properties.ok.enum, undefined);
+      return response(JSON.stringify({ sentinel: aiProbeSentinel, ok: true }));
+    },
+  });
+  assert.equal((await invoke(input)).success, true);
+  assert.equal(posts, 1);
+});
+
 test('structured output sends real json_schema and requires exact validated sentinel object', async () => {
   let calls = 0;
   const invoke = createAiProbeInvoker({
@@ -618,10 +655,9 @@ test('structured output sends real json_schema and requires exact validated sent
       const body = JSON.parse(request.body);
       assert.equal(body.response_format.type, 'json_schema');
       assert.equal(body.response_format.json_schema.schema.additionalProperties, false);
-      assert.equal(
-        body.response_format.json_schema.schema.properties.sentinel.const,
+      assert.deepEqual(body.response_format.json_schema.schema.properties.sentinel.enum, [
         aiProbeSentinel,
-      );
+      ]);
       return response(JSON.stringify({ sentinel: aiProbeSentinel, ok: true }));
     },
   });

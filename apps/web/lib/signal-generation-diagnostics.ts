@@ -15,6 +15,9 @@ export const generationDiagnosticCodes = [
   'generation_invalid_response',
   'generation_invalid_configuration',
   'generation_invalid_output',
+  'generation_output_truncated',
+  'generation_capability_failed',
+  'generation_invalid_model',
   'generation_output_rejected',
   'generation_sdk_error',
 ] as const;

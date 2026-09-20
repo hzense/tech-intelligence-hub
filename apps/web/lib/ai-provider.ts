@@ -1,7 +1,9 @@
 import { generateText, Output, jsonSchema, tool, isStepCount, type LanguageModelUsage } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { Buffer } from 'node:buffer';
+import { openRouterOptions, portableJsonSchema } from './ai-model-compatibility.ts';
 import { isValidAiModelId } from '../../../packages/database/src/ai-model-id.mjs';
+import { AI_PROBE_OUTPUT_TOKENS } from '../../../packages/database/src/ai-config-contract.mjs';
 import {
   AiProbeError,
   createPinnedAiFetch,
@@ -42,7 +44,7 @@ function validSentinel(value: unknown): value is { sentinel: string; ok: true } 
   return Object.keys(row).length === 2 && row.sentinel === aiProbeSentinel && row.ok === true;
 }
 const schema = jsonSchema<{ sentinel: string; ok: true }>(
-  {
+  portableJsonSchema({
     type: 'object',
     properties: {
       sentinel: { type: 'string', const: aiProbeSentinel },
@@ -50,7 +52,7 @@ const schema = jsonSchema<{ sentinel: string; ok: true }>(
     },
     required: ['sentinel', 'ok'],
     additionalProperties: false,
-  },
+  }),
   {
     validate: (value) =>
       validSentinel(value)
@@ -169,6 +171,16 @@ export function createAiProbeInvoker(
             result: { models, count: models.length, truncated },
           };
         }
+        const routerOptions = await openRouterOptions(
+          input.connection.base_url,
+          safeModel!,
+          transport,
+          input.kind === 'structured_output'
+            ? 'structured'
+            : input.kind === 'tool_calling'
+              ? 'tools'
+              : 'text',
+        );
         const provider = createOpenAICompatible({
           name: 'hzense-compatible',
           baseURL: input.connection.base_url,
@@ -179,7 +191,8 @@ export function createAiProbeInvoker(
         const common = {
           model: provider.chatModel(safeModel!),
           maxRetries: 0,
-          maxOutputTokens: 128,
+          maxOutputTokens: AI_PROBE_OUTPUT_TOKENS,
+          ...(routerOptions ? { providerOptions: { hzenseCompatible: routerOptions } } : {}),
           abortSignal: controller.signal,
           stopWhen: isStepCount(1),
           onStepEnd: ({ usage }: { usage: LanguageModelUsage }) => {

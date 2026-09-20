@@ -593,13 +593,14 @@ describe('AI probe reservation and exactly-once external attempt', () => {
       expect(f.commits).toBe(2);
       expect(input.apiKey).toBe(key);
       expect(f.state.probes[0].status).toBe('running');
+      expect(f.state.probes[0].configuration.max_output_tokens).toBe(2048);
       return success();
     });
     const result = await run(f, req, invoke);
     expect(result).toMatchObject({
       status: 'succeeded',
-      reserved_microusd: '8448',
-      charged_microusd: '8448',
+      reserved_microusd: '12288',
+      charged_microusd: '12288',
     });
     expect(JSON.stringify([result, f.calls])).not.toContain(key);
     expect(result).not.toHaveProperty('configuration');
@@ -691,7 +692,7 @@ describe('AI probe reservation and exactly-once external attempt', () => {
     options.failCommit = 0;
     f.state.probes[0].created_at = new Date(+timestamp - 61000);
     const result = await run(f, req, invoke);
-    expect(result).toMatchObject({ status: 'unknown', charged_microusd: '8448' });
+    expect(result).toMatchObject({ status: 'unknown', charged_microusd: '12288' });
     expect(invoke).not.toHaveBeenCalled();
   });
   it.each(['get', 'list'])(
@@ -708,7 +709,7 @@ describe('AI probe reservation and exactly-once external attempt', () => {
         operation === 'get'
           ? await getAiProbe({ pool: f.pool, id: req.id })
           : (await listAiProbes({ pool: f.pool }))[0];
-      expect(result).toMatchObject({ status: 'unknown', charged_microusd: '8448' });
+      expect(result).toMatchObject({ status: 'unknown', charged_microusd: '12288' });
       expect(invoke).not.toHaveBeenCalled();
     },
   );
@@ -734,7 +735,7 @@ describe('AI probe reservation and exactly-once external attempt', () => {
     });
     expect(result).toMatchObject({
       status: 'failed',
-      charged_microusd: '8448',
+      charged_microusd: '12288',
       error_code: 'network_error',
       result: {},
     });

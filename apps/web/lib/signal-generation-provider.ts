@@ -7,6 +7,7 @@ import {
   type LanguageModelUsage,
 } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { openRouterOptions, portableJsonSchema } from './ai-model-compatibility.ts';
 import {
   GENERATION_LIMITS,
   REJECTED_CANDIDATES_REASON,
@@ -59,7 +60,10 @@ function classifyFailure(error: unknown, expired: boolean): GenerationDiagnostic
       return safeGenerationDiagnosticCode(`generation_${current.code}`) ?? 'generation_sdk_error';
     if (current.name === 'AbortError' || current.name === 'TimeoutError')
       return 'generation_timeout';
-    if (NoObjectGeneratedError.isInstance(current)) return 'generation_invalid_output';
+    if (NoObjectGeneratedError.isInstance(current))
+      return current.finishReason === 'length'
+        ? 'generation_output_truncated'
+        : 'generation_invalid_output';
     if (current instanceof SignalGenerationError) return 'generation_invalid_output';
     current = current.cause;
   }
@@ -119,27 +123,34 @@ export function createSignalGenerationInvoker(
           reject(new Error('generation_unknown'));
         }, generationTimeoutMs);
       });
+      const transport = createPinnedAiFetch(
+        {
+          baseUrl: input.connection.base_url,
+          apiKey: input.apiKey,
+          allowedHosts: input.allowedHosts,
+          signal: controller.signal,
+          requestPurpose: 'signal-generation',
+        },
+        dependencies,
+      );
       const provider = createOpenAICompatible({
         name: 'hzense-generation',
         baseURL: input.connection.base_url,
         apiKey: input.apiKey,
         supportsStructuredOutputs: true,
-        fetch: createPinnedAiFetch(
-          {
-            baseUrl: input.connection.base_url,
-            apiKey: input.apiKey,
-            allowedHosts: input.allowedHosts,
-            signal: controller.signal,
-            requestPurpose: 'signal-generation',
-          },
-          dependencies,
-        ),
+        fetch: transport,
       });
       const operation = async (): Promise<GenerationProviderResult> => {
+        const routerOptions = await openRouterOptions(
+          input.connection.base_url,
+          input.stage.model_id,
+          transport,
+          'structured',
+        );
         const result = await generateText({
           model: provider.chatModel(input.stage.model_id),
           output: Output.object({
-            schema: jsonSchema(generationCandidateJsonSchema, {
+            schema: jsonSchema(portableJsonSchema(generationCandidateJsonSchema), {
               validate: (value) => {
                 try {
                   validateGenerationEnvelope(value);
@@ -154,12 +165,10 @@ export function createSignalGenerationInvoker(
           prompt: JSON.stringify({ untrusted_source: input.source }),
           maxRetries: 0,
           maxOutputTokens: input.stage.max_output_tokens,
-          temperature: input.stage.temperature,
+          ...(routerOptions ? {} : { temperature: input.stage.temperature }),
           // OpenRouter-specific response control; keep reasoning enabled internally
           // if the model needs it, but do not request its private reasoning output.
-          ...(new URL(input.connection.base_url).hostname === 'openrouter.ai'
-            ? { providerOptions: { hzenseGeneration: { reasoning: { exclude: true } } } }
-            : {}),
+          ...(routerOptions ? { providerOptions: { hzenseGeneration: routerOptions } } : {}),
           stopWhen: isStepCount(1),
           abortSignal: controller.signal,
           onStepEnd: ({ usage: measured }: { usage: LanguageModelUsage }) => {
@@ -167,6 +176,11 @@ export function createSignalGenerationInvoker(
             usage.output_tokens = safeTokens(measured.outputTokens);
           },
         });
+        if (result.finishReason === 'length')
+          return complete(
+            { success: false, ...usage, error_code: 'generation_failed' },
+            'generation_output_truncated',
+          );
         if (
           result.toolCalls.length ||
           JSON.stringify(result.output).includes(input.apiKey) ||

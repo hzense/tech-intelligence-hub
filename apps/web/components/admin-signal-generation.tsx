@@ -84,6 +84,11 @@ const errorMessages: Record<string, string> = {
   generation_invalid_configuration: '生成配置未通过调用前校验，请核对连接和模型配置版本。',
   generation_invalid_output:
     '生成结果未通过结构或原文证据校验，未保存为可用候选。请先核对原任务及费用。',
+  generation_output_truncated:
+    '模型达到输出 token 上限，结果不完整（推理也可能占用额度）。未自动重试，请核对费用后调整模型或资料。',
+  generation_capability_failed:
+    '模型目录未声明本次所需的结构化输出能力，已在生成调用前停止。请选择支持 JSON Schema 的模型。',
+  generation_invalid_model: '模型不在当前供应商目录中或能力信息缺失，请刷新模型列表后重新配置。',
   generation_output_rejected: '生成结果触发内容安全校验，未保存为可用候选。',
   generation_sdk_error: '模型调用发生未分类异常，请按任务编号核对脱敏日志与费用，不要重复调用。',
   generation_postflight_failed: '模型调用后的资料或配置复核失败，结果未交付；请核对原任务及费用。',

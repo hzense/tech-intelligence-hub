@@ -3,6 +3,7 @@ import { Buffer } from 'node:buffer';
 import { isDeepStrictEqual } from 'node:util';
 import {
   AiConfigError,
+  AI_PROBE_OUTPUT_TOKENS,
   aiFail,
   aiObject,
   aiUuid,
@@ -589,14 +590,14 @@ export async function runAiProbe({ pool, request, keyring, allowedHosts, invoke 
       );
       if (Number(usage.today_count) >= 100) aiFail('daily_probe_limit');
       if (Number(usage.active) >= row.settings.max_concurrency) aiFail('concurrency_limit');
-      const amount = v.kind === 'models' ? 0n : cost(8192, 128, row.settings);
+      const amount = v.kind === 'models' ? 0n : cost(8192, AI_PROBE_OUTPUT_TOKENS, row.settings);
       if (BigInt(usage.today_cost) + amount > BigInt(row.settings.daily_budget_microusd))
         aiFail('daily_budget_exceeded');
       const configuration = {
         protocol: row.protocol,
         base_url: row.base_url,
         settings: row.settings,
-        max_output_tokens: 128,
+        max_output_tokens: AI_PROBE_OUTPUT_TOKENS,
         reserved_input_tokens: 8192,
       };
       const saved = one(

@@ -160,9 +160,9 @@ test('real SDK structured extraction yields only private candidates and exact ev
   const request = JSON.parse(f.calls[0].body);
   const schema = request.response_format.json_schema.schema;
   assert.equal(request.response_format.type, 'json_schema');
-  assert.equal(
-    schema.properties.candidates.items.properties.event_date.anyOf[0].pattern,
-    '^[0-9]{4}-[0-9]{2}-[0-9]{2}$',
+  assert.match(
+    schema.properties.candidates.items.properties.event_date.anyOf[0].description,
+    /pattern:/,
   );
   assert.doesNotMatch(JSON.stringify(schema), /"uniqueItems"\s*:/);
   const system = request.messages.find((message) => message.role === 'system').content;
@@ -185,6 +185,15 @@ test('OpenRouter excludes reasoning and persists only final candidates and fixed
   const marker = 'PRIVATE_THINKING_SENTINEL';
   const f = providerFixture(undefined, {
     request: async (args) => {
+      if (args.url.pathname.endsWith('/models'))
+        return Response.json({
+          data: [
+            {
+              id: stage.model_id,
+              supported_parameters: ['max_tokens', 'response_format', 'structured_outputs'],
+            },
+          ],
+        });
       wire = JSON.parse(args.body);
       return Response.json({
         id: 'reasoning-fixture',
@@ -225,12 +234,117 @@ test('extraction forwards the configured 8192 token allowance and enforces 500 c
   assert.equal(value.success, true);
   const request = JSON.parse(f.calls[0].body);
   assert.equal(request.max_tokens, 8192);
-  assert.equal(
+  assert.match(
     request.response_format.json_schema.schema.properties.candidates.items.properties.summary
-      .maxLength,
-    500,
+      .description,
+    /maxLength: 500/,
   );
   assert.equal(f.calls.length, 1);
+});
+
+for (const modelId of [
+  'openai/gpt-6-astra',
+  'anthropic/claude-fable-5.1',
+  'google/gemini-3.8-flash',
+  'deepseek/deepseek-v4.1-flash',
+  'qwen/qwen3.8-max-0902',
+  'z-ai/glm-5.3',
+  'moonshotai/kimi-k3',
+]) {
+  test(`SDK wire compatibility matrix: ${modelId}`, async () => {
+    let posts = 0;
+    const f = providerFixture(result, {
+      request: async (args) => {
+        if (args.url.pathname.endsWith('/models'))
+          return Response.json({
+            data: [
+              {
+                id: modelId,
+                supported_parameters: [
+                  'max_tokens',
+                  'structured_outputs',
+                  'response_format',
+                  'reasoning',
+                ],
+                reasoning: { mandatory: true, supported_efforts: ['high', 'low'] },
+              },
+            ],
+          });
+        posts++;
+        const body = JSON.parse(args.body);
+        assert.equal(body.model, modelId);
+        assert.equal(body.temperature, undefined);
+        assert.deepEqual(body.provider, { require_parameters: true });
+        assert.deepEqual(body.reasoning, { exclude: true, effort: 'low' });
+        assert.equal(body.max_tokens, 8192);
+        assert.equal(body.response_format.json_schema.strict, true);
+        assert.doesNotMatch(
+          JSON.stringify(body.response_format),
+          /"(?:pattern|minLength|maxLength|minItems|maxItems|uniqueItems)":/,
+        );
+        return Response.json({
+          choices: [
+            {
+              message: { role: 'assistant', content: JSON.stringify(result) },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 200, completion_tokens: 100 },
+        });
+      },
+    });
+    const value = await f.invoke({
+      stage: { ...stage, model_id: modelId, max_output_tokens: 8192 },
+      connection: { ...connection, base_url: 'https://openrouter.ai/api/v1' },
+      allowedHosts: ['openrouter.ai'],
+    });
+    assert.equal(value.success, true);
+    assert.equal(posts, 1);
+  });
+}
+
+test('unsupported OpenRouter schema stops before any generation POST', async () => {
+  let calls = 0;
+  const f = providerFixture(result, {
+    request: async (args) => {
+      calls++;
+      assert.equal(args.url.pathname.endsWith('/models'), true);
+      return Response.json({
+        data: [{ id: stage.model_id, supported_parameters: ['max_tokens', 'response_format'] }],
+      });
+    },
+  });
+  const value = await f.invoke({
+    connection: { ...connection, base_url: 'https://openrouter.ai/api/v1' },
+    allowedHosts: ['openrouter.ai'],
+  });
+  assert.equal(value.success, false);
+  assert.equal(value.diagnostic.code, 'generation_capability_failed');
+  assert.equal(calls, 1);
+});
+
+test('token exhaustion has a distinct diagnostic, preserves billed usage and never retries', async () => {
+  for (const content of ['', JSON.stringify(result)]) {
+    const f = providerFixture(result, {
+      request: async (args) => {
+        f.calls.push(args);
+        return Response.json({
+          choices: [{ message: { role: 'assistant', content }, finish_reason: 'length' }],
+          usage: {
+            prompt_tokens: 200,
+            completion_tokens: 8192,
+            completion_tokens_details: { reasoning_tokens: 8192 },
+          },
+        });
+      },
+    });
+    const value = await f.invoke();
+    assert.equal(value.success, false);
+    assert.equal(value.diagnostic.code, 'generation_output_truncated');
+    assert.equal(value.output_tokens, 8192);
+    assert.equal(f.calls.length, 1);
+    assert.equal(value.output, undefined);
+  }
 });
 
 test('business generation survives the old probe and 45s cutoffs without changing its connection', async (t) => {
