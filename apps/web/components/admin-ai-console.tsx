@@ -146,7 +146,11 @@ export function AdminAiConsole({
       setModel('');
       createId.current = null;
       await refresh();
-      setMessage('连接已保存。测试结果只适用于当前修订；保存本身不会调用模型。');
+      setMessage(
+        editing && result.connection.revision === editing.revision
+          ? `配置未变化，保留 r${result.connection.revision}，原有能力测试继续适用。无需在测试后再次保存连接。`
+          : `连接已保存为 r${result.connection.revision}。请在此修订下完成能力测试；测试结果自动保存，测试后无需再次保存连接。`,
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '保存未确认，请刷新。');
     } finally {
@@ -515,9 +519,13 @@ export function AdminAiConsole({
       </section>
       <section className={styles.stack} style={{ marginTop: 24 }} aria-label="最近模型测试">
         <h2>最近测试记录</h2>
-        {probes.map((probe) => (
-          <ProbeSummary key={probe.id} probe={probe} />
-        ))}
+        <p className={styles.muted}>仅展示最近 3 次测试；历史费用、审计记录及能力证明仍保留。</p>
+        {[...probes]
+          .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))
+          .slice(0, 3)
+          .map((probe) => (
+            <ProbeSummary key={probe.id} probe={probe} />
+          ))}
         {probes.length === 0 ? <p className={styles.muted}>暂无测试记录。</p> : null}
       </section>
     </>

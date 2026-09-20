@@ -14,7 +14,7 @@ import {
   parseAiProfileSave,
   validateAiBaseUrl,
 } from './ai-config-contract.mjs';
-import { encryptAiKey, decryptAiKey } from './ai-config-crypto.mjs';
+import { encryptAiKey, decryptAiKey, readAiKeyring } from './ai-config-crypto.mjs';
 
 const connectionColumns =
   'id,revision,name,protocol,base_url,enabled,settings,encrypted_key,created_at,updated_at';
@@ -134,8 +134,12 @@ function matchesConnectionCreate(row, request, keyring) {
     )
   )
     return false;
+  return matchesConnectionKey(row, request.api_key, keyring);
+}
+function matchesConnectionKey(row, apiKey, keyring) {
+  if (!row.encrypted_key) return false;
   const actual = Buffer.from(decryptAiKey(row.encrypted_key, row.id, keyring));
-  const expected = Buffer.from(request.api_key);
+  const expected = Buffer.from(apiKey);
   try {
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   } finally {
@@ -199,8 +203,28 @@ export async function updateAiConnection({ pool, request, keyring, allowedHosts 
     if (v.revoke_key) {
       next.encrypted_key = null;
       next.enabled = false;
-    } else if (v.api_key) next.encrypted_key = encryptAiKey(v.api_key, v.id, keyring);
+    } else if (v.api_key) {
+      const ring = readAiKeyring(keyring);
+      let unchanged = false;
+      if (old.encrypted_key?.key_id === ring.active) {
+        try {
+          unchanged = matchesConnectionKey(old, v.api_key, ring);
+        } catch (error) {
+          // An explicitly supplied credential may repair an unreadable envelope.
+          if (!(error instanceof AiConfigError) || error.code !== 'key_unavailable') throw error;
+        }
+      }
+      // Root-key changes are credential maintenance, not no-op saves.
+      if (!unchanged) next.encrypted_key = encryptAiKey(v.api_key, v.id, ring);
+    }
     if (next.enabled && !next.encrypted_key) aiFail('key_unavailable');
+    // Preserve capability proofs on a no-op, but only after CAS and safety checks.
+    if (
+      ['name', 'protocol', 'base_url', 'enabled', 'settings', 'encrypted_key'].every((field) =>
+        isDeepStrictEqual(old[field], next[field]),
+      )
+    )
+      return connectionDto(old);
     const row = one(
       await client.query(
         `/* ai:connection-update */ UPDATE public.ai_connections SET revision=$2,name=$3,protocol=$4,base_url=$5,enabled=$6,settings=$7::jsonb,encrypted_key=$8::jsonb,updated_at=clock_timestamp()

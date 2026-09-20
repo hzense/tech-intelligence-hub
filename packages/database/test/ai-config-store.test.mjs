@@ -1,7 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import { describe, it, expect, vi } from 'vitest';
-import { encryptAiKey } from '../src/ai-config-crypto.mjs';
+import { encryptAiKey, decryptAiKey } from '../src/ai-config-crypto.mjs';
 import {
   createAiConnection,
   updateAiConnection,
@@ -396,7 +396,7 @@ describe('AI connection versioned configuration', () => {
     ).rejects.toMatchObject({ code: 'request_id_conflict' });
     expect(f.state).toEqual(before);
   });
-  it.each([{ name: 'Synthetic' }, { revoke_key: true }])(
+  it.each([{ name: 'Changed' }, { revoke_key: true }])(
     'does not restore a connection already changed after creation %j',
     async (patch) => {
       const f = fake();
@@ -413,6 +413,89 @@ describe('AI connection versioned configuration', () => {
       expect(f.state).toEqual(before);
     },
   );
+  it.each([{}, { api_key: key }])(
+    'keeps identical updates and credentials at the same revision %j',
+    async (extra) => {
+      const f = fake();
+      const before = globalThis.structuredClone(f.state);
+      const result = await updateAiConnection({
+        pool: f.pool,
+        request: {
+          id,
+          expected_revision: 1,
+          name: 'Synthetic',
+          enabled: true,
+          settings: { ...settings },
+          ...extra,
+        },
+        keyring,
+        allowedHosts,
+      });
+      expect(result.revision).toBe(1);
+      expect(f.state).toEqual(before);
+      await expect(
+        updateAiConnection({
+          pool: f.pool,
+          request: { id, expected_revision: 2, name: 'Synthetic' },
+          keyring,
+          allowedHosts,
+        }),
+      ).rejects.toMatchObject({ code: 'revision_conflict' });
+    },
+  );
+  it.each([
+    { name: 'Changed' },
+    { api_key: 'different-synthetic-key' },
+    { settings: { ...settings, daily_budget_microusd: 2000000 } },
+  ])('increments revision for actual changes %j', async (patch) => {
+    const f = fake();
+    const result = await updateAiConnection({
+      pool: f.pool,
+      request: { id, expected_revision: 1, ...patch },
+      keyring,
+      allowedHosts,
+    });
+    expect(result.revision).toBe(2);
+    expect(f.state.history).toHaveLength(1);
+  });
+  it.each([true, false])(
+    'rewraps explicitly supplied credentials after root-key rotation (old key retained: %s)',
+    async (retainOld) => {
+      const f = fake();
+      const rotated = {
+        active: 'v2',
+        keys: { ...(retainOld ? keyring.keys : {}), v2: Buffer.alloc(32, 9).toString('base64') },
+      };
+      const result = await updateAiConnection({
+        pool: f.pool,
+        request: { id, expected_revision: 1, api_key: key },
+        keyring: rotated,
+        allowedHosts,
+      });
+      expect(result.revision).toBe(2);
+      expect(f.state.connections[0].encrypted_key.key_id).toBe('v2');
+      expect(
+        decryptAiKey(f.state.connections[0].encrypted_key, id, {
+          active: 'v2',
+          keys: { v2: rotated.keys.v2 },
+        }),
+      ).toBe(key);
+    },
+  );
+  it('repairs an unreadable envelope only with an explicitly supplied credential', async () => {
+    const f = fake();
+    f.state.connections[0].encrypted_key.tag = Buffer.alloc(16, 0).toString('base64');
+    const result = await updateAiConnection({
+      pool: f.pool,
+      request: { id, expected_revision: 1, api_key: 'replacement-synthetic-key' },
+      keyring,
+      allowedHosts,
+    });
+    expect(result.revision).toBe(2);
+    expect(decryptAiKey(f.state.connections[0].encrypted_key, id, keyring)).toBe(
+      'replacement-synthetic-key',
+    );
+  });
   it('encrypts credentials once and only stores nonsecret connection snapshots', async () => {
     const f = fake({ empty: true });
     const created = await createAiConnection({

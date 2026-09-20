@@ -415,7 +415,7 @@ export function AdminAiProfiles({
                 );
               })}
               <button className={`${styles.button} ${styles.primary}`} type="submit">
-                保存为新修订
+                {editing ? '保存为新修订' : '创建新配置'}
               </button>
             </fieldset>
           </form>

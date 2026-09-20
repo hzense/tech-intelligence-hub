@@ -420,7 +420,7 @@ test(
             await expect(model(stage)).toBeDisabled();
           }
           await expect(
-            page.getByRole('button', { name: '保存为新修订', exact: true }),
+            page.getByRole('button', { name: '创建新配置', exact: true }),
           ).toBeDisabled();
         } finally {
           fixture.releaseModels();
@@ -753,7 +753,7 @@ test(
           (item) =>
             item.url().endsWith('/api/admin/ai/profiles') && item.request().method() === 'POST',
         );
-        await page.getByRole('button', { name: '保存为新修订', exact: true }).click();
+        await page.getByRole('button', { name: '创建新配置', exact: true }).click();
         assert.equal((await response).status(), 409);
         await expect(page.getByRole('status').filter({ hasText: /结构化输出测试/ })).toBeVisible();
         for (const [stage, value] of Object.entries(posts('profiles')[0].body.stages)) {
