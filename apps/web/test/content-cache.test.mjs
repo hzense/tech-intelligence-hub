@@ -9,6 +9,70 @@ import test from 'node:test';
 const repositoryRoot = resolve(import.meta.dirname, '../../..');
 const turboBin = join(repositoryRoot, 'node_modules/turbo/bin/turbo');
 
+test('database and ingestion source changes invalidate Web artifacts through real workspace dependencies', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'hzense-shared-cache-'));
+  const put = async (path, value) => {
+    await mkdir(dirname(join(root, path)), { recursive: true });
+    await writeFile(join(root, path), value);
+  };
+  try {
+    for (const path of ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', 'turbo.json'])
+      await put(path, await readFile(join(repositoryRoot, path), 'utf8'));
+    for (const path of [
+      'apps/web',
+      'packages/database',
+      'packages/ingestion',
+      'packages/content',
+      'packages/search',
+    ]) {
+      const manifest = JSON.parse(
+        await readFile(join(repositoryRoot, path, 'package.json'), 'utf8'),
+      );
+      manifest.scripts = { build: 'exit 0', test: 'exit 0' };
+      await put(`${path}/package.json`, JSON.stringify(manifest));
+    }
+    await put('.gitignore', '.turbo/\n');
+    const inputs = [
+      'packages/database/src/signal-generation-store.mjs',
+      'packages/ingestion/src/signal-generation-contract.mjs',
+    ];
+    for (const path of inputs) await put(path, 'export const initial = true;\n');
+    execFileSync('git', ['init', '--quiet'], { cwd: root });
+    execFileSync('git', ['add', '.'], { cwd: root });
+    const snapshot = () =>
+      JSON.parse(
+        execFileSync(
+          execPath,
+          [turboBin, 'run', 'build', 'test', '--filter=@hzense/web', '--dry=json'],
+          { cwd: root, encoding: 'utf8', timeout: 20_000, stdio: ['ignore', 'pipe', 'pipe'] },
+        ),
+      ).tasks;
+    const baseline = snapshot();
+    for (const name of ['@hzense/database#build', '@hzense/ingestion#build'])
+      assert.ok(
+        baseline.some((task) => task.taskId === name),
+        `${name} must be in Web build graph`,
+      );
+    for (const path of inputs) {
+      await put(path, 'export const changed = true;\n');
+      const changed = snapshot();
+      for (const name of ['@hzense/web#build', '@hzense/web#test', '@hzense/database#build'])
+        assert.notEqual(
+          changed.find((task) => task.taskId === name).hash,
+          baseline.find((task) => task.taskId === name).hash,
+          `${path} must invalidate ${name}`,
+        );
+      await put(path, 'export const initial = true;\n');
+      assert.equal(
+        snapshot().find((task) => task.taskId === '@hzense/web#build').hash,
+        baseline.find((task) => task.taskId === '@hzense/web#build').hash,
+      );
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('root content changes invalidate build and test hashes without changing application code', async () => {
   // Use an isolated workspace: never modify live content or run a real build.
   const root = await mkdtemp(join(tmpdir(), 'hzense-content-cache-'));

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import console from 'node:console';
+import { describe, expect, it, vi } from 'vitest';
 import { REJECTED_CANDIDATES_REASON } from '../../ingestion/src/signal-generation-contract.mjs';
 import {
   createSignalGeneration,
@@ -57,6 +58,59 @@ function input() {
   };
 }
 describe('private generation input boundaries', () => {
+  it('reports only fixed conflict field names and booleans, never private values', async () => {
+    const value = input();
+    const { id, ...identityRequest } = value.request;
+    const row = {
+      id,
+      owner_id: value.owner,
+      batch_id: value.request.batchId,
+      item_id: value.request.itemId,
+      source_fence: value.request.sourceFence,
+      source_hash: value.request.sourceHash,
+      profile_id: value.request.profileId,
+      profile_revision: value.request.profileRevision,
+      snapshot: value.snapshot,
+      configuration: value.configuration,
+      deleted_at: new Date(),
+      fingerprint: signalGenerationSourceHash({
+        owner: value.owner,
+        ...identityRequest,
+        snapshot: value.snapshot,
+        configuration: value.configuration,
+      }),
+    };
+    value.pool = {
+      connect: async () => ({
+        query: async (sql) => ({
+          rows: sql.includes('FROM public.signal_generation_runs WHERE id=') ? [row] : [],
+        }),
+        release() {},
+      }),
+    };
+    value.snapshot = {
+      ...value.snapshot,
+      profile: { ...value.snapshot.profile, name: 'private diagnostic sentinel' },
+    };
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(createSignalGeneration(value)).rejects.toMatchObject({
+        code: 'request_id_conflict',
+      });
+      expect(warning).toHaveBeenCalledOnce();
+      expect(JSON.parse(warning.mock.calls[0][0])).toEqual({
+        event: 'signal_generation_identity_conflict',
+        stored_fingerprint_valid: true,
+        deleted: true,
+        fields: ['snapshot.profile'],
+      });
+      expect(warning.mock.calls[0][0]).not.toContain('private diagnostic sentinel');
+      expect(warning.mock.calls[0][0]).not.toContain(value.owner);
+      expect(warning.mock.calls[0][0]).not.toContain(value.request.id);
+    } finally {
+      warning.mockRestore();
+    }
+  });
   it('rejects malformed diagnostic shapes, fields, codes, indexes and usage before any DB access', async () => {
     const rejected = {
       index: 0,

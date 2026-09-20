@@ -17,6 +17,7 @@
     "db:verify:topics:production": "pnpm --filter @hzense/content build && node src/topic-projection-verify.mjs"
   },
   "dependencies": {
+    "@hzense/ingestion": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.23.0"
   },

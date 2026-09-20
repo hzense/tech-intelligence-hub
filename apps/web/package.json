@@ -17,6 +17,8 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.48",
     "@hzense/content": "workspace:*",
+    "@hzense/database": "workspace:*",
+    "@hzense/ingestion": "workspace:*",
     "@hzense/search": "workspace:*",
     "@vercel/blob": "2.8.0",
     "@vercel/sandbox": "^2.9.2",
