@@ -47,7 +47,9 @@ export const generationCandidateJsonSchema = Object.freeze({
           summary: { type: 'string', minLength: 1, maxLength: GENERATION_LIMITS.summaryCharacters },
           event_date: {
             anyOf: [
-              { type: 'string', pattern: '^(?!0000)\\d{4}-\\d{2}-\\d{2}$' },
+              // Provider regex engines reject lookaround. Calendar validity and
+              // year zero remain enforced by eventDate() after generation.
+              { type: 'string', pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' },
               { type: 'null' },
             ],
           },

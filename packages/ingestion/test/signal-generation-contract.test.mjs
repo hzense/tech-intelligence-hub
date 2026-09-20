@@ -307,6 +307,56 @@ test('provider JSON Schema and runtime agree about keys and leave authority fiel
   assert.doesNotThrow(() => JSON.stringify(schema));
 });
 
+test('complete provider schema stays within the supported structured-output subset', () => {
+  // Intentionally narrow to the keywords used by this contract, not a universal
+  // provider validator. New keywords or regexes require compatibility review.
+  const allowed = new Set([
+    'type',
+    'properties',
+    'required',
+    'additionalProperties',
+    'items',
+    'anyOf',
+    'minItems',
+    'maxItems',
+    'minLength',
+    'maxLength',
+    'pattern',
+  ]);
+  function visit(schema) {
+    for (const key of Object.keys(schema))
+      assert.ok(allowed.has(key), `unsupported keyword: ${key}`);
+    if (schema.type === 'object') {
+      assert.equal(schema.additionalProperties, false);
+      assert.deepEqual([...schema.required].sort(), Object.keys(schema.properties).sort());
+      Object.values(schema.properties).forEach(visit);
+    }
+    if (schema.items) visit(schema.items);
+    if (schema.anyOf) schema.anyOf.forEach(visit);
+    if (schema.pattern) assert.equal(schema.pattern, '^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+  }
+  assert.equal(generationCandidateJsonSchema.type, 'object');
+  visit(generationCandidateJsonSchema);
+});
+
+test('provider date pattern checks shape while runtime rejects invalid calendar dates', () => {
+  const pattern = new RegExp(
+    generationCandidateJsonSchema.properties.candidates.items.properties.event_date.anyOf[0]
+      .pattern,
+  );
+  for (const date of ['2024-02-29', '2026-09-20', '0000-01-01', '2026-02-30']) {
+    assert.ok(pattern.test(date));
+  }
+  for (const date of ['2026-9-20', 'yesterday', '２０２６-０９-２０', '2026-09-20T00:00:00Z']) {
+    assert.equal(pattern.test(date), false);
+  }
+  for (const date of ['0000-01-01', '2026-02-30']) {
+    const value = output();
+    value.candidates[0].event_date = date;
+    assert.throws(() => normalize(value), { code: 'invalid_generation_output' });
+  }
+});
+
 test('titles allow 80 code points and summaries 500, rejecting overflow without truncation', () => {
   for (const [field, limit] of [
     ['title', 80],

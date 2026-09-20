@@ -158,6 +158,13 @@ test('real SDK structured extraction yields only private candidates and exact ev
   assert.equal(value.input_tokens, 200);
   assert.equal(f.calls.length, 1);
   const request = JSON.parse(f.calls[0].body);
+  const schema = request.response_format.json_schema.schema;
+  assert.equal(request.response_format.type, 'json_schema');
+  assert.equal(
+    schema.properties.candidates.items.properties.event_date.anyOf[0].pattern,
+    '^[0-9]{4}-[0-9]{2}-[0-9]{2}$',
+  );
+  assert.doesNotMatch(JSON.stringify(schema), /"uniqueItems"\s*:/);
   const system = request.messages.find((message) => message.role === 'system').content;
   assert.match(system, /单次最多 5 条候选/);
   assert.match(system, /标题最多 80 字，摘要最多 500 字/);
