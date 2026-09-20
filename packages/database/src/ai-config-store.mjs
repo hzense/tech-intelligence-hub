@@ -250,6 +250,7 @@ export async function getAiConnectionHistory({ pool, id }) {
 
 async function readiness(client, stages, locking = false) {
   const reasons = [];
+  const warnings = [];
   const connections = new Map();
   // Stable row order matches configuration mutation. Never lock model APIs.
   for (const id of [...new Set(Object.values(stages).map((stage) => stage.connection_id))].sort()) {
@@ -265,24 +266,28 @@ async function readiness(client, stages, locking = false) {
       reasons.push(`${name}:connection_unavailable`);
       continue;
     }
-    const passed = new Set(
+    const passed = new Map(
       (
         await client.query(
-          `/* ai:profile-probes */ SELECT DISTINCT kind FROM public.ai_probe_runs
+          `/* ai:profile-probes */ SELECT kind,
+      max(finished_at)>clock_timestamp()-interval '24 hours' AS recent
+      FROM public.ai_probe_runs
       WHERE connection_id=$1 AND connection_revision=$2 AND model_id=$3 AND status='succeeded'
-      AND finished_at>clock_timestamp()-interval '24 hours' AND finished_at<=clock_timestamp()`,
+      AND finished_at<=clock_timestamp() GROUP BY kind`,
           [stage.connection_id, stage.connection_revision, stage.model_id],
         )
-      ).rows.map((item) => item.kind),
+      ).rows.map((item) => [item.kind, item.recent]),
     );
     for (const kind of [
       'connection',
       'structured_output',
       ...(stage.require_tools ? ['tool_calling'] : []),
-    ])
+    ]) {
       if (!passed.has(kind)) reasons.push(`${name}:${kind}_required`);
+      else if (passed.get(kind) !== true) warnings.push(`${name}:${kind}_test_old`);
+    }
   }
-  return { ready: reasons.length === 0, reasons };
+  return { ready: reasons.length === 0, reasons, warnings };
 }
 export async function saveAiProfile({ pool, request }) {
   const v = parseAiProfileSave(request);

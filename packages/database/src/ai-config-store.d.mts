@@ -91,7 +91,7 @@ export interface AiProfile {
   stages: AiProfileSaveRequest['stages'];
   created_at: string;
   updated_at: string;
-  readiness: { ready: boolean; reasons: string[] };
+  readiness: { ready: boolean; reasons: string[]; warnings?: string[] };
 }
 export interface AiConfigHistory<T> {
   revision: number;

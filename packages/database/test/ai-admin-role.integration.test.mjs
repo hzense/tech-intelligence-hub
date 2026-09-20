@@ -21,6 +21,7 @@ import {
   getAiProfileHistory,
   listAiProfiles,
   resolveAiProfileForExecution,
+  resolveAiGenerationAccess,
   listAiProbes,
 } from '../src/ai-config-store.mjs';
 
@@ -1481,7 +1482,7 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
       expect(calls).toBe(1);
       expect((await getAiProbe({ pool, id: request.id })).status).toBe('stale');
     }));
-  it('rejects expired capability proofs and a different model on the same current connection revision', async () =>
+  it('warns on old matching proofs but rejects different models, missing or future proofs', async () =>
     withPool(async (pool) => {
       const connection = await createAiConnection({
         pool,
@@ -1538,7 +1539,49 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
       );
       expect(
         (await listAiProfiles({ pool })).find((row) => row.id === profile.id).readiness.ready,
-      ).toBe(false);
+      ).toBe(true);
+      const old = await resolveAiProfileForExecution({ pool, id: profile.id });
+      expect(old.readiness.warnings).toHaveLength(6);
+      expect(old.readiness.reasons).toEqual([]);
+      expect((await saveAiProfile({ pool, request })).readiness.ready).toBe(true);
+      expect(
+        (
+          await resolveAiGenerationAccess({
+            pool,
+            id: profile.id,
+            revision: profile.revision,
+            allowedHosts,
+            keyring,
+          })
+        ).profile.readiness.ready,
+      ).toBe(true);
+      await owner((client) =>
+        client.query(
+          'UPDATE public.ai_probe_runs SET finished_at=clock_timestamp() WHERE connection_id=$1',
+          [connection.id],
+        ),
+      );
+      expect(
+        (await resolveAiProfileForExecution({ pool, id: profile.id })).readiness.warnings,
+      ).toEqual([]);
+      // Future timestamps and unfinished tests are not valid capability evidence.
+      for (const finish of ["clock_timestamp()+interval '1 hour'", 'NULL']) {
+        await owner((client) =>
+          client.query(
+            `UPDATE public.ai_probe_runs SET finished_at=${finish} WHERE connection_id=$1`,
+            [connection.id],
+          ),
+        );
+        await expect(resolveAiProfileForExecution({ pool, id: profile.id })).rejects.toMatchObject({
+          code: 'profile_not_ready',
+        });
+      }
+      await owner((client) =>
+        client.query(
+          "UPDATE public.ai_probe_runs SET finished_at=clock_timestamp(),status='failed' WHERE connection_id=$1",
+          [connection.id],
+        ),
+      );
       await expect(resolveAiProfileForExecution({ pool, id: profile.id })).rejects.toMatchObject({
         code: 'profile_not_ready',
       });

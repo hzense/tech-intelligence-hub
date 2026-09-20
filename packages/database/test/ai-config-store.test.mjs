@@ -267,6 +267,7 @@ function fake(options = {}) {
       case 'profile-probes':
         rows = (options.passedKinds ?? ['connection', 'structured_output']).map((kind) => ({
           kind,
+          recent: !(options.oldKinds ?? []).includes(kind),
         }));
         break;
       case 'profile':
@@ -762,7 +763,7 @@ describe('AI profile capability readiness', () => {
     });
     expect(f.state.profileHistory).toHaveLength(2);
   });
-  it('saves a profile and history only after matching successful fresh revision-bound probes', async () => {
+  it('saves a profile and history only after matching successful revision-bound probes', async () => {
     const f = fake();
     const saved = await saveAiProfile({
       pool: f.pool,
@@ -778,10 +779,51 @@ describe('AI profile capability readiness', () => {
     const sql = f.calls.find((c) => c.sql.includes('ai:profile-probes')).sql;
     expect(sql).toContain("status='succeeded'");
     expect(sql).toContain("interval '24 hours'");
+    expect(sql).toContain("max(finished_at)>clock_timestamp()-interval '24 hours' AS recent");
+    expect(sql).not.toContain('AND finished_at>');
+    expect(sql).toContain('AND finished_at<=clock_timestamp() GROUP BY kind');
+    expect(saved.readiness.warnings).toEqual([]);
     f.state.connections[0].revision = 2;
     expect((await listAiProfiles({ pool: f.pool }))[0].readiness.ready).toBe(false);
     await expect(
       resolveAiProfileForExecution({ pool: f.pool, id: saved.id }),
+    ).rejects.toMatchObject({ code: 'profile_not_ready' });
+  });
+  it('keeps old matching proofs usable for save, list and execution without invoking a provider', async () => {
+    const f = fake({ oldKinds: ['connection', 'structured_output'] });
+    const saved = await saveAiProfile({ pool: f.pool, request: profileCreate() });
+    expect(saved.readiness).toMatchObject({ ready: true, reasons: [] });
+    expect(saved.readiness.warnings).toHaveLength(6);
+    expect(saved.readiness.warnings).toContain('extract:structured_output_test_old');
+    expect((await listAiProfiles({ pool: f.pool }))[0].readiness).toEqual(saved.readiness);
+    expect((await resolveAiProfileForExecution({ pool: f.pool, id: saved.id })).readiness).toEqual(
+      saved.readiness,
+    );
+    const access = await resolveAiGenerationAccess({
+      pool: f.pool,
+      id: saved.id,
+      revision: saved.revision,
+      allowedHosts,
+      keyring,
+    });
+    expect(access.profile.readiness.ready).toBe(true);
+    expect(f.state.probes).toEqual([]);
+  });
+  it('clears age warnings after fresh proofs but still blocks missing required tests', async () => {
+    const options = { oldKinds: ['structured_output'] };
+    const f = fake(options);
+    const saved = await saveAiProfile({ pool: f.pool, request: profileCreate() });
+    expect(saved.readiness.warnings).toHaveLength(3);
+    options.oldKinds = [];
+    expect((await listAiProfiles({ pool: f.pool }))[0].readiness.warnings).toEqual([]);
+    options.passedKinds = ['connection'];
+    await expect(
+      resolveAiGenerationAccess({
+        pool: f.pool,
+        id: saved.id,
+        revision: saved.revision,
+        allowedHosts,
+      }),
     ).rejects.toMatchObject({ code: 'profile_not_ready' });
   });
   it('resolves generation metadata without keys and decrypts only explicit admitted execution requests', async () => {

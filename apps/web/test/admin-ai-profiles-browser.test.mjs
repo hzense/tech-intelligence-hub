@@ -692,6 +692,31 @@ test(
     );
 
     await t.test(
+      'old capability proofs show an advisory without marking the profile unavailable',
+      async () => {
+        await mount({
+          profiles: [
+            {
+              ...historicalProfile,
+              readiness: {
+                ready: true,
+                reasons: [],
+                warnings: ['extract:connection_test_old'],
+              },
+            },
+          ],
+          probes: [modelReceipt()],
+        });
+        await expect(page.getByText('测试证明有效', { exact: true })).toBeVisible();
+        await expect(
+          page.getByRole('status').filter({ hasText: '部分能力测试已超过 24 小时' }),
+        ).toBeVisible();
+        await expect(page.getByRole('button', { name: '编辑新修订', exact: true })).toBeEnabled();
+        assert.equal(posts().length, 0);
+      },
+    );
+
+    await t.test(
       'typing and selecting with Enter never implicitly submit a complete Profile form',
       async () => {
         await mount({ probes: [modelReceipt()], profileReady: true });
