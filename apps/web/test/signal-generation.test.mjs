@@ -320,7 +320,33 @@ test('unsupported OpenRouter schema stops before any generation POST', async () 
   });
   assert.equal(value.success, false);
   assert.equal(value.diagnostic.code, 'generation_capability_failed');
+  assert.equal(value.error_code, 'generation_failed');
   assert.equal(calls, 1);
+});
+
+test('catalog malformed and transport failures are definite failures without a generation POST', async () => {
+  for (const response of [
+    () => Response.json({ data: null }),
+    () => {
+      throw new Error('network fixture');
+    },
+  ]) {
+    let calls = 0;
+    const f = providerFixture(result, {
+      request: async (args) => {
+        calls++;
+        assert.equal(args.url.pathname.endsWith('/models'), true);
+        return response();
+      },
+    });
+    const value = await f.invoke({
+      connection: { ...connection, base_url: 'https://openrouter.ai/api/v1' },
+      allowedHosts: ['openrouter.ai'],
+    });
+    assert.equal(value.error_code, 'generation_failed');
+    assert.equal(value.input_tokens, null);
+    assert.equal(calls, 1);
+  }
 });
 
 test('token exhaustion has a distinct diagnostic, preserves billed usage and never retries', async () => {

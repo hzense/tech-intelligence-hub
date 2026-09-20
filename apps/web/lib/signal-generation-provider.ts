@@ -89,6 +89,7 @@ export function createSignalGenerationInvoker(
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let expired = false;
+    let generationAttempted = false;
     const complete = (
       result: GenerationProviderResult,
       code: GenerationDiagnosticCode | null,
@@ -138,7 +139,12 @@ export function createSignalGenerationInvoker(
         baseURL: input.connection.base_url,
         apiKey: input.apiKey,
         supportsStructuredOutputs: true,
-        fetch: transport,
+        fetch: (url, init) => {
+          // Catalog GET failures are definite no-generation outcomes. Once the
+          // SDK attempts a POST, retain conservative unknown-outcome handling.
+          if (init?.method === 'POST') generationAttempted = true;
+          return transport(url, init);
+        },
       });
       const operation = async (): Promise<GenerationProviderResult> => {
         const routerOptions = await openRouterOptions(
@@ -218,7 +224,9 @@ export function createSignalGenerationInvoker(
           success: false,
           ...usage,
           error_code:
-            expired || usage.input_tokens === null ? 'generation_unknown' : 'generation_failed',
+            generationAttempted && (expired || usage.input_tokens === null)
+              ? 'generation_unknown'
+              : 'generation_failed',
         },
         classifyFailure(error, expired),
       );
