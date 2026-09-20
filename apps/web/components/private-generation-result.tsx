@@ -45,7 +45,8 @@ export function PrivateResult({ result }: { result: unknown }) {
           条。通过不代表事实核验或发布批准。
         </p>
       )}
-      {typeof row.reason === 'string' && <p>{row.reason}</p>}
+      {/* Historical free-form reasons may contain model self-analysis. Render
+          result state only; never echo that field or provider reasoning. */}
       {candidates.length === 0 && <p>本次没有生成可供审核的候选信号。</p>}
       {candidates.map((candidate: unknown, index: number) => {
         const data =

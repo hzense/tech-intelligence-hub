@@ -162,9 +162,51 @@ test('real SDK structured extraction yields only private candidates and exact ev
   assert.match(system, /单次最多 5 条候选/);
   assert.match(system, /标题最多 80 字，摘要最多 500 字/);
   assert.match(system, /event_date 为 null 时 event_date_evidence 必须为 \[\]/);
+  assert.match(system, /只输出最终结果，不输出思考过程/);
+  assert.equal(
+    request.reasoning,
+    undefined,
+    'do not send OpenRouter extensions to other providers',
+  );
   assert.equal(value.diagnostic.code, null);
   assert.equal(value.diagnostic.timeout_ms, 1500000);
   assert.ok(Number.isSafeInteger(value.diagnostic.elapsed_ms));
+});
+
+test('OpenRouter excludes reasoning and persists only final candidates and fixed outcome text', async () => {
+  let wire;
+  const marker = 'PRIVATE_THINKING_SENTINEL';
+  const f = providerFixture(undefined, {
+    request: async (args) => {
+      wire = JSON.parse(args.body);
+      return Response.json({
+        id: 'reasoning-fixture',
+        model: stage.model_id,
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({ ...result, reason: marker }),
+              reasoning_content: marker,
+              reasoning: marker,
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300 },
+      });
+    },
+  });
+  const value = await f.invoke({
+    connection: { ...connection, base_url: 'https://openrouter.ai/api/v1' },
+    allowedHosts: ['openrouter.ai'],
+  });
+  assert.deepEqual(wire.reasoning, { exclude: true });
+  assert.equal(value.success, true);
+  assert.equal(value.output.candidates[0].title, candidate.title);
+  assert.equal(value.output.reason, '已生成私有候选，待人工审核。');
+  assert.equal(JSON.stringify(value).includes(marker), false);
+  assert.equal(value.output_tokens, 100, 'do not erase usage for hidden reasoning');
 });
 
 test('extraction forwards the configured 8192 token allowance and enforces 500 character summaries', async () => {
