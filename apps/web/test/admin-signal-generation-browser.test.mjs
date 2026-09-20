@@ -15,6 +15,8 @@ const itemId = '22222222-2222-4222-8222-222222222222';
 const profileId = '33333333-3333-4333-8333-333333333333';
 const pendingItemId = '44444444-4444-4444-8444-444444444444';
 const smallItemId = '66666666-6666-4666-8666-666666666666';
+const otherBatchId = '88888888-8888-4888-8888-888888888888';
+const otherItemId = '99999999-9999-4999-8999-999999999999';
 
 // The actual client component uses synthetic loopback API responses only. These
 // tests do not send documents to providers or prove production authorization.
@@ -106,6 +108,18 @@ test(
                 },
               ],
               batches: [
+                {
+                  id: otherBatchId,
+                  cancelled: false,
+                  status: 'completed',
+                  items: [
+                    {
+                      id: otherItemId,
+                      status: 'completed',
+                      declaration: { name: 'Other batch source.md' },
+                    },
+                  ],
+                },
                 {
                   id: batchId,
                   cancelled: false,
@@ -294,10 +308,33 @@ test(
       return page;
     }
     async function selectInput(page) {
-      await page.getByLabel('导入批次').selectOption(batchId);
-      await page.getByLabel('已完成解析的资料').selectOption(itemId);
+      await page.getByLabel('导入已解析资料').selectOption(itemId);
       await page.getByLabel('分阶段模型配置').selectOption(profileId);
     }
+
+    await t.test(
+      'unified parsed source picker preserves the selected batch without calling AI',
+      async () => {
+        const page = await newPage();
+        await page.goto(origin);
+        await expect(page.getByLabel('导入批次', { exact: true })).toHaveCount(0);
+        const picker = page.getByLabel('导入已解析资料');
+        await picker.selectOption(otherItemId);
+        await page.getByLabel('分阶段模型配置').selectOption(profileId);
+        await page.getByRole('checkbox').check();
+        await picker.selectOption(itemId);
+        await expect(page.getByRole('checkbox')).not.toBeChecked();
+        await picker.selectOption(otherItemId);
+        await page.getByRole('checkbox').check();
+        await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
+        await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
+        assert.equal(commands.length, 1);
+        assert.equal(commands[0].batchId, otherBatchId);
+        assert.equal(commands[0].itemId, otherItemId);
+        assert.equal(commands[0].action, 'create');
+        await page.close();
+      },
+    );
 
     await t.test(
       'old capability warnings do not block creating a task or call AI automatically',
@@ -306,7 +343,7 @@ test(
         profileWarnings = ['extract:structured_output_test_old'];
         await page.goto(origin);
         await selectInput(page);
-        await page.getByLabel('已完成解析的资料').selectOption(smallItemId);
+        await page.getByLabel('导入已解析资料').selectOption(smallItemId);
         await expect(
           page.getByRole('status').filter({ hasText: '部分能力测试已超过 24 小时' }),
         ).toBeVisible();
@@ -432,7 +469,9 @@ test(
         const page = await newPage();
         await page.goto(origin);
         await selectInput(page);
-        await expect(page.getByLabel('导入批次').locator('option:checked')).not.toHaveText(batchId);
+        await expect(page.getByLabel('导入已解析资料').locator('option:checked')).not.toHaveText(
+          batchId,
+        );
         await page.getByRole('checkbox', { name: /我允许/ }).check();
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
         await expect(page.getByRole('link', { name: '任务详情', exact: true })).toHaveCount(1);
@@ -443,7 +482,7 @@ test(
         page.once('dialog', (dialog) => dialog.accept());
         await page.getByRole('button', { name: '删除任务', exact: true }).click();
         await expect(page.getByText('暂无生成任务。')).toBeVisible();
-        await expect(page.getByLabel('导入批次')).toBeEnabled();
+        await expect(page.getByLabel('导入已解析资料')).toBeEnabled();
         assert.equal(
           await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
           null,
@@ -470,7 +509,7 @@ test(
           commands.map((c) => c.action),
           ['inspect_source'],
         );
-        await page.getByLabel('已完成解析的资料').selectOption(smallItemId);
+        await page.getByLabel('导入已解析资料').selectOption(smallItemId);
         await expect(page.getByRole('heading', { name: '资料超出单次生成上限' })).toHaveCount(0);
         await page.getByRole('button', { name: '检查生成资料（不调用 AI）' }).click();
         await expect(page.getByRole('heading', { name: '资料大小符合生成要求' })).toBeVisible();
@@ -801,7 +840,7 @@ test(
         await selectInput(page);
         await expect(page.getByText('资料发送至：synthetic-provider.example')).toBeVisible();
         await expect(
-          page.getByLabel('已完成解析的资料').getByRole('option', { name: 'Unparsed source.md' }),
+          page.getByLabel('导入已解析资料').getByRole('option', { name: 'Unparsed source.md' }),
         ).toHaveCount(0);
         await expect(
           page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }),
@@ -1097,7 +1136,7 @@ test(
         await page.reload();
         await expect(page.getByRole('button', { name: '已核对，准备下一次生成' })).toBeEnabled();
         await page.getByRole('button', { name: '已核对，准备下一次生成' }).click();
-        await expect(page.getByLabel('导入批次')).toBeEnabled();
+        await expect(page.getByLabel('导入已解析资料')).toBeEnabled();
         assert.equal(commands.length, 1);
         assert.equal(runs.length, 1);
         await page.close();
@@ -1141,7 +1180,7 @@ test(
           page.getByText('解析文本超过首版 48,000 字节上限。', { exact: false }),
         ).toBeVisible();
         const originalId = commands[0].id;
-        await expect(page.getByLabel('已完成解析的资料')).toBeDisabled();
+        await expect(page.getByLabel('导入已解析资料')).toBeDisabled();
         const abandon = page.getByRole('button', { name: '核对并放弃未创建请求' });
         rejectedError = 'commit_unknown';
         await abandon.click();
@@ -1155,7 +1194,7 @@ test(
           ).id,
           originalId,
         );
-        await expect(page.getByLabel('已完成解析的资料')).toBeDisabled();
+        await expect(page.getByLabel('导入已解析资料')).toBeDisabled();
         await abandon.click();
         await expect(page.getByText('已核对服务器未创建原请求，', { exact: false })).toBeVisible();
         assert.deepEqual(commands.slice(1), [
@@ -1166,7 +1205,7 @@ test(
           await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
           null,
         );
-        await page.getByLabel('已完成解析的资料').selectOption(smallItemId);
+        await page.getByLabel('导入已解析资料').selectOption(smallItemId);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
         await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
@@ -1192,7 +1231,7 @@ test(
         const originalId = commands[0].id;
         const abandon = page.getByRole('button', { name: '核对并放弃未创建请求' });
         await expect(abandon).toBeEnabled();
-        await expect(page.getByLabel('已完成解析的资料')).toBeDisabled();
+        await expect(page.getByLabel('导入已解析资料')).toBeDisabled();
 
         await page.reload();
         await expect(page.getByRole('heading', { name: '当前请求', exact: true })).toBeVisible();
@@ -1209,7 +1248,7 @@ test(
         rejectedError = 'commit_unknown';
         await abandon.click();
         await expect(page.getByText('服务端尚无法确认任务记录，', { exact: false })).toBeVisible();
-        await expect(page.getByLabel('已完成解析的资料')).toBeDisabled();
+        await expect(page.getByLabel('导入已解析资料')).toBeDisabled();
         await abandon.click();
         await expect(page.getByRole('heading', { name: '当前请求', exact: true })).toHaveCount(0);
         assert.deepEqual(commands.slice(1), [
@@ -1225,8 +1264,7 @@ test(
           null,
         );
         await expect(page.getByRole('checkbox')).not.toBeChecked();
-        await page.getByLabel('导入批次').selectOption(batchId);
-        await page.getByLabel('已完成解析的资料').selectOption(smallItemId);
+        await page.getByLabel('导入已解析资料').selectOption(smallItemId);
         await page.getByLabel('分阶段模型配置').selectOption(profileId);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
@@ -1291,7 +1329,7 @@ test(
           page.getByText('当前保留原请求，暂不能更换资料。', { exact: false }),
         ).toBeVisible();
         await expect(page.getByRole('button', { name: '核对并放弃未创建请求' })).toHaveCount(0);
-        await expect(page.getByLabel('导入批次')).toBeDisabled();
+        await expect(page.getByLabel('导入已解析资料')).toBeDisabled();
         await page.getByRole('checkbox').check();
         rejectedError = 'task_deleted';
         await page.getByRole('button', { name: '使用原编号重新确认创建（不调用 AI）' }).click();
@@ -1341,7 +1379,7 @@ test(
           await expect(
             page.getByRole('button', { name: '重新生成（创建新任务，不调用 AI）', exact: true }),
           ).toHaveCount(0);
-          await expect(page.getByLabel('导入批次')).toBeDisabled();
+          await expect(page.getByLabel('导入已解析资料')).toBeDisabled();
           assert.equal(commands.length, 1);
           assert.equal(
             (await page.locator('body').innerText()).includes('SYNTHETIC_RAW_SECRET'),
@@ -1588,7 +1626,7 @@ test(
           ).id,
           id,
         );
-        await expect(page.getByLabel('已完成解析的资料')).toBeDisabled();
+        await expect(page.getByLabel('导入已解析资料')).toBeDisabled();
         await expect(page.getByRole('button', { name: '核对并放弃未创建请求' })).toHaveCount(0);
         assert.equal(
           await page.evaluate((key) => globalThis.sessionStorage.getItem(key), recoveryKey),

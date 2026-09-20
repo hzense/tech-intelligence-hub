@@ -1,6 +1,6 @@
 'use client';
 
-import { importBatchLabel, importItemName } from '../lib/import-labels';
+import { importItemName } from '../lib/import-labels';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { ImportBatch } from '../../../packages/database/src/import-store.mjs';
@@ -305,6 +305,11 @@ export function AdminSignalGeneration({
     batches
       .find((batch) => batch.id === batchId)
       ?.items.filter((item) => item.status === 'completed' && !item.duplicate_of) ?? [];
+  const parsedSources = batches.flatMap((batch) =>
+    batch.items
+      .filter((item) => item.status === 'completed' && !item.duplicate_of)
+      .map((item) => ({ batchId: batch.id, item })),
+  );
   const sourceNames = new Map(
     data.batches.flatMap((batch) =>
       batch.items.map((item) => [item.id, importItemName(item)] as const),
@@ -717,40 +722,22 @@ export function AdminSignalGeneration({
       <fieldset disabled={!configured || busy || Boolean(pending)} className={styles.panel}>
         <legend>选择输入与配置</legend>
         <label>
-          导入批次
-          <select
-            value={batchId}
-            onChange={(event) => {
-              setBatchId(event.target.value);
-              setItemId('');
-              setConsent(false);
-              setInspection(null);
-              setInspectionError('');
-            }}
-          >
-            <option value="">请选择批次</option>
-            {batches.map((batch) => (
-              <option key={batch.id} value={batch.id}>
-                {importBatchLabel(batch)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          已完成解析的资料
+          导入已解析资料
           <select
             value={itemId}
             onChange={(event) => {
-              setItemId(event.target.value);
+              const source = parsedSources.find(({ item }) => item.id === event.target.value);
+              setBatchId(source?.batchId ?? '');
+              setItemId(source?.item.id ?? '');
               setConsent(false);
               setInspection(null);
               setInspectionError('');
             }}
           >
             <option value="">请选择资料</option>
-            {items.map((item) => (
+            {parsedSources.map(({ item }) => (
               <option key={item.id} value={item.id}>
-                {item.declaration.name ?? item.declaration.url ?? item.id}
+                {importItemName(item)} · {item.id.slice(0, 8)}
               </option>
             ))}
           </select>

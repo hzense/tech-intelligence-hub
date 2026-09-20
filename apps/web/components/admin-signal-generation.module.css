@@ -52,7 +52,7 @@
 @media (min-width: 900px) {
   fieldset.panel {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 1.25rem;
   }
   fieldset.panel > :not(label) {
