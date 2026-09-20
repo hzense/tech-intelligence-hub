@@ -304,7 +304,7 @@ test(
           (request) =>
             request.url().endsWith('/api/admin/ai/profiles') && request.method() === 'POST',
         );
-        await page.getByRole('button', { name: '保存为新修订', exact: true }).click();
+        await page.getByRole('button', { name: '创建新配置', exact: true }).click();
         createProfileRequest = (await first).postDataJSON();
         assert.match(createProfileRequest.id, /^[a-f0-9-]{36}$/);
         assert.equal(Object.hasOwn(createProfileRequest, 'expected_revision'), false);
@@ -315,9 +315,9 @@ test(
         await expect(page.getByRole('status')).toContainText(
           /未确认|Failed to fetch|NetworkError|Load failed/,
         );
-        await expect(page.getByRole('button', { name: '保存为新修订', exact: true })).toBeEnabled();
+        await expect(page.getByRole('button', { name: '创建新配置', exact: true })).toBeEnabled();
         const retry = responseFor(page, 'profiles', 'POST');
-        await page.getByRole('button', { name: '保存为新修订', exact: true }).click();
+        await page.getByRole('button', { name: '创建新配置', exact: true }).click();
         const response = await retry;
         assert.deepEqual(response.request().postDataJSON(), createProfileRequest);
         assert.equal(response.status(), 200);

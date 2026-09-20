@@ -14,7 +14,7 @@ import {
   parseAiProfileSave,
   validateAiBaseUrl,
 } from './ai-config-contract.mjs';
-import { encryptAiKey, decryptAiKey } from './ai-config-crypto.mjs';
+import { encryptAiKey, decryptAiKey, readAiKeyring } from './ai-config-crypto.mjs';
 
 const connectionColumns =
   'id,revision,name,protocol,base_url,enabled,settings,encrypted_key,created_at,updated_at';
@@ -203,8 +203,20 @@ export async function updateAiConnection({ pool, request, keyring, allowedHosts 
     if (v.revoke_key) {
       next.encrypted_key = null;
       next.enabled = false;
-    } else if (v.api_key && !matchesConnectionKey(old, v.api_key, keyring))
-      next.encrypted_key = encryptAiKey(v.api_key, v.id, keyring);
+    } else if (v.api_key) {
+      const ring = readAiKeyring(keyring);
+      let unchanged = false;
+      if (old.encrypted_key?.key_id === ring.active) {
+        try {
+          unchanged = matchesConnectionKey(old, v.api_key, ring);
+        } catch (error) {
+          // An explicitly supplied credential may repair an unreadable envelope.
+          if (!(error instanceof AiConfigError) || error.code !== 'key_unavailable') throw error;
+        }
+      }
+      // Root-key changes are credential maintenance, not no-op saves.
+      if (!unchanged) next.encrypted_key = encryptAiKey(v.api_key, v.id, ring);
+    }
     if (next.enabled && !next.encrypted_key) aiFail('key_unavailable');
     // Preserve capability proofs on a no-op, but only after CAS and safety checks.
     if (
