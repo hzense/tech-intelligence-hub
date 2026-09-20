@@ -681,10 +681,11 @@ test(
                 candidates: mixed
                   ? [
                       {
-                        index: 0,
+                        index: 2,
                         title: '保留的合格候选',
                         summary: '<script>unsafe()</script>',
                         persons: [],
+                        organizations: [],
                         claims: [],
                       },
                     ]
@@ -717,6 +718,11 @@ test(
             page.getByText('event_date_evidence：日期未知时', { exact: false }),
           ).toBeVisible();
           if (mixed) {
+            await expect(
+              page.getByRole('article', { name: '候选信号 3', exact: true }),
+            ).toBeVisible();
+            await expect(page.getByText('候选 3', { exact: true })).toBeVisible();
+            await expect(page.getByText('未识别相关组织，需补充核对。')).toBeVisible();
             await expect(page.getByRole('heading', { name: '保留的合格候选' })).toBeVisible();
             await expect(page.getByText('未提供可核对的主张。')).toBeVisible();
             await expect(page.getByText('未识别关键人物，需补充核对。')).toBeVisible();

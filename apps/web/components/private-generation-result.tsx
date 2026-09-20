@@ -60,20 +60,25 @@ export function PrivateResult({ result }: { result: unknown }) {
             : {};
         const people = objectRows(data.persons);
         const claims = objectRows(data.claims);
+        const candidateNumber = typeof data.index === 'number' ? data.index + 1 : index + 1;
         const organizations = Array.isArray(data.organizations)
           ? data.organizations.filter(
               (value): value is string => typeof value === 'string' && value.trim().length > 0,
             )
           : [];
         return (
-          <article className={preview.signal} key={index} aria-label={`候选信号 ${index + 1}`}>
+          <article
+            className={preview.signal}
+            key={index}
+            aria-label={`候选信号 ${candidateNumber}`}
+          >
             <header className={preview.header}>
               <div className={preview.meta}>
                 <span className={preview.badge}>待审核 · 未发布</span>
-                <span>候选 {typeof data.index === 'number' ? data.index + 1 : index + 1}</span>
+                <span>候选 {candidateNumber}</span>
               </div>
               <h4 className={preview.title}>
-                {typeof data.title === 'string' ? data.title : `候选信号 ${index + 1}`}
+                {typeof data.title === 'string' ? data.title : `候选信号 ${candidateNumber}`}
               </h4>
               <p className={preview.date}>
                 事件发生时间：
@@ -134,16 +139,18 @@ export function PrivateResult({ result }: { result: unknown }) {
                     <Evidence value={data.event_date_evidence} />
                   </details>
                 </section>
-                {organizations.length > 0 && (
-                  <section>
-                    <h5>相关组织（待核对）</h5>
+                <section>
+                  <h5>相关组织（待核对）</h5>
+                  {organizations.length > 0 ? (
                     <ul className={preview.organizations}>
                       {organizations.map((name, organizationIndex) => (
                         <li key={organizationIndex}>{name}</li>
                       ))}
                     </ul>
-                  </section>
-                )}
+                  ) : (
+                    <p>未识别相关组织，需补充核对。</p>
+                  )}
+                </section>
                 <section className={preview.reviewNote}>
                   <h5>决策前需确认</h5>
                   <ul>
