@@ -34,8 +34,8 @@ export default async function CandidateReviewDetailPage({
           <p role="alert">
             候选不存在、无权访问或未通过当前材料复检。请返回原任务核对；未执行任何修改。
           </p>
-          <Link className={controls.button} href="/admin/signal-review">
-            返回候选审核工作台
+          <Link className={controls.button} href="/admin/signal-generation">
+            返回 AI 生成任务列表
           </Link>
         </>
       )}

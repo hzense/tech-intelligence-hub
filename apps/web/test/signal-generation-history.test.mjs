@@ -220,11 +220,9 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   const aiReads = service.ancillary.aiReads;
   const reviewStart = service.queries.length;
   assert.equal((await service.candidateReviewDetail('admin', service.id, 0)).canPublish, false);
-  assert.equal((await service.candidateReviewQueue('admin')).length, 1);
   await assert.rejects(service.candidateReviewDetail('other-admin', service.id, 0), {
     code: 'not_found',
   });
-  assert.deepEqual(await service.candidateReviewQueue('other-admin'), []);
   service.row.deleted_at = '2026-09-21';
   await assert.rejects(service.candidateReviewDetail('admin', service.id, 0), {
     code: 'not_found',

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCandidateReview, candidateReviewSummaries } from '../lib/candidate-review.ts';
+import { buildCandidateReview } from '../lib/candidate-review.ts';
 import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
 import { assessGeneratedCandidates } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 const { structuredClone } = globalThis;
@@ -73,17 +73,12 @@ test('original candidate index survives partial acceptance; array offset is not 
   run.result.candidates[0].index = 3;
   assert.throws(() => buildCandidateReview(run, 0));
   assert.equal(buildCandidateReview(run, 3).candidateIndex, 3);
-  assert.deepEqual(
-    candidateReviewSummaries(run).map((row) => row.index),
-    [3],
-  );
 });
 test('reject nonterminal, failed, deleted, malformed and duplicate identities', () => {
   for (const status of ['pending', 'running', 'unknown', 'failed', 'cancelled']) {
     const run = fixture();
     run.status = status;
     assert.throws(() => buildCandidateReview(run, 0), /candidate_review_unavailable/);
-    assert.deepEqual(candidateReviewSummaries(run), []);
   }
   for (const change of [
     (run) => {

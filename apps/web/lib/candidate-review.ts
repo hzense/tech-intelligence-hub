@@ -123,22 +123,3 @@ export function buildCandidateReview(run: SignalGenerationRun, index: number) {
     throw new CandidateReviewError();
   }
 }
-
-export function candidateReviewSummaries(run: SignalGenerationRun) {
-  if (run.status !== 'completed' || run.deleted_at) return [];
-  const rows = [];
-  for (let index = 0; index < 5; index++) {
-    try {
-      const packet = buildCandidateReview(run, index);
-      rows.push({
-        index,
-        title: packet.candidate.title,
-        eventDate: packet.candidate.event_date,
-        missingItems: packet.checks.length,
-      });
-    } catch {
-      // Malformed/legacy candidates are never advertised as eligible for review.
-    }
-  }
-  return rows;
-}
