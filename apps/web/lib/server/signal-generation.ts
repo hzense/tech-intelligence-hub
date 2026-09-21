@@ -25,6 +25,7 @@ import {
 } from '../signal-generation-config';
 import { invokeSignalGeneration } from '../signal-generation-provider';
 import { createGenerationSourceInspector } from '../signal-generation-source-inspection';
+import { buildCandidateReview, candidateReviewSummaries } from '../candidate-review';
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
@@ -160,6 +161,23 @@ export async function generationDetail(owner: string, id: string) {
   return (
     await historyDtos(owner, [await store.getSignalGeneration({ ...historyOptions(), owner, id })])
   )[0];
+}
+export async function candidateReviewDetail(owner: string, id: string, index: number) {
+  if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
+  const run = await store.getSignalGeneration({ ...historyOptions(), owner, id });
+  return buildCandidateReview(run, index);
+}
+export async function candidateReviewQueue(owner: string) {
+  if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
+  const runs = await store.listSignalGenerations({ ...historyOptions(), owner });
+  const labels = await historyDtos(owner, runs);
+  return runs.flatMap((run, position) =>
+    candidateReviewSummaries(run).map((candidate) => ({
+      ...candidate,
+      runId: run.id,
+      sourceName: labels[position]?.source_name ?? '资料名称暂不可用',
+    })),
+  );
 }
 export async function executeGeneration(owner: string, body: unknown) {
   if (!generationConfigured()) throw new GenerationError('not_configured');
