@@ -723,6 +723,8 @@ export async function cancelSignalGeneration({ pool, owner, id }) {
 
 export async function deleteSignalGeneration({ pool, owner, id }) {
   return transaction(pool, async (client) => {
+    uuid(id);
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [id]);
     await expireRunning(client, owner, { id });
     const row = await run(client, owner, id, true);
     if (row.deleted_at) return { id: row.id, deleted: true };

@@ -57,7 +57,14 @@ async function transaction(pool, operation) {
   }
 }
 
-async function lockParents(client, route, claiming = false, locking = true) {
+async function lockParents(client, route, claiming = false, locking = true, restricted = false) {
+  if (restricted) {
+    await client.query('SELECT public.hzense_lock_candidate_publication_task($1,$2)', [
+      route.task_id,
+      route.principal_id,
+    ]);
+    locking = false;
+  }
   // FOR SHARE (not KEY SHARE) conflicts with non-key safety-switch updates.
   // All future multi-row configuration mutations must use this same order.
   const control = one(
@@ -85,7 +92,7 @@ async function lockParents(client, route, claiming = false, locking = true) {
   return { control, task, authorization };
 }
 
-async function lockContext(client, runId, claiming = false, locking = true) {
+async function lockContext(client, runId, claiming = false, locking = true, restricted = false) {
   // This routing read intentionally does not lock the run ahead of its parents.
   // The ALWAYS run guard makes both routing fields immutable and forbids DELETE.
   const route = one(
@@ -96,7 +103,7 @@ async function lockContext(client, runId, claiming = false, locking = true) {
     ),
     'run_not_found',
   );
-  const parents = await lockParents(client, route, claiming, locking);
+  const parents = await lockParents(client, route, claiming, locking, restricted);
   const run = one(
     await client.query(
       `SELECT ${runColumns}
@@ -115,7 +122,7 @@ async function lockContext(client, runId, claiming = false, locking = true) {
 }
 
 /** Create an immutable original intent; a replay never resurrects its old run. */
-export async function createPrivatePublicationRun({ pool, request }) {
+export async function createPrivatePublicationRun({ pool, request, restricted = false }) {
   const command = parsePublicationControlRequest(request, 'create');
   return transaction(pool, async (client) => {
     await client.query(
@@ -132,7 +139,7 @@ export async function createPrivatePublicationRun({ pool, request }) {
     ).rows[0];
     if (existing && Object.entries(command).some(([key, value]) => existing[key] !== value))
       deny('run_identity_conflict');
-    await lockParents(client, command);
+    await lockParents(client, command, false, true, restricted);
     const inserted = await client.query(
       `INSERT INTO public.signal_publication_runs
       (run_id, task_id, principal_id, original_intent) VALUES ($1,$2,$3,$4)
@@ -156,10 +163,10 @@ export async function createPrivatePublicationRun({ pool, request }) {
 }
 
 /** A claim is not publication. An expired attempt always gets a higher token. */
-export async function claimPrivatePublicationRun({ pool, request }) {
+export async function claimPrivatePublicationRun({ pool, request, restricted = false }) {
   const command = parsePublicationControlRequest(request, 'claim');
   return transaction(pool, async (client) => {
-    const context = await lockContext(client, command.run_id, true);
+    const context = await lockContext(client, command.run_id, true, true, restricted);
     assertPublicationPolicy(context);
     const { run, now } = context;
     if (['cancelled', 'completed'].includes(run.status)) deny('run_terminal');
@@ -247,10 +254,10 @@ export async function cancelPrivatePublicationRun({ pool, request }) {
 }
 
 /** Close an active run, even after a switch is disabled. This never publishes/withdraws a Signal. */
-export async function completePrivatePublicationRun({ pool, request }) {
+export async function completePrivatePublicationRun({ pool, request, restricted = false }) {
   const command = parsePublicationControlRequest(request, 'complete');
   return transaction(pool, async (client) => {
-    const context = await lockContext(client, command.run_id);
+    const context = await lockContext(client, command.run_id, false, true, restricted);
     assertPublicationLease(context, command);
     const changed = one(
       await client.query(

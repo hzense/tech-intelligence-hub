@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { signalGenerationRuns } from './signal-generation-schema.js';
 export {
   importBatches,
   importItems,
@@ -1418,6 +1419,92 @@ export const contentRegistry = pgTable(
   },
   (t) => [uniqueIndex('content_path_uq').on(t.path)],
 );
+export const candidateReviews = pgTable(
+  'candidate_reviews',
+  {
+    id: uuid('id').primaryKey(),
+    requestId: uuid('request_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => signalGenerationRuns.id),
+    candidateIndex: integer('candidate_index').notNull(),
+    revision: integer('revision').notNull(),
+    materialHash: text('material_hash').notNull(),
+    fingerprint: text('fingerprint').notNull(),
+    decision: text('decision').notNull(),
+    note: text('note').notNull(),
+    draft: jsonb('draft').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('candidate_reviews_request_uq').on(t.requestId),
+    uniqueIndex('candidate_reviews_revision_uq').on(t.runId, t.candidateIndex, t.revision),
+    check('candidate_reviews_index_ck', sql`${t.candidateIndex} BETWEEN 0 AND 4`),
+    check('candidate_reviews_revision_ck', sql`${t.revision} > 0`),
+    check('candidate_reviews_hash_ck', sql`${t.materialHash} ~ '^[a-f0-9]{64}$'`),
+    check('candidate_reviews_fingerprint_ck', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
+    check(
+      'candidate_reviews_decision_ck',
+      sql`${t.decision} IN ('draft','needs_evidence','rejected','submit_verification')`,
+    ),
+    check('candidate_reviews_draft_ck', sql`jsonb_typeof(${t.draft}) = 'object'`),
+  ],
+);
+export const candidateReviewConversions = pgTable(
+  'candidate_review_conversions',
+  {
+    requestKey: text('request_key').primaryKey(),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => candidateReviews.id),
+    ownerId: text('owner_id').notNull(),
+    signalId: text('signal_id')
+      .notNull()
+      .references(() => signals.id),
+    sourceVersion: integer('source_version').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('candidate_review_conversions_review_uq').on(t.reviewId),
+    foreignKey({
+      columns: [t.signalId, t.sourceVersion],
+      foreignColumns: [signalVersions.signalId, signalVersions.version],
+    }),
+    check('candidate_review_conversions_version_ck', sql`${t.sourceVersion} > 0`),
+    check(
+      'candidate_review_conversions_request_ck',
+      sql`${t.requestKey} ~ '^[A-Za-z0-9._:-]{1,200}$'`,
+    ),
+  ],
+);
+
+export const candidateReviewAttestations = pgTable(
+  'candidate_review_attestations',
+  {
+    verificationId: uuid('verification_id').primaryKey(),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => candidateReviews.id),
+    ownerId: text('owner_id').notNull(),
+    keyId: text('key_id').notNull(),
+    payload: text('payload').notNull(),
+    signature: text('signature').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('candidate_review_attestations_key_ck', sql`length(${t.keyId}) BETWEEN 1 AND 200`),
+    check(
+      'candidate_review_attestations_payload_ck',
+      sql`length(${t.payload}) BETWEEN 1 AND 262144`,
+    ),
+    check(
+      'candidate_review_attestations_signature_ck',
+      sql`length(${t.signature}) BETWEEN 1 AND 1024`,
+    ),
+  ],
+);
+
 export const searchDocuments = pgTable(
   'search_documents',
   {

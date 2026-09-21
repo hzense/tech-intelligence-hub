@@ -32,9 +32,9 @@ vi.mock('../src/migrate.mjs', () => ({
 }));
 vi.mock('../src/verify.mjs', () => ({ verifyDatabaseContract: calls.verify }));
 const root = new URL('../../../db/migrations/', import.meta.url);
-const migrations = Object.entries(
-  JSON.parse(readFileSync(new URL('checksums.json', root), 'utf8')),
-).map(([name, checksum]) => ({ name, checksum, sql: readFileSync(new URL(name, root), 'utf8') }));
+const migrations = Object.entries(JSON.parse(readFileSync(new URL('checksums.json', root), 'utf8')))
+  .filter(([name]) => name < '0020_')
+  .map(([name, checksum]) => ({ name, checksum, sql: readFileSync(new URL(name, root), 'utf8') }));
 const pending = ['0019_generation_progress.sql'];
 const identity = { database: 'hzense', user: 'migrator' };
 const policy = { host: 'fixture.invalid', port: '5432', ...identity };

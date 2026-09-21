@@ -2,12 +2,29 @@ import Link from 'next/link';
 import type { buildCandidateReview } from '@/lib/candidate-review';
 import { PrivateResult } from './private-generation-result';
 import controls from './admin-controls.module.css';
+import { CandidateReviewEditor } from './candidate-review-editor';
+import { CandidatePublicationActions } from './candidate-publication-actions';
 
 export function CandidateReview({ packet }: { packet: ReturnType<typeof buildCandidateReview> }) {
   return (
     <>
-      <p role="status">审核准备 · 未发布。当前只读，不保存审核决定，不调用 AI。</p>
+      <p role="status">私有候选 · 未发布。人工审核与可信核验分开保存，不调用 AI。</p>
       <PrivateResult result={{ classification: 'private', candidates: [packet.candidate] }} />
+      <CandidateReviewEditor
+        runId={packet.runId}
+        candidateIndex={packet.candidateIndex}
+        materialHash={packet.materialHash}
+        initialDraft={{
+          title: packet.candidate.title,
+          summary: packet.candidate.summary,
+          eventDate: packet.candidate.event_date,
+        }}
+      />
+      <CandidatePublicationActions
+        runId={packet.runId}
+        candidateIndex={packet.candidateIndex}
+        materialHash={packet.materialHash}
+      />
       <section aria-labelledby="publication-checks">
         <h2 id="publication-checks">正式发布前待办</h2>
         <p>以下是尚未完成的业务环节，不是模型评分。引用匹配不等于事实核验通过。</p>
@@ -18,11 +35,8 @@ export function CandidateReview({ packet }: { packet: ReturnType<typeof buildCan
             </li>
           ))}
         </ul>
-        <button className={controls.button} disabled aria-describedby="publish-blocked">
-          正式发布（尚未接通）
-        </button>
         <p id="publish-blocked">
-          必须先完成可信核验、正式实体绑定与受控发布链；不能从私有候选直接公开。
+          上述为原始候选待办；补全和审核结果保存在独立修订中。发布前由服务端重新检查，不能从私有候选直接公开。
         </p>
       </section>
       <section aria-labelledby="review-originals">

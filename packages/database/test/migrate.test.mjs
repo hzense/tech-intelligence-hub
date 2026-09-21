@@ -36,6 +36,8 @@ describe('database migration runner', () => {
       '0017_import_task_visibility.sql',
       '0018_generation_task_visibility.sql',
       '0019_generation_progress.sql',
+      '0020_candidate_reviews.sql',
+      '0021_candidate_review_attestations.sql',
     ]);
     expect(migrations.every((migration) => migration.checksum.length === 64)).toBe(true);
     await expect(verifyMigrationManifest(migrations)).resolves.toBeUndefined();

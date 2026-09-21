@@ -22,7 +22,7 @@ import { inspectCurrentPublicSignalReaderAccess } from '../src/current-publicati
 const path = resolve(process.cwd(), '../../db/migrations/0012_current_signal_publication.sql');
 describe('Current public Signal release schema', () => {
   it('pins only two private binding tables, with exact non-cascading foreign keys', () => {
-    expect(expectedTableNames.size).toBe(48);
+    expect(expectedTableNames.size).toBe(51);
     const keys = [];
     for (const table of [signalVerificationDependencySeals, signalPublicationPermits]) {
       const name = getTableName(table);
