@@ -10,6 +10,7 @@ const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
 const suite = adminUrl ? describe.sequential : describe.skip;
 suite('candidate reviewer exact PostgreSQL privileges', () => {
+  const fixturePassword = 'fixture-reviewer-only';
   let admin,
     pool,
     rolePool,
@@ -40,7 +41,9 @@ suite('candidate reviewer exact PostgreSQL privileges', () => {
       "INSERT INTO public.hzense_schema_migrations VALUES('0020_candidate_reviews.sql'),('0021_candidate_review_attestations.sql')",
     );
     await pool.query(`REVOKE TEMPORARY ON DATABASE "${name}" FROM PUBLIC`);
-    await admin.query('CREATE ROLE hzense_candidate_reviewer LOGIN NOINHERIT CONNECTION LIMIT 2');
+    await admin.query(
+      `CREATE ROLE hzense_candidate_reviewer LOGIN NOINHERIT CONNECTION LIMIT 2 PASSWORD '${fixturePassword}'`,
+    );
     roleCreated = true;
     await pool.query(
       await readFile(
@@ -49,7 +52,7 @@ suite('candidate reviewer exact PostgreSQL privileges', () => {
       ),
     );
     url.username = 'hzense_candidate_reviewer';
-    url.password = '';
+    url.password = fixturePassword;
     rolePool = new pg.Pool({ connectionString: url.toString(), max: 1 });
   });
   afterAll(async () => {
