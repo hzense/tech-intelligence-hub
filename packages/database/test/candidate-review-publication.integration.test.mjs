@@ -6,7 +6,7 @@ import pg from 'pg';
 import { beforeAll, afterAll, it, describe, expect } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { fixture } from './candidate-review.test.mjs';
-import { publicSignalSearchQuery } from '../../../apps/web/lib/public-signal-reader-core.ts';
+import { publicSignalSearchQuery } from '../src/public-signal-query.mjs';
 import { saveCandidateReview } from '../src/candidate-review-store.mjs';
 import {
   signalWriterInsertColumns,
