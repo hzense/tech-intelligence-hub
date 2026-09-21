@@ -25,13 +25,12 @@ new Function('require', 'module', 'exports', compiled.outputFiles[0].text)(
 );
 const {
   CandidatePublicationActions,
+  latestReview,
   latestSubmittedReview,
-  withdrawalReview,
-  inspectionReview,
-  publicationExtra,
+  latestPublishedReview,
+  automaticPublicationExtra,
 } = module.exports;
-const blank = { envelope: '', verificationId: '', publicationRevision: '', reasonCode: '' };
-test('publication stages require explicit actions with only inspection initially enabled', () => {
+test('publication controls require confirmation without operator-entered protocol fields', () => {
   const html = renderToStaticMarkup(
     createElement(CandidatePublicationActions, {
       runId: 'fixture',
@@ -39,16 +38,10 @@ test('publication stages require explicit actions with only inspection initially
       materialHash: 'hash',
     }),
   );
-  assert.match(html, /检查发布资格/);
-  for (const label of [
-    '转换为正式私有候选',
-    '提交签名核验报告',
-    '组装待发布版本',
-    '正式发布',
-    '撤回正式信号',
-  ])
-    assert.match(html, new RegExp(`disabled=""[^>]*>${label}</button>`));
-  assert.match(html, /不触发 AI 生成/);
+  assert.match(html, /刷新发布状态/);
+  assert.match(html, /管理员无需复制 ID、填写 JSON 或选择技术原因/);
+  for (const label of ['签名核验报告', '核验记录 UUID', '当前发布版本号', '发布 / 撤回原因'])
+    assert.doesNotMatch(html, new RegExp(label));
 });
 test('latest review must be submitted and bind the current material', () => {
   const good = { revision: 1, decision: 'submit_verification', material_hash: 'hash' };
@@ -59,49 +52,32 @@ test('latest review must be submitted and bind the current material', () => {
   assert.throws(() => latestSubmittedReview([good], 'changed'));
   assert.throws(() => latestSubmittedReview([], 'hash'));
 });
-test('withdrawal selects original bound revision despite later rejection', () => {
+test('inspection uses latest review while withdrawal selects latest submitted history', () => {
   const original = { revision: 1, decision: 'submit_verification', material_hash: 'hash' };
   const rejected = { ...original, revision: 2, decision: 'rejected' };
-  assert.equal(withdrawalReview([rejected, original], 'hash', '1'), original);
-  assert.equal(inspectionReview([rejected, original], 'hash', '1'), original);
-  assert.equal(inspectionReview([original, rejected], 'hash', ''), rejected);
-  for (const revision of ['', '0', '-1', '1.5', '3'])
-    assert.throws(() => withdrawalReview([original], 'hash', revision));
-  assert.throws(() => withdrawalReview([original], 'other', '1'));
+  assert.equal(latestReview([original, rejected], 'hash'), rejected);
+  assert.equal(latestPublishedReview([rejected, original], 'hash'), original);
+  assert.throws(() => latestPublishedReview([rejected], 'hash'));
+  assert.throws(() => latestPublishedReview([original], 'other'));
 });
-test('each action takes only its own bounded inputs', () => {
-  assert.deepEqual(publicationExtra('prepare', { ...blank, envelope: 'bad' }), {});
-  assert.deepEqual(publicationExtra('verify', { ...blank, envelope: '{"signature":"signed"}' }), {
-    envelope: { signature: 'signed' },
-  });
-  for (const envelope of ['bad', 'null', '[]'])
-    assert.throws(() => publicationExtra('verify', { ...blank, envelope }));
+test('protocol fields are derived from trusted stored state instead of operator input', () => {
   const verificationId = '11111111-1111-4111-8111-111111111111';
-  assert.deepEqual(publicationExtra('assemble', { ...blank, verificationId }), { verificationId });
-  assert.throws(() => publicationExtra('assemble', blank));
-  for (const action of ['publish', 'withdraw']) {
-    const reasonCode = action === 'publish' ? 'initial_publication' : 'operator_request';
-    assert.deepEqual(publicationExtra(action, { ...blank, publicationRevision: '2', reasonCode }), {
-      expectedPublicationRevision: 2,
-      reasonCode,
-    });
-    assert.throws(() =>
-      publicationExtra(action, {
-        ...blank,
-        publicationRevision: '2',
-        reasonCode: 'free_form_reason',
-      }),
-    );
-    assert.throws(() =>
-      publicationExtra(action, {
-        ...blank,
-        publicationRevision: '2',
-        reasonCode: action === 'publish' ? 'operator_request' : 'initial_publication',
-      }),
-    );
-    for (const publicationRevision of ['', '-1', '1.5', '9007199254740993'])
-      assert.throws(() =>
-        publicationExtra(action, { ...blank, publicationRevision, reasonCode: 'approved' }),
-      );
-  }
+  assert.deepEqual(
+    automaticPublicationExtra('assemble', { verification: { verification_id: verificationId } }),
+    { verificationId },
+  );
+  assert.throws(() => automaticPublicationExtra('assemble', {}));
+  assert.deepEqual(automaticPublicationExtra('publish'), {
+    expectedPublicationRevision: 0,
+    reasonCode: 'initial_publication',
+  });
+  assert.deepEqual(
+    automaticPublicationExtra('publish', { publication: { publication_revision: 4 } }),
+    { expectedPublicationRevision: 4, reasonCode: 'republication' },
+  );
+  assert.deepEqual(
+    automaticPublicationExtra('withdraw', { publication: { publication_revision: 4 } }),
+    { expectedPublicationRevision: 4, reasonCode: 'operator_request' },
+  );
+  assert.throws(() => automaticPublicationExtra('withdraw'));
 });

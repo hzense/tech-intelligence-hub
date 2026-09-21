@@ -92,7 +92,13 @@ test(
                 ready: false,
                 status: 'published',
                 blocked: ['合成历史发布回执；非生产数据。'],
-                receipt: { publication_revision: 1 },
+                receipt: {
+                  publication: {
+                    publication_revision: 1,
+                    status: 'published',
+                    current_public: true,
+                  },
+                },
               },
             }),
           );
@@ -192,25 +198,18 @@ test(
     ];
     configured = false;
     await page.goto(`${url}/?publication`);
-    await page.getByRole('textbox', { name: /检查 \/ 撤回的原审核版本号/ }).fill('1');
-    await page.getByRole('button', { name: '检查发布资格', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('r1');
+    await expect(page.getByRole('status')).toContainText('r2');
     assert.equal(commands.at(-1).action, 'inspect');
-    assert.equal(commands.at(-1).request.expectedReviewRevision, 1);
-    await expect(
-      page.getByRole('button', { name: '转换为正式私有候选', exact: true }),
-    ).toBeDisabled();
-    await expect(page.getByRole('button', { name: '正式发布', exact: true })).toBeDisabled();
-    await page
-      .getByRole('textbox', { name: '当前发布版本号（以最新服务端回执为准）', exact: true })
-      .fill('1');
-    await page
-      .getByRole('combobox', { name: '发布 / 撤回原因', exact: true })
-      .selectOption('operator_request');
-    await page.getByRole('button', { name: '撤回正式信号', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('请求已成功返回');
-    assert.equal(commands.at(-1).action, 'withdraw');
-    assert.equal(commands.at(-1).request.expectedReviewRevision, 1);
+    assert.equal(commands.at(-1).request.expectedReviewRevision, 2);
+    await expect(page.getByRole('textbox')).toHaveCount(0);
+    await expect(page.getByRole('combobox')).toHaveCount(0);
+    await page.getByRole('button', { name: '确认撤回', exact: true }).click();
+    await expect.poll(() => commands.some((command) => command.action === 'withdraw')).toBe(true);
+    const withdrawal = [...commands].reverse().find((command) => command.action === 'withdraw');
+    assert.ok(withdrawal);
+    assert.equal(withdrawal.request.expectedReviewRevision, 1);
+    assert.equal(withdrawal.request.expectedPublicationRevision, 1);
+    assert.equal(withdrawal.request.reasonCode, 'operator_request');
     assert.deepEqual(errors, []);
   },
 );

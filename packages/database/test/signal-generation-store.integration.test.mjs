@@ -197,7 +197,10 @@ suite('private AI generation PostgreSQL ledger', () => {
     await rolePool?.end();
     await pool?.end();
     if (admin) {
-      if (databaseCreated) await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      // All test pools must be closed before cleanup. A forced drop can race a
+      // client's graceful shutdown and surface PostgreSQL 57P01 as an
+      // unhandled pg event after every assertion has already passed.
+      if (databaseCreated) await admin.query(`DROP DATABASE IF EXISTS "${name}"`);
       if (createdRole) await admin.query('DROP ROLE IF EXISTS hzense_generation_admin');
       for (const database of isolatedDatabases) {
         for (const privilege of database.privileges) {
