@@ -2,24 +2,13 @@ import Link from 'next/link';
 import type { buildCandidateReview } from '@/lib/candidate-review';
 import { PrivateResult } from './private-generation-result';
 import controls from './admin-controls.module.css';
-import { CandidateReviewEditor } from './candidate-review-editor';
 import { CandidatePublicationActions } from './candidate-publication-actions';
 
 export function CandidateReview({ packet }: { packet: ReturnType<typeof buildCandidateReview> }) {
   return (
     <>
-      <p role="status">私有候选 · 未发布。人工审核与可信核验分开保存，不调用 AI。</p>
+      <p role="status">私有候选 · 未发布。请核对候选与证据，并确认系统允许的下一步。</p>
       <PrivateResult result={{ classification: 'private', candidates: [packet.candidate] }} />
-      <CandidateReviewEditor
-        runId={packet.runId}
-        candidateIndex={packet.candidateIndex}
-        materialHash={packet.materialHash}
-        initialDraft={{
-          title: packet.candidate.title,
-          summary: packet.candidate.summary,
-          eventDate: packet.candidate.event_date,
-        }}
-      />
       <CandidatePublicationActions
         runId={packet.runId}
         candidateIndex={packet.candidateIndex}

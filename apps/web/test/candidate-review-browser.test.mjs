@@ -191,10 +191,20 @@ test(
       true,
     );
     await page.screenshot({ path: join(artifacts, 'mobile.png'), fullPage: true });
+    const savedReviews = [...reviews];
+    reviews = [];
+    configured = false;
+    const beforeEmptyPublication = commands.length;
+    await page.goto(`${url}/?publication`);
+    await expect(page.getByRole('heading', { name: '等待系统准备', exact: true })).toBeVisible();
+    await expect(page.getByRole('status')).toContainText('等待系统准备可核验版本');
+    await expect(page.getByRole('textbox')).toHaveCount(0);
+    await expect(page.getByRole('combobox')).toHaveCount(0);
+    assert.equal(commands.length, beforeEmptyPublication);
     // New rejection must not prevent emergency withdrawal of the historical release.
     reviews = [
-      { ...reviews[0], revision: 2, decision: 'rejected' },
-      { ...reviews[1], revision: 1, decision: 'submit_verification' },
+      { ...savedReviews[0], revision: 2, decision: 'rejected' },
+      { ...savedReviews[1], revision: 1, decision: 'submit_verification' },
     ];
     configured = false;
     await page.goto(`${url}/?publication`);

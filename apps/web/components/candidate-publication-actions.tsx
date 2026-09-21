@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import controls from './admin-controls.module.css';
 import styles from './candidate-review-editor.module.css';
-import { reviewRequestIdentity } from './candidate-review-editor';
+import { reviewRequestIdentity } from './candidate-review-request';
 
 type Props = { runId: string; candidateIndex: number; materialHash: string };
 type Action = 'inspect' | 'prepare' | 'assemble' | 'publish' | 'withdraw';
@@ -22,8 +22,8 @@ type Readiness = {
 
 const stageCopy: Record<string, { label: string; detail: string }> = {
   review_not_submitted: {
-    label: '等待送核验',
-    detail: '请先在上方确认候选内容，并选择“保存并送核验”。',
+    label: '等待系统准备',
+    detail: '系统尚未生成满足发布门禁的审核版本；准备完成后，这里会出现可确认的下一步。',
   },
   conversion_required: {
     label: '可以确认转换',
@@ -195,6 +195,21 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
 
   const inspect = useCallback(async () => {
     const data = await readReviews();
+    if (!data.reviews.length) {
+      const state: Readiness = {
+        ready: false,
+        status: 'review_not_submitted',
+        blocked: [
+          data.configured
+            ? '尚无系统审核版本。人物、公开证据、领域和事件身份准备完成前不能进入核验。'
+            : '审核与发布存储尚未配置，当前只能查看候选和证据。',
+        ],
+      };
+      setReadiness(state);
+      setReceipt(null);
+      setMessage('候选已读取，等待系统准备可核验版本。');
+      return { data, review: null, state };
+    }
     const review = latestReview(data.reviews, materialHash);
     const body = await post('inspect', review);
     if (!body.readiness) throw new Error('服务端未返回发布状态，请稍后刷新。');
