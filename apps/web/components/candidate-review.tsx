@@ -51,11 +51,11 @@ export function CandidateReview({ packet }: { packet: ReturnType<typeof buildCan
         <p style={{ overflowWrap: 'anywhere' }}>材料指纹：{packet.materialHash}</p>
       </details>
       <div className={controls.group}>
-        <Link className={controls.button} href="/admin/signal-review">
-          返回候选审核工作台
+        <Link className={controls.button} href="/admin/signal-generation">
+          返回 AI 生成任务列表
         </Link>
         <Link className={controls.button} href={`/admin/signal-generation/${packet.runId}`}>
-          原生成任务
+          返回原生成任务
         </Link>
       </div>
     </>

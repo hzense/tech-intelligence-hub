@@ -73,6 +73,8 @@ test('review renders private evidence as text and cannot submit approval/publica
   assert.match(html, /&lt;img/);
   assert.doesNotMatch(html, /<script|<img|<form|type="submit"/);
   assert.match(html, /\/admin\/signal-generation\/fixture-run/);
+  assert.match(html, /返回 AI 生成任务列表/);
+  assert.doesNotMatch(html, /href="\/admin\/signal-review"|候选审核工作台|候选审核汇总/);
   assert.doesNotMatch(html, /aria-label="审核候选/);
 
   const id = '11111111-1111-4111-8111-111111111111';
