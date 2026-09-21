@@ -1117,7 +1117,7 @@ export function AdminSignalGeneration({
           窄屏可横向滚动表格。费用为系统记账与预留金额，并非供应商最终账单。候选尚未审核或发布。
         </p>
       </section>
-      {detail?.result !== undefined && <PrivateResult result={detail.result} />}
+      {detail?.result !== undefined && <PrivateResult result={detail.result} reviewTask={detail} />}
     </main>
   );
 }

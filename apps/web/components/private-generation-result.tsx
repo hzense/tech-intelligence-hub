@@ -1,5 +1,7 @@
 import styles from './admin-signal-generation.module.css';
 import preview from './private-generation-result.module.css';
+import Link from 'next/link';
+import controls from './admin-controls.module.css';
 
 function objectRows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
@@ -27,7 +29,13 @@ function Evidence({ value }: { value: unknown }) {
   );
 }
 
-export function PrivateResult({ result }: { result: unknown }) {
+export function PrivateResult({
+  result,
+  reviewTask,
+}: {
+  result: unknown;
+  reviewTask?: { id: string; status: string };
+}) {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
   const row = result as Record<string, unknown>;
   const candidates = Array.isArray(row.candidates) ? row.candidates : [];
@@ -61,6 +69,15 @@ export function PrivateResult({ result }: { result: unknown }) {
         const people = objectRows(data.persons);
         const claims = objectRows(data.claims);
         const candidateNumber = typeof data.index === 'number' ? data.index + 1 : index + 1;
+        const canOpenReview =
+          reviewTask?.status === 'completed' &&
+          /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(reviewTask.id) &&
+          row.classification === 'private' &&
+          data.classification === 'private' &&
+          data.status === 'needs_review' &&
+          Number.isInteger(data.index) &&
+          Number(data.index) >= 0 &&
+          Number(data.index) < 5;
         const organizations = Array.isArray(data.organizations)
           ? data.organizations.filter(
               (value): value is string => typeof value === 'string' && value.trim().length > 0,
@@ -89,6 +106,21 @@ export function PrivateResult({ result }: { result: unknown }) {
                   ? data.summary
                   : '摘要未提供，需人工补充。'}
               </p>
+              {canOpenReview && reviewTask && (
+                <div className={controls.group}>
+                  <Link
+                    className={controls.button}
+                    prefetch={false}
+                    href={`/admin/signal-review/${reviewTask.id}/${data.index}`}
+                    aria-label={`审核候选 ${candidateNumber}`}
+                  >
+                    审核候选
+                  </Link>
+                  <span className={preview.hint}>
+                    查看本条材料与发布待办；不调用 AI，不直接发布。
+                  </span>
+                </div>
+              )}
             </header>
             <div className={preview.layout}>
               <section className={preview.body} aria-label="信号要点与证据">
