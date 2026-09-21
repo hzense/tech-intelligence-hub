@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import controls from './admin-controls.module.css';
 import styles from './candidate-review-editor.module.css';
+import { reviewRequestIdentity } from './candidate-review-request';
+
+export { reviewRequestIdentity } from './candidate-review-request';
 
 export type ReviewDraft = {
   title: string;
@@ -82,13 +85,6 @@ export function reviewChangedFields(previous: ReviewDraft | undefined, next: Rev
   return (Object.keys(fields) as (keyof ReviewDraft)[]).filter(
     (key) => JSON.stringify(previous?.[key]) !== JSON.stringify(next[key]),
   );
-}
-export function reviewRequestIdentity(
-  previous: { fingerprint: string; requestId: string } | null,
-  fingerprint: string,
-  createId: () => string,
-) {
-  return previous?.fingerprint === fingerprint ? previous : { fingerprint, requestId: createId() };
 }
 function displayValue(value: unknown) {
   if (value === undefined || value === null || value === '') return '未填写';

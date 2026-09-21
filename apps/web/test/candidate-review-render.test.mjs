@@ -6,7 +6,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-test('review renders private evidence safely and requires explicit configured review actions', async () => {
+test('review renders private evidence safely with confirmation-only publication actions', async () => {
   const compiled = await build({
     stdin: {
       contents: `export { CandidateReview } from './components/candidate-review'; export { PrivateResult } from './components/private-generation-result';`,
@@ -66,10 +66,20 @@ test('review renders private evidence safely and requires explicit configured re
     }),
   );
   assert.match(html, /私有候选 · 未发布/);
-  assert.match(html, /人工审核与可信核验分开保存/);
+  assert.match(html, /请核对候选与证据，并确认系统允许的下一步/);
   assert.match(html, /候选 3/);
-  assert.match(html, /保存草稿/);
-  assert.match(html, /disabled=""/);
+  assert.match(html, /审核确认与正式发布/);
+  assert.match(html, /刷新发布状态/);
+  for (const text of [
+    '编辑候选与审核决定',
+    '人工修订内容',
+    '保存草稿',
+    '标记待补证',
+    '拒绝候选',
+    '保存并送核验',
+  ])
+    assert.doesNotMatch(html, new RegExp(text));
+  assert.doesNotMatch(html, /<input|<textarea|<select/);
   assert.match(html, /&lt;script&gt;/);
   assert.match(html, /&lt;img/);
   assert.doesNotMatch(html, /<script|<img/);
