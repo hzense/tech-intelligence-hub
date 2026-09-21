@@ -29,7 +29,7 @@ export function createCandidateReviewHandler(deps: {
   session(): Promise<{ user: { id: string } } | null>;
   origin(): string | undefined;
   read(owner: string, runId: string, candidateIndex: number): Promise<unknown>;
-  save(owner: string, request: unknown): Promise<unknown>;
+  confirm(owner: string, request: unknown): Promise<unknown>;
   operate(owner: string, action: string, request: Record<string, unknown>): Promise<unknown>;
 }) {
   return async (request: Request) => {
@@ -74,8 +74,8 @@ export function createCandidateReviewHandler(deps: {
         Array.isArray(body.request)
       )
         return importResponse({ error: 'invalid_request' }, 400);
-      if (body.action === 'save')
-        return importResponse({ review: await deps.save(session.user.id, body.request) });
+      if (body.action === 'confirm')
+        return importResponse({ review: await deps.confirm(session.user.id, body.request) });
       if (
         !['inspect', 'prepare', 'verify', 'assemble', 'publish', 'withdraw'].includes(body.action)
       )

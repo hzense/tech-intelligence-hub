@@ -40,6 +40,7 @@ test(
     );
     let reviews = [],
       configured = true,
+      preparation = { ready: true, blockers: [] },
       mode = 'normal';
     const commands = [],
       saved = new Map();
@@ -56,6 +57,7 @@ test(
             JSON.stringify({
               configured,
               reviews,
+              preparation,
               catalog: { people: [], organizations: [], topics: [], evidence: [] },
             }),
           );
@@ -82,6 +84,17 @@ test(
             saved.set(body.request.requestId, record);
             reviews = [record, ...reviews];
           }
+          res.end(JSON.stringify({ review: record }));
+          return;
+        }
+        if (body.action === 'confirm') {
+          const record = {
+            revision: 1,
+            decision: 'submit_verification',
+            material_hash: materialHash,
+            created_at: '2026-09-21T12:00:00Z',
+          };
+          reviews = [record];
           res.end(JSON.stringify({ review: record }));
           return;
         }
@@ -193,14 +206,19 @@ test(
     await page.screenshot({ path: join(artifacts, 'mobile.png'), fullPage: true });
     const savedReviews = [...reviews];
     reviews = [];
-    configured = false;
+    configured = true;
     const beforeEmptyPublication = commands.length;
     await page.goto(`${url}/?publication`);
-    await expect(page.getByRole('heading', { name: '等待系统准备', exact: true })).toBeVisible();
-    await expect(page.getByRole('status')).toContainText('等待系统准备可核验版本');
+    await expect(page.getByRole('heading', { name: '可以确认送核验', exact: true })).toBeVisible();
+    await expect(page.getByRole('status')).toContainText('等待管理员确认');
     await expect(page.getByRole('textbox')).toHaveCount(0);
     await expect(page.getByRole('combobox')).toHaveCount(0);
     assert.equal(commands.length, beforeEmptyPublication);
+    await page.getByRole('button', { name: '确认候选并送核验', exact: true }).click();
+    await expect.poll(() => commands.some((command) => command.action === 'confirm')).toBe(true);
+    const confirmation = [...commands].reverse().find((command) => command.action === 'confirm');
+    assert.equal(confirmation.request.expectedReviewRevision, 0);
+    assert.equal(Object.hasOwn(confirmation.request, 'draft'), false);
     // New rejection must not prevent emergency withdrawal of the historical release.
     reviews = [
       { ...savedReviews[0], revision: 2, decision: 'rejected' },

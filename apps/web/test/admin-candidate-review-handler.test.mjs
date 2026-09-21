@@ -18,7 +18,7 @@ test('review writes authenticate and check origin before accessing stores', asyn
     read: async () => {
       calls++;
     },
-    save: async () => {
+    confirm: async () => {
       calls++;
     },
     operate: async () => {
@@ -26,14 +26,14 @@ test('review writes authenticate and check origin before accessing stores', asyn
     },
   };
   assert.equal(
-    (await createCandidateReviewHandler(deps)(request({ action: 'save', request: {} }))).status,
+    (await createCandidateReviewHandler(deps)(request({ action: 'confirm', request: {} }))).status,
     401,
   );
   deps.session = async () => ({ user: { id: 'owner' } });
   assert.equal(
     (
       await createCandidateReviewHandler(deps)(
-        request({ action: 'save', request: {} }, { origin: 'https://evil.test' }),
+        request({ action: 'confirm', request: {} }, { origin: 'https://evil.test' }),
       )
     ).status,
     403,
@@ -49,7 +49,7 @@ test('review dispatch binds session owner and strips errors', async () => {
       calls.push(args);
       return { reviews: [] };
     },
-    save: async (...args) => {
+    confirm: async (...args) => {
       calls.push(args);
       return { revision: 1 };
     },
@@ -57,10 +57,11 @@ test('review dispatch binds session owner and strips errors', async () => {
       throw new Error('SECRET_DATABASE_URL');
     },
   });
-  const saved = await handler(request({ action: 'save', request: { runId: id } }));
-  assert.equal(saved.status, 200);
+  const confirmed = await handler(request({ action: 'confirm', request: { runId: id } }));
+  assert.equal(confirmed.status, 200);
   assert.equal(calls[0][0], 'owner');
-  assert.match(saved.headers.get('cache-control'), /no-store/);
+  assert.match(confirmed.headers.get('cache-control'), /no-store/);
+  assert.equal((await handler(request({ action: 'save', request: { runId: id } }))).status, 400);
   const failed = await handler(request({ action: 'publish', request: {} }));
   assert.deepEqual(await failed.json(), { error: 'unavailable' });
   assert.equal((await handler(request({ action: 'approve', request: {} }))).status, 400);
@@ -81,7 +82,7 @@ test('review boundary rejects oversized bodies and duplicate query keys before s
     read: async () => {
       calls++;
     },
-    save: async () => {
+    confirm: async () => {
       calls++;
     },
     operate: async () => {
@@ -89,7 +90,7 @@ test('review boundary rejects oversized bodies and duplicate query keys before s
     },
   });
   assert.equal(
-    (await handler(request({ action: 'save', request: { text: 'x'.repeat(65537) } }))).status,
+    (await handler(request({ action: 'confirm', request: { text: 'x'.repeat(65537) } }))).status,
     413,
   );
   assert.equal(
