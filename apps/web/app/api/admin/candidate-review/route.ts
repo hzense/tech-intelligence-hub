@@ -1,7 +1,7 @@
 import { createCandidateReviewHandler } from '@/lib/admin-candidate-review-handler';
 import { getAdminSession } from '@/lib/server/admin-auth';
 import { parseAdminAuthEnvironment } from '@/lib/admin-auth-policy';
-import { reviewDashboard, saveReview } from '@/lib/server/candidate-review';
+import { confirmPreparedReview, reviewDashboard } from '@/lib/server/candidate-review';
 import { operateCandidateReview } from '@/lib/server/candidate-review-publication';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -10,7 +10,7 @@ export const GET = createCandidateReviewHandler({
   session: getAdminSession,
   origin: () => parseAdminAuthEnvironment(process.env)?.origin,
   read: reviewDashboard,
-  save: saveReview,
+  confirm: confirmPreparedReview,
   operate: operateCandidateReview,
 });
 export const POST = GET;

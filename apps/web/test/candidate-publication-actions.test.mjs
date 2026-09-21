@@ -29,6 +29,8 @@ const {
   latestSubmittedReview,
   latestPublishedReview,
   automaticPublicationExtra,
+  unreviewedPublicationReadiness,
+  applyReviewPreparationGate,
 } = module.exports;
 test('publication controls require confirmation without operator-entered protocol fields', () => {
   const html = renderToStaticMarkup(
@@ -80,4 +82,52 @@ test('protocol fields are derived from trusted stored state instead of operator 
     { expectedPublicationRevision: 4, reasonCode: 'operator_request' },
   );
   assert.throws(() => automaticPublicationExtra('withdraw'));
+});
+test('first review exposes only confirmation when server preparation is complete', () => {
+  assert.deepEqual(
+    unreviewedPublicationReadiness({
+      configured: true,
+      preparation: { ready: true, blockers: [], counts: { people: 1 } },
+    }),
+    { ready: true, status: 'review_confirmation_required', blocked: [] },
+  );
+  assert.deepEqual(
+    unreviewedPublicationReadiness({
+      configured: true,
+      preparation: { ready: false, blockers: ['缺少公开证据'] },
+    }),
+    { ready: false, status: 'review_preparation_blocked', blocked: ['缺少公开证据'] },
+  );
+  assert.deepEqual(
+    unreviewedPublicationReadiness({
+      configured: false,
+      preparation: { ready: true, blockers: [] },
+    }),
+    {
+      ready: false,
+      status: 'review_preparation_blocked',
+      blocked: ['审核与发布写入尚未启用，当前只能查看候选和证据。'],
+    },
+  );
+});
+test('republication remains blocked until the server can prepare a new review revision', () => {
+  const state = { ready: false, status: 'not_currently_public', blocked: ['历史发布已撤回'] };
+  assert.equal(
+    applyReviewPreparationGate(state, {
+      configured: true,
+      preparation: { ready: true, blockers: [] },
+    }),
+    state,
+  );
+  assert.deepEqual(
+    applyReviewPreparationGate(state, {
+      configured: true,
+      preparation: { ready: false, blockers: ['公开证据已失效'] },
+    }),
+    {
+      ready: false,
+      status: 'review_preparation_blocked',
+      blocked: ['公开证据已失效'],
+    },
+  );
 });

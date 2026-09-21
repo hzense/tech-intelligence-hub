@@ -6,7 +6,7 @@ import styles from './candidate-review-editor.module.css';
 import { reviewRequestIdentity } from './candidate-review-request';
 
 type Props = { runId: string; candidateIndex: number; materialHash: string };
-type Action = 'inspect' | 'prepare' | 'assemble' | 'publish' | 'withdraw';
+type Action = 'inspect' | 'confirm' | 'prepare' | 'assemble' | 'publish' | 'withdraw';
 type Review = { revision: number; decision: string; material_hash: string };
 type PipelineReceipt = {
   verification?: { verification_id?: string } | null;
@@ -19,11 +19,30 @@ type Readiness = {
   status?: string;
   receipt?: PipelineReceipt;
 };
+type Preparation = {
+  ready: boolean;
+  blockers: string[];
+  counts?: {
+    people: number;
+    organizations: number;
+    topics: number;
+    evidence: number;
+    claims: number;
+  };
+};
 
 const stageCopy: Record<string, { label: string; detail: string }> = {
   review_not_submitted: {
-    label: '等待系统准备',
-    detail: '系统尚未生成满足发布门禁的审核版本；准备完成后，这里会出现可确认的下一步。',
+    label: '可以确认新的审核版本',
+    detail: '上一修订未送核验；系统会从当前候选与正式数据重新准备，不复用旧核验。',
+  },
+  review_confirmation_required: {
+    label: '可以确认送核验',
+    detail: '系统已从当前候选和正式数据自动准备审核版本；确认后进入独立核验，仍不会公开。',
+  },
+  review_preparation_blocked: {
+    label: '尚未满足送核验条件',
+    detail: '系统不会要求人工补写发布字段；请先补齐下面列出的正式数据或公开证据。',
   },
   conversion_required: {
     label: '可以确认转换',
@@ -47,7 +66,7 @@ const stageCopy: Record<string, { label: string; detail: string }> = {
   },
   not_currently_public: {
     label: '当前未公开',
-    detail: '历史发布已经撤回或失效；重新发布需要新的审核与核验。',
+    detail: '历史发布已经撤回或失效；可确认新的系统审核版本并重新进入独立核验。',
   },
 };
 
@@ -82,7 +101,34 @@ export function latestPublishedReview(records: Review[], materialHash: string) {
   return selected;
 }
 
+export function unreviewedPublicationReadiness(data: {
+  configured: boolean;
+  preparation?: Preparation;
+}): Readiness {
+  const prepared = data.configured && data.preparation?.ready === true;
+  const blockers = !data.configured
+    ? ['审核与发布写入尚未启用，当前只能查看候选和证据。']
+    : (data.preparation?.blockers ?? ['系统尚未返回审核准备结果，请刷新后重试。']);
+  return {
+    ready: prepared,
+    status: prepared ? 'review_confirmation_required' : 'review_preparation_blocked',
+    blocked: prepared ? [] : blockers,
+  };
+}
+
+export function applyReviewPreparationGate(
+  readiness: Readiness,
+  data: { configured: boolean; preparation?: Preparation },
+): Readiness {
+  if (!['review_not_submitted', 'not_currently_public'].includes(readiness.status ?? ''))
+    return readiness;
+  if (data.configured && data.preparation?.ready === true) return readiness;
+  return unreviewedPublicationReadiness(data);
+}
+
 function nextAction(status?: string): Action | null {
+  if (status === 'review_confirmation_required') return 'confirm';
+  if (status === 'review_not_submitted' || status === 'not_currently_public') return 'confirm';
   if (status === 'conversion_required') return 'prepare';
   if (status === 'verification_recorded') return 'assemble';
   if (status === 'assembled_requires_live_release_checks') return 'publish';
@@ -121,6 +167,7 @@ export function automaticPublicationExtra(action: Action, pipeline?: PipelineRec
 
 const actionLabels: Record<Action, string> = {
   inspect: '刷新发布状态',
+  confirm: '确认候选并送核验',
   prepare: '确认转换为私有版本',
   assemble: '确认组装待发布版本',
   publish: '确认正式发布',
@@ -150,16 +197,20 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       { cache: 'no-store' },
     );
     if (!response.ok) throw new Error('读取当前审核版本失败。尚未执行任何发布操作，请重试。');
-    return (await response.json()) as { configured: boolean; reviews: Review[] };
+    return (await response.json()) as {
+      configured: boolean;
+      reviews: Review[];
+      preparation?: Preparation;
+    };
   }, [candidateIndex, runId]);
 
   const post = useCallback(
-    async (action: Action, review: Review, extra: Record<string, unknown> = {}) => {
+    async (action: Action, expectedReviewRevision: number, extra: Record<string, unknown> = {}) => {
       const base = {
         runId,
         candidateIndex,
         materialHash,
-        expectedReviewRevision: review.revision,
+        expectedReviewRevision,
         ...extra,
       };
       const fingerprint = JSON.stringify({ action, request: base });
@@ -196,27 +247,23 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
   const inspect = useCallback(async () => {
     const data = await readReviews();
     if (!data.reviews.length) {
-      const state: Readiness = {
-        ready: false,
-        status: 'review_not_submitted',
-        blocked: [
-          data.configured
-            ? '尚无系统审核版本。人物、公开证据、领域和事件身份准备完成前不能进入核验。'
-            : '审核与发布存储尚未配置，当前只能查看候选和证据。',
-        ],
-      };
+      const state = unreviewedPublicationReadiness(data);
+      const prepared = state.ready === true;
       setReadiness(state);
       setReceipt(null);
-      setMessage('候选已读取，等待系统准备可核验版本。');
+      setMessage(
+        prepared ? '审核版本已自动准备，等待管理员确认。' : '候选已读取，尚未满足送核验条件。',
+      );
       return { data, review: null, state };
     }
     const review = latestReview(data.reviews, materialHash);
-    const body = await post('inspect', review);
+    const body = await post('inspect', review.revision);
     if (!body.readiness) throw new Error('服务端未返回发布状态，请稍后刷新。');
-    setReadiness(body.readiness);
+    const state = applyReviewPreparationGate(body.readiness, data);
+    setReadiness(state);
     setReceipt(body);
     setMessage(`已读取审核 r${review.revision} 的最新状态。`);
-    return { data, review, state: body.readiness };
+    return { data, review, state };
   }, [materialHash, post, readReviews]);
 
   useEffect(() => {
@@ -256,14 +303,25 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       const data = await readReviews();
       if (!data.configured && action !== 'withdraw')
         throw new Error('审核/发布存储尚未配置，暂不能执行。');
+      if (action === 'confirm') {
+        if (data.preparation?.ready !== true) throw new Error('系统准备尚未完成，请查看阻塞项。');
+        const expectedReviewRevision = data.reviews.length
+          ? latestReview(data.reviews, materialHash).revision
+          : 0;
+        const body = await post('confirm', expectedReviewRevision);
+        setReceipt(body);
+        setMessage('已确认候选并送核验，正在刷新最新状态。');
+        await inspect();
+        return;
+      }
       const review =
         action === 'withdraw'
           ? latestPublishedReview(data.reviews, materialHash)
           : latestSubmittedReview(data.reviews, materialHash);
-      const inspected = await post('inspect', review);
+      const inspected = await post('inspect', review.revision);
       const pipeline = inspected.readiness?.receipt;
       const extra = automaticPublicationExtra(action, pipeline);
-      const body = await post(action, review, extra);
+      const body = await post(action, review.revision, extra);
       setReceipt(body);
       setMessage(`${actionLabels[action]}成功，正在刷新最新状态。`);
       await inspect();
