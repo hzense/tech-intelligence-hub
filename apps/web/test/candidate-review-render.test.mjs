@@ -8,7 +8,11 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 test('review renders private evidence as text and cannot submit approval/publication', async () => {
   const compiled = await build({
-    entryPoints: [fileURLToPath(new URL('../components/candidate-review.tsx', import.meta.url))],
+    stdin: {
+      contents: `export { CandidateReview } from './components/candidate-review'; export { PrivateResult } from './components/private-generation-result';`,
+      resolveDir: fileURLToPath(new URL('..', import.meta.url)),
+      loader: 'tsx',
+    },
     bundle: true,
     jsx: 'automatic',
     write: false,
@@ -26,7 +30,7 @@ test('review renders private evidence as text and cannot submit approval/publica
             namespace: 'fixture',
           }));
           builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
-            contents: `import React from 'react'; export default function Link(props) { return React.createElement('a',props); }`,
+            contents: `import React from 'react'; export default function Link(props) { const {prefetch, ...rest} = props; return React.createElement('a',rest); }`,
             loader: 'js',
           }));
         },
@@ -69,4 +73,31 @@ test('review renders private evidence as text and cannot submit approval/publica
   assert.match(html, /&lt;img/);
   assert.doesNotMatch(html, /<script|<img|<form|type="submit"/);
   assert.match(html, /\/admin\/signal-generation\/fixture-run/);
+  assert.doesNotMatch(html, /aria-label="审核候选/);
+
+  const id = '11111111-1111-4111-8111-111111111111';
+  const candidate = {
+    index: 3,
+    classification: 'private',
+    status: 'needs_review',
+    title: '部分通过的第四条候选',
+  };
+  const result = { classification: 'private', candidates: [candidate] };
+  const render = (reviewTask, value = result) =>
+    renderToStaticMarkup(
+      createElement(module.exports.PrivateResult, { result: value, reviewTask }),
+    );
+  const taskHtml = render({ id, status: 'completed' });
+  assert.match(taskHtml, new RegExp(`href="/admin/signal-review/${id}/3"`));
+  assert.match(taskHtml, /aria-label="审核候选 4"/);
+  assert.doesNotMatch(taskHtml, new RegExp(`/admin/signal-review/${id}/0`));
+  for (const status of ['pending', 'running', 'failed', 'unknown', 'cancelled'])
+    assert.doesNotMatch(render({ id, status }), /aria-label="审核候选/);
+  for (const index of [undefined, -1, 5, 0.5, '3'])
+    assert.doesNotMatch(
+      render({ id, status: 'completed' }, { ...result, candidates: [{ ...candidate, index }] }),
+      /aria-label="审核候选/,
+    );
+  assert.doesNotMatch(render(undefined), /aria-label="审核候选/);
+  assert.doesNotMatch(render({ id: '../invalid', status: 'completed' }), /aria-label="审核候选/);
 });
