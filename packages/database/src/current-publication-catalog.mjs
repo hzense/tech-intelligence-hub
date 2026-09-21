@@ -39,6 +39,12 @@ export const currentPublicationDefaults = [
 
 // Independent code pins. New capabilities are exactly scoped, never generic SQL.
 export const currentPublicationRoutines = {
+  hzense_lock_candidate_publication_task: {
+    arguments: 'p_task_id uuid, p_principal_id uuid',
+    result: 'void',
+    hash: 'ba1ee92ce1d411517c0c6ea7850a1ad10f58a311ee078a6e7e1cd0eed310abf8',
+    grantees: ['hzense_publication_controller'],
+  },
   hzense_signal_dependency_seal: {
     arguments: 'p_signal_id text, p_source_version integer',
     result: 'jsonb',

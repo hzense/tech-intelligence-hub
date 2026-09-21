@@ -18,5 +18,7 @@
   "0016_generation_cancelled_recreation.sql": "91fed92118f856d3eecdfd7c7ec5394f6e36a93958282fb70958cbdcda849c4b",
   "0017_import_task_visibility.sql": "fef4f88c9592e03f79259787f31ab5974c187bdf6c8f9e9697c6b8faf5983012",
   "0018_generation_task_visibility.sql": "5a945ab6271cfbab0f58e3e11e78d7ff3eeb61041eec18f449b4ef44a4bc15e9",
-  "0019_generation_progress.sql": "09a590ddc306a9b45960fb86f3c9f2cbd3707c891a33f85d1b3aae533ea208cc"
+  "0019_generation_progress.sql": "09a590ddc306a9b45960fb86f3c9f2cbd3707c891a33f85d1b3aae533ea208cc",
+  "0020_candidate_reviews.sql": "7701e6a05919ba004744529160efc94a3cd2dabb90474a0bd9d9368b806424c1",
+  "0021_candidate_review_attestations.sql": "c92ac2a4221092ba056fece7986c0e44949832a32d0010b05c16f3102dbcaebf"
 }

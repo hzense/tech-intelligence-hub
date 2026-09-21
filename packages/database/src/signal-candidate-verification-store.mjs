@@ -125,11 +125,18 @@ async function lockSignal(client, id, exclusive = false) {
 }
 
 /** Obtain the exact, locked material to hand to a trusted verification stage. */
-export async function readPrivateCandidateVerificationMaterial({ pool, request }) {
+export async function readPrivateCandidateVerificationMaterial({
+  pool,
+  request,
+  restricted = false,
+}) {
   const command = parseCandidateMaterialRequest(request);
   return transaction(pool, async (client) => {
-    await lockSignal(client, command.signal_id);
-    return { scope: 'private_verification_material', ...(await material(client, command)) };
+    if (!restricted) await lockSignal(client, command.signal_id);
+    return {
+      scope: 'private_verification_material',
+      ...(await material(client, command, restricted)),
+    };
   });
 }
 
@@ -168,7 +175,12 @@ function sameRecord(row, command) {
  * Re-read the reviewed material; mismatched or stale results cannot bless a new
  * candidate. This stores an attestation, not proof that this function read the web.
  */
-export async function recordPrivateCandidateVerification({ pool, request }) {
+export async function recordPrivateCandidateVerification({
+  pool,
+  request,
+  restricted = false,
+  trustedAudit,
+}) {
   const command = parseVerificationRecordRequest(request);
   const reportHash = fingerprintVerificationReport(command);
   return transaction(pool, async (client) => {
@@ -181,10 +193,12 @@ export async function recordPrivateCandidateVerification({ pool, request }) {
     ).rows[0];
     if (existing) {
       sameRecord(existing, command);
+      if (trustedAudit)
+        await persistTrustedAudit(client, command.verification_id, trustedAudit, true);
       return { scope: 'private_historical_verification', outcome: 'replay', record: existing };
     }
-    await lockSignal(client, command.signal_id);
-    const reviewed = await material(client, command);
+    if (!restricted) await lockSignal(client, command.signal_id);
+    const reviewed = await material(client, command, restricted);
     if (
       reviewed.bundle.snapshot.content_hash !== command.source_content_hash ||
       reviewed.bundle_fingerprint !== command.bundle_fingerprint
@@ -215,16 +229,42 @@ export async function recordPrivateCandidateVerification({ pool, request }) {
       ),
       'assembly_write_conflict',
     );
+    if (trustedAudit)
+      await persistTrustedAudit(client, command.verification_id, trustedAudit, false);
     return { scope: 'private_recorded_verification', outcome: 'recorded', record: row };
   });
 }
 
-async function activeRecord(client, verificationId) {
+// Authentication of this envelope belongs exclusively to the server signature adapter.
+async function persistTrustedAudit(client, verificationId, audit, replay) {
+  const fields = ['review_id', 'owner_id', 'key_id', 'payload', 'signature'];
+  if (
+    !audit ||
+    Object.keys(audit).length !== fields.length ||
+    fields.some((key) => typeof audit[key] !== 'string' || !audit[key])
+  )
+    deny('invalid_verification_request');
+  if (replay) {
+    const old = (
+      await client.query(
+        'SELECT review_id,owner_id,key_id,payload,signature FROM public.candidate_review_attestations WHERE verification_id=$1',
+        [verificationId],
+      )
+    ).rows[0];
+    if (!old || fields.some((key) => old[key] !== audit[key])) deny('verification_key_reused');
+  } else
+    await client.query(
+      'INSERT INTO public.candidate_review_attestations(verification_id,review_id,owner_id,key_id,payload,signature) VALUES($1,$2,$3,$4,$5,$6)',
+      [verificationId, ...fields.map((key) => audit[key])],
+    );
+}
+
+async function activeRecord(client, verificationId, restricted = false) {
   const { sealed, current, ...row } = one(
     await client.query(
       `SELECT ${recordColumns},created_xid<>pg_catalog.pg_current_xact_id() AS sealed,
        expires_at>pg_catalog.clock_timestamp() AND verified_at<=pg_catalog.clock_timestamp() AS current
-       FROM public.signal_candidate_verifications WHERE verification_id=$1 FOR SHARE`,
+       FROM public.signal_candidate_verifications WHERE verification_id=$1${restricted ? '' : ' FOR SHARE'}`,
       [verificationId],
     ),
     'verification_not_found',
@@ -241,7 +281,11 @@ async function activeRecord(client, verificationId) {
  * Only references are accepted: no body, verified flags, callbacks or SQL.
  * An already-consumed record cannot create additional versions under new keys.
  */
-export async function assemblePrivateVerifiedSignalCandidate({ pool, request }) {
+export async function assemblePrivateVerifiedSignalCandidate({
+  pool,
+  request,
+  restricted = false,
+}) {
   const command = parseCandidateAssemblyRequest(request);
   const fingerprint = fingerprintAssemblyRequest(command);
   return transaction(pool, async (client) => {
@@ -270,13 +314,18 @@ export async function assemblePrivateVerifiedSignalCandidate({ pool, request }) 
       ).rows.length
     )
       deny('verification_already_consumed');
-    const verification = await activeRecord(client, command.verification_id);
+    const verification = await activeRecord(client, command.verification_id, restricted);
     if (
       verification.signal_id !== command.signal_id ||
       verification.source_version !== command.source_version
     )
       deny('verification_material_changed');
-    await lockSignal(client, command.signal_id, true);
+    if (!restricted) await lockSignal(client, command.signal_id, true);
+    else
+      await client.query('SELECT public.hzense_lock_publication_dependencies($1,$2)', [
+        command.signal_id,
+        command.source_version,
+      ]);
     const { maximum } = one(
       await client.query(
         'SELECT max(version) AS maximum FROM public.signal_versions WHERE signal_id=$1',
@@ -285,7 +334,7 @@ export async function assemblePrivateVerifiedSignalCandidate({ pool, request }) 
       'signal_not_found',
     );
     if (maximum === null || command.target_version <= maximum) deny('target_version_not_new');
-    const current = await material(client, command);
+    const current = await material(client, command, restricted);
     if (
       current.bundle_fingerprint !== verification.bundle_fingerprint ||
       current.bundle.snapshot.content_hash !== verification.source_content_hash
@@ -293,7 +342,7 @@ export async function assemblePrivateVerifiedSignalCandidate({ pool, request }) 
       deny('verification_material_changed');
     const qualified = prepareVerifiedCandidateBundle(current.bundle);
     const snapshot = cloneSignalSnapshotForPublication(qualified.snapshot, command.target_version);
-    await activeRecord(client, command.verification_id);
+    await activeRecord(client, command.verification_id, restricted);
     await assembleVersion(client, snapshot, qualified);
     const receipt = one(
       await client.query(
@@ -313,7 +362,7 @@ export async function assemblePrivateVerifiedSignalCandidate({ pool, request }) 
       'assembly_write_conflict',
     );
     await client.query('SET CONSTRAINTS ALL IMMEDIATE');
-    await activeRecord(client, command.verification_id);
+    await activeRecord(client, command.verification_id, restricted);
     return { scope: 'private_verified_candidate', outcome: 'assembled', receipt };
   });
 }

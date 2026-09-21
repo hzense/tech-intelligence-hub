@@ -1,0 +1,62 @@
+.editor {
+  border-top: 1px solid var(--muted, #64748b);
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+}
+.fields {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+  border: 0;
+  padding: 1rem 0;
+}
+.fields label {
+  display: grid;
+  gap: 0.4rem;
+}
+.fields input,
+.fields select,
+.fields textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--muted, #64748b);
+  border-radius: 8px;
+  background: var(--surface, white);
+  color: inherit;
+  padding: 0.7rem;
+  font: inherit;
+}
+.fields textarea {
+  resize: vertical;
+}
+.fields input:focus-visible,
+.fields textarea:focus-visible {
+  outline: 3px solid var(--brand, #0047ab);
+  outline-offset: 2px;
+}
+.history {
+  border: 1px solid var(--muted, #64748b);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-block: 0.75rem;
+}
+.history summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.comparison pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+@media (max-width: 640px) {
+  .comparison {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

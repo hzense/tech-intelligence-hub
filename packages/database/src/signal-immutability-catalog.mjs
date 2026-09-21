@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
 import {
+  candidateReviewFunctionHashes,
+  candidateReviewTriggers,
+} from './candidate-review-catalog.mjs';
+import {
   currentPublicationRoutines,
   currentPublicationTriggers,
 } from './current-publication-catalog.mjs';
@@ -48,6 +52,7 @@ export const sealedSignalTables = Object.freeze([
 
 // Updated only after reviewing the function source as part of a migration.
 export const sealedSignalFunctionHashes = Object.freeze({
+  ...candidateReviewFunctionHashes,
   hzense_guard_sealed_row: 'cac551349972dfdc20016fd7bdb7f50c3ee97bb5c803ae7a7cffec2c6a429524',
   hzense_guard_version_edge: '49d6bf24722b9259c77cc4a03d79c53374cdad109d1c8950b9e053a63855720e',
   hzense_reject_sealed_truncate: 'b41325b4f62e1bd563246b024169e3c197e16bee10beee7edeadf15dd0305981',
@@ -62,6 +67,7 @@ export function expectedSignalTriggerCount(tableName) {
 }
 
 export const sealedSignalTriggers = Object.freeze([
+  ...candidateReviewTriggers,
   ...sealedSignalTables.flatMap((table) => [
     Object.freeze({
       table_name: table,

@@ -1,4 +1,12 @@
 import console from 'node:console';
+import {
+  candidateReviewColumns,
+  candidateReviewPrimaryKeys,
+  candidateReviewForeignKeys,
+  candidateReviewChecks,
+  candidateReviewDefaults,
+  candidateReviewUniqueIndexes,
+} from './candidate-review-catalog.mjs';
 import { resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL, URL } from 'node:url';
@@ -239,6 +247,7 @@ const expectedColumns = {
   ...aiConfigurationColumns,
   ...importColumns,
   ...signalGenerationColumns,
+  ...candidateReviewColumns,
 };
 for (const tableName of allStampedSignalTables) {
   expectedColumns[tableName] = {
@@ -310,6 +319,7 @@ const expectedPrimaryKeys = new Set([
   ...aiConfigurationPrimaryKeys,
   ...importPrimaryKeys,
   ...signalGenerationPrimaryKeys,
+  ...candidateReviewPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -337,6 +347,7 @@ const expectedForeignKeys = new Set([
   ...aiConfigurationForeignKeys,
   ...importForeignKeys,
   ...signalGenerationForeignKeys,
+  ...candidateReviewForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -363,6 +374,7 @@ const expectedCheckExpressions = {
   ...aiConfigurationChecks,
   ...importChecks,
   ...signalGenerationChecks,
+  ...candidateReviewChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -429,6 +441,7 @@ const expectedDefaults = new Map([
   ...aiConfigurationDefaults,
   ...importDefaults,
   ...signalGenerationDefaults,
+  ...candidateReviewDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
   ['topics.runtime_enabled', new Set(['false'])],
@@ -454,6 +467,7 @@ const expectedDefaults = new Map([
 const expectedUniqueIndexes = new Set([
   ...importUniqueIndexes,
   ...signalGenerationUniqueIndexes,
+  ...candidateReviewUniqueIndexes,
   ...affiliationUniqueIndexes,
   ...eventIdentityUniqueIndexes,
   ...signalPublicationUniqueIndexes,
@@ -806,7 +820,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
                 'signal_candidate_verifications', 'signal_candidate_assembly_receipts',
                 'ai_connections', 'ai_connection_versions', 'ai_profiles', 'ai_profile_versions', 'ai_probe_runs',
                 'import_batches', 'import_items', 'import_documents', 'import_attempts',
-                'import_outputs', 'import_audit', 'import_daily_usage', 'signal_generation_runs'
+                'import_outputs', 'import_audit', 'import_daily_usage', 'signal_generation_runs',
+                'candidate_reviews','candidate_review_conversions','candidate_review_attestations'
               ))::text
               ORDER BY constraint_info.oid
             ) AS definitions
@@ -847,7 +862,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
       Object.hasOwn(currentPublicationChecks, tableName) ||
       Object.hasOwn(aiConfigurationChecks, tableName) ||
       Object.hasOwn(importChecks, tableName) ||
-      Object.hasOwn(signalGenerationChecks, tableName)
+      Object.hasOwn(signalGenerationChecks, tableName) ||
+      Object.hasOwn(candidateReviewChecks, tableName)
         ? canonicalPublicationControlCheck
         : [
               'signal_event_identities',

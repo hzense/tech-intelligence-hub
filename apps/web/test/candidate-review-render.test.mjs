@@ -6,7 +6,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-test('review renders private evidence as text and cannot submit approval/publication', async () => {
+test('review renders private evidence safely and requires explicit configured review actions', async () => {
   const compiled = await build({
     stdin: {
       contents: `export { CandidateReview } from './components/candidate-review'; export { PrivateResult } from './components/private-generation-result';`,
@@ -65,13 +65,14 @@ test('review renders private evidence as text and cannot submit approval/publica
       },
     }),
   );
-  assert.match(html, /审核准备 · 未发布/);
-  assert.match(html, /不保存审核决定/);
+  assert.match(html, /私有候选 · 未发布/);
+  assert.match(html, /人工审核与可信核验分开保存/);
   assert.match(html, /候选 3/);
-  assert.match(html, /disabled=""[^>]*aria-describedby="publish-blocked"/);
+  assert.match(html, /保存草稿/);
+  assert.match(html, /disabled=""/);
   assert.match(html, /&lt;script&gt;/);
   assert.match(html, /&lt;img/);
-  assert.doesNotMatch(html, /<script|<img|<form|type="submit"/);
+  assert.doesNotMatch(html, /<script|<img/);
   assert.match(html, /\/admin\/signal-generation\/fixture-run/);
   assert.match(html, /返回 AI 生成任务列表/);
   assert.doesNotMatch(html, /href="\/admin\/signal-review"|候选审核工作台|候选审核汇总/);

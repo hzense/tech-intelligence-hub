@@ -337,6 +337,14 @@ Production 数据库。生产上线是后续独立操作，并受现有 Runtime 
 
 ## 首次上线顺序
 
+### 候选审核与发布增量（2026-09-21，待独立生产批准）
+
+本批 `0020–0021` 新增审核/转换/签名审计私表和最小权限角色。合并代码或 Preview Ready 不自动启用审核发布；生产迁移、审核及 pipeline 连接、公钥、发布主体/任务授权和数据库公开读模式必须单独准备、审批、核验。完整变量说明和未勾选验收清单见 [候选审核与正式发布](CANDIDATE_REVIEW.md)。
+
+默认保持 `HZENSE_REVIEW_ENABLED`、`HZENSE_CANDIDATE_PIPELINE_ENABLED` 关闭。无凭据时页面明确不可用，不退回 migrator 或其他连接。先通过只读目标/Schema/权限检查，再开放审核；真实公开发布最后单独验收。回滚先关闭新增动作，不删除追加审计，必要时显式撤回已公开版本。可信核验私钥不得进入 Web 部署。
+
+### 历史首次上线记录
+
 1. ✅ 已完成：导入 GitHub 仓库并按上表创建 Vercel 项目。
 2. ✅ 已完成：用 PR 的 Preview Deployment 验证 Home、Daily 列表和至少一篇 Daily 详情。
 3. ✅ 已完成：合并后验证 Production Deployment。

@@ -64,7 +64,11 @@ suite('one-time task visibility role upgrade', () => {
     await owner.query(
       'REVOKE ALL ON DATABASE hzense FROM PUBLIC; REVOKE ALL ON SCHEMA public FROM PUBLIC; CREATE TABLE public.hzense_schema_migrations(name text, checksum text)',
     );
-    for (const [name, checksum] of Object.entries(manifest).filter(([name]) => name >= '0014_')) {
+    // This historical visibility upgrade fixture has no Signal foundation tables.
+    // Later candidate review migrations are verified by their independent suites.
+    for (const [name, checksum] of Object.entries(manifest).filter(
+      ([name]) => name >= '0014_' && name < '0020_',
+    )) {
       await owner.query(await load(`db/migrations/${name}`));
       await owner.query('INSERT INTO public.hzense_schema_migrations VALUES($1,$2)', [
         name,
