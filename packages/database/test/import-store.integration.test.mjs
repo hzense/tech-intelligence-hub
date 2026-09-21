@@ -275,7 +275,9 @@ suite('private import PostgreSQL persistence', () => {
   afterAll(async () => {
     await pool?.end();
     if (admin) {
-      await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      // Let pg finish its graceful pool shutdown. A forced drop can race the
+      // closing client and surface PostgreSQL 57P01 after all assertions pass.
+      await admin.query(`DROP DATABASE IF EXISTS "${name}"`);
       await admin.end();
     }
   });
