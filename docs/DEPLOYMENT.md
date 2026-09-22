@@ -343,6 +343,8 @@ Production 数据库。生产上线是后续独立操作，并受现有 Runtime 
 
 默认保持 `HZENSE_REVIEW_ENABLED`、`HZENSE_CANDIDATE_PIPELINE_ENABLED` 关闭。无凭据时页面明确不可用，不退回 migrator 或其他连接。先通过只读目标/Schema/权限检查，再开放审核；真实公开发布最后单独验收。回滚先关闭新增动作，不删除追加审计，必要时显式撤回已公开版本。可信核验私钥不得进入 Web 部署。
 
+`0020–0021` 的受保护迁移使用独立恢复策略 `accept-unverified-candidate-review`。只读 `preflight` 生成绑定生产目标、备份标识、完整 22 项迁移清单及待执行尾部集合的审批指纹；正式 `migrate` 必须在迁移锁内用同一连接和冻结产物再次核对。执行与验收状态记录在 [2026-09-22 候选审核生产启用记录](production-evidence/2026-09-22-candidate-review-production.md)。
+
 ### 历史首次上线记录
 
 1. ✅ 已完成：导入 GitHub 仓库并按上表创建 Vercel 项目。
