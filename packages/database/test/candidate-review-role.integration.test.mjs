@@ -40,7 +40,7 @@ suite('candidate reviewer exact PostgreSQL privileges', () => {
     await pool.query(
       "INSERT INTO public.hzense_schema_migrations VALUES('0020_candidate_reviews.sql'),('0021_candidate_review_attestations.sql')",
     );
-    await pool.query(`REVOKE TEMPORARY ON DATABASE "${name}" FROM PUBLIC`);
+    await pool.query(`REVOKE CONNECT, TEMPORARY ON DATABASE "${name}" FROM PUBLIC`);
     await admin.query(
       `CREATE ROLE hzense_candidate_reviewer LOGIN NOINHERIT CONNECTION LIMIT 2 PASSWORD '${fixturePassword}'`,
     );
@@ -63,6 +63,11 @@ suite('candidate reviewer exact PostgreSQL privileges', () => {
     await admin?.end();
   });
   it('accepts the explicit role and rejects extra metadata access or mutation', async () => {
+    await expect(
+      pool.query(
+        "SELECT has_database_privilege('hzense_candidate_reviewer', current_database(), 'CONNECT') AS allowed",
+      ),
+    ).resolves.toMatchObject({ rows: [{ allowed: true }] });
     await expect(assertCandidateReviewRole(rolePool)).resolves.toBeUndefined();
     for (const [grant, revoke] of [
       [

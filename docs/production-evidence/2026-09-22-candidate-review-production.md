@@ -2,12 +2,12 @@
 
 ## 当前边界
 
-- 应用代码：PR #147 对应确认式候选审核与发布准备已合并并部署。
-- 生产数据库：最后已知迁移为 `0019_generation_progress.sql`。
-- 待启用迁移：`0020_candidate_reviews.sql`、`0021_candidate_review_attestations.sql`。
-- 待配置：候选审核/组装/核验/发布控制角色连接、核验公钥、管理员主体和发布任务授权。
+- 应用代码：PR #147–#149 已合并；角色凭据创建候选和生产迁移门禁已进入 `main`。
+- 生产数据库：`0020_candidate_reviews.sql`、`0021_candidate_review_attestations.sql` 已完成，完整 Schema verify 为 22 项迁移、51 张表。
+- 运行角色：四个受限角色已创建；owner 侧 ACL 脚本和独立只读关键权限矩阵均通过。
+- 待配置：四条生产运行连接、核验公钥、管理员主体和发布任务授权。
 - 默认开关：`HZENSE_REVIEW_ENABLED` 与 `HZENSE_CANDIDATE_PIPELINE_ENABLED` 保持关闭。
-- 本文建立时未执行生产迁移、角色授权、公开数据源切换或真实发布。
+- 尚未启用审核或发布开关，未切换公开数据源，也未执行真实发布。
 
 应用部署成功不代表候选审核已在生产启用；迁移完成也不代表可信核验或公开发布已运营。每一项必须单独记录结果。
 
@@ -25,14 +25,17 @@
 
 ## 执行顺序与证据
 
-- [ ] 合并本次迁移门禁并确认 `main` CI 成功。
-- [ ] 运行 `operation=preflight`；仅核对目标、迁移记录和计划指纹，不写数据库。
-- [ ] 核对可用备份标识、维护窗口、DDL freeze、ACL 指纹和明确风险接受。
-- [ ] 运行受保护 `operation=migrate`，只允许 `0020–0021` 的已批准尾部集合。
-- [ ] 运行完整 Schema verify，确认迁移数量和数据库契约。
-- [ ] 创建/核对运行角色后执行 `configure_candidate_reviewer.sql` 与 `configure_candidate_pipeline.sql`。
+- [x] 合并迁移门禁和角色凭据创建候选（PR #148、#149），对应 CI 通过。
+- [x] 完成只读 preflight，未在预检阶段写数据库。
+- [x] 核对备份标识、维护窗口、DDL freeze、ACL 指纹和明确风险接受。
+- [x] 受保护迁移 run `35723942188` 成功，只执行已批准尾部迁移；最终迁移数为 22。
+- [x] 独立 Schema verify run `35724215655` 成功，确认 22 项迁移和 51 张表。
+- [x] 创建四个 `LOGIN NOINHERIT CONNECTION LIMIT 2` 角色，执行 reviewer 与 pipeline ACL；脚本内完整 ACL 审计通过。
+- [x] 独立只读汇总核验四个角色的角色形态、数据库/Schema 范围、关键允许项及关键拒绝项，四行 `summary_ok=true`。
 - [ ] 用各运行凭据做允许/拒绝矩阵核验；不得使用 migrator 运行应用。
 - [ ] 先只开审核开关并验证一条追加式审核；pipeline、公开读模式和发布仍关闭。
+
+执行中发现初版 `configure_candidate_reviewer.sql` 未显式授予生产数据库 `CONNECT`；生产以受保护最小事务补齐并重新核验，代码脚本和隔离集成测试同步修正。该修正只授予连接数据库的能力，不增加表、列、函数、Schema 创建或授权转授权限。
 
 ## 后续门禁
 
