@@ -98,6 +98,14 @@ describe('independent 0020-0021 maintenance authority', () => {
       );
     expect(() => generationProgressMigrationPlan(pending, migrations, binding)).toThrow();
     expect(() =>
+      requireCandidateReviewMigrationScope(
+        { pendingMigrations: pending },
+        migrations,
+        { ...plan, targetFingerprint: 'c'.repeat(64) },
+        binding,
+      ),
+    ).toThrow('plan-mismatch');
+    expect(() =>
       candidateReviewMigrationPlan(
         pending,
         migrations.map((migration, index) =>
@@ -117,7 +125,6 @@ describe('independent 0020-0021 maintenance authority', () => {
           scope: 'generation-progress-production-launch',
         },
       },
-      { targetFingerprint: 'c'.repeat(64) },
       { planFingerprint: 'wrong' },
       { backupPresenceReviewed: false },
     ])
