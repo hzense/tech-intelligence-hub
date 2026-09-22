@@ -45,7 +45,7 @@
 | `HZENSE_REVIEW_PUBLICATION_TASK_ID`       | 已建立且获准的发布任务 UUID                                    |
 | `HZENSE_SIGNAL_READ_MODE=database`        | 正式发布要求数据库公开读模式，避免发布后网站仍读旧文件         |
 
-连接必须满足现有生产目标、TLS 与 pooler 校验，不在文档或 PR 填写实际密码。角色脚本见 `db/roles/configure_candidate_reviewer.sql`、`configure_candidate_pipeline.sql`；Publisher 复用既有配置及授权流程。运行角色不能创建授权、关闭门禁或伪造任务绑定。
+连接必须满足现有生产目标、TLS 与 pooler 校验，不在文档或 PR 填写实际密码。新角色凭据创建候选为 `db/roles/create_candidate_review_roles.sql`：只能由操作者在已核对的 Neon `main/neondb` 以 `neondb_owner` 提交，四个角色任一已存在即整体拒绝，不轮换密码、不授予业务权限，密码结果只在 Neon 与 Vercel 之间交接。随后在 `main/hzense` 以数据库 owner 分别执行 `db/roles/configure_candidate_reviewer.sql`、`configure_candidate_pipeline.sql`；Publisher 复用既有配置及授权流程。运行角色不能创建授权、关闭门禁或伪造任务绑定。
 
 ## 签名报告协议
 
