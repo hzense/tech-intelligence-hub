@@ -13,6 +13,7 @@ BEGIN
  IF NOT EXISTS(SELECT 1 FROM public.hzense_schema_migrations WHERE name='0020_candidate_reviews.sql') OR NOT EXISTS(SELECT 1 FROM public.hzense_schema_migrations WHERE name='0021_candidate_review_attestations.sql') THEN RAISE EXCEPTION 'Verify migrations 0020 and 0021 first'; END IF;
  IF has_database_privilege(target.oid,current_database(),'CREATE,TEMPORARY') OR EXISTS(SELECT 1 FROM pg_namespace WHERE nspname !~ '^pg_' AND nspname<>'information_schema' AND has_schema_privilege(target.oid,oid,'CREATE')) THEN RAISE EXCEPTION 'Unsafe ambient capabilities'; END IF;
  IF EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','v','m','S','p') AND (CASE WHEN c.relkind='S' THEN has_sequence_privilege(target.oid,c.oid,'USAGE,SELECT,UPDATE') ELSE has_table_privilege(target.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') END)) THEN RAISE EXCEPTION 'Role has ambient data access'; END IF;
+ EXECUTE format('GRANT CONNECT ON DATABASE %I TO hzense_candidate_reviewer',current_database());
 END;
 $reviewer$;
 GRANT USAGE ON SCHEMA public TO hzense_candidate_reviewer;
