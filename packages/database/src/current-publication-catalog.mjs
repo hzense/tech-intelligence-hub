@@ -65,7 +65,9 @@ export const currentPublicationRoutines = {
     arguments: 'p_signal_id text, p_source_version integer',
     result: 'void',
     hash: 'cebaabfbb5010ea1ef338f733d3cf16eb7553208a216b26e30990fa01471878b',
-    grantees: ['hzense_publisher'],
+    // Optional EXECUTE granted separately by configure_candidate_pipeline.sql.
+    // This verifier allowlist does not provision or broaden database privileges.
+    grantees: ['hzense_publisher', 'hzense_candidate_verifier'],
   },
   hzense_capture_verification_dependencies: {
     arguments: '',
