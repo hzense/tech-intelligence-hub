@@ -26,8 +26,27 @@ export type CandidateReviewDraft = {
   claims: Array<{ text: string; evidenceId: string }>;
 };
 
+export type CandidateEnrichmentCheck = {
+  category: 'event_date' | 'person' | 'organization' | 'topic' | 'public_evidence';
+  label: string;
+  status: 'matched' | 'missing' | 'ambiguous';
+  detail: string;
+};
+
+export type CandidateEnrichmentSummary = {
+  matched: number;
+  pending: number;
+  checks: CandidateEnrichmentCheck[];
+};
+
 export type CandidateReviewPreparation =
-  { ready: false; blockers: string[] } | { ready: true; blockers: []; draft: CandidateReviewDraft };
+  | { ready: false; blockers: string[]; enrichment: CandidateEnrichmentSummary }
+  | {
+      ready: true;
+      blockers: [];
+      draft: CandidateReviewDraft;
+      enrichment: CandidateEnrichmentSummary;
+    };
 
 const topicRules: Array<{ id: string; terms: RegExp }> = [
   {
@@ -111,19 +130,59 @@ export function prepareCandidateReview(
   },
 ): CandidateReviewPreparation {
   const blockers: string[] = [];
-  if (!candidate.event_date) blockers.push('候选缺少有原文依据的事件发生日期。');
+  const checks: CandidateEnrichmentCheck[] = [];
+  if (!candidate.event_date) {
+    blockers.push('候选缺少有原文依据的事件发生日期。');
+    checks.push({
+      category: 'event_date',
+      label: '事件日期',
+      status: 'missing',
+      detail: '候选原文没有可确认的事件发生日期。',
+    });
+  } else {
+    checks.push({
+      category: 'event_date',
+      label: '事件日期',
+      status: 'matched',
+      detail: candidate.event_date,
+    });
+  }
 
   const personIds: string[] = [];
-  if (!candidate.persons.length) blockers.push('候选没有关键人物，至少需要一位正式人物实体。');
+  if (!candidate.persons.length) {
+    blockers.push('候选没有关键人物，至少需要一位正式人物实体。');
+    checks.push({
+      category: 'person',
+      label: '关键人物',
+      status: 'missing',
+      detail: '候选没有具备原文依据的关键人物。',
+    });
+  }
   for (const person of candidate.persons) {
     const matches = entityMatches(person.name, catalog.people);
-    if (matches.length !== 1)
+    if (matches.length !== 1) {
       blockers.push(
         matches.length
           ? `人物“${person.name}”匹配到多个正式实体。`
           : `人物“${person.name}”尚未建立正式实体。`,
       );
-    else personIds.push(matches[0]!.id);
+      checks.push({
+        category: 'person',
+        label: `人物：${person.name}`,
+        status: matches.length ? 'ambiguous' : 'missing',
+        detail: matches.length
+          ? `匹配到 ${matches.length} 个正式人物实体。`
+          : '未匹配正式人物实体。',
+      });
+    } else {
+      personIds.push(matches[0]!.id);
+      checks.push({
+        category: 'person',
+        label: `人物：${person.name}`,
+        status: 'matched',
+        detail: '已唯一匹配正式人物实体。',
+      });
+    }
   }
 
   const organizationIds: string[] = [];
@@ -133,13 +192,29 @@ export function prepareCandidateReview(
   ]);
   for (const organization of organizationNames) {
     const matches = entityMatches(organization, catalog.organizations);
-    if (matches.length !== 1)
+    if (matches.length !== 1) {
       blockers.push(
         matches.length
           ? `组织“${organization}”匹配到多个正式实体。`
           : `组织“${organization}”尚未建立正式实体。`,
       );
-    else organizationIds.push(matches[0]!.id);
+      checks.push({
+        category: 'organization',
+        label: `组织：${organization}`,
+        status: matches.length ? 'ambiguous' : 'missing',
+        detail: matches.length
+          ? `匹配到 ${matches.length} 个正式组织实体。`
+          : '未匹配正式组织实体。',
+      });
+    } else {
+      organizationIds.push(matches[0]!.id);
+      checks.push({
+        category: 'organization',
+        label: `组织：${organization}`,
+        status: 'matched',
+        detail: '已唯一匹配正式组织实体。',
+      });
+    }
   }
 
   const activeTopics = new Set(catalog.topics.map((topic) => topic.id));
@@ -155,26 +230,67 @@ export function prepareCandidateReview(
       .filter((rule) => activeTopics.has(rule.id) && rule.terms.test(searchable))
       .map((rule) => rule.id),
   ).slice(0, 8);
-  if (!topicIds.length) blockers.push('候选尚未唯一归入已启用的正式领域分类。');
+  if (!topicIds.length) {
+    blockers.push('候选尚未唯一归入已启用的正式领域分类。');
+    checks.push({
+      category: 'topic',
+      label: '领域分类',
+      status: 'missing',
+      detail: '未匹配已启用的正式领域分类。',
+    });
+  } else {
+    const topicNames = new Map(catalog.topics.map((topic) => [topic.id, topic.name]));
+    checks.push({
+      category: 'topic',
+      label: '领域分类',
+      status: 'matched',
+      detail: topicIds.map((id) => topicNames.get(id) ?? id).join('、'),
+    });
+  }
 
   const claims: CandidateReviewDraft['claims'] = [];
   for (const [index, claim] of candidate.claims.entries()) {
     const quotes = unique(
       claim.evidence.map((reference) => reference.quote.trim()).filter(Boolean),
     );
-    const matches = catalog.evidence.filter((evidence) =>
-      quotes.every((quote) => evidence.excerpt.includes(quote)),
-    );
-    if (matches.length !== 1)
+    const matches = quotes.length
+      ? catalog.evidence.filter((evidence) =>
+          quotes.every((quote) => evidence.excerpt.includes(quote)),
+        )
+      : [];
+    if (matches.length !== 1) {
       blockers.push(
         matches.length
           ? `第 ${index + 1} 条主张匹配到多条已核验公开证据。`
           : `第 ${index + 1} 条主张尚未匹配到已核验公开证据。`,
       );
-    else claims.push({ text: claim.text, evidenceId: matches[0]!.id });
+      checks.push({
+        category: 'public_evidence',
+        label: `公开证据：主张 ${index + 1}`,
+        status: matches.length ? 'ambiguous' : 'missing',
+        detail: quotes.length
+          ? matches.length
+            ? `匹配到 ${matches.length} 条已核验公开证据。`
+            : '未唯一匹配已核验公开证据。'
+          : '主张没有可用于匹配的原文引用。',
+      });
+    } else {
+      claims.push({ text: claim.text, evidenceId: matches[0]!.id });
+      checks.push({
+        category: 'public_evidence',
+        label: `公开证据：主张 ${index + 1}`,
+        status: 'matched',
+        detail: '已唯一匹配已核验公开证据。',
+      });
+    }
   }
 
-  if (blockers.length) return { ready: false, blockers: unique(blockers) };
+  const enrichment = {
+    matched: checks.filter((check) => check.status === 'matched').length,
+    pending: checks.filter((check) => check.status !== 'matched').length,
+    checks,
+  };
+  if (blockers.length) return { ready: false, blockers: unique(blockers), enrichment };
   const publicEvidenceIds = unique(claims.map((claim) => claim.evidenceId));
   const evidenceById = new Map(catalog.evidence.map((row) => [row.id, row]));
   const sourceUrls = unique(
@@ -195,6 +311,7 @@ export function prepareCandidateReview(
   return {
     ready: true,
     blockers: [],
+    enrichment,
     draft: {
       title: candidate.title,
       summary: candidate.summary,
@@ -215,6 +332,7 @@ export function publicPreparation(preparation: CandidateReviewPreparation) {
   return {
     ready: true as const,
     blockers: [],
+    enrichment: preparation.enrichment,
     counts: {
       people: preparation.draft.personIds.length,
       organizations: preparation.draft.organizationIds.length,

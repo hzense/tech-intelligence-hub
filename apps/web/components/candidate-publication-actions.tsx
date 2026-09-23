@@ -22,6 +22,16 @@ type Readiness = {
 type Preparation = {
   ready: boolean;
   blockers: string[];
+  enrichment?: {
+    matched: number;
+    pending: number;
+    checks: Array<{
+      category: 'event_date' | 'person' | 'organization' | 'topic' | 'public_evidence';
+      label: string;
+      status: 'matched' | 'missing' | 'ambiguous';
+      detail: string;
+    }>;
+  };
   counts?: {
     people: number;
     organizations: number;
@@ -187,6 +197,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
   const [busy, setBusy] = useState(false);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [receipt, setReceipt] = useState<unknown>(null);
+  const [preparation, setPreparation] = useState<Preparation | null>(null);
   const [message, setMessage] = useState('正在读取最新发布状态。');
   const pending = useRef<Partial<Record<Action, { fingerprint: string; requestId: string }>>>({});
   const running = useRef(false);
@@ -246,6 +257,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
 
   const inspect = useCallback(async () => {
     const data = await readReviews();
+    setPreparation(data.preparation ?? null);
     if (!data.reviews.length) {
       const state = unreviewedPublicationReadiness(data);
       const prepared = state.ready === true;
@@ -338,6 +350,11 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
   const stage = status ? stageCopy[status] : undefined;
   const following = nextAction(status);
   const currentlyPublic = status === 'published';
+  const statusLabels = {
+    matched: '已匹配',
+    missing: '待补全',
+    ambiguous: '需消歧',
+  } as const;
 
   return (
     <section
@@ -360,6 +377,37 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
           </ul>
         ) : null}
       </div>
+      {preparation?.enrichment ? (
+        <div className={styles.history}>
+          <h3>自动补全检查</h3>
+          <p>
+            已匹配 {preparation.enrichment.matched} 项，待处理 {preparation.enrichment.pending}{' '}
+            项。这里仅匹配正式数据，不会把私有资料自动认定为公开证据。
+          </p>
+          <div className={styles.tableWrap}>
+            <table className={styles.readinessTable}>
+              <thead>
+                <tr>
+                  <th scope="col">检查项</th>
+                  <th scope="col">状态</th>
+                  <th scope="col">结果</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preparation.enrichment.checks.map((check, index) => (
+                  <tr key={`${check.category}:${index}:${check.label}`}>
+                    <th scope="row">{check.label}</th>
+                    <td>
+                      <span className={styles[check.status]}>{statusLabels[check.status]}</span>
+                    </td>
+                    <td>{check.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
       <div className={controls.group}>
         <button type="button" disabled={busy} onClick={() => void perform('inspect')}>
           刷新发布状态
