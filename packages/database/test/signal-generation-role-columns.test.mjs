@@ -2,7 +2,10 @@ import { readFile } from 'node:fs/promises';
 import { URL } from 'node:url';
 import { createHash } from 'node:crypto';
 import { expect, it, vi } from 'vitest';
-import { signalGenerationRoleColumns } from '../src/signal-generation-role-columns.mjs';
+import {
+  candidateEnrichmentRoleColumns,
+  signalGenerationRoleColumns,
+} from '../src/signal-generation-role-columns.mjs';
 import {
   assertGenerationRole,
   assertGenerationRoleProvisioned,
@@ -14,6 +17,10 @@ const configure = await readFile(
 );
 const create = await readFile(
   new URL('../../../db/roles/create_generation_admin.sql', import.meta.url),
+  'utf8',
+);
+const enrichmentUpgrade = await readFile(
+  new URL('../../../db/roles/upgrade_candidate_enrichment.sql', import.meta.url),
   'utf8',
 );
 it('pins provisioning and verifier to the shared exact column contract', () => {
@@ -47,6 +54,20 @@ it('pins the reviewed 0015 checksum and separates credential creation from grant
   expect(create).toContain("pg_get_userbyid(m.grantor)='cloud_admin'");
   expect(create).toContain('already exists; stop without rotating or overwriting its password');
 });
+it('pins the 0022 enrichment checksum and grants only the shared enrichment columns', async () => {
+  const migration = await readFile(
+    new URL('../../../db/migrations/0022_candidate_enrichment_runs.sql', import.meta.url),
+  );
+  expect(enrichmentUpgrade).toContain(
+    `name='0022_candidate_enrichment_runs.sql' AND checksum='${createHash('sha256').update(migration).digest('hex')}'`,
+  );
+  for (const [privilege, columns] of Object.entries(candidateEnrichmentRoleColumns))
+    expect(enrichmentUpgrade).toContain(`${privilege}(${columns.join(',')})`);
+  expect(enrichmentUpgrade).not.toMatch(/(?:CREATE|ALTER) ROLE|PASSWORD %L/);
+  expect(enrichmentUpgrade).toContain(
+    `expected_after integer := ${Object.values(signalGenerationRoleColumns).flat().length + Object.values(candidateEnrichmentRoleColumns).flat().length}`,
+  );
+});
 it.each([assertGenerationRole, assertGenerationRoleProvisioned])(
   'fails closed before reading the shared contract for a mismatched identity',
   async (check) => {
@@ -61,6 +82,7 @@ it.each([false, null, undefined])(
     const query = vi
       .fn()
       .mockResolvedValueOnce({ rows: [{ safe: true }] })
+      .mockResolvedValueOnce({ rows: [{ safe: false }] })
       .mockResolvedValueOnce({ rows: safe === undefined ? [] : [{ safe }] });
     await expect(assertGenerationRoleProvisioned({ query })).rejects.toThrow(
       'generation_role_invalid',

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { URL } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import process from 'node:process';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -9,6 +9,7 @@ import {
   assertGenerationRole,
   assertGenerationHistoryRole,
   assertGenerationRoleProvisioned,
+  assertCandidateEnrichmentRole,
 } from '../src/signal-generation-role.mjs';
 import { signalGenerationRoleColumns } from '../src/signal-generation-role-columns.mjs';
 import {
@@ -20,6 +21,12 @@ import {
   cancelSignalGeneration,
   signalGenerationSourceHash,
 } from '../src/signal-generation-store.mjs';
+import {
+  createCandidateEnrichment,
+  claimCandidateEnrichment,
+  finishCandidateEnrichment,
+  getCandidateEnrichment,
+} from '../src/candidate-enrichment-store.mjs';
 
 const adminURL = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminURL) validateConnectionTarget({ connectionString: adminURL, profile: 'local-test' });
@@ -585,5 +592,102 @@ suite('generation production role provisioning', () => {
     }
     await checkBoth();
     expect(Object.values(signalGenerationRoleColumns).flat()).toHaveLength(51);
+  });
+  it('upgrades only enrichment columns and executes a private, fenced, accounted proposal', async () => {
+    const migration = await readFile(
+      new URL('../../../db/migrations/0022_candidate_enrichment_runs.sql', import.meta.url),
+      'utf8',
+    );
+    await execute(owner, migration);
+    await owner.query('INSERT INTO public.hzense_schema_migrations(name,checksum) VALUES($1,$2)', [
+      '0022_candidate_enrichment_runs.sql',
+      createHash('sha256').update(migration).digest('hex'),
+    ]);
+    await checkBoth();
+    await expect(assertCandidateEnrichmentRole(reader)).rejects.toThrow('generation_role_invalid');
+    const upgrade = await readFile(
+      new URL('../../../db/roles/upgrade_candidate_enrichment.sql', import.meta.url),
+      'utf8',
+    );
+    // Only adapt the database name to this disposable fixture; execute the real ACL contract.
+    await execute(
+      owner,
+      upgrade.replace("current_database()<>'hzense'", "current_database()<>'neondb'"),
+    );
+    await checkBoth();
+    await assertCandidateEnrichmentRole(reader);
+    const parent = (
+      await owner.query(
+        "SELECT id FROM public.signal_generation_runs WHERE owner_id='synthetic' AND deleted_at IS NULL LIMIT 1",
+      )
+    ).rows[0];
+    const connection = { id: randomUUID(), revision: 1 };
+    const profile = {
+      id: randomUUID(),
+      revision: 1,
+      stages: { verify: { connection_id: connection.id, connection_revision: 1 } },
+    };
+    const input = {
+      pool: reader,
+      owner: 'synthetic',
+      request: {
+        id: randomUUID(),
+        runId: parent.id,
+        candidateIndex: 0,
+        materialHash: 'a'.repeat(64),
+        profileId: profile.id,
+        profileRevision: 1,
+      },
+      snapshot: { materialHash: 'a'.repeat(64), profile, connection },
+      configuration: {
+        version: 'candidate-enrichment-v1',
+        reserveMicrousd: 10,
+        batchLimitMicrousd: 1000,
+        dailyLimitMicrousd: 1000,
+      },
+    };
+    const run = await createCandidateEnrichment(input);
+    expect((await createCandidateEnrichment(input)).id).toBe(run.id);
+    expect(
+      (
+        await createCandidateEnrichment({
+          ...input,
+          request: { ...input.request, id: randomUUID() },
+        })
+      ).id,
+    ).toBe(run.id);
+    const args = {
+      pool: reader,
+      owner: 'synthetic',
+      id: run.id,
+      currentLimits: { batchLimitMicrousd: 1000, dailyLimitMicrousd: 1000 },
+    };
+    const claimed = await claimCandidateEnrichment(args);
+    expect(claimed.claimed).toBe(true);
+    expect((await claimCandidateEnrichment(args)).claimed).toBe(false);
+    await expect(getCandidateEnrichment({ ...args, owner: 'other-owner' })).rejects.toThrow(
+      'not_found',
+    );
+    const finished = await finishCandidateEnrichment({
+      ...args,
+      token: claimed.run.lease_token,
+      outcome: 'completed',
+      result: { classification: 'private', validation_version: 1 },
+      providerCostMicrousd: 0,
+    });
+    expect(finished.status).toBe('completed');
+    expect(Number(finished.charged_microusd)).toBe(0);
+    expect(Number(finished.reserved_microusd)).toBe(10);
+    await expect(
+      finishCandidateEnrichment({ ...args, token: claimed.run.lease_token, outcome: 'unknown' }),
+    ).rejects.toThrow('stale_attempt');
+    await expect(
+      owner.query("UPDATE public.candidate_enrichment_runs SET result='{}' WHERE id=$1", [run.id]),
+    ).rejects.toMatchObject({ code: '23514' });
+    for (const sql of [
+      'DELETE FROM public.candidate_enrichment_runs',
+      "UPDATE public.candidate_enrichment_runs SET snapshot='{}'",
+    ])
+      await expect(reader.query(sql)).rejects.toMatchObject({ code: '42501' });
   });
 });

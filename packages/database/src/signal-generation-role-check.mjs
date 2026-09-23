@@ -1,20 +1,20 @@
-import { signalGenerationRoleColumns } from './signal-generation-role-columns.mjs';
+import {
+  candidateEnrichmentRoleColumns,
+  signalGenerationRoleColumns,
+} from './signal-generation-role-columns.mjs';
 
-const allowedColumns = Object.entries(signalGenerationRoleColumns)
-  .flatMap(([privilege, columns]) => columns.map((column) => `('${column}','${privilege}')`))
-  .join(',');
+const entries = (tables) =>
+  Object.entries(tables)
+    .flatMap(([table, contract]) =>
+      Object.entries(contract).flatMap(([privilege, columns]) =>
+        columns.map((column) => `('${table}','${column}','${privilege}')`),
+      ),
+    )
+    .join(',');
 
-const legacyAllowedColumns = Object.entries(signalGenerationRoleColumns)
-  .flatMap(([privilege, columns]) =>
-    columns
-      .filter((column) => !['progress_phase', 'progress_at', 'started_at'].includes(column))
-      .map((column) => `('${column}','${privilege}')`),
-  )
-  .join(',');
-
-// Shared read-only catalog check for runtime and owner maintenance. No SET ROLE,
-// ACL repair, secret reads or generation data reads are performed here.
-export const generationRoleCheckSQL = `WITH allowed(column_name,privilege) AS (VALUES ${allowedColumns})
+function roleCheckSQL(tables) {
+  const allowed = entries(tables);
+  return `WITH allowed(table_name,column_name,privilege) AS (VALUES ${allowed})
 SELECT r.rolcanlogin AND NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolcreatedb
   AND NOT r.rolcreaterole AND NOT r.rolreplication AND NOT r.rolbypassrls
   AND r.rolconnlimit=2 AND r.rolconfig IS NULL
@@ -63,8 +63,6 @@ SELECT r.rolcanlogin AND NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolcreate
           SELECT 1 FROM pg_catalog.aclexplode(pg_catalog.acldefault('r',c.relowner)) p
           WHERE pg_catalog.has_table_privilege(r.oid,c.oid,p.privilege_type)) ELSE false END)
   AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) a WHERE a.grantee=r.oid)
-  -- Effective role permissions alone cannot detect PUBLIC grants for a column
-  -- already in this role's allowlist. Explicitly reject public data exposure.
   AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
     CROSS JOIN LATERAL pg_catalog.aclexplode(COALESCE(c.relacl,pg_catalog.acldefault(CASE WHEN c.relkind='S' THEN 'S'::"char" ELSE 'r'::"char" END,c.relowner))) a
     WHERE n.nspname!~'^pg_' AND n.nspname<>'information_schema' AND a.grantee=0)
@@ -76,13 +74,13 @@ SELECT r.rolcanlogin AND NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolcreate
     WHERE a.attnum>0 AND NOT a.attisdropped AND c.relkind IN ('r','p','v','m','f')
       AND n.nspname!~'^pg_' AND n.nspname<>'information_schema'
       AND (pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,p.privilege) IS DISTINCT FROM EXISTS(
-        SELECT 1 FROM allowed e WHERE n.nspname='public' AND c.relkind='r' AND c.relname='signal_generation_runs'
+        SELECT 1 FROM allowed e WHERE n.nspname='public' AND c.relkind='r' AND c.relname=e.table_name
           AND e.column_name=a.attname AND e.privilege=p.privilege)
         OR pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,p.privilege||' WITH GRANT OPTION')))
   AND NOT EXISTS(SELECT 1 FROM allowed e WHERE NOT EXISTS(
     SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
     JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid
-    WHERE n.nspname='public' AND c.relkind='r' AND c.relname='signal_generation_runs'
+    WHERE n.nspname='public' AND c.relkind='r' AND c.relname=e.table_name
       AND c.relowner=(SELECT datdba FROM pg_catalog.pg_database WHERE datname=current_database())
       AND a.attname=e.column_name AND a.attnum>0 AND NOT a.attisdropped
       AND pg_catalog.has_column_privilege(r.oid,c.oid,a.attnum,e.privilege)))
@@ -90,18 +88,30 @@ SELECT r.rolcanlogin AND NOT r.rolinherit AND NOT r.rolsuper AND NOT r.rolcreate
     WHERE a.grantee=r.oid)=(SELECT count(*) FROM allowed)
   AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute col JOIN pg_catalog.pg_class c ON c.oid=col.attrelid
     JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL pg_catalog.aclexplode(col.attacl) a
-    WHERE a.grantee=r.oid AND (n.nspname<>'public' OR c.relkind<>'r' OR c.relname<>'signal_generation_runs'
+    WHERE a.grantee=r.oid AND (n.nspname<>'public' OR c.relkind<>'r'
       OR col.attnum<=0 OR col.attisdropped OR a.grantor<>c.relowner OR a.is_grantable
-      OR NOT EXISTS(SELECT 1 FROM allowed e WHERE e.column_name=col.attname AND e.privilege=a.privilege_type)))
+      OR NOT EXISTS(SELECT 1 FROM allowed e WHERE e.table_name=c.relname AND e.column_name=col.attname AND e.privilege=a.privilege_type)))
   AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_default_acl d CROSS JOIN LATERAL pg_catalog.aclexplode(d.defaclacl) a WHERE a.grantee IN (0,r.oid))
   AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) a WHERE a.grantee=r.oid)
   AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname!~'^pg_' AND n.nspname<>'information_schema' AND pg_catalog.has_function_privilege(r.oid,p.oid,'EXECUTE')
       AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid='pg_catalog.pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e'))
   AS safe FROM pg_catalog.pg_roles r WHERE r.rolname='hzense_generation_admin'`;
+}
 
-// Frozen 0018 contract; not a relaxation of the new mutation contract.
-export const legacyGenerationRoleCheckSQL = generationRoleCheckSQL.replace(
-  `VALUES ${allowedColumns}`,
-  `VALUES ${legacyAllowedColumns}`,
+export const generationRoleCheckSQL = roleCheckSQL({
+  signal_generation_runs: signalGenerationRoleColumns,
+});
+export const candidateEnrichmentRoleCheckSQL = roleCheckSQL({
+  signal_generation_runs: signalGenerationRoleColumns,
+  candidate_enrichment_runs: candidateEnrichmentRoleColumns,
+});
+const legacySignalColumns = Object.fromEntries(
+  Object.entries(signalGenerationRoleColumns).map(([privilege, columns]) => [
+    privilege,
+    columns.filter((column) => !['progress_phase', 'progress_at', 'started_at'].includes(column)),
+  ]),
 );
+export const legacyGenerationRoleCheckSQL = roleCheckSQL({
+  signal_generation_runs: legacySignalColumns,
+});

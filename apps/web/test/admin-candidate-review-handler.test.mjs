@@ -21,6 +21,9 @@ test('review writes authenticate and check origin before accessing stores', asyn
     confirm: async () => {
       calls++;
     },
+    enrich: async () => {
+      calls++;
+    },
     operate: async () => {
       calls++;
     },
@@ -53,6 +56,10 @@ test('review dispatch binds session owner and strips errors', async () => {
       calls.push(args);
       return { revision: 1 };
     },
+    enrich: async (...args) => {
+      calls.push(args);
+      return { status: 'pending' };
+    },
     operate: async () => {
       throw new Error('SECRET_DATABASE_URL');
     },
@@ -65,13 +72,16 @@ test('review dispatch binds session owner and strips errors', async () => {
   const failed = await handler(request({ action: 'publish', request: {} }));
   assert.deepEqual(await failed.json(), { error: 'unavailable' });
   assert.equal((await handler(request({ action: 'approve', request: {} }))).status, 400);
+  const enriched = await handler(request({ action: 'enrich', request: { id } }));
+  assert.equal(enriched.status, 202);
+  assert.deepEqual(calls[1], ['owner', { id }]);
   const read = await handler(
     new Request(`${origin}/api/admin/candidate-review?runId=${id}&candidateIndex=0`, {
       headers: { host: 'hzense.com' },
     }),
   );
   assert.equal(read.status, 200);
-  assert.deepEqual(calls[1], ['owner', id, 0]);
+  assert.deepEqual(calls[2], ['owner', id, 0]);
 });
 
 test('review boundary rejects oversized bodies and duplicate query keys before stores', async () => {
@@ -83,6 +93,9 @@ test('review boundary rejects oversized bodies and duplicate query keys before s
       calls++;
     },
     confirm: async () => {
+      calls++;
+    },
+    enrich: async () => {
       calls++;
     },
     operate: async () => {

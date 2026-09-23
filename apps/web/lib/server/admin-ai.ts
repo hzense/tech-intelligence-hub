@@ -5,6 +5,7 @@ import {
   listAiProfiles,
   listAiProbes,
   resolveAiGenerationAccess,
+  resolveAiStageAccess,
   type AiConnection,
   type AiProfile,
   type AiProbe,
@@ -132,6 +133,24 @@ export async function generationAiAccess(id: string, revision: number, credentia
     pool: restrictedPool,
     id,
     revision,
+    allowedHosts: config.allowedHosts,
+    ...(credentials ? { keyring: config.keyring } : {}),
+  });
+}
+
+/** Resolve a pinned non-extract stage without exposing its credential to HTTP callers. */
+export async function aiStageAccess(
+  id: string,
+  revision: number,
+  stageName: 'verify' | 'analyze',
+  credentials = false,
+) {
+  const config = readAiBackendConfiguration(process.env);
+  return resolveAiStageAccess({
+    pool: restrictedPool,
+    id,
+    revision,
+    stageName,
     allowedHosts: config.allowedHosts,
     ...(credentials ? { keyring: config.keyring } : {}),
   });

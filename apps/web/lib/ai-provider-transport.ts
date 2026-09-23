@@ -307,7 +307,7 @@ export function createPinnedAiFetch(
     allowedHosts: readonly string[];
     apiKey: string;
     signal: AbortSignal;
-    requestPurpose?: 'probe' | 'signal-generation';
+    requestPurpose?: 'probe' | 'signal-generation' | 'candidate-enrichment';
   },
   dependencies: { resolve?: AiResolver; request?: AiWireRequest } = {},
 ): typeof fetch {
@@ -324,7 +324,11 @@ export function createPinnedAiFetch(
   const request = dependencies.request ?? defaultWireRequest;
   // Server-owned presets: keep probes small while allowing a bounded source,
   // extraction prompt and schema after the SDK's JSON serialization.
-  const requestMaximumBytes = config.requestPurpose === 'signal-generation' ? 256 * 1024 : 32_768;
+  const requestMaximumBytes =
+    config.requestPurpose === 'signal-generation' ||
+    config.requestPurpose === 'candidate-enrichment'
+      ? 256 * 1024
+      : 32_768;
   return async (input, init) => {
     if (!(typeof input === 'string' || input instanceof URL)) return fail('blocked_target');
     const raw = String(input);

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCandidateReview } from '../lib/candidate-review.ts';
+import { buildCandidateReview, buildEnrichedCandidateReview } from '../lib/candidate-review.ts';
+import { candidateReviewMaterialHash } from '../../../packages/database/src/candidate-review-contract.mjs';
 import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
 import { assessGeneratedCandidates } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 const { structuredClone } = globalThis;
@@ -129,4 +130,32 @@ test('recompute missing evidence instead of trusting saved/model supplied issue 
   ]);
   assert.equal(packet.canPublish, false);
   assert.ok(packet.checks.find((row) => row.code === 'event_time'));
+});
+
+test('enriched review keeps the database material identity and the original result unchanged', () => {
+  const run = fixture();
+  Object.assign(run.result.candidates[0], {
+    persons: [],
+    event_date: null,
+    event_date_evidence: [],
+  });
+  const before = JSON.stringify(run);
+  const packet = buildEnrichedCandidateReview(run, 0, {
+    event_date: '2026-09-20',
+    event_date_evidence: evidence,
+    persons: [{ name: '张三', role: '发布', organization: null, evidence }],
+    organizations: [],
+  });
+  assert.equal(packet.materialHash, candidateReviewMaterialHash(run, 0));
+  assert.equal(packet.candidate.event_date, '2026-09-20');
+  assert.equal(packet.candidate.persons[0].name, '张三');
+  assert.equal(JSON.stringify(run), before);
+  assert.throws(() =>
+    buildEnrichedCandidateReview(run, 0, {
+      event_date: '2026-09-20',
+      event_date_evidence: [{ fragment_id: 'fragment-1', quote: 'invented' }],
+      persons: [],
+      organizations: [],
+    }),
+  );
 });

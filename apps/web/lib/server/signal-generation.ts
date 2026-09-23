@@ -158,14 +158,14 @@ export async function inspectGenerationInput(owner: string, body: unknown) {
 }
 export async function generationDetail(owner: string, id: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
-  return (
-    await historyDtos(owner, [await store.getSignalGeneration({ ...historyOptions(), owner, id })])
-  )[0];
+  return (await historyDtos(owner, [await generationRecord(owner, id)]))[0];
+}
+export async function generationRecord(owner: string, id: string) {
+  if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
+  return store.getSignalGeneration({ ...historyOptions(), owner, id });
 }
 export async function candidateReviewDetail(owner: string, id: string, index: number) {
-  if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
-  const run = await store.getSignalGeneration({ ...historyOptions(), owner, id });
-  return buildCandidateReview(run, index);
+  return buildCandidateReview(await generationRecord(owner, id), index);
 }
 export async function executeGeneration(owner: string, body: unknown) {
   if (!generationConfigured()) throw new GenerationError('not_configured');

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { assessCandidateEnrichment } from '../../../packages/ingestion/src/candidate-enrichment-contract.mjs';
 import {
   assessGeneratedCandidates,
   validateGenerationSource,
@@ -12,6 +13,26 @@ export class CandidateReviewError extends Error {
   constructor() {
     super('candidate_review_unavailable');
   }
+}
+
+/** Keep the immutable source identity used by review and publication stores. */
+export function buildEnrichedCandidateReview(
+  run: SignalGenerationRun,
+  index: number,
+  proposed: Record<string, unknown>,
+) {
+  const original = buildCandidateReview(run, index);
+  const verified = assessCandidateEnrichment(
+    {
+      event_date: proposed.event_date,
+      event_date_evidence: proposed.event_date_evidence,
+      persons: proposed.persons,
+      organizations: proposed.organizations,
+    },
+    original.candidate,
+    run.snapshot.source,
+  );
+  return { ...original, candidate: verified.candidate };
 }
 
 /** Read-only preparation, NOT a trusted verification record or publication permit. */

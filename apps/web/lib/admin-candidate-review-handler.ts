@@ -24,12 +24,18 @@ const safeErrors = new Set([
   'trusted_verification_required',
   'conversion_not_found',
   'conversion_conflict',
+  'profile_not_ready',
+  'connection_unavailable',
+  'worker_busy',
+  'budget_exceeded',
+  'configuration_changed',
 ]);
 export function createCandidateReviewHandler(deps: {
   session(): Promise<{ user: { id: string } } | null>;
   origin(): string | undefined;
   read(owner: string, runId: string, candidateIndex: number): Promise<unknown>;
   confirm(owner: string, request: unknown): Promise<unknown>;
+  enrich(owner: string, request: unknown): Promise<unknown>;
   operate(owner: string, action: string, request: Record<string, unknown>): Promise<unknown>;
 }) {
   return async (request: Request) => {
@@ -76,6 +82,11 @@ export function createCandidateReviewHandler(deps: {
         return importResponse({ error: 'invalid_request' }, 400);
       if (body.action === 'confirm')
         return importResponse({ review: await deps.confirm(session.user.id, body.request) });
+      if (body.action === 'enrich')
+        return importResponse(
+          { enrichment: await deps.enrich(session.user.id, body.request) },
+          202,
+        );
       if (
         !['inspect', 'prepare', 'verify', 'assemble', 'publish', 'withdraw'].includes(body.action)
       )

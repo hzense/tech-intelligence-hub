@@ -221,10 +221,10 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
     }
   }, 30_000);
 
-  it('migrates and verifies 51 tables without adding any AI trigger/function or public read surface', async () => {
+  it('migrates and verifies 52 tables without adding any AI trigger/function or public read surface', async () => {
     expect(await verify()).toMatchObject({
-      migrationCount: 22,
-      tableCount: 51,
+      migrationCount: 23,
+      tableCount: 52,
       pgvectorVersion: '0.8.6',
     });
     const result = await owner((client) =>

@@ -112,6 +112,16 @@ import {
   signalGenerationUniqueIndexes,
   signalGenerationIdentityPredicates,
 } from './signal-generation-catalog.mjs';
+import {
+  candidateEnrichmentColumns,
+  candidateEnrichmentPrimaryKeys,
+  candidateEnrichmentForeignKeys,
+  candidateEnrichmentChecks,
+  candidateEnrichmentDefaults,
+  candidateEnrichmentIndexes,
+  candidateEnrichmentUniqueIndexes,
+  candidateEnrichmentIdentityPredicates,
+} from './candidate-enrichment-catalog.mjs';
 
 const { Client } = pg;
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
@@ -247,6 +257,7 @@ const expectedColumns = {
   ...aiConfigurationColumns,
   ...importColumns,
   ...signalGenerationColumns,
+  ...candidateEnrichmentColumns,
   ...candidateReviewColumns,
 };
 for (const tableName of allStampedSignalTables) {
@@ -319,6 +330,7 @@ const expectedPrimaryKeys = new Set([
   ...aiConfigurationPrimaryKeys,
   ...importPrimaryKeys,
   ...signalGenerationPrimaryKeys,
+  ...candidateEnrichmentPrimaryKeys,
   ...candidateReviewPrimaryKeys,
   'topics|id',
   'entities|id',
@@ -347,6 +359,7 @@ const expectedForeignKeys = new Set([
   ...aiConfigurationForeignKeys,
   ...importForeignKeys,
   ...signalGenerationForeignKeys,
+  ...candidateEnrichmentForeignKeys,
   ...candidateReviewForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
@@ -374,6 +387,7 @@ const expectedCheckExpressions = {
   ...aiConfigurationChecks,
   ...importChecks,
   ...signalGenerationChecks,
+  ...candidateEnrichmentChecks,
   ...candidateReviewChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
@@ -441,6 +455,7 @@ const expectedDefaults = new Map([
   ...aiConfigurationDefaults,
   ...importDefaults,
   ...signalGenerationDefaults,
+  ...candidateEnrichmentDefaults,
   ...candidateReviewDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
@@ -467,6 +482,7 @@ const expectedDefaults = new Map([
 const expectedUniqueIndexes = new Set([
   ...importUniqueIndexes,
   ...signalGenerationUniqueIndexes,
+  ...candidateEnrichmentUniqueIndexes,
   ...candidateReviewUniqueIndexes,
   ...affiliationUniqueIndexes,
   ...eventIdentityUniqueIndexes,
@@ -485,6 +501,7 @@ const requiredNonUniqueIndexes = new Set([
   ...aiConfigurationIndexes,
   ...importIndexes,
   ...signalGenerationIndexes,
+  ...candidateEnrichmentIndexes,
   ...signalFoundationIndexes,
   ...affiliationIndexes,
   'entities|type',
@@ -821,6 +838,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
                 'ai_connections', 'ai_connection_versions', 'ai_profiles', 'ai_profile_versions', 'ai_probe_runs',
                 'import_batches', 'import_items', 'import_documents', 'import_attempts',
                 'import_outputs', 'import_audit', 'import_daily_usage', 'signal_generation_runs',
+                'candidate_enrichment_runs',
                 'candidate_reviews','candidate_review_conversions','candidate_review_attestations'
               ))::text
               ORDER BY constraint_info.oid
@@ -863,6 +881,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
       Object.hasOwn(aiConfigurationChecks, tableName) ||
       Object.hasOwn(importChecks, tableName) ||
       Object.hasOwn(signalGenerationChecks, tableName) ||
+      Object.hasOwn(candidateEnrichmentChecks, tableName) ||
       Object.hasOwn(candidateReviewChecks, tableName)
         ? canonicalPublicationControlCheck
         : [
@@ -916,11 +935,23 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
      ORDER BY table_info.relname, index_info.indexrelid`,
   );
   const indexSignature = (row) => `${row.table_name}|${row.columns.join(',')}`;
+  const expectedPartialIndexPredicates = new Map([
+    ...signalGenerationUniqueIndexes.map((signature) => [
+      signature,
+      signalGenerationIdentityPredicates,
+    ]),
+    ...candidateEnrichmentUniqueIndexes.map((signature) => [
+      signature,
+      candidateEnrichmentIdentityPredicates,
+    ]),
+  ]);
   const isHealthyRequiredIndex = (row, requireImmediate) =>
     row.access_method === 'btree' &&
-    (signalGenerationUniqueIndexes.includes(indexSignature(row))
+    (expectedPartialIndexPredicates.has(indexSignature(row))
       ? typeof row.predicate === 'string' &&
-        signalGenerationIdentityPredicates.includes(canonicalPublicationControlCheck(row.predicate))
+        expectedPartialIndexPredicates
+          .get(indexSignature(row))
+          .includes(canonicalPublicationControlCheck(row.predicate))
       : row.predicate_free === true) &&
     row.expression_free === true &&
     row.valid === true &&

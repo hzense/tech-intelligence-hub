@@ -25,7 +25,7 @@ it('pins the private generation SQL, typed schema and independent catalog togeth
   const config = getTableConfig(signalGenerationRuns),
     dialect = new PgDialect();
   expect(getTableName(signalGenerationRuns)).toBe('signal_generation_runs');
-  expect(expectedTableNames.size).toBe(51);
+  expect(expectedTableNames.size).toBe(52);
   expect(config.columns.map((c) => [c.name, [c.getSQLType(), c.notNull]])).toEqual(
     Object.entries(signalGenerationColumns.signal_generation_runs),
   );
