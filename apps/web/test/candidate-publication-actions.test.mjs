@@ -110,6 +110,16 @@ test('first review exposes only confirmation when server preparation is complete
     },
   );
 });
+test('publication controls render deterministic enrichment readiness without manual fields', () => {
+  const html = renderToStaticMarkup(
+    createElement(CandidatePublicationActions, {
+      runId: 'fixture',
+      candidateIndex: 0,
+      materialHash: 'hash',
+    }),
+  );
+  assert.doesNotMatch(html, /input|textarea/);
+});
 test('republication remains blocked until the server can prepare a new review revision', () => {
   const state = { ready: false, status: 'not_currently_public', blocked: ['历史发布已撤回'] };
   assert.equal(

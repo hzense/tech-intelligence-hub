@@ -40,7 +40,34 @@ test(
     );
     let reviews = [],
       configured = true,
-      preparation = { ready: true, blockers: [] },
+      preparation = {
+        ready: true,
+        blockers: [],
+        enrichment: {
+          matched: 3,
+          pending: 0,
+          checks: [
+            {
+              category: 'person',
+              label: '人物：张三',
+              status: 'matched',
+              detail: '已唯一匹配正式人物实体。',
+            },
+            {
+              category: 'topic',
+              label: '领域分类',
+              status: 'matched',
+              detail: '人工智能',
+            },
+            {
+              category: 'public_evidence',
+              label: '公开证据：主张 1',
+              status: 'matched',
+              detail: '已唯一匹配已核验公开证据。',
+            },
+          ],
+        },
+      },
       mode = 'normal';
     const commands = [],
       saved = new Map();
@@ -211,8 +238,12 @@ test(
     await page.goto(`${url}/?publication`);
     await expect(page.getByRole('heading', { name: '可以确认送核验', exact: true })).toBeVisible();
     await expect(page.getByRole('status')).toContainText('等待管理员确认');
+    await expect(page.getByRole('heading', { name: '自动补全检查', exact: true })).toBeVisible();
+    await expect(page.getByRole('table')).toContainText('人物：张三');
+    await expect(page.getByRole('table')).toContainText('已匹配');
     await expect(page.getByRole('textbox')).toHaveCount(0);
     await expect(page.getByRole('combobox')).toHaveCount(0);
+    await page.screenshot({ path: join(artifacts, 'publication-readiness.png'), fullPage: true });
     assert.equal(commands.length, beforeEmptyPublication);
     await page.getByRole('button', { name: '确认候选并送核验', exact: true }).click();
     await expect.poll(() => commands.some((command) => command.action === 'confirm')).toBe(true);

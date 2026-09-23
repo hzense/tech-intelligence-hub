@@ -44,6 +44,37 @@ test('system preparation builds a complete deterministic review without browser-
   assert.deepEqual(publicPreparation(prepared), {
     ready: true,
     blockers: [],
+    enrichment: {
+      matched: 5,
+      pending: 0,
+      checks: [
+        { category: 'event_date', label: '事件日期', status: 'matched', detail: '2026-09-21' },
+        {
+          category: 'person',
+          label: '人物：张三',
+          status: 'matched',
+          detail: '已唯一匹配正式人物实体。',
+        },
+        {
+          category: 'organization',
+          label: '组织：示例公司',
+          status: 'matched',
+          detail: '已唯一匹配正式组织实体。',
+        },
+        {
+          category: 'topic',
+          label: '领域分类',
+          status: 'matched',
+          detail: 'Language Models',
+        },
+        {
+          category: 'public_evidence',
+          label: '公开证据：主张 1',
+          status: 'matched',
+          detail: '已唯一匹配已核验公开证据。',
+        },
+      ],
+    },
     counts: { people: 1, organizations: 1, topics: 1, evidence: 1, claims: 1 },
   });
 });
@@ -57,6 +88,8 @@ test('system preparation blocks missing or ambiguous formal dependencies', () =>
   assert.equal(prepared.ready, false);
   assert.match(prepared.blockers.join('\n'), /人物“张三”尚未建立正式实体/);
   assert.match(prepared.blockers.join('\n'), /第 1 条主张匹配到多条已核验公开证据/);
+  assert.equal(prepared.enrichment.matched, 3);
+  assert.equal(prepared.enrichment.pending, 2);
   assert.equal('draft' in prepared, false);
 });
 
@@ -64,4 +97,22 @@ test('private source quotations are never promoted when public evidence is absen
   const prepared = prepareCandidateReview(candidate, { ...catalog, evidence: [] });
   assert.equal(prepared.ready, false);
   assert.match(prepared.blockers.join('\n'), /尚未匹配到已核验公开证据/);
+});
+
+test('a claim without quotations never matches catalog evidence', () => {
+  const prepared = prepareCandidateReview(
+    { ...candidate, claims: [{ text: '没有引用的主张。', evidence: [] }] },
+    catalog,
+  );
+  assert.equal(prepared.ready, false);
+  assert.match(prepared.blockers.join('\n'), /尚未匹配到已核验公开证据/);
+  assert.deepEqual(
+    prepared.enrichment.checks.find((check) => check.category === 'public_evidence'),
+    {
+      category: 'public_evidence',
+      label: '公开证据：主张 1',
+      status: 'missing',
+      detail: '主张没有可用于匹配的原文引用。',
+    },
+  );
 });
