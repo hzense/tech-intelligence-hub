@@ -40,6 +40,30 @@ type Preparation = {
     claims: number;
   };
 };
+type EnrichmentTask = {
+  id: string;
+  material_hash: string;
+  profile_revision: number;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  result?: {
+    candidate?: {
+      event_date?: string | null;
+      event_date_evidence?: Array<{ fragment_id: string; quote: string }>;
+      persons?: Array<{
+        name: string;
+        role: string;
+        organization: string | null;
+        evidence?: Array<{ fragment_id: string; quote: string }>;
+      }>;
+      organizations?: string[];
+    };
+  } | null;
+  error_code?: string | null;
+  progress_phase?: string | null;
+  reserved_microusd: string;
+  charged_microusd: string;
+  created_at: string;
+};
 
 const stageCopy: Record<string, { label: string; detail: string }> = {
   review_not_submitted: {
@@ -198,8 +222,12 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [receipt, setReceipt] = useState<unknown>(null);
   const [preparation, setPreparation] = useState<Preparation | null>(null);
+  const [enrichments, setEnrichments] = useState<EnrichmentTask[]>([]);
   const [message, setMessage] = useState('正在读取最新发布状态。');
   const pending = useRef<Partial<Record<Action, { fingerprint: string; requestId: string }>>>({});
+  const pendingEnrichment = useRef<{ fingerprint: string; requestId: string } | null>(null);
+  const effectiveMaterialHash = useRef(materialHash);
+  const originalMaterialHash = useRef(materialHash);
   const running = useRef(false);
 
   const readReviews = useCallback(async () => {
@@ -211,6 +239,9 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
     return (await response.json()) as {
       configured: boolean;
       reviews: Review[];
+      material_hash: string;
+      original_material_hash: string;
+      enrichments?: EnrichmentTask[];
       preparation?: Preparation;
     };
   }, [candidateIndex, runId]);
@@ -220,7 +251,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       const base = {
         runId,
         candidateIndex,
-        materialHash,
+        materialHash: effectiveMaterialHash.current,
         expectedReviewRevision,
         ...extra,
       };
@@ -252,11 +283,14 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       delete pending.current[action];
       return body;
     },
-    [candidateIndex, materialHash, runId],
+    [candidateIndex, runId],
   );
 
   const inspect = useCallback(async () => {
     const data = await readReviews();
+    effectiveMaterialHash.current = data.material_hash ?? materialHash;
+    originalMaterialHash.current = data.original_material_hash ?? materialHash;
+    setEnrichments(data.enrichments ?? []);
     setPreparation(data.preparation ?? null);
     if (!data.reviews.length) {
       const state = unreviewedPublicationReadiness(data);
@@ -268,7 +302,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       );
       return { data, review: null, state };
     }
-    const review = latestReview(data.reviews, materialHash);
+    const review = latestReview(data.reviews, data.material_hash ?? materialHash);
     const body = await post('inspect', review.revision);
     if (!body.readiness) throw new Error('服务端未返回发布状态，请稍后刷新。');
     const state = applyReviewPreparationGate(body.readiness, data);
@@ -291,6 +325,64 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       active = false;
     };
   }, [inspect]);
+
+  const enrichmentActive = enrichments.some((item) => ['pending', 'running'].includes(item.status));
+  useEffect(() => {
+    if (!enrichmentActive) return;
+    const timer = window.setInterval(() => {
+      if (!running.current) void inspect().catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [enrichmentActive, inspect]);
+
+  async function enrich() {
+    if (running.current) return;
+    if (
+      !window.confirm(
+        '确认调用 AI 补全事件日期、关键人物和组织？该调用会计入当前批次与每日预算；结果仅为私有提案，不会创建正式实体、公开证据或发布。',
+      )
+    )
+      return;
+    running.current = true;
+    setBusy(true);
+    try {
+      const base = {
+        runId,
+        candidateIndex,
+        materialHash: originalMaterialHash.current,
+        consent: true,
+      };
+      const fingerprint = JSON.stringify(base);
+      pendingEnrichment.current = reviewRequestIdentity(
+        pendingEnrichment.current,
+        fingerprint,
+        () => crypto.randomUUID(),
+      );
+      const response = await fetch('/api/admin/candidate-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'enrich',
+          request: { ...base, id: pendingEnrichment.current.requestId },
+        }),
+      });
+      if (!response.ok) {
+        if (response.status === 409)
+          throw new Error('补全任务状态、预算或资料版本已变化，请刷新后再确认。');
+        if (response.status === 503)
+          throw new Error('补全服务暂不可用或派发结果未确认，请刷新核对原任务后再操作。');
+        throw new Error('补全任务创建结果未知。请求编号已保留，请勿重复创建。');
+      }
+      pendingEnrichment.current = null;
+      setMessage('AI 补全任务已进入队列；结果仍需正式目录与公开证据检查。');
+      await inspect();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '补全任务创建失败。');
+    } finally {
+      running.current = false;
+      setBusy(false);
+    }
+  }
 
   async function perform(action: Action) {
     if (running.current) return;
@@ -318,7 +410,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       if (action === 'confirm') {
         if (data.preparation?.ready !== true) throw new Error('系统准备尚未完成，请查看阻塞项。');
         const expectedReviewRevision = data.reviews.length
-          ? latestReview(data.reviews, materialHash).revision
+          ? latestReview(data.reviews, data.material_hash ?? materialHash).revision
           : 0;
         const body = await post('confirm', expectedReviewRevision);
         setReceipt(body);
@@ -328,8 +420,8 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       }
       const review =
         action === 'withdraw'
-          ? latestPublishedReview(data.reviews, materialHash)
-          : latestSubmittedReview(data.reviews, materialHash);
+          ? latestPublishedReview(data.reviews, data.material_hash ?? materialHash)
+          : latestSubmittedReview(data.reviews, data.material_hash ?? materialHash);
       const inspected = await post('inspect', review.revision);
       const pipeline = inspected.readiness?.receipt;
       const extra = automaticPublicationExtra(action, pipeline);
@@ -350,6 +442,17 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
   const stage = status ? stageCopy[status] : undefined;
   const following = nextAction(status);
   const currentlyPublic = status === 'published';
+  const enrichmentNeeded =
+    preparation?.enrichment?.checks.some(
+      (check) =>
+        (check.category === 'event_date' && check.status === 'missing') ||
+        (check.category === 'person' && check.label === '关键人物' && check.status === 'missing'),
+    ) ?? false;
+  const latestEnrichment = enrichments[0];
+  const enrichmentMayStart =
+    !latestEnrichment ||
+    (latestEnrichment.status === 'failed' &&
+      !['outcome_unknown', 'enrichment_unknown'].includes(latestEnrichment.error_code ?? ''));
   const statusLabels = {
     matched: '已匹配',
     missing: '待补全',
@@ -408,6 +511,105 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
           </div>
         </div>
       ) : null}
+      <div className={styles.history}>
+        <h3>AI 补全任务</h3>
+        <p>
+          只补全事件日期、人物和组织，并要求逐字原文证据。结果不会自动创建正式实体、公开证据或发布。
+        </p>
+        {enrichments.length ? (
+          <div className={styles.tableWrap}>
+            <table className={styles.readinessTable}>
+              <thead>
+                <tr>
+                  <th scope="col">创建时间</th>
+                  <th scope="col">状态</th>
+                  <th scope="col">补全提案</th>
+                  <th scope="col">费用</th>
+                </tr>
+              </thead>
+              <tbody>
+                {enrichments.map((task) => {
+                  const candidate = task.result?.candidate;
+                  const charged = Number(task.charged_microusd);
+                  const reserved = Number(task.reserved_microusd);
+                  const terminal = ['completed', 'failed'].includes(task.status);
+                  return (
+                    <tr key={task.id}>
+                      <td>{new Date(task.created_at).toLocaleString('zh-CN')}</td>
+                      <td>
+                        {task.status === 'pending'
+                          ? '排队中'
+                          : task.status === 'running'
+                            ? `执行中${task.progress_phase ? ` · ${task.progress_phase}` : ''}`
+                            : task.status === 'completed'
+                              ? '已完成'
+                              : `失败${task.error_code ? ` · ${task.error_code}` : ''}`}
+                      </td>
+                      <td>
+                        {candidate ? (
+                          <>
+                            <div>日期：{candidate.event_date ?? '未找到'}</div>
+                            <div>
+                              人物：
+                              {candidate.persons?.length
+                                ? candidate.persons
+                                    .map((person) =>
+                                      [person.name, person.role, person.organization]
+                                        .filter(Boolean)
+                                        .join(' · '),
+                                    )
+                                    .join('；')
+                                : '未找到'}
+                            </div>
+                            <div>组织：{candidate.organizations?.join('、') || '未找到'}</div>
+                            {[
+                              ...(candidate.event_date_evidence ?? []),
+                              ...(candidate.persons ?? []).flatMap(
+                                (person) => person.evidence ?? [],
+                              ),
+                            ].length ? (
+                              <details>
+                                <summary>查看补全依据</summary>
+                                <ul>
+                                  {[
+                                    ...(candidate.event_date_evidence ?? []),
+                                    ...(candidate.persons ?? []).flatMap(
+                                      (person) => person.evidence ?? [],
+                                    ),
+                                  ].map((reference, index) => (
+                                    <li
+                                      key={`${reference.fragment_id}:${index}:${reference.quote}`}
+                                    >
+                                      {reference.fragment_id}：{reference.quote}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </details>
+                            ) : null}
+                          </>
+                        ) : (
+                          '尚无可用提案'
+                        )}
+                      </td>
+                      <td>
+                        ${((terminal ? charged : reserved) / 1_000_000).toFixed(4)}
+                        {terminal ? '' : '（预留）'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p>尚未执行 AI 补全。</p>
+        )}
+        {!enrichmentActive && enrichmentNeeded && enrichmentMayStart ? (
+          <button type="button" disabled={busy} onClick={() => void enrich()}>
+            {latestEnrichment?.status === 'failed' ? '重新启动 AI 自动补全' : '启动 AI 自动补全'}
+          </button>
+        ) : null}
+      </div>
       <div className={controls.group}>
         <button type="button" disabled={busy} onClick={() => void perform('inspect')}>
           刷新发布状态

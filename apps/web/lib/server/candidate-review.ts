@@ -10,8 +10,10 @@ import {
   readReviewDatabaseConfiguration,
   ReviewConfigurationError,
 } from '../candidate-review-config';
-import { candidateReviewDetail } from './signal-generation';
+import { generationRecord } from './signal-generation';
 import { prepareCandidateReview, publicPreparation } from '../candidate-review-preparation';
+import { buildCandidateReview, buildEnrichedCandidateReview } from '../candidate-review';
+import { listCandidateEnrichmentDtos } from './candidate-enrichment';
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
@@ -56,7 +58,7 @@ export function requireReviewWrites() {
 }
 async function prepareReview(
   client: pg.PoolClient,
-  packet: Awaited<ReturnType<typeof candidateReviewDetail>>,
+  packet: ReturnType<typeof buildCandidateReview>,
 ) {
   const candidate = packet.candidate;
   const names = [
@@ -113,13 +115,44 @@ async function prepareReview(
     evidence: evidence.rows,
   });
 }
+
+async function currentReviewPacket(owner: string, runId: string, candidateIndex: number) {
+  const run = await generationRecord(owner, runId);
+  const original = buildCandidateReview(run, candidateIndex);
+  const enrichments = await listCandidateEnrichmentDtos(owner, runId, candidateIndex).catch(
+    () => [],
+  );
+  const completed = enrichments.find(
+    (item) =>
+      item.status === 'completed' && item.material_hash === original.materialHash && item.result,
+  );
+  if (!completed?.result?.candidate)
+    return { packet: original, originalMaterialHash: original.materialHash, enrichments };
+  try {
+    const proposed = completed.result.candidate as Record<string, unknown>;
+    return {
+      packet: buildEnrichedCandidateReview(run, candidateIndex, proposed),
+      originalMaterialHash: original.materialHash,
+      enrichments,
+    };
+  } catch {
+    return { packet: original, originalMaterialHash: original.materialHash, enrichments };
+  }
+}
 export async function reviewDashboard(owner: string, runId: string, candidateIndex: number) {
   // Authenticate ownership even when review persistence has not been enabled yet.
-  const packet = await candidateReviewDetail(owner, runId, candidateIndex);
+  const { packet, originalMaterialHash, enrichments } = await currentReviewPacket(
+    owner,
+    runId,
+    candidateIndex,
+  );
   if (!reviewConfigured())
     return {
       configured: false,
       reviews: [],
+      material_hash: packet.materialHash,
+      original_material_hash: originalMaterialHash,
+      enrichments,
       preparation: { ready: false, blockers: ['审核与发布存储尚未配置。'] },
     };
   const reviews = await readCandidateReviews({
@@ -136,6 +169,9 @@ export async function reviewDashboard(owner: string, runId: string, candidateInd
     return {
       configured: process.env.HZENSE_REVIEW_ENABLED === '1',
       reviews,
+      material_hash: packet.materialHash,
+      original_material_hash: originalMaterialHash,
+      enrichments,
       preparation: publicPreparation(preparation),
     };
   } catch (error) {
@@ -180,7 +216,7 @@ function confirmation(value: unknown) {
 export async function confirmPreparedReview(owner: string, value: unknown) {
   requireReviewWrites();
   const request = confirmation(value);
-  const packet = await candidateReviewDetail(owner, request.runId, request.candidateIndex);
+  const { packet } = await currentReviewPacket(owner, request.runId, request.candidateIndex);
   if (packet.materialHash !== request.materialHash)
     throw new CandidateReviewError('material_changed');
   const client = await candidateReviewPool.connect();

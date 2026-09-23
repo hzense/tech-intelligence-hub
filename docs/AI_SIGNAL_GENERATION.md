@@ -147,6 +147,9 @@
 - `apps/web/lib/signal-generation-provider.ts`：真实 AI SDK 结构化生成适配，测试注入合成 HTTPS 响应。
 - `apps/web/lib/signal-generation-core.ts`、`lib/server/signal-generation.ts`：服务端读取、准入、调用与完成流程。
 - `apps/web/components/admin-signal-generation.tsx`：两步执行、原编号恢复、私有候选展示。
+- `packages/ingestion/src/candidate-enrichment-contract.mjs`：候选补全字段白名单及逐字原文证据复核。
+- `packages/database/src/candidate-enrichment-store.mjs`：补全任务幂等、租约、共享预算与私有结果。
+- `apps/web/lib/candidate-enrichment-provider.ts`、`workflows/candidate-enrichment.ts`：使用 Profile 核验阶段的结构化补全和不可自动重放的长任务执行。
 
 新增数据库原生回归、契约单测、真实 SDK／合成 transport 测试、HTTP 鉴权测试及合成浏览器回归；具体执行结果以本轮进展记录为准。这些不是 Google／Neon／供应商生产端到端验收。
 

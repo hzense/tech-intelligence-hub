@@ -41,6 +41,7 @@ test('publication controls require confirmation without operator-entered protoco
     }),
   );
   assert.match(html, /刷新发布状态/);
+  assert.match(html, /AI 补全任务/);
   assert.match(html, /管理员无需复制 ID、填写 JSON 或选择技术原因/);
   for (const label of ['签名核验报告', '核验记录 UUID', '当前发布版本号', '发布 / 撤回原因'])
     assert.doesNotMatch(html, new RegExp(label));
@@ -119,6 +120,7 @@ test('publication controls render deterministic enrichment readiness without man
     }),
   );
   assert.doesNotMatch(html, /input|textarea/);
+  assert.match(html, /不会自动创建正式实体、公开证据或发布/);
 });
 test('republication remains blocked until the server can prepare a new review revision', () => {
   const state = { ready: false, status: 'not_currently_public', blocked: ['历史发布已撤回'] };

@@ -525,14 +525,35 @@ async function expireRunning(client, owner, { id, batchId, itemId } = {}) {
     [owner, id ?? null, batchId ?? null, itemId ?? null],
   );
 }
+async function candidateEnrichmentLedgerAvailable(client) {
+  return (
+    (
+      await client.query(`SELECT has_column_privilege(current_user,
+      to_regclass('public.candidate_enrichment_runs'),'charged_microusd','SELECT') AS available`)
+    ).rows[0]?.available === true
+  );
+}
 export async function getSignalGenerationDailyUsage({ pool, owner }) {
   ownerId(owner);
   return transaction(
     pool,
-    async (client) =>
-      (
+    async (client) => {
+      const enrichment = await candidateEnrichmentLedgerAvailable(client);
+      return (
         await client.query(
-          `WITH today AS (
+          enrichment
+            ? `WITH today AS (
+      SELECT (statement_timestamp() AT TIME ZONE 'UTC')::date AS day
+    ), ledger AS (
+      SELECT owner_id,budget_day,charged_microusd,reserved_microusd FROM public.signal_generation_runs
+      UNION ALL
+      SELECT owner_id,budget_day,charged_microusd,reserved_microusd FROM public.candidate_enrichment_runs
+    ) SELECT today.day::text AS day,
+      COALESCE(sum(r.charged_microusd),0)::text AS charged_microusd,
+      COALESCE(sum(greatest(r.reserved_microusd,r.charged_microusd)),0)::text AS budget_used_microusd
+      FROM today LEFT JOIN ledger r ON r.budget_day=today.day AND r.owner_id=$1
+      GROUP BY today.day`
+            : `WITH today AS (
       SELECT (statement_timestamp() AT TIME ZONE 'UTC')::date AS day
     ) SELECT today.day::text AS day,
       COALESCE(sum(r.charged_microusd),0)::text AS charged_microusd,
@@ -542,7 +563,8 @@ export async function getSignalGenerationDailyUsage({ pool, owner }) {
       GROUP BY today.day`,
           [owner],
         )
-      ).rows[0],
+      ).rows[0];
+    },
     true,
   );
 }
@@ -596,9 +618,16 @@ export async function claimSignalGeneration({ pool, owner, id, currentLimits }) 
         ).rows[0] ?? row;
     }
     if (row.status !== 'pending') return { claimed: false, run: row };
+    const enrichment = await candidateEnrichmentLedgerAvailable(client);
     const active = (
-      await client.query(`SELECT count(*)::integer AS n FROM public.signal_generation_runs
-      WHERE status IN ('running','unknown','cancelled') AND lease_until>clock_timestamp()`)
+      await client.query(
+        enrichment
+          ? `SELECT
+          (SELECT count(*) FROM public.signal_generation_runs WHERE status IN ('running','unknown','cancelled') AND lease_until>clock_timestamp()) +
+          (SELECT count(*) FROM public.candidate_enrichment_runs WHERE status IN ('running','unknown') AND lease_until>clock_timestamp()) AS n`
+          : `SELECT count(*)::integer AS n FROM public.signal_generation_runs
+      WHERE status IN ('running','unknown','cancelled') AND lease_until>clock_timestamp()`,
+      )
     ).rows[0];
     if (active.n > 0) fail('worker_busy');
     const day = (
@@ -607,7 +636,13 @@ export async function claimSignalGeneration({ pool, owner, id, currentLimits }) 
     // AI reservations are a separate ledger, not a claim about parser/provider bills.
     const usage = (
       await client.query(
-        `SELECT
+        enrichment
+          ? `SELECT
+      (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.signal_generation_runs WHERE budget_day=$1::date) +
+      (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.candidate_enrichment_runs WHERE budget_day=$1::date) AS daily,
+      (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.signal_generation_runs WHERE batch_id=$2) +
+      (SELECT COALESCE(sum(greatest(e.reserved_microusd,e.charged_microusd)),0) FROM public.candidate_enrichment_runs e JOIN public.signal_generation_runs g ON g.id=e.run_id WHERE g.batch_id=$2) AS batch`
+          : `SELECT
       COALESCE(sum(greatest(reserved_microusd,charged_microusd)) FILTER (WHERE budget_day=$1::date),0)::text AS daily,
       COALESCE(sum(greatest(reserved_microusd,charged_microusd)) FILTER (WHERE batch_id=$2),0)::text AS batch
       FROM public.signal_generation_runs`,

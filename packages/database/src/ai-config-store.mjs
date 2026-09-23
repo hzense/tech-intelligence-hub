@@ -407,9 +407,17 @@ export async function resolveAiProfileForExecution({ pool, id }) {
  * Resolves current capability proofs and pins both Profile and connection revisions.
  * Generation admission/ledger is separate from the capability-probe ledger.
  */
-export async function resolveAiGenerationAccess({ pool, id, revision, allowedHosts, keyring }) {
+export async function resolveAiStageAccess({
+  pool,
+  id,
+  revision,
+  stageName = 'extract',
+  allowedHosts,
+  keyring,
+}) {
   aiUuid(id);
   aiInteger(revision, 1, 2147483647);
+  if (!['extract', 'verify', 'analyze'].includes(stageName)) aiFail('invalid_configuration');
   return transaction(pool, async (client) => {
     const row = one(
       await client.query(
@@ -420,12 +428,13 @@ export async function resolveAiGenerationAccess({ pool, id, revision, allowedHos
     if (row.revision !== revision) aiFail('revision_conflict');
     const ready = await readiness(client, row.stages, true);
     if (!ready.ready) aiFail('profile_not_ready');
-    const current = await connection(client, row.stages.extract.connection_id);
+    const stage = row.stages[stageName];
+    const current = await connection(client, stage.connection_id);
     validateAiBaseUrl(current.base_url, allowedHosts);
     if (
       !current.enabled ||
       !current.encrypted_key ||
-      current.revision !== row.stages.extract.connection_revision
+      current.revision !== stage.connection_revision
     )
       aiFail('connection_unavailable');
     return {
@@ -440,6 +449,9 @@ export async function resolveAiGenerationAccess({ pool, id, revision, allowedHos
       ...(keyring ? { apiKey: decryptAiKey(current.encrypted_key, current.id, keyring) } : {}),
     };
   });
+}
+export function resolveAiGenerationAccess(args) {
+  return resolveAiStageAccess({ ...args, stageName: 'extract' });
 }
 export async function getAiProbe({ pool, id }) {
   aiUuid(id);

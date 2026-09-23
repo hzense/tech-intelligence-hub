@@ -28,7 +28,7 @@ const ddl = await readFile(
 );
 describe('Private AI configuration schema', () => {
   it('pins exactly five private tables and all column types/nullability', () => {
-    expect(expectedTableNames.size).toBe(51);
+    expect(expectedTableNames.size).toBe(52);
     expect(tables.map(getTableName)).toEqual(Object.keys(aiConfigurationColumns));
     for (const table of tables) {
       const name = getTableName(table);

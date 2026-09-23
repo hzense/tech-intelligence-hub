@@ -35,11 +35,13 @@ test('Sandbox dispatch confines secrets, never waits for AI, and polling cannot 
                     ? `const f=globalThis.__sandboxTest; const sandbox={name:'test-sandbox',async writeFiles(files){f.files=files;}, async runCommand(args){f.commands.push(args); if(f.fail)throw new Error('SECRET');return {cmdId:'cmd'};},async getCommand(id){f.polled.push(id);return {exitCode:f.exit};},async stop(){f.stops++;}}; export const Sandbox={async create(args){f.created.push(args);return sandbox;},async get(args){f.gets.push(args);return sandbox;}};`
                     : path.endsWith('/signal-generation')
                       ? 'export const generationConfigured=()=>true;export async function generationDetail(){return {status:globalThis.__sandboxTest.status};}'
-                      : path.endsWith('/signal-generation-config')
-                        ? "export const readGenerationConfiguration=()=>({connectionString:'postgresql://db.neon.tech/db'});"
-                        : path.endsWith('/admin-ai-core')
-                          ? "export const readAiBackendConfiguration=()=>({connectionString:'postgresql://db.neon.tech/db',allowedHosts:['provider.example.com']});"
-                          : "export const generationImportConfiguration=()=>({connectionString:'postgresql://db.neon.tech/db'});",
+                      : path.endsWith('/candidate-enrichment')
+                        ? 'export const candidateEnrichmentConfigured=()=>true;export async function candidateEnrichmentDetail(){return {status:globalThis.__sandboxTest.enrichmentStatus};}'
+                        : path.endsWith('/signal-generation-config')
+                          ? "export const readGenerationConfiguration=()=>({connectionString:'postgresql://db.neon.tech/db'});"
+                          : path.endsWith('/admin-ai-core')
+                            ? "export const readAiBackendConfiguration=()=>({connectionString:'postgresql://db.neon.tech/db',allowedHosts:['provider.example.com']});"
+                            : "export const generationImportConfiguration=()=>({connectionString:'postgresql://db.neon.tech/db'});",
           }));
         },
       },
@@ -47,6 +49,7 @@ test('Sandbox dispatch confines secrets, never waits for AI, and polling cannot 
   });
   const f = (globalThis.__sandboxTest = {
     status: 'pending',
+    enrichmentStatus: 'pending',
     files: [],
     commands: [],
     created: [],
@@ -77,6 +80,7 @@ test('Sandbox dispatch confines secrets, never waits for AI, and polling cannot 
     assert.equal(f.commands[0].detached, true);
     assert.doesNotMatch(JSON.stringify([f.created, f.commands]), /PRIVATE_|DO_NOT_FORWARD/);
     const task = JSON.parse(f.files[1].content.toString());
+    assert.equal(task.kind, 'signal-generation');
     assert.equal(task.env.HZENSE_AI_KEYRING, 'PRIVATE_KEYRING');
     assert.doesNotMatch(JSON.stringify(task), /DO_NOT_FORWARD/);
     assert.equal(await worker.pollGenerationSandbox(handle), 'running');
@@ -98,6 +102,10 @@ test('Sandbox dispatch confines secrets, never waits for AI, and polling cannot 
       /generation_dispatch_failed/,
     );
     assert.equal(f.stops, 2);
+    f.fail = false;
+    const enrichment = await worker.startCandidateEnrichmentSandbox('owner', 'enrichment');
+    assert.deepEqual(enrichment, { sandboxName: 'test-sandbox', commandId: 'cmd' });
+    assert.equal(JSON.parse(f.files[1].content.toString()).kind, 'candidate-enrichment');
   } finally {
     process.env = old;
     delete globalThis.__sandboxTest;

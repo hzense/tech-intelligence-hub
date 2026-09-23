@@ -113,6 +113,18 @@ export function resolveAiGenerationAccess(args: {
   connection: Pick<AiConnection, 'id' | 'revision' | 'protocol' | 'base_url' | 'settings'>;
   apiKey?: string;
 }>;
+export function resolveAiStageAccess(args: {
+  pool: unknown;
+  id: string;
+  revision: number;
+  stageName: 'extract' | 'verify' | 'analyze';
+  allowedHosts: AiAllowedHosts;
+  keyring?: AiKeyring;
+}): Promise<{
+  profile: AiProfile;
+  connection: Pick<AiConnection, 'id' | 'revision' | 'protocol' | 'base_url' | 'settings'>;
+  apiKey?: string;
+}>;
 export type AiAllowedHosts = readonly string[] | ReadonlySet<string>;
 export type AiProbeInvoker = (input: {
   connection: Pick<AiConnection, 'id' | 'revision' | 'protocol' | 'base_url' | 'settings'>;

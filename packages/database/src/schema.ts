@@ -1451,6 +1451,66 @@ export const candidateReviews = pgTable(
     check('candidate_reviews_draft_ck', sql`jsonb_typeof(${t.draft}) = 'object'`),
   ],
 );
+export const candidateEnrichmentRuns = pgTable(
+  'candidate_enrichment_runs',
+  {
+    id: uuid('id').primaryKey(),
+    ownerId: text('owner_id').notNull(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => signalGenerationRuns.id),
+    candidateIndex: integer('candidate_index').notNull(),
+    materialHash: text('material_hash').notNull(),
+    profileId: uuid('profile_id').notNull(),
+    profileRevision: integer('profile_revision').notNull(),
+    fingerprint: text('fingerprint').notNull(),
+    snapshot: jsonb('snapshot').notNull(),
+    configuration: jsonb('configuration').notNull(),
+    status: text('status').notNull().default('pending'),
+    leaseToken: uuid('lease_token'),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    budgetDay: date('budget_day'),
+    reservedMicrousd: bigint('reserved_microusd', { mode: 'number' }).notNull().default(0),
+    chargedMicrousd: bigint('charged_microusd', { mode: 'number' }).notNull().default(0),
+    result: jsonb('result'),
+    errorCode: text('error_code'),
+    progressPhase: text('progress_phase'),
+    progressAt: timestamp('progress_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('candidate_enrichment_identity_uq')
+      .on(t.ownerId, t.runId, t.candidateIndex, t.materialHash, t.profileId, t.profileRevision)
+      .where(sql`${t.status} <> 'failed'`),
+    index('candidate_enrichment_owner_created_idx').on(t.ownerId, t.createdAt),
+    index('candidate_enrichment_budget_day_idx').on(t.budgetDay),
+    check('candidate_enrichment_index_ck', sql`${t.candidateIndex} BETWEEN 0 AND 4`),
+    check('candidate_enrichment_profile_revision_ck', sql`${t.profileRevision} > 0`),
+    check('candidate_enrichment_material_hash_ck', sql`${t.materialHash} ~ '^[a-f0-9]{64}$'`),
+    check('candidate_enrichment_fingerprint_ck', sql`${t.fingerprint} ~ '^[a-f0-9]{64}$'`),
+    check('candidate_enrichment_snapshot_ck', sql`jsonb_typeof(${t.snapshot}) = 'object'`),
+    check(
+      'candidate_enrichment_configuration_ck',
+      sql`jsonb_typeof(${t.configuration}) = 'object'`,
+    ),
+    check(
+      'candidate_enrichment_status_ck',
+      sql`${t.status} IN ('pending','running','completed','failed','unknown')`,
+    ),
+    check(
+      'candidate_enrichment_progress_ck',
+      sql`${t.progressPhase} IS NULL OR ${t.progressPhase} IN ('queued','preparing','generating','validating','saving')`,
+    ),
+    check('candidate_enrichment_reserved_ck', sql`${t.reservedMicrousd} >= 0`),
+    check('candidate_enrichment_charged_ck', sql`${t.chargedMicrousd} >= 0`),
+    check(
+      'candidate_enrichment_result_ck',
+      sql`${t.result} IS NULL OR (jsonb_typeof(${t.result}) = 'object' AND ${t.result}->>'classification' IS NOT DISTINCT FROM 'private')`,
+    ),
+  ],
+);
 export const candidateReviewConversions = pgTable(
   'candidate_review_conversions',
   {

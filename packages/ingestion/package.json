@@ -9,7 +9,7 @@
     }
   },
   "scripts": {
-    "build": "node --check src/import-manifest.mjs && node --check src/import-task-contract.mjs",
+    "build": "node --check src/import-manifest.mjs && node --check src/import-task-contract.mjs && node --check src/candidate-enrichment-contract.mjs",
     "typecheck": "tsc --noEmit --strict --module nodenext --target es2022 test/type-contract.ts",
     "lint": "eslint src test",
     "test": "node --test test/*.test.mjs"

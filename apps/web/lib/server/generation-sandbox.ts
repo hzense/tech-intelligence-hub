@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Sandbox } from '@vercel/sandbox';
 import { generationConfigured, generationDetail } from './signal-generation';
+import { candidateEnrichmentConfigured, candidateEnrichmentDetail } from './candidate-enrichment';
 import { readGenerationConfiguration } from '../signal-generation-config';
 import { readAiBackendConfiguration } from '../admin-ai-core';
 import { generationImportConfiguration } from './generation-import-reader';
@@ -26,14 +27,15 @@ export const generationWorkerEnvironmentKeys = [
 ] as const;
 export type GenerationSandboxHandle = { sandboxName: string; commandId: string };
 
-export async function startGenerationSandbox(
+async function startSandbox(
   owner: string,
   id: string,
+  kind: 'signal-generation' | 'candidate-enrichment',
+  pending: () => Promise<boolean>,
 ): Promise<GenerationSandboxHandle | null> {
-  if (!generationConfigured()) throw new Error('not_configured');
   // Validates ownership before any infrastructure allocation. The worker performs
   // the atomic claim/budget reservation; duplicate dispatch cannot call AI twice.
-  if ((await generationDetail(owner, id))?.status !== 'pending') return null;
+  if (!(await pending())) return null;
   const config = readGenerationConfiguration(process.env);
   const ai = readAiBackendConfiguration(process.env);
   const source = generationImportConfiguration();
@@ -66,7 +68,7 @@ export async function startGenerationSandbox(
         { path: '/vercel/sandbox/worker.cjs', content: worker },
         {
           path: '/vercel/sandbox/task.json',
-          content: Buffer.from(JSON.stringify({ owner, id, env })),
+          content: Buffer.from(JSON.stringify({ kind, owner, id, env })),
         },
       ],
       { signal },
@@ -82,6 +84,32 @@ export async function startGenerationSandbox(
     await sandbox.stop({ signal: AbortSignal.timeout(15000) }).catch(() => undefined);
     throw new Error('generation_dispatch_failed');
   }
+}
+
+export async function startGenerationSandbox(
+  owner: string,
+  id: string,
+): Promise<GenerationSandboxHandle | null> {
+  if (!generationConfigured()) throw new Error('not_configured');
+  return startSandbox(
+    owner,
+    id,
+    'signal-generation',
+    async () => (await generationDetail(owner, id))?.status === 'pending',
+  );
+}
+
+export async function startCandidateEnrichmentSandbox(
+  owner: string,
+  id: string,
+): Promise<GenerationSandboxHandle | null> {
+  if (!candidateEnrichmentConfigured()) throw new Error('not_configured');
+  return startSandbox(
+    owner,
+    id,
+    'candidate-enrichment',
+    async () => (await candidateEnrichmentDetail(owner, id))?.status === 'pending',
+  );
 }
 export async function pollGenerationSandbox(handle: GenerationSandboxHandle) {
   const signal = AbortSignal.timeout(15000);
