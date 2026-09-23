@@ -133,6 +133,61 @@ describe('Signal transaction seal exact catalog contract', () => {
     expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([]);
   });
 
+  it('accepts the separately provisioned candidate verifier dependency lock grant', () => {
+    const fixture = signalImmutabilityFixture();
+    fixture.routines
+      .find((row) => row.name === 'hzense_lock_publication_dependencies')
+      .acl_entries.push({
+        grantee: 'hzense_candidate_verifier',
+        grantor: owner,
+        privilege: 'EXECUTE',
+        grantable: false,
+      });
+    expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([]);
+  });
+
+  it.each([
+    { grantee: 'PUBLIC' },
+    { grantee: 'hzense_candidate_assembler' },
+    { grantee: 'hzense_publication_controller' },
+    { grantee: 'unreviewed_verifier' },
+    { grantor: 'untrusted_grantor' },
+    { privilege: 'SELECT' },
+    { grantable: true },
+  ])('rejects a broadened candidate verifier dependency lock grant: %j', (change) => {
+    const fixture = signalImmutabilityFixture();
+    fixture.routines
+      .find((row) => row.name === 'hzense_lock_publication_dependencies')
+      .acl_entries.push({
+        grantee: 'hzense_candidate_verifier',
+        grantor: owner,
+        privilege: 'EXECUTE',
+        grantable: false,
+        ...change,
+      });
+    expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([
+      'Current publication function contract mismatch: hzense_lock_publication_dependencies(p_signal_id text, p_source_version integer)',
+    ]);
+  });
+
+  it('does not permit the candidate verifier to execute any other publication or guard function', () => {
+    for (const candidate of signalImmutabilityFixture().routines) {
+      if (candidate.name === 'hzense_lock_publication_dependencies') continue;
+      const fixture = signalImmutabilityFixture();
+      const row = fixture.routines.find((row) => row.name === candidate.name);
+      row.acl_entries.push({
+        grantee: 'hzense_candidate_verifier',
+        grantor: owner,
+        privilege: 'EXECUTE',
+        grantable: false,
+      });
+      row.unsafe_acl_count += 1;
+      expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([
+        expect.stringContaining(`function contract mismatch: ${candidate.name}(`),
+      ]);
+    }
+  });
+
   it.each([
     { grantee: 'PUBLIC' },
     { grantee: 'hzense_import_admin' },

@@ -5,6 +5,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { runMigrations } from '../src/migrate.mjs';
+import { verifyDatabaseContract } from '../src/verify.mjs';
 import {
   assertCandidatePipelineRole,
   candidatePipelineProvisionSQL,
@@ -96,6 +97,16 @@ suite('candidate pipeline exact effective grants in isolated PostgreSQL', () => 
     await expect(assertCandidatePipelineRole(owner, roles[0])).rejects.toThrow(
       'candidate_pipeline_role_invalid',
     );
+  });
+  it('passes full schema verification after applying the actual pipeline role grants', async () => {
+    await expect(
+      verifyDatabaseContract({
+        connectionString: url(),
+        profile: 'local-test',
+        expectedDatabase: db,
+        expectedUser: new URL(adminUrl).username,
+      }),
+    ).resolves.toMatchObject({ migrationCount: 23, tableCount: 52 });
   });
   it('accepts only the exact Neon ADMIN-only incoming membership, never SET or outbound memberships', async () => {
     await admin.query(
