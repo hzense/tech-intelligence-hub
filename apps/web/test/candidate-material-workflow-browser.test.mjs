@@ -173,6 +173,25 @@ test(
         Object.keys(commands.find((command) => command.action === 'enrich').request).sort(),
         ['consent', 'id', 'requestId'],
       );
+      const originalEnrichmentId = data.requests[0].enrichments[0].id;
+      const retry = page.getByRole('button', { name: '确认重试 AI 补证补全（重新计费）' });
+      for (const error_code of ['outcome_unknown', 'enrichment_unknown']) {
+        Object.assign(data.requests[0].enrichments[0], { status: 'failed', error_code });
+        await page.getByRole('button', { name: '刷新补证状态' }).click();
+        await expect(retry).toHaveCount(0);
+      }
+      for (const error_code of ['dispatch_failed', 'enrichment_failed']) {
+        Object.assign(data.requests[0].enrichments[0], { status: 'failed', error_code });
+        await page.getByRole('button', { name: '刷新补证状态' }).click();
+        await expect(retry).toBeVisible();
+      }
+      page.once('dialog', (dialog) => dialog.dismiss());
+      await retry.click();
+      assert.equal(commands.filter((command) => command.action === 'enrich').length, 1);
+      page.once('dialog', (dialog) => dialog.accept());
+      await retry.click();
+      await expect(retry).toHaveCount(0);
+      assert.notEqual(data.requests[0].enrichments[0].id, originalEnrichmentId);
       data.requests[0].enrichments[0] = {
         ...data.requests[0].enrichments[0],
         status: 'completed',
@@ -186,7 +205,7 @@ test(
       };
       await page.getByRole('button', { name: '刷新补证状态' }).click();
       await expect(page.getByText('人物：Ada（researcher）')).toBeVisible();
-      assert.equal(commands.filter((command) => command.action === 'enrich').length, 1);
+      assert.equal(commands.filter((command) => command.action === 'enrich').length, 2);
       data.requests[0].reports = [
         {
           id: 'report-1',

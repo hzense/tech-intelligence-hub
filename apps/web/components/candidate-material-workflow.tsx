@@ -139,7 +139,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
       active = false;
     };
   }, [url]);
-  async function enrich(requestId: string) {
+  async function enrich(requestId: string, previousId?: string) {
     if (
       !window.confirm(
         '确认使用本批补证资料调用 AI？按现有单批与每日预算计费，只生成私有补全提案，不登记、不发布。',
@@ -148,8 +148,9 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
       return;
     setBusy(true);
     setMessage('');
-    const id = enrichmentIds.current[requestId] ?? crypto.randomUUID();
-    enrichmentIds.current[requestId] = id;
+    const recoveryKey = `${requestId}:${previousId ?? 'initial'}`;
+    const id = enrichmentIds.current[recoveryKey] ?? crypto.randomUUID();
+    enrichmentIds.current[recoveryKey] = id;
     try {
       await json(
         await fetch('/api/admin/candidate-materials', {
@@ -392,14 +393,20 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
               </p>
               {data.reviewEnabled &&
               data.enrichmentEnabled &&
-              !(request.enrichments ?? []).length ? (
+              (!(request.enrichments ?? []).length ||
+                (request.enrichments?.[0]?.status === 'failed' &&
+                  ['enrichment_failed', 'dispatch_failed'].includes(
+                    request.enrichments[0].error_code ?? '',
+                  ))) ? (
                 <button
                   type="button"
                   className={controls.button}
                   disabled={busy || !data.enabled}
-                  onClick={() => void enrich(request.id)}
+                  onClick={() => void enrich(request.id, request.enrichments?.[0]?.id)}
                 >
-                  确认启动 AI 补证补全（计费）
+                  {request.enrichments?.length
+                    ? '确认重试 AI 补证补全（重新计费）'
+                    : '确认启动 AI 补证补全（计费）'}
                 </button>
               ) : null}
               {(request.enrichments ?? []).map((task) => (
