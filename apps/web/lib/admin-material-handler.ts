@@ -8,6 +8,7 @@ const safe = new Set([
   'source_unavailable',
   'invalid_candidate_source_bundle',
   'candidate_source_bundle_too_large',
+  'candidate_source_bundle_metadata_too_large',
   'generation_source_too_large',
   'invalid_material_plan',
   'verification_invalid',
@@ -70,9 +71,12 @@ export function materialError(error: unknown) {
   const code = safe.has(raw) ? raw : 'unavailable';
   return importResponse(
     { error: code },
-    ['limit_exceeded', 'candidate_source_bundle_too_large', 'generation_source_too_large'].includes(
-      code,
-    )
+    [
+      'limit_exceeded',
+      'candidate_source_bundle_too_large',
+      'candidate_source_bundle_metadata_too_large',
+      'generation_source_too_large',
+    ].includes(code)
       ? 413
       : code === 'not_found'
         ? 404

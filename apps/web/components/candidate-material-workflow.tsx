@@ -33,6 +33,8 @@ const errors: Record<string, string> = {
   invalid_candidate_source_bundle: '资料重复或格式不符，请核对来源；这不是容量超限提示。',
   candidate_source_bundle_too_large:
     '补证资料包超过 200,000 字节上限，请减少补充资料后重试；AI 输入上限仍为 48,000 字节。',
+  candidate_source_bundle_metadata_too_large:
+    '完整补证资料包（含出处与链接）超过 1,000,000 字节上限，请减少补充资料后重试。',
   generation_source_too_large:
     '单份资料超过 48,000 字节上限，请精简该份资料后重新导入；不是合并资料包超限。',
   material_changed: '原候选或材料版本已变化，请刷新核对。',
@@ -179,6 +181,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
           'source_unavailable',
           'invalid_candidate_source_bundle',
           'candidate_source_bundle_too_large',
+          'candidate_source_bundle_metadata_too_large',
           'generation_source_too_large',
         ].includes(String(error.code))
       )
@@ -283,7 +286,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
           </fieldset>
           <p>
             补证资料包独立上限为 200,000 字节；单份资料及 AI 输入仍限 48,000
-            字节。提交前会只读检查容量。
+            字节。含出处与链接的完整资料包上限为 1,000,000 字节。提交前会只读检查容量。
           </p>
           {capacity ? (
             <p aria-live="polite">

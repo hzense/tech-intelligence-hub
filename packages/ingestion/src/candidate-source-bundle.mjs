@@ -6,6 +6,16 @@ import { normalizePrivateSource, validateGenerationSource } from './signal-gener
 
 // One original and up to three supplements. This is not an AI input budget.
 export const MATERIAL_SOURCE_LIMIT_BYTES = 200000;
+// Includes repeated provenance URLs; leave room below storage/worker envelopes.
+export const MATERIAL_BUNDLE_LIMIT_BYTES = 1000000;
+
+function boundMaterialBundle(bundle) {
+  if (Buffer.byteLength(JSON.stringify(bundle), 'utf8') > MATERIAL_BUNDLE_LIMIT_BYTES)
+    throw Object.assign(new CandidateSourceBundleError(), {
+      code: 'candidate_source_bundle_metadata_too_large',
+    });
+  return bundle;
+}
 
 function validateMaterialSource(source) {
   const normalized = normalizePrivateSource(source);
@@ -209,7 +219,7 @@ export function buildCandidateSourceBundle(input) {
       source: validateMaterialSource({ classification: 'private', fragments }),
       provenance,
     };
-    return { ...payload, sourceBundleHash: digest(payload) };
+    return boundMaterialBundle({ ...payload, sourceBundleHash: digest(payload) });
   });
 }
 
@@ -217,6 +227,7 @@ export function buildCandidateSourceBundle(input) {
 export function validateCandidateSourceBundle(bundle) {
   return guarded(() => {
     const value = canonical(bundle);
+    boundMaterialBundle(value);
     exact(value, ['version', 'baseMaterialHash', 'sourceBundleHash', 'source', 'provenance']);
     if (
       value.version !== version ||

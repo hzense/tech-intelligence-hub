@@ -82,7 +82,11 @@ test('capacity inspection uses session owner and cannot call create; size errors
       .status,
     403,
   );
-  for (const code of ['candidate_source_bundle_too_large', 'generation_source_too_large']) {
+  for (const code of [
+    'candidate_source_bundle_too_large',
+    'candidate_source_bundle_metadata_too_large',
+    'generation_source_too_large',
+  ]) {
     deps.inspect = async () => {
       throw Object.assign(new Error('private text not exposed'), { code });
     };

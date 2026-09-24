@@ -6,6 +6,7 @@ import {
   buildCandidateSourceBundle,
   validateCandidateSourceBundle,
   MATERIAL_SOURCE_LIMIT_BYTES,
+  MATERIAL_BUNDLE_LIMIT_BYTES,
 } from '../src/candidate-source-bundle.mjs';
 import {
   normalizeGeneratedCandidates,
@@ -59,6 +60,32 @@ const rehash = (bundle) => {
   bundle.sourceBundleHash = hash(payload);
   return bundle;
 };
+
+test('bounds the complete serialized bundle including repeated provenance URLs', () => {
+  const value = input();
+  value.source = source(...Array.from({ length: 500 }, () => 'a'));
+  value.supplements = [1, 2, 3].map((number) => {
+    const content = source(...Array.from({ length: 500 }, () => String(number)));
+    return { ...supplement('unused', number), source: content, contentHash: hash(content) };
+  });
+  for (const item of [value.source, ...value.supplements.map((row) => row.source)])
+    assert.doesNotThrow(() => validateGenerationSource(item));
+  const bundle = buildCandidateSourceBundle(value);
+  assert.ok(Buffer.byteLength(JSON.stringify(bundle.source)) < MATERIAL_SOURCE_LIMIT_BYTES);
+  assert.ok(Buffer.byteLength(JSON.stringify(bundle)) < MATERIAL_BUNDLE_LIMIT_BYTES);
+  assert.deepEqual(validateCandidateSourceBundle(bundle), bundle);
+  const longUrl = 'https://example.com/' + 'x'.repeat(2020);
+  for (const row of value.supplements) row.sourceUrl = longUrl;
+  assert.throws(() => buildCandidateSourceBundle(value), {
+    code: 'candidate_source_bundle_metadata_too_large',
+  });
+  for (const row of bundle.provenance) if (row.kind === 'supplement') row.sourceUrl = longUrl;
+  rehash(bundle);
+  assert.ok(Buffer.byteLength(JSON.stringify(bundle)) > MATERIAL_BUNDLE_LIMIT_BYTES);
+  assert.throws(() => validateCandidateSourceBundle(bundle), {
+    code: 'candidate_source_bundle_metadata_too_large',
+  });
+});
 
 test('pins every original fragment and appends renumbered private sources without mutating inputs', () => {
   const value = input(),
