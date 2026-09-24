@@ -34,6 +34,12 @@ export function splitMaterialEvidenceStatements(quote: string, names: string[] =
     .split(/[。！？!?;；\n.]/u)
     .map((value) => value.replaceAll('\uE000', '.'));
 }
+function mentionsField(text: string, field: string) {
+  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const left = /^[\p{Script=Latin}\p{N}]/u.test(field) ? '(?<![\\p{L}\\p{N}_])' : '';
+  const right = /[\p{Script=Latin}\p{N}]$/u.test(field) ? '(?![\\p{L}\\p{N}_])' : '';
+  return new RegExp(`${left}${escaped}${right}`, 'u').test(text);
+}
 const refsSchema = {
   type: 'array',
   minItems: 1,
@@ -61,7 +67,12 @@ export const materialEnrichmentJsonSchema = {
   ],
   properties: {
     ...(candidateEnrichmentJsonSchema.properties as Record<string, unknown>),
-    claim_evidence: { type: 'array', minItems: 1, maxItems: 6, items: refsSchema },
+    claim_evidence: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 6,
+      items: { ...refsSchema, maxItems: 1 },
+    },
     organization_identities: {
       type: 'array',
       maxItems: 12,
@@ -79,7 +90,7 @@ export const materialEnrichmentJsonSchema = {
     topic_ids: { type: 'array', maxItems: 5, items: { type: 'string' } },
   },
 };
-export const materialEnrichmentRules = `这是补证资料包补全。标题、摘要、主张文本和已有日期、人物关系不得改写。按原主张顺序输出 claim_evidence，引用能支持该主张的补充原文；可补充不同语言的原文，但不得把仅仅相关当作支持。已有日期可重新引用补充原文。人物必须与本事件直接相关且姓名、角色、组织逐字出现在引文中。organization_identities 仅在原文明确说明公司(company/公司/企业)或机构(institution/institute/university/机构/研究所/大学)时提供类型及证据，否则留空。topic_ids 只能选给定已启用目录中的 ID，没有相关领域则留空。所有输出是待人工核对的私有提案，不代表事实验证或公开许可。`;
+export const materialEnrichmentRules = `这是补证资料包补全。标题、摘要、主张文本和已有日期、人物关系不得改写。按原主张顺序输出 claim_evidence，每个主张仅选择一条足以支持该主张的原文引文，与单一证据登记格式一致，不拼接多个片段。可补充不同语言的原文，但不得把仅仅相关当作支持。已有日期可重新引用补充原文。人物必须与本事件直接相关且完整姓名、角色、组织由同一条引文的同一语句明确关联；不得借用更长词的子串。organization_identities 仅在同一条引文直接说明目标组织的公司(company/公司/企业)或机构(institution/institute/university/机构/研究所/大学)类型时提供证据，否则留空。topic_ids 只能选给定已启用目录中的 ID，没有相关领域则留空。所有输出是待人工核对的私有提案，不代表事实验证或公开许可。`;
 
 function remap(candidate: GeneratedCandidate, ids: Map<string, string>): GeneratedCandidate {
   const map = (refs: Reference[]) =>
@@ -137,6 +148,8 @@ export function assessMaterialEnrichment(
   if (original.event_date !== null && v.event_date !== original.event_date) fail();
   if (!Array.isArray(v.claim_evidence) || v.claim_evidence.length !== original.claims.length)
     fail();
+  if ((v.claim_evidence as unknown[]).some((refs) => !Array.isArray(refs) || refs.length !== 1))
+    fail();
   const candidate = normalizeGeneratedCandidates(
     {
       reason: '补证私有提案，待人工确认。',
@@ -167,22 +180,21 @@ export function assessMaterialEnrichment(
       fail();
   if (original.organizations.some((name) => !candidate.organizations.includes(name))) fail();
   for (const p of candidate.persons) {
-    if (
-      !p.evidence.some((ref) =>
-        splitMaterialEvidenceStatements(ref.quote, [p.name]).some((statement) =>
-          [p.name, p.role, ...(p.organization ? [p.organization] : [])].every((text) =>
-            statement.includes(text),
-          ),
+    const relationship = p.evidence.find((ref) =>
+      splitMaterialEvidenceStatements(ref.quote, [p.name]).some((statement) =>
+        [p.name, p.role, ...(p.organization ? [p.organization] : [])].every((text) =>
+          mentionsField(statement, text),
         ),
-      )
-    )
-      fail();
+      ),
+    );
+    if (!relationship) fail();
+    p.evidence = [relationship];
   }
   if (
     candidate.organizations.some(
       (name) =>
         !original.organizations.includes(name) &&
-        !checked.fragments.some((f) => f.text.includes(name)),
+        !checked.fragments.some((f) => mentionsField(f.text, name)),
     )
   )
     fail();

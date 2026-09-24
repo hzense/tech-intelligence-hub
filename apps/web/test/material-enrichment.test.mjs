@@ -183,6 +183,27 @@ test('existing organizations survive projection while new organizations still re
   assert.throws(() => assessMaterialEnrichment(value, input.candidate, input.source, context));
 });
 
+test('person fields cannot borrow Latin substrings from longer names, roles or organizations', () => {
+  const text = 'Adaline discussed CEOship at FooLab';
+  const input = materialEnrichmentInput(bundle(`${quote} ${text}`), candidate);
+  for (const [name, role, organization] of [
+    ['Ada', 'CEOship', 'FooLab'],
+    ['Adaline', 'CEO', 'FooLab'],
+    ['Adaline', 'CEOship', 'Lab'],
+  ]) {
+    const value = output();
+    value.persons = [{ name, role, organization, evidence: [ref(2, text)] }];
+    assert.throws(() => assessMaterialEnrichment(value, input.candidate, input.source, context));
+  }
+});
+
+test('claim references must fit the single-evidence registration contract', () => {
+  const input = materialEnrichmentInput(bundle([quote, 'Lab announced X.']), candidate);
+  const value = output();
+  value.claim_evidence[0].push(ref(3, 'Lab announced X.'));
+  assert.throws(() => assessMaterialEnrichment(value, input.candidate, input.source, context));
+});
+
 test('organization types cannot borrow unrelated type words from another quote or sentence', () => {
   const input = materialEnrichmentInput(
     bundle(`${quote} Lab announced X; Foo is a company.`),
