@@ -113,6 +113,7 @@ const unique = <T>(items: T[]) => [...new Set(items)];
 export function prepareCandidateReview(
   candidate: MaterialCandidate,
   catalog: PublicationCatalog,
+  registered?: { topicIds: string[]; planHash: string },
 ): CandidateReviewPreparation {
   const blockers: string[] = [];
   const checks: CandidateEnrichmentCheck[] = [];
@@ -210,11 +211,16 @@ export function prepareCandidateReview(
     ...candidate.persons.map((person) => person.role),
     ...organizationNames,
   ].join('\n');
-  const topicIds = unique(
+  const inferredTopicIds = unique(
     topicRules
       .filter((rule) => activeTopics.has(rule.id) && rule.terms.test(searchable))
       .map((rule) => rule.id),
   ).slice(0, 8);
+  const topicIds = registered
+    ? unique(registered.topicIds).filter((id) => activeTopics.has(id))
+    : inferredTopicIds;
+  if (registered && topicIds.length !== registered.topicIds.length)
+    blockers.push('已登记材料引用的领域已停用或变化，需重新核验。');
   if (!topicIds.length) {
     blockers.push('候选尚未唯一归入已启用的正式领域分类。');
     checks.push({
@@ -276,7 +282,14 @@ export function prepareCandidateReview(
     ...prepared,
     materials,
     preparationHash: createHash('sha256')
-      .update(JSON.stringify({ version: 'publication-materials-v1', prepared, materials }))
+      .update(
+        JSON.stringify({
+          version: 'publication-materials-v1',
+          prepared,
+          materials,
+          ...(registered ? { registeredPlanHash: registered.planHash } : {}),
+        }),
+      )
       .digest('hex'),
   });
   if (blockers.length) return result({ ready: false, blockers: unique(blockers), enrichment });

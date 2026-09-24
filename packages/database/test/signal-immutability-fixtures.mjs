@@ -14,6 +14,7 @@ const migration = [
   '0011_signal_candidate_verification.sql',
   '0012_current_signal_publication.sql',
   '0021_candidate_review_attestations.sql',
+  '0023_candidate_materials.sql',
 ]
   .map((name) => readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), 'utf8'))
   .join('\n');

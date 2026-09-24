@@ -1565,6 +1565,119 @@ export const candidateReviewAttestations = pgTable(
   ],
 );
 
+export const candidateMaterialRequests = pgTable(
+  'candidate_material_requests',
+  {
+    id: uuid('id').primaryKey(),
+    ownerId: text('owner_id').notNull(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => signalGenerationRuns.id),
+    candidateIndex: integer('candidate_index').notNull(),
+    baseMaterialHash: text('base_material_hash').notNull(),
+    bundleHash: text('bundle_hash').notNull(),
+    fingerprint: text('fingerprint').notNull(),
+    bundle: jsonb('bundle').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('candidate_material_requests_identity_uq').on(
+      t.ownerId,
+      t.runId,
+      t.candidateIndex,
+      t.baseMaterialHash,
+      t.bundleHash,
+    ),
+    uniqueIndex('candidate_material_requests_owner_uq').on(t.id, t.ownerId),
+    check('candidate_material_requests_owner_ck', sql`length(${t.ownerId}) BETWEEN 1 AND 200`),
+    check('candidate_material_requests_index_ck', sql`${t.candidateIndex} BETWEEN 0 AND 4`),
+    check(
+      'candidate_material_requests_base_hash_ck',
+      sql`${t.baseMaterialHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'candidate_material_requests_bundle_hash_ck',
+      sql`${t.bundleHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'candidate_material_requests_fingerprint_ck',
+      sql`${t.fingerprint} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check('candidate_material_requests_bundle_ck', sql`jsonb_typeof(${t.bundle}) = 'object'`),
+  ],
+);
+
+export const candidateMaterialReports = pgTable(
+  'candidate_material_reports',
+  {
+    id: uuid('id').primaryKey(),
+    requestId: uuid('request_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    planHash: text('plan_hash').notNull(),
+    plan: jsonb('plan').notNull(),
+    attestation: jsonb('attestation').notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.requestId, t.ownerId],
+      foreignColumns: [candidateMaterialRequests.id, candidateMaterialRequests.ownerId],
+    }),
+    uniqueIndex('candidate_material_reports_plan_uq').on(t.requestId, t.planHash),
+    uniqueIndex('candidate_material_reports_owner_plan_uq').on(
+      t.id,
+      t.requestId,
+      t.ownerId,
+      t.planHash,
+    ),
+    check('candidate_material_reports_owner_ck', sql`length(${t.ownerId}) BETWEEN 1 AND 200`),
+    check(
+      'candidate_material_reports_plan_hash_ck',
+      sql`${t.planHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check('candidate_material_reports_plan_ck', sql`jsonb_typeof(${t.plan}) = 'object'`),
+    check(
+      'candidate_material_reports_attestation_ck',
+      sql`jsonb_typeof(${t.attestation}) = 'object'`,
+    ),
+  ],
+);
+
+export const candidateMaterialReceipts = pgTable(
+  'candidate_material_receipts',
+  {
+    id: uuid('id').primaryKey(),
+    requestId: uuid('request_id').notNull(),
+    reportId: uuid('report_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    planHash: text('plan_hash').notNull(),
+    stage: text('stage').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.requestId, t.ownerId],
+      foreignColumns: [candidateMaterialRequests.id, candidateMaterialRequests.ownerId],
+    }),
+    foreignKey({
+      columns: [t.reportId, t.requestId, t.ownerId, t.planHash],
+      foreignColumns: [
+        candidateMaterialReports.id,
+        candidateMaterialReports.requestId,
+        candidateMaterialReports.ownerId,
+        candidateMaterialReports.planHash,
+      ],
+    }),
+    uniqueIndex('candidate_material_receipts_stage_uq').on(t.reportId, t.stage),
+    check('candidate_material_receipts_owner_ck', sql`length(${t.ownerId}) BETWEEN 1 AND 200`),
+    check(
+      'candidate_material_receipts_plan_hash_ck',
+      sql`${t.planHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check('candidate_material_receipts_stage_ck', sql`${t.stage} IN ('registered', 'verified')`),
+  ],
+);
+
 export const searchDocuments = pgTable(
   'search_documents',
   {

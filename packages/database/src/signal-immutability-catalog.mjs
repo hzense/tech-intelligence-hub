@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
 import {
+  candidateMaterialFunctionHashes,
+  candidateMaterialTriggers,
+  candidateMaterialRoutines,
+} from './candidate-material-catalog.mjs';
+import {
   candidateReviewFunctionHashes,
   candidateReviewTriggers,
 } from './candidate-review-catalog.mjs';
@@ -52,6 +57,7 @@ export const sealedSignalTables = Object.freeze([
 
 // Updated only after reviewing the function source as part of a migration.
 export const sealedSignalFunctionHashes = Object.freeze({
+  ...candidateMaterialFunctionHashes,
   ...candidateReviewFunctionHashes,
   hzense_guard_sealed_row: 'cac551349972dfdc20016fd7bdb7f50c3ee97bb5c803ae7a7cffec2c6a429524',
   hzense_guard_version_edge: '49d6bf24722b9259c77cc4a03d79c53374cdad109d1c8950b9e053a63855720e',
@@ -67,6 +73,7 @@ export function expectedSignalTriggerCount(tableName) {
 }
 
 export const sealedSignalTriggers = Object.freeze([
+  ...candidateMaterialTriggers,
   ...candidateReviewTriggers,
   ...sealedSignalTables.flatMap((table) => [
     Object.freeze({
@@ -165,7 +172,10 @@ export function inspectSignalImmutabilityCatalog({ triggers, routines, stamps },
       problems.push(`Signal immutability function contract mismatch: ${key}`);
     }
   }
-  for (const [name, contract] of Object.entries(currentPublicationRoutines)) {
+  for (const [name, contract] of Object.entries({
+    ...currentPublicationRoutines,
+    ...candidateMaterialRoutines,
+  })) {
     const key = `${name}(${contract.arguments})`;
     const row = actualRoutines.get(key);
     actualRoutines.delete(key);
@@ -202,7 +212,10 @@ export function inspectSignalImmutabilityCatalog({ triggers, routines, stamps },
       typeof row.source !== 'string' ||
       signalGuardSourceHash(row.source) !== contract.hash
     ) {
-      problems.push(`Current publication function contract mismatch: ${key}`);
+      const label = Object.hasOwn(candidateMaterialRoutines, name)
+        ? 'Candidate material'
+        : 'Current publication';
+      problems.push(`${label} function contract mismatch: ${key}`);
     }
   }
   for (const key of actualRoutines.keys())

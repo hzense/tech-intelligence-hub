@@ -1,5 +1,14 @@
 import console from 'node:console';
 import {
+  candidateMaterialColumns,
+  candidateMaterialPrimaryKeys,
+  candidateMaterialForeignKeys,
+  candidateMaterialChecks,
+  candidateMaterialDefaults,
+  candidateMaterialUniqueIndexes,
+  candidateMaterialIndexes,
+} from './candidate-material-catalog.mjs';
+import {
   candidateReviewColumns,
   candidateReviewPrimaryKeys,
   candidateReviewForeignKeys,
@@ -258,6 +267,7 @@ const expectedColumns = {
   ...importColumns,
   ...signalGenerationColumns,
   ...candidateEnrichmentColumns,
+  ...candidateMaterialColumns,
   ...candidateReviewColumns,
 };
 for (const tableName of allStampedSignalTables) {
@@ -331,6 +341,7 @@ const expectedPrimaryKeys = new Set([
   ...importPrimaryKeys,
   ...signalGenerationPrimaryKeys,
   ...candidateEnrichmentPrimaryKeys,
+  ...candidateMaterialPrimaryKeys,
   ...candidateReviewPrimaryKeys,
   'topics|id',
   'entities|id',
@@ -360,6 +371,7 @@ const expectedForeignKeys = new Set([
   ...importForeignKeys,
   ...signalGenerationForeignKeys,
   ...candidateEnrichmentForeignKeys,
+  ...candidateMaterialForeignKeys,
   ...candidateReviewForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
@@ -388,6 +400,7 @@ const expectedCheckExpressions = {
   ...importChecks,
   ...signalGenerationChecks,
   ...candidateEnrichmentChecks,
+  ...candidateMaterialChecks,
   ...candidateReviewChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
@@ -456,6 +469,7 @@ const expectedDefaults = new Map([
   ...importDefaults,
   ...signalGenerationDefaults,
   ...candidateEnrichmentDefaults,
+  ...candidateMaterialDefaults,
   ...candidateReviewDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
@@ -483,6 +497,7 @@ const expectedUniqueIndexes = new Set([
   ...importUniqueIndexes,
   ...signalGenerationUniqueIndexes,
   ...candidateEnrichmentUniqueIndexes,
+  ...candidateMaterialUniqueIndexes,
   ...candidateReviewUniqueIndexes,
   ...affiliationUniqueIndexes,
   ...eventIdentityUniqueIndexes,
@@ -502,6 +517,7 @@ const requiredNonUniqueIndexes = new Set([
   ...importIndexes,
   ...signalGenerationIndexes,
   ...candidateEnrichmentIndexes,
+  ...candidateMaterialIndexes,
   ...signalFoundationIndexes,
   ...affiliationIndexes,
   'entities|type',
@@ -839,6 +855,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
                 'import_batches', 'import_items', 'import_documents', 'import_attempts',
                 'import_outputs', 'import_audit', 'import_daily_usage', 'signal_generation_runs',
                 'candidate_enrichment_runs',
+                'candidate_material_requests','candidate_material_reports','candidate_material_receipts',
                 'candidate_reviews','candidate_review_conversions','candidate_review_attestations'
               ))::text
               ORDER BY constraint_info.oid
@@ -882,6 +899,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
       Object.hasOwn(importChecks, tableName) ||
       Object.hasOwn(signalGenerationChecks, tableName) ||
       Object.hasOwn(candidateEnrichmentChecks, tableName) ||
+      Object.hasOwn(candidateMaterialChecks, tableName) ||
       Object.hasOwn(candidateReviewChecks, tableName)
         ? canonicalPublicationControlCheck
         : [

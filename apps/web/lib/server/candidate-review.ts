@@ -14,6 +14,12 @@ import { generationRecord } from './signal-generation';
 import { prepareCandidateReview, publicPreparation } from '../candidate-review-preparation';
 import { buildCandidateReview, buildEnrichedCandidateReview } from '../candidate-review';
 import { listCandidateEnrichmentDtos } from './candidate-enrichment';
+import { registeredMaterialForCandidate } from './material-registration';
+import { materialPlanCandidate } from '../material-registration-binding';
+import {
+  materialPlanHash,
+  type MaterialPlan,
+} from '../../../../packages/database/src/material-registration-contract.mjs';
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
@@ -59,8 +65,9 @@ export function requireReviewWrites() {
 async function prepareReview(
   client: pg.PoolClient,
   packet: ReturnType<typeof buildCandidateReview>,
+  registered: MaterialPlan | null = null,
 ) {
-  const candidate = packet.candidate;
+  const candidate = registered ? materialPlanCandidate(registered) : packet.candidate;
   const names = [
     ...candidate.persons.map((person) => person.name),
     ...candidate.organizations,
@@ -109,12 +116,48 @@ async function prepareReview(
     current.add(row.kind);
     kinds.set(row.entity_id, current);
   }
-  return prepareCandidateReview(candidate, {
-    people: entities.filter((row) => kinds.get(row.id)?.has('person')),
-    organizations: entities.filter((row) => kinds.get(row.id)?.has('organization')),
-    topics: topics.rows,
-    evidence: evidence.rows,
-  });
+  const result = prepareCandidateReview(
+    candidate,
+    {
+      people: entities.filter((row) => kinds.get(row.id)?.has('person')),
+      organizations: entities.filter((row) => kinds.get(row.id)?.has('organization')),
+      topics: topics.rows,
+      evidence: registered
+        ? evidence.rows.filter((row) =>
+            registered.evidence.some(
+              (item) =>
+                item.id === row.id &&
+                item.excerpt === row.excerpt &&
+                item.sourceUrl === row.source_url,
+            ),
+          )
+        : evidence.rows,
+    },
+    registered
+      ? { topicIds: registered.topicIds, planHash: materialPlanHash(registered) }
+      : undefined,
+  );
+  if (registered && result.ready) {
+    const same = (a: string[], b: string[]) =>
+      JSON.stringify([...new Set(a)].sort()) === JSON.stringify([...new Set(b)].sort());
+    if (
+      !same(
+        result.draft.personIds,
+        registered.candidate.persons.map((p) => p.entityId),
+      ) ||
+      !same(result.draft.organizationIds, [
+        ...registered.candidate.organizationIds,
+        ...registered.candidate.persons.flatMap((p) =>
+          p.organizationId ? [p.organizationId] : [],
+        ),
+      ]) ||
+      result.draft.claims.some(
+        (claim, index) => claim.evidenceId !== registered.candidate.claims[index]?.evidenceId,
+      )
+    )
+      throw new CandidateReviewError('material_changed');
+  }
+  return result;
 }
 
 async function currentReviewPacket(owner: string, runId: string, candidateIndex: number) {
@@ -122,11 +165,29 @@ async function currentReviewPacket(owner: string, runId: string, candidateIndex:
   const original = buildCandidateReview(run, candidateIndex);
   // A failed read is not proof that no newer proposal exists.
   const enrichments = await listCandidateEnrichmentDtos(owner, runId, candidateIndex);
+  const registered = await registeredMaterialForCandidate(
+    owner,
+    runId,
+    candidateIndex,
+    original.materialHash,
+  );
+  if (registered)
+    return {
+      packet: original,
+      originalMaterialHash: original.materialHash,
+      enrichments,
+      registered,
+    };
   const completed = enrichments.find(
     (item) => item.status === 'completed' && item.material_hash === original.materialHash,
   );
   if (!completed)
-    return { packet: original, originalMaterialHash: original.materialHash, enrichments };
+    return {
+      packet: original,
+      originalMaterialHash: original.materialHash,
+      enrichments,
+      registered: null,
+    };
   if (!completed.result?.candidate) throw new CandidateReviewError('material_changed');
   try {
     const proposed = completed.result.candidate as Record<string, unknown>;
@@ -134,6 +195,7 @@ async function currentReviewPacket(owner: string, runId: string, candidateIndex:
       packet: buildEnrichedCandidateReview(run, candidateIndex, proposed),
       originalMaterialHash: original.materialHash,
       enrichments,
+      registered: null,
     };
   } catch {
     throw new CandidateReviewError('material_changed');
@@ -141,7 +203,7 @@ async function currentReviewPacket(owner: string, runId: string, candidateIndex:
 }
 export async function reviewDashboard(owner: string, runId: string, candidateIndex: number) {
   // Authenticate ownership even when review persistence has not been enabled yet.
-  const { packet, originalMaterialHash, enrichments } = await currentReviewPacket(
+  const { packet, originalMaterialHash, enrichments, registered } = await currentReviewPacket(
     owner,
     runId,
     candidateIndex,
@@ -164,7 +226,7 @@ export async function reviewDashboard(owner: string, runId: string, candidateInd
   const client = await candidateReviewPool.connect();
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    const preparation = await prepareReview(client, packet);
+    const preparation = await prepareReview(client, packet, registered);
     await client.query('COMMIT');
     return {
       configured: process.env.HZENSE_REVIEW_ENABLED === '1',
@@ -226,14 +288,18 @@ function confirmation(value: unknown) {
 export async function confirmPreparedReview(owner: string, value: unknown) {
   requireReviewWrites();
   const request = confirmation(value);
-  const { packet } = await currentReviewPacket(owner, request.runId, request.candidateIndex);
+  const { packet, registered } = await currentReviewPacket(
+    owner,
+    request.runId,
+    request.candidateIndex,
+  );
   if (packet.materialHash !== request.materialHash)
     throw new CandidateReviewError('material_changed');
   const client = await candidateReviewPool.connect();
   let preparation;
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
-    preparation = await prepareReview(client, packet);
+    preparation = await prepareReview(client, packet, registered);
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
