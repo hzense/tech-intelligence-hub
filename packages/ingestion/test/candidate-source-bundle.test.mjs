@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import {
   buildCandidateSourceBundle,
   validateCandidateSourceBundle,
+  MATERIAL_SOURCE_LIMIT_BYTES,
 } from '../src/candidate-source-bundle.mjs';
-import { normalizeGeneratedCandidates } from '../src/signal-generation-contract.mjs';
+import {
+  normalizeGeneratedCandidates,
+  validateGenerationSource,
+} from '../src/signal-generation-contract.mjs';
 
 const canonical = (value) =>
   Array.isArray(value)
@@ -120,7 +125,7 @@ test('accepts one declared URL attribution for identical original text while ret
       buildCandidateSourceBundle({ ...input(), supplements: [{ ...attribution, sourceUrl }] }),
     );
   const large = source('x'.repeat(13000), 'y'.repeat(13000));
-  rejects(() =>
+  assert.doesNotThrow(() =>
     buildCandidateSourceBundle({
       ...input(),
       source: large,
@@ -228,7 +233,7 @@ test('enforces supplement count, source size, fragment size, and original source
     }),
   );
   const large = source('x'.repeat(18000), 'y'.repeat(18000));
-  rejects(() =>
+  assert.doesNotThrow(() =>
     buildCandidateSourceBundle({
       ...input(),
       source: large,
@@ -240,6 +245,43 @@ test('enforces supplement count, source size, fragment size, and original source
   const malformed = input();
   malformed.source.fragments[1].id = 'fragment-8';
   rejects(() => buildCandidateSourceBundle(malformed));
+});
+
+test('material budget accepts 52,271 bytes without expanding the AI budget or changing hashes', () => {
+  const value = input();
+  value.source = source('中'.repeat(5000), '文'.repeat(5000), 'A'.repeat(12000));
+  const extra = supplement('B'.repeat(9500));
+  value.supplements = [extra];
+  let bundle = buildCandidateSourceBundle(value);
+  const missing = 52271 - Buffer.byteLength(JSON.stringify(bundle.source));
+  assert.ok(missing >= 0);
+  extra.source.fragments[0].text += 'x'.repeat(missing);
+  extra.contentHash = hash(extra.source);
+  bundle = buildCandidateSourceBundle(value);
+  assert.equal(Buffer.byteLength(JSON.stringify(bundle.source)), 52271);
+  assert.deepEqual(validateCandidateSourceBundle(bundle), bundle);
+  assert.throws(() => validateGenerationSource(bundle.source), {
+    code: 'generation_source_too_large',
+  });
+  bundle.source.fragments[0].text += 'tampered';
+  rejects(() => validateCandidateSourceBundle(bundle));
+});
+
+test('single-source and aggregate material limits remain bounded', () => {
+  assert.throws(
+    () => buildCandidateSourceBundle({ ...input(), source: source('中'.repeat(17000)) }),
+    { code: 'generation_source_too_large' },
+  );
+  const bundle = buildCandidateSourceBundle(input());
+  bundle.source.fragments = Array.from({ length: 4 }, (_, i) => ({
+    id: `fragment-${i + 1}`,
+    text: '中'.repeat(17000),
+    locator: { paragraph: i + 1 },
+  }));
+  assert.ok(Buffer.byteLength(JSON.stringify(bundle.source)) > MATERIAL_SOURCE_LIMIT_BYTES);
+  assert.throws(() => validateCandidateSourceBundle(bundle), {
+    code: 'candidate_source_bundle_too_large',
+  });
 });
 
 test('renumbering prevents a supplement quote from resolving against an original fragment ID', () => {

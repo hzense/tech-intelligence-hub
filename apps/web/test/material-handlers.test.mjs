@@ -61,6 +61,38 @@ function worker() {
   };
   return { calls, deps, handler: createMaterialWorkerHandler(deps) };
 }
+test('capacity inspection uses session owner and cannot call create; size errors are distinct', async () => {
+  const { deps, calls } = admin();
+  deps.inspect = async (owner, request) => {
+    assert.equal(owner, 'owner');
+    assert.deepEqual(request, create());
+    return { sourceBytes: 52271, limitBytes: 200000, fragmentCount: 81 };
+  };
+  const handler = createAdminMaterialHandler(deps);
+  const response = await handler(req({ action: 'inspect', request: create() }));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).sourceBytes, 52271);
+  assert.equal(calls.length, 0);
+  assert.equal(
+    (await handler(req({ action: 'inspect', request: { ...create(), owner: 'forged' } }))).status,
+    400,
+  );
+  assert.equal(
+    (await handler(req({ action: 'inspect', request: create() }, { origin: 'https://evil.test' })))
+      .status,
+    403,
+  );
+  for (const code of ['candidate_source_bundle_too_large', 'generation_source_too_large']) {
+    deps.inspect = async () => {
+      throw Object.assign(new Error('private text not exposed'), { code });
+    };
+    const failed = await createAdminMaterialHandler(deps)(
+      req({ action: 'inspect', request: create() }),
+    );
+    assert.equal(failed.status, 413);
+    assert.deepEqual(await failed.json(), { error: code });
+  }
+});
 test('admin authenticates and rejects cross-origin writes before stores', async () => {
   const { calls, deps, handler } = admin();
   deps.session = async () => null;

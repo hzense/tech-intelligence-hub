@@ -4,6 +4,7 @@ import { parseAdminAuthEnvironment } from '@/lib/admin-auth-policy';
 import {
   readMaterialDashboard,
   createMaterialRequest,
+  inspectMaterialRequest,
   confirmMaterialRegistration,
   prepareCandidateMaterials,
   approveCandidateMaterials,
@@ -16,6 +17,7 @@ export const GET = createAdminMaterialHandler({
   origin: () => parseAdminAuthEnvironment(process.env)?.origin,
   read: readMaterialDashboard,
   create: createMaterialRequest,
+  inspect: inspectMaterialRequest,
   confirm: confirmMaterialRegistration,
   prepare: prepareCandidateMaterials,
   approve: approveCandidateMaterials,

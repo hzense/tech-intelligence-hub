@@ -293,6 +293,36 @@ function database(run) {
   };
 }
 describe('private candidate material persistence', () => {
+  it('persists and rereads a material bundle larger than the unchanged AI input limit', async () => {
+    const f = fixture(),
+      db = database(f.run);
+    const supplements = [1, 2].map((n) => {
+      const source = {
+        classification: 'private',
+        fragments: [
+          { id: 'fragment-1', text: String(n).repeat(15000), locator: { paragraph: 1 } },
+          { id: 'fragment-2', text: 'x'.repeat(15000), locator: { paragraph: 2 } },
+        ],
+      };
+      return {
+        batchId: randomUUID(),
+        itemId: randomUUID(),
+        fence: 1,
+        sourceUrl: `https://example.com/${n}`,
+        source,
+        contentHash: signalGenerationSourceHash(source),
+      };
+    });
+    f.bundle = buildCandidateSourceBundle({
+      baseMaterialHash: f.request.baseMaterialHash,
+      source: f.run.snapshot.source,
+      supplements,
+    });
+    f.request.bundleHash = f.bundle.sourceBundleHash;
+    await createMaterialRequest({ ...f, pool: db.pool, owner: 'owner' });
+    const saved = await getMaterialRequest({ pool: db.pool, owner: 'owner', id: f.request.id });
+    expect(saved.bundle).toEqual(f.bundle);
+  });
   it('requires the current unexpired owner approval under the run lock; existing reports replay without new approval', async () => {
     const f = fixture(),
       db = database(f.run);

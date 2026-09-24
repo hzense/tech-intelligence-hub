@@ -62,6 +62,8 @@ test(
         })),
       };
       const commands = [];
+      let inspectionFailure = true;
+      let inspections = 0;
       let unknown = true;
       await page.route('**/api/admin/candidate-materials**', async (route) => {
         if (route.request().method() === 'GET') {
@@ -69,6 +71,15 @@ test(
           return;
         }
         const body = route.request().postDataJSON();
+        if (body.action === 'inspect') {
+          inspections++;
+          await route.fulfill(
+            inspectionFailure
+              ? { status: 413, json: { error: 'candidate_source_bundle_too_large' } }
+              : { json: { sourceBytes: 52271, limitBytes: 200000, fragmentCount: 81 } },
+          );
+          return;
+        }
         commands.push(body);
         if (body.action === 'create' && unknown) {
           unknown = false;
@@ -107,7 +118,17 @@ test(
         await page.getByRole('checkbox', { name: `官方来源 ${n}` }).check();
       await expect(page.getByRole('checkbox', { name: '官方来源 4' })).toBeDisabled();
       await create.click();
-      await expect(page.getByRole('status')).toContainText('提交结果未知');
+      await expect(
+        page.getByText('补证资料包超过 200,000 字节上限', { exact: false }),
+      ).toBeVisible();
+      assert.equal(commands.length, 0);
+      await expect(page.getByRole('checkbox', { name: '官方来源 1' })).toBeEnabled();
+      inspectionFailure = false;
+      await page.getByRole('button', { name: '检查资料容量（不保存、不调用 AI）' }).click();
+      await expect(page.getByText('合并资料：52,271 / 200,000 字节，81 个片段。')).toBeVisible();
+      assert.equal(commands.length, 0);
+      await create.click();
+      await expect(page.getByText('提交结果未知，请刷新核对', { exact: false })).toBeVisible();
       await expect(page.getByRole('checkbox', { name: '官方来源 1' })).toBeDisabled();
       await page.getByRole('button', { name: '使用原请求继续建立' }).click();
       await expect(
@@ -115,6 +136,7 @@ test(
       ).toBeVisible();
       assert.equal(commands[0].request.id, commands[1].request.id);
       assert.deepEqual(commands[0], commands[1]);
+      assert.equal(inspections, 3); // A pending write replay never rebuilds or re-inspects sources.
       data.requests[0].reports = [
         {
           id: 'report-1',

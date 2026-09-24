@@ -30,7 +30,11 @@ type Dashboard = {
 };
 const errors: Record<string, string> = {
   source_unavailable: '所选资料已变化、取消或删除，请重新选择。',
-  invalid_candidate_source_bundle: '资料重复、格式不符或总内容超过 48 KB；请减少资料后重试。',
+  invalid_candidate_source_bundle: '资料重复或格式不符，请核对来源；这不是容量超限提示。',
+  candidate_source_bundle_too_large:
+    '补证资料包超过 200,000 字节上限，请减少补充资料后重试；AI 输入上限仍为 48,000 字节。',
+  generation_source_too_large:
+    '单份资料超过 48,000 字节上限，请精简该份资料后重新导入；不是合并资料包超限。',
   material_changed: '原候选或材料版本已变化，请刷新核对。',
   catalog_conflict: '已有目录记录与核验报告冲突，需先消歧；不会覆盖原记录。',
   topic_reference_invalid: '报告引用的领域未在正式 Taxonomy 中启用。',
@@ -74,6 +78,11 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
   const [data, setData] = useState<Dashboard | null>(null),
     [selected, setSelected] = useState<string[]>([]),
     [busy, setBusy] = useState(false),
+    [capacity, setCapacity] = useState<{
+      sourceBytes: number;
+      limitBytes: number;
+      fragmentCount: number;
+    } | null>(null),
     [message, setMessage] = useState('');
   const pending = useRef<{
     id: string;
@@ -107,18 +116,37 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
       active = false;
     };
   }, [url]);
-  async function action(kind: 'create' | 'confirm', report?: Report, requestId?: string) {
+  async function action(
+    kind: 'inspect' | 'create' | 'confirm',
+    report?: Report,
+    requestId?: string,
+  ) {
     setBusy(true);
     setMessage('');
     try {
       if (!data?.enabled) throw new Error('通用补证写入尚未启用。');
-      if (kind === 'create' && !pending.current)
-        pending.current = {
+      if ((kind === 'create' && !pending.current) || kind === 'inspect') {
+        const proposed = {
           id: crypto.randomUUID(),
           supplements: data.sources
             .filter((item) => selected.includes(item.itemId))
             .map(({ batchId, itemId }) => ({ batchId, itemId })),
         };
+        const checked = await json(
+          await fetch('/api/admin/candidate-materials', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'inspect',
+              request: { ...proposed, runId, candidateIndex, materialHash, consent: true },
+            }),
+            signal: AbortSignal.timeout(65000),
+          }),
+        );
+        setCapacity(checked);
+        if (kind === 'inspect') return;
+        pending.current = proposed;
+      }
       const request =
         kind === 'create'
           ? { ...pending.current, runId, candidateIndex, materialHash, consent: true }
@@ -146,9 +174,13 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
         error &&
         typeof error === 'object' &&
         'code' in error &&
-        ['invalid_request', 'source_unavailable', 'invalid_candidate_source_bundle'].includes(
-          String(error.code),
-        )
+        [
+          'invalid_request',
+          'source_unavailable',
+          'invalid_candidate_source_bundle',
+          'candidate_source_bundle_too_large',
+          'generation_source_too_large',
+        ].includes(String(error.code))
       )
         pending.current = null;
       setMessage(error instanceof Error ? error.message : '操作未完成，请刷新核对。');
@@ -233,13 +265,14 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
                     type="checkbox"
                     checked={selected.includes(item.itemId)}
                     disabled={!selected.includes(item.itemId) && selected.length >= 3}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      setCapacity(null);
                       setSelected((old) =>
                         event.target.checked
                           ? [...old, item.itemId]
                           : old.filter((id) => id !== item.itemId),
-                      )
-                    }
+                      );
+                    }}
                   />
                   {item.name}
                 </label>
@@ -248,6 +281,32 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
               <p>暂无可用链接资料，请先导入官方原文链接并完成解析。</p>
             )}
           </fieldset>
+          <p>
+            补证资料包独立上限为 200,000 字节；单份资料及 AI 输入仍限 48,000
+            字节。提交前会只读检查容量。
+          </p>
+          {capacity ? (
+            <p aria-live="polite">
+              合并资料：{capacity.sourceBytes.toLocaleString('en-US')} /{' '}
+              {capacity.limitBytes.toLocaleString('en-US')} 字节，{capacity.fragmentCount} 个片段。
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className={controls.button}
+            disabled={
+              busy ||
+              !data.enabled ||
+              !!pending.current ||
+              (!selected.length && !data.originalSourceAvailable)
+            }
+            onClick={() => {
+              setCapacity(null);
+              void action('inspect');
+            }}
+          >
+            检查资料容量（不保存、不调用 AI）
+          </button>
           <p>
             建立请求会保存私有材料快照，供已配置的独立核验服务读取；URL
             声明不等于公开使用许可。不会立即调用模型或产生 AI 费用。

@@ -1,7 +1,23 @@
 import { createHash } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import { isIP } from 'node:net';
 import { URL } from 'node:url';
-import { validateGenerationSource } from './signal-generation-contract.mjs';
+import { normalizePrivateSource, validateGenerationSource } from './signal-generation-contract.mjs';
+
+// One original and up to three supplements. This is not an AI input budget.
+export const MATERIAL_SOURCE_LIMIT_BYTES = 200000;
+
+function validateMaterialSource(source) {
+  const normalized = normalizePrivateSource(source);
+  const sourceBytes = Buffer.byteLength(JSON.stringify(normalized), 'utf8');
+  if (sourceBytes > MATERIAL_SOURCE_LIMIT_BYTES)
+    throw Object.assign(new CandidateSourceBundleError(), {
+      code: 'candidate_source_bundle_too_large',
+      sourceBytes,
+      limitBytes: MATERIAL_SOURCE_LIMIT_BYTES,
+    });
+  return normalized;
+}
 
 const version = 'candidate-source-bundle-v1';
 const hashPattern = /^[a-f0-9]{64}$/;
@@ -112,7 +128,9 @@ function sourceUrl(value) {
 function guarded(operation) {
   try {
     return operation();
-  } catch {
+  } catch (error) {
+    if (error instanceof CandidateSourceBundleError) throw error;
+    if (error?.code === 'generation_source_too_large') throw error;
     fail();
   }
 }
@@ -188,7 +206,7 @@ export function buildCandidateSourceBundle(input) {
     const payload = {
       version,
       baseMaterialHash: value.baseMaterialHash,
-      source: validateGenerationSource({ classification: 'private', fragments }),
+      source: validateMaterialSource({ classification: 'private', fragments }),
       provenance,
     };
     return { ...payload, sourceBundleHash: digest(payload) };
@@ -207,7 +225,7 @@ export function validateCandidateSourceBundle(bundle) {
       !Array.isArray(value.provenance)
     )
       fail();
-    const combined = validateGenerationSource(value.source);
+    const combined = validateMaterialSource(value.source);
     if (value.provenance.length !== combined.fragments.length) fail();
     const original = { classification: 'private', fragments: [] };
     const supplements = [];
