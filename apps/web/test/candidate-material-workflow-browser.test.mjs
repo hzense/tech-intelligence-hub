@@ -155,6 +155,12 @@ test(
       assert.deepEqual(commands[0], commands[1]);
       assert.equal(inspections, 3); // A pending write replay never rebuilds or re-inspects sources.
       const enrich = page.getByRole('button', { name: '确认启动 AI 补证补全（计费）' });
+      data.reviewEnabled = false;
+      await page.reload();
+      await expect(enrich).toHaveCount(0);
+      data.reviewEnabled = true;
+      await page.reload();
+      await expect(enrich).toBeVisible();
       page.once('dialog', (dialog) => dialog.dismiss());
       await enrich.click();
       assert.equal(commands.filter((command) => command.action === 'enrich').length, 0);

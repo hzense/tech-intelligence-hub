@@ -160,7 +160,13 @@ export function assessMaterialEnrichment(
     )
       fail();
   }
-  if (candidate.organizations.some((name) => !checked.fragments.some((f) => f.text.includes(name))))
+  if (
+    candidate.organizations.some(
+      (name) =>
+        !original.organizations.includes(name) &&
+        !checked.fragments.some((f) => f.text.includes(name)),
+    )
+  )
     fail();
   if (
     !Array.isArray(v.organization_identities) ||
@@ -195,12 +201,16 @@ export function assessMaterialEnrichment(
       )
         fail();
     }
-    const quote = references.map((ref) => ref.quote).join('\n');
+    const namePattern = (row.name as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const typeWords =
-      row.type === 'company'
-        ? /\bcompan(?:y|ies)\b|公司|企业/i
-        : /\binstitution\b|\binstitute\b|\buniversity\b|机构|研究所|大学/i;
-    if (!quote.includes(row.name as string) || !typeWords.test(quote)) fail();
+      row.type === 'company' ? 'company|corporation' : 'institution|institute|university';
+    // A private proposal still needs an explicit name/type relation in ONE quote.
+    // Do not join unrelated references, or use another organization's type word.
+    const relation = new RegExp(
+      `(?:^|[^\\p{L}\\p{N}_])${namePattern}(?:\\s+is\\s+|,\\s*)(?:(?:a|an|the)\\s+)?(?:(?:AI|artificial intelligence|technology|research|software|private|public)\\s+){0,3}(?:${typeWords})\\b|${namePattern}是(?:一家|一所|一个)?(?:人工智能|科技|研究|软件|私营|公立)?(?:${row.type === 'company' ? '公司|企业' : '机构|研究所|大学'})`,
+      'iu',
+    );
+    if (!references.some((ref) => relation.test(ref.quote))) fail();
     return {
       name: row.name as string,
       type: row.type as 'company' | 'institution',

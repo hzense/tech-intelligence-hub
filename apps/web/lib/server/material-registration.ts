@@ -211,7 +211,8 @@ export async function readMaterialDashboard(owner: string, runId: string, candid
       : false,
     enabled: process.env.HZENSE_MATERIAL_REGISTRATION_ENABLED === '1',
     reviewEnabled: process.env.HZENSE_MATERIAL_REVIEW_ENABLED === '1',
-    enrichmentEnabled: candidateEnrichmentConfigured(),
+    enrichmentEnabled:
+      process.env.HZENSE_MATERIAL_REVIEW_ENABLED === '1' && candidateEnrichmentConfigured(),
     requests: requestRows,
     sources: batches.flatMap((batch) =>
       batch.items

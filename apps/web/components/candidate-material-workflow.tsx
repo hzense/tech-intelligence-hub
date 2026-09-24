@@ -390,7 +390,9 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
                 关联来源不会自动补全。需要提取补充人物、组织类型及领域时，明确确认后才调用
                 AI；仍须核对证据。
               </p>
-              {data.enrichmentEnabled && !(request.enrichments ?? []).length ? (
+              {data.reviewEnabled &&
+              data.enrichmentEnabled &&
+              !(request.enrichments ?? []).length ? (
                 <button
                   type="button"
                   className={controls.button}

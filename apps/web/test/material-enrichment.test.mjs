@@ -37,11 +37,11 @@ const candidate = {
 };
 const context = { topics: [{ id: 'topic-ai', title: 'Artificial Intelligence' }] };
 const original = source(['unused original paragraph', 'Lab announced X on 2026-09-24.']);
-function bundle(supplementText = quote) {
+function bundle(supplementText = quote, originalSource = original) {
   const supplement = source([supplementText]);
   return buildCandidateSourceBundle({
     baseMaterialHash: 'a'.repeat(64),
-    source: original,
+    source: originalSource,
     supplements: [
       {
         batchId: '11111111-1111-4111-8111-111111111111',
@@ -157,6 +157,36 @@ test('invented people, quotes, unknown topics, inferred organization types and e
   ]) {
     const value = output();
     mutate(value);
+    assert.throws(() => assessMaterialEnrichment(value, input.candidate, input.source, context));
+  }
+});
+
+test('existing organizations survive projection while new organizations still require source evidence', () => {
+  const prior = { ...candidate, organizations: ['Lab', 'Legacy'] };
+  const input = materialEnrichmentInput(
+    bundle(quote, source(['Legacy participated.', original.fragments[1].text])),
+    prior,
+  );
+  assert.ok(input.source.fragments.every((f) => !f.text.includes('Legacy')));
+  const value = { ...output(), organizations: ['Lab', 'Legacy'] };
+  assert.doesNotThrow(() =>
+    assessMaterialEnrichment(value, input.candidate, input.source, context),
+  );
+  value.organizations.push('Invented');
+  assert.throws(() => assessMaterialEnrichment(value, input.candidate, input.source, context));
+});
+
+test('organization types cannot borrow unrelated type words from another quote or sentence', () => {
+  const input = materialEnrichmentInput(
+    bundle(`${quote} Lab announced X; Foo is a company.`),
+    candidate,
+  );
+  for (const refs of [
+    [ref(2, 'Lab'), ref(2, 'Foo is a company.')],
+    [ref(2, 'Lab announced X; Foo is a company.')],
+  ]) {
+    const value = output();
+    value.organization_identities[0].evidence = refs;
     assert.throws(() => assessMaterialEnrichment(value, input.candidate, input.source, context));
   }
 });

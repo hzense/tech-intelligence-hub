@@ -173,7 +173,13 @@ test('material enrichment uses the saved source and enabled catalog with one bou
                 persons: [{ name: '李明', role: '研究作者', organization: '示例研究所', evidence }],
                 organizations: ['示例研究所'],
                 claim_evidence: [evidence],
-                organization_identities: [{ name: '示例研究所', type: 'institution', evidence }],
+                organization_identities: [
+                  {
+                    name: '示例研究所',
+                    type: 'institution',
+                    evidence: [{ fragment_id: 'fragment-1', quote: '示例研究所是一个研究机构。' }],
+                  },
+                ],
                 topic_ids: ['topic-ai'],
               }),
             },
@@ -185,7 +191,13 @@ test('material enrichment uses the saved source and enabled catalog with one bou
     },
   });
   const result = await invoke({
-    source,
+    source: {
+      ...source,
+      fragments: source.fragments.map((f) => ({
+        ...f,
+        text: f.text + '示例研究所是一个研究机构。',
+      })),
+    },
     candidate,
     stage,
     connection,
