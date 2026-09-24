@@ -1,4 +1,6 @@
 import type { GenerationSource } from './signal-generation-contract.mjs';
+export const MATERIAL_SOURCE_LIMIT_BYTES: 200000;
+export const MATERIAL_BUNDLE_LIMIT_BYTES: 1000000;
 
 export interface CandidateSourceSupplement {
   batchId: string;
@@ -31,7 +33,12 @@ export interface CandidateSourceBundle {
   provenance: CandidateSourceProvenance[];
 }
 export class CandidateSourceBundleError extends Error {
-  readonly code: 'invalid_candidate_source_bundle';
+  readonly code:
+    | 'invalid_candidate_source_bundle'
+    | 'candidate_source_bundle_too_large'
+    | 'candidate_source_bundle_metadata_too_large';
+  readonly sourceBytes?: number;
+  readonly limitBytes?: number;
 }
 export function buildCandidateSourceBundle(input: {
   baseMaterialHash: string;

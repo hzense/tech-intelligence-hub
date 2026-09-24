@@ -7,6 +7,7 @@ import process from 'node:process';
 import { Buffer } from 'node:buffer';
 import { isDeepStrictEqual } from 'node:util';
 import { fetchImportURL } from '../../apps/web/lib/import-fetch.ts';
+import { MATERIAL_WORKER_PACKET_LIMIT_BYTES } from '../../apps/web/lib/material-worker-packet.ts';
 import { importParserSource } from '../../packages/ingestion/src/import-parser-source.mjs';
 import { parseImportOutput } from '../../packages/ingestion/src/import-task-contract.mjs';
 import {
@@ -53,6 +54,7 @@ export function materialAPI(token, fetcher = globalThis.fetch) {
           ...(action === 'inbox' ? {} : { body: JSON.stringify({ action, request }) }),
         },
       );
+      if (action === 'read' && response.status === 413) fail('material_worker_packet_too_large');
       if (
         !response.ok ||
         response.headers.get('content-type')?.split(';')[0] !== 'application/json'
@@ -67,14 +69,17 @@ export function materialAPI(token, fetcher = globalThis.fetch) {
           const part = await reader.read();
           if (part.done) break;
           length += part.value.byteLength;
-          if (length > 2 * 1024 * 1024) fail('service_unavailable');
+          if (length > MATERIAL_WORKER_PACKET_LIMIT_BYTES)
+            fail(action === 'read' ? 'material_worker_packet_too_large' : 'service_unavailable');
           chunks.push(part.value);
         }
       } finally {
         await reader.cancel().catch(() => {});
       }
       return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    } catch {
+    } catch (error) {
+      if (action === 'read' && error?.code === 'material_worker_packet_too_large')
+        fail('material_worker_packet_too_large');
       fail(action === 'report' ? 'submission_unknown' : 'service_unavailable');
     }
   };
@@ -220,23 +225,28 @@ export async function executeReviewedMaterial(env, deps = {}) {
   return { status: 'report_saved', requestId, planHash: report.planHash, reportId: report.id };
 }
 
+export function materialRunnerFailure(error) {
+  // Never print raw exceptions, source text, input, key or provider output.
+  const code = [
+    'submission_unknown',
+    'not_configured',
+    'invalid_request',
+    'approval_required',
+    'request_not_found',
+    'request_changed',
+    'service_unavailable',
+    'material_worker_packet_too_large',
+  ].includes(error?.code)
+    ? error.code
+    : 'material_verification_failed';
+  return { status: 'blocked', code };
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   executeReviewedMaterial(process.env).then(
     (result) => process.stdout.write(`${JSON.stringify(result)}\n`),
     (error) => {
-      // Never print raw exceptions, source text, input, key or provider output.
-      const code = [
-        'submission_unknown',
-        'not_configured',
-        'invalid_request',
-        'approval_required',
-        'request_not_found',
-        'request_changed',
-        'service_unavailable',
-      ].includes(error?.code)
-        ? error.code
-        : 'material_verification_failed';
-      process.stdout.write(`${JSON.stringify({ status: 'blocked', code })}\n`);
+      process.stdout.write(`${JSON.stringify(materialRunnerFailure(error))}\n`);
       process.exitCode = 1;
     },
   );

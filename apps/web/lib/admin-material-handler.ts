@@ -7,6 +7,10 @@ const safe = new Set([
   'material_changed',
   'source_unavailable',
   'invalid_candidate_source_bundle',
+  'candidate_source_bundle_too_large',
+  'candidate_source_bundle_metadata_too_large',
+  'material_worker_packet_too_large',
+  'generation_source_too_large',
   'invalid_material_plan',
   'verification_invalid',
   'verification_expired',
@@ -68,7 +72,13 @@ export function materialError(error: unknown) {
   const code = safe.has(raw) ? raw : 'unavailable';
   return importResponse(
     { error: code },
-    code === 'limit_exceeded'
+    [
+      'limit_exceeded',
+      'candidate_source_bundle_too_large',
+      'candidate_source_bundle_metadata_too_large',
+      'material_worker_packet_too_large',
+      'generation_source_too_large',
+    ].includes(code)
       ? 413
       : code === 'not_found'
         ? 404
@@ -84,6 +94,7 @@ export function createAdminMaterialHandler(deps: {
   origin(): string | undefined;
   read(owner: string, runId: string, index: number): Promise<unknown>;
   create(owner: string, input: unknown): Promise<unknown>;
+  inspect?(owner: string, input: unknown): Promise<unknown>;
   confirm(owner: string, input: unknown): Promise<unknown>;
   prepare?(owner: string, input: unknown): Promise<unknown>;
   approve?(owner: string, input: unknown): Promise<unknown>;
@@ -127,6 +138,8 @@ export function createAdminMaterialHandler(deps: {
         return importResponse({ error: 'invalid_request' }, 400);
       if (body.action === 'create' && validCreate(body.request))
         return importResponse(await deps.create(session.user.id, body.request));
+      if (body.action === 'inspect' && deps.inspect && validCreate(body.request))
+        return importResponse(await deps.inspect(session.user.id, body.request));
       if (body.action === 'confirm' && validConfirm(body.request))
         return importResponse(await deps.confirm(session.user.id, body.request));
       if (

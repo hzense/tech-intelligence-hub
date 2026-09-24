@@ -13,7 +13,10 @@ import {
   registerMaterialPlan,
   verifyRegisteredMaterialPlan,
 } from '../../../../packages/database/src/material-registration-executor.mjs';
-import { buildCandidateSourceBundle } from '../../../../packages/ingestion/src/candidate-source-bundle.mjs';
+import {
+  buildCandidateSourceBundle,
+  MATERIAL_SOURCE_LIMIT_BYTES,
+} from '../../../../packages/ingestion/src/candidate-source-bundle.mjs';
 import { listImportBatches } from '../../../../packages/database/src/import-store.mjs';
 import { generationRecord } from './signal-generation';
 import { importPool, importsConfigured } from './generation-import-reader';
@@ -30,6 +33,7 @@ import { bindMaterialPlan } from '../material-registration-binding';
 import { validateGenerationSource } from '../../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { prepareMaterialPlan, type MaterialDraft } from '../material-plan-preparation';
 import { approvedMaterialDossier } from '../material-review-dossier';
+import { boundMaterialWorkerPacket } from '../material-worker-packet';
 
 function fail(code: string): never {
   throw Object.assign(new Error(code), { code });
@@ -211,6 +215,51 @@ export async function readMaterialDashboard(owner: string, runId: string, candid
       '显示最近的可用链接资料；同文的公开 URL 可补充出处，但仍需独立核验。其他来源请先导入解析。文件内容保留私有，不能直接登记为公开证据。',
   };
 }
+async function loadMaterialBundle(
+  owner: string,
+  run: Awaited<ReturnType<typeof generationRecord>>,
+  baseMaterialHash: string,
+  selections: Array<{ batchId: string; itemId: string }>,
+) {
+  const supplements = [];
+  if (!selections.length && !(await originalSourceUrl(owner, run))) fail('source_unavailable');
+  for (const row of selections)
+    supplements.push(await readMaterialSupplement(importPool, owner, row.batchId, row.itemId));
+  return buildCandidateSourceBundle({
+    baseMaterialHash,
+    source: validateGenerationSource(run.snapshot.source),
+    supplements,
+  });
+}
+
+/** Read-only preflight. No request creation, worker dispatch or AI calls. */
+export async function inspectMaterialRequest(owner: string, input: unknown) {
+  const body = exact(input, [
+    'id',
+    'runId',
+    'candidateIndex',
+    'materialHash',
+    'supplements',
+    'consent',
+  ]);
+  uuid(body.id);
+  if (body.consent !== true || !Array.isArray(body.supplements) || body.supplements.length > 3)
+    fail('invalid_request');
+  const { run, review } = await packet(owner, uuid(body.runId), index(body.candidateIndex));
+  const materialHash = hash(body.materialHash);
+  if (review.materialHash !== materialHash) fail('material_changed');
+  const selections = body.supplements.map((input) => {
+    const row = exact(input, ['batchId', 'itemId']);
+    return { batchId: uuid(row.batchId), itemId: uuid(row.itemId) };
+  });
+  const bundle = await loadMaterialBundle(owner, run, materialHash, selections);
+  return {
+    sourceBytes: Buffer.byteLength(JSON.stringify(bundle.source), 'utf8'),
+    limitBytes: MATERIAL_SOURCE_LIMIT_BYTES,
+    fragmentCount: bundle.source.fragments.length,
+  };
+}
+
 export async function createMaterialRequest(owner: string, input: unknown) {
   requireMaterialWrites(process.env);
   const body = exact(input, [
@@ -263,18 +312,7 @@ export async function createMaterialRequest(owner: string, input: unknown) {
       fail('request_id_conflict');
     return requestDto(previous);
   }
-  const supplements = [];
-  if (!selections.length && !(await originalSourceUrl(owner, run))) fail('source_unavailable');
-  for (const row of selections) {
-    supplements.push(
-      await readMaterialSupplement(importPool, owner, uuid(row.batchId), uuid(row.itemId)),
-    );
-  }
-  const bundle = buildCandidateSourceBundle({
-    baseMaterialHash,
-    source: validateGenerationSource(run.snapshot.source),
-    supplements,
-  });
+  const bundle = await loadMaterialBundle(owner, run, baseMaterialHash, selections);
   return requestDto(
     await store.createMaterialRequest({
       pool: materialPool('registrar'),
@@ -520,7 +558,7 @@ export async function materialWorkerRequest(owner: string, id: string) {
     ).rows;
     if ([topics, entities, sources].some((rows) => rows.length > 1000)) fail('catalog_limit');
     await client.query('COMMIT');
-    return {
+    return boundMaterialWorkerPacket({
       requestId: request.id,
       owner,
       runId: request.run_id,
@@ -545,7 +583,7 @@ export async function materialWorkerRequest(owner: string, id: string) {
             approvalId: approved.approval.id,
           }
         : null,
-    };
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
@@ -621,6 +659,27 @@ export async function approveCandidateMaterials(owner: string, input: unknown) {
     ...current,
     materialHash: current.baseMaterialHash,
   });
+  // Check the future approved packet before persisting the decision. The UUID
+  // placeholder has the stored ID's exact width; reserve covers timestamp drift.
+  const approvalTime = new Date().toISOString();
+  boundMaterialWorkerPacket(
+    {
+      ...current,
+      approvedProposal: {
+        id: p.id,
+        proposalHash: p.proposal_hash,
+        plan: p.payload.plan,
+        dossier: approvedMaterialDossier(p.payload as MaterialDraft, {
+          owner_id: owner,
+          approved_by: owner,
+          created_at: approvalTime,
+        }),
+        approvedAt: approvalTime,
+        approvalId: requestId,
+      },
+    },
+    1024,
+  );
   const approval = await proposals.approveMaterialProposal({
     pool: materialPool('registrar'),
     owner,
@@ -638,6 +697,8 @@ export async function approveCandidateMaterials(owner: string, input: unknown) {
   });
   if (latest?.approval.id !== approval.id || latest.proposal.id !== proposalId)
     fail('material_changed');
+  // Recheck the actual approved packet and current catalogs before dispatch.
+  await materialWorkerRequest(owner, requestId);
   // Persist human decision before dispatch. Dispatch failure cannot erase approval
   // or repeat a paid model call; this executor does not call a model.
   const token = process.env.HZENSE_MATERIAL_DISPATCH_TOKEN;

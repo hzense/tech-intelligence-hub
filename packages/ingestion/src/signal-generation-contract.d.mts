@@ -70,6 +70,8 @@ export interface GenerationSourceInspection {
 }
 export function inspectGenerationSource(importOutput: unknown): GenerationSourceInspection;
 export function validateGenerationSource(source: unknown): GenerationSource;
+/** Structural validation only; callers must enforce their own byte budget. */
+export function normalizePrivateSource(source: unknown): GenerationSource;
 export function normalizeGeneratedCandidates(
   value: unknown,
   source: GenerationSource,

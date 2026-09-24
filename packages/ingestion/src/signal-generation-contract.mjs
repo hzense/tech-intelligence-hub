@@ -201,7 +201,8 @@ export function inspectGenerationSource(importOutput) {
   };
 }
 
-export function validateGenerationSource(source) {
+/** Structural validation only; each caller must enforce its own byte budget. */
+export function normalizePrivateSource(source) {
   const code = 'invalid_generation_source';
   record(source, ['classification', 'fragments'], code);
   if (source.classification !== 'private') fail(code);
@@ -210,7 +211,13 @@ export function validateGenerationSource(source) {
     if (fragment.id !== `fragment-${index + 1}`) fail(code);
     return { index, text: fragment.text, locator: fragment.locator };
   });
-  return buildGenerationSource({ classification: 'private', fragments, warnings: [] });
+  return normalizeGenerationSource({ classification: 'private', fragments, warnings: [] });
+}
+
+export function validateGenerationSource(source) {
+  const normalized = normalizePrivateSource(source);
+  boundedBytes(normalized, GENERATION_LIMITS.sourceBytes, 'generation_source_too_large');
+  return normalized;
 }
 
 function references(value, fragments, min = 1) {

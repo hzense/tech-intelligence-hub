@@ -3,6 +3,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAdminMaterialHandler } from '../lib/admin-material-handler.ts';
 import { createMaterialWorkerHandler } from '../lib/material-worker-handler.ts';
+import {
+  boundMaterialWorkerPacket,
+  MATERIAL_WORKER_PACKET_LIMIT_BYTES,
+} from '../lib/material-worker-packet.ts';
+import { Buffer } from 'node:buffer';
 
 const origin = 'https://hzense.com',
   id = '11111111-1111-4111-8111-111111111111',
@@ -61,6 +66,72 @@ function worker() {
   };
   return { calls, deps, handler: createMaterialWorkerHandler(deps) };
 }
+test('capacity inspection uses session owner and cannot call create; size errors are distinct', async () => {
+  const { deps, calls } = admin();
+  deps.inspect = async (owner, request) => {
+    assert.equal(owner, 'owner');
+    assert.deepEqual(request, create());
+    return { sourceBytes: 52271, limitBytes: 200000, fragmentCount: 81 };
+  };
+  const handler = createAdminMaterialHandler(deps);
+  const response = await handler(req({ action: 'inspect', request: create() }));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).sourceBytes, 52271);
+  assert.equal(calls.length, 0);
+  assert.equal(
+    (await handler(req({ action: 'inspect', request: { ...create(), owner: 'forged' } }))).status,
+    400,
+  );
+  assert.equal(
+    (await handler(req({ action: 'inspect', request: create() }, { origin: 'https://evil.test' })))
+      .status,
+    403,
+  );
+  for (const code of [
+    'candidate_source_bundle_too_large',
+    'candidate_source_bundle_metadata_too_large',
+    'material_worker_packet_too_large',
+    'generation_source_too_large',
+  ]) {
+    deps.inspect = async () => {
+      throw Object.assign(new Error('private text not exposed'), { code });
+    };
+    const failed = await createAdminMaterialHandler(deps)(
+      req({ action: 'inspect', request: create() }),
+    );
+    assert.equal(failed.status, 413);
+    assert.deepEqual(await failed.json(), { error: code });
+  }
+});
+test('full worker packet counts candidate, catalogs, proposal and UTF-8 bytes before response', async () => {
+  const packet = {
+    bundle: { text: 'x'.repeat(999000) },
+    candidate: {},
+    catalog: { entities: '汉'.repeat(360000) },
+    approvedProposal: { plan: 'y'.repeat(20000) },
+  };
+  const bytes = Buffer.byteLength(JSON.stringify(packet));
+  assert.ok(bytes > MATERIAL_WORKER_PACKET_LIMIT_BYTES);
+  assert.throws(() => boundMaterialWorkerPacket(packet), {
+    code: 'material_worker_packet_too_large',
+  });
+  const { deps } = worker();
+  deps.read = async () => packet;
+  const response = await createMaterialWorkerHandler(deps)(
+    req(
+      { action: 'read', request: { owner: 'owner', requestId: id } },
+      { authorization: `Bearer ${token}` },
+    ),
+  );
+  assert.equal(response.status, 413);
+  assert.deepEqual(await response.json(), { error: 'material_worker_packet_too_large' });
+  const boundary = { text: 'a'.repeat(MATERIAL_WORKER_PACKET_LIMIT_BYTES - 11) };
+  assert.equal(Buffer.byteLength(JSON.stringify(boundary)), MATERIAL_WORKER_PACKET_LIMIT_BYTES);
+  assert.equal(boundMaterialWorkerPacket(boundary), boundary);
+  assert.throws(() => boundMaterialWorkerPacket(boundary, 1024), {
+    code: 'material_worker_packet_too_large',
+  });
+});
 test('admin authenticates and rejects cross-origin writes before stores', async () => {
   const { calls, deps, handler } = admin();
   deps.session = async () => null;

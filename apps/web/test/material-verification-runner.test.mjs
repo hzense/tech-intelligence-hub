@@ -13,6 +13,7 @@ import {
 import {
   executeReviewedMaterial,
   materialAPI,
+  materialRunnerFailure,
   readLiveMaterialSource,
 } from '../../../.github/scripts/material-verification-runner.mjs';
 
@@ -413,10 +414,6 @@ test('API errors and oversized/malformed responses are redacted; report errors a
   for (const response of [
     () => new globalThis.Response('secret', { status: 500 }),
     () => new globalThis.Response('not json', { headers: { 'content-type': 'application/json' } }),
-    () =>
-      new globalThis.Response('A'.repeat(2 * 1024 * 1024 + 1), {
-        headers: { 'content-type': 'application/json' },
-      }),
     () => {
       throw new Error('secret token and upstream data');
     },
@@ -430,6 +427,36 @@ test('API errors and oversized/malformed responses are redacted; report errors a
       code: 'submission_unknown',
       message: 'submission_unknown',
     });
+  }
+});
+
+test('worker packet overflow is explicit, redacted, and never retried', async () => {
+  assert.deepEqual(
+    materialRunnerFailure({ code: 'material_worker_packet_too_large', message: 'private text' }),
+    { status: 'blocked', code: 'material_worker_packet_too_large' },
+  );
+  assert.deepEqual(materialRunnerFailure({ code: 'private text', message: 'secret' }), {
+    status: 'blocked',
+    code: 'material_verification_failed',
+  });
+  for (const response of [
+    () => new globalThis.Response('private detail', { status: 413 }),
+    () =>
+      new globalThis.Response('A'.repeat(2 * 1024 * 1024 + 1), {
+        headers: { 'content-type': 'application/json' },
+      }),
+  ]) {
+    let calls = 0;
+    const api = materialAPI('S'.repeat(40), async () => {
+      calls++;
+      return response();
+    });
+    await assert.rejects(api('read', {}), {
+      code: 'material_worker_packet_too_large',
+      message: 'material_worker_packet_too_large',
+    });
+    assert.equal(calls, 1);
+    await assert.rejects(api('report', {}), { code: 'submission_unknown' });
   }
 });
 
