@@ -98,6 +98,30 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
+.materialsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.materialCard {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--muted, #64748b) 35%, transparent);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.materialCard h4 {
+  margin-top: 0;
+}
+.materialCard blockquote {
+  margin: 0.75rem 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--muted, #64748b);
+  white-space: pre-wrap;
+}
+.materialNextStep {
+  font-size: 0.9rem;
+}
 .comparison pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -105,6 +129,9 @@
 }
 @media (max-width: 640px) {
   .comparison {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .materialsGrid {
     grid-template-columns: minmax(0, 1fr);
   }
 }

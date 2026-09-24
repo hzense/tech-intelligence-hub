@@ -31,7 +31,35 @@ const {
   automaticPublicationExtra,
   unreviewedPublicationReadiness,
   applyReviewPreparationGate,
+  confirmedPreparationHash,
+  confirmationRevision,
 } = module.exports;
+
+test('an uncertain confirmation preserves the original revision even after the write becomes visible', () => {
+  const hash = 'a'.repeat(64);
+  const pending = {
+    fingerprint: JSON.stringify({
+      action: 'confirm',
+      request: { preparationHash: hash, expectedReviewRevision: 0 },
+    }),
+  };
+  assert.equal(confirmationRevision(undefined, hash, 3), 3);
+  assert.equal(confirmationRevision(pending, hash, 1), 0);
+  assert.throws(() => confirmationRevision(pending, 'b'.repeat(64), 1));
+});
+
+test('confirmation binds displayed preparation, never silently accepts refreshed material', () => {
+  const displayed = { ready: true, preparationHash: 'a'.repeat(64) };
+  assert.equal(confirmedPreparationHash(displayed, { ...displayed }), displayed.preparationHash);
+  for (const current of [
+    undefined,
+    { ready: false },
+    { ...displayed, preparationHash: 'b'.repeat(64) },
+  ])
+    assert.throws(() => confirmedPreparationHash(displayed, current), /材料已变化/);
+  assert.throws(() => confirmedPreparationHash(null, displayed));
+  assert.throws(() => confirmedPreparationHash({ ready: true }, displayed));
+});
 test('publication controls require confirmation without operator-entered protocol fields', () => {
   const html = renderToStaticMarkup(
     createElement(CandidatePublicationActions, {

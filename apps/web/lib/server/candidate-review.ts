@@ -74,34 +74,35 @@ async function prepareReview(
         await client.query(
           `SELECT e.id,e.name,e.aliases,e.type FROM public.entities e
            WHERE e.status='active' AND (
-             lower(btrim(e.name))=ANY($1::text[]) OR
-             EXISTS(SELECT 1 FROM unnest(e.aliases) alias WHERE lower(btrim(alias))=ANY($1::text[]))
+             lower(btrim(normalize(e.name,NFKC)))=ANY($1::text[]) OR
+             EXISTS(SELECT 1 FROM unnest(e.aliases) alias WHERE lower(btrim(normalize(alias,NFKC)))=ANY($1::text[]))
            ) ORDER BY e.id`,
           [names],
         )
       ).rows
     : [];
-  const [profiles, topics, evidence] = await Promise.all([
-    client.query(
-      `SELECT p.entity_id,'person'::text AS kind FROM public.person_profiles p WHERE p.entity_id=ANY($1::text[])
+  // One pg client runs queries serially. Do not overlap queries inside this transaction.
+  const profiles = await client.query(
+    `SELECT p.entity_id,'person'::text AS kind FROM public.person_profiles p WHERE p.entity_id=ANY($1::text[])
        UNION ALL
        SELECT o.entity_id,'organization'::text AS kind FROM public.organization_profiles o WHERE o.entity_id=ANY($1::text[])`,
-      [entities.map((row) => row.id)],
-    ),
-    client.query(
-      "SELECT id,title AS name FROM public.topics WHERE runtime_enabled IS TRUE AND status<>'archived' ORDER BY id LIMIT 200",
-    ),
-    quotes.length
-      ? client.query(
-          `SELECT e.id,e.source_url,e.excerpt FROM public.public_source_evidence e
+    [entities.map((row) => row.id)],
+  );
+  const topics = await client.query(
+    "SELECT id,title AS name FROM public.topics WHERE runtime_enabled IS TRUE AND status<>'archived' ORDER BY id LIMIT 200",
+  );
+  const evidence = quotes.length
+    ? await client.query(
+        `SELECT e.id,e.source_url,e.excerpt,s.allowed_hosts FROM public.public_source_evidence e
            JOIN public.sources s ON s.id=e.source_id
            WHERE e.verification_status='verified' AND s.active IS TRUE
              AND EXISTS(SELECT 1 FROM unnest($1::text[]) quote WHERE strpos(e.excerpt,quote)>0)
            ORDER BY e.id LIMIT 500`,
-          [quotes],
-        )
-      : Promise.resolve({ rows: [] }),
-  ]);
+        [quotes],
+      )
+    : { rows: [] };
+  // Never let a truncated evidence catalog turn an ambiguous match into a unique one.
+  if (evidence.rows.length >= 500) throw new CandidateReviewError('review_incomplete');
   const kinds = new Map<string, Set<string>>();
   for (const row of profiles.rows) {
     const current = kinds.get(row.entity_id) ?? new Set<string>();
@@ -119,15 +120,14 @@ async function prepareReview(
 async function currentReviewPacket(owner: string, runId: string, candidateIndex: number) {
   const run = await generationRecord(owner, runId);
   const original = buildCandidateReview(run, candidateIndex);
-  const enrichments = await listCandidateEnrichmentDtos(owner, runId, candidateIndex).catch(
-    () => [],
-  );
+  // A failed read is not proof that no newer proposal exists.
+  const enrichments = await listCandidateEnrichmentDtos(owner, runId, candidateIndex);
   const completed = enrichments.find(
-    (item) =>
-      item.status === 'completed' && item.material_hash === original.materialHash && item.result,
+    (item) => item.status === 'completed' && item.material_hash === original.materialHash,
   );
-  if (!completed?.result?.candidate)
+  if (!completed)
     return { packet: original, originalMaterialHash: original.materialHash, enrichments };
+  if (!completed.result?.candidate) throw new CandidateReviewError('material_changed');
   try {
     const proposed = completed.result.candidate as Record<string, unknown>;
     return {
@@ -136,7 +136,7 @@ async function currentReviewPacket(owner: string, runId: string, candidateIndex:
       enrichments,
     };
   } catch {
-    return { packet: original, originalMaterialHash: original.materialHash, enrichments };
+    throw new CandidateReviewError('material_changed');
   }
 }
 export async function reviewDashboard(owner: string, runId: string, candidateIndex: number) {
@@ -163,7 +163,7 @@ export async function reviewDashboard(owner: string, runId: string, candidateInd
   });
   const client = await candidateReviewPool.connect();
   try {
-    await client.query('BEGIN READ ONLY');
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     const preparation = await prepareReview(client, packet);
     await client.query('COMMIT');
     return {
@@ -182,7 +182,14 @@ export async function reviewDashboard(owner: string, runId: string, candidateInd
   }
 }
 function confirmation(value: unknown) {
-  const keys = ['candidateIndex', 'expectedReviewRevision', 'materialHash', 'requestKey', 'runId'];
+  const keys = [
+    'candidateIndex',
+    'expectedReviewRevision',
+    'materialHash',
+    'preparationHash',
+    'requestKey',
+    'runId',
+  ];
   if (
     !value ||
     typeof value !== 'object' ||
@@ -201,6 +208,8 @@ function confirmation(value: unknown) {
     Number(request.expectedReviewRevision) < 0 ||
     typeof request.materialHash !== 'string' ||
     !/^[a-f0-9]{64}$/.test(request.materialHash) ||
+    typeof request.preparationHash !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(request.preparationHash) ||
     typeof request.requestKey !== 'string' ||
     !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(request.requestKey)
   )
@@ -210,6 +219,7 @@ function confirmation(value: unknown) {
     candidateIndex: number;
     expectedReviewRevision: number;
     materialHash: string;
+    preparationHash: string;
     requestKey: string;
   };
 }
@@ -222,7 +232,7 @@ export async function confirmPreparedReview(owner: string, value: unknown) {
   const client = await candidateReviewPool.connect();
   let preparation;
   try {
-    await client.query('BEGIN READ ONLY');
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     preparation = await prepareReview(client, packet);
     await client.query('COMMIT');
   } catch (error) {
@@ -232,6 +242,8 @@ export async function confirmPreparedReview(owner: string, value: unknown) {
     client.release();
   }
   if (!preparation.ready) throw new CandidateReviewError('review_incomplete');
+  if (preparation.preparationHash !== request.preparationHash)
+    throw new CandidateReviewError('material_changed');
   return saveCandidateReview({
     pool: candidateReviewPool,
     owner,
@@ -243,7 +255,7 @@ export async function confirmPreparedReview(owner: string, value: unknown) {
       materialHash: request.materialHash,
       expectedRevision: request.expectedReviewRevision,
       decision: 'submit_verification',
-      note: '',
+      note: `publication-materials-v1:${preparation.preparationHash}`,
       draft: preparation.draft,
     },
   });

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import controls from './admin-controls.module.css';
 import styles from './candidate-review-editor.module.css';
 import { reviewRequestIdentity } from './candidate-review-request';
+import { CandidatePublicationMaterials } from './candidate-publication-materials';
+import type { PublicationMaterials } from '../lib/candidate-publication-materials';
 
 type Props = { runId: string; candidateIndex: number; materialHash: string };
 type Action = 'inspect' | 'confirm' | 'prepare' | 'assemble' | 'publish' | 'withdraw';
@@ -22,6 +24,8 @@ type Readiness = {
 type Preparation = {
   ready: boolean;
   blockers: string[];
+  preparationHash?: string;
+  materials?: PublicationMaterials;
   enrichment?: {
     matched: number;
     pending: number;
@@ -40,6 +44,40 @@ type Preparation = {
     claims: number;
   };
 };
+
+export function confirmedPreparationHash(displayed: Preparation | null, current?: Preparation) {
+  const hash = displayed?.preparationHash;
+  if (
+    !displayed?.ready ||
+    !current?.ready ||
+    !hash ||
+    !/^[a-f0-9]{64}$/.test(hash) ||
+    current.preparationHash !== hash
+  )
+    throw new Error('正式发布材料已变化或尚未完整读取。请刷新并核对材料后重新确认。');
+  return hash;
+}
+
+export function confirmationRevision(
+  pending: { fingerprint: string } | undefined,
+  preparationHash: string,
+  latestRevision: number,
+) {
+  if (!pending) return latestRevision;
+  // The pending identity belongs to this keyed candidate component, not to user input.
+  const previous = JSON.parse(pending.fingerprint) as {
+    action: string;
+    request: { preparationHash?: string; expectedReviewRevision?: number };
+  };
+  if (
+    previous.action !== 'confirm' ||
+    previous.request.preparationHash !== preparationHash ||
+    !Number.isSafeInteger(previous.request.expectedReviewRevision) ||
+    Number(previous.request.expectedReviewRevision) < 0
+  )
+    throw new Error('原确认请求尚未核对，请刷新发布状态，不能用新材料替换结果未知的请求。');
+  return Number(previous.request.expectedReviewRevision);
+}
 type EnrichmentTask = {
   id: string;
   material_hash: string;
@@ -272,6 +310,9 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       const body = (await response.json()) as { readiness?: Readiness; error?: string };
       if (!response.ok) {
         if (response.status === 409) {
+          // Definite rejection permits a fresh confirmation after an explicit refresh.
+          // Network/503 uncertainty keeps the original request identity instead.
+          delete pending.current[action];
           if (body.error === 'review_revision_required')
             throw new Error('重新发布需要新的审核修订和独立核验，不能重复使用旧版本。');
           throw new Error('版本或状态已变化。请刷新状态后重新确认。');
@@ -409,10 +450,16 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
         throw new Error('审核/发布存储尚未配置，暂不能执行。');
       if (action === 'confirm') {
         if (data.preparation?.ready !== true) throw new Error('系统准备尚未完成，请查看阻塞项。');
-        const expectedReviewRevision = data.reviews.length
+        const preparationHash = confirmedPreparationHash(preparation, data.preparation);
+        const latestRevision = data.reviews.length
           ? latestReview(data.reviews, data.material_hash ?? materialHash).revision
           : 0;
-        const body = await post('confirm', expectedReviewRevision);
+        const expectedReviewRevision = confirmationRevision(
+          pending.current.confirm,
+          preparationHash,
+          latestRevision,
+        );
+        const body = await post('confirm', expectedReviewRevision, { preparationHash });
         setReceipt(body);
         setMessage('已确认候选并送核验，正在刷新最新状态。');
         await inspect();
@@ -480,6 +527,9 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
           </ul>
         ) : null}
       </div>
+      {preparation?.materials ? (
+        <CandidatePublicationMaterials materials={preparation.materials} />
+      ) : null}
       {preparation?.enrichment ? (
         <div className={styles.history}>
           <h3>自动补全检查</h3>
@@ -615,7 +665,11 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
           刷新发布状态
         </button>
         {following ? (
-          <button type="button" disabled={busy} onClick={() => void perform(following)}>
+          <button
+            type="button"
+            disabled={busy || (following === 'confirm' && !preparation?.preparationHash)}
+            onClick={() => void perform(following)}
+          >
             {actionLabels[following]}
           </button>
         ) : null}
