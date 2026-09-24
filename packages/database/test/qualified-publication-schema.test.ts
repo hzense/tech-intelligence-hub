@@ -28,7 +28,7 @@ const migrationPath = resolve(
 describe('Private qualified Signal publication schema', () => {
   it('pins only the non-null receipt, snapshot and lease bindings without defaults', () => {
     expect(expectedTableNames.has(name)).toBe(true);
-    expect(expectedTableNames.size).toBe(55);
+    expect(expectedTableNames.size).toBe(57);
     expect(
       config.columns.map((column) => [column.name, column.getSQLType(), column.notNull]),
     ).toEqual(

@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
 import {
+  materialProposalFunctionHashes,
+  materialProposalTriggers,
+} from './candidate-material-proposal-catalog.mjs';
+import {
   candidateMaterialFunctionHashes,
   candidateMaterialTriggers,
   candidateMaterialRoutines,
@@ -57,6 +61,7 @@ export const sealedSignalTables = Object.freeze([
 
 // Updated only after reviewing the function source as part of a migration.
 export const sealedSignalFunctionHashes = Object.freeze({
+  ...materialProposalFunctionHashes,
   ...candidateMaterialFunctionHashes,
   ...candidateReviewFunctionHashes,
   hzense_guard_sealed_row: 'cac551349972dfdc20016fd7bdb7f50c3ee97bb5c803ae7a7cffec2c6a429524',
@@ -73,6 +78,7 @@ export function expectedSignalTriggerCount(tableName) {
 }
 
 export const sealedSignalTriggers = Object.freeze([
+  ...materialProposalTriggers,
   ...candidateMaterialTriggers,
   ...candidateReviewTriggers,
   ...sealedSignalTables.flatMap((table) => [

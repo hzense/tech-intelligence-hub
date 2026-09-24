@@ -1247,23 +1247,37 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 
 本节描述仓库已实现、由自动校验保护的 PostgreSQL `public` Schema 目标，不把尚未执行的迁移表述为生产现状。当前仓库目标包含：
 
-- 48 张持久表：47 张领域、派生或私有控制表，以及 1 张 Migration 历史表；其中 8 张来自 `0004`，2 张来自 `0005`，1 张来自 `0006`，2 张来自 `0008`，4 张来自 `0009`，1 张来自 `0010`，2 张来自 `0011`，2 张来自 `0012`，5 张来自 `0013`，7 张导入私表来自 `0014`，1 张候选生成任务私表来自 `0015`。另有 1 个当前公开资格安全视图。生产目前截至 `0014`／47 表，`0015` 仅本地实现与隔离验证，未执行生产迁移。
+- 57 张持久表：56 张领域、派生或私有控制表，以及 1 张 Migration 历史表。`0015` 后的 48 表底座上，`0020–0021` 增加三张审核／转换／签名私表，`0022` 增加一张候选补全任务表，`0023` 增加三张材料请求／报告／回执私表，`0024` 增加两张材料提案／确认私表。另有 1 个当前公开资格安全视图。此为当前本地代码目标；最近生产记录仍为截至 `0022` 的 23 迁移／52 表，0023–0024 尚待独立批准和核验，不能将目标计数当作生产结果。
 - 9 个 PostgreSQL Enum。
 - `vector` 扩展，以及 `search_documents.embedding vector(1536)`。
-- 仓库 Migration manifest 登记十六个顺序文件：`0000_foundation.sql`、`0001_radar_evidence.sql`、`0002_topic_projection.sql`、`0003_search_documents_fts.sql`、`0004_signal_version_foundation.sql`、`0005_person_organization_affiliations.sql`、`0006_signal_event_identity.sql`、`0007_signal_version_immutability.sql`、`0008_signal_publication_outbox.sql`、`0009_signal_publication_controls.sql`、`0010_qualified_signal_publication.sql`、`0011_signal_candidate_verification.sql`、`0012_current_signal_publication.sql`、`0013_ai_configuration.sql`、`0014_import_tasks.sql` 和 `0015_signal_generation.sql`。`0003` 的历史生产执行见 [FTS-1 切换记录](production-evidence/acl/34535908960-1/cutover.md)；截至 `0014` 的后续生产记录见[导入生产证据](production-evidence/2026-09-15-import-production.md)。新增 `0015` 尚未生产执行。
-- `0007` 新增 3 个 INVOKER 触发函数及 14 个 ALWAYS 触发器；`0008` 追加 2 个函数及 5 个触发器，其中 2 个是延迟约束触发器；`0009` 追加 1 个函数及 2 个 ALWAYS 触发器；`0010` 追加 1 个函数及 3 个 ALWAYS 触发器，其中 1 个延迟检查控制与租约；`0011` 追加 1 个函数及 5 个 ALWAYS 触发器，其中 1 个延迟检查核验期限与目标绑定；`0012` 再追加 8 个函数和 12 个触发器。当前合计 16 函数／41 触发器，无生产授权变化；函数正文、目录属性及 ACL 由独立精确契约核验。
+- 仓库 [Migration manifest](../db/migrations/checksums.json) 登记 25 个顺序文件（0000–0024）；迁移只能追加、不得修改已批准 SQL 或校验和。0023–0024 的新部署使用独立物理目标／备份／计划指纹，旧批准不继承为新批次授权。当前生产准备见[本批记录](production-evidence/2026-09-24-material-review-preparation.md)，历史记录保留其当时状态。
+- Signal／私有材料精确封存契约当前覆盖 22 个已审查函数、58 个触发器及四个 xid8 戳列；0024 新增一项只追加防护函数、四个 ALWAYS 触发器，不改变原 0023 函数。函数正文、目录属性、附件关系及 ACL 由独立精确契约核验；这些数量描述仓库目标，不代表本批已授予生产权限。
 
 物理结构的权威顺序如下：
 
-1. [`db/migrations/*.sql`](../db/migrations/) 是 47 张应用 Schema 表及公开视图的可执行 DDL 权威来源。
+1. [`db/migrations/*.sql`](../db/migrations/) 是 56 张应用 Schema 表及公开视图的可执行 DDL 权威来源。
 2. [`packages/database/src/migrate.mjs`](../packages/database/src/migrate.mjs) 创建并维护运维表 `hzense_schema_migrations`。
-3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts)、[`import-schema.ts`](../packages/database/src/import-schema.ts)及[`signal-generation-schema.ts`](../packages/database/src/signal-generation-schema.ts)共同映射 47 张应用表及公开视图；运维历史表不进入应用 ORM 映射。
-4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs)及各阶段独立 catalog 契约校验完整 48 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史；[当前公开资格 catalog](../packages/database/src/current-publication-catalog.mjs)固定安全视图与能力函数，[AI 配置 catalog](../packages/database/src/ai-configuration-catalog.mjs)、[导入 catalog](../packages/database/src/import-catalog.mjs)和[生成 catalog](../packages/database/src/signal-generation-catalog.mjs)分别固定各阶段私表。早期分阶段契约独立保留，不从待校验的迁移或数据库对象反推期望值。
+3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts)、[`import-schema.ts`](../packages/database/src/import-schema.ts)及[`signal-generation-schema.ts`](../packages/database/src/signal-generation-schema.ts)共同映射 56 张应用表及公开视图；运维历史表不进入应用 ORM 映射。
+4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs)及各阶段独立 catalog 契约校验完整 57 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史；[当前公开资格 catalog](../packages/database/src/current-publication-catalog.mjs)固定安全视图与能力函数，[材料 catalog](../packages/database/src/candidate-material-catalog.mjs)与[提案 catalog](../packages/database/src/candidate-material-proposal-catalog.mjs)分别固定可信报告和未可信提案边界。早期分阶段契约独立保留，不从待校验的迁移或数据库对象反推期望值。
 5. 本节是上述可执行合约的设计说明，不能代替 Migration 或 Runner DDL。
 
 Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文的 Source of Truth。公开 Signal 默认仍读 Seed；`0012` 新增可选 `database` 模式，只从 `current_public_signals` 读取当前符合资格的新版本，不回退旧 Seed。本批未导入生产正文或切换生产数据源。
 
 ## 40.2 仓库已实现表清单
+
+**2026-09-24 通用材料与人工确认增量（0023–0024，生产待批准）：** 下表是本批物理设计。两类数据不可混用：提案与人工确认不构成签名核验报告，报告与登记回执也不构成 Signal 公开发布许可。
+
+| 表                             | 内容与身份绑定                                                                           | 不可变性与用途                                                        |
+| ------------------------------ | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `candidate_material_requests`  | UUID、owner、原生成任务／候选序号、原材料 hash、补证包 hash、指纹及不可变 bundle         | 同原材料与补证包去重；不修改原生成结果或账本                          |
+| `candidate_material_reports`   | UUID、request／owner 复合外键、plan hash、计划、签名及数据库接收时间                     | 仅合法独立签名可由服务层摄入；按 request／plan hash 去重              |
+| `candidate_material_receipts`  | UUID、request／report／owner／plan hash 复合绑定、registered 或 verified 阶段            | 每报告每阶段唯一；两个角色只能写各自阶段                              |
+| `candidate_material_proposals` | UUID、request／owner 复合外键、plan hash、完整 proposal hash、未可信 plan＋dossier JSONB | 同请求／proposal hash 唯一；与可信 reports 分表                       |
+| `candidate_material_approvals` | UUID、proposal／request／owner／proposal hash 复合外键、approved_by、数据库确认时间      | 每提案一次确认，approved_by 必须等于 owner；执行器再绑定精确确认 UUID |
+
+五表均追加式，ALWAYS 触发器拒绝 UPDATE、DELETE 和 TRUNCATE。提案与确认由 registrar 的明确列 INSERT／SELECT 接口操作；verifier 只能读这两表，不能写人工确认。原任务已删除或材料 hash 不匹配时服务层拒绝继续；读取最新确认不依赖“最近十条”的显示截断。登记仍分 pending 新建与独立 verified 核验两事务，正式发布继续依赖原有门禁。更详细执行边界见 [MATERIAL_REGISTRATION.md](MATERIAL_REGISTRATION.md)。
+
+**2026-09-23 候选补全增量（0022）：** `candidate_enrichment_runs` 保存 owner、原候选材料指纹、固定来源／配置、费用与运行状态、仅补齐缺失事实的私有提案。该表不是正式 Signal／人物／公开证据登记；部署与真实验收详见 [生产证据](production-evidence/2026-09-23-candidate-enrichment.md)。
 
 **2026-09-21 审核发布增量（0020–0021，未生产迁移）：** 新增三张私表，完整迁移后共 51 张持久表（含迁移历史）。`candidate_reviews` 记录 owner、生成任务及原候选序号、材料哈希、审核修订、决定、编辑内容与幂等请求；`candidate_review_conversions` 绑定审核记录到正式 signal/source_version；`candidate_review_attestations` 绑定核验记录与原始签名报告。三表只追加，不覆盖生成结果；审核使用 CAS，与生成删除共享任务锁。正式候选后续编辑追加新版本，不复用旧核验。核验报告验签、人工决定及公开发布是不同边界。最小权限专用角色和生产启用需分别审批，具体契约见 [候选审核与正式发布](CANDIDATE_REVIEW.md)。以下旧计数为各批次历史，不是新增迁移后的总数。
 
@@ -1419,7 +1433,7 @@ radar_snapshots N ───── N signals
 - `search_documents(source_id)`。
 - `search_documents(document_date)`、唯一 `(source_type, source_id)` 与 GIN `(search_vector)`。
 
-当前仓库目标没有 RLS 或 Policy；已由 `0007`–`0012` 明确引入并精确校验 41 个用户触发器；当前公开行过滤由 security-barrier 视图及固定资格函数实现。新增机制必须通过单独评审的新 Migration，并同步更新 Verifier 和本节；仅当变更可由 Drizzle 表达且影响应用类型映射时，才同步更新 Drizzle Schema。新增控制状态与回执的 CHECK 校验保留括号、类型转换和字面量，防止 AND／OR 重分组被错误归一化为原约束。
+当前仓库目标没有 RLS 或 Policy；Signal／审核／材料封存契约已明确引入并精确校验 58 个用户触发器；当前公开行过滤由 security-barrier 视图及固定资格函数实现。新增机制必须通过单独评审的新 Migration，并同步更新 Verifier 和本节；仅当变更可由 Drizzle 表达且影响应用类型映射时，才同步更新 Drizzle Schema。新增控制状态与回执的 CHECK 校验保留括号、类型转换和字面量，防止 AND／OR 重分组被错误归一化为原约束。
 
 ## 40.5 Enum 与 pgvector
 

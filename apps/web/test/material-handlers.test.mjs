@@ -77,6 +77,30 @@ test('admin authenticates and rejects cross-origin writes before stores', async 
     );
   assert.equal(calls.length, 0);
 });
+test('material preparation and approval only accept IDs and explicit confirmation from session owner', async () => {
+  const { deps, calls } = admin();
+  deps.prepare = async (...args) => {
+    calls.push(args);
+    return { ready: true };
+  };
+  deps.approve = async (...args) => {
+    calls.push(args);
+    return { approved: true };
+  };
+  const handler = createAdminMaterialHandler(deps);
+  assert.equal((await handler(req({ action: 'prepare', request: { requestId: id } }))).status, 200);
+  const value = { requestId: id, proposalId: id, proposalHash: 'c'.repeat(64), consent: true };
+  assert.equal((await handler(req({ action: 'approve', request: value }))).status, 200);
+  assert.equal(calls[1][0], 'owner');
+  for (const changed of [
+    { ...value, consent: false },
+    { ...value, owner: 'attacker' },
+    { ...value, plan: {} },
+    { ...value, proposalHash: 'bad' },
+  ])
+    assert.equal((await handler(req({ action: 'approve', request: changed }))).status, 400);
+  assert.equal(calls.length, 2);
+});
 test('admin validates nested exact shape, consent and query uniqueness, and binds session owner', async () => {
   const { calls, handler } = admin();
   for (const request of [

@@ -1,5 +1,10 @@
 import { importRoleCheckSQL } from './import-role.mjs';
 import {
+  materialProposalColumns,
+  materialProposalFunctionHashes,
+  materialProposalTriggers,
+} from './candidate-material-proposal-catalog.mjs';
+import {
   candidateMaterialFunctionHashes,
   candidateMaterialLockFunctionHash,
   candidateMaterialTriggers,
@@ -92,9 +97,23 @@ export const materialRoleColumns = {
 };
 
 /** Reuse the audited ambient/extra-column checks with a different exact matrix. */
-export function materialRoleCheckSQL(role, { session = true } = {}) {
+export function materialRoleCheckSQL(role, { session = true, proposals = false } = {}) {
   if (!Object.hasOwn(materialRoleColumns, role)) throw new Error('not_configured');
-  const values = Object.entries(materialRoleColumns[role])
+  const proposalColumns = Object.fromEntries(
+    Object.entries(materialProposalColumns).map(([table, columns]) => [
+      table,
+      {
+        SELECT: Object.keys(columns),
+        ...(role === 'hzense_material_registrar'
+          ? { INSERT: Object.keys(columns).filter((column) => column !== 'created_at') }
+          : {}),
+      },
+    ]),
+  );
+  const values = Object.entries({
+    ...materialRoleColumns[role],
+    ...(proposals ? proposalColumns : {}),
+  })
     .flatMap(([table, privileges]) =>
       Object.entries(privileges).flatMap(([privilege, columns]) =>
         columns.map((column) => `('${table}','${column}','${privilege}')`),
@@ -123,7 +142,10 @@ export function materialRoleCheckSQL(role, { session = true } = {}) {
       "AND has_function_privilege(r.oid,p.oid,'EXECUTE')",
       "AND has_function_privilege(r.oid,p.oid,'EXECUTE') AND p.oid<>to_regprocedure('public.hzense_lock_material_dependencies(uuid,text)')",
     );
-  const functions = Object.entries(candidateMaterialFunctionHashes)
+  const functions = Object.entries({
+    ...candidateMaterialFunctionHashes,
+    ...(proposals ? materialProposalFunctionHashes : {}),
+  })
     .map(
       ([name, hash]) =>
         `EXISTS(SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace
@@ -132,7 +154,7 @@ export function materialRoleCheckSQL(role, { session = true } = {}) {
       AND encode(sha256(convert_to(btrim(f.prosrc,E' \\t\\n\\r\\v\\f'),'UTF8')),'hex')='${hash}')`,
     )
     .join(' AND ');
-  const triggers = candidateMaterialTriggers
+  const triggers = [...candidateMaterialTriggers, ...(proposals ? materialProposalTriggers : [])]
     .map(
       (trigger) =>
         `EXISTS(SELECT 1 FROM pg_trigger g JOIN pg_class c ON c.oid=g.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -166,10 +188,32 @@ export function materialRoleCheckSQL(role, { session = true } = {}) {
   audit = audit.replace('\n  AS safe', `${seals}\n  AS safe`);
   return `WITH allowed(table_name,column_name,privilege) AS (VALUES ${values})` + audit;
 }
-export async function assertMaterialRole(client, role) {
-  const result = await client.query(materialRoleCheckSQL(role));
+export async function assertMaterialRole(client, role, options = {}) {
+  const result = await client.query(materialRoleCheckSQL(role, options));
   if (result.rows.length !== 1 || result.rows[0]?.safe !== true)
     throw Object.assign(new Error('not_configured'), { code: 'not_configured' });
+}
+
+/** Independent, manual extension after 0024. Accepts exactly old or new ACL, not ambient grants. */
+export function materialProposalRoleProvisionSQL() {
+  const roles = Object.keys(materialRoleColumns)
+    .map((role) => {
+      const grants = Object.entries(materialProposalColumns)
+        .flatMap(([table, columns]) => [
+          `GRANT SELECT (${Object.keys(columns).join(',')}) ON public.${table} TO ${role};`,
+          ...(role === 'hzense_material_registrar'
+            ? [
+                `GRANT INSERT (${Object.keys(columns)
+                  .filter((column) => column !== 'created_at')
+                  .join(',')}) ON public.${table} TO ${role};`,
+              ]
+            : []),
+        ])
+        .join('\n');
+      return `DO $before$\nDECLARE safe boolean;\nBEGIN\n SELECT old_acl.safe OR new_acl.safe INTO safe FROM (${materialRoleCheckSQL(role, { session: false })}) old_acl CROSS JOIN (${materialRoleCheckSQL(role, { session: false, proposals: true })}) new_acl;\n IF safe IS DISTINCT FROM true THEN RAISE EXCEPTION 'Material role must match reviewed old or new exact ACL'; END IF;\nEND;\n$before$;\n${grants}\nDO $after$\nDECLARE safe boolean;\nBEGIN\n SELECT audit.safe INTO safe FROM (${materialRoleCheckSQL(role, { session: false, proposals: true })}) audit;\n IF safe IS DISTINCT FROM true THEN RAISE EXCEPTION 'Material proposal role ACL mismatch'; END IF;\nEND;\n$after$;`;
+    })
+    .join('\n');
+  return `-- Generated from material-registration-role.mjs. Explicit reviewed 0024 extension only.\nBEGIN;\nSET LOCAL search_path=pg_catalog,pg_temp;\nSET LOCAL statement_timeout='20s';\nDO $owner$\nBEGIN\n IF NOT pg_try_advisory_xact_lock(1215921955,1298498925) THEN RAISE EXCEPTION 'Migration lock busy'; END IF;\n IF current_user<>session_user OR current_user<>(SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database()) THEN RAISE EXCEPTION 'Authenticated database owner required'; END IF;\n IF NOT EXISTS(SELECT 1 FROM public.hzense_schema_migrations WHERE name='0024_material_review_proposals.sql' AND checksum='bb4591a510721690216753a97759f255da0472553f4d3ab56b92b01ab9d80f57') THEN RAISE EXCEPTION 'Verify migration 0024 first'; END IF;\nEND;\n$owner$;\n${roles}\nCOMMIT;\n`;
 }
 
 /** Opt-in reviewed provisioning; never used by application startup or diagnostics. */

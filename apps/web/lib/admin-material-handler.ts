@@ -23,6 +23,8 @@ const safe = new Set([
   'invalid_attestation',
   'invalid_bundle',
   'catalog_limit',
+  'material_preparation_blocked',
+  'material_review_expired',
 ]);
 const uuid = (value: unknown) =>
   typeof value === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
@@ -83,6 +85,8 @@ export function createAdminMaterialHandler(deps: {
   read(owner: string, runId: string, index: number): Promise<unknown>;
   create(owner: string, input: unknown): Promise<unknown>;
   confirm(owner: string, input: unknown): Promise<unknown>;
+  prepare?(owner: string, input: unknown): Promise<unknown>;
+  approve?(owner: string, input: unknown): Promise<unknown>;
 }) {
   return async (request: Request) => {
     try {
@@ -125,6 +129,23 @@ export function createAdminMaterialHandler(deps: {
         return importResponse(await deps.create(session.user.id, body.request));
       if (body.action === 'confirm' && validConfirm(body.request))
         return importResponse(await deps.confirm(session.user.id, body.request));
+      if (
+        body.action === 'prepare' &&
+        deps.prepare &&
+        exact(body.request, ['requestId']) &&
+        uuid(body.request.requestId)
+      )
+        return importResponse(await deps.prepare(session.user.id, body.request));
+      if (
+        body.action === 'approve' &&
+        deps.approve &&
+        exact(body.request, ['requestId', 'proposalId', 'proposalHash', 'consent']) &&
+        uuid(body.request.requestId) &&
+        uuid(body.request.proposalId) &&
+        hash(body.request.proposalHash) &&
+        body.request.consent === true
+      )
+        return importResponse(await deps.approve(session.user.id, body.request));
       return importResponse({ error: 'invalid_request' }, 400);
     } catch (error) {
       return materialError(error);

@@ -293,6 +293,62 @@ function database(run) {
   };
 }
 describe('private candidate material persistence', () => {
+  it('requires the current unexpired owner approval under the run lock; existing reports replay without new approval', async () => {
+    const f = fixture(),
+      db = database(f.run);
+    await createMaterialRequest({ ...f, pool: db.pool, owner: 'owner' });
+    let approval;
+    const client = await db.pool.connect();
+    const query = client.query;
+    client.query = async (sql, args) => {
+      if (sql.includes('FROM public.candidate_material_approvals a')) {
+        db.queries.push({ sql, args });
+        return { rows: approval ? [approval] : [] };
+      }
+      return query(sql, args);
+    };
+    const args = {
+      pool: db.pool,
+      owner: 'owner',
+      requestId: f.request.id,
+      plan: f.plan,
+      planHash: materialPlanHash(f.plan),
+      attestation: { signature: 'test' },
+      requireHumanApproval: true,
+      assertAttestationAt: () => {},
+    };
+    await expect(saveMaterialReport(args)).rejects.toThrow('material_changed');
+    const valid = {
+      id: randomUUID(),
+      created_at: '2026-09-24T09:00:00.000Z',
+      approved_by: 'owner',
+      plan_hash: args.planHash,
+      proposal_hash: 'a'.repeat(64),
+      stored_proposal_hash: 'a'.repeat(64),
+    };
+    for (const change of [
+      { approved_by: 'other' },
+      { plan_hash: 'b'.repeat(64) },
+      { stored_proposal_hash: 'b'.repeat(64) },
+      { created_at: '2026-09-23T10:00:00.000Z' },
+      { created_at: '2026-09-25T09:00:00.000Z' },
+    ]) {
+      approval = { ...valid, ...change };
+      await expect(saveMaterialReport(args)).rejects.toThrow('material_changed');
+    }
+    expect(db.reports).toHaveLength(0);
+    approval = valid;
+    const report = await saveMaterialReport(args);
+    const admission = db.queries.findIndex(({ sql }) =>
+      sql.includes('FROM public.candidate_material_approvals a'),
+    );
+    expect(
+      db.queries.slice(0, admission).some(({ sql }) => sql.includes('pg_advisory_xact_lock')),
+    ).toBe(true);
+    approval = undefined;
+    expect((await saveMaterialReport(args)).id).toBe(report.id);
+    expect(db.reports).toHaveLength(1);
+  });
   it('requires signature admission at the database receipt time and reuses the original time on replay', async () => {
     const f = fixture(),
       db = database(f.run),

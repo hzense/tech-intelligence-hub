@@ -52,6 +52,7 @@ test(
       const data = {
         configured: true,
         enabled: true,
+        reviewEnabled: true,
         requests: [],
         sources: [1, 2, 3, 4].map((n) => ({
           batchId: `batch-${n}`,
@@ -85,6 +86,15 @@ test(
           ];
         if (body.action === 'confirm')
           data.requests[0].reports[0].stages = ['registered', 'verified'];
+        if (body.action === 'prepare') {
+          await route.fulfill({ json: { ready: true } });
+          return;
+        }
+        if (body.action === 'approve') {
+          data.requests[0].proposals[0].approved = true;
+          await route.fulfill({ json: { approved: true, dispatched: true } });
+          return;
+        }
         await route.fulfill({ json: { ok: true } });
       });
       await page.goto(`http://127.0.0.1:${server.address().port}`);
@@ -134,6 +144,51 @@ test(
           },
         },
       ];
+      const preparedReport = data.requests[0].reports[0];
+      data.requests[0].reports = [];
+      data.requests[0].proposals = [
+        {
+          id: 'proposal-1',
+          proposalHash: 'c'.repeat(64),
+          plan: preparedReport.plan,
+          dossier: {
+            eventDate: { value: '2026-09-24', quote: 'Ada works at Lab.' },
+            statements: {
+              sourceAuthenticity: '来源真实性已核对',
+              usageRights: '我确认具有所列摘录的公开引用权限',
+              entityIdentity: '实体身份已核对',
+              eventRelevance: '事件关联已核对',
+              claimSupport: '主张支持已核对',
+              taxonomy: '分类已核对',
+            },
+          },
+          approved: false,
+          approvalExpiresAt: null,
+        },
+      ];
+      await page.getByRole('button', { name: '刷新补证状态' }).click();
+      await page.getByRole('button', { name: '准备核验材料（不调用 AI）' }).click();
+      await expect(
+        page.getByText('我确认具有所列摘录的公开引用权限', { exact: true }),
+      ).toBeVisible();
+      const approve = page.getByRole('button', {
+        name: '我已核对以上内容，确认提交独立核验',
+        exact: true,
+      });
+      page.once('dialog', (dialog) => dialog.dismiss());
+      await approve.click();
+      assert.equal(commands.filter((command) => command.action === 'approve').length, 0);
+      page.once('dialog', (dialog) => dialog.accept());
+      await approve.click();
+      await expect(page.getByRole('status')).toContainText('独立核验已提交');
+      const approvalCommand = commands.find((command) => command.action === 'approve');
+      assert.deepEqual(Object.keys(approvalCommand.request).sort(), [
+        'consent',
+        'proposalHash',
+        'proposalId',
+        'requestId',
+      ]);
+      data.requests[0].reports = [preparedReport];
       await page.getByRole('button', { name: '刷新补证状态' }).click();
       await page.getByText('核对公开证据及来源', { exact: true }).click();
       await expect(

@@ -9,6 +9,7 @@ import { runMigrations } from '../src/migrate.mjs';
 import {
   assertMaterialRole,
   materialRoleProvisionSQL,
+  materialProposalRoleProvisionSQL,
 } from '../src/material-registration-role.mjs';
 import { materialPlanHash } from '../src/material-registration-contract.mjs';
 import {
@@ -333,5 +334,76 @@ suite('isolated PostgreSQL material registration roles and signed-stage boundari
       ],
     );
     await expect(lock(registrar, malformedId, plan.owner)).rejects.toMatchObject({ code: '22023' });
+  });
+  it('separately extends proposal ACL without giving verifier approval writes or mutation authority', async () => {
+    const registrar = roleClients.get(roles[0]),
+      verifier = roleClients.get(roles[1]);
+    await expect(assertMaterialRole(registrar, roles[0], { proposals: true })).rejects.toThrow(
+      'not_configured',
+    );
+    await owner.query(materialProposalRoleProvisionSQL());
+    await owner.query(materialProposalRoleProvisionSQL());
+    for (const role of roles) {
+      await assertMaterialRole(roleClients.get(role), role, { proposals: true });
+      await expect(assertMaterialRole(roleClients.get(role), role)).rejects.toThrow(
+        'not_configured',
+      );
+    }
+    const proposalId = randomUUID(),
+      proposalHash = 'c'.repeat(64);
+    const insertProposal =
+      'INSERT INTO public.candidate_material_proposals(id,request_id,owner_id,plan_hash,proposal_hash,payload) VALUES($1,$2,$3,$4,$5,$6::jsonb)';
+    const values = [
+      proposalId,
+      requestId,
+      plan.owner,
+      materialPlanHash(plan),
+      proposalHash,
+      JSON.stringify({ plan, dossier: {} }),
+    ];
+    await expect(verifier.query(insertProposal, values)).rejects.toMatchObject({ code: '42501' });
+    await expect(
+      registrar.query(insertProposal, [randomUUID(), requestId, 'wrong-owner', ...values.slice(3)]),
+    ).rejects.toMatchObject({ code: '23503' });
+    await registrar.query(insertProposal, values);
+    const insertApproval =
+      'INSERT INTO public.candidate_material_approvals(id,proposal_id,request_id,owner_id,proposal_hash,approved_by) VALUES($1,$2,$3,$4,$5,$6)';
+    const approval = [randomUUID(), proposalId, requestId, plan.owner, proposalHash, plan.owner];
+    await expect(verifier.query(insertApproval, approval)).rejects.toMatchObject({ code: '42501' });
+    await expect(
+      registrar.query(insertApproval, [...approval.slice(0, 5), 'wrong-owner']),
+    ).rejects.toMatchObject({ code: '23514' });
+    await expect(
+      registrar.query(insertApproval, [...approval.slice(0, 4), 'd'.repeat(64), plan.owner]),
+    ).rejects.toMatchObject({ code: '23503' });
+    await registrar.query(insertApproval, approval);
+    await expect(
+      registrar.query(insertApproval, [randomUUID(), ...approval.slice(1)]),
+    ).rejects.toMatchObject({ code: '23505' });
+    expect(
+      (await verifier.query('SELECT * FROM public.candidate_material_approvals')).rows,
+    ).toHaveLength(1);
+    for (const table of ['candidate_material_proposals', 'candidate_material_approvals']) {
+      for (const sql of [
+        `UPDATE public.${table} SET owner_id=owner_id`,
+        `DELETE FROM public.${table}`,
+        // Include referencing tables so PostgreSQL reaches our ALWAYS guard
+        // instead of stopping earlier at its built-in foreign-key check.
+        `TRUNCATE public.${table} CASCADE`,
+      ]) {
+        await expect(owner.query(sql)).rejects.toMatchObject({ code: '55000' });
+        await expect(registrar.query(sql)).rejects.toMatchObject({ code: '42501' });
+      }
+    }
+    await owner.query(
+      'GRANT INSERT(id) ON public.candidate_material_approvals TO hzense_material_verifier',
+    );
+    await expect(assertMaterialRole(verifier, roles[1], { proposals: true })).rejects.toThrow(
+      'not_configured',
+    );
+    await owner.query(
+      'REVOKE INSERT(id) ON public.candidate_material_approvals FROM hzense_material_verifier',
+    );
+    await assertMaterialRole(verifier, roles[1], { proposals: true });
   });
 });

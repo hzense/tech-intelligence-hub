@@ -166,3 +166,25 @@ test('URL import returns only bounded supported source types and caps redirects'
   );
   assert.equal(hops, 4);
 });
+test('independent material verification rejects even a public redirect before a second hop', async () => {
+  let hops = 0;
+  await assert.rejects(
+    fetchImportURL(
+      'https://example.com/article',
+      {
+        resolve: async () => ({ address: '93.184.216.34', family: 4 }),
+        hop: async () => {
+          hops++;
+          return {
+            bytes: Buffer.alloc(0),
+            type: '',
+            location: 'https://other.example.com/article',
+          };
+        },
+      },
+      { allowRedirects: false },
+    ),
+    { code: 'fetch_failed' },
+  );
+  assert.equal(hops, 1);
+});

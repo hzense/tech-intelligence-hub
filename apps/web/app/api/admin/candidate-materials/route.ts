@@ -5,6 +5,8 @@ import {
   readMaterialDashboard,
   createMaterialRequest,
   confirmMaterialRegistration,
+  prepareCandidateMaterials,
+  approveCandidateMaterials,
 } from '@/lib/server/material-registration';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,5 +17,7 @@ export const GET = createAdminMaterialHandler({
   read: readMaterialDashboard,
   create: createMaterialRequest,
   confirm: confirmMaterialRegistration,
+  prepare: prepareCandidateMaterials,
+  approve: approveCandidateMaterials,
 });
 export const POST = GET;
