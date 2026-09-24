@@ -70,7 +70,7 @@ export const materialEnrichmentJsonSchema = {
     claim_evidence: {
       type: 'array',
       minItems: 1,
-      maxItems: 6,
+      maxItems: 12,
       items: { ...refsSchema, maxItems: 1 },
     },
     organization_identities: {

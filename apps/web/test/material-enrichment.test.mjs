@@ -8,7 +8,9 @@ import {
   assessMaterialEnrichment,
   restoreMaterialEnrichment,
   splitMaterialEvidenceStatements,
+  materialEnrichmentJsonSchema,
 } from '../lib/material-enrichment.ts';
+import { generationCandidateJsonSchema } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { prepareMaterialPlan } from '../lib/material-plan-preparation.ts';
 import { approvedMaterialDossier } from '../lib/material-review-dossier.ts';
 import { assessMaterialVerification } from '../../../packages/database/src/material-verification-worker.mjs';
@@ -209,6 +211,24 @@ test('claim references must fit the single-evidence registration contract', () =
   const value = output();
   value.claim_evidence[0].push(ref(3, 'Lab announced X.'));
   assert.throws(() => assessMaterialEnrichment(value, input.candidate, input.source, context));
+});
+
+test('supplement enrichment accepts all twelve claims allowed by the generation contract', () => {
+  const maximum =
+    generationCandidateJsonSchema.properties.candidates.items.properties.claims.maxItems;
+  assert.equal(materialEnrichmentJsonSchema.properties.claim_evidence.maxItems, maximum);
+  const original = {
+    ...candidate,
+    claims: Array.from({ length: maximum }, (_, i) => ({
+      ...candidate.claims[0],
+      text: `Lab 发布模型 X：主张 ${i + 1}`,
+    })),
+  };
+  const input = materialEnrichmentInput(bundle(), original);
+  const value = output();
+  value.claim_evidence = original.claims.map(() => output().claim_evidence[0]);
+  const result = assessMaterialEnrichment(value, input.candidate, input.source, context);
+  assert.equal(result.candidate.claims.length, 12);
 });
 
 test('organization types cannot borrow unrelated type words from another quote or sentence', () => {
