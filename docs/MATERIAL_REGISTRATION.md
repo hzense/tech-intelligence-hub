@@ -1,16 +1,17 @@
 # 通用候选补证与正式材料登记
 
-2026-09-24：开发版，默认关闭，尚未部署生产。独立材料核验服务尚未接入；本批不是“所有候选已自动补全”。
+2026-09-24：基础接入由 [PR #157](https://github.com/hzense/tech-intelligence-hub/pull/157) 合并并部署，但生产未启用。本文新增的材料提案、人工确认与独立执行器属于当前本地开发批次，尚未提交或上线；不是“所有候选已自动补全”。生产准备证据见[本批记录](production-evidence/2026-09-24-material-review-preparation.md)。
 
 ## 管理员怎样使用
 
 入口在每条 AI 候选的审核确认页，名称为“通用补证与登记”。
 
-1. 在“导入已解析资料”导入补充的官方公开链接并完成解析。
-2. 回到候选页，关联至多三份自己的链接资料，确认建立补证请求。
-3. 等待独立核验方返回签名报告；此时不能登记或发布，建立请求也不会调用 AI。
-4. 核对报告中的人物、组织、领域、证据原句与来源，点击“确认登记材料（不发布）”。
-5. 系统重新读取正式发布材料；齐备后继续原有候选核验、转换及正式发布流程。
+1. 原资料是可核对的公开 URL 时可直接使用；否则先在“导入已解析资料”导入补充的官方公开链接并完成解析。
+2. 回到候选页，关联至多三份自己的链接资料，确认建立补证请求。文件正文自身仍为私有资料，不能仅凭上传登记公开证据。
+3. 点击准备核验材料。规则整理原候选及已通过原文证据校验的既有 AI 补全结果，生成私有、未可信的提案。此步骤不再次调用 AI、不自动签名，缺项继续显示阻断原因。
+4. 页面逐项展示人物、组织、日期、领域、主张、证据原句和公开链接。管理员打开来源并核对来源真实性、引用许可、实体身份、事件关系、主张支持及分类六项，再进行一次明确确认；无需填写 ID、JSON 或理由字段。
+5. 后台保存不可修改的确认记录，按请求 ID 与确认 ID 两个 UUID 派发独立 GitHub 执行器。执行器重新读取精确已确认提案，安全重抓所列公开页面、核对引用原句与材料绑定后签名；不调用 AI、不登记、不发布。
+6. 网站收到合法签名报告后，管理员确认登记材料。网站分阶段登记中性实体与 pending 证据、独立核验后标记 verified；重新读取正式发布材料。齐备后仍须继续原有候选核验、转换及正式发布流程。
 
 不要求管理员填写 ID、JSON、人物名称或主张。人物无原文依据、来源使用许可未确认、目录同名冲突、领域停用等情况保持阻断，不为消除待补全状态虚构或覆盖记录。
 
@@ -23,6 +24,9 @@
 - 登记分两个可续行事务：registrar 新建中性来源、实体、档案及 **pending** 证据；verifier 复查签名计划覆盖的数据后才将 pending 改为 verified。rejected 不复活，已有记录不覆盖。
 - 数据库 ALWAYS 触发器约束两角色分别只能写 `registered`、`verified` 回执。回执是历史核验记录，不是永久有效或公开发布许可；后续禁用来源、领域或撤销证据仍会阻挡发布。
 - 未知提交保留原编号；创建、读取、登记均不调用模型。数据库唯一约束与指纹阻止刷新后重复创建相同材料。
+- 规则准备不是通用事实调查。缺少人物、事件日期、可核对公开出处、组织身份或领域依据时不会虚构；既有 AI 补全仍是未可信事实提案，不替代人工核对。
+- 材料提案与人工确认独立保存，不写入可信报告表。确认绑定 owner、请求、完整提案与 dossier 的 `proposalHash`，以及 `planHash`；修改材料须新建提案，不能修改旧确认。确认仅限其所有者，最长供本次执行器使用 24 小时；过期需准备新轮次并再次确认。
+- 独立执行器的重抓与逐字匹配证明当前页面仍有这些原句，不单独证明事件真实、人物无歧义或合法引用。签名明确依赖页面记录的人工六项确认，不把规则或模型自评升级成事实证明。
 
 ## 独立核验接入
 
@@ -34,25 +38,42 @@
 
 协议权威为 `packages/database/src/material-registration-contract.mjs` 及 `.d.mts`。签名格式 `{keyId,payload,signature}`，独立协议 `signed-material-verification-v1`；绑定 owner、任务/候选、三个摘要和核验方身份，并提供来源真实性、使用许可、实体身份、事件关联、主张支持、分类六项结论及理由。新签名摄入窗口最长 60 秒；历史报告以原接收时间验证，不能将过期新报告冒充历史报告。
 
-网站只持有公钥，不生成可信结论或持有签名私钥。**本次提供请求/报告接入和登记执行器；独立核验服务的实际资料调查、模型执行与签名部署尚未实现。** 必须确定可信核验主体及运行位置，不能用 Web 进程自签代替。
+网站只持有公钥，不持有签名私钥。本批新增 `.github/workflows/material-verification.yml` 与独立 runner，采用“规则准备／复用已有 AI 提案 → 人工确认 → 独立重抓与签名”的边界，而非开发自动替人作事实或许可判断的服务。
+
+Workflow 只接受 `request_id`、`approval_id` 两个 UUID，不接受浏览器或 workflow 输入的计划正文、owner、人工结论或签名 JSON。运行限定当前 `main`、对应成功 CI 和受保护 `material-verification` Environment；一次运行仅处理一份明确确认，不批量清空队列、不自动重试模型、不拥有 Publisher 能力。Webhook／派发成功不代表报告已保存，仍须在原候选页核对报告与登记回执。
 
 ## 数据库与配置
 
 `0023_candidate_materials.sql` 新增三个追加式私表：`candidate_material_requests`、`candidate_material_reports`、`candidate_material_receipts`。包含 owner/请求/报告复合外键、摘要唯一约束、更新/删除/清空防护。
 
+`0024_material_review_proposals.sql` 再增加 `candidate_material_proposals` 与 `candidate_material_approvals`。前者存储未可信 `plan + dossier`，后者存储所有者明确确认；复合外键绑定提案、请求、owner 与完整提案哈希，`approved_by = owner_id`，两表禁止 UPDATE、DELETE、TRUNCATE。当前代码目标为 **25 项迁移、57 张表**，不代表生产已达到该状态。
+
 生产准备需要另行批准迁移和最小授权：
 
 - `db/roles/create_material_registration_roles.sql`：创建空凭证受限角色，不含密码。
 - `db/roles/configure_material_registration.sql`：精确授权与自检，不扩大已有 reader/reviewer。
+- `db/roles/configure_material_review.sql`：0024 后独立增量授权。仅为 registrar 增加两张私表的明确列 SELECT／INSERT，为 verifier 增加 SELECT；不允许两角色修改／删除提案和确认，也不让 verifier 伪造人工确认。脚本只接受精确原权限或精确升级后权限，拒绝其他额外能力。
 - `HZENSE_MATERIAL_REGISTRAR_DATABASE_URL`、`HZENSE_MATERIAL_VERIFIER_DATABASE_URL`：对应专用角色。
 - `HZENSE_MATERIAL_TRUSTED_VERIFIERS`：key ID 到 `{publicKey,verifierId}` 的 JSON 映射，仅公钥。
 - `HZENSE_MATERIAL_WORKER_TOKEN`：至少 32 字符，不能放入客户端或仓库。
 - `HZENSE_MATERIAL_REGISTRATION_ENABLED=1`：新写入开关，缺省关闭。
+- `HZENSE_MATERIAL_REVIEW_ENABLED=1`：提案准备／人工确认及 0024 精确 ACL 模式，缺省关闭；只有完成迁移及增量授权后才可开启。
+- `HZENSE_MATERIAL_DISPATCH_TOKEN`：Vercel Production 的专用 GitHub 派发凭据；必须按该仓库 workflow dispatch 的最小范围另行批准。缺失时可保存确认，但不会自动派发，页面须明确显示该状态。
 
-关闭开关停止创建、报告摄入和登记，保留只读历史；不要删除审计表作为回滚。现有公开信号数据源、发布开关、预算保持不变。
+独立 GitHub `material-verification` Environment 单独配置：
+
+- Variables：`HZENSE_MATERIAL_EXECUTOR_ENABLED=1`（缺省关闭）、`HZENSE_MATERIAL_SIGNING_KEY_ID`、`HZENSE_MATERIAL_VERIFIER_ID`。
+- Secrets：`HZENSE_MATERIAL_SIGNING_PRIVATE_KEY` 及 `HZENSE_MATERIAL_WORKER_TOKEN`。签名私钥只放在该受保护环境，不放 Vercel、仓库、Preview 或客户端；网页公钥映射的 key ID／verifier ID 必须对应。
+- Worker token 仅供 runner 调用固定第一方服务端点，不能传给被抓取的外站；新凭据和权限均需另行批准。文档不保存真实值。
+
+停用时关闭 `HZENSE_MATERIAL_REGISTRATION_ENABLED` 和 GitHub 执行器开关，停止创建、确认派发、报告摄入和登记，保留只读历史。已经升级 ACL 的部署保留 `HZENSE_MATERIAL_REVIEW_ENABLED=1` 以使用正确的精确读权限合约；不能只将其设回 0 并继续使用升级后角色。不要删除审计表作为回滚。现有公开信号数据源、发布开关和 AI 预算保持不变。
 
 ## 验证与上线门禁
 
 测试覆盖补证包、签名、冲突、角色矩阵、隔离、字段/来源绑定与浏览器确认交互。真实 PostgreSQL 角色测试已接入 `test:migrations`，须在隔离数据库执行后才能声称数据库链路验收通过。
 
 生产启用需另行确认：备份和迁移核验 → 最小授权 → 独立核验服务、公钥配置 → 一条合成资料闭环 → 刷新确认持久化。页面按钮出现、登记成功和正式发布成功是不同结论。
+
+本批迁移仅走新的 `accept-unverified-material-review` 策略及 `material-review-production-launch` 风险范围，固定 25 文件清单，允许精确待执行 `[0023,0024]` 或 `[0024]`。实际 pending 序列、目标与备份引用均进入审批指纹，锁内重新核对执行产物和数据库身份；不能复用 0022、旧 0023 或此前的风险批准。若采用尚未演练恢复的策略，必须再次明确接受该批风险；成功前向迁移不等于恢复能力已经验证。
+
+旧 main 的只读预检 [36022413674](https://github.com/hzense/tech-intelligence-hub/actions/runs/36022413674) 已成功，当时 pending 为 1（0023）。当前新增 0024 后，预期 pending 为 2，必须在本批代码合并、main CI 成功之后重新预检并审批，不能沿用旧运行的数字或指纹。生产 DDL、角色最小授权、新凭据配置与真实端到端验收分别记录，均不由本地测试结果代替。

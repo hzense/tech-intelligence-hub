@@ -66,6 +66,8 @@ export function saveMaterialReport(
     planHash: string;
     plan: unknown;
     attestation: unknown;
+    /** Require a current owner confirmation, checked under the run lock before new admission. */
+    requireHumanApproval?: boolean;
     assertAttestationAt: (
       plan: MaterialPlan,
       attestation: Record<string, unknown>,

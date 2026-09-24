@@ -11,6 +11,8 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 ## 当前部署
 
+> **2026-09-24 通用补证：** [PR #157](https://github.com/hzense/tech-intelligence-hub/pull/157) 基础接入已合并并部署，功能尚未生产启用。当前材料准备、人工确认和独立 GitHub 执行器为后续本地开发，未提交／上线。旧 main 只读 [preflight 36022413674](https://github.com/hzense/tech-intelligence-hub/actions/runs/36022413674) 成功，当时仅待 0023；加入本批 0024 后应重新预检，预期两项 pending。25 迁移／57 表是本批代码目标，不能记作生产核验结果。生产迁移、最小权限及新凭据配置另行批准，见[通用补证部署清单](MATERIAL_REGISTRATION.md#数据库与配置)和[本批证据](production-evidence/2026-09-24-material-review-preparation.md)。
+
 > **2026-09-17 AI 私有候选生成：** PR #100 已合并为 `fd528ea`，main [CI 35226592286](https://github.com/hzense/tech-intelligence-hub/actions/runs/35226592286) 成功，Production 已部署该代码。生产数据库最新完成的独立核验仍为 `0014`（15 迁移／47 表）；生成所需 `0015`、专用角色、独立 AI 预算和开关尚未启用。当前准备独立维护门禁、最小列授权及只读核验，见[本批准备记录](production-evidence/2026-09-17-generation-preparation.md)。代码已部署不等于真实 AI 生成可用；以下历史条目不代表当前管理员／AI 配置或导入仍不可用。
 
 > **2026-09-14 AI 配置启用检查：** PR #79 交付后台，后续 PR #80 已合并为 `5a03b1e`，对应 main CI／Production 部署成功。生产已按新备份保护下的独立 AI 风险审批升级至 `0013`；迁移后核验及独立 `verify` 均为 14 个迁移／40 张表。Production 域名白名单已部署生效并经真实管理员页面确认，但 AI 专用角色和两个 Secret 仍未创建配置，`/admin/ai` 表单继续关闭。恢复能力仍未演练；未扩大 Runtime 权限、未切换 Signal 新读取或自动发布、未调用 AI。具体状态见[本次记录](production-evidence/2026-09-14-ai-configuration.md)，执行规则见[AI 批次风险门禁](ONLINE_MAINTENANCE.md#ai-配置批次的显式风险接受)。下述早期开发边界保留为历史；其中“未迁移”不是当前状态。
@@ -29,6 +31,19 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 - 2026-08-31 已配置并验证最小权限 `hzense_topic_sync`，完成生产 dry run、受保护 Apply、独立只读验证与 no-op 重跑；结果为 62 个 Topics、0 个未知行、reviewed fingerprint 匹配和 no-op 0 变更
 - 独立 `hzense_runtime` 凭据与 Production pooled 连接已通过两次完整数据库 preflight；五个 server-only 值已仅配置在 Vercel Production，Runtime-configured 部署、真实五列读取、运行时日志和持续健康门禁均已完成功能验收；既有 handling-exposure risk 原本已触发轮换待办，2026-09-04 操作者知情选择本轮延期，本轮未读取或修改凭据/部署配置，凭据继续按高敏感值管理且轮换义务仍开放；历史 ACL 恢复证据边界见[同日脱敏运维检查点](./production-evidence/2026-09-04-operations-checkpoint.md)
 - 2026-09-04 `main@0b14a62` 的[受控手工 production-health](https://github.com/hzense/tech-intelligence-hub/actions/runs/33854492063)通过 exact body / `no-store` / `<8s` 合约；此前从 04:35:46Z 成功的最近 scheduled run 到 08:39:29Z 手工触发前未出现更新的 scheduled 记录，该状态只记作调度间隙/延迟观察，不等同于 workflow 或数据库故障
+
+## 通用补证与人工确认执行器部署
+
+该能力仍为默认关闭的独立发布批次，不随普通代码部署自动升级数据库或创建权限。
+
+1. 合并本批 PR 后确认精确 main SHA 的 CI 成功，在 `production-maintenance` 重新执行只读预检。应用新门禁时仅接受待迁移 `[0023,0024]` 或 `[0024]`；旧 main 的 pending=1 不可复用为本批批准。
+2. 在新备份与本次维护窗口下，单独批准 `accept-unverified-material-review`／`material-review-production-launch` 策略及完整指纹。迁移后执行独立 Schema verify；恢复未演练风险不因成功迁移而消失。
+3. 分别批准创建受限 registrar／verifier（若尚不存在）、基础 0023 最小授权与 `configure_material_review.sql` 的 0024 增量授权。不得以 owner 连接替代应用凭据，不改其他 reader／publisher 的权限。
+4. 在 Vercel Production 配置两条专用数据库连接、公钥映射、第一方 Worker token 和最小权限的 GitHub 派发 token。签名私钥**只放 GitHub 受保护 `material-verification` Environment**，不放 Vercel 或代码仓；密钥 ID 与核验者 ID 必须和公钥映射一致。
+5. 验证配置后开启网站 `HZENSE_MATERIAL_REGISTRATION_ENABLED=1`、`HZENSE_MATERIAL_REVIEW_ENABLED=1` 及 GitHub Variable `HZENSE_MATERIAL_EXECUTOR_ENABLED=1`。全部缺省关闭；新 Token、Secret、权限及开关变更均需另行授权。
+6. 使用一条批准的合成资料验收：准备私有提案 → 页面人工确认六项 → 按 `request_id + approval_id` 派发 → 独立重抓／签名 → 报告持久化 → 人工确认登记 → 刷新核对回执。该链路不调用 AI、不自动发布、不切换公开数据源；发布仍走原有独立门禁。
+
+停用时关闭网站 registration 写入开关和 GitHub executor 开关，保留记录与已升级 ACL 的 review 模式。恢复正常运行需重新核对原任务，不重复创建或自动重试未知提交。更详细字段及权限边界见 [MATERIAL_REGISTRATION.md](MATERIAL_REGISTRATION.md)。
 
 ## 管理员 Google 登录
 

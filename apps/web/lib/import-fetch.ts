@@ -95,6 +95,7 @@ function fetchHop(url: URL, address: { address: string; family: number }) {
 export async function fetchImportURL(
   input: string,
   dependencies = { resolve: resolveImportHost, hop: fetchHop },
+  options: { allowRedirects?: boolean } = {},
 ) {
   let url = assertImportFetchURL(input);
   for (let redirects = 0; redirects <= 3; redirects++) {
@@ -102,6 +103,9 @@ export async function fetchImportURL(
     if (!isPublicAiAddress(address.address)) throw new ImportIOError('fetch_failed');
     const result = await dependencies.hop(url, address);
     if (result.location) {
+      // Independent source verification must not attribute another origin's
+      // response to the originally reviewed URL. Ordinary imports keep redirects.
+      if (options.allowRedirects === false) throw new ImportIOError('fetch_failed');
       url = assertImportFetchURL(new URL(result.location, url).href);
       continue;
     }

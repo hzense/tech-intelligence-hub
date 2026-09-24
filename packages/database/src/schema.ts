@@ -1678,6 +1678,77 @@ export const candidateMaterialReceipts = pgTable(
   ],
 );
 
+export const candidateMaterialProposals = pgTable(
+  'candidate_material_proposals',
+  {
+    id: uuid('id').primaryKey(),
+    requestId: uuid('request_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    planHash: text('plan_hash').notNull(),
+    proposalHash: text('proposal_hash').notNull(),
+    payload: jsonb('payload').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.requestId, t.ownerId],
+      foreignColumns: [candidateMaterialRequests.id, candidateMaterialRequests.ownerId],
+    }),
+    uniqueIndex('candidate_material_proposals_content_uq').on(t.requestId, t.proposalHash),
+    uniqueIndex('candidate_material_proposals_owner_hash_uq').on(
+      t.id,
+      t.requestId,
+      t.ownerId,
+      t.proposalHash,
+    ),
+    check('candidate_material_proposals_owner_ck', sql`length(${t.ownerId}) BETWEEN 1 AND 200`),
+    check(
+      'candidate_material_proposals_plan_hash_ck',
+      sql`${t.planHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'candidate_material_proposals_proposal_hash_ck',
+      sql`${t.proposalHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check('candidate_material_proposals_payload_ck', sql`jsonb_typeof(${t.payload}) = 'object'`),
+  ],
+);
+
+export const candidateMaterialApprovals = pgTable(
+  'candidate_material_approvals',
+  {
+    id: uuid('id').primaryKey(),
+    proposalId: uuid('proposal_id').notNull(),
+    requestId: uuid('request_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    proposalHash: text('proposal_hash').notNull(),
+    approvedBy: text('approved_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.requestId, t.ownerId],
+      foreignColumns: [candidateMaterialRequests.id, candidateMaterialRequests.ownerId],
+    }),
+    foreignKey({
+      columns: [t.proposalId, t.requestId, t.ownerId, t.proposalHash],
+      foreignColumns: [
+        candidateMaterialProposals.id,
+        candidateMaterialProposals.requestId,
+        candidateMaterialProposals.ownerId,
+        candidateMaterialProposals.proposalHash,
+      ],
+    }),
+    uniqueIndex('candidate_material_approvals_proposal_uq').on(t.proposalId),
+    check('candidate_material_approvals_owner_ck', sql`length(${t.ownerId}) BETWEEN 1 AND 200`),
+    check(
+      'candidate_material_approvals_hash_ck',
+      sql`${t.proposalHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check('candidate_material_approvals_actor_ck', sql`${t.approvedBy} = ${t.ownerId}`),
+  ],
+);
+
 export const searchDocuments = pgTable(
   'search_documents',
   {

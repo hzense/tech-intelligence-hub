@@ -2,6 +2,7 @@ import 'server-only';
 import pg from 'pg';
 import { randomUUID } from 'node:crypto';
 import * as store from '../../../../packages/database/src/candidate-material-store.mjs';
+import * as proposals from '../../../../packages/database/src/candidate-material-proposal-store.mjs';
 import { assertMaterialRole } from '../../../../packages/database/src/material-registration-role.mjs';
 import {
   materialPlanHash,
@@ -16,7 +17,8 @@ import { buildCandidateSourceBundle } from '../../../../packages/ingestion/src/c
 import { listImportBatches } from '../../../../packages/database/src/import-store.mjs';
 import { generationRecord } from './signal-generation';
 import { importPool, importsConfigured } from './generation-import-reader';
-import { buildCandidateReview } from '../candidate-review';
+import { buildCandidateReview, buildEnrichedCandidateReview } from '../candidate-review';
+import { listCandidateEnrichmentDtos } from './candidate-enrichment';
 import { readMaterialSupplement } from '../material-source-reader';
 import {
   materialDatabaseConfiguration,
@@ -26,6 +28,8 @@ import {
 } from '../material-registration-config';
 import { bindMaterialPlan } from '../material-registration-binding';
 import { validateGenerationSource } from '../../../../packages/ingestion/src/signal-generation-contract.mjs';
+import { prepareMaterialPlan, type MaterialDraft } from '../material-plan-preparation';
+import { approvedMaterialDossier } from '../material-review-dossier';
 
 function fail(code: string): never {
   throw Object.assign(new Error(code), { code });
@@ -71,7 +75,9 @@ export function materialPool(role: MaterialRole) {
       }
       const client = await pools.get(role)!.pool.connect();
       try {
-        await assertMaterialRole(client, `hzense_material_${role}`);
+        await assertMaterialRole(client, `hzense_material_${role}`, {
+          proposals: process.env.HZENSE_MATERIAL_REVIEW_ENABLED === '1',
+        });
         return client;
       } catch (e) {
         client.release(true);
@@ -158,13 +164,39 @@ export async function readMaterialDashboard(owner: string, runId: string, candid
   const batches = importsConfigured()
     ? await listImportBatches({ pool: importPool, owner, view: 'sources' })
     : [];
+  const requestRows = [];
+  // The role pool has one connection. Do not queue twenty role checks behind it.
+  for (const request of requests) {
+    if (process.env.HZENSE_MATERIAL_REVIEW_ENABLED !== '1') {
+      requestRows.push(requestDto(request));
+      continue;
+    }
+    const input = { pool: materialPool('registrar'), owner, requestId: request.id };
+    const rows = await proposals.readMaterialProposals(input);
+    const approved = await proposals.latestApprovedMaterialProposal(input);
+    requestRows.push({
+      ...requestDto(request),
+      proposals: rows.map((row) => ({
+        id: row.id,
+        proposalHash: row.proposal_hash,
+        plan: row.payload.plan,
+        dossier: row.payload.dossier,
+        approved: approved?.proposal.id === row.id,
+        approvalExpiresAt:
+          approved?.proposal.id === row.id
+            ? new Date(new Date(approved.approval.created_at).getTime() + 86400000).toISOString()
+            : null,
+      })),
+    });
+  }
   return {
     configured: true,
     originalSourceAvailable: importsConfigured()
       ? Boolean(await originalSourceUrl(owner, run))
       : false,
     enabled: process.env.HZENSE_MATERIAL_REGISTRATION_ENABLED === '1',
-    requests: requests.map(requestDto),
+    reviewEnabled: process.env.HZENSE_MATERIAL_REVIEW_ENABLED === '1',
+    requests: requestRows,
     sources: batches.flatMap((batch) =>
       batch.items
         .filter((item) => item.status === 'completed' && item.kind === 'url')
@@ -334,6 +366,7 @@ export async function acceptMaterialReport(input: unknown) {
       planHash: materialPlanHash(plan),
       plan,
       attestation: body.attestation,
+      requireHumanApproval: process.env.HZENSE_MATERIAL_REVIEW_ENABLED === '1',
       assertAttestationAt: (savedPlan, savedAttestation, receivedAt) => {
         verifyMaterialAttestation({
           envelope: savedAttestation,
@@ -439,7 +472,7 @@ export async function materialWorkerInbox(after?: string) {
       await client.query(
         `SELECT r.id,r.owner_id FROM public.candidate_material_requests r
     JOIN public.signal_generation_runs g ON g.id=r.run_id AND g.owner_id=r.owner_id
-    WHERE g.deleted_at IS NULL AND g.status='completed' AND NOT EXISTS(SELECT 1 FROM public.candidate_material_reports p WHERE p.request_id=r.id)
+    WHERE g.deleted_at IS NULL AND g.status='completed'
       AND ($1::uuid IS NULL OR (r.created_at,r.id) > (SELECT created_at,id FROM public.candidate_material_requests WHERE id=$1::uuid))
     ORDER BY r.created_at,r.id LIMIT 10`,
         [after ?? null],
@@ -459,6 +492,14 @@ export async function materialWorkerRequest(owner: string, id: string) {
   });
   const { run, review } = await packet(owner, request.run_id, request.candidate_index);
   if (review.materialHash !== request.base_material_hash) fail('material_changed');
+  const approved =
+    process.env.HZENSE_MATERIAL_REVIEW_ENABLED === '1'
+      ? await proposals.latestApprovedMaterialProposal({
+          pool: materialPool('verifier'),
+          owner,
+          requestId: request.id,
+        })
+      : null;
   const client = await materialPool('verifier').connect();
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
@@ -491,11 +532,137 @@ export async function materialWorkerRequest(owner: string, id: string) {
       // actually uses this URL still performs the strict current-source check.
       originalSourceUrl: await originalSourceUrl(owner, run).catch(() => null),
       catalog: { topics, entities, sources },
+      approvedProposal: approved
+        ? {
+            id: approved.proposal.id,
+            proposalHash: approved.proposal.proposal_hash,
+            plan: approved.proposal.payload.plan,
+            dossier: approvedMaterialDossier(
+              approved.proposal.payload as MaterialDraft,
+              approved.approval,
+            ),
+            approvedAt: new Date(approved.approval.created_at).toISOString(),
+            approvalId: approved.approval.id,
+          }
+        : null,
     };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally {
     client.release();
+  }
+}
+
+function requireReview() {
+  requireMaterialWrites(process.env);
+  if (process.env.HZENSE_MATERIAL_REVIEW_ENABLED !== '1') fail('not_configured');
+}
+export async function prepareCandidateMaterials(owner: string, input: unknown) {
+  requireReview();
+  const body = exact(input, ['requestId']),
+    requestId = uuid(body.requestId);
+  const packet = await materialWorkerRequest(owner, requestId);
+  const savedRequest = await store.getMaterialRequest({
+    pool: materialPool('registrar'),
+    owner,
+    id: requestId,
+  });
+  // Revalidate saved AI enrichment against immutable original text; never treat
+  // an unvalidated model proposal as an independent verification report.
+  const enrichments = await listCandidateEnrichmentDtos(owner, packet.runId, packet.candidateIndex);
+  const completed = enrichments.find(
+    (row) => row.status === 'completed' && row.material_hash === packet.baseMaterialHash,
+  );
+  let preparationPacket = packet;
+  if (completed) {
+    if (!completed.result?.candidate) fail('material_changed');
+    const run = await generationRecord(owner, packet.runId);
+    const enriched = buildEnrichedCandidateReview(
+      run,
+      packet.candidateIndex,
+      completed.result.candidate as Record<string, unknown>,
+    );
+    preparationPacket = { ...packet, candidate: enriched.candidate };
+  }
+  // Fixed source capture time makes no-AI preparation/replay deterministic.
+  const prepared = prepareMaterialPlan(preparationPacket, new Date(savedRequest.created_at));
+  if (!prepared.ready) return prepared;
+  bindMaterialPlan(prepared.payload.plan, packet.bundle, {
+    ...packet,
+    materialHash: packet.baseMaterialHash,
+  });
+  // A new UTC-day proposal allows explicit re-confirmation after a 24-hour
+  // approval expires, without mutating its predecessor or changing source hashes.
+  prepared.payload.dossier.reviewRound = Math.floor(Date.now() / 86400000);
+  const proposal = await proposals.createMaterialProposal({
+    pool: materialPool('registrar'),
+    owner,
+    requestId,
+    payload: prepared.payload,
+  });
+  return { ready: true, proposalId: proposal.id, proposalHash: proposal.proposal_hash };
+}
+export async function approveCandidateMaterials(owner: string, input: unknown) {
+  requireReview();
+  const body = exact(input, ['requestId', 'proposalId', 'proposalHash', 'consent']);
+  if (body.consent !== true) fail('invalid_request');
+  const requestId = uuid(body.requestId),
+    proposalId = uuid(body.proposalId);
+  const p = await proposals.getMaterialProposal({
+    pool: materialPool('registrar'),
+    owner,
+    requestId,
+    proposalId,
+  });
+  if (p.proposal_hash !== hash(body.proposalHash)) fail('material_changed');
+  const current = await materialWorkerRequest(owner, requestId);
+  bindMaterialPlan(p.payload.plan, current.bundle, {
+    ...current,
+    materialHash: current.baseMaterialHash,
+  });
+  const approval = await proposals.approveMaterialProposal({
+    pool: materialPool('registrar'),
+    owner,
+    requestId,
+    proposalId,
+    proposalHash: p.proposal_hash,
+    approvedBy: owner,
+  });
+  if (Date.now() >= new Date(approval.created_at).getTime() + 86400000)
+    fail('material_review_expired');
+  const latest = await proposals.latestApprovedMaterialProposal({
+    pool: materialPool('registrar'),
+    owner,
+    requestId,
+  });
+  if (latest?.approval.id !== approval.id || latest.proposal.id !== proposalId)
+    fail('material_changed');
+  // Persist human decision before dispatch. Dispatch failure cannot erase approval
+  // or repeat a paid model call; this executor does not call a model.
+  const token = process.env.HZENSE_MATERIAL_DISPATCH_TOKEN;
+  if (!token) return { approved: true, dispatched: false };
+  try {
+    const response = await fetch(
+      'https://api.github.com/repos/hzense/tech-intelligence-hub/actions/workflows/material-verification.yml/dispatches',
+      {
+        method: 'POST',
+        redirect: 'error',
+        signal: AbortSignal.timeout(15000),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify({
+          ref: 'main',
+          inputs: { request_id: requestId, approval_id: approval.id },
+        }),
+      },
+    );
+    return { approved: true, dispatched: response.status === 204 };
+  } catch {
+    return { approved: true, dispatched: false };
   }
 }

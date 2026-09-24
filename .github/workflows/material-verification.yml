@@ -1,0 +1,54 @@
+name: Independent material verification
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: UUID of one material request already confirmed in the private admin UI
+        type: string
+        required: true
+      approval_id:
+        description: UUID of the exact immutable approval confirmed for this material request
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: material-verification
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment: material-verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout approved commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          package-manager-cache: false
+      - name: Require successful current main CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          head="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          test "$head" = "$GITHUB_SHA"
+          conclusion="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&head_sha=$GITHUB_SHA&per_page=1" --jq '.workflow_runs[0].conclusion')"
+          test "$conclusion" = success
+      - name: Verify one UI-approved proposal without AI or publication
+        env:
+          HZENSE_MATERIAL_EXECUTOR_ENABLED: ${{ vars.HZENSE_MATERIAL_EXECUTOR_ENABLED }}
+          MATERIAL_REQUEST_ID: ${{ inputs.request_id }}
+          MATERIAL_APPROVAL_ID: ${{ inputs.approval_id }}
+          HZENSE_MATERIAL_WORKER_TOKEN: ${{ secrets.HZENSE_MATERIAL_WORKER_TOKEN }}
+          HZENSE_MATERIAL_SIGNING_KEY_ID: ${{ vars.HZENSE_MATERIAL_SIGNING_KEY_ID }}
+          HZENSE_MATERIAL_VERIFIER_ID: ${{ vars.HZENSE_MATERIAL_VERIFIER_ID }}
+          HZENSE_MATERIAL_SIGNING_PRIVATE_KEY: ${{ secrets.HZENSE_MATERIAL_SIGNING_PRIVATE_KEY }}
+        run: node .github/scripts/material-verification-runner.mjs

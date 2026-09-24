@@ -287,8 +287,10 @@ export async function saveMaterialReport({
   plan,
   attestation,
   assertAttestationAt,
+  requireHumanApproval = false,
 }) {
   if (typeof assertAttestationAt !== 'function') fail('invalid_request');
+  if (typeof requireHumanApproval !== 'boolean') fail('invalid_request');
   ({ owner, id: requestId } = identity(owner, requestId));
   hash(planHash);
   let safePlan;
@@ -331,6 +333,32 @@ export async function saveMaterialReport({
     }
     const receivedAt = (await client.query('SELECT transaction_timestamp() AS received_at')).rows[0]
       ?.received_at;
+    // Same run advisory lock as proposal approval: latest confirmation and
+    // report admission cannot race. Old report replay above remains read-only.
+    if (requireHumanApproval) {
+      const approval = (
+        await client.query(
+          `SELECT a.id,a.created_at,a.approved_by,a.proposal_hash,p.plan_hash,p.proposal_hash AS stored_proposal_hash
+         FROM public.candidate_material_approvals a
+         JOIN public.candidate_material_proposals p ON p.id=a.proposal_id AND p.request_id=a.request_id AND p.owner_id=a.owner_id
+         WHERE a.request_id=$1 AND a.owner_id=$2 ORDER BY a.created_at DESC,a.id DESC LIMIT 1`,
+          [requestId, owner],
+        )
+      ).rows[0];
+      const time = new Date(receivedAt).getTime(),
+        approvedAt = new Date(approval?.created_at).getTime();
+      if (
+        !approval ||
+        approval.approved_by !== owner ||
+        approval.plan_hash !== planHash ||
+        approval.proposal_hash !== approval.stored_proposal_hash ||
+        !Number.isFinite(time) ||
+        !Number.isFinite(approvedAt) ||
+        approvedAt > time ||
+        time >= approvedAt + 86400000
+      )
+        fail('material_changed');
+    }
     assertAt(safePlan, safeAttestation, receivedAt);
     return (
       await client.query(
