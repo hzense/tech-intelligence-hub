@@ -7,6 +7,7 @@ import {
   materialEnrichmentInput,
   assessMaterialEnrichment,
   restoreMaterialEnrichment,
+  splitMaterialEvidenceStatements,
 } from '../lib/material-enrichment.ts';
 import { prepareMaterialPlan } from '../lib/material-plan-preparation.ts';
 import { approvedMaterialDossier } from '../lib/material-review-dossier.ts';
@@ -38,7 +39,7 @@ const candidate = {
 const context = { topics: [{ id: 'topic-ai', title: 'Artificial Intelligence' }] };
 const original = source(['unused original paragraph', 'Lab announced X on 2026-09-24.']);
 function bundle(supplementText = quote, originalSource = original) {
-  const supplement = source([supplementText]);
+  const supplement = source(Array.isArray(supplementText) ? supplementText : [supplementText]);
   return buildCandidateSourceBundle({
     baseMaterialHash: 'a'.repeat(64),
     source: originalSource,
@@ -77,13 +78,15 @@ function output() {
   };
 }
 
-test('supplement-only person, organization type and nonliteral topic become a private review plan', async () => {
-  const b = bundle(),
+test('supplement-only person, multi-fragment organization identity and nonliteral topic become a private review plan', async () => {
+  const b = bundle([quote, 'Lab is a research company.']),
     input = materialEnrichmentInput(b, candidate);
-  assert.deepEqual(input.fragmentIds, ['fragment-2', 'fragment-3']);
+  assert.deepEqual(input.fragmentIds, ['fragment-2', 'fragment-3', 'fragment-4']);
   assert.equal(input.candidate.claims[0].evidence[0].fragment_id, 'fragment-1');
   assert.equal(input.source.fragments[1].text, quote);
-  const result = assessMaterialEnrichment(output(), input.candidate, input.source, context);
+  const value = output();
+  value.organization_identities[0].evidence.push(ref(3, 'Lab is a research company.'));
+  const result = assessMaterialEnrichment(value, input.candidate, input.source, context);
   const restored = restoreMaterialEnrichment(b, candidate, result, context);
   assert.equal(restored.candidate.persons[0].evidence[0].fragment_id, 'fragment-3');
   assert.equal(restored.candidate.title, candidate.title);
@@ -119,7 +122,11 @@ test('supplement-only person, organization type and nonliteral topic become a pr
       plan: prepared.payload.plan,
       dossier,
       clock: () => now,
-      fetchSource: async (url) => ({ sourceUrl: url, text: quote, fetchedAt: now.toISOString() }),
+      fetchSource: async (url) => ({
+        sourceUrl: url,
+        text: `${quote} Lab is a research company.`,
+        fetchedAt: now.toISOString(),
+      }),
     }),
   );
 });
@@ -194,19 +201,29 @@ test('organization types cannot borrow unrelated type words from another quote o
 test('person relationships cannot be stitched from unrelated statements', () => {
   const unrelated = 'Ada announced X; Bob is CEO at Lab.';
   const separateSentences = 'Ada announced X. Bob is CEO at Lab.';
+  const compactSentences = 'Ada announced X.Bob is CEO at Lab.';
   const input = materialEnrichmentInput(
-    bundle(`${quote} ${unrelated} ${separateSentences}`),
+    bundle(`${quote} ${unrelated} ${separateSentences} ${compactSentences}`),
     candidate,
   );
   for (const evidence of [
     [ref(2, 'Ada announced X'), ref(2, 'Bob is CEO at Lab.')],
     [ref(2, unrelated)],
     [ref(2, separateSentences)],
+    [ref(2, compactSentences)],
   ]) {
     const value = output();
     value.persons = [{ name: 'Ada', role: 'CEO', organization: 'Lab', evidence }];
     assert.throws(() => assessMaterialEnrichment(value, input.candidate, input.source, context));
   }
+});
+
+test('sentence splitting preserves titles, initialisms, initials and decimals', () => {
+  assert.deepEqual(
+    splitMaterialEvidenceStatements('Dr.Ada of the U.S. lab led version 3.14.Next event.'),
+    ['Dr.Ada of the U.S. lab led version 3.14', 'Next event', ''],
+  );
+  assert.deepEqual(splitMaterialEvidenceStatements('A. Smith is CEO.'), ['A. Smith is CEO', '']);
 });
 
 test('Chinese type statements match the whole organization name, not a suffix', () => {

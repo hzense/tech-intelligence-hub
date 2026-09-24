@@ -117,7 +117,9 @@ export function prepareMaterialPlan(
       if (kind === 'organization' && !matches.length && !proposed)
         blocked('needs_organization_identity');
       const identityEvidence =
-        !matches.length && proposed ? addEvidence(proposed.evidence, [name]) : null;
+        !matches.length && proposed
+          ? proposed.evidence.map((ref) => addEvidence([ref], [name]))
+          : [];
       const current = matches[0];
       const entityId = current?.id ?? id(kind, name);
       const previous = entities.get(entityId);
@@ -129,11 +131,7 @@ export function prepareMaterialPlan(
           'person') as MaterialPlan['entities'][number]['type'],
         aliases: current?.aliases ?? [],
         evidenceIds: [
-          ...new Set([
-            ...(previous?.evidenceIds ?? []),
-            evidenceId,
-            ...(identityEvidence ? [identityEvidence] : []),
-          ]),
+          ...new Set([...(previous?.evidenceIds ?? []), evidenceId, ...identityEvidence]),
         ],
       });
       return entityId;
