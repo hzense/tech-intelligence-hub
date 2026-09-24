@@ -29,6 +29,8 @@ const safe = new Set([
   'catalog_limit',
   'material_preparation_blocked',
   'material_review_expired',
+  'budget_exceeded',
+  'invalid_enrichment_output',
 ]);
 const uuid = (value: unknown) =>
   typeof value === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
@@ -95,6 +97,7 @@ export function createAdminMaterialHandler(deps: {
   read(owner: string, runId: string, index: number): Promise<unknown>;
   create(owner: string, input: unknown): Promise<unknown>;
   inspect?(owner: string, input: unknown): Promise<unknown>;
+  enrich?(owner: string, input: unknown): Promise<unknown>;
   confirm(owner: string, input: unknown): Promise<unknown>;
   prepare?(owner: string, input: unknown): Promise<unknown>;
   approve?(owner: string, input: unknown): Promise<unknown>;
@@ -140,6 +143,18 @@ export function createAdminMaterialHandler(deps: {
         return importResponse(await deps.create(session.user.id, body.request));
       if (body.action === 'inspect' && deps.inspect && validCreate(body.request))
         return importResponse(await deps.inspect(session.user.id, body.request));
+      if (
+        body.action === 'enrich' &&
+        deps.enrich &&
+        exact(body.request, ['id', 'requestId', 'consent']) &&
+        uuid(body.request.id) &&
+        uuid(body.request.requestId) &&
+        body.request.consent === true
+      )
+        return importResponse(
+          { enrichment: await deps.enrich(session.user.id, body.request) },
+          202,
+        );
       if (body.action === 'confirm' && validConfirm(body.request))
         return importResponse(await deps.confirm(session.user.id, body.request));
       if (

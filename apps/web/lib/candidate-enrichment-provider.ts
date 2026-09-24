@@ -24,6 +24,13 @@ import {
   type AiWireRequest,
 } from './ai-provider-transport.ts';
 import { generationTimeoutMs } from './signal-generation-diagnostics.ts';
+import {
+  assessMaterialEnrichment,
+  materialEnrichmentJsonSchema,
+  materialEnrichmentRules,
+  type MaterialEnrichmentContext,
+} from './material-enrichment.ts';
+import type { GeneratedCandidate } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 
 export const enrichmentRules = `你是私有 Signal 候选补全器。只输出约定 JSON，不输出思考过程、分析步骤、草稿或额外说明。
 只从给定原文补全候选当前缺失的事件日期、关键人物及相关组织，不改写已有值；每个日期和人物必须附上逐字存在于指定 fragment 的短引用。
@@ -38,6 +45,7 @@ export interface CandidateEnrichmentProviderInput {
   connection: Pick<AiConnection, 'id' | 'revision' | 'protocol' | 'base_url' | 'settings'>;
   apiKey: string;
   allowedHosts: readonly string[];
+  materialContext?: MaterialEnrichmentContext;
 }
 
 export interface CandidateEnrichmentProviderResult {
@@ -116,12 +124,19 @@ export function createCandidateEnrichmentInvoker(
         const result = await generateText({
           model: provider.chatModel(input.stage.model_id),
           output: Output.object({
-            schema: jsonSchema(portableJsonSchema(candidateEnrichmentJsonSchema)),
+            schema: jsonSchema(
+              portableJsonSchema(
+                input.materialContext
+                  ? materialEnrichmentJsonSchema
+                  : candidateEnrichmentJsonSchema,
+              ),
+            ),
           }),
-          system: `${enrichmentRules}\n\n配置的核验提示词：\n${input.stage.prompt}`,
+          system: `${enrichmentRules}\n${input.materialContext ? materialEnrichmentRules : ''}\n\n配置的核验提示词：\n${input.stage.prompt}`,
           prompt: JSON.stringify({
             locked_candidate: input.candidate,
             untrusted_source: input.source,
+            ...(input.materialContext ? { enabled_topics: input.materialContext.topics } : {}),
           }),
           maxRetries: 0,
           maxOutputTokens: input.stage.max_output_tokens,
@@ -140,7 +155,14 @@ export function createCandidateEnrichmentInvoker(
           return complete({ success: false, ...usage, error_code: 'enrichment_failed' as const });
         return complete({
           success: true,
-          output: assessCandidateEnrichment(result.output, input.candidate, input.source),
+          output: input.materialContext
+            ? assessMaterialEnrichment(
+                result.output,
+                input.candidate as unknown as GeneratedCandidate,
+                input.source,
+                input.materialContext,
+              )
+            : assessCandidateEnrichment(result.output, input.candidate, input.source),
           ...usage,
         });
       };

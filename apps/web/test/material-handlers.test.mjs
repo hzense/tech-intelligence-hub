@@ -148,6 +148,31 @@ test('admin authenticates and rejects cross-origin writes before stores', async 
     );
   assert.equal(calls.length, 0);
 });
+
+test('paid supplement enrichment requires explicit consent and accepts only server-bound IDs', async () => {
+  const { deps } = admin();
+  const calls = [];
+  deps.enrich = async (...args) => {
+    calls.push(args);
+    return { id, status: 'pending' };
+  };
+  const handler = createAdminMaterialHandler(deps);
+  const request = { id, requestId: id, consent: true };
+  for (const invalid of [
+    { ...request, consent: false },
+    { ...request, source: 'forged' },
+    { ...request, owner: 'other' },
+    { ...request, requestId: 'bad' },
+  ])
+    assert.equal((await handler(req({ action: 'enrich', request: invalid }))).status, 400);
+  assert.equal(
+    (await handler(req({ action: 'enrich', request }, { origin: 'https://evil.test' }))).status,
+    403,
+  );
+  assert.equal(calls.length, 0);
+  assert.equal((await handler(req({ action: 'enrich', request }))).status, 202);
+  assert.deepEqual(calls, [['owner', request]]);
+});
 test('material preparation and approval only accept IDs and explicit confirmation from session owner', async () => {
   const { deps, calls } = admin();
   deps.prepare = async (...args) => {

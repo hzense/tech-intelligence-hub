@@ -17,6 +17,7 @@ type Dashboard = {
   configured: boolean;
   enabled: boolean;
   reviewEnabled?: boolean;
+  enrichmentEnabled?: boolean;
   originalSourceAvailable?: boolean;
   sources: Array<{ batchId: string; itemId: string; name: string; sourceUrl: string }>;
   sourceListNote?: string;
@@ -26,6 +27,20 @@ type Dashboard = {
     fragmentCount: number;
     reports: Report[];
     proposals?: Proposal[];
+    enrichments?: Array<{
+      id: string;
+      status: string;
+      error_code?: string | null;
+      charged_microusd: string;
+      reserved_microusd: string;
+      result?: {
+        candidate?: { persons: Array<{ name: string; role: string }>; organizations: string[] };
+        materialHints?: {
+          organizations: Array<{ name: string; type: string }>;
+          topicIds: string[];
+        };
+      } | null;
+    }>;
   }>;
 };
 const errors: Record<string, string> = {
@@ -38,7 +53,7 @@ const errors: Record<string, string> = {
   material_worker_packet_too_large:
     '核验执行资料（含目录与审核材料）超过 2 MiB 上限，已停止派发；请联系管理员缩减目录或资料，不要重复创建请求。',
   generation_source_too_large:
-    '单份资料超过 48,000 字节上限，请精简该份资料后重新导入；不是合并资料包超限。',
+    'AI 输入超过 48,000 字节上限。补证补全会合并原候选引用片段与全部补充片段，请精简补充资料后重新导入；保存补证资料包不代表一定能送入 AI。',
   material_changed: '原候选或材料版本已变化，请刷新核对。',
   catalog_conflict: '已有目录记录与核验报告冲突，需先消歧；不会覆盖原记录。',
   topic_reference_invalid: '报告引用的领域未在正式 Taxonomy 中启用。',
@@ -48,12 +63,15 @@ const errors: Record<string, string> = {
   material_registration_conflict: '已有正式记录与报告冲突，请核验方修订报告；不会覆盖已有记录。',
   material_topic_invalid: '报告中的领域未启用，请核验方重新选择正式领域。',
   material_evidence_rejected: '报告引用的证据已被否决，不能通过重试恢复。',
-  needs_person_evidence: '当前候选缺少有原文支持的关键人物，请先进行私有 AI 补全或补充来源。',
+  needs_person_evidence:
+    '当前提案缺少有原文支持的关键人物。关联来源只会保存资料，不会自动提取；请在本批补证材料下确认启动 AI 补证补全，完成后再准备核验材料。仍未找到时应更换有事件依据的来源，不能猜测人物。',
   needs_event_time: '缺少事件发生日期及引用依据；不会改用上传时间。',
   needs_public_evidence: '现有引用不能完整对应到公开来源，请补充准确原文链接。',
   needs_organization_identity: '相关组织尚未登记，规则不能推断其实体类型；需补充实体核验材料。',
   needs_topic_evidence: '未能明确匹配启用领域，需进一步分类核验。',
   material_review_expired: '人工确认已过期，不能继续签名；请重新核对材料后建立新一轮确认。',
+  budget_exceeded: 'AI 预算不足，未开始调用；请核对预算与原任务。',
+  invalid_enrichment_output: '补全结果未通过原文引用或目录校验，未用于登记。',
 };
 async function json(response: Response) {
   const body = await response.json();
@@ -92,6 +110,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
     id: string;
     supplements: Array<{ batchId: string; itemId: string }>;
   } | null>(null);
+  const enrichmentIds = useRef<Record<string, string>>({});
   const url = `/api/admin/candidate-materials?runId=${encodeURIComponent(runId)}&candidateIndex=${candidateIndex}`;
   const refresh = useCallback(async () => {
     const next = await json(
@@ -120,6 +139,38 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
       active = false;
     };
   }, [url]);
+  async function enrich(requestId: string) {
+    if (
+      !window.confirm(
+        '确认使用本批补证资料调用 AI？按现有单批与每日预算计费，只生成私有补全提案，不登记、不发布。',
+      )
+    )
+      return;
+    setBusy(true);
+    setMessage('');
+    const id = enrichmentIds.current[requestId] ?? crypto.randomUUID();
+    enrichmentIds.current[requestId] = id;
+    try {
+      await json(
+        await fetch('/api/admin/candidate-materials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'enrich', request: { id, requestId, consent: true } }),
+          signal: AbortSignal.timeout(65000),
+        }),
+      );
+      setMessage(
+        '补证 AI 补全任务已保存并排队。完成后点击“准备核验材料”；不要重复创建或重复调用。',
+      );
+      await refresh();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : '结果未知，请先刷新核对原任务，不要重复调用。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
   async function action(
     kind: 'inspect' | 'create' | 'confirm',
     report?: Report,
@@ -335,6 +386,63 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
             <article key={request.id} className={styles.materialCard}>
               <h4>补证材料 · {new Date(request.createdAt).toLocaleString('zh-CN')}</h4>
               <p>{request.fragmentCount} 个原文片段</p>
+              <p>
+                关联来源不会自动补全。需要提取补充人物、组织类型及领域时，明确确认后才调用
+                AI；仍须核对证据。
+              </p>
+              {data.enrichmentEnabled && !(request.enrichments ?? []).length ? (
+                <button
+                  type="button"
+                  className={controls.button}
+                  disabled={busy || !data.enabled}
+                  onClick={() => void enrich(request.id)}
+                >
+                  确认启动 AI 补证补全（计费）
+                </button>
+              ) : null}
+              {(request.enrichments ?? []).map((task) => (
+                <section key={task.id} aria-label="补证 AI 补全任务">
+                  <p>
+                    补证 AI 补全：
+                    {(
+                      {
+                        pending: '已排队',
+                        running: '执行中',
+                        completed: '已完成',
+                        failed: '失败或结果未知',
+                      } as Record<string, string>
+                    )[task.status] ?? task.status}{' '}
+                    · 任务 {task.id}
+                  </p>
+                  <p>
+                    预留 ${(Number(task.reserved_microusd) / 1000000).toFixed(4)} · 记账 $
+                    {(Number(task.charged_microusd) / 1000000).toFixed(4)}
+                  </p>
+                  {task.result?.candidate ? (
+                    <>
+                      <p>
+                        人物：
+                        {task.result.candidate.persons
+                          .map((p) => `${p.name}（${p.role}）`)
+                          .join('、') || '未找到，不得猜测'}
+                      </p>
+                      <p>组织：{task.result.candidate.organizations.join('、') || '未找到'}</p>
+                      <p>
+                        组织类型提案：
+                        {task.result.materialHints?.organizations
+                          .map((o) => `${o.name}（${o.type === 'company' ? '公司' : '机构'}）`)
+                          .join('、') || '无'}
+                      </p>
+                      <p>领域提案：{task.result.materialHints?.topicIds.join('、') || '无'}</p>
+                    </>
+                  ) : null}
+                  <p>
+                    {task.status === 'completed'
+                      ? '请点击准备核验材料，重新核对原文、人物关系、组织类型及领域；完成不代表核实或发布。'
+                      : '刷新补证状态查看进展；失败或结果未知时请先对账，不要重复调用。'}
+                  </p>
+                </section>
+              ))}
               {data.reviewEnabled && !request.reports.length ? (
                 <>
                   <button

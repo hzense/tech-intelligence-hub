@@ -53,6 +53,7 @@ test(
         configured: true,
         enabled: true,
         reviewEnabled: true,
+        enrichmentEnabled: true,
         requests: [],
         sources: [1, 2, 3, 4].map((n) => ({
           batchId: `batch-${n}`,
@@ -81,6 +82,22 @@ test(
           return;
         }
         commands.push(body);
+        if (body.action === 'enrich') {
+          data.requests[0].enrichments = [
+            {
+              id: body.request.id,
+              status: 'pending',
+              reserved_microusd: '12300',
+              charged_microusd: '0',
+              result: null,
+            },
+          ];
+          await route.fulfill({
+            status: 202,
+            json: { enrichment: data.requests[0].enrichments[0] },
+          });
+          return;
+        }
         if (body.action === 'create' && unknown) {
           unknown = false;
           await route.fulfill({ status: 503, json: { error: 'commit_unknown' } });
@@ -137,6 +154,33 @@ test(
       assert.equal(commands[0].request.id, commands[1].request.id);
       assert.deepEqual(commands[0], commands[1]);
       assert.equal(inspections, 3); // A pending write replay never rebuilds or re-inspects sources.
+      const enrich = page.getByRole('button', { name: '确认启动 AI 补证补全（计费）' });
+      page.once('dialog', (dialog) => dialog.dismiss());
+      await enrich.click();
+      assert.equal(commands.filter((command) => command.action === 'enrich').length, 0);
+      page.once('dialog', (dialog) => dialog.accept());
+      await enrich.click();
+      await expect(page.getByText('补证 AI 补全：已排队', { exact: false })).toBeVisible();
+      await expect(enrich).toHaveCount(0);
+      assert.equal(commands.filter((command) => command.action === 'enrich').length, 1);
+      assert.deepEqual(
+        Object.keys(commands.find((command) => command.action === 'enrich').request).sort(),
+        ['consent', 'id', 'requestId'],
+      );
+      data.requests[0].enrichments[0] = {
+        ...data.requests[0].enrichments[0],
+        status: 'completed',
+        result: {
+          candidate: { persons: [{ name: 'Ada', role: 'researcher' }], organizations: ['Lab'] },
+          materialHints: {
+            organizations: [{ name: 'Lab', type: 'institution' }],
+            topicIds: ['topic-ai'],
+          },
+        },
+      };
+      await page.getByRole('button', { name: '刷新补证状态' }).click();
+      await expect(page.getByText('人物：Ada（researcher）')).toBeVisible();
+      assert.equal(commands.filter((command) => command.action === 'enrich').length, 1);
       data.requests[0].reports = [
         {
           id: 'report-1',

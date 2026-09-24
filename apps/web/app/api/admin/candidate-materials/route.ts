@@ -8,7 +8,11 @@ import {
   confirmMaterialRegistration,
   prepareCandidateMaterials,
   approveCandidateMaterials,
+  enrichCandidateMaterials,
 } from '@/lib/server/material-registration';
+import { queueCandidateEnrichment } from '@/lib/server/candidate-enrichment';
+import { start } from 'workflow/api';
+import { candidateEnrichmentWorkflow } from '@/workflows/candidate-enrichment';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -21,5 +25,11 @@ export const GET = createAdminMaterialHandler({
   confirm: confirmMaterialRegistration,
   prepare: prepareCandidateMaterials,
   approve: approveCandidateMaterials,
+  enrich: async (owner, request) => {
+    const created = await enrichCandidateMaterials(owner, request);
+    const queued = await queueCandidateEnrichment(owner, created.id);
+    if (queued.status === 'pending') await start(candidateEnrichmentWorkflow, [owner, queued.id]);
+    return queued;
+  },
 });
 export const POST = GET;

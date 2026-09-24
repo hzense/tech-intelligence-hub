@@ -3,7 +3,32 @@ import { expect, it, vi } from 'vitest';
 import {
   createCandidateEnrichment,
   finishCandidateEnrichment,
+  listCandidateEnrichments,
 } from '../src/candidate-enrichment-store.mjs';
+
+it('filters enrichment history by owner, candidate and exact bundle hash before pagination', async () => {
+  const queries = [];
+  const client = {
+    query: async (sql, args) => {
+      queries.push([sql, args]);
+      return { rows: [] };
+    },
+    release: vi.fn(),
+  };
+  const runId = randomUUID();
+  await listCandidateEnrichments({
+    pool: { connect: async () => client },
+    owner: 'admin',
+    runId,
+    candidateIndex: 0,
+    materialHash: 'b'.repeat(64),
+  });
+  const select = queries.find(([sql]) => sql.startsWith('SELECT'));
+  expect(select[0]).toContain(
+    'owner_id=$1 AND run_id=$2 AND candidate_index=$3 AND material_hash=$4',
+  );
+  expect(select[1]).toEqual(['admin', runId, 0, 'b'.repeat(64)]);
+});
 
 it('rejects accessors and prototype-sensitive keys before database access', async () => {
   const connect = vi.fn();

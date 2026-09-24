@@ -17,6 +17,12 @@ import {
 import { readAiBackendConfiguration } from '../admin-ai-core';
 import { aiStageAccess } from './admin-ai';
 import { generationRecord } from './signal-generation';
+import {
+  materialEnrichmentInput,
+  materialEnrichmentRules,
+  type MaterialEnrichmentContext,
+} from '../material-enrichment';
+import type { CandidateSourceBundle } from '../../../../packages/ingestion/src/candidate-source-bundle.mjs';
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
@@ -69,6 +75,7 @@ export function candidateEnrichmentDto(run: store.CandidateEnrichmentRun) {
     run_id: run.run_id,
     candidate_index: run.candidate_index,
     material_hash: run.material_hash,
+    material_request_id: run.snapshot.materialRequestId ?? null,
     profile_id: run.profile_id,
     profile_revision: run.profile_revision,
     status: expired || run.status === 'unknown' ? 'failed' : run.status,
@@ -106,21 +113,53 @@ function request(value: unknown) {
   };
 }
 
-export async function createCandidateEnrichment(owner: string, input: unknown) {
+export async function createCandidateEnrichment(
+  owner: string,
+  input: unknown,
+  material?: {
+    requestId: string;
+    bundle: CandidateSourceBundle;
+    context: MaterialEnrichmentContext;
+  },
+) {
   if (!candidateEnrichmentConfigured()) throw new GenerationError('not_configured');
   const value = request(input);
   const generation = await generationRecord(owner, value.runId);
   const packet = buildCandidateReview(generation, value.candidateIndex);
   if (packet.materialHash !== value.materialHash) throw new GenerationError('material_changed');
+  if (material && material.bundle.baseMaterialHash !== packet.materialHash)
+    throw new GenerationError('material_changed');
+  const selected = material
+    ? materialEnrichmentInput(material.bundle, packet.candidate)
+    : { source: generation.snapshot.source, candidate: packet.candidate };
+  const identityHash = material?.bundle.sourceBundleHash ?? value.materialHash;
+  // A replay of a saved bundle must not change its catalog/model snapshot.
+  if (material) {
+    const existing = (
+      await store.listCandidateEnrichments({
+        pool: candidateEnrichmentPool,
+        owner,
+        runId: value.runId,
+        candidateIndex: value.candidateIndex,
+        materialHash: identityHash,
+      })
+    ).find((row) => row.material_hash === identityHash && row.status !== 'failed');
+    if (existing) return candidateEnrichmentDto(existing);
+  }
   const access = await aiStageAccess(generation.profile_id, generation.profile_revision, 'verify');
   const stage = access.profile.stages.verify;
   const config = readGenerationConfiguration(process.env);
   const inputBound =
     Buffer.byteLength(
-      JSON.stringify({ source: generation.snapshot.source, candidate: packet.candidate }),
+      JSON.stringify({
+        source: selected.source,
+        candidate: selected.candidate,
+        ...(material ? { context: material.context } : {}),
+      }),
     ) +
     Buffer.byteLength(stage.prompt) +
     Buffer.byteLength(enrichmentRules) +
+    (material ? Buffer.byteLength(materialEnrichmentRules) : 0) +
     12000;
   const reserveMicrousd = Math.max(
     1,
@@ -134,14 +173,21 @@ export async function createCandidateEnrichment(owner: string, input: unknown) {
         id: value.id,
         runId: value.runId,
         candidateIndex: value.candidateIndex,
-        materialHash: value.materialHash,
+        materialHash: identityHash,
         profileId: generation.profile_id,
         profileRevision: generation.profile_revision,
       },
       snapshot: {
-        materialHash: value.materialHash,
-        source: generation.snapshot.source,
-        candidate: packet.candidate,
+        materialHash: identityHash,
+        source: selected.source,
+        candidate: selected.candidate,
+        ...(material
+          ? {
+              baseMaterialHash: value.materialHash,
+              materialRequestId: material.requestId,
+              materialContext: material.context,
+            }
+          : {}),
         profile: access.profile,
         connection: access.connection,
       },
@@ -159,6 +205,7 @@ export async function listCandidateEnrichmentDtos(
   owner: string,
   runId: string,
   candidateIndex: number,
+  materialHash?: string,
 ) {
   // History and already completed proposals remain readable with AI disabled.
   readGenerationDatabaseConfiguration(process.env);
@@ -168,6 +215,7 @@ export async function listCandidateEnrichmentDtos(
       owner,
       runId,
       candidateIndex,
+      ...(materialHash === undefined ? {} : { materialHash }),
     })
   ).map(candidateEnrichmentDto);
 }
@@ -205,6 +253,12 @@ export async function executeCandidateEnrichment(owner: string, id: string) {
   let providerCostMicrousd: number | undefined;
   let finishing = false;
   try {
+    const beforeCall = buildCandidateReview(
+      await generationRecord(owner, run.run_id),
+      run.candidate_index,
+    );
+    if (beforeCall.materialHash !== (run.snapshot.baseMaterialHash ?? run.material_hash))
+      throw new GenerationError('material_changed');
     const access = await aiStageAccess(run.profile_id, run.profile_revision, 'verify', true);
     if (
       !isDeepStrictEqual(
@@ -230,6 +284,9 @@ export async function executeCandidateEnrichment(owner: string, id: string) {
       connection: access.connection,
       apiKey: access.apiKey,
       allowedHosts: ai.allowedHosts,
+      ...(run.snapshot.materialContext
+        ? { materialContext: run.snapshot.materialContext as MaterialEnrichmentContext }
+        : {}),
     });
     providerCostMicrousd =
       typeof result.provider_cost_microusd === 'number' &&
@@ -254,7 +311,8 @@ export async function executeCandidateEnrichment(owner: string, id: string) {
       await generationRecord(owner, run.run_id),
       run.candidate_index,
     );
-    if (current.materialHash !== run.material_hash) throw new GenerationError('material_changed');
+    if (current.materialHash !== (run.snapshot.baseMaterialHash ?? run.material_hash))
+      throw new GenerationError('material_changed');
     finishing = true;
     return candidateEnrichmentDto(
       await store.finishCandidateEnrichment({

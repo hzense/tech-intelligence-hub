@@ -1,0 +1,230 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
+import { buildCandidateSourceBundle } from '../../../packages/ingestion/src/candidate-source-bundle.mjs';
+import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
+import {
+  materialEnrichmentInput,
+  assessMaterialEnrichment,
+  restoreMaterialEnrichment,
+} from '../lib/material-enrichment.ts';
+import { prepareMaterialPlan } from '../lib/material-plan-preparation.ts';
+import { approvedMaterialDossier } from '../lib/material-review-dossier.ts';
+import { assessMaterialVerification } from '../../../packages/database/src/material-verification-worker.mjs';
+
+const source = (texts) => ({
+  classification: 'private',
+  fragments: texts.map((text, index) => ({
+    id: `fragment-${index + 1}`,
+    text,
+    locator: { paragraph: index + 1 },
+  })),
+});
+const ref = (id, quote) => ({ fragment_id: `fragment-${id}`, quote });
+const quote = 'Lab is a company. Ada, researcher at Lab, announced model X on 2026-09-24.';
+const candidate = {
+  index: 0,
+  classification: 'private',
+  status: 'needs_review',
+  issues: [],
+  title: 'Lab 发布模型 X',
+  summary: 'Lab 发布模型 X。',
+  event_date: '2026-09-24',
+  event_date_evidence: [ref(2, '2026-09-24')],
+  persons: [],
+  organizations: ['Lab'],
+  claims: [{ text: 'Lab 发布模型 X。', evidence: [ref(2, 'Lab announced X')] }],
+};
+const context = { topics: [{ id: 'topic-ai', title: 'Artificial Intelligence' }] };
+const original = source(['unused original paragraph', 'Lab announced X on 2026-09-24.']);
+function bundle(supplementText = quote) {
+  const supplement = source([supplementText]);
+  return buildCandidateSourceBundle({
+    baseMaterialHash: 'a'.repeat(64),
+    source: original,
+    supplements: [
+      {
+        batchId: '11111111-1111-4111-8111-111111111111',
+        itemId: '22222222-2222-4222-8222-222222222222',
+        fence: 1,
+        sourceUrl: 'https://example.com/news',
+        contentHash: signalGenerationSourceHash(supplement),
+        source: supplement,
+      },
+    ],
+  });
+}
+function output() {
+  return {
+    event_date: '2026-09-24',
+    event_date_evidence: [ref(2, '2026-09-24')],
+    persons: [
+      {
+        name: 'Ada',
+        role: 'researcher',
+        organization: 'Lab',
+        evidence: [ref(2, 'Ada, researcher at Lab')],
+      },
+    ],
+    organizations: ['Lab'],
+    claim_evidence: [
+      [ref(2, 'Lab is a company. Ada, researcher at Lab, announced model X on 2026-09-24.')],
+    ],
+    organization_identities: [
+      { name: 'Lab', type: 'company', evidence: [ref(2, 'Lab is a company.')] },
+    ],
+    topic_ids: ['topic-ai'],
+  };
+}
+
+test('supplement-only person, organization type and nonliteral topic become a private review plan', async () => {
+  const b = bundle(),
+    input = materialEnrichmentInput(b, candidate);
+  assert.deepEqual(input.fragmentIds, ['fragment-2', 'fragment-3']);
+  assert.equal(input.candidate.claims[0].evidence[0].fragment_id, 'fragment-1');
+  assert.equal(input.source.fragments[1].text, quote);
+  const result = assessMaterialEnrichment(output(), input.candidate, input.source, context);
+  const restored = restoreMaterialEnrichment(b, candidate, result, context);
+  assert.equal(restored.candidate.persons[0].evidence[0].fragment_id, 'fragment-3');
+  assert.equal(restored.candidate.title, candidate.title);
+  assert.deepEqual(
+    restored.candidate.claims.map((c) => c.text),
+    candidate.claims.map((c) => c.text),
+  );
+  const packet = {
+    requestId: '33333333-3333-4333-8333-333333333333',
+    owner: 'owner',
+    runId: '44444444-4444-4444-8444-444444444444',
+    candidateIndex: 0,
+    baseMaterialHash: b.baseMaterialHash,
+    bundle: b,
+    candidate: restored.candidate,
+    originalSourceUrl: null,
+    catalog: { ...context, entities: [], sources: [] },
+  };
+  const now = new Date('2026-09-25T00:00:00Z');
+  assert.equal(prepareMaterialPlan({ ...packet, candidate }, now).ready, false);
+  const prepared = prepareMaterialPlan(packet, now, restored.hints);
+  assert.equal(prepared.ready, true, JSON.stringify(prepared));
+  assert.equal(prepared.payload.plan.entities.find((e) => e.name === 'Lab').type, 'company');
+  assert.deepEqual(prepared.payload.plan.topicIds, ['topic-ai']);
+  const dossier = approvedMaterialDossier(prepared.payload, {
+    owner_id: 'owner',
+    approved_by: 'owner',
+    created_at: now,
+  });
+  await assert.doesNotReject(
+    assessMaterialVerification({
+      request: { ...packet, candidate },
+      plan: prepared.payload.plan,
+      dossier,
+      clock: () => now,
+      fetchSource: async (url) => ({ sourceUrl: url, text: quote, fetchedAt: now.toISOString() }),
+    }),
+  );
+});
+
+test('invented people, quotes, unknown topics, inferred organization types and extra authority are rejected', () => {
+  const input = materialEnrichmentInput(bundle(), candidate);
+  for (const mutate of [
+    (v) => {
+      v.event_date = '2026-09-25';
+    },
+    (v) => {
+      v.persons[0].name = 'Invented';
+    },
+    (v) => {
+      v.claim_evidence[0][0].quote = 'invented quote';
+    },
+    (v) => {
+      v.topic_ids = ['unknown-topic'];
+    },
+    (v) => {
+      v.topic_ids = ['topic-ai', 'topic-ai'];
+    },
+    (v) => {
+      v.organization_identities[0].type = 'institution';
+    },
+    (v) => {
+      v.organization_identities[0].evidence = [ref(2, 'Lab')];
+    },
+    (v) => {
+      v.verified = true;
+    },
+    (v) => {
+      v.claim_evidence = [];
+    },
+  ]) {
+    const value = output();
+    mutate(value);
+    assert.throws(() => assessMaterialEnrichment(value, input.candidate, input.source, context));
+  }
+});
+
+test('persisted proposals revalidate against current bundle and enabled topics, preserving original story', () => {
+  const b = bundle(),
+    input = materialEnrichmentInput(b, candidate);
+  const result = assessMaterialEnrichment(output(), input.candidate, input.source, context);
+  assert.throws(() =>
+    restoreMaterialEnrichment(bundle('unrelated source'), candidate, result, context),
+  );
+  assert.throws(() => restoreMaterialEnrichment(b, candidate, result, { topics: [] }));
+  assert.throws(() =>
+    restoreMaterialEnrichment(
+      b,
+      candidate,
+      { ...result, candidate: { ...result.candidate, title: 'changed' } },
+      context,
+    ),
+  );
+});
+
+test('projection preserves cited originals and complete supplements within the unchanged 48,000-byte input limit', () => {
+  const b = bundle('x'.repeat(19000));
+  const large = buildCandidateSourceBundle({
+    baseMaterialHash: b.baseMaterialHash,
+    source: source(['z'.repeat(19000), ...original.fragments.map((f) => f.text)]),
+    supplements: [],
+  });
+  const projected = materialEnrichmentInput(large, {
+    ...candidate,
+    event_date_evidence: [ref(3, '2026-09-24')],
+    claims: [{ text: 'Lab 发布模型 X。', evidence: [ref(3, 'Lab announced X')] }],
+  });
+  assert.equal(projected.source.fragments.length, 1);
+  assert.ok(Buffer.byteLength(JSON.stringify(projected.source)) < 48000);
+  const full = bundle('汉'.repeat(15000));
+  // A source that was valid alone may exceed the model budget with required original references.
+  full.source.fragments[1].text += '汉'.repeat(2000);
+  assert.throws(() => materialEnrichmentInput(full, candidate)); // tampered source hash
+  const largeSource = source([
+    'Lab announced X on 2026-09-24.' + 'a'.repeat(19000),
+    'b'.repeat(19000),
+  ]);
+  const supplement = source(['c'.repeat(11000)]);
+  const over = buildCandidateSourceBundle({
+    baseMaterialHash: 'a'.repeat(64),
+    source: largeSource,
+    supplements: [
+      {
+        batchId: '11111111-1111-4111-8111-111111111111',
+        itemId: '22222222-2222-4222-8222-222222222222',
+        fence: 1,
+        sourceUrl: 'https://example.com/news',
+        contentHash: signalGenerationSourceHash(supplement),
+        source: supplement,
+      },
+    ],
+  });
+  assert.throws(
+    () =>
+      materialEnrichmentInput(over, {
+        ...candidate,
+        event_date_evidence: [ref(1, '2026-09-24')],
+        claims: [
+          { text: 'Lab 发布模型 X。', evidence: [ref(1, 'Lab announced X'), ref(2, 'bbb')] },
+        ],
+      }),
+    { code: 'generation_source_too_large' },
+  );
+});
