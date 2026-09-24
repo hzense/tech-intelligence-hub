@@ -48,7 +48,9 @@ export const materialProposalChecks = {
   candidate_material_approvals: [
     ownerCheck,
     hashCheck('proposal_hash'),
-    forms('approved_by = owner_id'),
+    // pg_get_constraintdef(..., false) wraps this binary expression in its own
+    // parentheses. Keep the exact native and source forms, not a loose rewrite.
+    forms('approved_by = owner_id', '(approved_by = owner_id)'),
   ],
 };
 export const materialProposalDefaults = Object.keys(materialProposalColumns).map((table) => [

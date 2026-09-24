@@ -14,6 +14,23 @@ import { canonicalPublicationControlCheck } from '../src/signal-publication-cont
 import { canonicalCatalogExpression, expectedTableNames } from '../src/verify.mjs';
 const tables = [candidateMaterialProposals, candidateMaterialApprovals];
 describe('private material proposal schema', () => {
+  it('accepts the exact PostgreSQL owner-confirmation check without accepting weaker variants', () => {
+    const accepted = materialProposalChecks.candidate_material_approvals[2];
+    for (const definition of [
+      'CHECK (approved_by = owner_id)',
+      'CHECK ((approved_by = owner_id))',
+    ]) {
+      expect(accepted).toContain(canonicalPublicationControlCheck(definition));
+    }
+    for (const definition of [
+      'CHECK ((approved_by <> owner_id))',
+      'CHECK (((approved_by = owner_id) OR true))',
+      'CHECK ((approved_by = approved_by))',
+      'CHECK ((lower(approved_by) = lower(owner_id)))',
+    ]) {
+      expect(accepted).not.toContain(canonicalPublicationControlCheck(definition));
+    }
+  });
   it('matches columns, generated timestamps and all bounded checks for two private tables', () => {
     expect(expectedTableNames.size).toBe(57);
     const dialect = new PgDialect();

@@ -383,6 +383,17 @@ integrationSuite('PostgreSQL migration integration', () => {
         "SELECT pg_get_userbyid(extowner) AS owner FROM pg_extension WHERE extname = 'vector'",
       );
       expect(vectorOwner.rows[0].owner).not.toBe(migrationRole);
+      const materialApprovalChecks = await client.query(
+        `SELECT pg_get_constraintdef(oid, false) AS definition
+         FROM pg_constraint
+         WHERE conrelid = 'public.candidate_material_approvals'::regclass
+           AND contype = 'c'`,
+      );
+      // A cross-column CHECK is returned with an extra pair of expression
+      // parentheses; its generated constraint name and OID order are irrelevant.
+      expect(materialApprovalChecks.rows.map((row) => row.definition)).toContain(
+        'CHECK ((approved_by = owner_id))',
+      );
     });
     await expect(
       verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
