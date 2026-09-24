@@ -187,8 +187,7 @@ export function assessMaterialEnrichment(
         ),
       ),
     );
-    if (!relationship) fail();
-    p.evidence = [relationship];
+    p.evidence = [relationship ?? fail()];
   }
   if (
     candidate.organizations.some(
