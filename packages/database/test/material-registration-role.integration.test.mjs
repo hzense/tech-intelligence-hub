@@ -387,7 +387,9 @@ suite('isolated PostgreSQL material registration roles and signed-stage boundari
       for (const sql of [
         `UPDATE public.${table} SET owner_id=owner_id`,
         `DELETE FROM public.${table}`,
-        `TRUNCATE public.${table}`,
+        // Include referencing tables so PostgreSQL reaches our ALWAYS guard
+        // instead of stopping earlier at its built-in foreign-key check.
+        `TRUNCATE public.${table} CASCADE`,
       ]) {
         await expect(owner.query(sql)).rejects.toMatchObject({ code: '55000' });
         await expect(registrar.query(sql)).rejects.toMatchObject({ code: '42501' });
