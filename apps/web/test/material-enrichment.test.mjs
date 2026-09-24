@@ -191,6 +191,38 @@ test('organization types cannot borrow unrelated type words from another quote o
   }
 });
 
+test('person relationships cannot be stitched from unrelated statements', () => {
+  const unrelated = 'Ada announced X; Bob is CEO at Lab.';
+  const separateSentences = 'Ada announced X. Bob is CEO at Lab.';
+  const input = materialEnrichmentInput(
+    bundle(`${quote} ${unrelated} ${separateSentences}`),
+    candidate,
+  );
+  for (const evidence of [
+    [ref(2, 'Ada announced X'), ref(2, 'Bob is CEO at Lab.')],
+    [ref(2, unrelated)],
+    [ref(2, separateSentences)],
+  ]) {
+    const value = output();
+    value.persons = [{ name: 'Ada', role: 'CEO', organization: 'Lab', evidence }];
+    assert.throws(() => assessMaterialEnrichment(value, input.candidate, input.source, context));
+  }
+});
+
+test('Chinese type statements match the whole organization name, not a suffix', () => {
+  for (const [text, accepted] of [
+    ['FooLab是一家公司。', false],
+    ['Lab是一家公司。', true],
+  ]) {
+    const input = materialEnrichmentInput(bundle(`${quote} ${text}`), candidate);
+    const value = output();
+    value.organization_identities[0].evidence = [ref(2, text)];
+    const check = () => assessMaterialEnrichment(value, input.candidate, input.source, context);
+    if (accepted) assert.doesNotThrow(check);
+    else assert.throws(check);
+  }
+});
+
 test('persisted proposals revalidate against current bundle and enabled topics, preserving original story', () => {
   const b = bundle(),
     input = materialEnrichmentInput(b, candidate);

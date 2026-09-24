@@ -152,10 +152,15 @@ export function assessMaterialEnrichment(
       fail();
   if (original.organizations.some((name) => !candidate.organizations.includes(name))) fail();
   for (const p of candidate.persons) {
-    const quoted = p.evidence.map((ref) => ref.quote).join('\n');
     if (
-      ![p.name, p.role, ...(p.organization ? [p.organization] : [])].every((text) =>
-        quoted.includes(text),
+      !p.evidence.some((ref) =>
+        ref.quote
+          .split(/[。！？!?;；\n]|\.(?=\s|$)/u)
+          .some((statement) =>
+            [p.name, p.role, ...(p.organization ? [p.organization] : [])].every((text) =>
+              statement.includes(text),
+            ),
+          ),
       )
     )
       fail();
@@ -207,7 +212,7 @@ export function assessMaterialEnrichment(
     // A private proposal still needs an explicit name/type relation in ONE quote.
     // Do not join unrelated references, or use another organization's type word.
     const relation = new RegExp(
-      `(?:^|[^\\p{L}\\p{N}_])${namePattern}(?:\\s+is\\s+|,\\s*)(?:(?:a|an|the)\\s+)?(?:(?:AI|artificial intelligence|technology|research|software|private|public)\\s+){0,3}(?:${typeWords})\\b|${namePattern}是(?:一家|一所|一个)?(?:人工智能|科技|研究|软件|私营|公立)?(?:${row.type === 'company' ? '公司|企业' : '机构|研究所|大学'})`,
+      `(?:^|[^\\p{L}\\p{N}_])${namePattern}(?:(?:\\s+is\\s+|,\\s*)(?:(?:a|an|the)\\s+)?(?:(?:AI|artificial intelligence|technology|research|software|private|public)\\s+){0,3}(?:${typeWords})\\b|是(?:一家|一所|一个)?(?:人工智能|科技|研究|软件|私营|公立)?(?:${row.type === 'company' ? '公司|企业' : '机构|研究所|大学'}))`,
       'iu',
     );
     if (!references.some((ref) => relation.test(ref.quote))) fail();
