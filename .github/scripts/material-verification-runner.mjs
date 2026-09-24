@@ -225,23 +225,28 @@ export async function executeReviewedMaterial(env, deps = {}) {
   return { status: 'report_saved', requestId, planHash: report.planHash, reportId: report.id };
 }
 
+export function materialRunnerFailure(error) {
+  // Never print raw exceptions, source text, input, key or provider output.
+  const code = [
+    'submission_unknown',
+    'not_configured',
+    'invalid_request',
+    'approval_required',
+    'request_not_found',
+    'request_changed',
+    'service_unavailable',
+    'material_worker_packet_too_large',
+  ].includes(error?.code)
+    ? error.code
+    : 'material_verification_failed';
+  return { status: 'blocked', code };
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   executeReviewedMaterial(process.env).then(
     (result) => process.stdout.write(`${JSON.stringify(result)}\n`),
     (error) => {
-      // Never print raw exceptions, source text, input, key or provider output.
-      const code = [
-        'submission_unknown',
-        'not_configured',
-        'invalid_request',
-        'approval_required',
-        'request_not_found',
-        'request_changed',
-        'service_unavailable',
-      ].includes(error?.code)
-        ? error.code
-        : 'material_verification_failed';
-      process.stdout.write(`${JSON.stringify({ status: 'blocked', code })}\n`);
+      process.stdout.write(`${JSON.stringify(materialRunnerFailure(error))}\n`);
       process.exitCode = 1;
     },
   );
