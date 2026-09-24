@@ -151,6 +151,70 @@ test('candidate enrichment rejects invented quotations without a second provider
   assert.equal(calls, 1);
 });
 
+test('material enrichment uses the saved source and enabled catalog with one bounded provider call', async () => {
+  let calls = 0;
+  let sent;
+  const evidence = [{ fragment_id: 'fragment-1', quote: '研究作者李明在示例研究所发布模型评测' }];
+  const invoke = createCandidateEnrichmentInvoker({
+    resolve: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async (args) => {
+      calls++;
+      sent = JSON.parse(args.body);
+      return Response.json({
+        id: 'fixture-material',
+        model: stage.model_id,
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({
+                event_date: '2026-09-20',
+                event_date_evidence: [{ fragment_id: 'fragment-1', quote: '2026-09-20' }],
+                persons: [{ name: '李明', role: '研究作者', organization: '示例研究所', evidence }],
+                organizations: ['示例研究所'],
+                claim_evidence: [evidence],
+                organization_identities: [
+                  {
+                    name: '示例研究所',
+                    type: 'institution',
+                    evidence: [{ fragment_id: 'fragment-1', quote: '示例研究所是一个研究机构。' }],
+                  },
+                ],
+                topic_ids: ['topic-ai'],
+              }),
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 100, completion_tokens: 100 },
+      });
+    },
+  });
+  const result = await invoke({
+    source: {
+      ...source,
+      fragments: source.fragments.map((f) => ({
+        ...f,
+        text: f.text + '示例研究所是一个研究机构。',
+      })),
+    },
+    candidate,
+    stage,
+    connection,
+    apiKey: 'synthetic-private-key',
+    allowedHosts: ['api.provider.example.com'],
+    materialContext: { topics: [{ id: 'topic-ai', title: 'Artificial Intelligence' }] },
+  });
+  assert.equal(result.success, true);
+  assert.equal(calls, 1);
+  assert.deepEqual(result.output.materialHints.topicIds, ['topic-ai']);
+  assert.equal(result.output.candidate.title, candidate.title);
+  assert.equal(result.output.candidate.claims[0].text, candidate.claims[0].text);
+  assert.match(JSON.stringify(sent.messages), /enabled_topics/);
+  assert.match(JSON.stringify(sent.response_format), /organization_identities/);
+  assert.equal(sent.tools, undefined);
+});
+
 test('OpenRouter enrichment sends routing and reasoning controls and retains API cost', async () => {
   const posts = [];
   const invoke = createCandidateEnrichmentInvoker({

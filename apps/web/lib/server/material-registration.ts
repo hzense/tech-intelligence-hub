@@ -21,7 +21,12 @@ import { listImportBatches } from '../../../../packages/database/src/import-stor
 import { generationRecord } from './signal-generation';
 import { importPool, importsConfigured } from './generation-import-reader';
 import { buildCandidateReview, buildEnrichedCandidateReview } from '../candidate-review';
-import { listCandidateEnrichmentDtos } from './candidate-enrichment';
+import {
+  listCandidateEnrichmentDtos,
+  createCandidateEnrichment,
+  candidateEnrichmentConfigured,
+} from './candidate-enrichment';
+import { restoreMaterialEnrichment } from '../material-enrichment';
 import { readMaterialSupplement } from '../material-source-reader';
 import {
   materialDatabaseConfiguration,
@@ -180,6 +185,12 @@ export async function readMaterialDashboard(owner: string, runId: string, candid
     const approved = await proposals.latestApprovedMaterialProposal(input);
     requestRows.push({
       ...requestDto(request),
+      enrichments: await listCandidateEnrichmentDtos(
+        owner,
+        runId,
+        candidateIndex,
+        request.bundle_hash,
+      ),
       proposals: rows.map((row) => ({
         id: row.id,
         proposalHash: row.proposal_hash,
@@ -200,6 +211,8 @@ export async function readMaterialDashboard(owner: string, runId: string, candid
       : false,
     enabled: process.env.HZENSE_MATERIAL_REGISTRATION_ENABLED === '1',
     reviewEnabled: process.env.HZENSE_MATERIAL_REVIEW_ENABLED === '1',
+    enrichmentEnabled:
+      process.env.HZENSE_MATERIAL_REVIEW_ENABLED === '1' && candidateEnrichmentConfigured(),
     requests: requestRows,
     sources: batches.flatMap((batch) =>
       batch.items
@@ -608,12 +621,42 @@ export async function prepareCandidateMaterials(owner: string, input: unknown) {
   });
   // Revalidate saved AI enrichment against immutable original text; never treat
   // an unvalidated model proposal as an independent verification report.
-  const enrichments = await listCandidateEnrichmentDtos(owner, packet.runId, packet.candidateIndex);
+  const enrichments = await listCandidateEnrichmentDtos(
+    owner,
+    packet.runId,
+    packet.candidateIndex,
+    packet.baseMaterialHash,
+  );
   const completed = enrichments.find(
     (row) => row.status === 'completed' && row.material_hash === packet.baseMaterialHash,
   );
   let preparationPacket = packet;
-  if (completed) {
+  const supplemented = (
+    await listCandidateEnrichmentDtos(
+      owner,
+      packet.runId,
+      packet.candidateIndex,
+      packet.bundle.sourceBundleHash,
+    )
+  ).find(
+    (row) => row.status === 'completed' && row.material_hash === packet.bundle.sourceBundleHash,
+  );
+  let hints;
+  if (supplemented) {
+    if (!supplemented.result) fail('material_changed');
+    const original = buildCandidateReview(
+      await generationRecord(owner, packet.runId),
+      packet.candidateIndex,
+    );
+    const restored = restoreMaterialEnrichment(
+      packet.bundle,
+      original.candidate,
+      supplemented.result,
+      { topics: packet.catalog.topics },
+    );
+    preparationPacket = { ...packet, candidate: restored.candidate };
+    hints = restored.hints;
+  } else if (completed) {
     if (!completed.result?.candidate) fail('material_changed');
     const run = await generationRecord(owner, packet.runId);
     const enriched = buildEnrichedCandidateReview(
@@ -624,7 +667,7 @@ export async function prepareCandidateMaterials(owner: string, input: unknown) {
     preparationPacket = { ...packet, candidate: enriched.candidate };
   }
   // Fixed source capture time makes no-AI preparation/replay deterministic.
-  const prepared = prepareMaterialPlan(preparationPacket, new Date(savedRequest.created_at));
+  const prepared = prepareMaterialPlan(preparationPacket, new Date(savedRequest.created_at), hints);
   if (!prepared.ready) return prepared;
   bindMaterialPlan(prepared.payload.plan, packet.bundle, {
     ...packet,
@@ -640,6 +683,29 @@ export async function prepareCandidateMaterials(owner: string, input: unknown) {
     payload: prepared.payload,
   });
   return { ready: true, proposalId: proposal.id, proposalHash: proposal.proposal_hash };
+}
+
+/** Explicitly authorized paid task; a saved request binds the entire source bundle. */
+export async function enrichCandidateMaterials(owner: string, input: unknown) {
+  requireReview();
+  const body = exact(input, ['id', 'requestId', 'consent']);
+  if (body.consent !== true) fail('invalid_request');
+  const packet = await materialWorkerRequest(owner, uuid(body.requestId));
+  return createCandidateEnrichment(
+    owner,
+    {
+      id: uuid(body.id),
+      runId: packet.runId,
+      candidateIndex: packet.candidateIndex,
+      materialHash: packet.baseMaterialHash,
+      consent: true,
+    },
+    {
+      requestId: packet.requestId,
+      bundle: packet.bundle,
+      context: { topics: packet.catalog.topics },
+    },
+  );
 }
 export async function approveCandidateMaterials(owner: string, input: unknown) {
   requireReview();

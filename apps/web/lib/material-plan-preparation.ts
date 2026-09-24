@@ -7,6 +7,7 @@ import {
 import type { MaterialWorkerRequest } from '../../../packages/database/src/material-verification-worker.mjs';
 import type { MaterialCandidate, MaterialReference } from './candidate-publication-materials';
 import { bindMaterialPlan } from './material-registration-binding.ts';
+import type { MaterialHints } from './material-enrichment.ts';
 
 export const materialReviewStatements = {
   sourceAuthenticity:
@@ -43,6 +44,7 @@ export type MaterialDraft = {
 export function prepareMaterialPlan(
   packet: MaterialWorkerRequest,
   now = new Date(),
+  hints?: MaterialHints,
 ): { ready: true; payload: MaterialDraft } | { ready: false; blockers: string[] } {
   try {
     const candidate = packet.candidate as MaterialCandidate;
@@ -110,18 +112,27 @@ export function prepareMaterialPlan(
         )
       )
         blocked('material_entity_ambiguous');
-      // A new organization's legal type cannot be inferred from a name. Existing
-      // organization catalog is required until the AI/curated proposal supports it.
-      if (kind === 'organization' && !matches.length) blocked('needs_organization_identity');
+      const proposed =
+        kind === 'organization' ? hints?.organizations.find((row) => row.name === name) : undefined;
+      if (kind === 'organization' && !matches.length && !proposed)
+        blocked('needs_organization_identity');
+      const identityEvidence =
+        !matches.length && proposed
+          ? proposed.evidence.map((ref) => addEvidence([ref], [name]))
+          : [];
       const current = matches[0];
       const entityId = current?.id ?? id(kind, name);
       const previous = entities.get(entityId);
       entities.set(entityId, {
         id: entityId,
         name,
-        type: (current?.type ?? 'person') as MaterialPlan['entities'][number]['type'],
+        type: (current?.type ??
+          proposed?.type ??
+          'person') as MaterialPlan['entities'][number]['type'],
         aliases: current?.aliases ?? [],
-        evidenceIds: [...new Set([...(previous?.evidenceIds ?? []), evidenceId])],
+        evidenceIds: [
+          ...new Set([...(previous?.evidenceIds ?? []), evidenceId, ...identityEvidence]),
+        ],
       });
       return entityId;
     };
@@ -151,8 +162,12 @@ export function prepareMaterialPlan(
       const match = candidate.claims
         .flatMap((claim) => claim.evidence)
         .filter((ref) => ref.quote.includes(organization));
+      const initialEvidence = match.length
+        ? match.slice(0, 1)
+        : (hints?.organizations.find((row) => row.name === organization)?.evidence.slice(0, 1) ??
+          []);
       organizations.add(
-        addEntity(organization, 'organization', addEvidence(match.slice(0, 1), [organization])),
+        addEntity(organization, 'organization', addEvidence(initialEvidence, [organization])),
       );
     }
     const dateReference = candidate.event_date_evidence![0]!;
@@ -165,7 +180,9 @@ export function prepareMaterialPlan(
         topic.runtime_enabled !== false &&
         topic.status !== 'archived' &&
         topic.title.length >= 2 &&
-        story.includes(normalized(topic.title)),
+        (hints?.topicIds.length
+          ? hints.topicIds.includes(topic.id)
+          : story.includes(normalized(topic.title))),
     );
     if (!topics.length || topics.length > 5) blocked('needs_topic_evidence');
     const plan = normalizeMaterialPlan({

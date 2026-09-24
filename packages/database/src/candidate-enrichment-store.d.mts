@@ -35,7 +35,7 @@ export function createCandidateEnrichment(
 ): Promise<CandidateEnrichmentRun>;
 export function getCandidateEnrichment(input: Task): Promise<CandidateEnrichmentRun>;
 export function listCandidateEnrichments(
-  input: Owned & { runId: string; candidateIndex: number },
+  input: Owned & { runId: string; candidateIndex: number; materialHash?: string },
 ): Promise<CandidateEnrichmentRun[]>;
 export function queueCandidateEnrichment(input: Task): Promise<CandidateEnrichmentRun>;
 export function claimCandidateEnrichment(

@@ -212,17 +212,28 @@ export async function createCandidateEnrichment({
 export const getCandidateEnrichment = ({ pool, owner: ownerId, id }) =>
   transaction(pool, (client) => row(client, ownerId, id), true);
 
-export async function listCandidateEnrichments({ pool, owner: ownerId, runId, candidateIndex }) {
+export async function listCandidateEnrichments({
+  pool,
+  owner: ownerId,
+  runId,
+  candidateIndex,
+  materialHash,
+}) {
   ownerId = owner(ownerId);
   uuid(runId);
   integer(candidateIndex);
+  if (
+    materialHash !== undefined &&
+    (typeof materialHash !== 'string' || !/^[a-f0-9]{64}$/.test(materialHash))
+  )
+    fail('invalid_request');
   return transaction(
     pool,
     async (client) =>
       (
         await client.query(
-          `SELECT ${columns} FROM public.candidate_enrichment_runs WHERE owner_id=$1 AND run_id=$2 AND candidate_index=$3 ORDER BY created_at DESC,id DESC LIMIT 10`,
-          [ownerId, runId, candidateIndex],
+          `SELECT ${columns} FROM public.candidate_enrichment_runs WHERE owner_id=$1 AND run_id=$2 AND candidate_index=$3${materialHash === undefined ? '' : ' AND material_hash=$4'} ORDER BY created_at DESC,id DESC LIMIT 10`,
+          [ownerId, runId, candidateIndex, ...(materialHash === undefined ? [] : [materialHash])],
         )
       ).rows,
     true,

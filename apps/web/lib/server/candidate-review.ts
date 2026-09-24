@@ -164,7 +164,12 @@ async function currentReviewPacket(owner: string, runId: string, candidateIndex:
   const run = await generationRecord(owner, runId);
   const original = buildCandidateReview(run, candidateIndex);
   // A failed read is not proof that no newer proposal exists.
-  const enrichments = await listCandidateEnrichmentDtos(owner, runId, candidateIndex);
+  const enrichments = await listCandidateEnrichmentDtos(
+    owner,
+    runId,
+    candidateIndex,
+    original.materialHash,
+  );
   const registered = await registeredMaterialForCandidate(
     owner,
     runId,
