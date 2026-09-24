@@ -19,10 +19,14 @@ export type MaterialEnrichmentContext = { topics: Array<{ id: string; title: str
 const fail = (code = 'invalid_enrichment_output'): never => {
   throw Object.assign(new Error(code), { code });
 };
-export function splitMaterialEvidenceStatements(quote: string) {
+export function splitMaterialEvidenceStatements(quote: string, names: string[] = []) {
   // Protect common titles, initialisms and decimal points before splitting even
   // compact English sentences ("X.Bob"). Restore the exact text for field checks.
-  return quote
+  const named = names.reduce(
+    (text, name) => (name ? text.split(name).join(name.replaceAll('.', '\uE000')) : text),
+    quote,
+  );
+  return named
     .replace(
       /\b(?:Dr|Mr|Mrs|Ms|Prof|Sr|Jr|St|vs)\.|\b(?:[A-Z]\.){2,}|^[A-Z]\.(?=\s+[A-Z][a-z])|\d\.(?=\d)/g,
       (value) => value.replaceAll('.', '\uE000'),
@@ -165,7 +169,7 @@ export function assessMaterialEnrichment(
   for (const p of candidate.persons) {
     if (
       !p.evidence.some((ref) =>
-        splitMaterialEvidenceStatements(ref.quote).some((statement) =>
+        splitMaterialEvidenceStatements(ref.quote, [p.name]).some((statement) =>
           [p.name, p.role, ...(p.organization ? [p.organization] : [])].every((text) =>
             statement.includes(text),
           ),

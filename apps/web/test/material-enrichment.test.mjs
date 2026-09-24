@@ -224,6 +224,26 @@ test('sentence splitting preserves titles, initialisms, initials and decimals', 
     ['Dr.Ada of the U.S. lab led version 3.14', 'Next event', ''],
   );
   assert.deepEqual(splitMaterialEvidenceStatements('A. Smith is CEO.'), ['A. Smith is CEO', '']);
+  assert.deepEqual(
+    splitMaterialEvidenceStatements('Ada A. Smith is CEO at Lab.', ['Ada A. Smith']),
+    ['Ada A. Smith is CEO at Lab', ''],
+  );
+  assert.deepEqual(
+    splitMaterialEvidenceStatements('A launch happened. A. Smith is CEO at Lab.', ['A. Smith']),
+    ['A launch happened', ' A. Smith is CEO at Lab', ''],
+  );
+});
+
+test('valid middle initials and names in later sentences pass the actual enrichment validator', () => {
+  for (const name of ['Ada A. Smith', 'A. Smith']) {
+    const text = `A launch happened. ${name} is CEO at Lab.`;
+    const input = materialEnrichmentInput(bundle(`${quote} ${text}`), candidate);
+    const value = output();
+    value.persons = [{ name, role: 'CEO', organization: 'Lab', evidence: [ref(2, text)] }];
+    assert.doesNotThrow(() =>
+      assessMaterialEnrichment(value, input.candidate, input.source, context),
+    );
+  }
 });
 
 test('Chinese type statements match the whole organization name, not a suffix', () => {
