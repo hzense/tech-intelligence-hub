@@ -33,6 +33,7 @@ import { bindMaterialPlan } from '../material-registration-binding';
 import { validateGenerationSource } from '../../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { prepareMaterialPlan, type MaterialDraft } from '../material-plan-preparation';
 import { approvedMaterialDossier } from '../material-review-dossier';
+import { boundMaterialWorkerPacket } from '../material-worker-packet';
 
 function fail(code: string): never {
   throw Object.assign(new Error(code), { code });
@@ -557,7 +558,7 @@ export async function materialWorkerRequest(owner: string, id: string) {
     ).rows;
     if ([topics, entities, sources].some((rows) => rows.length > 1000)) fail('catalog_limit');
     await client.query('COMMIT');
-    return {
+    return boundMaterialWorkerPacket({
       requestId: request.id,
       owner,
       runId: request.run_id,
@@ -582,7 +583,7 @@ export async function materialWorkerRequest(owner: string, id: string) {
             approvalId: approved.approval.id,
           }
         : null,
-    };
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
@@ -658,6 +659,27 @@ export async function approveCandidateMaterials(owner: string, input: unknown) {
     ...current,
     materialHash: current.baseMaterialHash,
   });
+  // Check the future approved packet before persisting the decision. The UUID
+  // placeholder has the stored ID's exact width; reserve covers timestamp drift.
+  const approvalTime = new Date().toISOString();
+  boundMaterialWorkerPacket(
+    {
+      ...current,
+      approvedProposal: {
+        id: p.id,
+        proposalHash: p.proposal_hash,
+        plan: p.payload.plan,
+        dossier: approvedMaterialDossier(p.payload as MaterialDraft, {
+          owner_id: owner,
+          approved_by: owner,
+          created_at: approvalTime,
+        }),
+        approvedAt: approvalTime,
+        approvalId: requestId,
+      },
+    },
+    1024,
+  );
   const approval = await proposals.approveMaterialProposal({
     pool: materialPool('registrar'),
     owner,
@@ -675,6 +697,8 @@ export async function approveCandidateMaterials(owner: string, input: unknown) {
   });
   if (latest?.approval.id !== approval.id || latest.proposal.id !== proposalId)
     fail('material_changed');
+  // Recheck the actual approved packet and current catalogs before dispatch.
+  await materialWorkerRequest(owner, requestId);
   // Persist human decision before dispatch. Dispatch failure cannot erase approval
   // or repeat a paid model call; this executor does not call a model.
   const token = process.env.HZENSE_MATERIAL_DISPATCH_TOKEN;

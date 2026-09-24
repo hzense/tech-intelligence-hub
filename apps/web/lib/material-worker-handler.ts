@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { importResponse, readImportJSON } from './import-io.ts';
 import { materialError } from './admin-material-handler.ts';
+import { boundMaterialWorkerPacket } from './material-worker-packet.ts';
 function exact(value: unknown, keys: string[]): value is Record<string, unknown> {
   return Boolean(
     value &&
@@ -69,7 +70,9 @@ export function createMaterialWorkerHandler(deps: {
         uuid(body.request.requestId)
       )
         return importResponse(
-          await deps.read(body.request.owner as string, body.request.requestId as string),
+          boundMaterialWorkerPacket(
+            await deps.read(body.request.owner as string, body.request.requestId as string),
+          ),
         );
       if (
         body.action === 'report' &&

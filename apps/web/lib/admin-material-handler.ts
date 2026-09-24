@@ -9,6 +9,7 @@ const safe = new Set([
   'invalid_candidate_source_bundle',
   'candidate_source_bundle_too_large',
   'candidate_source_bundle_metadata_too_large',
+  'material_worker_packet_too_large',
   'generation_source_too_large',
   'invalid_material_plan',
   'verification_invalid',
@@ -75,6 +76,7 @@ export function materialError(error: unknown) {
       'limit_exceeded',
       'candidate_source_bundle_too_large',
       'candidate_source_bundle_metadata_too_large',
+      'material_worker_packet_too_large',
       'generation_source_too_large',
     ].includes(code)
       ? 413

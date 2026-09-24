@@ -35,6 +35,8 @@ const errors: Record<string, string> = {
     '补证资料包超过 200,000 字节上限，请减少补充资料后重试；AI 输入上限仍为 48,000 字节。',
   candidate_source_bundle_metadata_too_large:
     '完整补证资料包（含出处与链接）超过 1,000,000 字节上限，请减少补充资料后重试。',
+  material_worker_packet_too_large:
+    '核验执行资料（含目录与审核材料）超过 2 MiB 上限，已停止派发；请联系管理员缩减目录或资料，不要重复创建请求。',
   generation_source_too_large:
     '单份资料超过 48,000 字节上限，请精简该份资料后重新导入；不是合并资料包超限。',
   material_changed: '原候选或材料版本已变化，请刷新核对。',

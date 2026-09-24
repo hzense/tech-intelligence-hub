@@ -7,6 +7,7 @@ import process from 'node:process';
 import { Buffer } from 'node:buffer';
 import { isDeepStrictEqual } from 'node:util';
 import { fetchImportURL } from '../../apps/web/lib/import-fetch.ts';
+import { MATERIAL_WORKER_PACKET_LIMIT_BYTES } from '../../apps/web/lib/material-worker-packet.ts';
 import { importParserSource } from '../../packages/ingestion/src/import-parser-source.mjs';
 import { parseImportOutput } from '../../packages/ingestion/src/import-task-contract.mjs';
 import {
@@ -53,6 +54,7 @@ export function materialAPI(token, fetcher = globalThis.fetch) {
           ...(action === 'inbox' ? {} : { body: JSON.stringify({ action, request }) }),
         },
       );
+      if (action === 'read' && response.status === 413) fail('material_worker_packet_too_large');
       if (
         !response.ok ||
         response.headers.get('content-type')?.split(';')[0] !== 'application/json'
@@ -67,14 +69,17 @@ export function materialAPI(token, fetcher = globalThis.fetch) {
           const part = await reader.read();
           if (part.done) break;
           length += part.value.byteLength;
-          if (length > 2 * 1024 * 1024) fail('service_unavailable');
+          if (length > MATERIAL_WORKER_PACKET_LIMIT_BYTES)
+            fail(action === 'read' ? 'material_worker_packet_too_large' : 'service_unavailable');
           chunks.push(part.value);
         }
       } finally {
         await reader.cancel().catch(() => {});
       }
       return JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    } catch {
+    } catch (error) {
+      if (action === 'read' && error?.code === 'material_worker_packet_too_large')
+        fail('material_worker_packet_too_large');
       fail(action === 'report' ? 'submission_unknown' : 'service_unavailable');
     }
   };
