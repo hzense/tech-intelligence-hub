@@ -79,13 +79,19 @@ function output() {
 }
 
 test('supplement-only person, multi-fragment organization identity and nonliteral topic become a private review plan', async () => {
-  const b = bundle([quote, 'Lab is a research company.']),
+  const b = bundle([quote, 'Lab is a research company. Acme is a company.']),
     input = materialEnrichmentInput(b, candidate);
   assert.deepEqual(input.fragmentIds, ['fragment-2', 'fragment-3', 'fragment-4']);
   assert.equal(input.candidate.claims[0].evidence[0].fragment_id, 'fragment-1');
   assert.equal(input.source.fragments[1].text, quote);
   const value = output();
   value.organization_identities[0].evidence.push(ref(3, 'Lab is a research company.'));
+  value.organizations.push('Acme');
+  value.organization_identities.push({
+    name: 'Acme',
+    type: 'company',
+    evidence: [ref(3, 'Acme is a company.')],
+  });
   const result = assessMaterialEnrichment(value, input.candidate, input.source, context);
   const restored = restoreMaterialEnrichment(b, candidate, result, context);
   assert.equal(restored.candidate.persons[0].evidence[0].fragment_id, 'fragment-3');
@@ -110,6 +116,7 @@ test('supplement-only person, multi-fragment organization identity and nonlitera
   const prepared = prepareMaterialPlan(packet, now, restored.hints);
   assert.equal(prepared.ready, true, JSON.stringify(prepared));
   assert.equal(prepared.payload.plan.entities.find((e) => e.name === 'Lab').type, 'company');
+  assert.equal(prepared.payload.plan.entities.find((e) => e.name === 'Acme').type, 'company');
   assert.deepEqual(prepared.payload.plan.topicIds, ['topic-ai']);
   const dossier = approvedMaterialDossier(prepared.payload, {
     owner_id: 'owner',
@@ -124,7 +131,7 @@ test('supplement-only person, multi-fragment organization identity and nonlitera
       clock: () => now,
       fetchSource: async (url) => ({
         sourceUrl: url,
-        text: `${quote} Lab is a research company.`,
+        text: `${quote} Lab is a research company. Acme is a company.`,
         fetchedAt: now.toISOString(),
       }),
     }),

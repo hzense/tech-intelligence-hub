@@ -162,8 +162,12 @@ export function prepareMaterialPlan(
       const match = candidate.claims
         .flatMap((claim) => claim.evidence)
         .filter((ref) => ref.quote.includes(organization));
+      const initialEvidence = match.length
+        ? match.slice(0, 1)
+        : (hints?.organizations.find((row) => row.name === organization)?.evidence.slice(0, 1) ??
+          []);
       organizations.add(
-        addEntity(organization, 'organization', addEvidence(match.slice(0, 1), [organization])),
+        addEntity(organization, 'organization', addEvidence(initialEvidence, [organization])),
       );
     }
     const dateReference = candidate.event_date_evidence![0]!;
