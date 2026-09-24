@@ -32,6 +32,25 @@ const catalog = {
   ],
 };
 
+test('registered taxonomy is explicit, current and bound to the confirmation hash', () => {
+  const binding = { topicIds: ['topic-artificial-intelligence'], planHash: 'a'.repeat(64) };
+  const result = prepareCandidateReview(candidate, catalog, binding);
+  assert.equal(result.ready, true);
+  assert.deepEqual(result.draft.topicIds, binding.topicIds);
+  assert.notEqual(
+    result.preparationHash,
+    prepareCandidateReview(candidate, catalog).preparationHash,
+  );
+  assert.notEqual(
+    result.preparationHash,
+    prepareCandidateReview(candidate, catalog, { ...binding, planHash: 'b'.repeat(64) })
+      .preparationHash,
+  );
+  const disabled = prepareCandidateReview(candidate, { ...catalog, topics: [] }, binding);
+  assert.equal(disabled.ready, false);
+  assert.match(disabled.blockers.join(' '), /停用或变化/);
+});
+
 test('system preparation builds a complete deterministic review without browser-authored fields', () => {
   const prepared = prepareCandidateReview(candidate, catalog);
   assert.equal(prepared.ready, true);

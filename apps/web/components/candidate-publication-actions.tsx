@@ -1,4 +1,5 @@
 'use client';
+import { CandidateMaterialWorkflow } from './candidate-material-workflow';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import controls from './admin-controls.module.css';
@@ -530,6 +531,14 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       {preparation?.materials ? (
         <CandidatePublicationMaterials materials={preparation.materials} />
       ) : null}
+      <CandidateMaterialWorkflow
+        runId={runId}
+        candidateIndex={candidateIndex}
+        materialHash={materialHash}
+        onRegistered={() => {
+          void inspect();
+        }}
+      />
       {preparation?.enrichment ? (
         <div className={styles.history}>
           <h3>自动补全检查</h3>

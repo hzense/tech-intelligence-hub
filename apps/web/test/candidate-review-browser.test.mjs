@@ -94,6 +94,11 @@ test(
     const commands = [],
       saved = new Map();
     const server = createServer(async (req, res) => {
+      if (req.url.startsWith('/api/admin/candidate-materials')) {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ configured: false, enabled: false, requests: [], sources: [] }));
+        return;
+      }
       if (assets.has(req.url)) {
         res.setHeader('Content-Type', req.url.endsWith('.css') ? 'text/css' : 'text/javascript');
         res.end(assets.get(req.url));
