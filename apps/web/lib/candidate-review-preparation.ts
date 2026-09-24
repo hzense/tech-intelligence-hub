@@ -1,17 +1,12 @@
 import { createHash } from 'node:crypto';
-
-type EvidenceReference = { quote: string };
-type Candidate = {
-  title: string;
-  summary: string;
-  event_date: string | null;
-  persons: Array<{ name: string; role: string; organization: string | null }>;
-  organizations: string[];
-  claims: Array<{ text: string; evidence: EvidenceReference[] }>;
-};
-type EntityRow = { id: string; name: string; aliases?: string[] | null };
-type TopicRow = { id: string; name: string };
-type EvidenceRow = { id: string; source_url: string; excerpt: string };
+import {
+  buildPublicationMaterials,
+  matchFormalEntities,
+  matchFormalEvidence,
+  type MaterialCandidate,
+  type PublicationCatalog,
+  type PublicationMaterials,
+} from './candidate-publication-materials.ts';
 
 export type CandidateReviewDraft = {
   title: string;
@@ -39,7 +34,7 @@ export type CandidateEnrichmentSummary = {
   checks: CandidateEnrichmentCheck[];
 };
 
-export type CandidateReviewPreparation =
+type PreparationResult =
   | { ready: false; blockers: string[]; enrichment: CandidateEnrichmentSummary }
   | {
       ready: true;
@@ -47,6 +42,11 @@ export type CandidateReviewPreparation =
       draft: CandidateReviewDraft;
       enrichment: CandidateEnrichmentSummary;
     };
+
+export type CandidateReviewPreparation = PreparationResult & {
+  materials: PublicationMaterials;
+  preparationHash: string;
+};
 
 const topicRules: Array<{ id: string; terms: RegExp }> = [
   {
@@ -107,27 +107,12 @@ const topicRules: Array<{ id: string; terms: RegExp }> = [
   },
 ];
 
-const normalizedName = (value: string) => value.normalize('NFKC').trim().toLocaleLowerCase('en-US');
 const unique = <T>(items: T[]) => [...new Set(items)];
-
-function entityMatches(name: string, rows: EntityRow[]) {
-  const expected = normalizedName(name);
-  return rows.filter((row) =>
-    [row.name, ...(Array.isArray(row.aliases) ? row.aliases : [])].some(
-      (value) => normalizedName(value) === expected,
-    ),
-  );
-}
 
 /** Deterministic preparation only. It creates no verification or publication permission. */
 export function prepareCandidateReview(
-  candidate: Candidate,
-  catalog: {
-    people: EntityRow[];
-    organizations: EntityRow[];
-    topics: TopicRow[];
-    evidence: EvidenceRow[];
-  },
+  candidate: MaterialCandidate,
+  catalog: PublicationCatalog,
 ): CandidateReviewPreparation {
   const blockers: string[] = [];
   const checks: CandidateEnrichmentCheck[] = [];
@@ -159,7 +144,7 @@ export function prepareCandidateReview(
     });
   }
   for (const person of candidate.persons) {
-    const matches = entityMatches(person.name, catalog.people);
+    const matches = matchFormalEntities(person.name, catalog.people);
     if (matches.length !== 1) {
       blockers.push(
         matches.length
@@ -191,7 +176,7 @@ export function prepareCandidateReview(
     ...candidate.persons.flatMap((person) => (person.organization ? [person.organization] : [])),
   ]);
   for (const organization of organizationNames) {
-    const matches = entityMatches(organization, catalog.organizations);
+    const matches = matchFormalEntities(organization, catalog.organizations);
     if (matches.length !== 1) {
       blockers.push(
         matches.length
@@ -253,11 +238,7 @@ export function prepareCandidateReview(
     const quotes = unique(
       claim.evidence.map((reference) => reference.quote.trim()).filter(Boolean),
     );
-    const matches = quotes.length
-      ? catalog.evidence.filter((evidence) =>
-          quotes.every((quote) => evidence.excerpt.includes(quote)),
-        )
-      : [];
+    const matches = matchFormalEvidence(claim.evidence, catalog.evidence);
     if (matches.length !== 1) {
       blockers.push(
         matches.length
@@ -290,7 +271,15 @@ export function prepareCandidateReview(
     pending: checks.filter((check) => check.status !== 'matched').length,
     checks,
   };
-  if (blockers.length) return { ready: false, blockers: unique(blockers), enrichment };
+  const materials = buildPublicationMaterials(candidate, catalog, topicIds);
+  const result = (prepared: PreparationResult): CandidateReviewPreparation => ({
+    ...prepared,
+    materials,
+    preparationHash: createHash('sha256')
+      .update(JSON.stringify({ version: 'publication-materials-v1', prepared, materials }))
+      .digest('hex'),
+  });
+  if (blockers.length) return result({ ready: false, blockers: unique(blockers), enrichment });
   const publicEvidenceIds = unique(claims.map((claim) => claim.evidenceId));
   const evidenceById = new Map(catalog.evidence.map((row) => [row.id, row]));
   const sourceUrls = unique(
@@ -308,7 +297,7 @@ export function prepareCandidateReview(
     )
     .digest('hex')
     .slice(0, 20);
-  return {
+  return result({
     ready: true,
     blockers: [],
     enrichment,
@@ -324,7 +313,7 @@ export function prepareCandidateReview(
       publicEvidenceIds,
       claims,
     },
-  };
+  });
 }
 
 export function publicPreparation(preparation: CandidateReviewPreparation) {
@@ -333,6 +322,8 @@ export function publicPreparation(preparation: CandidateReviewPreparation) {
     ready: true as const,
     blockers: [],
     enrichment: preparation.enrichment,
+    materials: preparation.materials,
+    preparationHash: preparation.preparationHash,
     counts: {
       people: preparation.draft.personIds.length,
       organizations: preparation.draft.organizationIds.length,

@@ -26,6 +26,7 @@ const catalog = {
     {
       id: 'evidence-1',
       source_url: 'https://example.com/source',
+      allowed_hosts: ['example.com'],
       excerpt: '这是正式来源中的逐字证据，且已经完成公开证据核验。',
     },
   ],
@@ -44,6 +45,8 @@ test('system preparation builds a complete deterministic review without browser-
   assert.deepEqual(publicPreparation(prepared), {
     ready: true,
     blockers: [],
+    materials: prepared.materials,
+    preparationHash: prepared.preparationHash,
     enrichment: {
       matched: 5,
       pending: 0,
@@ -115,4 +118,96 @@ test('a claim without quotations never matches catalog evidence', () => {
       detail: '主张没有可用于匹配的原文引用。',
     },
   );
+});
+
+test('materials expose exact entity, taxonomy, source and quote bindings without full excerpts', () => {
+  const prepared = prepareCandidateReview(candidate, catalog);
+  const material = prepared.materials;
+  assert.equal(material.title, candidate.title);
+  assert.equal(material.summary, candidate.summary);
+  assert.deepEqual(material.items.find((item) => item.key === 'person:张三').matches, [
+    { id: 'person-zhang-san', name: '张三' },
+  ]);
+  const claim = material.items.find((item) => item.key === 'claim:0');
+  assert.equal(claim.proposed, candidate.claims[0].text);
+  assert.equal(claim.matches[0].sourceUrl, catalog.evidence[0].source_url);
+  assert.deepEqual(claim.references, candidate.claims[0].evidence);
+  assert.equal(JSON.stringify(material).includes(catalog.evidence[0].excerpt), false);
+  assert.match(prepared.preparationHash, /^[a-f0-9]{64}$/);
+  assert.equal(
+    prepareCandidateReview(candidate, catalog).preparationHash,
+    prepared.preparationHash,
+  );
+});
+
+test('preparation fingerprint changes when an association, proposal or quoted material changes', () => {
+  const original = prepareCandidateReview(candidate, catalog);
+  for (const changed of [
+    { ...catalog, people: [{ ...catalog.people[0], id: 'person-other' }] },
+    { ...catalog, evidence: [{ ...catalog.evidence[0], source_url: 'https://example.com/other' }] },
+    { ...catalog, people: [] },
+    { ...catalog, topics: [] },
+  ])
+    assert.notEqual(
+      prepareCandidateReview(candidate, changed).preparationHash,
+      original.preparationHash,
+    );
+  assert.notEqual(
+    prepareCandidateReview({ ...candidate, event_date: '2026-09-20' }, catalog).preparationHash,
+    original.preparationHash,
+  );
+  const withProof = {
+    ...candidate,
+    persons: [
+      {
+        ...candidate.persons[0],
+        evidence: [{ fragment_id: 'fragment-1', quote: '张三任职的原文依据' }],
+      },
+    ],
+  };
+  assert.notEqual(
+    prepareCandidateReview(withProof, catalog).preparationHash,
+    original.preparationHash,
+  );
+});
+
+test('missing or ambiguous materials stay visible with specific next steps, never fabricated IDs', () => {
+  const absent = prepareCandidateReview(
+    { ...candidate, persons: [], event_date: null },
+    { ...catalog, organizations: [], evidence: [] },
+  );
+  assert.equal(absent.ready, false);
+  for (const key of ['event_date', 'person:missing', 'organization:示例公司', 'claim:0']) {
+    const item = absent.materials.items.find((item) => item.key === key);
+    assert.equal(item.status, 'missing');
+    assert.equal(item.matches.length, 0);
+    assert.ok(item.nextStep.length);
+  }
+  const ambiguous = prepareCandidateReview(candidate, {
+    ...catalog,
+    people: [...catalog.people, { id: 'person-other', name: '张三' }],
+  });
+  const person = ambiguous.materials.items.find((item) => item.key === 'person:张三');
+  assert.equal(person.status, 'ambiguous');
+  assert.equal(person.matches.length, 2);
+  assert.equal(ambiguous.ready, false);
+});
+
+test('only HTTPS evidence on a registered source host can be associated', () => {
+  for (const row of [
+    { source_url: 'javascript:alert(1)' },
+    { source_url: 'https://user:password@example.com/source' },
+    { source_url: 'http://example.com/source' },
+    { source_url: 'https://example.com/source#fragment' },
+    { source_url: 'https://different.example/source' },
+    { allowed_hosts: [] },
+    { allowed_hosts: undefined },
+  ]) {
+    const prepared = prepareCandidateReview(candidate, {
+      ...catalog,
+      evidence: [{ ...catalog.evidence[0], ...row }],
+    });
+    assert.equal(prepared.ready, false);
+    assert.equal(prepared.materials.items.find((item) => item.key === 'claim:0').matches.length, 0);
+  }
 });

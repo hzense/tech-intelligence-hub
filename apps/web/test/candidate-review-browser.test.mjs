@@ -42,6 +42,28 @@ test(
       configured = true,
       preparation = {
         ready: true,
+        preparationHash: 'b'.repeat(64),
+        materials: {
+          title: '合成候选的发布材料',
+          summary: '用于确认关联的合成摘要。',
+          items: [
+            {
+              key: 'claim:0',
+              label: '主张 1 / 公开证据',
+              proposed: '张三发布语言模型。',
+              status: 'matched',
+              matches: [
+                {
+                  id: 'evidence-example',
+                  name: '已登记核验的公开证据',
+                  sourceUrl: 'https://example.com/source',
+                },
+              ],
+              references: [{ fragment_id: 'fragment-1', quote: '原文中张三发布语言模型。' }],
+              nextStep: '已关联不等于事实核验通过。',
+            },
+          ],
+        },
         blockers: [],
         enrichment: {
           matched: 3,
@@ -122,6 +144,12 @@ test(
             created_at: '2026-09-21T12:00:00Z',
           };
           reviews = [record];
+          if (mode === 'confirmation-response-lost') {
+            mode = 'normal';
+            res.statusCode = 503;
+            res.end(JSON.stringify({ error: 'commit_unknown' }));
+            return;
+          }
           res.end(JSON.stringify({ review: record }));
           return;
         }
@@ -243,13 +271,40 @@ test(
     await expect(page.getByRole('table')).toContainText('已匹配');
     await expect(page.getByRole('textbox')).toHaveCount(0);
     await expect(page.getByRole('combobox')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '正式发布材料', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: '查看登记的公开来源' })).toHaveAttribute(
+      'href',
+      'https://example.com/source',
+    );
+    await page.getByText('核对原文依据（1 条）', { exact: true }).click();
+    await expect(page.getByText('原文中张三发布语言模型。', { exact: true })).toBeVisible();
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true,
+    );
     await page.screenshot({ path: join(artifacts, 'publication-readiness.png'), fullPage: true });
     assert.equal(commands.length, beforeEmptyPublication);
+    // A newer GET result must not silently replace what the administrator confirmed.
+    preparation = { ...preparation, preparationHash: 'c'.repeat(64) };
     await page.getByRole('button', { name: '确认候选并送核验', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('正式发布材料已变化');
+    assert.equal(commands.length, beforeEmptyPublication);
+    await page.getByRole('button', { name: '刷新发布状态', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('等待管理员确认');
+    mode = 'confirmation-response-lost';
+    await page.getByRole('button', { name: '确认候选并送核验', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('当前阶段尚未配置或暂不可用');
+    assert.equal(reviews.length, 1);
+    const uncertain = commands.at(-1);
+    assert.equal(uncertain.action, 'confirm');
+    await page.getByRole('button', { name: '确认候选并送核验', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('r1');
     await expect.poll(() => commands.some((command) => command.action === 'confirm')).toBe(true);
     const confirmation = [...commands].reverse().find((command) => command.action === 'confirm');
     assert.equal(confirmation.request.expectedReviewRevision, 0);
+    assert.equal(confirmation.request.preparationHash, preparation.preparationHash);
     assert.equal(Object.hasOwn(confirmation.request, 'draft'), false);
+    assert.deepEqual(confirmation.request, uncertain.request);
     // New rejection must not prevent emergency withdrawal of the historical release.
     reviews = [
       { ...savedReviews[0], revision: 2, decision: 'rejected' },
