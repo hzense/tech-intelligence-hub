@@ -379,6 +379,63 @@ suite('editorial publication persistence and isolated capabilities', () => {
       await pool.query('DROP SCHEMA editorial_extra');
     }
   });
+  it('PostgreSQL denies operator and cast execution when the implementation EXECUTE is revoked', async () => {
+    const assertBoth = async (query) => {
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await assertEditorialRole(client, role);
+          await expect(client.query(query)).rejects.toMatchObject({ code: '42501' });
+        } finally {
+          client.release();
+        }
+      }
+    };
+    await pool.query(
+      'CREATE FUNCTION public.editorial_hidden_operator(text,text) RETURNS boolean LANGUAGE sql SECURITY DEFINER AS $$SELECT true$$',
+    );
+    await pool.query(
+      'REVOKE EXECUTE ON FUNCTION public.editorial_hidden_operator(text,text) FROM PUBLIC',
+    );
+    await pool.query(
+      'CREATE OPERATOR public.=== (LEFTARG=text,RIGHTARG=text,FUNCTION=public.editorial_hidden_operator)',
+    );
+    try {
+      await assertBoth("SELECT 'a' OPERATOR(public.===) 'b' AS value");
+    } finally {
+      await pool.query('DROP OPERATOR public.=== (text,text)');
+      await pool.query('DROP FUNCTION public.editorial_hidden_operator(text,text)');
+    }
+    await pool.query(
+      "CREATE FUNCTION public.editorial_hidden_cast(integer) RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$SELECT '00000000-0000-0000-0000-000000000000'::uuid$$",
+    );
+    await pool.query(
+      'REVOKE EXECUTE ON FUNCTION public.editorial_hidden_cast(integer) FROM PUBLIC',
+    );
+    await pool.query(
+      'CREATE CAST (integer AS uuid) WITH FUNCTION public.editorial_hidden_cast(integer)',
+    );
+    try {
+      await assertBoth('SELECT 1::uuid AS value');
+    } finally {
+      await pool.query('DROP CAST (integer AS uuid)');
+      await pool.query('DROP FUNCTION public.editorial_hidden_cast(integer)');
+    }
+    for (const [connection, role] of [
+      [reader, 'reader'],
+      [writer, 'writer'],
+    ]) {
+      const client = await connection.connect();
+      try {
+        await assertEditorialRole(client, role);
+      } finally {
+        client.release();
+      }
+    }
+  });
   it('accepts only the audited vector extension and rejects attached application functions', async () => {
     await pool.query("CREATE EXTENSION vector VERSION '0.8.6'");
     try {
