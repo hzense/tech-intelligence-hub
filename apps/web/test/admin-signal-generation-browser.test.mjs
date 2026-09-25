@@ -994,7 +994,9 @@ test(
         await expect(
           candidate.getByRole('complementary', { name: '候选核对辅助信息' }),
         ).toBeVisible();
-        await expect(candidate.getByText('本页仅供阅读核对', { exact: false })).toBeVisible();
+        await expect(
+          candidate.getByText('此原始候选区域仅供阅读核对', { exact: false }),
+        ).toBeVisible();
         if (process.env.HZENSE_CANDIDATE_SCREENSHOT) {
           await candidate.scrollIntoViewIfNeeded();
           await page.screenshot({ path: '/tmp/hzense-candidate-desktop.png' });

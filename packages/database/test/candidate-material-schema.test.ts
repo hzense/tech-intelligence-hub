@@ -90,7 +90,7 @@ describe('private candidate material schema and catalog', () => {
     }
   });
   it('matches columns, generated timestamps and all bounded checks for three private tables', () => {
-    expect(expectedTableNames.size).toBe(57);
+    expect(expectedTableNames.size).toBe(58);
     const dialect = new PgDialect();
     const defaults = new Map(candidateMaterialDefaults);
     for (const table of tables) {

@@ -18,6 +18,8 @@ import {
   getSignalEntries,
 } from './seed-runtime.ts';
 import { formatSignalType } from './signal-presentation.ts';
+import { searchSignalEntries } from './editorial-signal-reader-core.ts';
+import { compareSearchResults } from '@hzense/search/ranking';
 import {
   projectPublishedSearchDocuments,
   toSearchDocument,
@@ -198,14 +200,16 @@ export async function getSearchDocumentProjections(
       ),
     ),
     ...topicEntries.map((entry) => topicCandidate(entry, topicTitleMap)),
-    ...signalEntries.map((signal) =>
-      signalCandidate(
-        signal,
-        topicTitleMap,
-        entityMap,
-        sourceMap.get(signal.source_id)?.name ?? signal.source_id,
+    ...signalEntries
+      .filter((signal): signal is SeedSignal => signal.publication_basis !== 'manual_confirmation')
+      .map((signal) =>
+        signalCandidate(
+          signal,
+          topicTitleMap,
+          entityMap,
+          sourceMap.get(signal.source_id)?.name ?? signal.source_id,
+        ),
       ),
-    ),
     ...resourceEntries.map(resourceCandidate),
   ];
 
@@ -221,5 +225,10 @@ export async function searchPublishedContent(
   type?: SearchType,
   includeSignals = true,
 ): Promise<SearchResult[]> {
-  return rankSearchDocuments(await getSearchDocuments(includeSignals), query, type);
+  const legacy = rankSearchDocuments(await getSearchDocuments(includeSignals), query, type);
+  if (!includeSignals || (type && type !== 'signal')) return legacy;
+  const editorial = (await getSignalEntries()).filter(
+    (entry) => entry.publication_basis === 'manual_confirmation',
+  );
+  return [...legacy, ...searchSignalEntries(editorial, query)].sort(compareSearchResults);
 }

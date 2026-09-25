@@ -32,7 +32,7 @@ export default async function SignalsPage() {
         <section className="page-hero">
           <p className="kicker">HZENSE SIGNALS</p>
           <h1>记录变化发生的时刻。</h1>
-          <p>每条信号保留来源、时间、强度与置信度，为简报、专题和洞察提供可追溯证据。</p>
+          <p>记录事件时间、相关人物与组织，区分管理员确认和来源证据评估。</p>
         </section>
         <section className="signals-index-grid" aria-label="信号列表">
           {entries.length === 0 ? <p>暂无当前符合公开条件的信号。</p> : null}
@@ -48,14 +48,26 @@ export default async function SignalsPage() {
               <p>{entry.summary}</p>
               <div className="signal-index-source">
                 <span>
-                  {entry.public_sources?.[0]?.name ??
-                    sourceMap.get(entry.source_id)?.name ??
-                    entry.source_id}
+                  {entry.public_sources?.length === 0
+                    ? '未提供公开来源链接'
+                    : (entry.public_sources?.[0]?.name ??
+                      sourceMap.get(entry.source_id)?.name ??
+                      entry.source_id)}
                 </span>
-                <strong>置信度 {formatPercentage(entry.confidence)}</strong>
+                {entry.publication_basis === 'manual_confirmation' ? (
+                  <strong>管理员确认</strong>
+                ) : (
+                  <strong>置信度 {formatPercentage(entry.confidence)}</strong>
+                )}
               </div>
               {entry.public_people ? (
                 <p>关键人物：{entry.public_people.map((person) => person.name).join('、')}</p>
+              ) : null}
+              {entry.public_organizations?.length ? (
+                <p>
+                  相关组织：
+                  {entry.public_organizations.map((organization) => organization.name).join('、')}
+                </p>
               ) : null}
               <div className="topic-row">
                 {entry.topics.map((topic) => (

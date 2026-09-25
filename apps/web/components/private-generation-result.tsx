@@ -32,9 +32,11 @@ function Evidence({ value }: { value: unknown }) {
 export function PrivateResult({
   result,
   reviewTask,
+  snapshotOnly = false,
 }: {
   result: unknown;
   reviewTask?: { id: string; status: string };
+  snapshotOnly?: boolean;
 }) {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
   const row = result as Record<string, unknown>;
@@ -51,7 +53,9 @@ export function PrivateResult({
   };
   return (
     <section aria-label="私有候选结果" className={styles.result}>
-      <h3>私有候选结果 · 尚未审核或发布</h3>
+      <h3>
+        {snapshotOnly ? '原始 AI 候选快照（不代表当前发布状态）' : '私有候选结果 · 尚未审核或发布'}
+      </h3>
       {row.validation_version === 1 && (
         <p>
           结构与引用校验通过 {candidates.length} 条，拒绝 {rejected.length}{' '}
@@ -91,7 +95,9 @@ export function PrivateResult({
           >
             <header className={preview.header}>
               <div className={preview.meta}>
-                <span className={preview.badge}>待审核 · 未发布</span>
+                <span className={preview.badge}>
+                  {snapshotOnly ? '原始快照' : '待审核 · 未发布'}
+                </span>
                 <span>候选 {candidateNumber}</span>
               </div>
               <h4 className={preview.title}>
@@ -190,7 +196,9 @@ export function PrivateResult({
                     <li>日期是否为事件发生时间</li>
                     <li>人物及组织是否与事件直接相关</li>
                   </ul>
-                  <p>引用匹配不代表独立事实核验。本页仅供阅读核对，不会保存审核决定或发布。</p>
+                  <p>
+                    引用匹配不代表独立事实核验。此原始候选区域仅供阅读核对，当前发布状态以确认发布区为准。
+                  </p>
                 </section>
               </aside>
             </div>

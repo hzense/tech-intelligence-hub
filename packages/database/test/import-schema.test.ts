@@ -21,7 +21,7 @@ const ddl = await readFile(
 );
 const dialect = new PgDialect();
 it('pins all seven private tables, column types, checks, defaults, keys and indexes', () => {
-  expect(expectedTableNames.size).toBe(57);
+  expect(expectedTableNames.size).toBe(58);
   expect(Object.values(schema).map(getTableName).sort()).toEqual(Object.keys(importColumns).sort());
   const keys: string[] = [],
     fks: string[] = [],

@@ -6,7 +6,7 @@ import { CandidateReview } from '@/components/candidate-review';
 import controls from '@/components/admin-controls.module.css';
 
 export const metadata: Metadata = {
-  title: '候选审核材料',
+  title: '候选确认发布',
   robots: { index: false, follow: false },
 };
 export const dynamic = 'force-dynamic';
@@ -26,7 +26,7 @@ export default async function CandidateReviewDetailPage({
   }
   return (
     <main className="section-shell">
-      <h1>候选审核材料</h1>
+      <h1>候选确认发布</h1>
       {packet ? (
         <CandidateReview packet={packet} />
       ) : (

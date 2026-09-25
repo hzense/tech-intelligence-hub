@@ -11,6 +11,8 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 ## 当前部署
 
+> **2026-09-25 人工确认发布（本地开发，未上线）：** 新入口需要独立 `0025` 迁移、`hzense_editorial_writer`／`hzense_editorial_reader` 及默认关闭的 `HZENSE_EDITORIAL_PUBLICATION_ENABLED`。四项齐全后人工确认直接公开，不复用旧签名门禁或旧审批范围。具体步骤见 [人工确认发布](EDITORIAL_PUBLICATION.md#生产启用尚未执行)。现有线上维护审批只覆盖至 0024；必须先补充并审核 0025 专属维护范围，不能使用旧批准执行新迁移。仅合并、构建或部署页面不能宣称此功能已启用。
+
 > **2026-09-24 通用补证：** [PR #157](https://github.com/hzense/tech-intelligence-hub/pull/157) 基础接入已合并并部署，功能尚未生产启用。当前材料准备、人工确认和独立 GitHub 执行器为后续本地开发，未提交／上线。旧 main 只读 [preflight 36022413674](https://github.com/hzense/tech-intelligence-hub/actions/runs/36022413674) 成功，当时仅待 0023；加入本批 0024 后应重新预检，预期两项 pending。25 迁移／57 表是本批代码目标，不能记作生产核验结果。生产迁移、最小权限及新凭据配置另行批准，见[通用补证部署清单](MATERIAL_REGISTRATION.md#数据库与配置)和[本批证据](production-evidence/2026-09-24-material-review-preparation.md)。
 
 > **2026-09-17 AI 私有候选生成：** PR #100 已合并为 `fd528ea`，main [CI 35226592286](https://github.com/hzense/tech-intelligence-hub/actions/runs/35226592286) 成功，Production 已部署该代码。生产数据库最新完成的独立核验仍为 `0014`（15 迁移／47 表）；生成所需 `0015`、专用角色、独立 AI 预算和开关尚未启用。当前准备独立维护门禁、最小列授权及只读核验，见[本批准备记录](production-evidence/2026-09-17-generation-preparation.md)。代码已部署不等于真实 AI 生成可用；以下历史条目不代表当前管理员／AI 配置或导入仍不可用。

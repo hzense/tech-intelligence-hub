@@ -79,6 +79,7 @@ export const signalGenerationRuns = pgTable(
       .where(
         sql`NOT (${t.status} = 'cancelled' AND ${t.leaseToken} IS NULL AND ${t.leaseUntil} IS NULL AND ${t.budgetDay} IS NULL AND ${t.reservedMicrousd} = 0 AND ${t.chargedMicrousd} = 0)`,
       ),
+    uniqueIndex('signal_generation_id_owner_uq').on(t.id, t.ownerId),
     index('signal_generation_owner_created_idx').on(t.ownerId, t.createdAt),
     index('signal_generation_budget_day_idx').on(t.budgetDay),
     index('signal_generation_batch_idx').on(t.batchId),

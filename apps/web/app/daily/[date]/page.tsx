@@ -129,14 +129,18 @@ export default async function DailyDetailPage({ params }: DailyDetailProps) {
                 {evidenceSignals.map((signal) => (
                   <article key={signal.id}>
                     <Link href={`/signals/${signal.id}`}>{signal.title}</Link>
-                    <a
-                      aria-label={`${signal.title} 原始来源（在新窗口打开）`}
-                      href={signal.source_url}
-                      rel="noopener noreferrer"
-                      target="_blank"
-                    >
-                      原始来源 ↗
-                    </a>
+                    {signal.source_url ? (
+                      <a
+                        aria-label={`${signal.title} 原始来源（在新窗口打开）`}
+                        href={signal.source_url}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        原始来源 ↗
+                      </a>
+                    ) : (
+                      <span>未提供公开来源链接</span>
+                    )}
                   </article>
                 ))}
               </div>

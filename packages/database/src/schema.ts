@@ -1749,6 +1749,58 @@ export const candidateMaterialApprovals = pgTable(
   ],
 );
 
+export const editorialSignalRevisions = pgTable(
+  'editorial_signal_revisions',
+  {
+    requestId: uuid('request_id').primaryKey(),
+    runId: uuid('run_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    candidateIndex: integer('candidate_index').notNull(),
+    revision: integer('revision').notNull(),
+    materialHash: text('material_hash').notNull(),
+    action: text('action').notNull(),
+    content: jsonb('content').notNull(),
+    requestHash: text('request_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.runId, t.ownerId],
+      foreignColumns: [signalGenerationRuns.id, signalGenerationRuns.ownerId],
+    }),
+    uniqueIndex('editorial_signal_revisions_run_id_candidate_index_revision_key').on(
+      t.runId,
+      t.candidateIndex,
+      t.revision,
+    ),
+    check('editorial_signal_revisions_owner_id_check', sql`length(${t.ownerId}) BETWEEN 1 AND 200`),
+    check(
+      'editorial_signal_revisions_candidate_index_check',
+      sql`${t.candidateIndex} BETWEEN 0 AND 4`,
+    ),
+    check('editorial_signal_revisions_revision_check', sql`${t.revision} > 0`),
+    check(
+      'editorial_signal_revisions_material_hash_check',
+      sql`${t.materialHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'editorial_signal_revisions_request_hash_check',
+      sql`${t.requestHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'editorial_signal_revisions_action_check',
+      sql`${t.action} IN ('draft','publish','withdraw')`,
+    ),
+    check('editorial_signal_revisions_content_check', sql`jsonb_typeof(${t.content}) = 'object'`),
+  ],
+);
+export const editorialPublicSignals = pgView('editorial_public_signals', {
+  signalId: text('signal_id'),
+  revision: integer('revision'),
+  content: jsonb('content'),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+}).existing();
+
 export const searchDocuments = pgTable(
   'search_documents',
   {

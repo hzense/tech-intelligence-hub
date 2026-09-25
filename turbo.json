@@ -1,7 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["content/**", "data/seed/**", "data/taxonomy/**"],
-  "globalEnv": ["HZENSE_SIGNAL_READ_MODE"],
+  "globalEnv": ["HZENSE_SIGNAL_READ_MODE", "HZENSE_EDITORIAL_PUBLICATION_ENABLED"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

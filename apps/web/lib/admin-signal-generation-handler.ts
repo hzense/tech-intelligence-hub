@@ -8,6 +8,7 @@ import { importResponse, readImportJSON, ImportIOError } from './import-io.ts';
 const exposed = new Set([
   'task_active',
   'task_deleted',
+  'published_candidate_delete_forbidden',
   'duplicate_source',
   'invalid_request',
   'not_configured',

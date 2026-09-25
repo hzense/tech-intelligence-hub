@@ -1,0 +1,52 @@
+.panel {
+  border: 1px solid #ccd3df;
+  border-radius: 16px;
+  padding: 1.5rem;
+  margin-block: 1.5rem;
+}
+.summary {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  padding: 1rem;
+  margin-block: 1rem;
+  border: 1px solid #ccd3df;
+}
+.fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.fields input:not([type='checkbox']),
+.fields textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid #6b7280;
+  border-radius: 8px;
+  font: inherit;
+  background: var(--surface, #fff);
+  color: inherit;
+  box-sizing: border-box;
+}
+.fields .option {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 0.3rem 0.8rem 0.3rem 0;
+}
+.topics {
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .fields {
+    grid-template-columns: 1fr;
+  }
+  .panel {
+    padding: 1rem;
+  }
+}

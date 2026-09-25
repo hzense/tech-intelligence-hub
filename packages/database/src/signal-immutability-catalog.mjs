@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { editorialFunctionHashes, editorialTriggers } from './editorial-signal-catalog.mjs';
 import {
   materialProposalFunctionHashes,
   materialProposalTriggers,
@@ -61,6 +62,7 @@ export const sealedSignalTables = Object.freeze([
 
 // Updated only after reviewing the function source as part of a migration.
 export const sealedSignalFunctionHashes = Object.freeze({
+  ...editorialFunctionHashes,
   ...materialProposalFunctionHashes,
   ...candidateMaterialFunctionHashes,
   ...candidateReviewFunctionHashes,
@@ -102,6 +104,7 @@ export const sealedSignalTriggers = Object.freeze([
   ...qualifiedPublicationTriggers,
   ...candidateVerificationTriggers,
   ...currentPublicationTriggers,
+  ...editorialTriggers,
 ]);
 
 export function signalGuardSourceHash(source) {
@@ -160,7 +163,11 @@ export function inspectSignalImmutabilityCatalog({ triggers, routines, stamps },
       row.language !== 'plpgsql' ||
       row.kind !== 'f' ||
       row.result_type !== 'trigger' ||
-      row.security_definer !== (name === 'hzense_guard_qualified_publication_receipt') ||
+      row.security_definer !==
+        [
+          'hzense_guard_qualified_publication_receipt',
+          'hzense_guard_editorial_generation_delete',
+        ].includes(name) ||
       row.leakproof !== false ||
       row.strict !== false ||
       row.returns_set !== false ||

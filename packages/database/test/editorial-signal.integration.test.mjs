@@ -1,0 +1,731 @@
+import { readFile } from 'node:fs/promises';
+import { URL } from 'node:url';
+import process from 'node:process';
+import { randomUUID } from 'node:crypto';
+import { setTimeout } from 'node:timers/promises';
+import pg from 'pg';
+import { beforeAll, afterAll, it, describe, expect } from 'vitest';
+import { validateConnectionTarget } from '../src/connection-policy.mjs';
+import { saveEditorialSignal, readEditorialSignal } from '../src/editorial-signal-store.mjs';
+import { assertEditorialRole } from '../src/editorial-signal-role.mjs';
+import { editorialVectorQuery } from '../src/editorial-vector-query.mjs';
+import { editorialFixture } from './editorial-signal.test.mjs';
+const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
+if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
+const suite = adminUrl ? describe.sequential : describe.skip;
+suite('editorial publication persistence and isolated capabilities', () => {
+  let admin,
+    pool,
+    writer,
+    reader,
+    created = false,
+    rolesCreated = false;
+  const db = `hzense_editorial_${process.pid}_${Date.now()}`;
+  const roles = ['hzense_editorial_writer', 'hzense_editorial_reader'];
+  const ambient = [];
+  const sql = async (name) => readFile(new URL(`../../../db/${name}`, import.meta.url), 'utf8');
+  beforeAll(async () => {
+    if (process.env.RUNTIME_READER_TEST_ISOLATED_CLUSTER !== '1')
+      throw new Error('Disposable cluster required');
+    admin = new pg.Client({ connectionString: adminUrl });
+    await admin.connect();
+    if (
+      (await admin.query('SELECT rolname FROM pg_roles WHERE rolname=ANY($1::text[])', [roles]))
+        .rows.length
+    )
+      throw new Error('Editorial test roles already exist; refusing modification');
+    const otherDatabases = (
+      await admin.query(
+        "SELECT datname FROM pg_database WHERE datallowconn AND datname NOT IN ('postgres','template1')",
+      )
+    ).rows;
+    if (otherDatabases.length) throw new Error('Refuse cluster containing unrelated databases');
+    for (const name of ['postgres', 'template1']) {
+      const privileges = (
+        await admin.query(
+          "SELECT a.privilege_type FROM pg_database d CROSS JOIN LATERAL aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a WHERE d.datname=$1 AND a.grantee=0",
+          [name],
+        )
+      ).rows.map((row) => row.privilege_type);
+      ambient.push({ name, privileges });
+      await admin.query(`REVOKE ALL ON DATABASE "${name}" FROM PUBLIC`);
+    }
+    await admin.query(`CREATE DATABASE "${db}" TEMPLATE template0`);
+    created = true;
+    const url = new URL(adminUrl);
+    url.pathname = `/${db}`;
+    pool = new pg.Pool({ connectionString: url.toString(), max: 2 });
+    await pool.query(
+      'CREATE TABLE public.signal_generation_runs(id uuid PRIMARY KEY,owner_id text NOT NULL,status text,deleted_at timestamptz); CREATE TABLE public.topics(id text PRIMARY KEY,title text,runtime_enabled boolean,status text); CREATE TABLE public.hzense_schema_migrations(name text PRIMARY KEY);',
+    );
+    await pool.query(await sql('migrations/0025_editorial_signal_publication.sql'));
+    await pool.query(
+      "INSERT INTO hzense_schema_migrations VALUES('0025_editorial_signal_publication.sql'); INSERT INTO topics VALUES('ai','AI',true,'watching');",
+    );
+    await pool.query(`REVOKE CREATE,TEMPORARY ON DATABASE "${db}" FROM PUBLIC`);
+    await pool.query('REVOKE USAGE ON SCHEMA public FROM PUBLIC');
+    await admin.query(await sql('roles/create_editorial_roles.sql'));
+    rolesCreated = true;
+    for (const role of roles)
+      await admin.query(`ALTER ROLE ${role} PASSWORD 'editorial-test-only'`);
+    await pool.query(await sql('roles/configure_editorial_roles.sql'));
+    url.username = roles[0];
+    url.password = 'editorial-test-only';
+    writer = new pg.Pool({ connectionString: url.toString(), max: 2 });
+    url.username = roles[1];
+    reader = new pg.Pool({ connectionString: url.toString(), max: 2 });
+  });
+  afterAll(async () => {
+    await writer?.end();
+    await reader?.end();
+    await pool?.end();
+    if (created) await admin.query(`DROP DATABASE "${db}"`);
+    if (rolesCreated) for (const role of roles) await admin.query(`DROP ROLE ${role}`);
+    for (const { name, privileges } of ambient) {
+      if (privileges.length)
+        await admin.query(`GRANT ${privileges.join(',')} ON DATABASE "${name}" TO PUBLIC`);
+    }
+    await admin?.end();
+  });
+  it('rejects cross-database PUBLIC, direct and dormant object privileges for both roles', async () => {
+    const sentinel = `${db}_other`;
+    let other;
+    await admin.query(`CREATE DATABASE "${sentinel}" TEMPLATE template0`);
+    try {
+      const url = new URL(adminUrl);
+      url.pathname = `/${sentinel}`;
+      other = new pg.Client({ connectionString: url.toString() });
+      await other.connect();
+      await other.query('CREATE TABLE private_sentinel(id integer)');
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        const roleName = `hzense_editorial_${role}`;
+        try {
+          for (const privilege of ['CONNECT', 'CREATE', 'TEMPORARY']) {
+            for (const grantee of ['PUBLIC', roleName]) {
+              await admin.query(`REVOKE ALL ON DATABASE "${sentinel}" FROM PUBLIC, ${roleName}`);
+              await admin.query(`GRANT ${privilege} ON DATABASE "${sentinel}" TO ${grantee}`);
+              await expect(assertEditorialRole(client, role)).rejects.toThrow(
+                'editorial_role_invalid',
+              );
+              await admin.query(`REVOKE ALL ON DATABASE "${sentinel}" FROM ${grantee}`);
+              await assertEditorialRole(client, role);
+            }
+          }
+          await other.query(`GRANT SELECT ON private_sentinel TO ${roleName}`);
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+          await other.query(`REVOKE SELECT ON private_sentinel FROM ${roleName}`);
+          await assertEditorialRole(client, role);
+        } finally {
+          client.release();
+        }
+      }
+    } finally {
+      await other?.end();
+      await admin.query(`DROP DATABASE "${sentinel}"`);
+    }
+  });
+  it('provisions exact direct-login capabilities, rejects escalation and keeps raw history private', async () => {
+    for (const [connection, role] of [
+      [writer, 'writer'],
+      [reader, 'reader'],
+    ]) {
+      const client = await connection.connect();
+      try {
+        await assertEditorialRole(client, role);
+      } finally {
+        client.release();
+      }
+    }
+    await expect(reader.query('SELECT * FROM editorial_signal_revisions')).rejects.toMatchObject({
+      code: '42501',
+    });
+    await expect(reader.query('SELECT * FROM signal_generation_runs')).rejects.toMatchObject({
+      code: '42501',
+    });
+    await expect(writer.query('SELECT * FROM editorial_public_signals')).rejects.toMatchObject({
+      code: '42501',
+    });
+    await expect(writer.query('DELETE FROM editorial_signal_revisions')).rejects.toMatchObject({
+      code: '42501',
+    });
+    await pool.query(
+      'GRANT SELECT ON public.editorial_signal_revisions TO hzense_editorial_reader',
+    );
+    const client = await reader.connect();
+    try {
+      await expect(assertEditorialRole(client, 'reader')).rejects.toThrow('editorial_role_invalid');
+    } finally {
+      client.release();
+    }
+    await pool.query(
+      'REVOKE SELECT ON public.editorial_signal_revisions FROM hzense_editorial_reader',
+    );
+  });
+  it('rejects shared parameter privileges for both application roles', async () => {
+    for (const [connection, role] of [
+      [reader, 'reader'],
+      [writer, 'writer'],
+    ]) {
+      const client = await connection.connect();
+      const roleName = `hzense_editorial_${role}`;
+      try {
+        for (const privilege of ['SET', 'ALTER SYSTEM']) {
+          await admin.query(`GRANT ${privilege} ON PARAMETER work_mem TO ${roleName}`);
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+          await admin.query(`REVOKE ${privilege} ON PARAMETER work_mem FROM ${roleName}`);
+          await assertEditorialRole(client, role);
+        }
+      } finally {
+        await admin.query(`REVOKE ALL ON PARAMETER work_mem FROM ${roleName}`);
+        client.release();
+      }
+    }
+  });
+  it('rejects direct system catalog table, column and schema ACLs', async () => {
+    for (const [connection, role] of [
+      [reader, 'reader'],
+      [writer, 'writer'],
+    ]) {
+      const client = await connection.connect();
+      const roleName = `hzense_editorial_${role}`;
+      try {
+        for (const privilege of [
+          'SELECT ON pg_catalog.pg_authid',
+          'SELECT(rolpassword) ON pg_catalog.pg_authid',
+          'USAGE ON SCHEMA pg_catalog',
+        ]) {
+          await pool.query(`GRANT ${privilege} TO ${roleName}`);
+          try {
+            await expect(assertEditorialRole(client, role)).rejects.toThrow(
+              'editorial_role_invalid',
+            );
+          } finally {
+            await pool.query(`REVOKE ${privilege} FROM ${roleName}`);
+          }
+          await assertEditorialRole(client, role);
+        }
+      } finally {
+        client.release();
+      }
+    }
+  });
+  it('retains initial system PUBLIC privileges but rejects new table, column and schema grants', async () => {
+    for (const privilege of [
+      'SELECT ON pg_catalog.pg_authid',
+      'SELECT(rolpassword) ON pg_catalog.pg_authid',
+      'UPDATE ON pg_catalog.pg_class',
+      'CREATE ON SCHEMA pg_catalog',
+      'UPDATE ON information_schema.sql_features',
+    ]) {
+      await pool.query(`GRANT ${privilege} TO PUBLIC`);
+      try {
+        for (const [connection, role] of [
+          [reader, 'reader'],
+          [writer, 'writer'],
+        ]) {
+          const client = await connection.connect();
+          try {
+            await expect(assertEditorialRole(client, role)).rejects.toThrow(
+              'editorial_role_invalid',
+            );
+          } finally {
+            client.release();
+          }
+        }
+      } finally {
+        await pool.query(`REVOKE ${privilege} FROM PUBLIC`);
+      }
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await assertEditorialRole(client, role);
+        } finally {
+          client.release();
+        }
+      }
+    }
+    await pool.query('CREATE TABLE information_schema.editorial_test_only(id integer)');
+    try {
+      await pool.query('GRANT SELECT ON information_schema.editorial_test_only TO PUBLIC');
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+        } finally {
+          client.release();
+        }
+      }
+    } finally {
+      await pool.query('DROP TABLE information_schema.editorial_test_only');
+    }
+  });
+  it('rejects extra PUBLIC system function, large-object and tablespace capabilities', async () => {
+    const expectRejected = async () => {
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+        } finally {
+          client.release();
+        }
+      }
+    };
+    await pool.query('GRANT EXECUTE ON FUNCTION pg_catalog.pg_read_file(text) TO PUBLIC');
+    try {
+      await expectRejected();
+    } finally {
+      await pool.query('REVOKE EXECUTE ON FUNCTION pg_catalog.pg_read_file(text) FROM PUBLIC');
+    }
+    await pool.query(
+      'CREATE FUNCTION pg_catalog.editorial_test_only() RETURNS integer LANGUAGE sql AS $$SELECT 1$$',
+    );
+    try {
+      await expectRejected();
+    } finally {
+      await pool.query('DROP FUNCTION pg_catalog.editorial_test_only()');
+    }
+    const oid = (await pool.query('SELECT lo_create(0) AS oid')).rows[0].oid;
+    try {
+      await pool.query(`GRANT SELECT ON LARGE OBJECT ${Number(oid)} TO PUBLIC`);
+      await expectRejected();
+    } finally {
+      await pool.query('SELECT lo_unlink($1)', [oid]);
+    }
+    await pool.query('CREATE FOREIGN DATA WRAPPER editorial_test_fdw NO HANDLER');
+    try {
+      await pool.query(
+        'CREATE SERVER editorial_test_server FOREIGN DATA WRAPPER editorial_test_fdw',
+      );
+      try {
+        for (const target of [
+          'FOREIGN SERVER editorial_test_server',
+          'FOREIGN DATA WRAPPER editorial_test_fdw',
+        ]) {
+          await pool.query(`GRANT USAGE ON ${target} TO PUBLIC`);
+          try {
+            await expectRejected();
+          } finally {
+            await pool.query(`REVOKE USAGE ON ${target} FROM PUBLIC`);
+          }
+        }
+      } finally {
+        await pool.query('DROP SERVER editorial_test_server');
+      }
+    } finally {
+      await pool.query('DROP FOREIGN DATA WRAPPER editorial_test_fdw');
+    }
+    const initialPublic = (
+      await admin.query(
+        "SELECT 1 FROM pg_tablespace t CROSS JOIN LATERAL aclexplode(t.spcacl) a WHERE t.spcname='pg_default' AND a.grantee=0",
+      )
+    ).rows;
+    expect(initialPublic).toEqual([]);
+    await admin.query('GRANT CREATE ON TABLESPACE pg_default TO PUBLIC');
+    try {
+      await expectRejected();
+    } finally {
+      await admin.query('REVOKE CREATE ON TABLESPACE pg_default FROM PUBLIC');
+    }
+    for (const [connection, role] of [
+      [reader, 'reader'],
+      [writer, 'writer'],
+    ]) {
+      const client = await connection.connect();
+      try {
+        await assertEditorialRole(client, role);
+      } finally {
+        client.release();
+      }
+    }
+  });
+  it('requires usable non-grantable public schema and rejects unrelated schema access', async () => {
+    await pool.query('CREATE SCHEMA editorial_extra');
+    try {
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        const roleName = `hzense_editorial_${role}`;
+        try {
+          await pool.query(`REVOKE USAGE ON SCHEMA public FROM ${roleName}`);
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+          await pool.query(`GRANT USAGE ON SCHEMA public TO ${roleName} WITH GRANT OPTION`);
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+          await pool.query(`REVOKE GRANT OPTION FOR USAGE ON SCHEMA public FROM ${roleName}`);
+          await assertEditorialRole(client, role);
+          await pool.query(`GRANT USAGE ON SCHEMA editorial_extra TO ${roleName}`);
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+          await pool.query(`REVOKE USAGE ON SCHEMA editorial_extra FROM ${roleName}`);
+          await assertEditorialRole(client, role);
+        } finally {
+          client.release();
+        }
+      }
+    } finally {
+      await pool.query('DROP SCHEMA editorial_extra');
+    }
+  });
+  it('PostgreSQL denies operator and cast execution when the implementation EXECUTE is revoked', async () => {
+    const assertBoth = async (query) => {
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await assertEditorialRole(client, role);
+          await expect(client.query(query)).rejects.toMatchObject({ code: '42501' });
+        } finally {
+          client.release();
+        }
+      }
+    };
+    await pool.query(
+      'CREATE FUNCTION public.editorial_hidden_operator(text,text) RETURNS boolean LANGUAGE sql SECURITY DEFINER AS $$SELECT true$$',
+    );
+    await pool.query(
+      'REVOKE EXECUTE ON FUNCTION public.editorial_hidden_operator(text,text) FROM PUBLIC',
+    );
+    await pool.query(
+      'CREATE OPERATOR public.=== (LEFTARG=text,RIGHTARG=text,FUNCTION=public.editorial_hidden_operator)',
+    );
+    try {
+      await assertBoth("SELECT 'a' OPERATOR(public.===) 'b' AS value");
+    } finally {
+      await pool.query('DROP OPERATOR public.=== (text,text)');
+      await pool.query('DROP FUNCTION public.editorial_hidden_operator(text,text)');
+    }
+    await pool.query(
+      "CREATE FUNCTION public.editorial_hidden_cast(integer) RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$SELECT '00000000-0000-0000-0000-000000000000'::uuid$$",
+    );
+    await pool.query(
+      'REVOKE EXECUTE ON FUNCTION public.editorial_hidden_cast(integer) FROM PUBLIC',
+    );
+    await pool.query(
+      'CREATE CAST (integer AS uuid) WITH FUNCTION public.editorial_hidden_cast(integer)',
+    );
+    try {
+      await assertBoth('SELECT 1::uuid AS value');
+    } finally {
+      await pool.query('DROP CAST (integer AS uuid)');
+      await pool.query('DROP FUNCTION public.editorial_hidden_cast(integer)');
+    }
+    for (const [connection, role] of [
+      [reader, 'reader'],
+      [writer, 'writer'],
+    ]) {
+      const client = await connection.connect();
+      try {
+        await assertEditorialRole(client, role);
+      } finally {
+        client.release();
+      }
+    }
+  });
+  it('accepts only the audited vector extension and rejects attached application functions', async () => {
+    await pool.query("CREATE EXTENSION vector VERSION '0.8.6'");
+    try {
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await assertEditorialRole(client, role);
+        } finally {
+          client.release();
+        }
+      }
+      await pool.query(
+        'CREATE FUNCTION public.editorial_extra_function() RETURNS integer LANGUAGE sql SECURITY DEFINER AS $$SELECT 1$$',
+      );
+      for (const extension of ['plpgsql', 'vector']) {
+        await pool.query(
+          `ALTER EXTENSION ${extension} ADD FUNCTION public.editorial_extra_function()`,
+        );
+        try {
+          for (const [connection, role] of [
+            [reader, 'reader'],
+            [writer, 'writer'],
+          ]) {
+            const client = await connection.connect();
+            try {
+              await expect(assertEditorialRole(client, role)).rejects.toThrow(
+                'editorial_role_invalid',
+              );
+            } finally {
+              client.release();
+            }
+          }
+        } finally {
+          await pool.query(
+            `ALTER EXTENSION ${extension} DROP FUNCTION public.editorial_extra_function()`,
+          );
+        }
+      }
+      await pool.query('ALTER FUNCTION public.editorial_extra_function() SECURITY INVOKER');
+      await pool.query('ALTER EXTENSION vector DROP FUNCTION public.vector_dims(public.vector)');
+      try {
+        await pool.query(
+          'REVOKE EXECUTE ON FUNCTION public.vector_dims(public.vector) FROM PUBLIC',
+        );
+        await pool.query('ALTER EXTENSION vector ADD FUNCTION public.editorial_extra_function()');
+        try {
+          for (const [connection, role] of [
+            [reader, 'reader'],
+            [writer, 'writer'],
+          ]) {
+            const client = await connection.connect();
+            try {
+              await expect(assertEditorialRole(client, role)).rejects.toThrow(
+                'editorial_role_invalid',
+              );
+            } finally {
+              client.release();
+            }
+          }
+        } finally {
+          await pool.query(
+            'ALTER EXTENSION vector DROP FUNCTION public.editorial_extra_function()',
+          );
+        }
+      } finally {
+        await pool.query('ALTER EXTENSION vector ADD FUNCTION public.vector_dims(public.vector)');
+        await pool.query('GRANT EXECUTE ON FUNCTION public.vector_dims(public.vector) TO PUBLIC');
+        await pool.query('DROP FUNCTION public.editorial_extra_function()');
+      }
+      const sumProc = async () => {
+        const row = (await pool.query(editorialVectorQuery)).rows.find(
+          (row) => row.name === 'sum' && row.args[0] === 'public.vector',
+        );
+        const { aggregate, ...proc } = row;
+        expect(aggregate).toBeTruthy();
+        return proc;
+      };
+      const originalProc = await sumProc();
+      await pool.query(
+        'CREATE FUNCTION public.editorial_extra_trans(public.vector, public.vector) RETURNS public.vector LANGUAGE sql SECURITY DEFINER AS $$SELECT $1$$',
+      );
+      await pool.query(
+        'REVOKE EXECUTE ON FUNCTION public.editorial_extra_trans(public.vector, public.vector) FROM PUBLIC',
+      );
+      await pool.query('ALTER EXTENSION vector DROP AGGREGATE public.sum(public.vector)');
+      await pool.query('DROP AGGREGATE public.sum(public.vector)');
+      await pool.query(
+        'CREATE AGGREGATE public.sum(public.vector) (SFUNC=public.editorial_extra_trans, STYPE=public.vector, COMBINEFUNC=public.vector_add, PARALLEL=SAFE)',
+      );
+      await pool.query('ALTER EXTENSION vector ADD AGGREGATE public.sum(public.vector)');
+      try {
+        expect(await sumProc()).toEqual(originalProc);
+        for (const [connection, role] of [
+          [reader, 'reader'],
+          [writer, 'writer'],
+        ]) {
+          const client = await connection.connect();
+          try {
+            await expect(assertEditorialRole(client, role)).rejects.toThrow(
+              'editorial_role_invalid',
+            );
+          } finally {
+            client.release();
+          }
+        }
+      } finally {
+        await pool.query('ALTER EXTENSION vector DROP AGGREGATE public.sum(public.vector)');
+        await pool.query('DROP AGGREGATE public.sum(public.vector)');
+        await pool.query(
+          'CREATE AGGREGATE public.sum(public.vector) (SFUNC=public.vector_add, STYPE=public.vector, COMBINEFUNC=public.vector_add, PARALLEL=SAFE)',
+        );
+        await pool.query('ALTER EXTENSION vector ADD AGGREGATE public.sum(public.vector)');
+        await pool.query(
+          'DROP FUNCTION public.editorial_extra_trans(public.vector, public.vector)',
+        );
+      }
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await assertEditorialRole(client, role);
+        } finally {
+          client.release();
+        }
+      }
+    } finally {
+      await pool.query('DROP EXTENSION vector');
+    }
+  });
+  it('publishes one immutable receipt, compares revisions, and withdraws without reviving older publications', async () => {
+    const { request, material } = editorialFixture();
+    await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+      request.runId,
+    ]);
+    const args = { pool: writer, owner: 'owner', request, material };
+    const first = await saveEditorialSignal(args);
+    expect(first.revision).toBe(1);
+    expect(await saveEditorialSignal(args)).toEqual(first);
+    await expect(saveEditorialSignal({ ...args, owner: 'other' })).rejects.toThrow('not_found');
+    expect(
+      await readEditorialSignal({
+        pool: writer,
+        owner: 'other',
+        runId: request.runId,
+        candidateIndex: 0,
+      }),
+    ).toBeNull();
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        request: { ...request, content: { ...request.content, persons: ['Other'] } },
+      }),
+    ).rejects.toThrow('request_id_conflict');
+    const publicRow = (await reader.query('SELECT * FROM editorial_public_signals')).rows[0];
+    expect(Object.keys(publicRow)).toEqual(['signal_id', 'revision', 'content', 'published_at']);
+    expect(publicRow.signal_id).toMatch(/^editorial-[a-f0-9]{32}$/);
+    expect(publicRow.signal_id).not.toContain(request.runId);
+    await expect(
+      pool.query('UPDATE signal_generation_runs SET deleted_at=now() WHERE id=$1', [request.runId]),
+    ).rejects.toThrow('published_candidate_delete_forbidden');
+    await expect(pool.query('UPDATE editorial_signal_revisions SET revision=5')).rejects.toThrow(
+      'append-only',
+    );
+    await expect(pool.query('TRUNCATE editorial_signal_revisions')).rejects.toThrow('append-only');
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        request: { ...request, requestId: randomUUID(), expectedRevision: 1, action: 'draft' },
+      }),
+    ).rejects.toThrow('published_draft_forbidden');
+    const race = await Promise.allSettled(
+      [0, 1].map(() =>
+        saveEditorialSignal({
+          ...args,
+          request: { ...request, requestId: randomUUID(), expectedRevision: 1 },
+        }),
+      ),
+    );
+    expect(race.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    await saveEditorialSignal({
+      ...args,
+      request: {
+        ...request,
+        requestId: randomUUID(),
+        expectedRevision: 2,
+        action: 'withdraw',
+        content: { ...request.content, persons: [], eventDate: null },
+      },
+    });
+    expect((await reader.query('SELECT * FROM editorial_public_signals')).rows).toEqual([]);
+    const latest = await readEditorialSignal({
+      pool: writer,
+      owner: 'owner',
+      runId: request.runId,
+      candidateIndex: 0,
+    });
+    expect(latest.content.persons).toEqual(['Person']);
+    expect(latest.action).toBe('withdraw');
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        request: {
+          ...request,
+          requestId: randomUUID(),
+          expectedRevision: 3,
+          content: { ...request.content, topics: [{ id: 'ai', title: 'Forged' }] },
+        },
+      }),
+    ).rejects.toThrow('topic_reference_invalid');
+    await pool.query('UPDATE signal_generation_runs SET deleted_at=now() WHERE id=$1', [
+      request.runId,
+    ]);
+    expect(
+      await readEditorialSignal({
+        pool: writer,
+        owner: 'owner',
+        runId: request.runId,
+        candidateIndex: 0,
+      }),
+    ).toBeNull();
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        request: { ...request, requestId: randomUUID(), expectedRevision: 3 },
+      }),
+    ).rejects.toThrow('not_found');
+  });
+  it('serializes soft deletion and publication in both commit orders', async () => {
+    const { request, material } = editorialFixture();
+    for (const publicationFirst of [true, false]) {
+      const runId = randomUUID();
+      await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+        runId,
+      ]);
+      const holder = await pool.connect();
+      let racing;
+      try {
+        await holder.query('BEGIN');
+        await holder.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [runId]);
+        if (publicationFirst) {
+          await holder.query(
+            "INSERT INTO editorial_signal_revisions(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash) VALUES($1,$2,'owner',0,1,$3,'publish',$4::jsonb,$3)",
+            [randomUUID(), runId, material.materialHash, JSON.stringify(request.content)],
+          );
+          racing = pool
+            .query('UPDATE signal_generation_runs SET deleted_at=now() WHERE id=$1', [runId])
+            .then(
+              () => null,
+              (error) => error.message,
+            );
+        } else {
+          await holder.query('UPDATE signal_generation_runs SET deleted_at=now() WHERE id=$1', [
+            runId,
+          ]);
+          racing = saveEditorialSignal({
+            pool: writer,
+            owner: 'owner',
+            material,
+            request: { ...request, requestId: randomUUID(), runId },
+          }).then(
+            () => null,
+            (error) => error.code,
+          );
+        }
+        let blocked = false;
+        for (let attempt = 0; attempt < 40; attempt++) {
+          blocked = (
+            await admin.query(
+              "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=$1 AND wait_event='advisory') AS blocked",
+              [db],
+            )
+          ).rows[0].blocked;
+          if (blocked) break;
+          await setTimeout(5);
+        }
+        expect(blocked).toBe(true);
+        await holder.query('COMMIT');
+        expect(await racing).toBe(
+          publicationFirst ? 'published_candidate_delete_forbidden' : 'not_found',
+        );
+      } finally {
+        await holder.query('ROLLBACK');
+        holder.release();
+        await racing;
+      }
+    }
+  });
+});

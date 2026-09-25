@@ -1,6 +1,7 @@
 import type { SeedEntity, SeedRadarSnapshot, SeedSignal, SeedSource } from '@hzense/content';
 import { getTopicEntries, type TopicEntry } from './content-runtime.ts';
 import { filterLatestRadarSnapshots, type RadarFilters } from './radar-model.ts';
+import type { SignalEntry } from './public-signal-reader-core.ts';
 import {
   getRadarSnapshots,
   getResourceEntries,
@@ -17,7 +18,7 @@ export interface RadarEntry {
   snapshot: SeedRadarSnapshot;
   topic: TopicEntry;
   evidenceSignals: RadarEvidenceSignal[];
-  relatedSignals: SeedSignal[];
+  relatedSignals: SignalEntry[];
   relatedResources: SeedEntity[];
 }
 
@@ -43,7 +44,7 @@ export async function getRadarEntries(filters: RadarFilters = {}): Promise<Radar
       }
       const evidenceSignals = snapshot.evidence_signals.map((signalId) => {
         const signal = signalById.get(signalId);
-        if (!signal) {
+        if (!signal || signal.publication_basis === 'manual_confirmation') {
           throw new Error(`Radar snapshot ${snapshot.id} has unavailable evidence ${signalId}`);
         }
         const source = sourceById.get(signal.source_id);

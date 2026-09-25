@@ -1,5 +1,15 @@
 import console from 'node:console';
 import {
+  editorialColumns,
+  editorialPrimaryKeys,
+  editorialForeignKeys,
+  editorialChecks,
+  editorialDefaults,
+  editorialUniqueIndexes,
+  editorialPublicColumns,
+  editorialPublicViewHashes,
+} from './editorial-signal-catalog.mjs';
+import {
   materialProposalColumns,
   materialProposalPrimaryKeys,
   materialProposalForeignKeys,
@@ -278,6 +288,7 @@ const expectedColumns = {
   ...candidateMaterialColumns,
   ...materialProposalColumns,
   ...candidateReviewColumns,
+  ...editorialColumns,
 };
 for (const tableName of allStampedSignalTables) {
   expectedColumns[tableName] = {
@@ -353,6 +364,7 @@ const expectedPrimaryKeys = new Set([
   ...candidateMaterialPrimaryKeys,
   ...materialProposalPrimaryKeys,
   ...candidateReviewPrimaryKeys,
+  ...editorialPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -384,6 +396,7 @@ const expectedForeignKeys = new Set([
   ...candidateMaterialForeignKeys,
   ...materialProposalForeignKeys,
   ...candidateReviewForeignKeys,
+  ...editorialForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -414,6 +427,7 @@ const expectedCheckExpressions = {
   ...candidateMaterialChecks,
   ...materialProposalChecks,
   ...candidateReviewChecks,
+  ...editorialChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -484,6 +498,7 @@ const expectedDefaults = new Map([
   ...candidateMaterialDefaults,
   ...materialProposalDefaults,
   ...candidateReviewDefaults,
+  ...editorialDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
   ['topics.runtime_enabled', new Set(['false'])],
@@ -513,6 +528,7 @@ const expectedUniqueIndexes = new Set([
   ...candidateMaterialUniqueIndexes,
   ...materialProposalUniqueIndexes,
   ...candidateReviewUniqueIndexes,
+  ...editorialUniqueIndexes,
   ...affiliationUniqueIndexes,
   ...eventIdentityUniqueIndexes,
   ...signalPublicationUniqueIndexes,
@@ -662,20 +678,33 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
         FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped) AS columns
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname='public' AND c.relkind IN ('v','m') ORDER BY c.relname`);
-  if (publicViews.rows.length !== 1 || publicViews.rows[0]?.name !== 'current_public_signals') {
+  const viewContracts = {
+    current_public_signals: {
+      columns: currentPublicSignalColumns,
+      hashes: currentPublicSignalViewHashes,
+    },
+    editorial_public_signals: {
+      columns: editorialPublicColumns,
+      hashes: editorialPublicViewHashes,
+    },
+  };
+  if (
+    publicViews.rows.length !== 2 ||
+    publicViews.rows.some((view) => !Object.hasOwn(viewContracts, view.name))
+  ) {
     problems.push('current public Signal view set mismatch');
   } else {
-    const view = publicViews.rows[0];
-    if (
-      view.owner !== expectedOwner ||
-      JSON.stringify(view.options) !== JSON.stringify(['security_barrier=true']) ||
-      JSON.stringify(view.columns) !== JSON.stringify(currentPublicSignalColumns) ||
-      typeof view.definition !== 'string' ||
-      !currentPublicSignalViewHashes.has(
-        createHash('sha256').update(view.definition.trim()).digest('hex'),
-      )
-    ) {
-      problems.push('current public Signal view contract mismatch');
+    for (const view of publicViews.rows) {
+      const contract = viewContracts[view.name];
+      if (
+        view.owner !== expectedOwner ||
+        JSON.stringify(view.options) !== JSON.stringify(['security_barrier=true']) ||
+        JSON.stringify(view.columns) !== JSON.stringify(contract.columns) ||
+        typeof view.definition !== 'string' ||
+        !contract.hashes.has(createHash('sha256').update(view.definition.trim()).digest('hex'))
+      ) {
+        problems.push('current public Signal view contract mismatch');
+      }
     }
   }
 
@@ -871,7 +900,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
                 'candidate_enrichment_runs',
                 'candidate_material_requests','candidate_material_reports','candidate_material_receipts',
                 'candidate_material_proposals','candidate_material_approvals',
-                'candidate_reviews','candidate_review_conversions','candidate_review_attestations'
+                'candidate_reviews','candidate_review_conversions','candidate_review_attestations',
+                'editorial_signal_revisions'
               ))::text
               ORDER BY constraint_info.oid
             ) AS definitions
@@ -916,7 +946,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
       Object.hasOwn(candidateEnrichmentChecks, tableName) ||
       Object.hasOwn(candidateMaterialChecks, tableName) ||
       Object.hasOwn(materialProposalChecks, tableName) ||
-      Object.hasOwn(candidateReviewChecks, tableName)
+      Object.hasOwn(candidateReviewChecks, tableName) ||
+      Object.hasOwn(editorialChecks, tableName)
         ? canonicalPublicationControlCheck
         : [
               'signal_event_identities',
@@ -970,10 +1001,9 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
   );
   const indexSignature = (row) => `${row.table_name}|${row.columns.join(',')}`;
   const expectedPartialIndexPredicates = new Map([
-    ...signalGenerationUniqueIndexes.map((signature) => [
-      signature,
-      signalGenerationIdentityPredicates,
-    ]),
+    ...signalGenerationUniqueIndexes
+      .filter((signature) => signature !== 'signal_generation_runs|id,owner_id')
+      .map((signature) => [signature, signalGenerationIdentityPredicates]),
     ...candidateEnrichmentUniqueIndexes.map((signature) => [
       signature,
       candidateEnrichmentIdentityPredicates,

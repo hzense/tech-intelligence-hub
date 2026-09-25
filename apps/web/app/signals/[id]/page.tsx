@@ -19,6 +19,7 @@ interface SignalDetailProps {
 
 export async function generateStaticParams() {
   if (readSignalReadMode(process.env) === 'database') return [];
+  if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED === '1') return [];
   return (await getSignalEntries()).map((entry) => ({ id: entry.id }));
 }
 
@@ -76,28 +77,33 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
             <span className="topic-section-label">信号判断</span>
             <h2>为什么值得记录</h2>
             <p>{entry.analysis ?? entry.summary}</p>
-            <div className="signal-dimension-grid">
-              <div>
-                <span>重要度</span>
-                <strong>{entry.importance}/5</strong>
+            {entry.publication_basis === 'manual_confirmation' ? (
+              <p>管理员确认</p>
+            ) : (
+              <div className="signal-dimension-grid">
+                <div>
+                  <span>重要度</span>
+                  <strong>{entry.importance}/5</strong>
+                </div>
+                <div>
+                  <span>强度</span>
+                  <strong>{entry.strength}/5</strong>
+                </div>
+                <div>
+                  <span>置信度</span>
+                  <strong>{formatPercentage(entry.confidence)}</strong>
+                </div>
+                <div>
+                  <span>新颖度</span>
+                  <strong>{formatPercentage(entry.novelty)}</strong>
+                </div>
               </div>
-              <div>
-                <span>强度</span>
-                <strong>{entry.strength}/5</strong>
-              </div>
-              <div>
-                <span>置信度</span>
-                <strong>{formatPercentage(entry.confidence)}</strong>
-              </div>
-              <div>
-                <span>新颖度</span>
-                <strong>{formatPercentage(entry.novelty)}</strong>
-              </div>
-            </div>
+            )}
           </article>
           <aside className="signal-context-panel">
             <section>
               <span>来源</span>
+              {entry.public_sources?.length === 0 ? <p>未提供公开来源链接</p> : null}
               {entry.public_sources ? (
                 entry.public_sources.map((item) => (
                   <a
@@ -150,7 +156,8 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
                   [...entry.public_people, ...(entry.public_organizations ?? [])].map(
                     (person, index) => (
                       <p key={`${person.id}:${person.event_role}:${index}`}>
-                        <strong>{person.name}</strong> · {person.event_role}
+                        <strong>{person.name}</strong>
+                        {person.event_role ? ` · ${person.event_role}` : ''}
                       </p>
                     ),
                   )

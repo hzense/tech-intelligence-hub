@@ -16,6 +16,7 @@ const migration = [
   '0021_candidate_review_attestations.sql',
   '0023_candidate_materials.sql',
   '0024_material_review_proposals.sql',
+  '0025_editorial_signal_publication.sql',
 ]
   .map((name) => readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), 'utf8'))
   .join('\n');
@@ -87,9 +88,36 @@ export function currentPublicSignalViewFixture(owner = 'hzense_migrator') {
   };
 }
 
+export function editorialPublicSignalViewFixture(owner = 'hzense_migrator') {
+  return {
+    name: 'editorial_public_signals',
+    owner,
+    options: ['security_barrier=true'],
+    columns: [
+      ['signal_id', 'text'],
+      ['revision', 'integer'],
+      ['content', 'jsonb'],
+      ['published_at', 'timestamp with time zone'],
+    ],
+    definition: ` SELECT 'editorial-'::text || md5((run_id::text || ':'::text) || candidate_index::text) AS signal_id,
+    revision,
+    content,
+    created_at AS published_at
+   FROM ( SELECT DISTINCT ON (editorial_signal_revisions.run_id, editorial_signal_revisions.candidate_index) editorial_signal_revisions.run_id,
+            editorial_signal_revisions.candidate_index,
+            editorial_signal_revisions.revision,
+            editorial_signal_revisions.action,
+            editorial_signal_revisions.content,
+            editorial_signal_revisions.created_at
+           FROM editorial_signal_revisions
+          ORDER BY editorial_signal_revisions.run_id, editorial_signal_revisions.candidate_index, editorial_signal_revisions.revision DESC) latest
+  WHERE action = 'publish'::text;`,
+  };
+}
+
 export function signalImmutabilityFixture(owner = 'hzense_migrator') {
   return {
-    views: [currentPublicSignalViewFixture(owner)],
+    views: [currentPublicSignalViewFixture(owner), editorialPublicSignalViewFixture(owner)],
     triggers: sealedSignalTriggers.map((contract) => ({
       ...contract,
       table_owner: owner,

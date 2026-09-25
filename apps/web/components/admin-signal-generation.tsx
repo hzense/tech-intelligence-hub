@@ -122,6 +122,7 @@ const errorMessages: Record<string, string> = {
   not_found: '暂未查到原任务。请保留原编号；确认配置后可使用原编号重新确认创建，不会自动调用 AI。',
   cancelled: '该资料或任务已取消，不能继续生成。',
   task_active: '任务仍在执行或执行保护期未结束，暂不能删除或重新生成；请稍后查询状态。',
+  published_candidate_delete_forbidden: '请先撤回该任务已发布的候选，再删除任务。',
   task_deleted:
     '同一资料与配置的任务已删除。可手动创建重新生成任务，执行时可能再次计费；也可点击“核对并放弃未创建请求”选择其他资料。',
   duplicate_source: '该资料与已有解析内容重复，请从列表选择保留的资料。',

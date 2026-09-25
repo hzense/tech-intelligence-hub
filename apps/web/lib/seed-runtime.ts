@@ -23,7 +23,11 @@ export async function getSignalEntries(): Promise<SignalEntry[]> {
   if (readSignalReadMode(process.env) === 'database') {
     return (await import('./server/public-signals.ts')).getPublicSignals();
   }
-  return (await getSeedCatalog()).signals
+  const editorial =
+    process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED === '1'
+      ? await (await import('./server/editorial-signals.ts')).getEditorialSignals()
+      : [];
+  const legacy = (await getSeedCatalog()).signals
     .filter((signal) => signal.status === 'accepted' || signal.status === 'reviewed')
     .sort(
       (left, right) =>
@@ -31,9 +35,16 @@ export async function getSignalEntries(): Promise<SignalEntry[]> {
         right.importance - left.importance ||
         left.title.localeCompare(right.title),
     );
+  return [...legacy.filter((entry) => !entry.id.startsWith('editorial-')), ...editorial].sort(
+    (left, right) => right.occurred_at.localeCompare(left.occurred_at),
+  );
 }
 
 export async function getSignalEntryById(id: string): Promise<SignalEntry | undefined> {
+  if (id.startsWith('editorial-')) {
+    if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED !== '1') return undefined;
+    return (await import('./server/editorial-signals.ts')).getEditorialSignalById(id);
+  }
   if (readSignalReadMode(process.env) === 'database') {
     return (await import('./server/public-signals.ts')).getPublicSignalById(id);
   }

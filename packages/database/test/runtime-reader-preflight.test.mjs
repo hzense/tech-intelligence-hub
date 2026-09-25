@@ -224,17 +224,20 @@ function preflightClient({
       const rows = [
         ...expectedTableNames,
         ...(omitPublicView ? [] : ['current_public_signals']),
+        'editorial_public_signals',
         ...extraRelations,
       ].map((name) => ({
         name,
-        relkind: name === 'current_public_signals' ? 'v' : 'r',
+        relkind: ['current_public_signals', 'editorial_public_signals'].includes(name) ? 'v' : 'r',
         relpersistence: 'p',
         relrowsecurity: false,
         relforcerowsecurity: false,
         owner: 'hzense_migrator',
         policy_count: 0,
         user_trigger_count: expectedSignalTriggerCount(name),
-        rewrite_rule_count: name === 'current_public_signals' ? 1 : rewriteRuleCount,
+        rewrite_rule_count: ['current_public_signals', 'editorial_public_signals'].includes(name)
+          ? 1
+          : rewriteRuleCount,
         ...(name === 'current_public_signals' ? viewRelation : {}),
       }));
       return { rowCount: rows.length, rows };

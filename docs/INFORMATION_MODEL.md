@@ -1245,6 +1245,10 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 
 ## 40.1 范围与权威来源
 
+**2026-09-25 人工确认发布增量（本地代码目标，未执行生产迁移）：** 新增 `0025_editorial_signal_publication.sql`，目标为 26 个迁移、58 张持久表及 2 个公开视图。新增 `editorial_signal_revisions` 为独立追加式管理员声明，不写入原 verified 证据、实体关系或签名记录；`editorial_public_signals` 投影最新已发布修订，标题、摘要、日期、组织名、人物名、领域可公开，owner／原任务编号／原始资料不公开。下方 0024 计数保留历史基线，生产状态须另行核验。完整行为及授权边界见 [人工确认发布](EDITORIAL_PUBLICATION.md)。
+
+新增表字段：`request_id` UUID 主键；`run_id, owner_id` 复合外键绑定原生成任务；`candidate_index` 为 0–4；`revision` 正整数且 `(run_id,candidate_index,revision)` 唯一；`material_hash`、`request_hash` 固定 64 位十六进制；`action` 为 draft／publish／withdraw；`content` JSONB 保存严格应用契约；`created_at` 服务器时间。更新、删除、TRUNCATE 被 ALWAYS 触发器拒绝；有当前人工发布的原任务不得软删除，先撤回。公开 ID 使用稳定不透明摘要，不暴露私有任务 UUID。按最新修订优先后再筛选 publish，撤回不会回落到旧版。
+
 本节描述仓库已实现、由自动校验保护的 PostgreSQL `public` Schema 目标，不把尚未执行的迁移表述为生产现状。当前仓库目标包含：
 
 - 57 张持久表：56 张领域、派生或私有控制表，以及 1 张 Migration 历史表。`0015` 后的 48 表底座上，`0020–0021` 增加三张审核／转换／签名私表，`0022` 增加一张候选补全任务表，`0023` 增加三张材料请求／报告／回执私表，`0024` 增加两张材料提案／确认私表。另有 1 个当前公开资格安全视图。此为当前本地代码目标；最近生产记录仍为截至 `0022` 的 23 迁移／52 表，0023–0024 尚待独立批准和核验，不能将目标计数当作生产结果。
