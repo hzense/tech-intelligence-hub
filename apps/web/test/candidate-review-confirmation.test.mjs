@@ -67,6 +67,7 @@ function fixture(queryOverride) {
     enrichments: [],
     enrichmentError: false,
     materialPreview: null,
+    previewError: false,
     registered: null,
     previewReads: 0,
     saved: [],
@@ -143,6 +144,7 @@ function fixture(queryOverride) {
       registeredMaterialForCandidate: async () => state.registered,
       materialPublicationPreview: async () => {
         state.previewReads++;
+        if (state.previewError) throw new Error('private preview detail');
         return state.materialPreview;
       },
     },
@@ -232,6 +234,23 @@ test('supplement preview never changes review readiness, confirmation hashes or 
   assert.deepEqual(f.state.saved[0].request.draft.personIds, ['person-zhang-san']);
   f.state.entities = [];
   assert.equal((await f.read()).preparation.ready, false);
+});
+
+test('invalid or unavailable supplement previews cannot block valid formal materials or weaken their gate', async () => {
+  const f = fixture();
+  const original = await f.read();
+  f.state.previewError = true;
+  const unavailable = await f.read();
+  assert.equal(unavailable.materialPreview, null);
+  assert.equal(unavailable.materialPreviewUnavailable, true);
+  assert.deepEqual(unavailable.preparation, original.preparation);
+  assert.doesNotMatch(JSON.stringify(unavailable), /private preview detail/);
+  await f.confirm(original.preparation.preparationHash);
+  assert.equal(f.state.saved.length, 1);
+  f.state.entities = [];
+  assert.equal((await f.read()).preparation.ready, false);
+  f.state.previewError = false;
+  assert.equal((await f.read()).materialPreviewUnavailable, false);
 });
 
 test('missing fingerprints, browser-authored drafts and cross-owner access are rejected', async () => {

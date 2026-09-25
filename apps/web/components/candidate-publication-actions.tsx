@@ -263,6 +263,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
   const [receipt, setReceipt] = useState<unknown>(null);
   const [preparation, setPreparation] = useState<Preparation | null>(null);
   const [materialPreview, setMaterialPreview] = useState<MaterialPublicationPreview | null>(null);
+  const [materialPreviewUnavailable, setMaterialPreviewUnavailable] = useState(false);
   const [enrichments, setEnrichments] = useState<EnrichmentTask[]>([]);
   const [message, setMessage] = useState('正在读取最新发布状态。');
   const pending = useRef<Partial<Record<Action, { fingerprint: string; requestId: string }>>>({});
@@ -285,6 +286,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       enrichments?: EnrichmentTask[];
       preparation?: Preparation;
       materialPreview?: MaterialPublicationPreview | null;
+      materialPreviewUnavailable?: boolean;
     };
   }, [candidateIndex, runId]);
 
@@ -338,6 +340,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
     setEnrichments(data.enrichments ?? []);
     setPreparation(data.preparation ?? null);
     setMaterialPreview(data.materialPreview ?? null);
+    setMaterialPreviewUnavailable(data.materialPreviewUnavailable === true);
     if (!data.reviews.length) {
       const state = unreviewedPublicationReadiness(data);
       const prepared = state.ready === true;
@@ -548,6 +551,12 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
           </details>
         ) : null}
       </div>
+      {materialPreviewUnavailable ? (
+        <p role="status">
+          补证补全预览暂不可用或未通过当前材料校验，已停止展示该提案。下方仍显示正式审核材料；请刷新或核对补证记录，不必重新调用
+          AI。
+        </p>
+      ) : null}
       {displayedPreview ? (
         <>
           <p role="status">正在展示最新补证补全提案；待核验登记，不代表已具备发布资格。</p>
@@ -571,9 +580,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
         candidateIndex={candidateIndex}
         materialHash={materialHash}
         onUpdated={inspect}
-        onRegistered={() => {
-          void inspect();
-        }}
+        onRegistered={inspect}
       />
       {preparation?.enrichment ? (
         <details className={styles.history} open={!displayedPreview}>

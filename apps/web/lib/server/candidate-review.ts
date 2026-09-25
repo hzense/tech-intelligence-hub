@@ -218,9 +218,17 @@ export async function reviewDashboard(owner: string, runId: string, candidateInd
     await currentReviewPacket(owner, runId, candidateIndex);
   // Supplement proposals are a display-only projection. Do not change packet,
   // registered, preparationHash or any write-side authorization using this data.
-  const materialPreview = registered
-    ? null
-    : await materialPublicationPreview(owner, runId, candidateIndex, original);
+  let materialPreview = null;
+  let materialPreviewUnavailable = false;
+  if (!registered) {
+    try {
+      materialPreview = await materialPublicationPreview(owner, runId, candidateIndex, original);
+    } catch {
+      // A display-only proposal cannot make independent formal materials unreadable.
+      // Omit invalid/unreadable previews explicitly, without changing formal checks.
+      materialPreviewUnavailable = true;
+    }
+  }
   if (!reviewConfigured())
     return {
       configured: false,
@@ -229,6 +237,7 @@ export async function reviewDashboard(owner: string, runId: string, candidateInd
       original_material_hash: originalMaterialHash,
       enrichments,
       materialPreview,
+      materialPreviewUnavailable,
       preparation: { ready: false, blockers: ['审核与发布存储尚未配置。'] },
     };
   const reviews = await readCandidateReviews({
@@ -249,6 +258,7 @@ export async function reviewDashboard(owner: string, runId: string, candidateInd
       original_material_hash: originalMaterialHash,
       enrichments,
       materialPreview,
+      materialPreviewUnavailable,
       preparation: publicPreparation(preparation),
     };
   } catch (error) {
