@@ -394,7 +394,7 @@ export function AdminAiProfiles({
                           type="number"
                           required
                           min="128"
-                          max="50000"
+                          max={key === 'extract' ? 50000 : 8192}
                           step="1"
                           defaultValue={
                             editing?.stages[key].max_output_tokens ??

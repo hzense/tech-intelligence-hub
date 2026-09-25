@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 import { createCandidateEnrichmentInvoker } from '../lib/candidate-enrichment-provider.ts';
+import { validateEnrichmentSource } from '../lib/material-enrichment.ts';
 
 const { Response } = globalThis;
 
@@ -56,6 +59,49 @@ const stage = {
   max_output_tokens: 2048,
   require_tools: false,
 };
+
+test('ordinary enrichment rejects expanded generation sources before task creation or network calls', async () => {
+  const oversized = {
+    ...source,
+    fragments: Array.from({ length: 100 }, (_, index) => ({
+      id: `fragment-${index + 1}`,
+      text: 'a'.repeat(3000),
+      locator: { paragraph: index + 1 },
+    })),
+  };
+  assert.throws(() => validateEnrichmentSource(oversized), /generation_source_too_large/);
+  const server = readFileSync(
+    new URL('../lib/server/candidate-enrichment.ts', import.meta.url),
+    'utf8',
+  );
+  assert.ok(
+    server.indexOf('validateEnrichmentSource(generation.snapshot.source)') <
+      server.indexOf('await store.createCandidateEnrichment('),
+  );
+  let calls = 0;
+  const invoke = createCandidateEnrichmentInvoker({
+    resolve: async () => {
+      calls++;
+      return [{ address: '93.184.216.34', family: 4 }];
+    },
+    request: async () => {
+      calls++;
+      throw new Error('must not call provider');
+    },
+  });
+  const result = await invoke({
+    source: oversized,
+    candidate,
+    stage,
+    connection,
+    apiKey: 'fixture-api-key',
+    allowedHosts: ['api.provider.example.com'],
+  });
+  assert.equal(result.success, false);
+  assert.equal(result.error_code, 'enrichment_failed');
+  assert.equal(result.input_tokens, null);
+  assert.equal(calls, 0);
+});
 
 test('candidate enrichment invokes one structured request and saves only validated private fields', async () => {
   const calls = [];

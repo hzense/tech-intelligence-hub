@@ -225,7 +225,11 @@ export function parseAiProfileSave(input) {
       aiFail();
     // JSON and jsonb store negative zero as zero; compare canonical requests on replay.
     if (s.temperature === 0) s.temperature = 0;
-    s.max_output_tokens = aiInteger(s.max_output_tokens, 128, AI_PROFILE_MAX_OUTPUT_TOKENS);
+    s.max_output_tokens = aiInteger(
+      s.max_output_tokens,
+      128,
+      name === 'extract' ? AI_PROFILE_MAX_OUTPUT_TOKENS : 8192,
+    );
     s.require_tools = bool(s.require_tools);
     stages[name] = s;
   }

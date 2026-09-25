@@ -28,6 +28,7 @@ import {
   assessMaterialEnrichment,
   materialEnrichmentJsonSchema,
   materialEnrichmentRules,
+  validateEnrichmentSource,
   type MaterialEnrichmentContext,
 } from './material-enrichment.ts';
 import type { GeneratedCandidate } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
@@ -77,6 +78,8 @@ export function createCandidateEnrichmentInvoker(
       provider_cost_microusd: providerCost,
     });
     try {
+      // Also guard historical snapshots before transport or any billable attempt.
+      validateEnrichmentSource(input.source);
       if (
         input.connection.protocol !== 'openai-compatible' ||
         input.stage.connection_id !== input.connection.id ||

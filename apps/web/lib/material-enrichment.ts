@@ -21,7 +21,7 @@ const fail = (code = 'invalid_enrichment_output'): never => {
   throw Object.assign(new Error(code), { code });
 };
 // Separate workflow: increasing signal generation must not enlarge its 256 KiB wire budget.
-function materialAiSource(value: unknown) {
+export function validateEnrichmentSource(value: unknown) {
   const source = validateGenerationSource(value);
   if (Buffer.byteLength(JSON.stringify(source), 'utf8') > 48000)
     fail('generation_source_too_large');
@@ -132,7 +132,7 @@ export function materialEnrichmentInput(
     (fragment, index) => cited.has(fragment.id) || checked.provenance[index]!.kind === 'supplement',
   );
   const toCompact = new Map(fragments.map((f, index) => [f.id, `fragment-${index + 1}`]));
-  const source = materialAiSource({
+  const source = validateEnrichmentSource({
     classification: 'private',
     fragments: fragments.map((f) => ({ ...f, id: toCompact.get(f.id)! })),
   });
@@ -152,7 +152,7 @@ export function assessMaterialEnrichment(
     Object.keys(v).sort().join(',') !== [...materialEnrichmentJsonSchema.required].sort().join(',')
   )
     fail();
-  const checked = materialAiSource(source);
+  const checked = validateEnrichmentSource(source);
   if (original.event_date !== null && v.event_date !== original.event_date) fail();
   if (!Array.isArray(v.claim_evidence) || v.claim_evidence.length !== original.claims.length)
     fail();

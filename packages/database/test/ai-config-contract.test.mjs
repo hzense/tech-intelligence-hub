@@ -170,6 +170,15 @@ describe('AI configuration request boundary', () => {
       expect(value.stages.extract.max_output_tokens).toBe(max_output_tokens);
     }
   });
+  it.each(['verify', 'analyze'])('retains the 8192 cap for %s', (name) => {
+    const stages = { extract: stage(), verify: stage(), analyze: stage() };
+    stages[name].max_output_tokens = 8192;
+    expect(parseAiProfileSave({ name: 'Test', stages }).stages[name].max_output_tokens).toBe(8192);
+    for (const limit of [8193, 50000]) {
+      stages[name].max_output_tokens = limit;
+      expect(() => parseAiProfileSave({ name: 'Test', stages })).toThrow();
+    }
+  });
   it.each([
     { temperature: 3 },
     { max_output_tokens: 127 },
