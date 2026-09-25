@@ -8,6 +8,7 @@ import { beforeAll, afterAll, it, describe, expect } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { saveEditorialSignal, readEditorialSignal } from '../src/editorial-signal-store.mjs';
 import { assertEditorialRole } from '../src/editorial-signal-role.mjs';
+import { editorialVectorQuery } from '../src/editorial-vector-query.mjs';
 import { editorialFixture } from './editorial-signal.test.mjs';
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
@@ -449,6 +450,53 @@ suite('editorial publication persistence and isolated capabilities', () => {
         await pool.query('ALTER EXTENSION vector ADD FUNCTION public.vector_dims(public.vector)');
         await pool.query('GRANT EXECUTE ON FUNCTION public.vector_dims(public.vector) TO PUBLIC');
         await pool.query('DROP FUNCTION public.editorial_extra_function()');
+      }
+      const sumProc = async () => {
+        const row = (await pool.query(editorialVectorQuery)).rows.find(
+          (row) => row.name === 'sum' && row.args[0] === 'public.vector',
+        );
+        const { aggregate, ...proc } = row;
+        expect(aggregate).toBeTruthy();
+        return proc;
+      };
+      const originalProc = await sumProc();
+      await pool.query(
+        'CREATE FUNCTION public.editorial_extra_trans(public.vector, public.vector) RETURNS public.vector LANGUAGE sql SECURITY DEFINER AS $$SELECT $1$$',
+      );
+      await pool.query(
+        'REVOKE EXECUTE ON FUNCTION public.editorial_extra_trans(public.vector, public.vector) FROM PUBLIC',
+      );
+      await pool.query('ALTER EXTENSION vector DROP AGGREGATE public.sum(public.vector)');
+      await pool.query('DROP AGGREGATE public.sum(public.vector)');
+      await pool.query(
+        'CREATE AGGREGATE public.sum(public.vector) (SFUNC=public.editorial_extra_trans, STYPE=public.vector, COMBINEFUNC=public.vector_add, PARALLEL=SAFE)',
+      );
+      await pool.query('ALTER EXTENSION vector ADD AGGREGATE public.sum(public.vector)');
+      try {
+        expect(await sumProc()).toEqual(originalProc);
+        for (const [connection, role] of [
+          [reader, 'reader'],
+          [writer, 'writer'],
+        ]) {
+          const client = await connection.connect();
+          try {
+            await expect(assertEditorialRole(client, role)).rejects.toThrow(
+              'editorial_role_invalid',
+            );
+          } finally {
+            client.release();
+          }
+        }
+      } finally {
+        await pool.query('ALTER EXTENSION vector DROP AGGREGATE public.sum(public.vector)');
+        await pool.query('DROP AGGREGATE public.sum(public.vector)');
+        await pool.query(
+          'CREATE AGGREGATE public.sum(public.vector) (SFUNC=public.vector_add, STYPE=public.vector, COMBINEFUNC=public.vector_add, PARALLEL=SAFE)',
+        );
+        await pool.query('ALTER EXTENSION vector ADD AGGREGATE public.sum(public.vector)');
+        await pool.query(
+          'DROP FUNCTION public.editorial_extra_trans(public.vector, public.vector)',
+        );
       }
       for (const [connection, role] of [
         [reader, 'reader'],
