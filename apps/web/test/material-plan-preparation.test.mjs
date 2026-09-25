@@ -154,14 +154,12 @@ test('24 organization identity fragments plus separate person, claim and date ev
   names.forEach((name) => reference(`${name} is a company.`));
   p.catalog.entities = [];
   p.candidate.organizations = names.slice(0, 12);
-  p.candidate.persons = names
-    .slice(12)
-    .map((organization, i) => ({
-      name: `Ada${i}`,
-      role: 'researcher',
-      organization,
-      evidence: [reference(`Ada${i}, researcher at ${organization}, announced AI X.`)],
-    }));
+  p.candidate.persons = names.slice(12).map((organization, i) => ({
+    name: `Ada${i}`,
+    role: 'researcher',
+    organization,
+    evidence: [reference(`Ada${i}, researcher at ${organization}, announced AI X.`)],
+  }));
   p.candidate.claims = Array.from({ length: 12 }, (_, i) => ({
     text: `AI X feature ${i} announced.`,
     evidence: [reference(`AI X feature ${i} announced.`)],
