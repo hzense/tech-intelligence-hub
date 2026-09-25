@@ -62,6 +62,7 @@ suite('editorial publication persistence and isolated capabilities', () => {
       "INSERT INTO hzense_schema_migrations VALUES('0025_editorial_signal_publication.sql'); INSERT INTO topics VALUES('ai','AI',true,'watching');",
     );
     await pool.query(`REVOKE CREATE,TEMPORARY ON DATABASE "${db}" FROM PUBLIC`);
+    await pool.query('REVOKE USAGE ON SCHEMA public FROM PUBLIC');
     await admin.query(await sql('roles/create_editorial_roles.sql'));
     rolesCreated = true;
     for (const role of roles)
@@ -347,6 +348,80 @@ suite('editorial publication persistence and isolated capabilities', () => {
       } finally {
         client.release();
       }
+    }
+  });
+  it('requires usable non-grantable public schema and rejects unrelated schema access', async () => {
+    await pool.query('CREATE SCHEMA editorial_extra');
+    try {
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        const roleName = `hzense_editorial_${role}`;
+        try {
+          await pool.query(`REVOKE USAGE ON SCHEMA public FROM ${roleName}`);
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+          await pool.query(`GRANT USAGE ON SCHEMA public TO ${roleName} WITH GRANT OPTION`);
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+          await pool.query(`REVOKE GRANT OPTION FOR USAGE ON SCHEMA public FROM ${roleName}`);
+          await assertEditorialRole(client, role);
+          await pool.query(`GRANT USAGE ON SCHEMA editorial_extra TO ${roleName}`);
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+          await pool.query(`REVOKE USAGE ON SCHEMA editorial_extra FROM ${roleName}`);
+          await assertEditorialRole(client, role);
+        } finally {
+          client.release();
+        }
+      }
+    } finally {
+      await pool.query('DROP SCHEMA editorial_extra');
+    }
+  });
+  it('accepts only the audited vector extension and rejects attached application functions', async () => {
+    await pool.query("CREATE EXTENSION vector VERSION '0.8.6'");
+    try {
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await assertEditorialRole(client, role);
+        } finally {
+          client.release();
+        }
+      }
+      await pool.query(
+        'CREATE FUNCTION public.editorial_extra_function() RETURNS integer LANGUAGE sql SECURITY DEFINER AS $$SELECT 1$$',
+      );
+      for (const extension of ['plpgsql', 'vector']) {
+        await pool.query(
+          `ALTER EXTENSION ${extension} ADD FUNCTION public.editorial_extra_function()`,
+        );
+        try {
+          for (const [connection, role] of [
+            [reader, 'reader'],
+            [writer, 'writer'],
+          ]) {
+            const client = await connection.connect();
+            try {
+              await expect(assertEditorialRole(client, role)).rejects.toThrow(
+                'editorial_role_invalid',
+              );
+            } finally {
+              client.release();
+            }
+          }
+        } finally {
+          await pool.query(
+            `ALTER EXTENSION ${extension} DROP FUNCTION public.editorial_extra_function()`,
+          );
+        }
+      }
+      await pool.query('DROP FUNCTION public.editorial_extra_function()');
+    } finally {
+      await pool.query('DROP EXTENSION vector');
     }
   });
   it('publishes one immutable receipt, compares revisions, and withdraws without reviving older publications', async () => {

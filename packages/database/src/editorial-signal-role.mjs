@@ -78,10 +78,23 @@ export async function assertEditorialRole(client, role) {
           AND (SELECT array_agg(a.privilege_type ORDER BY a.privilege_type)
             FROM aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a WHERE a.grantee=0)=ARRAY['CONNECT']::text[]))))
     AND NOT has_database_privilege(current_database(),'CREATE,TEMPORARY')
-    AND NOT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname!~'^pg_' AND nspname<>'information_schema' AND has_schema_privilege(oid,'CREATE'))
+    AND has_schema_privilege('public','USAGE')
+    AND NOT EXISTS(SELECT 1 FROM pg_namespace WHERE nspname!~'^pg_' AND nspname<>'information_schema'
+      AND (has_schema_privilege(oid,'CREATE,USAGE WITH GRANT OPTION') OR (nspname<>'public' AND has_schema_privilege(oid,'USAGE'))))
     AND NOT EXISTS(SELECT 1 FROM pg_default_acl d CROSS JOIN LATERAL aclexplode(d.defaclacl) a WHERE a.grantee IN (0,r.oid))
     AND NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname!~'^pg_' AND n.nspname<>'information_schema' AND CASE WHEN c.relkind='S' THEN has_sequence_privilege(c.oid,'SELECT,UPDATE,USAGE') ELSE false END)
-    AND NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname!~'^pg_' AND n.nspname<>'information_schema' AND has_function_privilege(p.oid,'EXECUTE') AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')) AS safe
+    AND NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname!~'^pg_' AND n.nspname<>'information_schema' AND has_function_privilege(p.oid,'EXECUTE')
+      AND NOT EXISTS(SELECT 1 FROM pg_depend d JOIN pg_extension e ON e.oid=d.refobjid
+        WHERE d.classid='pg_proc'::regclass AND d.refclassid='pg_extension'::regclass AND d.objid=p.oid AND d.deptype='e'
+          AND e.extname='vector' AND e.extversion='0.8.6' AND e.extnamespace=n.oid AND n.nspname='public'
+          AND ((p.proowner=e.extowner AND e.extowner=10)
+            OR (pg_get_userbyid(p.proowner)='cloud_admin' AND pg_get_userbyid(e.extowner)='neondb_owner'))
+          AND NOT p.prosecdef AND p.proconfig IS NULL
+          AND NOT has_function_privilege(p.oid,'EXECUTE WITH GRANT OPTION')
+          AND NOT EXISTS(SELECT 1 FROM aclexplode(p.proacl) a WHERE a.grantee=r.oid OR (a.grantee=0 AND a.is_grantable))
+          AND (SELECT count(*) FROM pg_depend members WHERE members.refclassid='pg_extension'::regclass
+            AND members.refobjid=e.oid AND members.classid='pg_proc'::regclass AND members.deptype='e')=118)) AS safe
     FROM pg_roles r WHERE r.rolname=current_user`)
   ).rows[0];
   if (!identity?.safe || identity.name !== `hzense_editorial_${role}`)
