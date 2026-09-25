@@ -187,7 +187,8 @@ test('server entrypoints gate readers, bind requests, and remove old indexed sig
     /publication_basis !== 'manual_confirmation'/,
   );
   const detail = await source('../app/signals/[id]/page.tsx');
-  assert.match(detail, /HZENSE_EDITORIAL_PUBLICATION_ENABLED === '1'\) return \[\]/);
+  assert.match(detail, /export const dynamic = 'force-dynamic'/);
+  assert.doesNotMatch(detail, /generateStaticParams/);
   assert.match(detail, /entry\.publication_basis === 'manual_confirmation'/);
   assert.match(detail, /未提供公开来源链接/);
   assert.match(detail, /href=\{`\/topics\/\$\{topic\}`\}/);

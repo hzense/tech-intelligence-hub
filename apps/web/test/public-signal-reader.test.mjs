@@ -257,12 +257,13 @@ test('server routing is request-bound, current-only and does not prerender Signa
   assert.match(server, /import 'server-only'/);
   assert.match(server, /await connection\(\)/);
   assert.doesNotMatch(server, /unstable_cache|use cache|new Pool|loadSeedCatalog/);
-  for (const name of ['../app/signals/[id]/page.tsx', '../app/topics/[id]/page.tsx']) {
-    assert.match(
-      await source(name),
-      /generateStaticParams\(\) \{\s*if \(readSignalReadMode\(process\.env\) === 'database'\) return \[\]/,
-    );
-  }
+  const detail = await source('../app/signals/[id]/page.tsx');
+  assert.match(detail, /export const dynamic = 'force-dynamic'/);
+  assert.doesNotMatch(detail, /generateStaticParams/);
+  assert.match(
+    await source('../app/topics/[id]/page.tsx'),
+    /generateStaticParams\(\) \{\s*if \(readSignalReadMode\(process\.env\) === 'database'\) return \[\]/,
+  );
   const seed = await source('../lib/seed-runtime.ts');
   assert.match(seed, /getPublicSignals\(\)/);
   assert.match(seed, /getPublicSignalById\(id\)/);
