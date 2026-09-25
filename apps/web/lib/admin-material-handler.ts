@@ -1,4 +1,5 @@
 import { importResponse, readImportJSON } from './import-io.ts';
+import { validOrganizationConfirmation } from './material-organization-review.ts';
 const safe = new Set([
   'limit_exceeded',
   'invalid_request',
@@ -131,7 +132,9 @@ export function createAdminMaterialHandler(deps: {
       }
       if (request.method !== 'POST') return importResponse({ error: 'method_not_allowed' }, 405);
       if (url.search || url.hash) return importResponse({ error: 'invalid_request' }, 400);
-      const body = (await readImportJSON(request, 8192)) as { action?: string; request?: unknown };
+      // 24 distinct organizations, each up to 200 Unicode code points, plus
+      // option hashes and JSON framing. Still strictly byte-bounded.
+      const body = (await readImportJSON(request, 32768)) as { action?: string; request?: unknown };
       if (
         !body ||
         typeof body !== 'object' ||
@@ -160,7 +163,9 @@ export function createAdminMaterialHandler(deps: {
       if (
         body.action === 'prepare' &&
         deps.prepare &&
-        exact(body.request, ['requestId']) &&
+        (exact(body.request, ['requestId']) ||
+          (exact(body.request, ['requestId', 'organizationConfirmation']) &&
+            validOrganizationConfirmation(body.request.organizationConfirmation))) &&
         uuid(body.request.requestId)
       )
         return importResponse(await deps.prepare(session.user.id, body.request));

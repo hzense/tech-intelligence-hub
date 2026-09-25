@@ -3,13 +3,23 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MaterialPlan } from '../../../packages/database/src/material-registration-contract.mjs';
 import controls from './admin-controls.module.css';
 import styles from './candidate-review-editor.module.css';
+import { MaterialOrganizationConfirmation } from './material-organization-confirmation';
+import type {
+  OrganizationReview,
+  OrganizationConfirmation,
+  OrganizationConfirmationRecord,
+} from '../lib/material-organization-review';
 
 type Report = { id: string; planHash: string; plan: MaterialPlan; stages: string[] };
 type Proposal = {
   id: string;
   proposalHash: string;
   plan: MaterialPlan;
-  dossier: { statements: Record<string, string>; eventDate: { value: string; quote: string } };
+  dossier: {
+    statements: Record<string, string>;
+    eventDate: { value: string; quote: string };
+    organizationConfirmation?: OrganizationConfirmationRecord;
+  };
   approved: boolean;
   approvalExpiresAt: string | null;
 };
@@ -108,6 +118,9 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
     } | null>(null),
     [message, setMessage] = useState('');
   const [refreshWarning, setRefreshWarning] = useState('');
+  const [organizationReviews, setOrganizationReviews] = useState<
+    Record<string, OrganizationReview | null>
+  >({});
   const pending = useRef<{
     id: string;
     supplements: Array<{ batchId: string; itemId: string }>;
@@ -265,7 +278,12 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
       setBusy(false);
     }
   }
-  async function reviewAction(kind: 'prepare' | 'approve', requestId: string, proposal?: Proposal) {
+  async function reviewAction(
+    kind: 'prepare' | 'approve',
+    requestId: string,
+    proposal?: Proposal,
+    organizationConfirmation?: OrganizationConfirmation,
+  ) {
     if (
       kind === 'approve' &&
       !window.confirm(
@@ -278,7 +296,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
     try {
       const request =
         kind === 'prepare'
-          ? { requestId }
+          ? { requestId, ...(organizationConfirmation ? { organizationConfirmation } : {}) }
           : {
               requestId,
               proposalId: proposal!.id,
@@ -293,7 +311,11 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
           signal: AbortSignal.timeout(65000),
         }),
       );
-      if (kind === 'prepare')
+      if (kind === 'prepare') {
+        setOrganizationReviews((previous) => ({
+          ...previous,
+          [requestId]: result.ready ? null : (result.organizationReview ?? null),
+        }));
         setMessage(
           result.ready
             ? '核验材料已准备，请核对下方提案；这不是已核实结论。'
@@ -301,7 +323,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
                 .map((code: string) => errors[code] ?? '材料尚不完整，无法准备可确认提案。')
                 .join(' '),
         );
-      else
+      } else
         setMessage(
           result.dispatched
             ? '确认已保存，独立核验已提交；尚未登记或发布。'
@@ -309,6 +331,13 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
         );
       await refreshAfterAction();
     } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'material_changed'
+      )
+        setOrganizationReviews((previous) => ({ ...previous, [requestId]: null }));
       setMessage(error instanceof Error ? error.message : '操作未完成，请刷新核对原请求。');
     } finally {
       setBusy(false);
@@ -483,6 +512,16 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
                   >
                     准备核验材料（不调用 AI）
                   </button>
+                  {organizationReviews[request.id]?.organizations.length ? (
+                    <MaterialOrganizationConfirmation
+                      key={`${request.id}:${organizationReviews[request.id]!.contextHash}`}
+                      review={organizationReviews[request.id]!}
+                      disabled={busy || !data.enabled}
+                      onConfirm={(confirmation) =>
+                        reviewAction('prepare', request.id, undefined, confirmation)
+                      }
+                    />
+                  ) : null}
                   {(request.proposals ?? []).map((proposal) => (
                     <section key={proposal.id} aria-label="待确认核验材料">
                       <h4>
@@ -502,6 +541,32 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
                           .join('、')}
                       </p>
                       <p>领域：{proposal.plan.topicIds.join('、')}</p>
+                      <p>
+                        组织类型：
+                        {proposal.plan.entities
+                          .filter((entity) => entity.type !== 'person')
+                          .map(
+                            (entity) =>
+                              `${entity.name}（${entity.type === 'company' ? '公司' : '机构'}）`,
+                          )
+                          .join('、')}
+                      </p>
+                      {proposal.dossier.organizationConfirmation ? (
+                        <section aria-label="已保存的组织类型人工确认">
+                          <h5>已保存的组织类型人工确认（仍待独立核验）</h5>
+                          {proposal.dossier.organizationConfirmation.selections.map((row) => (
+                            <blockquote key={row.name}>
+                              <p>
+                                {row.name} · {row.type === 'company' ? '公司' : '机构'}
+                              </p>
+                              <p>{row.quote}</p>
+                              <a href={row.sourceUrl} target="_blank" rel="noopener noreferrer">
+                                核对原文来源
+                              </a>
+                            </blockquote>
+                          ))}
+                        </section>
+                      ) : null}
                       <ul>
                         {proposal.plan.candidate.claims.map((claim, index) => (
                           <li key={index}>{claim.text}</li>

@@ -8,6 +8,7 @@ import type { MaterialWorkerRequest } from '../../../packages/database/src/mater
 import type { MaterialCandidate, MaterialReference } from './candidate-publication-materials';
 import { bindMaterialPlan } from './material-registration-binding.ts';
 import type { MaterialHints } from './material-enrichment.ts';
+import type { OrganizationConfirmationRecord } from './material-organization-review';
 
 export const materialReviewStatements = {
   sourceAuthenticity:
@@ -36,6 +37,7 @@ export type MaterialDraft = {
     reviewRound: number;
     statements: typeof materialReviewStatements;
     eventDate: { value: string; evidenceId: string; quote: string; rationale: string };
+    organizationConfirmation?: OrganizationConfirmationRecord;
   };
 };
 
@@ -63,8 +65,10 @@ export function prepareMaterialPlan(
       if (!refs.length || refs.some((r) => !r.quote)) blocked('needs_public_evidence');
       const matches = publicFragments.filter(
         ({ fragment }) =>
-          refs.every((r) => fragment.text.includes(r.quote)) &&
-          required.every((s) => fragment.text.includes(s)),
+          refs.every(
+            (r) =>
+              (!r.fragment_id || r.fragment_id === fragment.id) && fragment.text.includes(r.quote),
+          ) && required.every((s) => fragment.text.includes(s)),
       );
       if (!matches.length) blocked('needs_public_evidence');
       const { fragment, url } = matches[0]!;

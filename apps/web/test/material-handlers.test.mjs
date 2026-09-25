@@ -1,5 +1,6 @@
 /* global Request */
 import test from 'node:test';
+import { TextEncoder } from 'node:util';
 import assert from 'node:assert/strict';
 import { createAdminMaterialHandler } from '../lib/admin-material-handler.ts';
 import { createMaterialWorkerHandler } from '../lib/material-worker-handler.ts';
@@ -66,6 +67,76 @@ function worker() {
   };
   return { calls, deps, handler: createMaterialWorkerHandler(deps) };
 }
+test('manual classification accepts only bounded selections and explicit consent with session owner', async () => {
+  const { deps } = admin();
+  let count = 0;
+  deps.prepare = async (owner, input) => {
+    assert.equal(owner, 'owner');
+    assert.equal(input.organizationConfirmation.selections[0].type, 'company');
+    count++;
+    return { ready: true };
+  };
+  const handler = createAdminMaterialHandler(deps);
+  const confirmation = {
+    contextHash: 'a'.repeat(64),
+    consent: true,
+    selections: [{ name: 'Lab', type: 'company', evidenceId: 'b'.repeat(64) }],
+  };
+  const body = {
+    action: 'prepare',
+    request: { requestId: id, organizationConfirmation: confirmation },
+  };
+  assert.equal((await handler(req(body))).status, 200);
+  for (const extra of [
+    { consent: false },
+    { confirmedBy: 'someone' },
+    { selections: [] },
+    { selections: Array(25).fill(confirmation.selections[0]) },
+  ]) {
+    assert.equal(
+      (
+        await handler(
+          req({
+            ...body,
+            request: { ...body.request, organizationConfirmation: { ...confirmation, ...extra } },
+          }),
+        )
+      ).status,
+      400,
+    );
+  }
+  assert.equal((await handler(req(body, { origin: 'https://evil.test' }))).status, 403);
+  deps.session = async () => null;
+  assert.equal((await handler(req(body))).status, 401);
+  assert.equal(count, 1);
+});
+test('manual classification admits 24 Unicode names within the bounded request body', async () => {
+  const { deps } = admin();
+  let count = 0;
+  deps.prepare = async () => {
+    count++;
+    return { ready: true };
+  };
+  const body = {
+    action: 'prepare',
+    request: {
+      requestId: id,
+      organizationConfirmation: {
+        contextHash: 'a'.repeat(64),
+        consent: true,
+        selections: Array.from({ length: 24 }, (_, i) => ({
+          name: `${i}`.padStart(2, '0') + '𠮷'.repeat(198),
+          type: 'company',
+          evidenceId: 'b'.repeat(64),
+        })),
+      },
+    },
+  };
+  assert.ok(new TextEncoder().encode(JSON.stringify(body)).length > 8192);
+  assert.equal((await createAdminMaterialHandler(deps)(req(body))).status, 200);
+  assert.equal(count, 1);
+});
+
 test('capacity inspection uses session owner and cannot call create; size errors are distinct', async () => {
   const { deps, calls } = admin();
   deps.inspect = async (owner, request) => {
@@ -360,7 +431,7 @@ test('both handlers return 413 for oversized actual bodies without store calls',
   const a = admin(),
     w = worker();
   assert.equal(
-    (await a.handler(req({ action: 'create', request: { text: 'x'.repeat(9000) } }))).status,
+    (await a.handler(req({ action: 'create', request: { text: 'x'.repeat(32769) } }))).status,
     413,
   );
   assert.equal(

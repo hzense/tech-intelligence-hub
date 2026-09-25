@@ -9,6 +9,7 @@ import {
   type GeneratedCandidate,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { candidateEnrichmentJsonSchema } from '../../../packages/ingestion/src/candidate-enrichment-contract.mjs';
+import { supportsOrganizationType, type OrganizationType } from './organization-type-evidence.ts';
 
 type Reference = { fragment_id: string; quote: string };
 export type MaterialHints = {
@@ -90,7 +91,7 @@ export const materialEnrichmentJsonSchema = {
     topic_ids: { type: 'array', maxItems: 5, items: { type: 'string' } },
   },
 };
-export const materialEnrichmentRules = `这是补证资料包补全。标题、摘要、主张文本和已有日期、人物关系不得改写。按原主张顺序输出 claim_evidence，每个主张仅选择一条足以支持该主张的原文引文，与单一证据登记格式一致，不拼接多个片段。可补充不同语言的原文，但不得把仅仅相关当作支持。已有日期可重新引用补充原文。人物必须与本事件直接相关且完整姓名、角色、组织由同一条引文的同一语句明确关联；不得借用更长词的子串。organization_identities 仅在同一条引文直接说明目标组织的公司(company/公司/企业)或机构(institution/institute/university/机构/研究所/大学)类型时提供证据，否则留空。topic_ids 只能选给定已启用目录中的 ID，没有相关领域则留空。所有输出是待人工核对的私有提案，不代表事实验证或公开许可。`;
+export const materialEnrichmentRules = `这是补证资料包补全。标题、摘要、主张文本和已有日期、人物关系不得改写。按原主张顺序输出 claim_evidence，每个主张仅选择一条足以支持该主张的原文引文，与单一证据登记格式一致，不拼接多个片段。可补充不同语言的原文，但不得把仅仅相关当作支持。已有日期可重新引用补充原文。人物必须与本事件直接相关且完整姓名、角色、组织由同一条引文的同一语句明确关联；不得借用更长词的子串。organization_identities 仅在同一句原文直接说明目标组织类型时提供证据：company 包含明确的公司、企业、投资银行、商业银行、company/corporation/firm/investment bank/commercial bank；institution 包含明确的机构、研究所、大学、非营利组织。允许领先、全球、金融服务、研究等修饰词和同位语，不从名称、合作对象、否定、推测或历史身份推断。规则无法识别时留空，交由有原文依据的人工确认，不编造固定句式。topic_ids 只能选给定已启用目录中的 ID，没有相关领域则留空。所有输出是待人工核对的私有提案，不代表事实验证或公开许可。`;
 
 function remap(candidate: GeneratedCandidate, ids: Map<string, string>): GeneratedCandidate {
   const map = (refs: Reference[]) =>
@@ -230,20 +231,15 @@ export function assessMaterialEnrichment(
       )
         fail();
     }
-    const namePattern = (row.name as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const typeWords =
-      row.type === 'company' ? 'company|corporation' : 'institution|institute|university';
     // A private proposal still needs an explicit name/type relation in ONE quote.
     // Do not join unrelated references, or use another organization's type word.
-    const relation = new RegExp(
-      `(?:^|[^\\p{L}\\p{N}_])${namePattern}(?:(?:\\s+is\\s+|,\\s*)(?:(?:a|an|the)\\s+)?(?:(?:AI|artificial intelligence|technology|research|software|private|public)\\s+){0,3}(?:${typeWords})\\b|是(?:一家|一所|一个)?(?:人工智能|科技|研究|软件|私营|公立)?(?:${row.type === 'company' ? '公司|企业' : '机构|研究所|大学'}))`,
-      'iu',
-    );
-    if (!references.some((ref) => relation.test(ref.quote))) fail();
+    const supported = (ref: Reference) =>
+      supportsOrganizationType(ref.quote, row.name as string, row.type as OrganizationType);
+    if (!references.some(supported)) fail();
     return {
       name: row.name as string,
       type: row.type as 'company' | 'institution',
-      evidence: references.filter((ref) => relation.test(ref.quote)),
+      evidence: references.filter(supported),
     };
   });
   if (

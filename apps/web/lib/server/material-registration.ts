@@ -40,6 +40,10 @@ import { validateGenerationSource } from '../../../../packages/ingestion/src/sig
 import { prepareMaterialPlan, type MaterialDraft } from '../material-plan-preparation';
 import { approvedMaterialDossier } from '../material-review-dossier';
 import { boundMaterialWorkerPacket } from '../material-worker-packet';
+import {
+  buildOrganizationReview,
+  confirmOrganizationReview,
+} from '../material-organization-review';
 
 function fail(code: string): never {
   throw Object.assign(new Error(code), { code });
@@ -676,7 +680,13 @@ function requireReview() {
 }
 export async function prepareCandidateMaterials(owner: string, input: unknown) {
   requireReview();
-  const body = exact(input, ['requestId']),
+  const hasConfirmation = Boolean(
+    input && typeof input === 'object' && 'organizationConfirmation' in input,
+  );
+  const body = exact(
+      input,
+      hasConfirmation ? ['requestId', 'organizationConfirmation'] : ['requestId'],
+    ),
     requestId = uuid(body.requestId);
   const packet = await materialWorkerRequest(owner, requestId);
   const savedRequest = await store.getMaterialRequest({
@@ -731,9 +741,15 @@ export async function prepareCandidateMaterials(owner: string, input: unknown) {
     );
     preparationPacket = { ...packet, candidate: enriched.candidate };
   }
+  const organizationReview = buildOrganizationReview(preparationPacket, hints);
+  const confirmed = hasConfirmation
+    ? confirmOrganizationReview(preparationPacket, hints, body.organizationConfirmation)
+    : null;
+  if (confirmed) hints = confirmed.hints;
   // Fixed source capture time makes no-AI preparation/replay deterministic.
   const prepared = prepareMaterialPlan(preparationPacket, new Date(savedRequest.created_at), hints);
-  if (!prepared.ready) return prepared;
+  if (!prepared.ready) return { ...prepared, organizationReview };
+  if (confirmed) prepared.payload.dossier.organizationConfirmation = confirmed.record;
   bindMaterialPlan(prepared.payload.plan, packet.bundle, {
     ...packet,
     materialHash: packet.baseMaterialHash,
