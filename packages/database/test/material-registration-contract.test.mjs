@@ -127,6 +127,12 @@ describe('material registration proposal contract', () => {
       .filter((e) => e.type !== 'person')
       .map((e) => e.id);
     expect(() => normalizeMaterialPlan(tooMany)).toThrow();
+    const tooMuchEvidence = fixture();
+    tooMuchEvidence.evidence = Array.from({ length: 257 }, (_, i) => ({
+      ...tooMuchEvidence.evidence[0],
+      id: `evidence-${i}`,
+    }));
+    expect(() => normalizeMaterialPlan(tooMuchEvidence)).toThrow();
   });
   it('normalizes without mutating and hashes semantic map/set ordering consistently', () => {
     const input = fixture(),

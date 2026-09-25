@@ -138,6 +138,74 @@ test('all 24 distinct organizations and 12 people fit confirmation and the mater
   assert.equal(prepared.payload.plan.candidate.organizationIds.length, 24);
 });
 
+test('24 organization identity fragments plus separate person, claim and date evidence prepare and verify', async () => {
+  const p = packet();
+  const names = Array.from({ length: 24 }, (_, i) => `Lab${i}`);
+  const fragments = [];
+  const reference = (text) => {
+    const fragment = {
+      id: `fragment-${fragments.length + 1}`,
+      text,
+      locator: { paragraph: fragments.length + 1 },
+    };
+    fragments.push(fragment);
+    return { fragment_id: fragment.id, quote: text };
+  };
+  names.forEach((name) => reference(`${name} is a company.`));
+  p.catalog.entities = [];
+  p.candidate.organizations = names.slice(0, 12);
+  p.candidate.persons = names
+    .slice(12)
+    .map((organization, i) => ({
+      name: `Ada${i}`,
+      role: 'researcher',
+      organization,
+      evidence: [reference(`Ada${i}, researcher at ${organization}, announced AI X.`)],
+    }));
+  p.candidate.claims = Array.from({ length: 12 }, (_, i) => ({
+    text: `AI X feature ${i} announced.`,
+    evidence: [reference(`AI X feature ${i} announced.`)],
+  }));
+  p.candidate.event_date_evidence = [reference('AI X was announced on 2026-09-24.')];
+  p.bundle = buildCandidateSourceBundle({
+    baseMaterialHash: p.baseMaterialHash,
+    supplements: [],
+    source: { classification: 'private', fragments },
+  });
+  const review = buildOrganizationReview(p);
+  const selected = confirmOrganizationReview(p, undefined, {
+    contextHash: review.contextHash,
+    consent: true,
+    selections: review.organizations.map((org) => ({
+      name: org.name,
+      type: 'company',
+      evidenceId: org.evidence[0].id,
+    })),
+  });
+  const prepared = prepareMaterialPlan(p, now, selected.hints);
+  assert.equal(prepared.ready, true);
+  assert.equal(prepared.payload.plan.entities.length, 36);
+  assert.equal(prepared.payload.plan.evidence.length, 49);
+  prepared.payload.dossier.organizationConfirmation = selected.record;
+  const dossier = approvedMaterialDossier(prepared.payload, {
+    owner_id: 'owner',
+    approved_by: 'owner',
+    created_at: now.toISOString(),
+  });
+  const assessment = await assessMaterialVerification({
+    request: p,
+    plan: prepared.payload.plan,
+    dossier,
+    clock: () => now,
+    fetchSource: async (sourceUrl) => ({
+      sourceUrl,
+      text: fragments.map((f) => f.text).join('\n'),
+      fetchedAt: now.toISOString(),
+    }),
+  });
+  assert.ok(assessment.dossierHash);
+});
+
 test('manual review rejects forged, stale, duplicate, absent, private and unrelated evidence', () => {
   const p = packet();
   p.catalog.entities = [];

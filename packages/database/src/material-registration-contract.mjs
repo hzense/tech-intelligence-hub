@@ -177,7 +177,10 @@ export function normalizeMaterialPlan(value) {
     );
     const sourceById = new Map(sources.map((row) => [row.id, row]));
     const evidence = sortedRows(
-      array(value.evidence, 20, 1).map((row) => {
+      // 12 people + 12 claims + 12 top-level organization references +
+      // up to 8 identity references for each of 24 organizations + one date.
+      // Keep the independent 240 KiB aggregate limit and per-entity bounds.
+      array(value.evidence, 256, 1).map((row) => {
         exact(row, [
           'id',
           'sourceId',
