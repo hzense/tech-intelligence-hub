@@ -18,6 +18,7 @@ const legacyColumns = columns.replace(
   'NULL::text AS progress_phase,NULL::timestamptz AS progress_at,NULL::timestamptz AS started_at',
 );
 const errorCodes = new Set([
+  'published_candidate_delete_forbidden',
   'task_deleted',
   'task_active',
   'invalid_request',
@@ -372,6 +373,8 @@ async function transaction(pool, work, readOnly = false) {
     discard = error;
     await client?.query('ROLLBACK').catch(() => undefined);
     if (committing && !readOnly) fail('commit_unknown');
+    if (error?.code === '55000' && error.message === 'published_candidate_delete_forbidden')
+      fail('published_candidate_delete_forbidden');
     throw error instanceof SignalGenerationError
       ? error
       : new SignalGenerationError('database_unavailable');

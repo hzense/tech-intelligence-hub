@@ -6,6 +6,7 @@ import {
 } from '../src/current-publication-catalog.mjs';
 import {
   currentPublicSignalViewFixture,
+  editorialPublicSignalViewFixture,
   signalImmutabilityQueryFixture,
 } from './signal-immutability-fixtures.mjs';
 import {
@@ -22,6 +23,7 @@ describe('database catalog expression canonicalization', () => {
     expect(view.options).toEqual(['security_barrier=true']);
     expect(signalImmutabilityQueryFixture('/* hzense:current-publication:views */').rows).toEqual([
       view,
+      editorialPublicSignalViewFixture(),
     ]);
     for (const changed of [
       view.definition.replace('AND hzense_public_signal_is_current(head.event_id)', ''),

@@ -560,9 +560,30 @@ export async function materialPublicationPreview(
       )
     ).rows;
     if (topics.length > 1000) fail('catalog_limit');
+    const editorial = restoreMaterialEnrichment(
+      latest.request.bundle,
+      original.candidate,
+      latest.task.result,
+      { topics },
+    );
     return {
       requestId: latest.request.id,
       taskId: latest.task.id,
+      // Suggestions only. The separate editorial path requires administrator
+      // confirmation and never upgrades this to an independent verification.
+      editorialPrefill: {
+        eventDate: editorial.candidate.event_date,
+        persons: editorial.candidate.persons.map((person) => person.name),
+        organizations: [
+          ...new Set([
+            ...editorial.candidate.organizations,
+            ...editorial.candidate.persons.flatMap((person) =>
+              person.organization ? [person.organization] : [],
+            ),
+          ]),
+        ],
+        topics: topics.filter((topic) => editorial.hints.topicIds.includes(topic.id)),
+      },
       materials: buildMaterialPublicationPreview(
         latest.request.bundle,
         original.candidate,

@@ -300,7 +300,11 @@ export async function inspectTopicSyncPreflight(
        AND relation_info.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
      ORDER BY relation_info.relname`,
   );
-  const expectedRelations = new Set([...expectedTableNames, 'current_public_signals']);
+  const expectedRelations = new Set([
+    ...expectedTableNames,
+    'current_public_signals',
+    'editorial_public_signals',
+  ]);
   const actualRelations = new Set(relations.rows.map((row) => row.name));
   const missingRelations = [...expectedRelations].filter((name) => !actualRelations.has(name));
   const unexpectedRelations = [...actualRelations].filter((name) => !expectedRelations.has(name));
@@ -310,7 +314,7 @@ export async function inspectTopicSyncPreflight(
     );
   }
   for (const relation of relations.rows) {
-    if (relation.name === 'current_public_signals') {
+    if (['current_public_signals', 'editorial_public_signals'].includes(relation.name)) {
       if (!isExactCurrentPublicSignalRelation(relation, target.database_owner)) {
         throw new Error('Topic sync current public Signal view relation contract mismatch');
       }

@@ -65,11 +65,11 @@ test('review renders private evidence safely with confirmation-only publication 
       },
     }),
   );
-  assert.match(html, /私有候选 · 未发布/);
-  assert.match(html, /请核对候选与证据，并确认系统允许的下一步/);
+  assert.match(html, /确认发布/);
+  assert.match(html, /缺失时可直接补充/);
   assert.match(html, /候选 3/);
-  assert.match(html, /审核确认与正式发布/);
-  assert.match(html, /刷新发布状态/);
+  assert.match(html, /辅助资料与原始 AI 候选/);
+  assert.doesNotMatch(html, /正式发布前待办|审核确认与正式发布/);
   for (const text of [
     '编辑候选与审核决定',
     '人工修订内容',

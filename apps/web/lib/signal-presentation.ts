@@ -32,8 +32,8 @@ const sourceTypeLabels = {
   patent_database: '专利数据库',
 } satisfies Record<SeedSource['type'], string>;
 
-export function formatSignalType(value: SeedSignal['type']): string {
-  return signalTypeLabels[value];
+export function formatSignalType(value: SeedSignal['type'] | 'editorial'): string {
+  return value === 'editorial' ? '管理员确认' : signalTypeLabels[value];
 }
 
 export function formatSourceType(value: SeedSource['type']): string {

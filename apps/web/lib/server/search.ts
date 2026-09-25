@@ -22,10 +22,17 @@ export async function searchPublishedContent(query: string, type?: SearchType) {
     ]);
     return mergeCurrentSignalSearch(legacy, current);
   }
-  return searchWithMode({
-    query,
-    mode: readSearchMode(process.env),
-    inProcess: () => searchInProcess(query, type),
-    database: () => searchRuntimeDocuments(query, type),
-  });
+  // A persisted search document is never authority for a current Signal.
+  const [legacy, current] = await Promise.all([
+    type === 'signal'
+      ? Promise.resolve([])
+      : searchWithMode({
+          query,
+          mode: readSearchMode(process.env),
+          inProcess: () => searchInProcess(query, type, false),
+          database: () => searchRuntimeDocuments(query, type),
+        }),
+    !type || type === 'signal' ? searchInProcess(query, 'signal') : Promise.resolve([]),
+  ]);
+  return mergeCurrentSignalSearch(legacy, current);
 }

@@ -25,7 +25,17 @@ export interface PublicSignalSource {
   name: string;
   url: string;
 }
-export type SignalEntry = SeedSignal & {
+export type SignalEntry = (
+  | (SeedSignal & { publication_basis?: 'source_evidence' })
+  | (Omit<SeedSignal, 'type' | 'importance' | 'strength' | 'confidence' | 'novelty'> & {
+      publication_basis: 'manual_confirmation';
+      type: 'editorial';
+      importance?: never;
+      strength?: never;
+      confidence?: never;
+      novelty?: never;
+    })
+) & {
   public_version?: number;
   publication_revision?: number;
   analysis?: string;

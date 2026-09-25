@@ -1,6 +1,9 @@
 import 'server-only';
 
 import { connection } from 'next/server';
+import { getEditorialSignals, getEditorialSignalById } from './editorial-signals';
+import { searchSignalEntries } from '../editorial-signal-reader-core';
+import { compareSearchResults } from '@hzense/search/ranking';
 import {
   readRuntimePublicSignals,
   readRuntimePublicSignalById,
@@ -14,13 +17,26 @@ export async function waitForPublicSignalRequest() {
 }
 export async function getPublicSignals() {
   await waitForPublicSignalRequest();
-  return readRuntimePublicSignals();
+  const [current, editorial] = await Promise.all([
+    readRuntimePublicSignals(),
+    getEditorialSignals(),
+  ]);
+  return [...current.filter((entry) => !entry.id.startsWith('editorial-')), ...editorial].sort(
+    (left, right) => right.occurred_at.localeCompare(left.occurred_at),
+  );
 }
 export async function getPublicSignalById(id: string) {
   await waitForPublicSignalRequest();
-  return readRuntimePublicSignalById(id);
+  return id.startsWith('editorial-') ? getEditorialSignalById(id) : readRuntimePublicSignalById(id);
 }
 export async function searchPublicSignals(query: string) {
   await waitForPublicSignalRequest();
-  return searchRuntimePublicSignals(query);
+  const [current, editorial] = await Promise.all([
+    searchRuntimePublicSignals(query),
+    getEditorialSignals(),
+  ]);
+  return [
+    ...current.filter((entry) => !entry.id.startsWith('editorial-')),
+    ...searchSignalEntries(editorial, query),
+  ].sort(compareSearchResults);
 }

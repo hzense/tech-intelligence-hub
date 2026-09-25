@@ -106,7 +106,7 @@ suite('candidate pipeline exact effective grants in isolated PostgreSQL', () => 
         expectedDatabase: db,
         expectedUser: new URL(adminUrl).username,
       }),
-    ).resolves.toMatchObject({ migrationCount: 25, tableCount: 57 });
+    ).resolves.toMatchObject({ migrationCount: 26, tableCount: 58 });
   });
   it('accepts only the exact Neon ADMIN-only incoming membership, never SET or outbound memberships', async () => {
     await admin.query(

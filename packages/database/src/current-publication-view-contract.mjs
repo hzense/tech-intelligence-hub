@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { editorialPublicColumns, editorialPublicViewHashes } from './editorial-signal-catalog.mjs';
 import {
   currentPublicSignalColumns,
   currentPublicSignalViewHashes,
@@ -8,7 +9,7 @@ import {
 // Legacy Runtime and Topic sync must recognize the schema but retain their old ACLs.
 export function isExactCurrentPublicSignalRelation(relation, expectedOwner) {
   return (
-    relation.name === 'current_public_signals' &&
+    ['current_public_signals', 'editorial_public_signals'].includes(relation.name) &&
     relation.relkind === 'v' &&
     relation.relpersistence === 'p' &&
     relation.owner === expectedOwner &&
@@ -28,19 +29,29 @@ export async function collectCurrentPublicSignalViewProblems(client, expectedOwn
         FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped) AS columns
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname='public' AND c.relkind IN ('v','m') ORDER BY c.relname`);
-  if (result.rows.length !== 1 || result.rows[0]?.name !== 'current_public_signals')
+  const contracts = {
+    current_public_signals: {
+      columns: currentPublicSignalColumns,
+      hashes: currentPublicSignalViewHashes,
+    },
+    editorial_public_signals: {
+      columns: editorialPublicColumns,
+      hashes: editorialPublicViewHashes,
+    },
+  };
+  if (result.rows.length !== 2 || result.rows.some((view) => !Object.hasOwn(contracts, view.name)))
     return ['current public Signal view set mismatch'];
-  const view = result.rows[0];
-  if (
-    view.owner !== expectedOwner ||
-    JSON.stringify(view.options) !== JSON.stringify(['security_barrier=true']) ||
-    JSON.stringify(view.columns) !== JSON.stringify(currentPublicSignalColumns) ||
-    typeof view.definition !== 'string' ||
-    !currentPublicSignalViewHashes.has(
-      createHash('sha256').update(view.definition.trim()).digest('hex'),
-    )
-  ) {
-    return ['current public Signal view contract mismatch'];
+  for (const view of result.rows) {
+    const contract = contracts[view.name];
+    if (
+      view.owner !== expectedOwner ||
+      JSON.stringify(view.options) !== JSON.stringify(['security_barrier=true']) ||
+      JSON.stringify(view.columns) !== JSON.stringify(contract.columns) ||
+      typeof view.definition !== 'string' ||
+      !contract.hashes.has(createHash('sha256').update(view.definition.trim()).digest('hex'))
+    ) {
+      return ['current public Signal view contract mismatch'];
+    }
   }
   return [];
 }

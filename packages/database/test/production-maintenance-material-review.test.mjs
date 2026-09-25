@@ -43,9 +43,9 @@ vi.mock('../../../.github/scripts/public-acl-evidence.mjs', () => ({
 }));
 
 const root = new URL('../../../db/migrations/', import.meta.url);
-const migrations = Object.entries(
-  JSON.parse(readFileSync(new URL('checksums.json', root), 'utf8')),
-).map(([name, checksum]) => ({ name, checksum, sql: readFileSync(new URL(name, root), 'utf8') }));
+const migrations = Object.entries(JSON.parse(readFileSync(new URL('checksums.json', root), 'utf8')))
+  .filter(([name]) => name < '0025_')
+  .map(([name, checksum]) => ({ name, checksum, sql: readFileSync(new URL(name, root), 'utf8') }));
 const pending = ['0024_material_review_proposals.sql'];
 const identity = { database: 'hzense', user: 'migrator' };
 const policy = { host: 'fixture.invalid', port: '5432', ...identity };

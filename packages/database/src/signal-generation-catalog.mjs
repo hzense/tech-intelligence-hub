@@ -71,6 +71,7 @@ export const signalGenerationDefaults = [
 ];
 export const signalGenerationUniqueIndexes = [
   'signal_generation_runs|owner_id,item_id,source_fence,source_hash,profile_id,profile_revision,generation_version',
+  'signal_generation_runs|id,owner_id',
 ];
 export const signalGenerationIndexes = [
   'signal_generation_runs|owner_id,created_at',

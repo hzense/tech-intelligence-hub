@@ -6,7 +6,10 @@ import process from 'node:process';
 import { Buffer } from 'node:buffer';
 import { build } from 'esbuild';
 import { createGenerationHandler } from '../lib/admin-signal-generation-handler.ts';
-import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
+import {
+  signalGenerationSourceHash,
+  SignalGenerationError,
+} from '../../../packages/database/src/signal-generation-store.mjs';
 import { assessGeneratedCandidates } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 const { Request } = globalThis;
 
@@ -332,4 +335,14 @@ test('task deletion is authenticated, owner-scoped and separate from the AI exec
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { id, deleted: true });
   assert.equal(deleted, 1);
+  const protectedResponse = await createGenerationHandler({
+    ...deps,
+    delete: async () => {
+      throw new SignalGenerationError('published_candidate_delete_forbidden');
+    },
+  })(request());
+  assert.equal(protectedResponse.status, 409);
+  assert.deepEqual(await protectedResponse.json(), {
+    error: 'published_candidate_delete_forbidden',
+  });
 });
