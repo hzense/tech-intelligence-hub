@@ -7,6 +7,7 @@ import styles from './candidate-review-editor.module.css';
 import { reviewRequestIdentity } from './candidate-review-request';
 import { CandidatePublicationMaterials } from './candidate-publication-materials';
 import type { PublicationMaterials } from '../lib/candidate-publication-materials';
+import type { MaterialPublicationPreview } from '../lib/material-publication-preview';
 
 type Props = { runId: string; candidateIndex: number; materialHash: string };
 type Action = 'inspect' | 'confirm' | 'prepare' | 'assemble' | 'publish' | 'withdraw';
@@ -261,6 +262,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [receipt, setReceipt] = useState<unknown>(null);
   const [preparation, setPreparation] = useState<Preparation | null>(null);
+  const [materialPreview, setMaterialPreview] = useState<MaterialPublicationPreview | null>(null);
   const [enrichments, setEnrichments] = useState<EnrichmentTask[]>([]);
   const [message, setMessage] = useState('正在读取最新发布状态。');
   const pending = useRef<Partial<Record<Action, { fingerprint: string; requestId: string }>>>({});
@@ -282,6 +284,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       original_material_hash: string;
       enrichments?: EnrichmentTask[];
       preparation?: Preparation;
+      materialPreview?: MaterialPublicationPreview | null;
     };
   }, [candidateIndex, runId]);
 
@@ -334,6 +337,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
     originalMaterialHash.current = data.original_material_hash ?? materialHash;
     setEnrichments(data.enrichments ?? []);
     setPreparation(data.preparation ?? null);
+    setMaterialPreview(data.materialPreview ?? null);
     if (!data.reviews.length) {
       const state = unreviewedPublicationReadiness(data);
       const prepared = state.ready === true;
@@ -486,6 +490,8 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
   }
 
   const blockers = readiness?.blocked ?? readiness?.blockers ?? [];
+  // A confirmation must always show the exact formal materials bound to its hash.
+  const displayedPreview = preparation?.ready ? null : materialPreview;
   const status = readiness?.status;
   const stage = status ? stageCopy[status] : undefined;
   const following = nextAction(status);
@@ -519,29 +525,63 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
       </p>
       <div className={styles.history}>
         <h3>{stage?.label ?? '发布状态尚未读取'}</h3>
-        <p>{stage?.detail ?? '点击刷新后，系统会显示当前可执行的下一步。'}</p>
+        <p>
+          {displayedPreview
+            ? '补全内容已保存，见下方最新提案。以下为正式登记与核验门禁，不表示补全内容丢失；未登记前仍不能发布。'
+            : (stage?.detail ?? '点击刷新后，系统会显示当前可执行的下一步。')}
+        </p>
+        {displayedPreview ? (
+          <p>
+            下列检查基于尚未登记补证提案的审核版本；请以最新补全材料判断已提供的内容，并继续准备核验材料。
+          </p>
+        ) : null}
         {blockers.length ? (
-          <ul>
-            {blockers.map((blocker, index) => (
-              <li key={`${index}:${blocker}`}>{blocker}</li>
-            ))}
-          </ul>
+          <details open={!displayedPreview}>
+            <summary>
+              {displayedPreview ? '登记前审核版本的检查明细（尚未采用补证提案）' : '待处理事项'}
+            </summary>
+            <ul>
+              {blockers.map((blocker, index) => (
+                <li key={`${index}:${blocker}`}>{blocker}</li>
+              ))}
+            </ul>
+          </details>
         ) : null}
       </div>
-      {preparation?.materials ? (
+      {displayedPreview ? (
+        <>
+          <p role="status">正在展示最新补证补全提案；待核验登记，不代表已具备发布资格。</p>
+          <CandidatePublicationMaterials materials={displayedPreview.materials} />
+          <details>
+            <summary>补全材料标识</summary>
+            <p>补证请求：{displayedPreview.requestId}</p>
+            <p>补全任务：{displayedPreview.taskId}</p>
+          </details>
+        </>
+      ) : preparation?.materials ? (
         <CandidatePublicationMaterials materials={preparation.materials} />
+      ) : null}
+      {materialPreview && preparation?.ready ? (
+        <p>
+          上方为确认送核验实际使用的正式材料。另有未登记的补证提案，见下方通用补证记录；不会自动替换待确认版本。
+        </p>
       ) : null}
       <CandidateMaterialWorkflow
         runId={runId}
         candidateIndex={candidateIndex}
         materialHash={materialHash}
+        onUpdated={inspect}
         onRegistered={() => {
           void inspect();
         }}
       />
       {preparation?.enrichment ? (
-        <div className={styles.history}>
-          <h3>自动补全检查</h3>
+        <details className={styles.history} open={!displayedPreview}>
+          <summary>
+            <h3>
+              {displayedPreview ? '登记前审核版本检查（不等于补全提案状态）' : '自动补全检查'}
+            </h3>
+          </summary>
           <p>
             已匹配 {preparation.enrichment.matched} 项，待处理 {preparation.enrichment.pending}{' '}
             项。这里仅匹配正式数据，不会把私有资料自动认定为公开证据。
@@ -568,7 +608,7 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
               </tbody>
             </table>
           </div>
-        </div>
+        </details>
       ) : null}
       <div className={styles.history}>
         <h3>AI 补全任务</h3>

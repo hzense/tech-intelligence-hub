@@ -25,6 +25,7 @@ const compiled = await build({
           [/^\.\/signal-generation$/, 'fixture:generation'],
           [/^\.\.\/candidate-review$/, 'fixture:packet'],
           [/^\.\/candidate-enrichment$/, 'fixture:enrichment'],
+          [/^\.\/material-registration$/, 'fixture:materials'],
         ])
           builder.onResolve({ filter }, () => ({ path, external: true }));
       },
@@ -65,6 +66,9 @@ function fixture(queryOverride) {
     ],
     enrichments: [],
     enrichmentError: false,
+    materialPreview: null,
+    registered: null,
+    previewReads: 0,
     saved: [],
     queries: [],
     busy: false,
@@ -135,6 +139,13 @@ function fixture(queryOverride) {
         return state.enrichments;
       },
     },
+    'fixture:materials': {
+      registeredMaterialForCandidate: async () => state.registered,
+      materialPublicationPreview: async () => {
+        state.previewReads++;
+        return state.materialPreview;
+      },
+    },
   };
   const module = { exports: {} };
   new Function('require', 'module', 'exports', 'process', compiled.outputFiles[0].text)(
@@ -202,6 +213,25 @@ test('catalog or enrichment drift rejects confirmation without writing a review'
     });
     assert.equal(f.state.saved.length, 0);
   }
+});
+
+test('supplement preview never changes review readiness, confirmation hashes or saved drafts', async () => {
+  const f = fixture();
+  const original = await f.read();
+  f.state.materialPreview = {
+    requestId: 'request',
+    taskId: 'task',
+    materials: { title: 'preview', items: [] },
+  };
+  const previewed = await f.read();
+  assert.deepEqual(previewed.materialPreview, f.state.materialPreview);
+  assert.deepEqual(previewed.preparation, original.preparation);
+  const reads = f.state.previewReads;
+  await f.confirm(original.preparation.preparationHash);
+  assert.equal(f.state.previewReads, reads, 'write path must never consume display-only previews');
+  assert.deepEqual(f.state.saved[0].request.draft.personIds, ['person-zhang-san']);
+  f.state.entities = [];
+  assert.equal((await f.read()).preparation.ready, false);
 });
 
 test('missing fingerprints, browser-authored drafts and cross-owner access are rejected', async () => {

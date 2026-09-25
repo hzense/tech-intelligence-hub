@@ -87,6 +87,7 @@ type Props = {
   candidateIndex: number;
   materialHash: string;
   onRegistered: () => void;
+  onUpdated?: () => Promise<unknown>;
 };
 export function CandidateMaterialWorkflow(props: Props) {
   return (
@@ -96,7 +97,7 @@ export function CandidateMaterialWorkflow(props: Props) {
     />
   );
 }
-function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }: Props) {
+function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, onUpdated }: Props) {
   const [data, setData] = useState<Dashboard | null>(null),
     [selected, setSelected] = useState<string[]>([]),
     [busy, setBusy] = useState(false),
@@ -124,7 +125,8 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
       setSelected([]);
     }
     setData(next);
-  }, [url]);
+    await onUpdated?.();
+  }, [url, onUpdated]);
   useEffect(() => {
     let active = true;
     fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(20000) })

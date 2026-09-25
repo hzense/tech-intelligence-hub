@@ -70,6 +70,7 @@
   font-weight: 600;
 }
 .matched,
+.proposed,
 .missing,
 .ambiguous {
   display: inline-block;
@@ -84,6 +85,10 @@
 .matched {
   background: #dcfce7;
   color: #166534;
+}
+.proposed {
+  background: #dbeafe;
+  color: #1e40af;
 }
 .missing {
   background: #fef3c7;
