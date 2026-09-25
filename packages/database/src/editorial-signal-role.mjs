@@ -11,6 +11,9 @@ export const editorialRoleColumns = {
 export async function assertEditorialRole(client, role) {
   if (!['writer', 'reader'].includes(role))
     throw new EditorialSignalError('editorial_role_invalid');
+  // pg_init_privs records initial catalog ACLs, but not information_schema's
+  // initdb SQL grants. Its fallback is restricted to bootstrap-owned built-ins
+  // (OID < FirstNormalObjectId), never newly created user objects.
   const identity = (
     await client.query(`SELECT current_user AS name, current_user=session_user AND r.rolcanlogin AND r.rolconnlimit=2
     AND NOT (r.rolsuper OR r.rolcreatedb OR r.rolcreaterole OR r.rolreplication OR r.rolbypassrls OR r.rolinherit)
@@ -23,13 +26,28 @@ export async function assertEditorialRole(client, role) {
         OR dbid NOT IN (0,(SELECT oid FROM pg_database WHERE datname=current_database()))))))
     AND NOT EXISTS(SELECT 1 FROM pg_parameter_acl p CROSS JOIN LATERAL aclexplode(p.paracl) a WHERE a.grantee IN (0,r.oid))
     AND NOT EXISTS(SELECT 1 FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a
-      WHERE a.grantee=r.oid AND (n.nspname~'^pg_' OR n.nspname='information_schema'))
+      WHERE (n.nspname~'^pg_' OR n.nspname='information_schema') AND (a.grantee=r.oid OR (a.grantee=0
+        AND NOT (n.nspname='information_schema' AND n.oid<16384 AND n.nspowner=10 AND a.grantor=10 AND a.privilege_type='USAGE' AND NOT a.is_grantable)
+        AND NOT EXISTS(
+        SELECT 1 FROM pg_init_privs p CROSS JOIN LATERAL aclexplode(p.initprivs) initial
+        WHERE p.classoid='pg_namespace'::regclass AND p.objoid=n.oid AND p.objsubid=0
+          AND initial.grantee=0 AND initial.privilege_type=a.privilege_type AND initial.is_grantable=a.is_grantable))))
     AND NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-      CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE a.grantee=r.oid
-      AND (n.nspname~'^pg_' OR n.nspname='information_schema'))
+      CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE (n.nspname~'^pg_' OR n.nspname='information_schema')
+      AND (a.grantee=r.oid OR (a.grantee=0
+        AND NOT (n.nspname='information_schema' AND n.oid<16384 AND c.oid<16384 AND c.relowner=10 AND a.grantor=10
+          AND a.privilege_type='SELECT' AND NOT a.is_grantable
+          AND (c.relkind='v' OR (c.relkind='r' AND c.relname IN ('sql_features','sql_implementation_info','sql_parts','sql_sizing'))))
+        AND NOT EXISTS(
+        SELECT 1 FROM pg_init_privs p CROSS JOIN LATERAL aclexplode(p.initprivs) initial
+        WHERE p.classoid='pg_class'::regclass AND p.objoid=c.oid AND p.objsubid=0
+          AND initial.grantee=0 AND initial.privilege_type=a.privilege_type AND initial.is_grantable=a.is_grantable))))
     AND NOT EXISTS(SELECT 1 FROM pg_attribute col JOIN pg_class c ON c.oid=col.attrelid
       JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL aclexplode(col.attacl) a
-      WHERE a.grantee=r.oid AND (n.nspname~'^pg_' OR n.nspname='information_schema'))
+      WHERE (n.nspname~'^pg_' OR n.nspname='information_schema') AND (a.grantee=r.oid OR (a.grantee=0 AND NOT EXISTS(
+        SELECT 1 FROM pg_init_privs p CROSS JOIN LATERAL aclexplode(p.initprivs) initial
+        WHERE p.classoid='pg_class'::regclass AND p.objoid=c.oid AND p.objsubid=col.attnum
+          AND initial.grantee=0 AND initial.privilege_type=a.privilege_type AND initial.is_grantable=a.is_grantable))))
     AND has_database_privilege(current_database(),'CONNECT')
     AND NOT has_database_privilege(current_database(),'CONNECT WITH GRANT OPTION')
     AND NOT EXISTS(SELECT 1 FROM pg_database d CROSS JOIN LATERAL aclexplode(d.datacl) a WHERE d.datname<>current_database() AND a.grantee=r.oid)

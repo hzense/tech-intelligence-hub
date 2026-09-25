@@ -211,6 +211,62 @@ suite('editorial publication persistence and isolated capabilities', () => {
       }
     }
   });
+  it('retains initial system PUBLIC privileges but rejects new table, column and schema grants', async () => {
+    for (const privilege of [
+      'SELECT ON pg_catalog.pg_authid',
+      'SELECT(rolpassword) ON pg_catalog.pg_authid',
+      'UPDATE ON pg_catalog.pg_class',
+      'CREATE ON SCHEMA pg_catalog',
+      'UPDATE ON information_schema.sql_features',
+    ]) {
+      await pool.query(`GRANT ${privilege} TO PUBLIC`);
+      try {
+        for (const [connection, role] of [
+          [reader, 'reader'],
+          [writer, 'writer'],
+        ]) {
+          const client = await connection.connect();
+          try {
+            await expect(assertEditorialRole(client, role)).rejects.toThrow(
+              'editorial_role_invalid',
+            );
+          } finally {
+            client.release();
+          }
+        }
+      } finally {
+        await pool.query(`REVOKE ${privilege} FROM PUBLIC`);
+      }
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await assertEditorialRole(client, role);
+        } finally {
+          client.release();
+        }
+      }
+    }
+    await pool.query('CREATE TABLE information_schema.editorial_test_only(id integer)');
+    try {
+      await pool.query('GRANT SELECT ON information_schema.editorial_test_only TO PUBLIC');
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+        } finally {
+          client.release();
+        }
+      }
+    } finally {
+      await pool.query('DROP TABLE information_schema.editorial_test_only');
+    }
+  });
   it('publishes one immutable receipt, compares revisions, and withdraws without reviving older publications', async () => {
     const { request, material } = editorialFixture();
     await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
