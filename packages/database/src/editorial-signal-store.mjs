@@ -17,6 +17,7 @@ export async function saveEditorialSignal({ pool, owner, request, material }) {
     .digest('hex');
   const client = await pool.connect();
   let committing = false;
+  let discard = false;
   try {
     await client.query('BEGIN');
     await client.query('SET LOCAL search_path=pg_catalog,pg_temp');
@@ -89,7 +90,10 @@ export async function saveEditorialSignal({ pool, owner, request, material }) {
     await client.query('COMMIT');
     return row;
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    discard = !(error instanceof EditorialSignalError);
+    await client.query('ROLLBACK').catch(() => {
+      discard = true;
+    });
     if (error instanceof EditorialSignalError) throw error;
     fail(
       committing
@@ -99,7 +103,7 @@ export async function saveEditorialSignal({ pool, owner, request, material }) {
           : 'database_unavailable',
     );
   } finally {
-    client.release();
+    client.release(discard);
   }
 }
 export async function readEditorialSignal({ pool, owner, runId, candidateIndex }) {
@@ -107,6 +111,7 @@ export async function readEditorialSignal({ pool, owner, runId, candidateIndex }
   editorialUuid(runId);
   if (!Number.isInteger(candidateIndex) || candidateIndex < 0 || candidateIndex > 4) fail();
   const client = await pool.connect();
+  let discard = false;
   try {
     return (
       (
@@ -122,8 +127,9 @@ export async function readEditorialSignal({ pool, owner, runId, candidateIndex }
       ).rows[0] ?? null
     );
   } catch {
+    discard = true;
     fail('database_unavailable');
   } finally {
-    client.release();
+    client.release(discard);
   }
 }

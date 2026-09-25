@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readEditorialSignal, saveEditorialSignal } from '../src/editorial-signal-store.mjs';
 import {
   normalizeEditorialContent,
   normalizeEditorialRequest,
@@ -36,6 +37,70 @@ export function editorialFixture() {
   };
 }
 describe('editorial confirmation contract', () => {
+  it('normalizes immutable material consistently across draft, publish and withdraw', () => {
+    const { request, material } = editorialFixture();
+    material.title = ` ${material.title}\n`;
+    material.summary = `\t${material.summary} `;
+    material.sourceUrls = material.sourceUrls.map((url) => ` ${url} `);
+    for (const action of ['draft', 'publish', 'withdraw']) {
+      for (const padded of [false, true]) {
+        const content = padded
+          ? {
+              ...request.content,
+              title: material.title,
+              summary: material.summary,
+              sourceUrls: material.sourceUrls,
+            }
+          : request.content;
+        expect(
+          normalizeEditorialRequest({ ...request, content, action }, material).content,
+        ).toEqual(request.content);
+      }
+    }
+  });
+  it('destroys clients after read or transactional query failures, retaining domain errors', async () => {
+    const { request, material } = editorialFixture();
+    const releases = [];
+    let mode = 'timeout';
+    const pool = {
+      async connect() {
+        return {
+          async query(sql) {
+            if (mode === 'timeout') throw new Error('synthetic query timeout');
+            if (mode === 'rollback-failure' && sql === 'ROLLBACK')
+              throw new Error('synthetic rollback timeout');
+            return { rows: [] };
+          },
+          release(discard) {
+            releases.push(discard);
+          },
+        };
+      },
+    };
+    await expect(
+      readEditorialSignal({ pool, owner: 'owner', runId: request.runId, candidateIndex: 0 }),
+    ).rejects.toThrow('database_unavailable');
+    expect(releases.at(-1)).toBe(true);
+    await expect(saveEditorialSignal({ pool, owner: 'owner', request, material })).rejects.toThrow(
+      'database_unavailable',
+    );
+    expect(releases.at(-1)).toBe(true);
+    mode = 'domain';
+    await expect(saveEditorialSignal({ pool, owner: 'owner', request, material })).rejects.toThrow(
+      'not_found',
+    );
+    expect(releases.at(-1)).toBe(false);
+    mode = 'rollback-failure';
+    await expect(saveEditorialSignal({ pool, owner: 'owner', request, material })).rejects.toThrow(
+      'not_found',
+    );
+    expect(releases.at(-1)).toBe(true);
+    mode = 'healthy';
+    expect(
+      await readEditorialSignal({ pool, owner: 'owner', runId: request.runId, candidateIndex: 0 }),
+    ).toBeNull();
+    expect(releases.at(-1)).toBe(false);
+  });
   it('accepts exactly four completed editorial fields without implying verification', () => {
     const { request, material } = editorialFixture();
     expect(normalizeEditorialRequest(request, material)).toEqual(request);

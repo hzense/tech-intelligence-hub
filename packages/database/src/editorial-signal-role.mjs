@@ -22,6 +22,14 @@ export async function assertEditorialRole(client, role) {
         classid NOT IN ('pg_database'::regclass,'pg_namespace'::regclass,'pg_class'::regclass)
         OR dbid NOT IN (0,(SELECT oid FROM pg_database WHERE datname=current_database()))))))
     AND NOT EXISTS(SELECT 1 FROM pg_parameter_acl p CROSS JOIN LATERAL aclexplode(p.paracl) a WHERE a.grantee IN (0,r.oid))
+    AND NOT EXISTS(SELECT 1 FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a
+      WHERE a.grantee=r.oid AND (n.nspname~'^pg_' OR n.nspname='information_schema'))
+    AND NOT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+      CROSS JOIN LATERAL aclexplode(c.relacl) a WHERE a.grantee=r.oid
+      AND (n.nspname~'^pg_' OR n.nspname='information_schema'))
+    AND NOT EXISTS(SELECT 1 FROM pg_attribute col JOIN pg_class c ON c.oid=col.attrelid
+      JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL aclexplode(col.attacl) a
+      WHERE a.grantee=r.oid AND (n.nspname~'^pg_' OR n.nspname='information_schema'))
     AND has_database_privilege(current_database(),'CONNECT')
     AND NOT has_database_privilege(current_database(),'CONNECT WITH GRANT OPTION')
     AND NOT EXISTS(SELECT 1 FROM pg_database d CROSS JOIN LATERAL aclexplode(d.datacl) a WHERE d.datname<>current_database() AND a.grantee=r.oid)

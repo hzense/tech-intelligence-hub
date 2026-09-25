@@ -125,9 +125,10 @@ export function normalizeEditorialRequest(request, material) {
   const content = normalizeEditorialContent(request.content);
   if (
     request.materialHash !== material?.materialHash ||
-    content.title !== material.title ||
-    content.summary !== material.summary ||
-    JSON.stringify(content.sourceUrls) !== JSON.stringify(material.sourceUrls)
+    content.title !== editorialText(material.title, 80) ||
+    content.summary !== editorialText(material.summary, 500) ||
+    JSON.stringify(content.sourceUrls) !==
+      JSON.stringify(material.sourceUrls.map((url) => editorialText(url, 2048)))
   )
     editorialFail('material_changed');
   if (request.action !== 'draft' && !request.consent) editorialFail('confirmation_required');

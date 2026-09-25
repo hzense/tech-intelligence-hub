@@ -183,6 +183,34 @@ suite('editorial publication persistence and isolated capabilities', () => {
       }
     }
   });
+  it('rejects direct system catalog table, column and schema ACLs', async () => {
+    for (const [connection, role] of [
+      [reader, 'reader'],
+      [writer, 'writer'],
+    ]) {
+      const client = await connection.connect();
+      const roleName = `hzense_editorial_${role}`;
+      try {
+        for (const privilege of [
+          'SELECT ON pg_catalog.pg_authid',
+          'SELECT(rolpassword) ON pg_catalog.pg_authid',
+          'USAGE ON SCHEMA pg_catalog',
+        ]) {
+          await pool.query(`GRANT ${privilege} TO ${roleName}`);
+          try {
+            await expect(assertEditorialRole(client, role)).rejects.toThrow(
+              'editorial_role_invalid',
+            );
+          } finally {
+            await pool.query(`REVOKE ${privilege} FROM ${roleName}`);
+          }
+          await assertEditorialRole(client, role);
+        }
+      } finally {
+        client.release();
+      }
+    }
+  });
   it('publishes one immutable receipt, compares revisions, and withdraws without reviving older publications', async () => {
     const { request, material } = editorialFixture();
     await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
