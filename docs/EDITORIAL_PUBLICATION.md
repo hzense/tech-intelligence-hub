@@ -1,6 +1,6 @@
 # 四项信息人工确认发布
 
-2026-09-25，本地实现及验证完成，尚未提交或生产启用。
+2026-09-25，PR #163 已合并并部署代码；生产功能尚待 0025 迁移、专用角色和环境配置启用。
 
 ## 使用方式
 
@@ -28,7 +28,7 @@
 
 本批新增 `0025_editorial_signal_publication.sql`。先审核迁移和最小授权、核对备份及维护窗口，再经明确批准执行；不要仅部署页面就宣布可用。
 
-1. 先为受保护维护流程补充并审核 0025 专属目标／备份／计划绑定范围，旧 0024 审批不能执行新迁移；随后预检，经批准执行 0025 并完整核验。此批尚未扩展生产维护授权范围。
+1. 受保护维护流程使用独立的 `accept-unverified-editorial-publication`／`editorial-publication-production-launch` 范围，仅允许待迁移列表为 `0025_editorial_signal_publication.sql`，固定完整 26 项迁移的校验值。审批绑定当前 main SHA、运行 ID／attempt、目标、备份、ACL 和计划指纹，并在持有迁移锁的连接上复核。旧 0024 审批不能执行新迁移；新规则合并及 CI 通过后，重新预检，经批准执行并独立 verify。风险接受不等于已演练恢复。
 2. 审核并执行 `db/roles/create_editorial_roles.sql`、`configure_editorial_roles.sql`，为两个独立角色安全设置密码。它们不会扩展原 runtime、generation 或旧发布角色权限。
 3. 配置 `HZENSE_EDITORIAL_DATABASE_URL`（`hzense_editorial_writer`）和 `HZENSE_EDITORIAL_READER_DATABASE_URL`（`hzense_editorial_reader`）；仅服务端使用，不写入 Git 或浏览器。
 4. 连接须满足现有数据库端点／数据库名及 TLS 限制；验证读写角色精确 ACL 后开启 `HZENSE_EDITORIAL_PUBLICATION_ENABLED=1` 并部署。
