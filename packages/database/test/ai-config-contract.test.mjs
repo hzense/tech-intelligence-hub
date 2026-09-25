@@ -157,9 +157,32 @@ describe('AI configuration request boundary', () => {
       }),
     ).toThrow();
   });
+  it('accepts 50000 output tokens and preserves existing 8192 revisions', () => {
+    for (const max_output_tokens of [8192, 50000]) {
+      const value = parseAiProfileSave({
+        name: 'Test',
+        stages: {
+          extract: { ...stage(), max_output_tokens },
+          verify: stage(),
+          analyze: stage(),
+        },
+      });
+      expect(value.stages.extract.max_output_tokens).toBe(max_output_tokens);
+    }
+  });
+  it.each(['verify', 'analyze'])('retains the 8192 cap for %s', (name) => {
+    const stages = { extract: stage(), verify: stage(), analyze: stage() };
+    stages[name].max_output_tokens = 8192;
+    expect(parseAiProfileSave({ name: 'Test', stages }).stages[name].max_output_tokens).toBe(8192);
+    for (const limit of [8193, 50000]) {
+      stages[name].max_output_tokens = limit;
+      expect(() => parseAiProfileSave({ name: 'Test', stages })).toThrow();
+    }
+  });
   it.each([
     { temperature: 3 },
     { max_output_tokens: 127 },
+    { max_output_tokens: 50001 },
     { require_tools: 'true' },
     { connection_revision: 0 },
     { verified: true },

@@ -352,7 +352,10 @@ test(
           await expect(prompt(stage)).toHaveValue(aiProfileDefaultPrompts[stage]);
           await expect(
             group(stage).getByRole('spinbutton', { name: '输出 token 上限' }),
-          ).toHaveValue(stage === 'extract' ? '8192' : '2048');
+          ).toHaveValue(stage === 'extract' ? '50000' : '2048');
+          await expect(
+            group(stage).getByRole('spinbutton', { name: '输出 token 上限' }),
+          ).toHaveAttribute('max', stage === 'extract' ? '50000' : '8192');
           inputIds.push(await model(stage).getAttribute('id'));
           await connection(stage).selectOption(connectionA.id);
           await group(stage).getByRole('button', { name: '展开模型列表', exact: true }).click();

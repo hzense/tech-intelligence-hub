@@ -24,10 +24,15 @@ test('source inspection measures exact generation JSON UTF-8 bytes without leaki
 });
 
 test('inspection reports oversized sources without relaxing the actual generation limit', () => {
-  const input = output('中'.repeat(17000));
+  const input = parseImportOutput({
+    fragments: Array.from({ length: 12 }, (_, i) => ({
+      text: '中 '.repeat(9000),
+      locator: { paragraph: i + 1 },
+    })),
+  });
   const result = inspectGenerationSource(input);
   assert.equal(result.ready, false);
-  assert.ok(result.sourceBytes > result.limitBytes);
+  assert.ok(result.sourceTokens > result.limitTokens);
   assert.throws(() => buildGenerationSource(input), { code: 'generation_source_too_large' });
   for (const bad of [
     { ...input, classification: 'public' },
@@ -36,20 +41,19 @@ test('inspection reports oversized sources without relaxing the actual generatio
     assert.throws(() => inspectGenerationSource(bad), { code: 'invalid_generation_source' });
 });
 
-test('inspection boundary is inclusive and previews at most three locators', () => {
-  const base = parseImportOutput({
-    fragments: Array.from({ length: 4 }, (_, i) => ({ text: 'x', locator: { paragraph: i + 1 } })),
+test('inspection includes JSON overhead and previews at most three locators', () => {
+  const input = parseImportOutput({
+    fragments: Array.from({ length: 10 }, (_, i) => ({
+      text: '中 '.repeat(9000),
+      locator: { paragraph: i + 1 },
+    })),
   });
-  const overhead = inspectGenerationSource(base).sourceBytes - 4;
-  const lengths = [12000, 12000, 12000, 48000 - overhead - 36000];
-  const boundary = parseImportOutput({
-    fragments: lengths.map((n, i) => ({ text: 'x'.repeat(n), locator: { paragraph: i + 1 } })),
-  });
-  assert.equal(inspectGenerationSource(boundary).sourceBytes, 48000);
-  assert.equal(inspectGenerationSource(boundary).ready, true);
-  assert.equal(inspectGenerationSource(boundary).locators.length, 3);
-  boundary.fragments[3].text += 'x';
-  assert.equal(inspectGenerationSource(boundary).ready, false);
+  const inspection = inspectGenerationSource(input);
+  assert.equal(inspection.ready, true);
+  assert.equal(inspection.locators.length, 3);
+  assert.ok(inspection.sourceTokens > 90000);
+  assert.equal(inspection.limitTokens, 100000);
+  assert.equal(inspection.tokenEncoding, 'o200k_base');
 });
 
 test('source inspector accepts identifiers only and propagates owning-admin access failures', async () => {

@@ -19,6 +19,7 @@ import { aiStageAccess } from './admin-ai';
 import { generationRecord } from './signal-generation';
 import {
   materialEnrichmentInput,
+  validateEnrichmentSource,
   materialEnrichmentRules,
   type MaterialEnrichmentContext,
 } from '../material-enrichment';
@@ -131,7 +132,7 @@ export async function createCandidateEnrichment(
     throw new GenerationError('material_changed');
   const selected = material
     ? materialEnrichmentInput(material.bundle, packet.candidate)
-    : { source: generation.snapshot.source, candidate: packet.candidate };
+    : { source: validateEnrichmentSource(generation.snapshot.source), candidate: packet.candidate };
   const identityHash = material?.bundle.sourceBundleHash ?? value.materialHash;
   // A replay of a saved bundle must not change its catalog/model snapshot.
   if (material) {

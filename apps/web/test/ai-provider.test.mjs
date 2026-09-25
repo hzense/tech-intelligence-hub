@@ -201,7 +201,8 @@ test('transport keeps probe request limits and separately bounds generation befo
   for (const [requestPurpose, maximum] of [
     [undefined, 32768],
     ['probe', 32768],
-    ['signal-generation', 256 * 1024],
+    ['signal-generation', 3 * 1024 * 1024],
+    ['candidate-enrichment', 256 * 1024],
   ]) {
     let dnsCalls = 0;
     let wireCalls = 0;

@@ -14,6 +14,7 @@ export class AiConfigError extends Error {
 }
 export const aiConfigErrorCodes: readonly string[];
 export const AI_PROBE_OUTPUT_TOKENS: number;
+export const AI_PROFILE_MAX_OUTPUT_TOKENS: number;
 export function aiFail(code?: string): never;
 export function aiObject(
   value: unknown,

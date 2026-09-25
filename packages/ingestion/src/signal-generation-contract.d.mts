@@ -1,6 +1,7 @@
 export const GENERATION_LIMITS: Readonly<{
-  sourceBytes: 48000;
-  outputBytes: 96000;
+  inputTokens: 100000;
+  sourceBytes: 1000000;
+  outputBytes: 400000;
   candidates: 5;
   titleCharacters: 80;
   summaryCharacters: 500;
@@ -9,6 +10,7 @@ export const GENERATION_LIMITS: Readonly<{
 }>;
 export const generationCandidateJsonSchema: Readonly<Record<string, unknown>>;
 export const REJECTED_CANDIDATES_REASON: string;
+export function estimateGenerationTokens(text: string): number;
 export class SignalGenerationError extends Error {
   code: string;
   constructor(code: string);
@@ -65,6 +67,9 @@ export interface GenerationSourceInspection {
   ready: boolean;
   sourceBytes: number;
   limitBytes: number;
+  sourceTokens: number;
+  limitTokens: number;
+  tokenEncoding: string;
   fragmentCount: number;
   locators: { id: string; locator: Record<string, string | number> }[];
 }

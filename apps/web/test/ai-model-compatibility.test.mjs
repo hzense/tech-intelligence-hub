@@ -9,11 +9,11 @@ const models = [
   ['openai/gpt-6-astra', ['low', 'medium', 'high'], true, 'low'],
   ['anthropic/claude-fable-5.1', ['low', 'medium', 'high'], true, 'low'],
   ['google/gemini-3.8-flash', ['minimal', 'low', 'medium', 'high'], true, 'minimal'],
-  ['deepseek/deepseek-v4.1-flash', ['high', 'max'], false, 'high'],
+  ['deepseek/deepseek-v4.1-flash', ['high', 'max'], false, undefined],
   ['qwen/qwen3.8-max-0902', ['high', 'xhigh'], true, 'high'],
   ['z-ai/glm-5.3', ['max', 'high', 'low'], true, 'low'],
-  ['z-ai/glm-5.2', ['xhigh', 'high'], false, 'high'],
-  ['moonshotai/kimi-k3', ['max', 'high', 'low'], false, 'low'],
+  ['z-ai/glm-5.2', ['xhigh', 'high'], false, undefined],
+  ['moonshotai/kimi-k3', ['max', 'high', 'low'], false, undefined],
   ['moonshotai/kimi-k2.6', undefined, false, undefined],
 ];
 for (const [id, efforts, mandatory, expected] of models) {
@@ -65,6 +65,45 @@ test('unknown, unsupported and malformed catalogs fail closed; no fallback reque
     assert.equal(calls, 1);
   }
 });
+test('known provider context and completion limits reject incompatible budgets', async () => {
+  for (const top_provider of [
+    { context_length: 128000, max_completion_tokens: 65536 },
+    { context_length: 200000, max_completion_tokens: 32768 },
+  ]) {
+    await assert.rejects(
+      openRouterOptions(
+        url,
+        'model',
+        async () =>
+          Response.json({
+            data: [{ id: 'model', supported_parameters: parameters, top_provider }],
+          }),
+        'structured',
+        { inputTokens: 100000, outputTokens: 50000 },
+      ),
+      { code: 'capability_failed' },
+    );
+  }
+  const options = await openRouterOptions(
+    url,
+    'model',
+    async () =>
+      Response.json({
+        data: [
+          {
+            id: 'model',
+            supported_parameters: parameters,
+            top_provider: { context_length: 200000, max_completion_tokens: 65536 },
+            reasoning: { mandatory: false, supported_efforts: ['high'] },
+          },
+        ],
+      }),
+    'structured',
+    { inputTokens: 100000, outputTokens: 50000 },
+  );
+  assert.deepEqual(options.reasoning, { exclude: true, enabled: false });
+});
+
 test('other providers never receive OpenRouter metadata requests or options', async () => {
   assert.equal(
     await openRouterOptions(

@@ -4,7 +4,7 @@
 export const aiProfileDefaultTemperature = 0.7;
 // New profiles only. Existing revisions keep their explicit output budgets.
 export const aiProfileDefaultOutputTokens = Object.freeze({
-  extract: 8192,
+  extract: 50000,
   verify: 2048,
   analyze: 2048,
 });

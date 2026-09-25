@@ -147,9 +147,10 @@ PostgreSQL 16+ 的非超级用户 `CREATEROLE` 创建者会收到一条由 boots
 
 - 能力测试及候选生成共用 `apps/web/lib/ai-model-compatibility.ts`，调用前通过原有 DNS 固定、域名白名单、响应大小与截止时间保护读取 `/models`；不缓存密钥，不依赖写死的模型名称。目录缺失或不支持所需能力时停止，不降级为普通文本生成。
 - 结构化调用要求目录声明 `response_format` 和 `structured_outputs`，发送 `provider.require_parameters: true`，筛选支持请求参数的端点。目录声明不保证业务验收，端点能力仍可能变化。
-- OpenRouter 不发送统一温度，使用供应商默认值；其他 OpenAI-compatible 连接仍使用已保存温度。推理选择目录允许的最低非关闭档位；没有档位但明确允许关闭推理时发送 `enabled: false`，其余保留默认行为。始终 `exclude: true`，不展示独立思考内容。
+- OpenRouter 不发送统一温度，使用供应商默认值；其他 OpenAI-compatible 连接仍使用已保存温度。2026-09-25 调整为优先关闭可选推理（目录 `mandatory=false` 时发送 `enabled:false`）；强制推理模型使用支持的最低档位，始终 `exclude:true`，不返回或保存独立思考内容。不声称所有模型都能取消内部推理或相关计费。
 - 供应商 Schema 保留对象、字段、必填、枚举、数组项及可空结构，将字数、数量、日期正则等非通用约束转为描述；本地仍严格校验 80 字标题、500 字摘要、最多 5 条及逐字原文证据。不把供应商成功等同于候选有效。
-- 生成仍使用配置的输出上限（最大 8192 token），不增加每日预算、不自动重试。`finish_reason=length` 单独归类为 `generation_output_truncated`，保留用量、不保存截断结果；推理可能占用输出额度，最低推理强度也不能保证任何资料一次成功。能力测试仍有独立的 3–20 秒截止时间，慢模型可能超时，不能视为业务生成不兼容。
+- 2026-09-25 起提取阶段允许配置最大 50,000 输出 tokens，新建提取配置默认 50,000，其余阶段默认 2,048、上限仍为 8,192。既有配置及任务快照不自动升级，须显式保存配置新修订。输入使用本地 `o200k_base` 估算，完整请求预算上限 100,000 tokens；不同模型的真实分词和账单以供应商为准。目录明确声明的上下文／输出能力不足时停止，不擅自压低配置或切换模型。
+- 不增加每日预算、不自动重试。`finish_reason=length` 单独归类为 `generation_output_truncated`，保留用量、不保存截断结果；强制推理仍可能占用输出额度，50K 也不保证任何资料一次成功。能力测试仍有独立的 3–20 秒截止时间与 2,048 输出额度，不随生成额度扩大。
 - 回归矩阵覆盖 OpenAI、Anthropic、Gemini、DeepSeek、Qwen、GLM、Kimi 的合成目录及真实 SDK 请求报文，**不是付费模型实测或生产验收**。无结构化能力的模型不会被虚假标记为支持。
 - 官方依据：[结构化输出及端点路由](https://openrouter.ai/docs/guides/features/structured-outputs)、[推理能力与输出额度](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)。
 

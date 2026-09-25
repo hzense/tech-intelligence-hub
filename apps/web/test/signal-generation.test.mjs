@@ -4,7 +4,10 @@ import { randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
-import { createSignalGenerationInvoker } from '../lib/signal-generation-provider.ts';
+import {
+  createSignalGenerationInvoker,
+  generationInput,
+} from '../lib/signal-generation-provider.ts';
 import { generationTimeoutMs } from '../lib/signal-generation-diagnostics.ts';
 import { AiProbeError } from '../lib/ai-provider-transport.ts';
 import { createAiProbeInvoker } from '../lib/ai-provider.ts';
@@ -269,15 +272,65 @@ test('OpenRouter excludes reasoning and persists only final candidates and fixed
   assert.equal(value.provider_cost_microusd, 1234);
 });
 
-test('extraction forwards the configured 8192 token allowance and enforces 500 character summaries', async () => {
+test('only complete JSON is accepted, never fences, reasoning prefixes or a second object', async () => {
+  const json = JSON.stringify(result);
+  for (const content of [
+    '```json\n' + json + '\n```',
+    '<think>analysis</think>' + json,
+    json + json,
+  ]) {
+    const f = providerFixture(undefined, {
+      request: async () =>
+        Response.json({
+          choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 200, completion_tokens: 100 },
+        }),
+    });
+    const value = await f.invoke();
+    assert.equal(value.success, false);
+    assert.equal(value.diagnostic.code, 'generation_invalid_output');
+    assert.equal(value.output, undefined);
+  }
+});
+
+test('large input above 256KB reaches the SDK intact with a 50K JSON output budget', async () => {
+  const parsed = parseImportOutput({
+    fragments: Array.from({ length: 10 }, (_, i) => ({
+      text: '中 '.repeat(8000),
+      locator: { paragraph: i + 1 },
+    })),
+  });
+  const source = buildGenerationSource(parsed);
+  const f = providerFixture({ candidates: [], reason: 'No event' });
+  const value = await f.invoke({ source, stage: { ...stage, max_output_tokens: 50000 } });
+  assert.equal(value.success, true);
+  const body = f.calls[0].body;
+  assert.ok(Buffer.byteLength(body) > 256 * 1024);
+  const request = JSON.parse(body);
+  assert.deepEqual(JSON.parse(request.messages[1].content).untrusted_source, source);
+  assert.equal(request.max_tokens, 50000);
+});
+
+test('full input includes prompt and schema, not only source tokens', () => {
+  const small = generationInput(source, 'Extract');
+  assert.ok(small.inputTokens > 256);
+  assert.equal(small.prompt, JSON.stringify({ untrusted_source: source }));
+  assert.throws(() => generationInput(source, '中 '.repeat(101000)), {
+    code: 'generation_source_too_large',
+  });
+});
+
+test('extraction forwards 50000 output tokens while preserving JSON and 500 character summaries', async () => {
   const f = providerFixture({
     ...result,
     candidates: [{ ...candidate, summary: '中'.repeat(500) }],
   });
-  const value = await f.invoke({ stage: { ...stage, max_output_tokens: 8192 } });
+  const value = await f.invoke({ stage: { ...stage, max_output_tokens: 50000 } });
   assert.equal(value.success, true);
   const request = JSON.parse(f.calls[0].body);
-  assert.equal(request.max_tokens, 8192);
+  assert.equal(request.max_tokens, 50000);
+  assert.equal(request.response_format.type, 'json_schema');
+  assert.equal(request.response_format.json_schema.strict, true);
   assert.match(
     request.response_format.json_schema.schema.properties.candidates.items.properties.summary
       .description,
