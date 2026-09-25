@@ -372,7 +372,7 @@ test('actual server reader is disabled by default, uses only its reader pool, an
     state.aclValid = true;
     state.queryFails = true;
     await assert.rejects(api.getEditorialSignals(), { name: 'PublicSignalReaderError' });
-    assert.equal(state.releases.at(-1), false);
+    assert.equal(state.releases.at(-1), true);
     state.queryFails = false;
     assert.deepEqual(await api.getEditorialSignals(), []);
     assert.equal(state.queries, 6);

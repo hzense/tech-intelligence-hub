@@ -35,13 +35,12 @@ function reader() {
       const client = await readerPool.connect();
       let discard = false;
       try {
-        try {
-          await assertEditorialRole(client, 'reader');
-        } catch (error) {
-          discard = true;
-          throw error;
-        }
+        await assertEditorialRole(client, 'reader');
         return await client.query(sql, parameters);
+      } catch (error) {
+        // query_timeout can reject before PostgreSQL is ready for another query.
+        discard = true;
+        throw error;
       } finally {
         client.release(discard);
       }

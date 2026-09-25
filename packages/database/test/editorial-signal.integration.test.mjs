@@ -21,6 +21,7 @@ suite('editorial publication persistence and isolated capabilities', () => {
     rolesCreated = false;
   const db = `hzense_editorial_${process.pid}_${Date.now()}`;
   const roles = ['hzense_editorial_writer', 'hzense_editorial_reader'];
+  const ambient = [];
   const sql = async (name) => readFile(new URL(`../../../db/${name}`, import.meta.url), 'utf8');
   beforeAll(async () => {
     if (process.env.RUNTIME_READER_TEST_ISOLATED_CLUSTER !== '1')
@@ -32,6 +33,22 @@ suite('editorial publication persistence and isolated capabilities', () => {
         .rows.length
     )
       throw new Error('Editorial test roles already exist; refusing modification');
+    const otherDatabases = (
+      await admin.query(
+        "SELECT datname FROM pg_database WHERE datallowconn AND datname NOT IN ('postgres','template1')",
+      )
+    ).rows;
+    if (otherDatabases.length) throw new Error('Refuse cluster containing unrelated databases');
+    for (const name of ['postgres', 'template1']) {
+      const privileges = (
+        await admin.query(
+          "SELECT a.privilege_type FROM pg_database d CROSS JOIN LATERAL aclexplode(COALESCE(d.datacl,acldefault('d',d.datdba))) a WHERE d.datname=$1 AND a.grantee=0",
+          [name],
+        )
+      ).rows.map((row) => row.privilege_type);
+      ambient.push({ name, privileges });
+      await admin.query(`REVOKE ALL ON DATABASE "${name}" FROM PUBLIC`);
+    }
     await admin.query(`CREATE DATABASE "${db}" TEMPLATE template0`);
     created = true;
     const url = new URL(adminUrl);
@@ -62,7 +79,52 @@ suite('editorial publication persistence and isolated capabilities', () => {
     await pool?.end();
     if (created) await admin.query(`DROP DATABASE "${db}"`);
     if (rolesCreated) for (const role of roles) await admin.query(`DROP ROLE ${role}`);
+    for (const { name, privileges } of ambient) {
+      if (privileges.length)
+        await admin.query(`GRANT ${privileges.join(',')} ON DATABASE "${name}" TO PUBLIC`);
+    }
     await admin?.end();
+  });
+  it('rejects cross-database PUBLIC, direct and dormant object privileges for both roles', async () => {
+    const sentinel = `${db}_other`;
+    let other;
+    await admin.query(`CREATE DATABASE "${sentinel}" TEMPLATE template0`);
+    try {
+      const url = new URL(adminUrl);
+      url.pathname = `/${sentinel}`;
+      other = new pg.Client({ connectionString: url.toString() });
+      await other.connect();
+      await other.query('CREATE TABLE private_sentinel(id integer)');
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        const roleName = `hzense_editorial_${role}`;
+        try {
+          for (const privilege of ['CONNECT', 'CREATE', 'TEMPORARY']) {
+            for (const grantee of ['PUBLIC', roleName]) {
+              await admin.query(`REVOKE ALL ON DATABASE "${sentinel}" FROM PUBLIC, ${roleName}`);
+              await admin.query(`GRANT ${privilege} ON DATABASE "${sentinel}" TO ${grantee}`);
+              await expect(assertEditorialRole(client, role)).rejects.toThrow(
+                'editorial_role_invalid',
+              );
+              await admin.query(`REVOKE ALL ON DATABASE "${sentinel}" FROM ${grantee}`);
+              await assertEditorialRole(client, role);
+            }
+          }
+          await other.query(`GRANT SELECT ON private_sentinel TO ${roleName}`);
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+          await other.query(`REVOKE SELECT ON private_sentinel FROM ${roleName}`);
+          await assertEditorialRole(client, role);
+        } finally {
+          client.release();
+        }
+      }
+    } finally {
+      await other?.end();
+      await admin.query(`DROP DATABASE "${sentinel}"`);
+    }
   });
   it('provisions exact direct-login capabilities, rejects escalation and keeps raw history private', async () => {
     for (const [connection, role] of [
