@@ -260,7 +260,16 @@ test('actual server search orchestration cannot resurrect an editorial hit from 
 });
 
 test('actual server reader is disabled by default, uses only its reader pool, and re-reads withdrawals', async () => {
-  const state = { rows: [row()], queries: 0, connections: 0, poolOptions: [] };
+  const state = {
+    rows: [row()],
+    queries: 0,
+    connections: 0,
+    poolOptions: [],
+    checks: 0,
+    releases: [],
+    aclValid: true,
+    queryFails: false,
+  };
   globalThis.__editorialReaderTest = state;
   const previousFlag = process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED;
   const environment = readerEnvironment();
@@ -283,12 +292,39 @@ test('actual server reader is disabled by default, uses only its reader pool, an
               'server-only': 'export {};',
               'next/server':
                 'export async function connection() { globalThis.__editorialReaderTest.connections++; }',
-              pg: 'export default { Pool: class { constructor(options) { globalThis.__editorialReaderTest.poolOptions.push(options); } on() {} async query() { globalThis.__editorialReaderTest.queries++; return { rows: globalThis.__editorialReaderTest.rows }; } } };',
+              pg: `export default { Pool: class {
+                constructor(options) { globalThis.__editorialReaderTest.poolOptions.push(options); }
+                on() {}
+                async connect() {
+                  const state = globalThis.__editorialReaderTest;
+                  return {
+                    checked: false,
+                    async query() {
+                      if (!this.checked) throw new Error('query before ACL check');
+                      state.queries++;
+                      if (state.queryFails) throw new Error('private query error');
+                      return { rows: state.rows };
+                    },
+                    release(discard) { state.releases.push(discard); },
+                  };
+                }
+              } };`,
+              '../../../../packages/database/src/editorial-signal-role.mjs': `
+                export async function assertEditorialRole(client, role) {
+                  const state = globalThis.__editorialReaderTest;
+                  state.checks++;
+                  if (role !== 'reader' || !state.aclValid) throw new Error('private ACL error');
+                  client.checked = true;
+                }
+              `,
             };
-            plugin.onResolve({ filter: /^(server-only|next\/server|pg)$/ }, (args) => ({
-              path: args.path,
-              namespace: 'test-provider',
-            }));
+            plugin.onResolve(
+              { filter: /^(server-only|next\/server|pg|.*editorial-signal-role\.mjs)$/ },
+              (args) => ({
+                path: args.path,
+                namespace: 'test-provider',
+              }),
+            );
             plugin.onLoad({ filter: /.*/, namespace: 'test-provider' }, (args) => ({
               contents: modules[args.path],
               loader: 'js',
@@ -318,9 +354,31 @@ test('actual server reader is disabled by default, uses only its reader pool, an
     assert.equal(await api.getEditorialSignalById(signalId), undefined);
     assert.equal(state.queries, 4);
     assert.equal(state.connections, 5);
+    assert.equal(state.checks, 4);
+    assert.deepEqual(state.releases, [false, false, false, false]);
+    state.aclValid = false;
+    for (const read of [
+      () => api.getEditorialSignals(),
+      () => api.getEditorialSignalById(signalId),
+    ]) {
+      await assert.rejects(read(), {
+        name: 'PublicSignalReaderError',
+        message: 'Public signals are unavailable',
+      });
+    }
+    assert.equal(state.queries, 4, 'ACL drift must stop before any public query');
+    assert.equal(state.checks, 6, 'do not cache a previously successful ACL check');
+    assert.deepEqual(state.releases.slice(-2), [true, true]);
+    state.aclValid = true;
+    state.queryFails = true;
+    await assert.rejects(api.getEditorialSignals(), { name: 'PublicSignalReaderError' });
+    assert.equal(state.releases.at(-1), false);
+    state.queryFails = false;
+    assert.deepEqual(await api.getEditorialSignals(), []);
+    assert.equal(state.queries, 6);
     delete process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED;
     assert.deepEqual(await api.getEditorialSignals(), []);
-    assert.equal(state.queries, 4);
+    assert.equal(state.queries, 6);
   } finally {
     if (previousFlag === undefined) delete process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED;
     else process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED = previousFlag;

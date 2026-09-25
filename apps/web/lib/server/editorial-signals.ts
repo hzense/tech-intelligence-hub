@@ -3,6 +3,7 @@ import 'server-only';
 import process from 'node:process';
 import pg from 'pg';
 import { connection } from 'next/server';
+import { assertEditorialRole } from '../../../../packages/database/src/editorial-signal-role.mjs';
 import {
   createEditorialSignalReader,
   editorialReaderConnectionString,
@@ -28,7 +29,24 @@ function reader() {
     pool.on('error', () => console.error('Editorial public reader is unavailable'));
     poolConnectionString = connectionString;
   }
-  return createEditorialSignalReader(pool);
+  const readerPool = pool;
+  return createEditorialSignalReader({
+    async query(sql, parameters) {
+      const client = await readerPool.connect();
+      let discard = false;
+      try {
+        try {
+          await assertEditorialRole(client, 'reader');
+        } catch (error) {
+          discard = true;
+          throw error;
+        }
+        return await client.query(sql, parameters);
+      } finally {
+        client.release(discard);
+      }
+    },
+  });
 }
 
 // Only the connection pool is reused. Never cache published content or failures.
