@@ -76,6 +76,11 @@ jobs:
         run: node --test test/admin-auth-runtime.test.mjs
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
+      - name: Verify request-rendered Signal details with editorial publication on and off
+        working-directory: apps/web
+        env:
+          HZENSE_SIGNAL_DETAIL_INTEGRATION: '1'
+        run: node --test test/signal-detail-runtime.test.mjs
       - name: Verify import workbench with isolated browser fixtures
         run: HZENSE_IMPORT_BROWSER_TEST=1 node --test apps/web/test/admin-import-browser.test.mjs apps/web/test/admin-controls-browser.test.mjs
       - name: Verify private signal generation with isolated browser fixtures

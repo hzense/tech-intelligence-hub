@@ -1,27 +1,18 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import process from 'node:process';
-import { readSignalReadMode } from '@/lib/public-signal-reader-core';
 import { SiteShell } from '@/components/site-shell';
 import { formatZhDate, getTopicTitleMap } from '@/lib/content-runtime';
 import { formatPercentage, formatSignalType, formatSourceType } from '@/lib/signal-presentation';
-import {
-  getSeedEntityMap,
-  getSeedSourceMap,
-  getSignalEntries,
-  getSignalEntryById,
-} from '@/lib/seed-runtime';
+import { getSeedEntityMap, getSeedSourceMap, getSignalEntryById } from '@/lib/seed-runtime';
 
 interface SignalDetailProps {
   params: Promise<{ id: string }>;
 }
 
-export async function generateStaticParams() {
-  if (readSignalReadMode(process.env) === 'database') return [];
-  if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED === '1') return [];
-  return (await getSignalEntries()).map((entry) => ({ id: entry.id }));
-}
+// Empty static params still opt into fallback prerendering. Public readers use
+// connection() and must observe publication/withdrawal on every request.
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: SignalDetailProps): Promise<Metadata> {
   const { id } = await params;
