@@ -122,16 +122,18 @@ const service = createEditorialReviewService({
   topics: async () => {
     if (!enabled()) return [...(await getTopicTitleMap())].map(([id, title]) => ({ id, title }));
     const client = await editorialPool.connect();
+    let queryComplete = false;
     try {
       const rows = (
         await client.query(
           "SELECT id,title FROM public.topics WHERE runtime_enabled IS TRUE AND status<>'archived' ORDER BY title,id LIMIT 1001",
         )
       ).rows;
+      queryComplete = true;
       if (rows.length > 1000) throw new Error('editorial_catalog_unavailable');
       return rows;
     } finally {
-      client.release();
+      client.release(!queryComplete);
     }
   },
   read: (owner, runId, candidateIndex) =>

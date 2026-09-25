@@ -18,7 +18,10 @@ export async function assertEditorialRole(client, role) {
     AND NOT EXISTS(SELECT 1 FROM pg_auth_members m WHERE (m.member=r.oid OR m.roleid=r.oid)
       AND (m.roleid=r.oid AND pg_get_userbyid(m.member)='neondb_owner' AND pg_get_userbyid(m.grantor)='cloud_admin' AND m.admin_option AND NOT m.inherit_option AND NOT m.set_option) IS NOT TRUE)
     AND NOT EXISTS(SELECT 1 FROM pg_shdepend WHERE refclassid='pg_authid'::regclass AND refobjid=r.oid
-      AND (deptype='o' OR (deptype='a' AND dbid NOT IN (0,(SELECT oid FROM pg_database WHERE datname=current_database())))))
+      AND (deptype='o' OR (deptype='a' AND (
+        classid NOT IN ('pg_database'::regclass,'pg_namespace'::regclass,'pg_class'::regclass)
+        OR dbid NOT IN (0,(SELECT oid FROM pg_database WHERE datname=current_database()))))))
+    AND NOT EXISTS(SELECT 1 FROM pg_parameter_acl p CROSS JOIN LATERAL aclexplode(p.paracl) a WHERE a.grantee IN (0,r.oid))
     AND has_database_privilege(current_database(),'CONNECT')
     AND NOT has_database_privilege(current_database(),'CONNECT WITH GRANT OPTION')
     AND NOT EXISTS(SELECT 1 FROM pg_database d CROSS JOIN LATERAL aclexplode(d.datacl) a WHERE d.datname<>current_database() AND a.grantee=r.oid)

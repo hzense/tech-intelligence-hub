@@ -163,6 +163,26 @@ suite('editorial publication persistence and isolated capabilities', () => {
       'REVOKE SELECT ON public.editorial_signal_revisions FROM hzense_editorial_reader',
     );
   });
+  it('rejects shared parameter privileges for both application roles', async () => {
+    for (const [connection, role] of [
+      [reader, 'reader'],
+      [writer, 'writer'],
+    ]) {
+      const client = await connection.connect();
+      const roleName = `hzense_editorial_${role}`;
+      try {
+        for (const privilege of ['SET', 'ALTER SYSTEM']) {
+          await admin.query(`GRANT ${privilege} ON PARAMETER work_mem TO ${roleName}`);
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+          await admin.query(`REVOKE ${privilege} ON PARAMETER work_mem FROM ${roleName}`);
+          await assertEditorialRole(client, role);
+        }
+      } finally {
+        await admin.query(`REVOKE ALL ON PARAMETER work_mem FROM ${roleName}`);
+        client.release();
+      }
+    }
+  });
   it('publishes one immutable receipt, compares revisions, and withdraws without reviving older publications', async () => {
     const { request, material } = editorialFixture();
     await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
