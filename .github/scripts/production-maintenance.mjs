@@ -25,6 +25,7 @@ const candidateReviewRecoveryPolicy = 'accept-unverified-candidate-review';
 const candidateEnrichmentRecoveryPolicy = 'accept-unverified-candidate-enrichment';
 const candidateMaterialsRecoveryPolicy = 'accept-unverified-candidate-materials';
 const materialReviewRecoveryPolicy = 'accept-unverified-material-review';
+const editorialRecoveryPolicy = 'accept-unverified-editorial-publication';
 
 // A reviewed one-time rollout boundary, NOT the moving repository manifest.
 // Keep historical checksums pinned too, so approval identifies the complete
@@ -881,6 +882,97 @@ export function requireMaterialReviewMigrationScope(preflight, migrations, appro
   return plan;
 }
 
+// Independent 0025 boundary; older risk approvals cannot authorize this migration.
+const editorialManifest = Object.freeze([
+  ...materialReviewManifest,
+  Object.freeze([
+    '0025_editorial_signal_publication.sql',
+    'd4ce2249d08f675cf0ea4a614790aa5c1cc2e793998a545a76a60f898a97e2ae',
+  ]),
+]);
+export function editorialTargetBinding(policy, preflight, backupId) {
+  requireGate(
+    ['host', 'port', 'database', 'user'].every(
+      (key) => typeof policy?.[key] === 'string' && policy[key].length > 0,
+    ) &&
+      preflight?.database === policy.database &&
+      preflight?.user === policy.user,
+    'editorial-publication-target-required',
+  );
+  requireGate(
+    typeof backupId === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._:/-]{7,255}$/.test(backupId) &&
+      !/(^|[._:/-])(none|null|todo|pending|placeholder|example|changeme)($|[._:/-])/i.test(
+        backupId,
+      ),
+    'reviewed-backup-required',
+  );
+  return {
+    targetFingerprint: createHash('sha256')
+      .update('hzense/editorial-publication-target/v1\0')
+      .update(
+        JSON.stringify([
+          policy.host.toLowerCase(),
+          policy.port,
+          preflight.database,
+          preflight.user,
+        ]),
+      )
+      .digest('hex'),
+    backupIdSha256: createHash('sha256').update(backupId).digest('hex'),
+  };
+}
+export function editorialMigrationPlan(pendingMigrations, migrations, binding) {
+  requireGate(
+    Array.isArray(migrations) &&
+      migrations.length === editorialManifest.length &&
+      Array.from(migrations).every(
+        (entry, index) =>
+          entry?.name === editorialManifest[index][0] &&
+          entry?.checksum === editorialManifest[index][1] &&
+          typeof entry?.sql === 'string' &&
+          createHash('sha256').update(entry.sql).digest('hex') === editorialManifest[index][1],
+      ),
+    'editorial-publication-migration-manifest-required',
+  );
+  requireGate(
+    Array.isArray(pendingMigrations) &&
+      pendingMigrations.length === 1 &&
+      Array.from(pendingMigrations).every(
+        (name, index) =>
+          name ===
+          editorialManifest[editorialManifest.length - pendingMigrations.length + index][0],
+      ),
+    'editorial-publication-migration-scope-required',
+  );
+  requireGate(
+    digest.test(binding?.targetFingerprint ?? '') && digest.test(binding?.backupIdSha256 ?? ''),
+    'editorial-publication-target-required',
+  );
+  const manifestFingerprint = createHash('sha256')
+    .update('hzense/editorial-publication-migration-manifest/v1\0')
+    .update(JSON.stringify(editorialManifest))
+    .digest('hex');
+  const { targetFingerprint, backupIdSha256 } = binding;
+  const planFingerprint = createHash('sha256')
+    .update('hzense/editorial-publication-migration-plan/v1\0')
+    .update(
+      JSON.stringify({ manifestFingerprint, pendingMigrations, targetFingerprint, backupIdSha256 }),
+    )
+    .digest('hex');
+  return { manifestFingerprint, planFingerprint, targetFingerprint, backupIdSha256 };
+}
+export function requireEditorialMigrationScope(preflight, migrations, approval, binding) {
+  const plan = editorialMigrationPlan(preflight?.pendingMigrations, migrations, binding);
+  requireGate(
+    ['manifestFingerprint', 'planFingerprint', 'targetFingerprint', 'backupIdSha256'].every(
+      (key) => approval?.[key] === plan[key],
+    ),
+    'editorial-publication-migration-plan-mismatch',
+  );
+  return plan;
+}
+
 // Explicit exception, not fabricated evidence of a successful restore. The
 // protected Environment review remains the authority; these are declarations.
 function validateRecoveryPolicy(approval, operation) {
@@ -896,7 +988,8 @@ function validateRecoveryPolicy(approval, operation) {
       policy === candidateReviewRecoveryPolicy ||
       policy === candidateEnrichmentRecoveryPolicy ||
       policy === candidateMaterialsRecoveryPolicy ||
-      policy === materialReviewRecoveryPolicy,
+      policy === materialReviewRecoveryPolicy ||
+      policy === editorialRecoveryPolicy,
     'unsupported-recovery-policy',
   );
   if (policy === 'verified') {
@@ -914,26 +1007,29 @@ function validateRecoveryPolicy(approval, operation) {
       candidateEnrichmentRecoveryPolicy,
       candidateMaterialsRecoveryPolicy,
       materialReviewRecoveryPolicy,
+      editorialRecoveryPolicy,
     ].includes(policy)
   ) {
     const prefix =
-      policy === materialReviewRecoveryPolicy
-        ? 'material-review'
-        : policy === candidateMaterialsRecoveryPolicy
-          ? 'candidate-materials'
-          : policy === candidateEnrichmentRecoveryPolicy
-            ? 'candidate-enrichment'
-            : policy === candidateReviewRecoveryPolicy
-              ? 'candidate-review'
-              : policy === generationProgressRecoveryPolicy
-                ? 'generation-progress'
-                : policy === taskManagementRecoveryPolicy
-                  ? 'task-management'
-                  : policy === signalGenerationRecoveryPolicy
-                    ? 'signal-generation'
-                    : policy === importTasksRecoveryPolicy
-                      ? 'import-tasks'
-                      : 'ai-config';
+      policy === editorialRecoveryPolicy
+        ? 'editorial-publication'
+        : policy === materialReviewRecoveryPolicy
+          ? 'material-review'
+          : policy === candidateMaterialsRecoveryPolicy
+            ? 'candidate-materials'
+            : policy === candidateEnrichmentRecoveryPolicy
+              ? 'candidate-enrichment'
+              : policy === candidateReviewRecoveryPolicy
+                ? 'candidate-review'
+                : policy === generationProgressRecoveryPolicy
+                  ? 'generation-progress'
+                  : policy === taskManagementRecoveryPolicy
+                    ? 'task-management'
+                    : policy === signalGenerationRecoveryPolicy
+                      ? 'signal-generation'
+                      : policy === importTasksRecoveryPolicy
+                        ? 'import-tasks'
+                        : 'ai-config';
     if (policy !== aiConfigRecoveryPolicy)
       requireGate(digest.test(approval.targetFingerprint ?? ''), `${prefix}-target-required`);
     requireGate(
@@ -958,25 +1054,27 @@ function validateRecoveryPolicy(approval, operation) {
       approval.aclRecoveryReviewed === false &&
       !Object.hasOwn(approval, 'restoreEvidenceFingerprint') &&
       acceptance?.scope ===
-        (policy === materialReviewRecoveryPolicy
-          ? 'material-review-production-launch'
-          : policy === candidateMaterialsRecoveryPolicy
-            ? 'candidate-materials-production-launch'
-            : policy === candidateEnrichmentRecoveryPolicy
-              ? 'candidate-enrichment-production-launch'
-              : policy === candidateReviewRecoveryPolicy
-                ? 'candidate-review-production-launch'
-                : policy === generationProgressRecoveryPolicy
-                  ? 'generation-progress-production-launch'
-                  : policy === taskManagementRecoveryPolicy
-                    ? 'task-management-production-launch'
-                    : policy === signalGenerationRecoveryPolicy
-                      ? 'signal-generation-production-launch'
-                      : policy === importTasksRecoveryPolicy
-                        ? 'import-tasks-production-launch'
-                        : policy === aiConfigRecoveryPolicy
-                          ? 'ai-configuration-production-launch'
-                          : 'fts1-production-launch') &&
+        (policy === editorialRecoveryPolicy
+          ? 'editorial-publication-production-launch'
+          : policy === materialReviewRecoveryPolicy
+            ? 'material-review-production-launch'
+            : policy === candidateMaterialsRecoveryPolicy
+              ? 'candidate-materials-production-launch'
+              : policy === candidateEnrichmentRecoveryPolicy
+                ? 'candidate-enrichment-production-launch'
+                : policy === candidateReviewRecoveryPolicy
+                  ? 'candidate-review-production-launch'
+                  : policy === generationProgressRecoveryPolicy
+                    ? 'generation-progress-production-launch'
+                    : policy === taskManagementRecoveryPolicy
+                      ? 'task-management-production-launch'
+                      : policy === signalGenerationRecoveryPolicy
+                        ? 'signal-generation-production-launch'
+                        : policy === importTasksRecoveryPolicy
+                          ? 'import-tasks-production-launch'
+                          : policy === aiConfigRecoveryPolicy
+                            ? 'ai-configuration-production-launch'
+                            : 'fts1-production-launch') &&
       acceptance.accepted === true &&
       acceptance.historicalAclGapAccepted === true &&
       acceptance.acknowledgement === 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
@@ -1114,6 +1212,7 @@ export function publicRecoveryAcceptance(request, rawApproval) {
       candidateEnrichmentRecoveryPolicy,
       candidateMaterialsRecoveryPolicy,
       materialReviewRecoveryPolicy,
+      editorialRecoveryPolicy,
     ].includes(request.approval?.recoveryPolicy)
   ) {
     return {
@@ -1246,6 +1345,7 @@ async function executeOperation(env, { operation, approval }) {
         candidateEnrichmentRecoveryPolicy,
         candidateMaterialsRecoveryPolicy,
         materialReviewRecoveryPolicy,
+        editorialRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
     ) {
       const { productionDatabaseOptions, validateConnectionTarget } =
@@ -1256,25 +1356,28 @@ async function executeOperation(env, { operation, approval }) {
       const progress = approval.recoveryPolicy === generationProgressRecoveryPolicy;
       const taskManagement = approval.recoveryPolicy === taskManagementRecoveryPolicy;
       const candidateReview = approval.recoveryPolicy === candidateReviewRecoveryPolicy;
+      const editorial = approval.recoveryPolicy === editorialRecoveryPolicy;
       const materialReview = approval.recoveryPolicy === materialReviewRecoveryPolicy;
       const candidateMaterials = approval.recoveryPolicy === candidateMaterialsRecoveryPolicy;
       const candidateEnrichment = approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy;
       binding = (
-        materialReview
-          ? materialReviewTargetBinding
-          : candidateMaterials
-            ? candidateMaterialsTargetBinding
-            : candidateEnrichment
-              ? candidateEnrichmentTargetBinding
-              : candidateReview
-                ? candidateReviewTargetBinding
-                : progress
-                  ? generationProgressTargetBinding
-                  : taskManagement
-                    ? taskManagementTargetBinding
-                    : generation
-                      ? signalGenerationTargetBinding
-                      : importTasksTargetBinding
+        editorial
+          ? editorialTargetBinding
+          : materialReview
+            ? materialReviewTargetBinding
+            : candidateMaterials
+              ? candidateMaterialsTargetBinding
+              : candidateEnrichment
+                ? candidateEnrichmentTargetBinding
+                : candidateReview
+                  ? candidateReviewTargetBinding
+                  : progress
+                    ? generationProgressTargetBinding
+                    : taskManagement
+                      ? taskManagementTargetBinding
+                      : generation
+                        ? signalGenerationTargetBinding
+                        : importTasksTargetBinding
       )(
         validateConnectionTarget(options),
         await runDatabasePreflight(options),
@@ -1283,21 +1386,23 @@ async function executeOperation(env, { operation, approval }) {
       requireGate(
         binding.targetFingerprint === approval.targetFingerprint &&
           binding.backupIdSha256 === approval.backupIdSha256,
-        materialReview
-          ? 'material-review-target-mismatch'
-          : candidateMaterials
-            ? 'candidate-materials-target-mismatch'
-            : candidateEnrichment
-              ? 'candidate-enrichment-target-mismatch'
-              : candidateReview
-                ? 'candidate-review-target-mismatch'
-                : progress
-                  ? 'generation-progress-target-mismatch'
-                  : taskManagement
-                    ? 'task-management-target-mismatch'
-                    : generation
-                      ? 'signal-generation-target-mismatch'
-                      : 'import-tasks-target-mismatch',
+        editorial
+          ? 'editorial-publication-target-mismatch'
+          : materialReview
+            ? 'material-review-target-mismatch'
+            : candidateMaterials
+              ? 'candidate-materials-target-mismatch'
+              : candidateEnrichment
+                ? 'candidate-enrichment-target-mismatch'
+                : candidateReview
+                  ? 'candidate-review-target-mismatch'
+                  : progress
+                    ? 'generation-progress-target-mismatch'
+                    : taskManagement
+                      ? 'task-management-target-mismatch'
+                      : generation
+                        ? 'signal-generation-target-mismatch'
+                        : 'import-tasks-target-mismatch',
       );
     }
     const { capturePublicAclEvidence } = await import('./public-acl-evidence.mjs');
@@ -1325,6 +1430,18 @@ async function executeOperation(env, { operation, approval }) {
       await import('../../packages/database/src/migrate.mjs');
     const migrations = await loadMigrations();
     await verifyMigrationManifest(migrations);
+    try {
+      return {
+        ...preflight,
+        ...editorialMigrationPlan(
+          preflight.pendingMigrations,
+          migrations,
+          editorialTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+        ),
+      };
+    } catch (error) {
+      if (!(error instanceof MaintenanceGateError)) throw error;
+    }
     try {
       return {
         ...preflight,
@@ -1450,80 +1567,96 @@ async function executeOperation(env, { operation, approval }) {
           candidateEnrichmentRecoveryPolicy,
           candidateMaterialsRecoveryPolicy,
           materialReviewRecoveryPolicy,
+          editorialRecoveryPolicy,
         ].includes(approval?.recoveryPolicy)
       ) {
         const migrations = await loadMigrations();
         await verifyMigrationManifest(migrations);
         approvedPlan =
-          approval.recoveryPolicy === materialReviewRecoveryPolicy
-            ? requireMaterialReviewMigrationScope(
+          approval.recoveryPolicy === editorialRecoveryPolicy
+            ? requireEditorialMigrationScope(
                 preflight,
                 migrations,
                 approval,
-                materialReviewTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                editorialTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
               )
-            : approval.recoveryPolicy === candidateMaterialsRecoveryPolicy
-              ? requireCandidateMaterialsMigrationScope(
+            : approval.recoveryPolicy === materialReviewRecoveryPolicy
+              ? requireMaterialReviewMigrationScope(
                   preflight,
                   migrations,
                   approval,
-                  candidateMaterialsTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                  materialReviewTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                 )
-              : approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy
-                ? requireCandidateEnrichmentMigrationScope(
+              : approval.recoveryPolicy === candidateMaterialsRecoveryPolicy
+                ? requireCandidateMaterialsMigrationScope(
                     preflight,
                     migrations,
                     approval,
-                    candidateEnrichmentTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                    candidateMaterialsTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                   )
-                : approval.recoveryPolicy === candidateReviewRecoveryPolicy
-                  ? requireCandidateReviewMigrationScope(
+                : approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy
+                  ? requireCandidateEnrichmentMigrationScope(
                       preflight,
                       migrations,
                       approval,
-                      candidateReviewTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                      candidateEnrichmentTargetBinding(
+                        policy,
+                        preflight,
+                        env.MAINTENANCE_BACKUP_ID,
+                      ),
                     )
-                  : approval.recoveryPolicy === generationProgressRecoveryPolicy
-                    ? requireGenerationProgressMigrationScope(
+                  : approval.recoveryPolicy === candidateReviewRecoveryPolicy
+                    ? requireCandidateReviewMigrationScope(
                         preflight,
                         migrations,
                         approval,
-                        generationProgressTargetBinding(
-                          policy,
-                          preflight,
-                          env.MAINTENANCE_BACKUP_ID,
-                        ),
+                        candidateReviewTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                       )
-                    : approval.recoveryPolicy === taskManagementRecoveryPolicy
-                      ? requireTaskManagementMigrationScope(
+                    : approval.recoveryPolicy === generationProgressRecoveryPolicy
+                      ? requireGenerationProgressMigrationScope(
                           preflight,
                           migrations,
                           approval,
-                          taskManagementTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                          generationProgressTargetBinding(
+                            policy,
+                            preflight,
+                            env.MAINTENANCE_BACKUP_ID,
+                          ),
                         )
-                      : approval.recoveryPolicy === signalGenerationRecoveryPolicy
-                        ? requireSignalGenerationMigrationScope(
+                      : approval.recoveryPolicy === taskManagementRecoveryPolicy
+                        ? requireTaskManagementMigrationScope(
                             preflight,
                             migrations,
                             approval,
-                            signalGenerationTargetBinding(
+                            taskManagementTargetBinding(
                               policy,
                               preflight,
                               env.MAINTENANCE_BACKUP_ID,
                             ),
                           )
-                        : approval.recoveryPolicy === importTasksRecoveryPolicy
-                          ? requireImportTasksMigrationScope(
+                        : approval.recoveryPolicy === signalGenerationRecoveryPolicy
+                          ? requireSignalGenerationMigrationScope(
                               preflight,
                               migrations,
                               approval,
-                              importTasksTargetBinding(
+                              signalGenerationTargetBinding(
                                 policy,
                                 preflight,
                                 env.MAINTENANCE_BACKUP_ID,
                               ),
                             )
-                          : requireAiConfigMigrationScope(preflight, migrations, approval);
+                          : approval.recoveryPolicy === importTasksRecoveryPolicy
+                            ? requireImportTasksMigrationScope(
+                                preflight,
+                                migrations,
+                                approval,
+                                importTasksTargetBinding(
+                                  policy,
+                                  preflight,
+                                  env.MAINTENANCE_BACKUP_ID,
+                                ),
+                              )
+                            : requireAiConfigMigrationScope(preflight, migrations, approval);
       }
     }
     await runMigrations({
@@ -1547,6 +1680,7 @@ async function executeOperation(env, { operation, approval }) {
         candidateEnrichmentRecoveryPolicy,
         candidateMaterialsRecoveryPolicy,
         materialReviewRecoveryPolicy,
+        editorialRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
         ? async (pendingMigrations, artifact) => {
             if (
@@ -1560,6 +1694,7 @@ async function executeOperation(env, { operation, approval }) {
                 candidateEnrichmentRecoveryPolicy,
                 candidateMaterialsRecoveryPolicy,
                 materialReviewRecoveryPolicy,
+                editorialRecoveryPolicy,
               ].includes(approval?.recoveryPolicy)
             ) {
               // The runner freezes this actual execution snapshot before opening
@@ -1574,6 +1709,7 @@ async function executeOperation(env, { operation, approval }) {
                   candidateEnrichmentRecoveryPolicy,
                   candidateMaterialsRecoveryPolicy,
                   materialReviewRecoveryPolicy,
+                  editorialRecoveryPolicy,
                 ].includes(approval.recoveryPolicy)
               ) {
                 // Re-read authenticated identity from the very same connection
@@ -1586,46 +1722,51 @@ async function executeOperation(env, { operation, approval }) {
                 const progress = approval.recoveryPolicy === generationProgressRecoveryPolicy;
                 const taskManagement = approval.recoveryPolicy === taskManagementRecoveryPolicy;
                 const candidateReview = approval.recoveryPolicy === candidateReviewRecoveryPolicy;
+                const editorial = approval.recoveryPolicy === editorialRecoveryPolicy;
                 const materialReview = approval.recoveryPolicy === materialReviewRecoveryPolicy;
                 const candidateMaterials =
                   approval.recoveryPolicy === candidateMaterialsRecoveryPolicy;
                 const candidateEnrichment =
                   approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy;
                 approvedPlan = (
-                  materialReview
-                    ? requireMaterialReviewMigrationScope
-                    : candidateMaterials
-                      ? requireCandidateMaterialsMigrationScope
-                      : candidateEnrichment
-                        ? requireCandidateEnrichmentMigrationScope
-                        : candidateReview
-                          ? requireCandidateReviewMigrationScope
-                          : progress
-                            ? requireGenerationProgressMigrationScope
-                            : taskManagement
-                              ? requireTaskManagementMigrationScope
-                              : generation
-                                ? requireSignalGenerationMigrationScope
-                                : requireImportTasksMigrationScope
+                  editorial
+                    ? requireEditorialMigrationScope
+                    : materialReview
+                      ? requireMaterialReviewMigrationScope
+                      : candidateMaterials
+                        ? requireCandidateMaterialsMigrationScope
+                        : candidateEnrichment
+                          ? requireCandidateEnrichmentMigrationScope
+                          : candidateReview
+                            ? requireCandidateReviewMigrationScope
+                            : progress
+                              ? requireGenerationProgressMigrationScope
+                              : taskManagement
+                                ? requireTaskManagementMigrationScope
+                                : generation
+                                  ? requireSignalGenerationMigrationScope
+                                  : requireImportTasksMigrationScope
                 )(
                   { ...current, pendingMigrations },
                   artifact?.migrations,
                   approval,
-                  (materialReview
-                    ? materialReviewTargetBinding
-                    : candidateMaterials
-                      ? candidateMaterialsTargetBinding
-                      : candidateEnrichment
-                        ? candidateEnrichmentTargetBinding
-                        : candidateReview
-                          ? candidateReviewTargetBinding
-                          : progress
-                            ? generationProgressTargetBinding
-                            : taskManagement
-                              ? taskManagementTargetBinding
-                              : generation
-                                ? signalGenerationTargetBinding
-                                : importTasksTargetBinding)(
+                  (editorial
+                    ? editorialTargetBinding
+                    : materialReview
+                      ? materialReviewTargetBinding
+                      : candidateMaterials
+                        ? candidateMaterialsTargetBinding
+                        : candidateEnrichment
+                          ? candidateEnrichmentTargetBinding
+                          : candidateReview
+                            ? candidateReviewTargetBinding
+                            : progress
+                              ? generationProgressTargetBinding
+                              : taskManagement
+                                ? taskManagementTargetBinding
+                                : generation
+                                  ? signalGenerationTargetBinding
+                                  : importTasksTargetBinding)(
                     policy,
                     current,
                     env.MAINTENANCE_BACKUP_ID,
