@@ -28,6 +28,17 @@ for (const quote of [
   'Lab was formerly a company.',
   'Lab is a client of a leading financial services firm.',
   'Lab is a research partner of the company.',
+  'Assuming Lab is a company',
+  'Suppose Lab is a company',
+  'The claim that Lab is a company was denied',
+  '假设 Lab 是公司',
+  'Lab 是公司这一说法被否认。',
+  'Lab is a company would be an incorrect assumption.',
+  'Lab is a company?',
+  'Lab 是公司吗？',
+  'Someone says Lab is a company.',
+  'Suppose:\nLab is a company.',
+  'Lab is a company was rejected as an assertion.',
 ])
   test(`does not infer company type: ${quote}`, () =>
     assert.equal(supportsOrganizationType(quote, 'Lab', 'company'), false));
