@@ -419,7 +419,48 @@ suite('editorial publication persistence and isolated capabilities', () => {
           );
         }
       }
-      await pool.query('DROP FUNCTION public.editorial_extra_function()');
+      await pool.query('ALTER FUNCTION public.editorial_extra_function() SECURITY INVOKER');
+      await pool.query('ALTER EXTENSION vector DROP FUNCTION public.vector_dims(public.vector)');
+      try {
+        await pool.query(
+          'REVOKE EXECUTE ON FUNCTION public.vector_dims(public.vector) FROM PUBLIC',
+        );
+        await pool.query('ALTER EXTENSION vector ADD FUNCTION public.editorial_extra_function()');
+        try {
+          for (const [connection, role] of [
+            [reader, 'reader'],
+            [writer, 'writer'],
+          ]) {
+            const client = await connection.connect();
+            try {
+              await expect(assertEditorialRole(client, role)).rejects.toThrow(
+                'editorial_role_invalid',
+              );
+            } finally {
+              client.release();
+            }
+          }
+        } finally {
+          await pool.query(
+            'ALTER EXTENSION vector DROP FUNCTION public.editorial_extra_function()',
+          );
+        }
+      } finally {
+        await pool.query('ALTER EXTENSION vector ADD FUNCTION public.vector_dims(public.vector)');
+        await pool.query('GRANT EXECUTE ON FUNCTION public.vector_dims(public.vector) TO PUBLIC');
+        await pool.query('DROP FUNCTION public.editorial_extra_function()');
+      }
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await assertEditorialRole(client, role);
+        } finally {
+          client.release();
+        }
+      }
     } finally {
       await pool.query('DROP EXTENSION vector');
     }

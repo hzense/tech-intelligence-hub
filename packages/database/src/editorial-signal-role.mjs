@@ -1,5 +1,6 @@
 import { editorialColumns, editorialPublicColumns } from './editorial-signal-catalog.mjs';
 import { EditorialSignalError } from './editorial-signal-contract.mjs';
+import { editorialVectorManifest } from './editorial-vector-manifest.mjs';
 export const editorialRoleColumns = {
   writer: {
     editorial_signal_revisions: Object.keys(editorialColumns.editorial_signal_revisions),
@@ -98,6 +99,37 @@ export async function assertEditorialRole(client, role) {
     FROM pg_roles r WHERE r.rolname=current_user`)
   ).rows[0];
   if (!identity?.safe || identity.name !== `hzense_editorial_${role}`)
+    throw new EditorialSignalError('editorial_role_invalid');
+  const vectorFunctions = (
+    await client.query(`SELECT p.proname AS name,
+      ARRAY(SELECT n.nspname||'.'||t.typname FROM unnest(p.proargtypes::oid[]) WITH ORDINALITY a(oid,pos)
+        JOIN pg_type t ON t.oid=a.oid JOIN pg_namespace n ON n.oid=t.typnamespace ORDER BY a.pos) AS args,
+      rn.nspname||'.'||rt.typname AS result,l.lanname AS language,p.probin AS library,p.prosrc AS source,
+      p.prokind AS kind,p.provolatile AS volatility,p.proisstrict AS strict,p.proretset AS returns_set,p.proparallel AS parallel
+      FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang JOIN pg_type rt ON rt.oid=p.prorettype
+      JOIN pg_namespace rn ON rn.oid=rt.typnamespace
+      JOIN pg_depend d ON d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.refclassid='pg_extension'::regclass AND d.deptype='e'
+      JOIN pg_extension e ON e.oid=d.refobjid WHERE e.extname='vector'`)
+  ).rows;
+  const signature = (row) =>
+    JSON.stringify([
+      row.name,
+      row.args,
+      row.result,
+      row.language,
+      row.library,
+      row.source,
+      row.kind,
+      row.volatility,
+      row.strict,
+      row.returns_set,
+      row.parallel,
+    ]);
+  if (
+    vectorFunctions.length &&
+    JSON.stringify(vectorFunctions.map(signature).sort()) !==
+      JSON.stringify(editorialVectorManifest.map(signature).sort())
+  )
     throw new EditorialSignalError('editorial_role_invalid');
   const columns = (
     await client.query(`SELECT n.nspname AS schema,c.relname AS table_name,a.attname AS column_name,p.privilege,
