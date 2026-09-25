@@ -87,3 +87,24 @@ test('only safe public source links are rendered, and identifiers stay optional 
     assert.match(bad, /来源地址无效/);
   }
 });
+
+test('supplement proposals are visibly pending verification, never labeled matched', () => {
+  const html = render({
+    title: '标题',
+    summary: '摘要',
+    items: [
+      {
+        key: 'person:Ada',
+        label: '关键人物',
+        proposed: 'Ada · researcher · Lab',
+        status: 'proposed',
+        matches: [],
+        references: [{ fragment_id: 'fragment-3', quote: 'Ada at Lab' }],
+        nextStep: '待核验登记',
+      },
+    ],
+  });
+  assert.match(html, /已补全，待核验登记/);
+  assert.match(html, /Ada · researcher · Lab/);
+  assert.doesNotMatch(html, /缺少材料|已关联 \/ 已提供/);
+});

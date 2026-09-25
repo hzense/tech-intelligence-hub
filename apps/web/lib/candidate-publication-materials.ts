@@ -32,7 +32,7 @@ export type PublicationMaterialItem = {
   key: string;
   label: string;
   proposed: string;
-  status: 'matched' | 'missing' | 'ambiguous';
+  status: 'matched' | 'missing' | 'ambiguous' | 'proposed';
   matches: Array<{ id: string; name: string; sourceUrl?: string }>;
   references: MaterialReference[];
   nextStep: string;

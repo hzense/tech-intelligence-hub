@@ -17,7 +17,7 @@ test(
   async () => {
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {CandidateMaterialWorkflow} from './components/candidate-material-workflow';createRoot(document.getElementById('root')).render(<CandidateMaterialWorkflow runId="11111111-1111-4111-8111-111111111111" candidateIndex={0} materialHash={'a'.repeat(64)} onRegistered={()=>{document.getElementById('notice').textContent='parent refreshed'}}/>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {CandidateMaterialWorkflow} from './components/candidate-material-workflow';createRoot(document.getElementById('root')).render(<CandidateMaterialWorkflow runId="11111111-1111-4111-8111-111111111111" candidateIndex={0} materialHash={'a'.repeat(64)} onUpdated={async()=>{throw new Error('synthetic parent read failure')}} onRegistered={async()=>{document.getElementById('notice').textContent='parent refreshed';throw new Error('synthetic registration refresh failure')}}/>);`,
         resolveDir: fileURLToPath(new URL('..', import.meta.url)),
         loader: 'tsx',
       },
@@ -152,6 +152,12 @@ test(
         page.getByText('等待独立材料核验报告。尚未登记，也未获得公开许可。'),
       ).toBeVisible();
       assert.equal(commands[0].request.id, commands[1].request.id);
+      await expect(
+        page.getByText('补证请求已保存，等待独立材料核验；本操作未调用 AI、未公开资料。'),
+      ).toBeVisible();
+      await expect(
+        page.getByText('补证记录已读取，但上方发布材料刷新失败', { exact: false }),
+      ).toBeVisible();
       assert.deepEqual(commands[0], commands[1]);
       assert.equal(inspections, 3); // A pending write replay never rebuilds or re-inspects sources.
       const enrich = page.getByRole('button', { name: '确认启动 AI 补证补全（计费）' });
@@ -167,6 +173,7 @@ test(
       page.once('dialog', (dialog) => dialog.accept());
       await enrich.click();
       await expect(page.getByText('补证 AI 补全：已排队', { exact: false })).toBeVisible();
+      await expect(page.getByText('补证 AI 补全任务已保存并排队', { exact: false })).toBeVisible();
       await expect(enrich).toHaveCount(0);
       assert.equal(commands.filter((command) => command.action === 'enrich').length, 1);
       assert.deepEqual(
@@ -271,7 +278,7 @@ test(
       assert.equal(commands.filter((command) => command.action === 'approve').length, 0);
       page.once('dialog', (dialog) => dialog.accept());
       await approve.click();
-      await expect(page.getByRole('status')).toContainText('独立核验已提交');
+      await expect(page.getByRole('status').filter({ hasText: '独立核验已提交' })).toBeVisible();
       const approvalCommand = commands.find((command) => command.action === 'approve');
       assert.deepEqual(Object.keys(approvalCommand.request).sort(), [
         'consent',
@@ -288,6 +295,12 @@ test(
       await page.getByRole('button', { name: '确认登记材料（不发布）' }).click();
       await expect(page.getByText('已登记 / 已收到材料核验回执', { exact: true })).toBeVisible();
       await expect(page.locator('#notice')).toHaveText('parent refreshed');
+      await expect(
+        page.getByText('材料登记及核验回执已保存。仍需完成候选核验和发布确认。'),
+      ).toBeVisible();
+      await expect(
+        page.getByText('补证记录已读取，但上方发布材料刷新失败', { exact: false }),
+      ).toBeVisible();
       assert.equal(commands.filter((command) => command.action === 'confirm').length, 1);
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

@@ -38,6 +38,7 @@ test(
     const assets = new Map(
       compiled.outputFiles.map((f) => [`/${f.path.split('/').at(-1)}`, f.contents]),
     );
+    let materialPreview = null;
     let reviews = [],
       configured = true,
       preparation = {
@@ -112,6 +113,7 @@ test(
               configured,
               reviews,
               preparation,
+              materialPreview,
               catalog: { people: [], organizations: [], topics: [], evidence: [] },
             }),
           );
@@ -268,6 +270,64 @@ test(
     reviews = [];
     configured = true;
     const beforeEmptyPublication = commands.length;
+    const formalPreparation = preparation;
+    preparation = {
+      ...preparation,
+      ready: false,
+      blockers: ['候选没有关键人物，至少需要一位正式人物实体。'],
+    };
+    await page.goto(`${url}/?publication`);
+    await expect(
+      page.getByText('候选没有关键人物，至少需要一位正式人物实体。', { exact: true }),
+    ).toBeVisible();
+    materialPreview = {
+      requestId: 'request',
+      taskId: 'task',
+      materials: {
+        title: '最新补全标题',
+        summary: '补全提案摘要',
+        items: [
+          {
+            key: 'person:Ada',
+            label: '关键人物',
+            proposed: 'Ada · researcher · Lab',
+            status: 'proposed',
+            matches: [],
+            references: [{ quote: 'Ada at Lab' }],
+            nextStep: '待核验登记',
+          },
+          {
+            key: 'topics',
+            label: '领域分类',
+            proposed: '人工智能（topic-ai）',
+            status: 'proposed',
+            matches: [],
+            references: [],
+            nextStep: '待确认登记',
+          },
+        ],
+      },
+    };
+    // Refresh in the child must also refresh the parent's material projection.
+    await page.getByRole('button', { name: '刷新补证状态', exact: true }).click();
+    await expect(page.getByText('Ada · researcher · Lab', { exact: true })).toBeVisible();
+    await expect(page.getByText('人工智能（topic-ai）', { exact: true })).toBeVisible();
+    await expect(page.getByText('已补全，待核验登记', { exact: true })).toHaveCount(2);
+    await expect(page.getByRole('button', { name: '确认候选并送核验', exact: true })).toHaveCount(
+      0,
+    );
+    await page.reload();
+    await expect(page.getByText('Ada · researcher · Lab', { exact: true })).toBeVisible();
+    assert.equal(
+      commands.length,
+      beforeEmptyPublication,
+      'preview reads must not write or call AI',
+    );
+    // A registered formal response replaces the proposal; no stale projection survives refresh.
+    materialPreview = null;
+    preparation = formalPreparation;
+    await page.getByRole('button', { name: '刷新补证状态', exact: true }).click();
+    await expect(page.getByText('Ada · researcher · Lab', { exact: true })).toHaveCount(0);
     await page.goto(`${url}/?publication`);
     await expect(page.getByRole('heading', { name: '可以确认送核验', exact: true })).toBeVisible();
     await expect(page.getByRole('status')).toContainText('等待管理员确认');

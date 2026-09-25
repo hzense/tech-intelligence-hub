@@ -1,7 +1,12 @@
 import type { PublicationMaterials } from '../lib/candidate-publication-materials';
 import styles from './candidate-review-editor.module.css';
 
-const statuses = { matched: '已关联 / 已提供', missing: '缺少材料', ambiguous: '需消歧' };
+const statuses = {
+  matched: '已关联 / 已提供',
+  missing: '缺少材料',
+  ambiguous: '需消歧',
+  proposed: '已补全，待核验登记',
+};
 function sourceLink(value: string) {
   try {
     const url = new URL(value);

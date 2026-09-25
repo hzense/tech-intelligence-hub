@@ -14,7 +14,10 @@ import { generationRecord } from './signal-generation';
 import { prepareCandidateReview, publicPreparation } from '../candidate-review-preparation';
 import { buildCandidateReview, buildEnrichedCandidateReview } from '../candidate-review';
 import { listCandidateEnrichmentDtos } from './candidate-enrichment';
-import { registeredMaterialForCandidate } from './material-registration';
+import {
+  registeredMaterialForCandidate,
+  materialPublicationPreview,
+} from './material-registration';
 import { materialPlanCandidate } from '../material-registration-binding';
 import {
   materialPlanHash,
@@ -178,6 +181,7 @@ async function currentReviewPacket(owner: string, runId: string, candidateIndex:
   );
   if (registered)
     return {
+      original,
       packet: original,
       originalMaterialHash: original.materialHash,
       enrichments,
@@ -188,6 +192,7 @@ async function currentReviewPacket(owner: string, runId: string, candidateIndex:
   );
   if (!completed)
     return {
+      original,
       packet: original,
       originalMaterialHash: original.materialHash,
       enrichments,
@@ -197,6 +202,7 @@ async function currentReviewPacket(owner: string, runId: string, candidateIndex:
   try {
     const proposed = completed.result.candidate as Record<string, unknown>;
     return {
+      original,
       packet: buildEnrichedCandidateReview(run, candidateIndex, proposed),
       originalMaterialHash: original.materialHash,
       enrichments,
@@ -208,11 +214,21 @@ async function currentReviewPacket(owner: string, runId: string, candidateIndex:
 }
 export async function reviewDashboard(owner: string, runId: string, candidateIndex: number) {
   // Authenticate ownership even when review persistence has not been enabled yet.
-  const { packet, originalMaterialHash, enrichments, registered } = await currentReviewPacket(
-    owner,
-    runId,
-    candidateIndex,
-  );
+  const { packet, original, originalMaterialHash, enrichments, registered } =
+    await currentReviewPacket(owner, runId, candidateIndex);
+  // Supplement proposals are a display-only projection. Do not change packet,
+  // registered, preparationHash or any write-side authorization using this data.
+  let materialPreview = null;
+  let materialPreviewUnavailable = false;
+  if (!registered) {
+    try {
+      materialPreview = await materialPublicationPreview(owner, runId, candidateIndex, original);
+    } catch {
+      // A display-only proposal cannot make independent formal materials unreadable.
+      // Omit invalid/unreadable previews explicitly, without changing formal checks.
+      materialPreviewUnavailable = true;
+    }
+  }
   if (!reviewConfigured())
     return {
       configured: false,
@@ -220,6 +236,8 @@ export async function reviewDashboard(owner: string, runId: string, candidateInd
       material_hash: packet.materialHash,
       original_material_hash: originalMaterialHash,
       enrichments,
+      materialPreview,
+      materialPreviewUnavailable,
       preparation: { ready: false, blockers: ['审核与发布存储尚未配置。'] },
     };
   const reviews = await readCandidateReviews({
@@ -239,6 +257,8 @@ export async function reviewDashboard(owner: string, runId: string, candidateInd
       material_hash: packet.materialHash,
       original_material_hash: originalMaterialHash,
       enrichments,
+      materialPreview,
+      materialPreviewUnavailable,
       preparation: publicPreparation(preparation),
     };
   } catch (error) {

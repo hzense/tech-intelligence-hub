@@ -27,6 +27,7 @@ import {
   candidateEnrichmentConfigured,
 } from './candidate-enrichment';
 import { restoreMaterialEnrichment } from '../material-enrichment';
+import { buildMaterialPublicationPreview } from '../material-publication-preview';
 import { readMaterialSupplement } from '../material-source-reader';
 import {
   materialDatabaseConfiguration,
@@ -504,6 +505,70 @@ export async function registeredMaterialForCandidate(
     baseMaterialHash,
   });
   return latest ? (await checkedReport(owner, latest.request.id, latest.report.id)).plan : null;
+}
+
+/** Read-only preview, deliberately separate from registration and review preparation. */
+export async function materialPublicationPreview(
+  owner: string,
+  runId: string,
+  candidateIndex: number,
+  original: ReturnType<typeof buildCandidateReview>,
+) {
+  if (!materialRegistrationConfigured()) return null;
+  const requests = await store.readMaterialRequests({
+    pool: materialPool('registrar'),
+    owner,
+    runId,
+    candidateIndex,
+  });
+  const completed = [];
+  for (const request of requests) {
+    if (request.base_material_hash !== original.materialHash) continue;
+    const tasks = await listCandidateEnrichmentDtos(
+      owner,
+      runId,
+      candidateIndex,
+      request.bundle_hash,
+    );
+    const task = tasks.find(
+      (row) => row.status === 'completed' && row.material_hash === request.bundle_hash,
+    );
+    if (task) completed.push({ request, task });
+  }
+  completed.sort(
+    (a, b) =>
+      new Date(b.task.created_at).getTime() - new Date(a.task.created_at).getTime() ||
+      b.task.id.localeCompare(a.task.id),
+  );
+  const latest = completed[0];
+  if (!latest) return null;
+  if (
+    latest.request.bundle.sourceBundleHash !== latest.request.bundle_hash ||
+    latest.request.bundle.baseMaterialHash !== original.materialHash
+  )
+    fail('material_changed');
+  if (!latest.task.result) fail('material_changed');
+  const client = await materialPool('registrar').connect();
+  try {
+    const topics = (
+      await client.query(
+        "SELECT id,title FROM public.topics WHERE runtime_enabled IS TRUE AND status<>'archived' ORDER BY id LIMIT 1001",
+      )
+    ).rows;
+    if (topics.length > 1000) fail('catalog_limit');
+    return {
+      requestId: latest.request.id,
+      taskId: latest.task.id,
+      materials: buildMaterialPublicationPreview(
+        latest.request.bundle,
+        original.candidate,
+        latest.task.result,
+        { topics },
+      ),
+    };
+  } finally {
+    client.release();
+  }
 }
 
 export async function materialWorkerInbox(after?: string) {

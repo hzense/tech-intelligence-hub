@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { build } from 'esbuild';
+import { createRequire } from 'node:module';
+import { URL } from 'node:url';
 import { buildCandidateSourceBundle } from '../../../packages/ingestion/src/candidate-source-bundle.mjs';
 import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
 import {
@@ -14,6 +17,22 @@ import { generationCandidateJsonSchema } from '../../../packages/ingestion/src/s
 import { prepareMaterialPlan } from '../lib/material-plan-preparation.ts';
 import { approvedMaterialDossier } from '../lib/material-review-dossier.ts';
 import { assessMaterialVerification } from '../../../packages/database/src/material-verification-worker.mjs';
+
+const compiledPreview = await build({
+  entryPoints: [new URL('../lib/material-publication-preview.ts', import.meta.url).pathname],
+  bundle: true,
+  write: false,
+  platform: 'node',
+  format: 'cjs',
+  packages: 'external',
+});
+const previewModule = { exports: {} };
+new Function('require', 'module', 'exports', compiledPreview.outputFiles[0].text)(
+  createRequire(import.meta.url),
+  previewModule,
+  previewModule.exports,
+);
+const { buildMaterialPublicationPreview } = previewModule.exports;
 
 const source = (texts) => ({
   classification: 'private',
@@ -79,6 +98,44 @@ function output() {
     topic_ids: ['topic-ai'],
   };
 }
+
+test('supplement publication preview shows validated people, organizations and topics without formal matches', () => {
+  const b = bundle(),
+    input = materialEnrichmentInput(b, candidate);
+  const result = assessMaterialEnrichment(output(), input.candidate, input.source, context);
+  const before = JSON.stringify({ candidate, result });
+  const view = buildMaterialPublicationPreview(b, candidate, result, context);
+  assert.equal(view.items.find((i) => i.key === 'person:Ada').status, 'proposed');
+  assert.equal(
+    view.items.find((i) => i.key === 'person:Ada').references[0].fragment_id,
+    'fragment-3',
+  );
+  assert.match(view.items.find((i) => i.key === 'topics').proposed, /Artificial Intelligence/);
+  assert.match(view.items.find((i) => i.key === 'organization:Lab').nextStep, /公司/);
+  assert.ok(view.items.every((i) => i.matches.length === 0));
+  assert.equal(view.ready, undefined);
+  assert.equal(view.preparationHash, undefined);
+  assert.equal(JSON.stringify({ candidate, result }), before);
+  assert.throws(() => buildMaterialPublicationPreview(b, candidate, result, { topics: [] }));
+  const tampered = JSON.parse(JSON.stringify(result));
+  tampered.candidate.persons[0].evidence[0].quote = 'invented person evidence';
+  assert.throws(() => buildMaterialPublicationPreview(b, candidate, tampered, context));
+});
+
+test('preview distinguishes extracted organization names from missing organization types and absent people', () => {
+  const b = bundle(),
+    input = materialEnrichmentInput(b, candidate),
+    value = output();
+  value.persons = [];
+  value.organization_identities = [];
+  value.topic_ids = [];
+  const result = assessMaterialEnrichment(value, input.candidate, input.source, context);
+  const view = buildMaterialPublicationPreview(b, candidate, result, context);
+  assert.equal(view.items.find((i) => i.key === 'person:missing').status, 'missing');
+  assert.equal(view.items.find((i) => i.key === 'topics').status, 'missing');
+  assert.equal(view.items.find((i) => i.key === 'organization:Lab').status, 'proposed');
+  assert.match(view.items.find((i) => i.key === 'organization:Lab').nextStep, /组织类型依据仍缺失/);
+});
 
 test('supplement-only person, multi-fragment organization identity and nonliteral topic become a private review plan', async () => {
   const b = bundle([quote, 'Lab is a research company. Acme is a company.']),

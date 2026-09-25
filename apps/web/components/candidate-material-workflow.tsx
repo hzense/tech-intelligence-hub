@@ -86,7 +86,8 @@ type Props = {
   runId: string;
   candidateIndex: number;
   materialHash: string;
-  onRegistered: () => void;
+  onRegistered: () => unknown | Promise<unknown>;
+  onUpdated?: () => Promise<unknown>;
 };
 export function CandidateMaterialWorkflow(props: Props) {
   return (
@@ -96,7 +97,7 @@ export function CandidateMaterialWorkflow(props: Props) {
     />
   );
 }
-function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }: Props) {
+function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, onUpdated }: Props) {
   const [data, setData] = useState<Dashboard | null>(null),
     [selected, setSelected] = useState<string[]>([]),
     [busy, setBusy] = useState(false),
@@ -106,25 +107,45 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
       fragmentCount: number;
     } | null>(null),
     [message, setMessage] = useState('');
+  const [refreshWarning, setRefreshWarning] = useState('');
   const pending = useRef<{
     id: string;
     supplements: Array<{ batchId: string; itemId: string }>;
   } | null>(null);
   const enrichmentIds = useRef<Record<string, string>>({});
   const url = `/api/admin/candidate-materials?runId=${encodeURIComponent(runId)}&candidateIndex=${candidateIndex}`;
-  const refresh = useCallback(async () => {
-    const next = await json(
-      await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(20000) }),
-    );
-    if (
-      pending.current &&
-      next.requests.some((request: { id: string }) => request.id === pending.current?.id)
-    ) {
-      pending.current = null;
-      setSelected([]);
+  const refresh = useCallback(
+    async (registered = false) => {
+      setRefreshWarning('');
+      const next = await json(
+        await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(20000) }),
+      );
+      if (
+        pending.current &&
+        next.requests.some((request: { id: string }) => request.id === pending.current?.id)
+      ) {
+        pending.current = null;
+        setSelected([]);
+      }
+      setData(next);
+      try {
+        if (registered) await onRegistered();
+        else await onUpdated?.();
+      } catch {
+        setRefreshWarning(
+          '补证记录已读取，但上方发布材料刷新失败；已保存的操作不受影响，请只刷新状态，不要重复提交。',
+        );
+      }
+    },
+    [url, onUpdated, onRegistered],
+  );
+  async function refreshAfterAction(registered = false) {
+    try {
+      await refresh(registered);
+    } catch {
+      setRefreshWarning('本次操作已返回成功，但最新补证记录暂未读到；请只刷新状态，不要重复提交。');
     }
-    setData(next);
-  }, [url]);
+  }
   useEffect(() => {
     let active = true;
     fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(20000) })
@@ -163,7 +184,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
       setMessage(
         '补证 AI 补全任务已保存并排队。完成后点击“准备核验材料”；不要重复创建或重复调用。',
       );
-      await refresh();
+      await refreshAfterAction();
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : '结果未知，请先刷新核对原任务，不要重复调用。',
@@ -221,9 +242,8 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
         setMessage('补证请求已保存，等待独立材料核验；本操作未调用 AI、未公开资料。');
       } else {
         setMessage('材料登记及核验回执已保存。仍需完成候选核验和发布确认。');
-        onRegistered();
       }
-      await refresh();
+      await refreshAfterAction(kind === 'confirm');
     } catch (error) {
       if (
         kind === 'create' &&
@@ -287,7 +307,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
             ? '确认已保存，独立核验已提交；尚未登记或发布。'
             : '确认已保存，执行器尚未确认接单；请保留原请求，可用同一确认继续提交。',
         );
-      await refresh();
+      await refreshAfterAction();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '操作未完成，请刷新核对原请求。');
     } finally {
@@ -297,6 +317,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
   return (
     <section className={styles.history} aria-labelledby="material-workflow-title">
       <h3 id="material-workflow-title">通用补证与登记</h3>
+      {refreshWarning ? <p role="status">{refreshWarning}</p> : null}
       <p>
         补证 → 准备材料 → 人工确认 → 独立复查与签名 →
         确认登记。各环节分开记录，不改写原候选，不自动发布。
@@ -602,7 +623,9 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered }:
         onClick={() => {
           setBusy(true);
           refresh()
-            .catch(() => setMessage('刷新失败，请保留原请求。'))
+            .catch(() =>
+              setRefreshWarning('刷新失败，请保留原请求；刷新失败不表示已保存操作失败。'),
+            )
             .finally(() => setBusy(false));
         }}
       >
