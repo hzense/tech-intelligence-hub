@@ -152,7 +152,9 @@ export function normalizeMaterialPlan(value) {
     )
       fail();
     const entities = sortedRows(
-      array(value.entities, 12, 1).map((row) => {
+      // A generated candidate permits 12 people, 12 top-level organizations,
+      // and a distinct organization for each person.
+      array(value.entities, 36, 1).map((row) => {
         exact(row, ['id', 'type', 'name', 'aliases', 'evidenceIds']);
         if (!['person', 'company', 'institution'].includes(row.type)) fail();
         return {
@@ -224,7 +226,7 @@ export function normalizeMaterialPlan(value) {
       new Date(`${c.eventDate}T00:00:00.000Z`).toISOString().slice(0, 10) !== c.eventDate
     )
       fail();
-    const organizationIds = ids(c.organizationIds, 12);
+    const organizationIds = ids(c.organizationIds, 24);
     const organization = (ref) => {
       const row = entityById.get(ref);
       if (!row || !['company', 'institution'].includes(row.type)) fail();

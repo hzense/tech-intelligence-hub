@@ -107,6 +107,27 @@ const verify = (value = envelope(), options = {}) =>
   });
 
 describe('material registration proposal contract', () => {
+  it('keeps explicit entity and organization bounds after supporting 24 organizations', () => {
+    const input = fixture();
+    input.entities = Array.from({ length: 37 }, (_, i) => ({
+      ...input.entities[1],
+      id: `org-${i}`,
+      name: `Lab${i}`,
+    }));
+    expect(() => normalizeMaterialPlan(input)).toThrow();
+    const tooMany = fixture();
+    tooMany.entities.push(
+      ...Array.from({ length: 24 }, (_, i) => ({
+        ...tooMany.entities[1],
+        id: `org-${i}`,
+        name: `Lab${i}`,
+      })),
+    );
+    tooMany.candidate.organizationIds = tooMany.entities
+      .filter((e) => e.type !== 'person')
+      .map((e) => e.id);
+    expect(() => normalizeMaterialPlan(tooMany)).toThrow();
+  });
   it('normalizes without mutating and hashes semantic map/set ordering consistently', () => {
     const input = fixture(),
       original = JSON.parse(JSON.stringify(input));

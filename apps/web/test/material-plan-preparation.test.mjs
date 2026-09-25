@@ -101,6 +101,43 @@ test('manual organization confirmation binds saved evidence and actor; remains a
   );
 });
 
+test('all 24 distinct organizations and 12 people fit confirmation and the material plan', () => {
+  const p = packet();
+  const names = Array.from({ length: 24 }, (_, i) => `Lab${i}`);
+  const text = `Researchers ${Array.from({ length: 12 }, (_, i) => `Ada${i}, researcher at ${names[i + 12]}`).join('; ')} announced AI X on 2026-09-24 with ${names.join(', ')}.`;
+  const evidence = [{ fragment_id: 'fragment-1', quote: text }];
+  p.bundle = buildCandidateSourceBundle({
+    baseMaterialHash: p.baseMaterialHash,
+    supplements: [],
+    source: {
+      classification: 'private',
+      fragments: [{ id: 'fragment-1', text, locator: { paragraph: 1 } }],
+    },
+  });
+  p.catalog.entities = [];
+  p.candidate.organizations = names.slice(0, 12);
+  p.candidate.persons = names
+    .slice(12)
+    .map((organization, i) => ({ name: `Ada${i}`, role: 'researcher', organization, evidence }));
+  p.candidate.event_date_evidence = evidence;
+  p.candidate.claims[0].evidence = evidence;
+  const review = buildOrganizationReview(p);
+  assert.equal(review.organizations.length, 24);
+  const selected = confirmOrganizationReview(p, undefined, {
+    contextHash: review.contextHash,
+    consent: true,
+    selections: review.organizations.map((org) => ({
+      name: org.name,
+      type: 'institution',
+      evidenceId: org.evidence[0].id,
+    })),
+  });
+  const prepared = prepareMaterialPlan(p, now, selected.hints);
+  assert.equal(prepared.ready, true);
+  assert.equal(prepared.payload.plan.entities.length, 36);
+  assert.equal(prepared.payload.plan.candidate.organizationIds.length, 24);
+});
+
 test('manual review rejects forged, stale, duplicate, absent, private and unrelated evidence', () => {
   const p = packet();
   p.catalog.entities = [];

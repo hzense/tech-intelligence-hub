@@ -26,23 +26,13 @@ export function supportsOrganizationType(quote: string, name: string, type: Orga
   // Embedded claims ("Assuming X is...", "The claim that X is...") are not
   // assertions by the source. Unrecognized grammar is left to human review.
   const subject = `^\\s*${escape(name)}`;
-  const boundary = '(?=\\s*(?:$|[,，]))';
+  const boundary = '\\s*[。.]?\\s*$';
   const relation = new RegExp(
     `${subject}(?:\\s+(?:is|operates as)\\s+|,\\s*|\\s*—\\s*)${modifiers}${englishType}\\b${boundary}|${subject}\\s*(?:是|是一家|是一所|是一个|作为)${chineseModifiers}${chineseType}${boundary}`,
     'iu',
   );
-  // Never carry a type across a sentence or negation/uncertainty. Protect dots in
-  // an exact entity name (e.g. Example Inc.) before splitting sentences.
-  const protectedQuote = quote.split(name).join(name.replaceAll('.', '\uE000'));
-  return protectedQuote.split(/[。！？!?;；\n.]/u).some((part) => {
-    const sentence = part.replaceAll('\uE000', '.');
-    if (
-      /[?？]/u.test(quote) ||
-      /\b(?:not|never|isn't|isn’t|might|may|could|would|if|whether|formerly|allegedly|assuming|assume|suppose|supposing|hypothetically|denied|false|untrue|incorrect|disputed)\b|并非|不是|不再是|可能|据称|曾经|假设|如果|倘若|否认|不属|并不是|不成立/u.test(
-        quote.toLowerCase(),
-      )
-    )
-      return false;
-    return relation.test(sentence);
-  });
+  // Match the ENTIRE evidence quote: no arbitrary comma suffix, later sentence,
+  // embedded assertion or newline can silently reverse its meaning. Sources
+  // using richer syntax must be reviewed by a human with the complete fragment.
+  return !/[\r\n]/u.test(quote.trim()) && relation.test(quote);
 }

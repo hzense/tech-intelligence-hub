@@ -132,7 +132,9 @@ export function createAdminMaterialHandler(deps: {
       }
       if (request.method !== 'POST') return importResponse({ error: 'method_not_allowed' }, 405);
       if (url.search || url.hash) return importResponse({ error: 'invalid_request' }, 400);
-      const body = (await readImportJSON(request, 8192)) as { action?: string; request?: unknown };
+      // 24 distinct organizations, each up to 200 Unicode code points, plus
+      // option hashes and JSON framing. Still strictly byte-bounded.
+      const body = (await readImportJSON(request, 32768)) as { action?: string; request?: unknown };
       if (
         !body ||
         typeof body !== 'object' ||

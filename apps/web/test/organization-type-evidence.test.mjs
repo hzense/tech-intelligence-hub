@@ -7,7 +7,7 @@ import {
 
 for (const [name, type, quote] of [
   ['Morgan Stanley', 'company', 'Morgan Stanley is a leading global financial services firm.'],
-  ['Evercore', 'company', 'Evercore, a leading independent investment bank, advises clients.'],
+  ['Evercore', 'company', 'Evercore, a leading independent investment bank.'],
   ['OpenAI', 'company', 'OpenAI is an artificial intelligence company.'],
   ['Lab', 'institution', 'Lab is an independent research institute.'],
   ['大学甲', 'institution', '大学甲是一所公立大学。'],
@@ -39,6 +39,11 @@ for (const quote of [
   'Someone says Lab is a company.',
   'Suppose:\nLab is a company.',
   'Lab is a company was rejected as an assertion.',
+  'Lab is a company, but that claim was rejected.',
+  'Lab is a company, although this is merely hypothetical.',
+  'Lab is a company, according to an unconfirmed rumor.',
+  'Lab, a company, but only hypothetically.',
+  'Lab is a company. That claim was rejected.',
 ])
   test(`does not infer company type: ${quote}`, () =>
     assert.equal(supportsOrganizationType(quote, 'Lab', 'company'), false));

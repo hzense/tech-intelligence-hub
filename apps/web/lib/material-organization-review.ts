@@ -61,13 +61,13 @@ export function validOrganizationConfirmation(value: unknown): value is Organiza
     /^[a-f0-9]{64}$/.test(value.contextHash) &&
     Array.isArray(value.selections) &&
     value.selections.length > 0 &&
-    value.selections.length <= 12 &&
+    value.selections.length <= 24 &&
     value.selections.every(
       (row) =>
         exact(row, ['name', 'type', 'evidenceId']) &&
         typeof row.name === 'string' &&
         row.name.length > 0 &&
-        row.name.length <= 200 &&
+        [...row.name].length <= 200 &&
         typeof row.type === 'string' &&
         ['company', 'institution'].includes(row.type) &&
         typeof row.evidenceId === 'string' &&
