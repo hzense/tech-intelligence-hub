@@ -10,6 +10,11 @@ import {
   signMaterialVerification,
 } from '../../../packages/database/src/material-verification-worker.mjs';
 import { verifyMaterialAttestation } from '../../../packages/database/src/material-registration-contract.mjs';
+import {
+  buildOrganizationReview,
+  confirmOrganizationReview,
+} from '../lib/material-organization-review.ts';
+import { materialProposalHash } from '../../../packages/database/src/candidate-material-proposal-store.mjs';
 
 const excerpt = 'Ada, researcher at Lab, announced AI X on 2026-09-24.';
 const now = new Date('2026-09-24T12:00:00.000Z');
@@ -46,6 +51,120 @@ function packet() {
     },
   };
 }
+
+test('manual organization confirmation binds saved evidence and actor; remains an unapproved private plan', async () => {
+  const p = packet();
+  p.catalog.entities = [];
+  const review = buildOrganizationReview(p);
+  assert.equal(review.organizations[0].name, 'Lab');
+  const confirmation = {
+    contextHash: review.contextHash,
+    consent: true,
+    selections: [
+      { name: 'Lab', type: 'institution', evidenceId: review.organizations[0].evidence[0].id },
+    ],
+  };
+  const selected = confirmOrganizationReview(p, undefined, confirmation);
+  assert.equal(selected.record.confirmedBy, 'owner');
+  assert.equal(selected.record.selections[0].quote, excerpt);
+  const prepared = prepareMaterialPlan(p, now, selected.hints);
+  assert.equal(prepared.ready, true);
+  prepared.payload.dossier.organizationConfirmation = selected.record;
+  assert.equal(prepared.payload.plan.entities.find((e) => e.name === 'Lab').type, 'institution');
+  assert.equal(prepared.payload.dossier.checks, undefined);
+  const payloadHash = () =>
+    materialProposalHash({ owner: 'owner', requestId: p.requestId, payload: prepared.payload });
+  const before = payloadHash();
+  prepared.payload.dossier.organizationConfirmation.selections[0].type = 'company';
+  assert.notEqual(payloadHash(), before); // Stored immutable proposal hash covers human record too.
+  prepared.payload.dossier.organizationConfirmation = confirmOrganizationReview(
+    p,
+    undefined,
+    confirmation,
+  ).record;
+  const dossier = approvedMaterialDossier(prepared.payload, {
+    owner_id: 'owner',
+    approved_by: 'owner',
+    created_at: now.toISOString(),
+  });
+  const assessment = await assessMaterialVerification({
+    request: p,
+    plan: prepared.payload.plan,
+    dossier,
+    clock: () => now,
+    fetchSource: async (sourceUrl) => ({ sourceUrl, text: excerpt, fetchedAt: now.toISOString() }),
+  });
+  assert.ok(assessment.dossierHash);
+  assert.deepEqual(
+    confirmOrganizationReview(p, undefined, confirmation),
+    confirmOrganizationReview(p, undefined, confirmation),
+  );
+});
+
+test('manual review rejects forged, stale, duplicate, absent, private and unrelated evidence', () => {
+  const p = packet();
+  p.catalog.entities = [];
+  const review = buildOrganizationReview(p);
+  const valid = {
+    contextHash: review.contextHash,
+    consent: true,
+    selections: [
+      { name: 'Lab', type: 'institution', evidenceId: review.organizations[0].evidence[0].id },
+    ],
+  };
+  for (const invalid of [
+    { ...valid, consent: false },
+    { ...valid, confirmedBy: 'admin' },
+    { ...valid, contextHash: 'f'.repeat(64) },
+    { ...valid, selections: [] },
+    { ...valid, selections: [...valid.selections, ...valid.selections] },
+    { ...valid, selections: [{ ...valid.selections[0], name: 'Other' }] },
+    { ...valid, selections: [{ ...valid.selections[0], type: 'person' }] },
+    { ...valid, selections: [{ ...valid.selections[0], type: ['company'] }] },
+    { ...valid, selections: [{ ...valid.selections[0], evidenceId: '0'.repeat(64) }] },
+    { ...valid, selections: [{ ...valid.selections[0], quote: 'invented' }] },
+  ])
+    assert.throws(() => confirmOrganizationReview(p, undefined, invalid));
+  for (const mutate of [
+    (v) => {
+      v.owner = 'other';
+    },
+    (v) => {
+      v.requestId = '33333333-3333-4333-8333-333333333333';
+    },
+    (v) => {
+      v.candidate.summary += ' new revision';
+    },
+    (v) => {
+      v.catalog.entities = packet().catalog.entities;
+    },
+    (v) => {
+      v.originalSourceUrl = 'https://example.org/new';
+    },
+  ]) {
+    const changed = structuredClone(p);
+    mutate(changed);
+    assert.throws(() => confirmOrganizationReview(changed, undefined, valid), {
+      code: 'material_changed',
+    });
+  }
+  const privateOnly = { ...p, originalSourceUrl: null };
+  assert.deepEqual(buildOrganizationReview(privateOnly).organizations[0].evidence, []);
+  p.candidate.organizations = ['OtherLab'];
+  p.candidate.persons = [];
+  assert.deepEqual(buildOrganizationReview(p).organizations[0].evidence, []);
+});
+
+test('manual confirmation cannot override existing or ambiguous catalog identities', () => {
+  const p = packet();
+  assert.deepEqual(buildOrganizationReview(p).organizations, []);
+  p.catalog.entities[0].status = 'archived';
+  assert.deepEqual(buildOrganizationReview(p).organizations, []);
+  assert.deepEqual(prepareMaterialPlan(p, now), {
+    ready: false,
+    blockers: ['material_entity_ambiguous'],
+  });
+});
 test('rules prepare deterministic private plan; human approval plus live reread is required for signature', async () => {
   const request = packet();
   const a = prepareMaterialPlan(request, now),

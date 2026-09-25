@@ -1,4 +1,5 @@
 import { importResponse, readImportJSON } from './import-io.ts';
+import { validOrganizationConfirmation } from './material-organization-review.ts';
 const safe = new Set([
   'limit_exceeded',
   'invalid_request',
@@ -160,7 +161,9 @@ export function createAdminMaterialHandler(deps: {
       if (
         body.action === 'prepare' &&
         deps.prepare &&
-        exact(body.request, ['requestId']) &&
+        (exact(body.request, ['requestId']) ||
+          (exact(body.request, ['requestId', 'organizationConfirmation']) &&
+            validOrganizationConfirmation(body.request.organizationConfirmation))) &&
         uuid(body.request.requestId)
       )
         return importResponse(await deps.prepare(session.user.id, body.request));

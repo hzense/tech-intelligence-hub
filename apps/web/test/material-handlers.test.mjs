@@ -66,6 +66,49 @@ function worker() {
   };
   return { calls, deps, handler: createMaterialWorkerHandler(deps) };
 }
+test('manual classification accepts only bounded selections and explicit consent with session owner', async () => {
+  const { deps } = admin();
+  let count = 0;
+  deps.prepare = async (owner, input) => {
+    assert.equal(owner, 'owner');
+    assert.equal(input.organizationConfirmation.selections[0].type, 'company');
+    count++;
+    return { ready: true };
+  };
+  const handler = createAdminMaterialHandler(deps);
+  const confirmation = {
+    contextHash: 'a'.repeat(64),
+    consent: true,
+    selections: [{ name: 'Lab', type: 'company', evidenceId: 'b'.repeat(64) }],
+  };
+  const body = {
+    action: 'prepare',
+    request: { requestId: id, organizationConfirmation: confirmation },
+  };
+  assert.equal((await handler(req(body))).status, 200);
+  for (const extra of [
+    { consent: false },
+    { confirmedBy: 'someone' },
+    { selections: [] },
+    { selections: Array(13).fill(confirmation.selections[0]) },
+  ]) {
+    assert.equal(
+      (
+        await handler(
+          req({
+            ...body,
+            request: { ...body.request, organizationConfirmation: { ...confirmation, ...extra } },
+          }),
+        )
+      ).status,
+      400,
+    );
+  }
+  assert.equal((await handler(req(body, { origin: 'https://evil.test' }))).status, 403);
+  deps.session = async () => null;
+  assert.equal((await handler(req(body))).status, 401);
+  assert.equal(count, 1);
+});
 test('capacity inspection uses session owner and cannot call create; size errors are distinct', async () => {
   const { deps, calls } = admin();
   deps.inspect = async (owner, request) => {

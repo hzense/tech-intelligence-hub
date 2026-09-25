@@ -66,6 +66,25 @@ test(
       let inspectionFailure = true;
       let inspections = 0;
       let unknown = true;
+      let needsManualIdentity = false;
+      let manualConfirmation;
+      const organizationReview = {
+        contextHash: 'd'.repeat(64),
+        organizations: [
+          {
+            name: 'Lab',
+            truncated: false,
+            evidence: [
+              {
+                id: 'e'.repeat(64),
+                fragmentId: 'fragment-2',
+                quote: 'Lab carries out independent research.',
+                sourceUrl: 'https://example.com/about',
+              },
+            ],
+          },
+        ],
+      };
       await page.route('**/api/admin/candidate-materials**', async (route) => {
         if (route.request().method() === 'GET') {
           await route.fulfill({ json: data });
@@ -115,6 +134,16 @@ test(
         if (body.action === 'confirm')
           data.requests[0].reports[0].stages = ['registered', 'verified'];
         if (body.action === 'prepare') {
+          if (needsManualIdentity && !body.request.organizationConfirmation) {
+            await route.fulfill({
+              json: { ready: false, blockers: ['needs_organization_identity'], organizationReview },
+            });
+            return;
+          }
+          if (body.request.organizationConfirmation) {
+            manualConfirmation = body.request.organizationConfirmation;
+            needsManualIdentity = false;
+          }
           await route.fulfill({ json: { ready: true } });
           return;
         }
@@ -213,6 +242,34 @@ test(
       await page.getByRole('button', { name: '刷新补证状态' }).click();
       await expect(page.getByText('人物：Ada（researcher）')).toBeVisible();
       assert.equal(commands.filter((command) => command.action === 'enrich').length, 2);
+      needsManualIdentity = true;
+      await page.getByRole('button', { name: '准备核验材料（不调用 AI）' }).click();
+      const manual = page.getByRole('region', { name: '手动确认组织类型', exact: true });
+      await expect(manual).toBeVisible();
+      const manualConfirm = manual.getByRole('button', {
+        name: '确认组织类型并准备材料（不调用 AI）',
+      });
+      await expect(manualConfirm).toBeDisabled();
+      await manual.getByLabel('组织类型 · Lab').selectOption('institution');
+      await manual.getByLabel('原文依据 · Lab').selectOption('e'.repeat(64));
+      await expect(
+        manual.getByText('Lab carries out independent research.', { exact: true }),
+      ).toBeVisible();
+      await manual.getByRole('checkbox').check();
+      await expect(manualConfirm).toBeEnabled();
+      await manual.getByLabel('组织类型 · Lab').selectOption('company');
+      await expect(manual.getByRole('checkbox')).not.toBeChecked();
+      await expect(manualConfirm).toBeDisabled();
+      await manual.getByLabel('组织类型 · Lab').selectOption('institution');
+      await manual.getByRole('checkbox').check();
+      await manualConfirm.click();
+      await expect(manual).toHaveCount(0);
+      assert.deepEqual(manualConfirmation, {
+        contextHash: 'd'.repeat(64),
+        consent: true,
+        selections: [{ name: 'Lab', type: 'institution', evidenceId: 'e'.repeat(64) }],
+      });
+      assert.equal(commands.filter((command) => command.action === 'enrich').length, 2);
       data.requests[0].reports = [
         {
           id: 'report-1',
@@ -250,6 +307,20 @@ test(
           proposalHash: 'c'.repeat(64),
           plan: preparedReport.plan,
           dossier: {
+            organizationConfirmation: {
+              version: 'organization-confirmation-v1',
+              contextHash: 'd'.repeat(64),
+              confirmedBy: 'owner',
+              selections: [
+                {
+                  name: 'Lab',
+                  type: 'institution',
+                  fragmentId: 'fragment-2',
+                  quote: 'Lab carries out independent research.',
+                  sourceUrl: 'https://example.com/about',
+                },
+              ],
+            },
             eventDate: { value: '2026-09-24', quote: 'Ada works at Lab.' },
             statements: {
               sourceAuthenticity: '来源真实性已核对',
@@ -266,6 +337,11 @@ test(
       ];
       await page.getByRole('button', { name: '刷新补证状态' }).click();
       await page.getByRole('button', { name: '准备核验材料（不调用 AI）' }).click();
+      await expect(page.getByRole('region', { name: '已保存的组织类型人工确认' })).toBeVisible();
+      await page.reload();
+      await expect(page.getByRole('region', { name: '已保存的组织类型人工确认' })).toContainText(
+        'Lab carries out independent research.',
+      );
       await expect(
         page.getByText('我确认具有所列摘录的公开引用权限', { exact: true }),
       ).toBeVisible();
