@@ -4,6 +4,7 @@ import { URL } from 'node:url';
 import { isValidAiModelId } from './ai-model-id.mjs';
 
 export const AI_PROBE_OUTPUT_TOKENS = 2048;
+export const AI_PROFILE_MAX_OUTPUT_TOKENS = 50000;
 
 export const aiConfigErrorCodes = Object.freeze([
   'invalid_request',
@@ -224,7 +225,7 @@ export function parseAiProfileSave(input) {
       aiFail();
     // JSON and jsonb store negative zero as zero; compare canonical requests on replay.
     if (s.temperature === 0) s.temperature = 0;
-    s.max_output_tokens = aiInteger(s.max_output_tokens, 128, 8192);
+    s.max_output_tokens = aiInteger(s.max_output_tokens, 128, AI_PROFILE_MAX_OUTPUT_TOKENS);
     s.require_tools = bool(s.require_tools);
     stages[name] = s;
   }

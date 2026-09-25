@@ -325,10 +325,11 @@ export function createPinnedAiFetch(
   // Server-owned presets: keep probes small while allowing a bounded source,
   // extraction prompt and schema after the SDK's JSON serialization.
   const requestMaximumBytes =
-    config.requestPurpose === 'signal-generation' ||
-    config.requestPurpose === 'candidate-enrichment'
-      ? 256 * 1024
-      : 32_768;
+    config.requestPurpose === 'signal-generation'
+      ? 3 * 1024 * 1024
+      : config.requestPurpose === 'candidate-enrichment'
+        ? 256 * 1024
+        : 32_768;
   return async (input, init) => {
     if (!(typeof input === 'string' || input instanceof URL)) return fail('blocked_target');
     const raw = String(input);

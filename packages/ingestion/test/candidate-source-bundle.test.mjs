@@ -274,7 +274,7 @@ test('enforces supplement count, source size, fragment size, and original source
   rejects(() => buildCandidateSourceBundle(malformed));
 });
 
-test('material budget accepts 52,271 bytes without expanding the AI budget or changing hashes', () => {
+test('material budget accepts 52,271 bytes with the new generation budget without changing hashes', () => {
   const value = input();
   value.source = source('中'.repeat(5000), '文'.repeat(5000), 'A'.repeat(12000));
   const extra = supplement('B'.repeat(9500));
@@ -287,17 +287,14 @@ test('material budget accepts 52,271 bytes without expanding the AI budget or ch
   bundle = buildCandidateSourceBundle(value);
   assert.equal(Buffer.byteLength(JSON.stringify(bundle.source)), 52271);
   assert.deepEqual(validateCandidateSourceBundle(bundle), bundle);
-  assert.throws(() => validateGenerationSource(bundle.source), {
-    code: 'generation_source_too_large',
-  });
+  assert.doesNotThrow(() => validateGenerationSource(bundle.source));
   bundle.source.fragments[0].text += 'tampered';
   rejects(() => validateCandidateSourceBundle(bundle));
 });
 
 test('single-source and aggregate material limits remain bounded', () => {
-  assert.throws(
-    () => buildCandidateSourceBundle({ ...input(), source: source('中'.repeat(17000)) }),
-    { code: 'generation_source_too_large' },
+  assert.doesNotThrow(() =>
+    buildCandidateSourceBundle({ ...input(), source: source('中'.repeat(17000)) }),
   );
   const bundle = buildCandidateSourceBundle(input());
   bundle.source.fragments = Array.from({ length: 4 }, (_, i) => ({

@@ -186,7 +186,10 @@ test(
                 fence: 1,
                 ready: command.itemId === smallItemId,
                 sourceBytes: command.itemId === smallItemId ? 500 : 60000,
-                limitBytes: 48000,
+                limitBytes: 1000000,
+                sourceTokens: command.itemId === smallItemId ? 150 : 100001,
+                limitTokens: 100000,
+                tokenEncoding: 'o200k_base',
                 fragmentCount: 4,
                 locators: [{ id: 'fragment-1', locator: { paragraph: 1 } }],
               },
@@ -1124,7 +1127,7 @@ test(
         rejectedError = 'input_too_large';
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
         await expect(
-          page.getByText('解析文本超过首版 48,000 字节上限。', { exact: false }),
+          page.getByText('输入超过 100,000 tokens 估算上限', { exact: false }),
         ).toBeVisible();
         await expect(
           page.getByText('SYNTHETIC_RAW_PROVIDER_DIAGNOSTIC', { exact: false }),
@@ -1278,7 +1281,7 @@ test(
         rejectedError = 'input_too_large';
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
         await expect(
-          page.getByText('解析文本超过首版 48,000 字节上限。', { exact: false }),
+          page.getByText('输入超过 100,000 tokens 估算上限', { exact: false }),
         ).toBeVisible();
         const originalId = commands[0].id;
         await expect(page.getByLabel('导入已解析资料')).toBeDisabled();

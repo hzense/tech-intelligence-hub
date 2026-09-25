@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { TextEncoder } from 'node:util';
 import { parseImportOutput } from '../src/import-task-contract.mjs';
 import {
   buildGenerationSource,
@@ -9,6 +8,9 @@ import {
   assessGeneratedCandidates,
   REJECTED_CANDIDATES_REASON,
   validateGenerationSource,
+  inspectGenerationSource,
+  estimateGenerationTokens,
+  GENERATION_LIMITS,
 } from '../src/signal-generation-contract.mjs';
 
 const original = '2026-09-16，研究作者李明在示例研究所公布合成研究结果。尚不能证明实际效果。';
@@ -80,7 +82,7 @@ test('partial assessment does not accept invented quotes, authority fields or in
   for (const value of [
     { ...output(), extra: true },
     { ...output(), candidates: Array(6).fill(candidate()) },
-    { ...output(), candidates: [{ title: 'x'.repeat(96001) }] },
+    { ...output(), candidates: [{ title: 'x'.repeat(GENERATION_LIMITS.outputBytes + 1) }] },
   ])
     assert.throws(() => assessGeneratedCandidates(value, buildGenerationSource(input())));
   assert.equal(
@@ -108,43 +110,46 @@ test('source retains exact text and locators, with server-assigned IDs and no se
     assert.throws(() => buildGenerationSource({ ...parsed, ...alteration }));
 });
 
-test('source UTF-8 bound includes metadata and rejects oversize input without truncating', () => {
-  const make = (text) => parseImportOutput({ fragments: [{ text, locator: { paragraph: 1 } }] });
-  const overhead =
-    new TextEncoder().encode(JSON.stringify(buildGenerationSource(make('a')))).length - 1;
-  const fits = 48000 - overhead;
+test('input uses 100K token estimates rather than the old 48KB cap; no truncation', () => {
+  const make = (n) =>
+    parseImportOutput({
+      fragments: Array.from({ length: n }, (_, i) => ({
+        text: '中 '.repeat(9000),
+        locator: { paragraph: i + 1 },
+      })),
+    });
+  const parsed = make(4);
+  const source = buildGenerationSource(parsed);
+  const inspection = inspectGenerationSource(parsed);
+  assert.ok(inspection.sourceBytes > 100000);
+  assert.ok(inspection.sourceTokens < 100000);
+  assert.equal(inspection.limitTokens, 100000);
+  assert.equal(inspection.tokenEncoding, 'o200k_base');
+  assert.equal(inspection.sourceTokens, estimateGenerationTokens(JSON.stringify(source)));
+  assert.equal(source.fragments[3].text, parsed.fragments[3].text);
+  const large = make(12);
+  assert.equal(inspectGenerationSource(large).ready, false);
+  assert.throws(() => buildGenerationSource(large), { code: 'generation_source_too_large' });
+  assert.equal(GENERATION_LIMITS.outputBytes, 400000);
+  assert.doesNotThrow(() => estimateGenerationTokens('<|endoftext|> untrusted literal'));
+});
+
+test('source token boundary is inclusive; JSON metadata counts toward 100K', () => {
   const parsed = parseImportOutput({
-    fragments: [
-      { text: 'a'.repeat(20000), locator: { paragraph: 1 } },
-      { text: 'a'.repeat(20000), locator: { paragraph: 2 } },
-    ],
+    fragments: Array.from({ length: 6 }, (_, i) => ({
+      text: '中'.repeat(16000),
+      locator: { paragraph: i + 1 },
+    })),
   });
-  assert.equal(buildGenerationSource(parsed).fragments.length, 2);
-  assert.ok(fits > 20000);
-  assert.throws(() => buildGenerationSource(make('中'.repeat(16000))), {
-    code: 'generation_source_too_large',
-  });
-  assert.throws(() => buildGenerationSource(make('😀'.repeat(12000))), {
-    code: 'generation_source_too_large',
-  });
-  assert.equal(buildGenerationSource(make('中'.repeat(15000))).fragments[0].text.length, 15000);
-  const boundary = parseImportOutput({
-    fragments: [
-      { text: 'a'.repeat(20000), locator: { paragraph: 1 } },
-      { text: 'a'.repeat(20000), locator: { paragraph: 2 } },
-      { text: 'x', locator: { paragraph: 3 } },
-    ],
-  });
-  const baseBytes = new TextEncoder().encode(
-    JSON.stringify(buildGenerationSource(boundary)),
-  ).length;
-  boundary.fragments[2].text = 'x'.repeat(48000 - baseBytes + 1);
-  assert.equal(
-    new TextEncoder().encode(JSON.stringify(buildGenerationSource(boundary))).length,
-    48000,
-  );
-  boundary.fragments[2].text += 'x';
-  assert.throws(() => buildGenerationSource(boundary), { code: 'generation_source_too_large' });
+  const before = inspectGenerationSource(parsed);
+  parsed.fragments[5].text += '中'.repeat(100000 - before.sourceTokens);
+  assert.equal(inspectGenerationSource(parsed).sourceTokens, 100000);
+  assert.equal(inspectGenerationSource(parsed).ready, true);
+  assert.doesNotThrow(() => buildGenerationSource(parsed));
+  parsed.fragments[5].text += '中';
+  assert.equal(inspectGenerationSource(parsed).sourceTokens, 100001);
+  assert.equal(inspectGenerationSource(parsed).ready, false);
+  assert.throws(() => buildGenerationSource(parsed), { code: 'generation_source_too_large' });
 });
 
 test('normalization never grants verified/public state even with complete fields and quotations', () => {
@@ -392,7 +397,7 @@ test('one generation allows zero through five candidates but never six', () => {
 });
 
 test('aggregate model output size is bounded even when each candidate and quotation is valid', () => {
-  const quotes = Array.from({ length: 8 }, (_, index) => `${'a'.repeat(499)}${index}`);
+  const quotes = Array.from({ length: 8 }, (_, index) => `${'中'.repeat(499)}${index}`);
   const source = buildGenerationSource(
     parseImportOutput({ fragments: [{ text: quotes.join('\n'), locator: { paragraph: 1 } }] }),
   );

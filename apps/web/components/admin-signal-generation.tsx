@@ -101,7 +101,8 @@ const errorMessages: Record<string, string> = {
   generation_unknown: '旧记录未保留具体调用失败分类，结果及费用待核对，不要重复调用。',
   outcome_unknown: '执行已超时，未确认完整结果，按失败处理；费用记录保留。',
   generation_failed: '生成未得到可用候选，请核对原任务及费用。',
-  input_too_large: '解析文本超过首版 48,000 字节上限。请先拆分资料；此页面不会自动截断或调用模型。',
+  input_too_large:
+    '输入超过 100,000 tokens 估算上限或来源 JSON 安全大小上限。请先拆分资料；不会自动截断或调用模型。',
   invalid_source: '解析结果格式无效。请在导入页核对资料是否完整解析。',
   source_unavailable: '所选资料尚不可用，可能未完成解析或已被取消。',
   profile_not_ready: '模型配置尚未就绪。请核对抽取阶段模型、连接及能力测试。',
@@ -726,7 +727,10 @@ export function AdminSignalGeneration({
         <summary>诊断与使用说明</summary>
         <AdminGenerationPreflight />
         <p>候选中的摘要、事件发生时间、证据、人物与组织均需核验；没有足够依据时可以不生成候选。</p>
-        <p>首版每次处理一份资料，解析文本最多 48,000 字节；超限会停止，不自动截断。</p>
+        <p>
+          每次处理一份资料，输入估算上限 100,000 tokens（含提示词及 Schema），提取输出可配置至
+          50,000 tokens；超限会停止，不自动截断。现有配置修订的输出额度保持不变。
+        </p>
         <p>
           执行后立即提交后台长任务，模型最多等待 25
           分钟。可关闭页面，重新打开查看进度；不会自动重试模型调用。
@@ -818,11 +822,16 @@ export function AdminSignalGeneration({
           <section aria-label="生成资料检查结果">
             <h2>{inspection.ready ? '资料大小符合生成要求' : '资料超出单次生成上限'}</h2>
             <p>
-              {inspection.fragmentCount} 个片段 · 输入 {inspection.sourceBytes.toLocaleString()}{' '}
-              字节 / 上限 {inspection.limitBytes.toLocaleString()} 字节 · 解析版本{' '}
-              {inspection.fence}
+              {inspection.fragmentCount} 个片段 · 来源估算{' '}
+              {inspection.sourceTokens.toLocaleString()} tokens / 输入上限{' '}
+              {inspection.limitTokens.toLocaleString()} tokens · 解析版本 {inspection.fence}
             </p>
-            <p>大小按包含片段编号和定位的 UTF-8 来源 JSON 计算，不是原文件大小或 token 数。</p>
+            <p>
+              使用 {inspection.tokenEncoding}{' '}
+              估算，其他模型实际分词可能不同。创建任务时还会计入提示词和 JSON Schema；
+              此处仅检查来源。来源 JSON 为 {inspection.sourceBytes.toLocaleString()}{' '}
+              字节，独立安全上限为 {inspection.limitBytes.toLocaleString()} 字节。不会静默截断资料。
+            </p>
             <ul>
               {inspection.locators.map(({ id, locator }) => (
                 <li key={id}>

@@ -11,6 +11,7 @@ import type { AiProfile, AiConnection } from '../../../packages/database/src/ai-
 import { buildGenerationSource } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import {
   generationRules,
+  generationInput,
   type GenerationProviderInput,
   type GenerationProviderResult,
 } from './signal-generation-provider.ts';
@@ -182,6 +183,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       const source = buildGenerationSource(output);
       const access = await deps.access(profileId, Number(body.profileRevision));
       const stage = access.profile.stages.extract;
+      generationInput(source, stage.prompt);
       // One UTF-8 byte per input token plus framing/schema allowance: conservative, not a provider bill.
       const inputBound =
         Buffer.byteLength(JSON.stringify(source)) +

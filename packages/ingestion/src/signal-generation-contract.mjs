@@ -1,15 +1,37 @@
 import { TextEncoder } from 'node:util';
+import { countTokens } from 'gpt-tokenizer/encoding/o200k_base';
 import { parseImportOutput } from './import-task-contract.mjs';
 
 export const GENERATION_LIMITS = Object.freeze({
-  sourceBytes: 48000,
-  outputBytes: 96000,
+  inputTokens: 100000,
+  // Independent storage/transport guards, not a token conversion ratio.
+  sourceBytes: 1000000,
+  outputBytes: 400000,
   candidates: 5,
   titleCharacters: 80,
   summaryCharacters: 500,
   references: 8,
   quoteCharacters: 500,
 });
+/** Shared local estimate; other providers may tokenize differently. Treat special tokens as text. */
+export function estimateGenerationTokens(text) {
+  return countTokens(text, { disallowedSpecial: new Set() });
+}
+
+function sourceSize(source) {
+  const json = JSON.stringify(source);
+  const sourceBytes = new TextEncoder().encode(json).length;
+  const sourceTokens = estimateGenerationTokens(json);
+  return {
+    ready:
+      sourceBytes <= GENERATION_LIMITS.sourceBytes && sourceTokens <= GENERATION_LIMITS.inputTokens,
+    sourceBytes,
+    sourceTokens,
+    limitBytes: GENERATION_LIMITS.sourceBytes,
+    limitTokens: GENERATION_LIMITS.inputTokens,
+    tokenEncoding: 'o200k_base',
+  };
+}
 export const REJECTED_CANDIDATES_REASON = '候选校验未全部通过；请查看逐条校验记录。';
 
 const referenceSchema = {
@@ -184,18 +206,15 @@ function normalizeGenerationSource(importOutput) {
 
 export function buildGenerationSource(importOutput) {
   const source = normalizeGenerationSource(importOutput);
-  boundedBytes(source, GENERATION_LIMITS.sourceBytes, 'generation_source_too_large');
+  if (!sourceSize(source).ready) fail('generation_source_too_large');
   return source;
 }
 
 /** Read-only readiness metadata. Never returns source text or bypasses generation limits. */
 export function inspectGenerationSource(importOutput) {
   const source = normalizeGenerationSource(importOutput);
-  const sourceBytes = new TextEncoder().encode(JSON.stringify(source)).length;
   return {
-    ready: sourceBytes <= GENERATION_LIMITS.sourceBytes,
-    sourceBytes,
-    limitBytes: GENERATION_LIMITS.sourceBytes,
+    ...sourceSize(source),
     fragmentCount: source.fragments.length,
     locators: source.fragments.slice(0, 3).map(({ id, locator }) => ({ id, locator })),
   };
@@ -216,7 +235,7 @@ export function normalizePrivateSource(source) {
 
 export function validateGenerationSource(source) {
   const normalized = normalizePrivateSource(source);
-  boundedBytes(normalized, GENERATION_LIMITS.sourceBytes, 'generation_source_too_large');
+  if (!sourceSize(normalized).ready) fail('generation_source_too_large');
   return normalized;
 }
 

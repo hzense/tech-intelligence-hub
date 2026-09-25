@@ -46,6 +46,7 @@ export async function openRouterOptions(
   modelId: string,
   transport: typeof fetch,
   required: 'text' | 'structured' | 'tools',
+  budget?: { inputTokens: number; outputTokens: number },
 ) {
   if (new URL(baseUrl).hostname !== 'openrouter.ai') return undefined;
   const response = await transport(`${baseUrl.replace(/\/$/, '')}/models`);
@@ -53,6 +54,17 @@ export async function openRouterOptions(
   if (!Array.isArray(body?.data)) throw new AiProbeError('invalid_response');
   const model = body.data.find((entry) => entry?.id === modelId);
   if (!model || !Array.isArray(model.supported_parameters)) throw new AiProbeError('invalid_model');
+  if (budget) {
+    const context = model.top_provider?.context_length ?? model.context_length;
+    const output = model.top_provider?.max_completion_tokens;
+    if (
+      (Number.isSafeInteger(context) &&
+        context > 0 &&
+        budget.inputTokens + budget.outputTokens > context) ||
+      (Number.isSafeInteger(output) && output > 0 && budget.outputTokens > output)
+    )
+      throw new AiProbeError('capability_failed');
+  }
   const parameters = model.supported_parameters as unknown[];
   if (
     !parameters.includes('max_tokens') ||
@@ -65,11 +77,19 @@ export async function openRouterOptions(
   const info = model.reasoning;
   if (info && parameters.includes('reasoning')) {
     const efforts = info.supported_efforts;
+    // Optional thinking must be disabled before considering effort levels.
+    if (info.mandatory === false) {
+      reasoning.enabled = false;
+      return { provider: { require_parameters: true }, reasoning };
+    }
+    if (info.mandatory !== true && Array.isArray(efforts) && efforts.includes('none')) {
+      reasoning.effort = 'none';
+      return { provider: { require_parameters: true }, reasoning };
+    }
     const effort = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].find(
       (level) => efforts === null || (Array.isArray(efforts) && efforts.includes(level)),
     );
     if (effort) reasoning.effort = effort;
-    else if (info.mandatory === false) reasoning.enabled = false;
   }
   return { provider: { require_parameters: true }, reasoning };
 }

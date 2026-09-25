@@ -6,8 +6,8 @@ import {
   aiProfileDefaultOutputTokens,
 } from '../lib/admin-ai-profile-defaults.ts';
 
-test('new extraction profiles allow 8192 tokens without changing other stage defaults', () => {
-  assert.deepEqual(aiProfileDefaultOutputTokens, { extract: 8192, verify: 2048, analyze: 2048 });
+test('new extraction profiles allow 50000 tokens without changing other stage defaults', () => {
+  assert.deepEqual(aiProfileDefaultOutputTokens, { extract: 50000, verify: 2048, analyze: 2048 });
   assert.equal(Object.isFrozen(aiProfileDefaultOutputTokens), true);
 });
 
