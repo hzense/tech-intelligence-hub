@@ -25,6 +25,17 @@ export async function assertEditorialRole(client, role) {
         classid NOT IN ('pg_database'::regclass,'pg_namespace'::regclass,'pg_class'::regclass)
         OR dbid NOT IN (0,(SELECT oid FROM pg_database WHERE datname=current_database()))))))
     AND NOT EXISTS(SELECT 1 FROM pg_parameter_acl p CROSS JOIN LATERAL aclexplode(p.paracl) a WHERE a.grantee IN (0,r.oid))
+    AND NOT EXISTS(SELECT 1 FROM pg_largeobject_metadata l CROSS JOIN LATERAL aclexplode(l.lomacl) a WHERE a.grantee IN (0,r.oid))
+    AND NOT EXISTS(SELECT 1 FROM pg_tablespace t CROSS JOIN LATERAL aclexplode(t.spcacl) a WHERE a.grantee IN (0,r.oid))
+    AND NOT EXISTS(SELECT 1 FROM pg_foreign_server s CROSS JOIN LATERAL aclexplode(s.srvacl) a WHERE a.grantee IN (0,r.oid))
+    AND NOT EXISTS(SELECT 1 FROM pg_foreign_data_wrapper f CROSS JOIN LATERAL aclexplode(f.fdwacl) a WHERE a.grantee IN (0,r.oid))
+    AND NOT EXISTS(SELECT 1 FROM pg_proc f JOIN pg_namespace n ON n.oid=f.pronamespace
+      CROSS JOIN LATERAL aclexplode(COALESCE(f.proacl,acldefault('f',f.proowner))) a
+      WHERE (n.nspname~'^pg_' OR n.nspname='information_schema') AND (a.grantee=r.oid OR (a.grantee=0 AND NOT EXISTS(
+        SELECT 1 FROM aclexplode(COALESCE(
+          (SELECT p.initprivs FROM pg_init_privs p WHERE p.classoid='pg_proc'::regclass AND p.objoid=f.oid AND p.objsubid=0),
+          CASE WHEN f.oid<16384 AND f.proowner=10 THEN acldefault('f',f.proowner) ELSE NULL::aclitem[] END
+        )) initial WHERE initial.grantee=0 AND initial.privilege_type=a.privilege_type AND initial.is_grantable=a.is_grantable))))
     AND NOT EXISTS(SELECT 1 FROM pg_namespace n CROSS JOIN LATERAL aclexplode(n.nspacl) a
       WHERE (n.nspname~'^pg_' OR n.nspname='information_schema') AND (a.grantee=r.oid OR (a.grantee=0
         AND NOT (n.nspname='information_schema' AND n.oid<16384 AND n.nspowner=10 AND a.grantor=10 AND a.privilege_type='USAGE' AND NOT a.is_grantable)

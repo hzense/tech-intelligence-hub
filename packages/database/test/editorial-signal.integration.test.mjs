@@ -267,6 +267,88 @@ suite('editorial publication persistence and isolated capabilities', () => {
       await pool.query('DROP TABLE information_schema.editorial_test_only');
     }
   });
+  it('rejects extra PUBLIC system function, large-object and tablespace capabilities', async () => {
+    const expectRejected = async () => {
+      for (const [connection, role] of [
+        [reader, 'reader'],
+        [writer, 'writer'],
+      ]) {
+        const client = await connection.connect();
+        try {
+          await expect(assertEditorialRole(client, role)).rejects.toThrow('editorial_role_invalid');
+        } finally {
+          client.release();
+        }
+      }
+    };
+    await pool.query('GRANT EXECUTE ON FUNCTION pg_catalog.pg_read_file(text) TO PUBLIC');
+    try {
+      await expectRejected();
+    } finally {
+      await pool.query('REVOKE EXECUTE ON FUNCTION pg_catalog.pg_read_file(text) FROM PUBLIC');
+    }
+    await pool.query(
+      'CREATE FUNCTION pg_catalog.editorial_test_only() RETURNS integer LANGUAGE sql AS $$SELECT 1$$',
+    );
+    try {
+      await expectRejected();
+    } finally {
+      await pool.query('DROP FUNCTION pg_catalog.editorial_test_only()');
+    }
+    const oid = (await pool.query('SELECT lo_create(0) AS oid')).rows[0].oid;
+    try {
+      await pool.query(`GRANT SELECT ON LARGE OBJECT ${Number(oid)} TO PUBLIC`);
+      await expectRejected();
+    } finally {
+      await pool.query('SELECT lo_unlink($1)', [oid]);
+    }
+    await pool.query('CREATE FOREIGN DATA WRAPPER editorial_test_fdw NO HANDLER');
+    try {
+      await pool.query(
+        'CREATE SERVER editorial_test_server FOREIGN DATA WRAPPER editorial_test_fdw',
+      );
+      try {
+        for (const target of [
+          'FOREIGN SERVER editorial_test_server',
+          'FOREIGN DATA WRAPPER editorial_test_fdw',
+        ]) {
+          await pool.query(`GRANT USAGE ON ${target} TO PUBLIC`);
+          try {
+            await expectRejected();
+          } finally {
+            await pool.query(`REVOKE USAGE ON ${target} FROM PUBLIC`);
+          }
+        }
+      } finally {
+        await pool.query('DROP SERVER editorial_test_server');
+      }
+    } finally {
+      await pool.query('DROP FOREIGN DATA WRAPPER editorial_test_fdw');
+    }
+    const initialPublic = (
+      await admin.query(
+        "SELECT 1 FROM pg_tablespace t CROSS JOIN LATERAL aclexplode(t.spcacl) a WHERE t.spcname='pg_default' AND a.grantee=0",
+      )
+    ).rows;
+    expect(initialPublic).toEqual([]);
+    await admin.query('GRANT CREATE ON TABLESPACE pg_default TO PUBLIC');
+    try {
+      await expectRejected();
+    } finally {
+      await admin.query('REVOKE CREATE ON TABLESPACE pg_default FROM PUBLIC');
+    }
+    for (const [connection, role] of [
+      [reader, 'reader'],
+      [writer, 'writer'],
+    ]) {
+      const client = await connection.connect();
+      try {
+        await assertEditorialRole(client, role);
+      } finally {
+        client.release();
+      }
+    }
+  });
   it('publishes one immutable receipt, compares revisions, and withdraws without reviving older publications', async () => {
     const { request, material } = editorialFixture();
     await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
