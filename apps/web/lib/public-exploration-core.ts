@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import type { SeedEntity } from '@hzense/content';
 import type { SignalEntry, PublicSignalPerson } from './public-signal-reader-core.ts';
+import { signalPublication, toUnifiedSignal } from './unified-signal-core.ts';
 
 export const signalPageSize = 12;
 export type ExplorationParams = Record<string, string | string[] | undefined>;
@@ -26,7 +28,7 @@ export interface SignalFilters {
 
 /** Eligibility is granted by the public readers, never inferred from Seed status. */
 export function isCurrentSignal(entry: SignalEntry): boolean {
-  return entry.publication_basis === 'manual_confirmation' || entry.public_version !== undefined;
+  return signalPublication(entry).state === 'published';
 }
 
 function first(params: ExplorationParams, key: string): string {
@@ -87,6 +89,28 @@ function normalized(value: string): string {
   return value.normalize('NFKC').toLocaleLowerCase('zh-CN');
 }
 
+/** A name filter is not an entity ID and cannot be used as a resource URL. */
+export function signalNameFilterKey(name: string): string {
+  return `name:${createHash('sha256').update(normalized(name).trim()).digest('hex')}`;
+}
+
+export function nameOnlySignalFilters(
+  signals: readonly SignalEntry[],
+  kind: 'person' | 'organization',
+): { id: string; name: string }[] {
+  const names = new Map<string, string>();
+  for (const signal of signals) {
+    const unified = toUnifiedSignal(signal);
+    const rows = kind === 'person' ? unified.people : unified.organizations;
+    for (const row of rows) {
+      if (row.id !== null) continue;
+      const key = signalNameFilterKey(row.name);
+      if (!names.has(key)) names.set(key, row.name);
+    }
+  }
+  return [...names].map(([id, name]) => ({ id, name }));
+}
+
 function filterKey(filters: SignalFilters): string {
   return JSON.stringify([
     filters.archive,
@@ -122,21 +146,36 @@ export function selectSignals(
           if (filters.domain && !signalDomainIds(entry, topics).includes(filters.domain))
             return false;
           if (filters.topic && !entry.topics.includes(filters.topic)) return false;
+          const unified = toUnifiedSignal(entry);
           const people =
-            entry.public_people ??
-            entry.entities
-              .filter((id) => entities.get(id)?.type === 'person')
-              .map((id) => ({ id }));
+            isCurrentSignal(entry) && entry.public_people !== undefined
+              ? unified.people
+              : entry.entities
+                  .filter((id) => entities.get(id)?.type === 'person')
+                  .map((id) => ({ id, name: entities.get(id)?.name ?? id, eventRole: '' }));
           const organizations =
-            entry.public_organizations ??
-            entry.entities
-              .filter((id) => ['company', 'institution'].includes(entities.get(id)?.type ?? ''))
-              .map((id) => ({ id }));
-          if (filters.person && !people.some((person) => person.id === filters.person))
+            isCurrentSignal(entry) && entry.public_organizations !== undefined
+              ? unified.organizations
+              : entry.entities
+                  .filter((id) => ['company', 'institution'].includes(entities.get(id)?.type ?? ''))
+                  .map((id) => ({ id, name: entities.get(id)?.name ?? id, eventRole: '' }));
+          if (
+            filters.person &&
+            !people.some((person) =>
+              filters.person.startsWith('name:')
+                ? person.id === null && signalNameFilterKey(person.name) === filters.person
+                : person.id === filters.person,
+            )
+          )
             return false;
           if (
             filters.organization &&
-            !organizations.some((organization) => organization.id === filters.organization)
+            !organizations.some((organization) =>
+              filters.organization.startsWith('name:')
+                ? organization.id === null &&
+                  signalNameFilterKey(organization.name) === filters.organization
+                : organization.id === filters.organization,
+            )
           )
             return false;
           const text = normalized(
@@ -264,9 +303,11 @@ export function buildPublicEntityDirectory(
     (a, b) => b.occurred_at.localeCompare(a.occurred_at) || a.id.localeCompare(b.id),
   );
   for (const signal of sorted) {
-    for (const person of signal.public_people ?? []) add(person.id, person.name, 'person');
-    for (const organization of signal.public_organizations ?? [])
-      add(organization.id, organization.name, 'institution');
+    const unified = toUnifiedSignal(signal);
+    for (const person of unified.people)
+      if (person.id !== null) add(person.id, person.name, 'person');
+    for (const organization of unified.organizations)
+      if (organization.id !== null) add(organization.id, organization.name, 'institution');
   }
   for (const entity of seedEntities)
     if (entity.status === 'active') add(entity.id, entity.name, entity.type);
@@ -274,9 +315,9 @@ export function buildPublicEntityDirectory(
   for (const signal of sorted) {
     const ids = new Set(
       isCurrentSignal(signal)
-        ? [...(signal.public_people ?? []), ...(signal.public_organizations ?? [])].map(
-            (entry) => entry.id,
-          )
+        ? [...toUnifiedSignal(signal).people, ...toUnifiedSignal(signal).organizations]
+            .map((entry) => entry.id)
+            .filter((id): id is string => id !== null)
         : signal.entities,
     );
     for (const id of ids) {
@@ -286,11 +327,15 @@ export function buildPublicEntityDirectory(
       entity.latestAt ??= signal.occurred_at;
       const time = new Date(signal.occurred_at).getTime();
       if (time >= cutoff && time <= now.getTime()) entity.recentCount += 1;
-      for (const person of signal.public_people ?? []) {
+      for (const person of signal.publication_basis === 'manual_confirmation'
+        ? []
+        : (signal.public_people ?? [])) {
         if (person.id !== id && !entity.relatedPeople.some((item) => item.id === person.id))
           entity.relatedPeople.push(person);
       }
-      for (const organization of signal.public_organizations ?? []) {
+      for (const organization of signal.publication_basis === 'manual_confirmation'
+        ? []
+        : (signal.public_organizations ?? [])) {
         if (
           organization.id !== id &&
           !entity.relatedOrganizations.some((item) => item.id === organization.id)

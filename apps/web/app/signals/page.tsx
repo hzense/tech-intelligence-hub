@@ -7,6 +7,7 @@ import { getPublicExploration } from '@/lib/public-exploration-runtime';
 import {
   buildPublicEntityDirectory,
   isCurrentSignal,
+  nameOnlySignalFilters,
   parseSignalFilters,
   selectSignals,
   signalDomainIds,
@@ -33,6 +34,8 @@ export default async function SignalsPage({
     filters.archive ? !isCurrentSignal(entry) : isCurrentSignal(entry),
   );
   const entities = buildPublicEntityDirectory(scope, filters.archive ? data.seedEntities : []);
+  const namedPeople = nameOnlySignalFilters(scope, 'person');
+  const namedOrganizations = nameOnlySignalFilters(scope, 'organization');
   const domains = data.taxonomy.topics.filter((topic) => !topic.parentId);
   const groups = new Map<string, typeof result.entries>();
   for (const entry of result.entries) {
@@ -137,6 +140,11 @@ export default async function SignalsPage({
                     {entity.name}
                   </option>
                 ))}
+              {namedPeople.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}（按名称）
+                </option>
+              ))}
             </select>
           </label>
           <label>
@@ -150,6 +158,11 @@ export default async function SignalsPage({
                     {entity.name}
                   </option>
                 ))}
+              {namedOrganizations.map((organization) => (
+                <option key={organization.id} value={organization.id}>
+                  {organization.name}（按名称）
+                </option>
+              ))}
             </select>
           </label>
           <label>

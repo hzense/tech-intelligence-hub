@@ -6,8 +6,10 @@ import { URL } from 'node:url';
 import {
   buildPublicEntityDirectory,
   isCurrentSignal,
+  nameOnlySignalFilters,
   parseSignalFilters,
   selectSignals,
+  signalNameFilterKey,
   signalDomainIds,
   signalFilterHref,
 } from '../lib/public-exploration-core.ts';
@@ -223,6 +225,32 @@ test('activity ranking orders current organizations by actual recent distinct Si
       ['org-b', 1],
     ],
   );
+});
+test('manual names can be filtered without becoming fake person or organization identities', () => {
+  const manual = signal({
+    id: 'editorial-example',
+    type: 'editorial',
+    publication_basis: 'manual_confirmation',
+    public_version: undefined,
+    public_people: [{ id: 'person-0', name: '张三', event_role: '' }],
+    public_organizations: [{ id: 'organization-0', name: '测试研究院', event_role: '' }],
+  });
+  const personKey = signalNameFilterKey('张三');
+  const organizationKey = signalNameFilterKey('测试研究院');
+  assert.deepEqual(nameOnlySignalFilters([manual], 'person'), [{ id: personKey, name: '张三' }]);
+  assert.deepEqual(nameOnlySignalFilters([manual], 'organization'), [
+    { id: organizationKey, name: '测试研究院' },
+  ]);
+  assert.equal(selectSignals([manual], parseSignalFilters({ person: personKey }), topics).total, 1);
+  assert.equal(
+    selectSignals([manual], parseSignalFilters({ organization: organizationKey }), topics).total,
+    1,
+  );
+  assert.equal(
+    selectSignals([manual], parseSignalFilters({ person: 'person-a' }), topics).total,
+    0,
+  );
+  assert.deepEqual(buildPublicEntityDirectory([manual]), []);
 });
 test('all new public routes are dynamic and read from the configured public authority', async () => {
   const source = (path) => readFile(new URL(path, import.meta.url), 'utf8');

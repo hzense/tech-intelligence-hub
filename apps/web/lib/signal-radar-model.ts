@@ -1,4 +1,5 @@
 import type { SignalEntry } from './public-signal-reader-core.ts';
+import { toUnifiedSignal } from './unified-signal-core.ts';
 import {
   isCurrentSignal,
   signalDomainIds,
@@ -134,7 +135,7 @@ export function buildSignalRadar(
     .filter((entry) => Date.parse(entry.occurred_at) >= start)
     .map((signal) => {
       const ageHours = (asOf - Date.parse(signal.occurred_at)) / 3_600_000;
-      const importance = signal.importance;
+      const importance = toUnifiedSignal(signal).assessment?.importance ?? null;
       return {
         signal,
         ageHours,

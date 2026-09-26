@@ -6,6 +6,7 @@ import { formatZhDate, getTopicTitleMap } from '@/lib/content-runtime';
 import { formatPercentage, formatSignalType, formatSourceType } from '@/lib/signal-presentation';
 import { getSeedEntityMap, getSeedSourceMap, getSignalEntryById } from '@/lib/seed-runtime';
 import { isCurrentSignal } from '@/lib/public-exploration-core';
+import { toUnifiedSignal } from '@/lib/unified-signal-core';
 
 interface SignalDetailProps {
   params: Promise<{ id: string }>;
@@ -48,6 +49,7 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
   ]);
   if (!entry) notFound();
 
+  const unified = toUnifiedSignal(entry);
   const source = sourceMap.get(entry.source_id);
 
   return (
@@ -59,7 +61,7 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
         <header className="article-header">
           <div className="article-meta">
             {!isCurrentSignal(entry) ? <span>历史信号档案</span> : null}
-            <span>{formatSignalType(entry.type)}</span>
+            <span>{unified.type ? formatSignalType(unified.type) : '未分类'}</span>
             <time dateTime={entry.occurred_at}>{formatZhDate(entry.occurred_at.slice(0, 10))}</time>
           </div>
           <h1>{entry.title}</h1>
@@ -70,25 +72,25 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
             <span className="topic-section-label">信号判断</span>
             <h2>为什么值得记录</h2>
             <p>{entry.analysis ?? entry.summary}</p>
-            {entry.publication_basis === 'manual_confirmation' ? (
+            {unified.assessment === null ? (
               <p>管理员确认</p>
             ) : (
               <div className="signal-dimension-grid">
                 <div>
                   <span>重要度</span>
-                  <strong>{entry.importance}/5</strong>
+                  <strong>{unified.assessment.importance}/5</strong>
                 </div>
                 <div>
                   <span>强度</span>
-                  <strong>{entry.strength}/5</strong>
+                  <strong>{unified.assessment.strength}/5</strong>
                 </div>
                 <div>
                   <span>置信度</span>
-                  <strong>{formatPercentage(entry.confidence)}</strong>
+                  <strong>{formatPercentage(unified.assessment.confidence)}</strong>
                 </div>
                 <div>
                   <span>新颖度</span>
-                  <strong>{formatPercentage(entry.novelty)}</strong>
+                  <strong>{formatPercentage(unified.assessment.novelty)}</strong>
                 </div>
               </div>
             )}
@@ -143,27 +145,33 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
               </div>
             </section>
             <section>
-              <span>{entry.public_people ? '关键人物与相关组织' : '关联实体'}</span>
+              <span>
+                {unified.publication.basis === 'legacy_seed' ? '关联实体' : '关键人物与相关组织'}
+              </span>
               <div className="context-link-list">
-                {entry.public_people ? (
+                {unified.publication.basis !== 'legacy_seed' ? (
                   [
-                    ...entry.public_people.map((person) => ({ ...person, kind: 'person' })),
-                    ...(entry.public_organizations ?? []).map((organization) => ({
+                    ...unified.people.map((person) => ({ ...person, kind: 'person' })),
+                    ...unified.organizations.map((organization) => ({
                       ...organization,
                       kind: 'organization',
                     })),
                   ].map((person, index) => (
-                    <p key={`${person.id}:${person.event_role}:${index}`}>
-                      <Link
-                        href={
-                          person.kind === 'person'
-                            ? `/persons/${person.id}`
-                            : `/resources/${person.id}`
-                        }
-                      >
-                        {person.name}
-                      </Link>
-                      {person.event_role ? ` · ${person.event_role}` : ''}
+                    <p key={`${person.id}:${person.eventRole}:${index}`}>
+                      {person.id ? (
+                        <Link
+                          href={
+                            person.kind === 'person'
+                              ? `/persons/${person.id}`
+                              : `/resources/${person.id}`
+                          }
+                        >
+                          {person.name}
+                        </Link>
+                      ) : (
+                        <span>{person.name}</span>
+                      )}
+                      {person.eventRole ? ` · ${person.eventRole}` : ''}
                     </p>
                   ))
                 ) : (

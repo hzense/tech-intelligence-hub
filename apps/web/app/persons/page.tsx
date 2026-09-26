@@ -36,7 +36,9 @@ export default async function PersonsPage({
         <section className="page-hero">
           <p className="kicker">HZENSE PEOPLE</p>
           <h1>在事件中理解关键人物。</h1>
-          <p>按近 30 天公开关联信号数排序。同名不自动合并，不根据组织新闻猜测人物或职位。</p>
+          <p>
+            已登记人物按近 30 天公开关联信号数排序。同名不自动合并；仅有姓名的关联保留在信号页。
+          </p>
         </section>
         <nav className={styles.toolbar}>
           <Link className={styles.button} href="/resources">
