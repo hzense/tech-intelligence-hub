@@ -5,7 +5,13 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**", ".generation-worker/**"]
+      "outputs": [
+        "dist/**",
+        ".next/**",
+        "!.next/cache/**",
+        ".generation-worker/**",
+        ".automation-worker/**"
+      ]
     },
     "@hzense/ingestion#build": { "dependsOn": ["^build"], "outputs": [] },
     "lint": { "dependsOn": ["^lint"] },

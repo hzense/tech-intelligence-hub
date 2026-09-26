@@ -51,22 +51,23 @@ async function getFirstDailyHref(page: Page): Promise<string> {
   return href as string;
 }
 
-test('home and Daily routes render with canonical metadata', async ({ page }) => {
+test('Radar homepage and historical Daily routes render with canonical metadata', async ({
+  page,
+}) => {
   const dailyEntries = await getPublishedDailyEntries();
   const latest = dailyEntries[0];
   if (!latest) throw new Error('Daily smoke tests require published content');
   await page.goto('/');
-  await expect(page).toHaveTitle('HZense — 科技情报');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('感知科技的变化');
+  await expect(page).toHaveTitle('雷达 · 当前技术态势');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('当前技术态势');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://hzense.com');
-  await expect(page.getByRole('link', { name: '探索技术雷达' })).toHaveAttribute('href', '/radar');
-  await expect(page.getByRole('link', { name: '打开技术雷达' })).toHaveAttribute('href', '/radar');
+  await expect(page.getByRole('heading', { level: 2, name: '近期信号 TOP 10' })).toBeVisible();
   if ((page.viewportSize()?.width ?? 0) > 700) {
     await expect(
       page
         .getByRole('navigation', { name: '主导航' })
         .getByRole('link', { name: '雷达', exact: true }),
-    ).toHaveAttribute('href', '/radar');
+    ).toHaveAttribute('href', '/');
   }
 
   await page.goto('/daily');
@@ -122,37 +123,21 @@ test('baseline security headers are returned', async ({ request }) => {
   expect(response.headers()['permissions-policy']).toContain('camera=()');
 });
 
-test('Insights list and detail routes render validated content', async ({ page, request }) => {
+test('legacy Insights index redirects to Topic insights', async ({ page }) => {
   await page.goto('/insights');
-  await expect(page).toHaveTitle('洞察 · HZense');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('把信号转化为判断');
+  await expect(page).toHaveURL(/\/topics$/);
+  await expect(page).toHaveTitle('专题洞察 · HZense');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('从信号中形成判断');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
-    'https://hzense.com/insights',
-  );
-
-  const detailHref = await page.locator('a.insight-index-card').first().getAttribute('href');
-  expect(detailHref).toMatch(/^\/insights\/[^/]+$/);
-
-  const sitemapResponse = await request.get('/sitemap.xml');
-  expect(await sitemapResponse.text()).toContain(`https://hzense.com${detailHref}`);
-
-  await page.goto(detailHref as string);
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  const article = page.locator('article.insight-detail-body');
-  await expect(article).toBeVisible();
-  await expect(article.locator('section.insight-section').first()).toBeVisible();
-  await expect(article.getByRole('heading', { level: 2 }).first()).toBeVisible();
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-    'href',
-    `https://hzense.com${detailHref}`,
+    'https://hzense.com/topics',
   );
 });
 
 test('Topics list and detail routes connect related intelligence', async ({ page, request }) => {
   await page.goto('/topics');
-  await expect(page).toHaveTitle('专题 · HZense');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('持续跟踪技术变化');
+  await expect(page).toHaveTitle('专题洞察 · HZense');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('从信号中形成判断');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     'https://hzense.com/topics',
@@ -166,9 +151,8 @@ test('Topics list and detail routes connect related intelligence', async ({ page
 
   await page.goto(detailHref as string);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.locator('article.topic-overview')).toBeVisible();
-  await expect(page.locator('aside.topic-metrics-panel')).toBeVisible();
-  await expect(page.locator('section.topic-related-section')).toBeVisible();
+  await expect(page.locator('header.article-header')).toBeVisible();
+  await expect(page.locator('section.topic-related-section').first()).toBeVisible();
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     `https://hzense.com${detailHref}`,
@@ -209,7 +193,7 @@ test('Weekly list and detail routes connect Daily and Topic evidence', async ({
   );
 });
 
-test('Signals list and detail routes expose traceable seed intelligence', async ({
+test('Signals separate current publication from historical Seed archives', async ({
   page,
   request,
 }) => {
@@ -220,27 +204,29 @@ test('Signals list and detail routes expose traceable seed intelligence', async 
     'href',
     'https://hzense.com/signals',
   );
+  await expect(
+    page.getByRole('navigation', { name: '信号范围' }).getByRole('link', { name: '历史档案' }),
+  ).toHaveAttribute('href', '/signals?archive=1');
 
-  const detailHref = await page.locator('a.signal-index-card').first().getAttribute('href');
+  await page.goto('/signals?archive=1');
+  const detailHref = await page
+    .locator('main article h3 a[href^="/signals/"]')
+    .first()
+    .getAttribute('href');
   expect(detailHref).toMatch(/^\/signals\/[^/]+$/);
-
   const sitemapResponse = await request.get('/sitemap.xml');
-  expect(await sitemapResponse.text()).toContain(`https://hzense.com${detailHref}`);
-
+  expect(await sitemapResponse.text()).toContain('https://hzense.com' + detailHref);
   await page.goto(detailHref as string);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('article.signal-detail-body')).toBeVisible();
   await expect(page.locator('aside.signal-context-panel')).toBeVisible();
-  await expect(page.locator('a.signal-source-link')).toHaveAttribute('href', /^https:\/\//);
-  await expect(page.locator('a.signal-source-link')).toHaveAttribute('target', '_blank');
-  await expect(page.locator('a.signal-source-link')).toHaveAttribute('rel', 'noopener noreferrer');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
-    `https://hzense.com${detailHref}`,
+    'https://hzense.com' + detailHref,
   );
 });
 
-test('Resources list and detail routes connect entities, relations, and Signals', async ({
+test('Resources preserve historical entity details and show current scope separately', async ({
   page,
   request,
 }) => {
@@ -251,189 +237,50 @@ test('Resources list and detail routes connect entities, relations, and Signals'
     'href',
     'https://hzense.com/resources',
   );
+  await expect(
+    page.getByRole('navigation', { name: '资源范围' }).getByRole('link', { name: '关键人物' }),
+  ).toHaveAttribute('href', '/persons');
 
-  const detailHref = await page.locator('a.resource-index-card').first().getAttribute('href');
+  await page.goto('/resources?archive=1&type=all');
+  const detailHref = await page
+    .locator('main section[aria-label="资源列表"] article h2 a[href^="/resources/"]')
+    .first()
+    .getAttribute('href');
   expect(detailHref).toMatch(/^\/resources\/[^/]+$/);
-
   const sitemapResponse = await request.get('/sitemap.xml');
-  expect(await sitemapResponse.text()).toContain(`https://hzense.com${detailHref}`);
-
+  expect(await sitemapResponse.text()).toContain('https://hzense.com' + detailHref);
   await page.goto(detailHref as string);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.locator('.resource-detail-grid')).toBeVisible();
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-    'href',
-    `https://hzense.com${detailHref}`,
-  );
+  await expect(page.locator('main.article-main')).toBeVisible();
 });
 
-test('Radar visualizes and filters traceable technology assessments', async ({ page, request }) => {
+test('Radar is the homepage and does not invent an unsupported heat score', async ({
+  page,
+  request,
+}) => {
   await page.goto('/radar');
-  await expect(page).toHaveTitle('科技雷达 · HZense');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('看清技术所处的位置');
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-    'href',
-    'https://hzense.com/radar',
-  );
-  const radarEntries = page.locator('.radar-entry-card');
-  await expect(radarEntries.first()).toBeVisible();
-  const unfilteredCount = await radarEntries.count();
-  expect(unfilteredCount).toBeGreaterThan(0);
-  await expect(radarEntries.locator('a[href^="/signals/"]').first()).toBeVisible();
-  await expect(radarEntries.locator('a[href^="/resources/"]').first()).toBeVisible();
-  await expect(radarEntries.locator('.radar-assessment')).toHaveCount(unfilteredCount);
-
-  const evidenceShape = await radarEntries.evaluateAll((cards) =>
-    cards.map((card) => ({
-      evidenceSignals: [...card.querySelectorAll('.radar-scoring-evidence a[href^="/signals/"]')]
-        .map((link) => link.getAttribute('href'))
-        .filter((href): href is string => Boolean(href)),
-      sourceLinks: [...card.querySelectorAll('a.radar-evidence-source')].map((link) => ({
-        href: link.getAttribute('href'),
-        rel: link.getAttribute('rel'),
-        target: link.getAttribute('target'),
-      })),
-      relatedSignals: [...card.querySelectorAll('.radar-related-context a[href^="/signals/"]')]
-        .map((link) => link.getAttribute('href'))
-        .filter((href): href is string => Boolean(href)),
-      reasoning: card.querySelector('.radar-assessment p')?.textContent?.trim() ?? '',
-    })),
-  );
-  for (const entry of evidenceShape) {
-    expect(entry.reasoning.length).toBeGreaterThan(0);
-    expect(entry.evidenceSignals.length).toBeGreaterThan(0);
-    expect(new Set(entry.evidenceSignals).size).toBe(entry.evidenceSignals.length);
-    expect(entry.sourceLinks).toHaveLength(entry.evidenceSignals.length);
-    expect(
-      entry.sourceLinks.every(
-        ({ href, rel, target }) =>
-          href?.startsWith('https://') && rel === 'noopener noreferrer' && target === '_blank',
-      ),
-    ).toBeTruthy();
-    expect(
-      entry.relatedSignals.every((href) => !entry.evidenceSignals.includes(href)),
-    ).toBeTruthy();
-  }
-
-  const evidenceHrefs = await radarEntries
-    .locator('a.radar-topic-link, a[href^="/signals/"], a[href^="/resources/"]')
-    .evaluateAll((links) => [
-      ...new Set(
-        links
-          .map((link) => link.getAttribute('href'))
-          .filter((href): href is string => Boolean(href)),
-      ),
-    ]);
-  expect(evidenceHrefs.some((href) => href.startsWith('/topics/'))).toBeTruthy();
-  expect(evidenceHrefs.some((href) => href.startsWith('/signals/'))).toBeTruthy();
-  expect(evidenceHrefs.some((href) => href.startsWith('/resources/'))).toBeTruthy();
-  for (const href of evidenceHrefs) {
-    const response = await request.get(href);
-    expect(response.ok(), `${href} returned ${response.status()}`).toBeTruthy();
-  }
-
-  const firstEvidenceSignalHref = evidenceShape[0]?.evidenceSignals[0];
-  const firstEvidenceSourceHref = evidenceShape[0]?.sourceLinks[0]?.href;
-  expect(firstEvidenceSignalHref).toBeTruthy();
-  expect(firstEvidenceSourceHref).toMatch(/^https:\/\//);
-  await page.goto(firstEvidenceSignalHref as string);
-  await expect(page.locator('a.signal-source-link')).toHaveAttribute(
-    'href',
-    firstEvidenceSourceHref as string,
-  );
-  await page.goto('/radar');
-
-  const radarMatrix = page.locator('.radar-matrix');
-  const radarNodes = page.locator('.radar-node');
-  if ((page.viewportSize()?.width ?? 0) <= 900) {
-    await expect(radarMatrix).toBeHidden();
-    await expect(page.getByRole('form', { name: '科技雷达筛选' })).toBeVisible();
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
-      ),
-    ).toBeFalsy();
-  } else {
-    await expect(radarMatrix).toBeVisible();
-    await expect(radarNodes).toHaveCount(unfilteredCount);
-    const nodeHrefs = await radarNodes.evaluateAll((nodes) =>
-      nodes.map((node) => node.getAttribute('href')),
-    );
-    expect(nodeHrefs.every((href) => href?.startsWith('/topics/'))).toBeTruthy();
-
-    const nodeBoxes = await radarNodes.evaluateAll((nodes) =>
-      nodes.map((node) => {
-        const box = node.getBoundingClientRect();
-        return { top: box.top, right: box.right, bottom: box.bottom, left: box.left };
-      }),
-    );
-    for (let leftIndex = 0; leftIndex < nodeBoxes.length; leftIndex += 1) {
-      for (let rightIndex = leftIndex + 1; rightIndex < nodeBoxes.length; rightIndex += 1) {
-        const leftBox = nodeBoxes[leftIndex];
-        const rightBox = nodeBoxes[rightIndex];
-        expect(leftBox && rightBox).toBeTruthy();
-        if (!leftBox || !rightBox) continue;
-        const horizontalOverlap =
-          Math.min(leftBox.right, rightBox.right) - Math.max(leftBox.left, rightBox.left);
-        const verticalOverlap =
-          Math.min(leftBox.bottom, rightBox.bottom) - Math.max(leftBox.top, rightBox.top);
-        expect(
-          horizontalOverlap <= 1 || verticalOverlap <= 1,
-          `Radar nodes ${leftIndex} and ${rightIndex} overlap`,
-        ).toBeTruthy();
-      }
-    }
-  }
-
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveTitle('雷达 · 当前技术态势');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('当前技术态势');
+  await expect(page.getByRole('heading', { level: 2, name: '近期信号 TOP 10' })).toBeVisible();
+  await expect(page.getByText('未评估', { exact: true })).toBeVisible();
+  await expect(page.locator('nav.desktop-nav a[href="/"]')).toHaveAttribute('href', '/');
+  expect(await page.locator('ol li').count()).toBeLessThanOrEqual(10);
   const sitemapResponse = await request.get('/sitemap.xml');
-  expect(await sitemapResponse.text()).toContain('https://hzense.com/radar');
-
-  await page.getByLabel('领域').selectOption('security');
-  await page.getByLabel('成熟阶段').selectOption('emerging');
-  await page.getByLabel('趋势').selectOption('growth');
-  await page.getByRole('button', { name: '应用筛选' }).click();
-  const filteredUrl = new URL(page.url());
-  expect(filteredUrl.searchParams.get('domain')).toBe('security');
-  expect(filteredUrl.searchParams.get('maturity')).toBe('emerging');
-  expect(filteredUrl.searchParams.get('trend')).toBe('growth');
-  await expect(page.getByLabel('领域')).toHaveValue('security');
-  await expect(page.getByLabel('成熟阶段')).toHaveValue('emerging');
-  await expect(page.getByLabel('趋势')).toHaveValue('growth');
-  await expect(radarEntries.first()).toBeVisible();
-
-  const filteredCount = await radarEntries.count();
-  expect(filteredCount).toBeGreaterThan(0);
-  expect(filteredCount).toBeLessThan(unfilteredCount);
-  const filteredDomains = await radarEntries.locator('.radar-entry-heading span').allTextContents();
-  expect(filteredDomains).toHaveLength(filteredCount);
-  expect(filteredDomains.every((domain) => domain.trim() === '安全')).toBeTruthy();
-  const filteredEntryText = await radarEntries.allTextContents();
-  expect(
-    filteredEntryText.every(
-      (entryText) => entryText.includes('涌现期') && entryText.includes('上升'),
-    ),
-  ).toBeTruthy();
-
-  await page.reload();
-  await expect(page.getByLabel('领域')).toHaveValue('security');
-  await expect(page.getByLabel('成熟阶段')).toHaveValue('emerging');
-  await expect(page.getByLabel('趋势')).toHaveValue('growth');
-  await expect(radarEntries).toHaveCount(filteredCount);
-
-  await page.goto('/radar?domain=security&maturity=mature&trend=rapid_decline');
+  expect(await sitemapResponse.text()).toContain('https://hzense.com');
+  await page
+    .getByRole('navigation', { name: '热点时间窗口' })
+    .getByRole('link', { name: '24 小时' })
+    .click();
+  await expect(page).toHaveURL(/\/\?range=24h/);
   await expect(
-    page.getByRole('heading', { level: 2, name: '当前筛选条件下没有雷达条目。' }),
-  ).toBeVisible();
-  await expect(radarEntries).toHaveCount(0);
-  await expect(radarMatrix).toHaveCount(0);
-  await page.getByRole('link', { name: '查看全部雷达' }).click();
-  await expect(page).toHaveURL(/\/radar$/);
-  await expect(radarEntries.first()).toBeVisible();
+    page.getByRole('navigation', { name: '热点时间窗口' }).getByRole('link', { name: '24 小时' }),
+  ).toHaveAttribute('aria-current', 'page');
 });
 
 test('mobile navigation keeps every primary route reachable', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/');
+  await page.goto('/signals');
 
   const desktopNavigation = page.getByRole('navigation', { name: '主导航' });
   const menuButton = page.locator('.mobile-menu-toggle');
@@ -451,8 +298,8 @@ test('mobile navigation keeps every primary route reachable', async ({ page }) =
   await expect(mobileNavigation.getByRole('link', { name: '雷达' })).toBeVisible();
 
   await mobileNavigation.getByRole('link', { name: '雷达' }).click();
-  await expect(page).toHaveURL(/\/radar$/);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('看清技术所处的位置');
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('当前技术态势');
   await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
   await expect(mobileNavigation).toBeHidden();
 });

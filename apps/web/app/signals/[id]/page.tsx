@@ -5,6 +5,7 @@ import { SiteShell } from '@/components/site-shell';
 import { formatZhDate, getTopicTitleMap } from '@/lib/content-runtime';
 import { formatPercentage, formatSignalType, formatSourceType } from '@/lib/signal-presentation';
 import { getSeedEntityMap, getSeedSourceMap, getSignalEntryById } from '@/lib/seed-runtime';
+import { isCurrentSignal } from '@/lib/public-exploration-core';
 
 interface SignalDetailProps {
   params: Promise<{ id: string }>;
@@ -57,6 +58,7 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
         </Link>
         <header className="article-header">
           <div className="article-meta">
+            {!isCurrentSignal(entry) ? <span>历史信号档案</span> : null}
             <span>{formatSignalType(entry.type)}</span>
             <time dateTime={entry.occurred_at}>{formatZhDate(entry.occurred_at.slice(0, 10))}</time>
           </div>
@@ -144,14 +146,26 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
               <span>{entry.public_people ? '关键人物与相关组织' : '关联实体'}</span>
               <div className="context-link-list">
                 {entry.public_people ? (
-                  [...entry.public_people, ...(entry.public_organizations ?? [])].map(
-                    (person, index) => (
-                      <p key={`${person.id}:${person.event_role}:${index}`}>
-                        <strong>{person.name}</strong>
-                        {person.event_role ? ` · ${person.event_role}` : ''}
-                      </p>
-                    ),
-                  )
+                  [
+                    ...entry.public_people.map((person) => ({ ...person, kind: 'person' })),
+                    ...(entry.public_organizations ?? []).map((organization) => ({
+                      ...organization,
+                      kind: 'organization',
+                    })),
+                  ].map((person, index) => (
+                    <p key={`${person.id}:${person.event_role}:${index}`}>
+                      <Link
+                        href={
+                          person.kind === 'person'
+                            ? `/persons/${person.id}`
+                            : `/resources/${person.id}`
+                        }
+                      >
+                        {person.name}
+                      </Link>
+                      {person.event_role ? ` · ${person.event_role}` : ''}
+                    </p>
+                  ))
                 ) : (
                   <>
                     {entry.entities.map((entity) => (

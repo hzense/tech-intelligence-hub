@@ -36,7 +36,11 @@ export const nextConfig: NextConfig = {
   transpilePackages: ['@hzense/content'],
   outputFileTracingRoot: repositoryRoot,
   outputFileTracingIncludes: {
-    '/.well-known/workflow/v1/step': ['./.generation-worker/worker.cjs'],
+    '/.well-known/workflow/v1/step': [
+      './.generation-worker/worker.cjs',
+      './.automation-worker/worker.cjs',
+    ],
+    '/api/admin/automation': ['./.automation-worker/worker.cjs'],
     '/': contentTrace,
     '/daily': contentTrace,
     '/daily/[date]': contentTrace,
@@ -44,6 +48,8 @@ export const nextConfig: NextConfig = {
     '/weekly/[week]': contentTrace,
     '/insights': contentTrace,
     '/insights/[id]': contentTrace,
+    '/persons': contentTrace,
+    '/persons/[id]': contentTrace,
     '/radar': contentTrace,
     '/resources': contentTrace,
     '/resources/[id]': contentTrace,
@@ -52,6 +58,7 @@ export const nextConfig: NextConfig = {
     '/signals/[id]': contentTrace,
     '/topics': contentTrace,
     '/topics/[id]': contentTrace,
+    '/topics/[id]/editions/[edition]': contentTrace,
     '/sitemap.xml': contentTrace,
   },
 };

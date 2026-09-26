@@ -1,0 +1,152 @@
+.main {
+  padding-block: 2rem 5rem;
+  display: grid;
+  gap: 1.5rem;
+}
+.header {
+  max-width: 76ch;
+}
+.header h1 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  margin: 0.4rem 0;
+}
+.card {
+  border: 1px solid #d7dce6;
+  border-radius: 18px;
+  background: #fff;
+  padding: 1.5rem;
+}
+.card h2 {
+  font-size: 1.35rem;
+  margin: 0;
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.form label {
+  display: grid;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+.form input:not([type='checkbox']),
+.form select,
+.form textarea {
+  border: 1px solid #8b94aa;
+  border-radius: 10px;
+  padding: 0.7rem;
+  font: inherit;
+  min-width: 0;
+  background: #fff;
+  color: #18233b;
+}
+.form input[type='checkbox'] {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+.form .check {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+.full {
+  grid-column: 1/-1;
+}
+.topics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.5rem;
+}
+.topics label {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+}
+.tableWrap {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+.tableWrap table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.tableWrap th,
+.tableWrap td {
+  padding: 0.8rem;
+  border-bottom: 1px solid #e3e6ef;
+  vertical-align: top;
+}
+.tableWrap small {
+  display: block;
+  color: #53617b;
+  overflow-wrap: anywhere;
+}
+.tableWrap pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-width: 60ch;
+}
+.main button {
+  border: 1px solid #75809a;
+  border-radius: 10px;
+  background: #f7f8fb;
+  color: #172642;
+  padding: 0.55rem 0.8rem;
+  font: inherit;
+  cursor: pointer;
+  margin-right: 0.3rem;
+}
+.main button:hover {
+  background: #e7edfb;
+}
+.main button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.message {
+  padding: 1rem;
+  background: #eff6ff;
+  border-radius: 10px;
+}
+@media (max-width: 700px) {
+  .form {
+    grid-template-columns: 1fr;
+  }
+  .card {
+    padding: 1rem;
+  }
+  .row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+.report {
+  max-width: 64ch;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+.report a {
+  display: block;
+  text-decoration: underline;
+  margin: 0.3rem 0;
+}
+.report section {
+  padding-block: 0.6rem;
+  border-top: 1px solid #e3e6ef;
+}
+.report section p {
+  white-space: pre-wrap;
+}
+.report section a {
+  display: inline-block;
+  margin-right: 0.5rem;
+}

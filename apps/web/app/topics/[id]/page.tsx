@@ -1,152 +1,107 @@
 import type { Metadata } from 'next';
-import process from 'node:process';
-import { readSignalReadMode } from '@/lib/public-signal-reader-core';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { SiteShell } from '@/components/site-shell';
-import {
-  formatZhDate,
-  getDailyEntriesForTopic,
-  getInsightsForTopic,
-  getTopicEntries,
-  getTopicEntryById,
-} from '@/lib/content-runtime';
-import {
-  formatTopicMaturity,
-  formatTopicStatus,
-  formatTopicStrategicValue,
-  formatTopicTrend,
-} from '@/lib/topic-presentation';
+import { formatZhDate, getInsightsForTopic, getTopicEntryById } from '@/lib/content-runtime';
+import { getSignalEntries } from '@/lib/seed-runtime';
+import { isCurrentSignal } from '@/lib/public-exploration-core';
+import { visibleTopicInsights } from '@/lib/server/topic-insights';
+import { TopicInsightReport } from '@/components/topic-insight-report';
 
-interface TopicDetailProps {
+export const dynamic = 'force-dynamic';
+interface Props {
   params: Promise<{ id: string }>;
 }
-
-export async function generateStaticParams() {
-  if (readSignalReadMode(process.env) === 'database') return [];
-  return (await getTopicEntries()).map((entry) => ({ id: entry.frontMatter.id }));
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const entry = await getTopicEntryById((await params).id);
+  return entry
+    ? {
+        title: `${entry.frontMatter.title} · 专题洞察`,
+        description: entry.summary,
+        alternates: { canonical: `/topics/${entry.frontMatter.id}` },
+      }
+    : {};
 }
-
-export async function generateMetadata({ params }: TopicDetailProps): Promise<Metadata> {
+export default async function TopicDetailPage({ params }: Props) {
   const { id } = await params;
-  const entry = await getTopicEntryById(id);
-  if (!entry) return {};
-
-  const canonical = `/topics/${entry.frontMatter.id}`;
-  return {
-    title: entry.frontMatter.title,
-    description: entry.summary,
-    alternates: {
-      canonical,
-    },
-    openGraph: {
-      title: entry.frontMatter.title,
-      description: entry.summary,
-      url: canonical,
-      type: 'website',
-      images: [{ url: '/og.png', width: 1200, height: 630, alt: 'HZense 科技情报' }],
-    },
-  };
-}
-
-export default async function TopicDetailPage({ params }: TopicDetailProps) {
-  const { id } = await params;
-  const [entry, relatedInsights, relatedDailyEntries] = await Promise.all([
+  const [entry, signals, historical] = await Promise.all([
     getTopicEntryById(id),
+    getSignalEntries(),
     getInsightsForTopic(id),
-    getDailyEntriesForTopic(id),
   ]);
   if (!entry) notFound();
-
+  const current = signals.filter((s) => isCurrentSignal(s) && s.topics.includes(id));
+  const editions = (await visibleTopicInsights(signals)).filter((row) =>
+    row.result.topicIds.includes(id),
+  );
+  const latest = editions[0];
   return (
     <SiteShell>
       <main className="article-main section-shell">
         <Link className="back-link" href="/topics">
-          ← 返回全部专题
+          ← 返回专题洞察
         </Link>
         <header className="article-header">
-          <div className="article-meta">
-            <span>HZENSE 专题</span>
-            <span>{formatTopicStatus(entry.frontMatter.status)}</span>
-          </div>
+          <p className="kicker">专题洞察 · {latest ? '已确认报告' : '跟踪中'}</p>
           <h1>{entry.frontMatter.title}</h1>
           <p>{entry.summary}</p>
         </header>
-        <div className="topic-detail-grid">
-          <article className="topic-overview">
-            <span className="topic-section-label">专题脉络</span>
-            <h2>为什么值得持续关注</h2>
-            <p>{entry.summary}</p>
-            {entry.sections.map((section) => (
-              <section key={section.heading}>
-                <h2>{section.heading}</h2>
-                {section.paragraphs.map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
-                ))}
-              </section>
-            ))}
-          </article>
-          <aside className="topic-metrics-panel" aria-label="专题指标">
-            <div>
-              <span>关注度</span>
-              <strong>{entry.assessment?.attention ?? '—'}</strong>
-            </div>
-            <dl>
-              <div>
-                <dt>趋势</dt>
-                <dd>{formatTopicTrend(entry.assessment?.trend)}</dd>
-              </div>
-              <div>
-                <dt>成熟度</dt>
-                <dd>{formatTopicMaturity(entry.assessment?.maturity)}</dd>
-              </div>
-              <div>
-                <dt>战略价值</dt>
-                <dd>{formatTopicStrategicValue(entry.assessment?.strategic_value)}</dd>
-              </div>
-            </dl>
-          </aside>
-        </div>
+        {latest ? (
+          <TopicInsightReport result={latest.result} signals={signals} />
+        ) : (
+          <section className="topic-overview">
+            <h2>深度洞察正在积累证据</h2>
+            <p>
+              当前有 {current.length}{' '}
+              条正式信号；尚无已确认报告。自动分析默认每周一次，也可由管理员手动启动；任务未启用或证据不足时不会生成空报告。
+            </p>
+          </section>
+        )}
         <section className="topic-related-section">
-          <div className="section-heading">
-            <div>
-              <p className="kicker">关联情报</p>
-              <h2>沿专题继续阅读。</h2>
-            </div>
-          </div>
-          <div className="topic-related-grid">
-            <div>
-              <h3>深度洞察</h3>
-              {relatedInsights.length > 0 ? (
-                <div className="related-link-list">
-                  {relatedInsights.map((insight) => (
-                    <Link href={`/insights/${insight.frontMatter.id}`} key={insight.frontMatter.id}>
-                      <span>{formatZhDate(insight.frontMatter.date)}</span>
-                      <strong>{insight.frontMatter.title}</strong>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="related-empty">相关洞察正在形成。</p>
-              )}
-            </div>
-            <div>
-              <h3>每日简报</h3>
-              {relatedDailyEntries.length > 0 ? (
-                <div className="related-link-list">
-                  {relatedDailyEntries.map((daily) => (
-                    <Link href={`/daily/${daily.frontMatter.date}`} key={daily.frontMatter.id}>
-                      <span>{formatZhDate(daily.frontMatter.date)}</span>
-                      <strong>{daily.frontMatter.title}</strong>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="related-empty">暂无关联简报。</p>
-              )}
-            </div>
+          <h2>当前公开信号 · {current.length}</h2>
+          <Link className="back-link" href={`/signals?topic=${encodeURIComponent(id)}`}>
+            在信号页筛选此专题 →
+          </Link>
+          <div className="related-link-list">
+            {current.map((s) => (
+              <Link key={s.id} href={`/signals/${s.id}`}>
+                <span>{formatZhDate(s.occurred_at.slice(0, 10))}</span>
+                <strong>{s.title}</strong>
+              </Link>
+            ))}
           </div>
         </section>
+        <section className="topic-related-section">
+          <h2>洞察版本</h2>
+          <p>每期固定输入版本；关联信号撤回或修订后，旧报告先停止公开，等待重新分析。</p>
+          <div className="related-link-list">
+            {editions.map((row) => (
+              <Link key={row.id} href={`/topics/${id}/editions/${row.id}`}>
+                <span>{formatZhDate(row.result.generatedAt.slice(0, 10))}</span>
+                <strong>{row.result.report.title}</strong>
+              </Link>
+            ))}
+          </div>
+        </section>
+        <details className="topic-related-section">
+          <summary>历史专题资料与洞察</summary>
+          <p>以下为历史档案，不代表当前评估。</p>
+          {entry.sections.map((section) => (
+            <section key={section.heading}>
+              <h3>{section.heading}</h3>
+              {section.paragraphs.map((p) => (
+                <p key={p}>{p}</p>
+              ))}
+            </section>
+          ))}
+          <div className="related-link-list">
+            {historical.map((row) => (
+              <Link key={row.frontMatter.id} href={`/insights/${row.frontMatter.id}`}>
+                {row.frontMatter.title}
+              </Link>
+            ))}
+          </div>
+        </details>
       </main>
     </SiteShell>
   );

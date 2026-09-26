@@ -10,6 +10,18 @@ import {
   editorialPublicViewHashes,
 } from './editorial-signal-catalog.mjs';
 import {
+  automationColumns,
+  automationPrimaryKeys,
+  automationForeignKeys,
+  automationChecks,
+  automationDefaults,
+  automationUniqueIndexes,
+  automationIndexes,
+  publishedTopicInsightColumns,
+  publishedTopicInsightViewExpressions,
+  canonicalPublishedTopicInsightView,
+} from './automation-catalog.mjs';
+import {
   materialProposalColumns,
   materialProposalPrimaryKeys,
   materialProposalForeignKeys,
@@ -289,6 +301,7 @@ const expectedColumns = {
   ...materialProposalColumns,
   ...candidateReviewColumns,
   ...editorialColumns,
+  ...automationColumns,
 };
 for (const tableName of allStampedSignalTables) {
   expectedColumns[tableName] = {
@@ -365,6 +378,7 @@ const expectedPrimaryKeys = new Set([
   ...materialProposalPrimaryKeys,
   ...candidateReviewPrimaryKeys,
   ...editorialPrimaryKeys,
+  ...automationPrimaryKeys,
   'topics|id',
   'entities|id',
   'sources|id',
@@ -397,6 +411,7 @@ const expectedForeignKeys = new Set([
   ...materialProposalForeignKeys,
   ...candidateReviewForeignKeys,
   ...editorialForeignKeys,
+  ...automationForeignKeys,
   'signals|source_id|sources|id|a|a|false',
   'entity_topics|entity_id|entities|id|c|a|false',
   'entity_topics|topic_id|topics|id|c|a|false',
@@ -428,6 +443,7 @@ const expectedCheckExpressions = {
   ...materialProposalChecks,
   ...candidateReviewChecks,
   ...editorialChecks,
+  ...automationChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
     ['trust_score>=0andtrust_score<=100', 'trust_scorebetween0and100'],
@@ -499,6 +515,7 @@ const expectedDefaults = new Map([
   ...materialProposalDefaults,
   ...candidateReviewDefaults,
   ...editorialDefaults,
+  ...automationDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
   ['topics.runtime_enabled', new Set(['false'])],
@@ -529,6 +546,7 @@ const expectedUniqueIndexes = new Set([
   ...materialProposalUniqueIndexes,
   ...candidateReviewUniqueIndexes,
   ...editorialUniqueIndexes,
+  ...automationUniqueIndexes,
   ...affiliationUniqueIndexes,
   ...eventIdentityUniqueIndexes,
   ...signalPublicationUniqueIndexes,
@@ -548,6 +566,7 @@ const requiredNonUniqueIndexes = new Set([
   ...signalGenerationIndexes,
   ...candidateEnrichmentIndexes,
   ...candidateMaterialIndexes,
+  ...automationIndexes,
   ...signalFoundationIndexes,
   ...affiliationIndexes,
   'entities|type',
@@ -687,9 +706,13 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
       columns: editorialPublicColumns,
       hashes: editorialPublicViewHashes,
     },
+    published_topic_insights: {
+      columns: publishedTopicInsightColumns,
+      expressions: publishedTopicInsightViewExpressions,
+    },
   };
   if (
-    publicViews.rows.length !== 2 ||
+    publicViews.rows.length !== Object.keys(viewContracts).length ||
     publicViews.rows.some((view) => !Object.hasOwn(viewContracts, view.name))
   ) {
     problems.push('current public Signal view set mismatch');
@@ -701,7 +724,10 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
         JSON.stringify(view.options) !== JSON.stringify(['security_barrier=true']) ||
         JSON.stringify(view.columns) !== JSON.stringify(contract.columns) ||
         typeof view.definition !== 'string' ||
-        !contract.hashes.has(createHash('sha256').update(view.definition.trim()).digest('hex'))
+        !(
+          contract.hashes?.has(createHash('sha256').update(view.definition.trim()).digest('hex')) ||
+          contract.expressions?.has(canonicalPublishedTopicInsightView(view.definition.trim()))
+        )
       ) {
         problems.push('current public Signal view contract mismatch');
       }
@@ -901,7 +927,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
                 'candidate_material_requests','candidate_material_reports','candidate_material_receipts',
                 'candidate_material_proposals','candidate_material_approvals',
                 'candidate_reviews','candidate_review_conversions','candidate_review_attestations',
-                'editorial_signal_revisions'
+                'editorial_signal_revisions','automation_configs','automation_runs'
               ))::text
               ORDER BY constraint_info.oid
             ) AS definitions
@@ -947,7 +973,8 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
       Object.hasOwn(candidateMaterialChecks, tableName) ||
       Object.hasOwn(materialProposalChecks, tableName) ||
       Object.hasOwn(candidateReviewChecks, tableName) ||
-      Object.hasOwn(editorialChecks, tableName)
+      Object.hasOwn(editorialChecks, tableName) ||
+      Object.hasOwn(automationChecks, tableName)
         ? canonicalPublicationControlCheck
         : [
               'signal_event_identities',

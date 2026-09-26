@@ -42,6 +42,7 @@ describe('database migration runner', () => {
       '0023_candidate_materials.sql',
       '0024_material_review_proposals.sql',
       '0025_editorial_signal_publication.sql',
+      '0026_automation_tasks.sql',
     ]);
     expect(migrations.every((migration) => migration.checksum.length === 64)).toBe(true);
     await expect(verifyMigrationManifest(migrations)).resolves.toBeUndefined();

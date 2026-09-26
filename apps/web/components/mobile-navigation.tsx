@@ -2,17 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-
-const navigationItems = [
-  { href: '/daily', label: '每日简报' },
-  { href: '/weekly', label: '周报' },
-  { href: '/insights', label: '洞察' },
-  { href: '/topics', label: '专题' },
-  { href: '/signals', label: '信号' },
-  { href: '/resources', label: '资源' },
-  { href: '/radar', label: '雷达' },
-  { href: '/search', label: '搜索' },
-] as const;
+import { primaryNavigation } from '../lib/site-navigation';
 
 export function MobileNavigation() {
   const [isOpen, setIsOpen] = useState(false);
@@ -35,7 +25,7 @@ export function MobileNavigation() {
       </button>
       <div className="mobile-menu" id="mobile-menu" hidden={!isOpen}>
         <nav className="mobile-menu-nav" aria-label="移动导航">
-          {navigationItems.map((item) => (
+          {primaryNavigation.map((item) => (
             <Link key={item.href} href={item.href} onClick={() => setIsOpen(false)}>
               {item.label}
             </Link>
