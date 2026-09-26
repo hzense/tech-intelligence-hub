@@ -567,6 +567,7 @@ test('route and server module preserve the Node-only, request-time deployment bo
     $schema: 'https://openapi.vercel.sh/vercel.json',
     regions: ['iad1'],
     functions: { 'app/.well-known/workflow/v1/step/route.js': { maxDuration: 300 } },
+    crons: [{ path: '/api/cron/automation', schedule: '0 1 * * *' }],
   });
   assert.match(serverSource, /import 'server-only'/);
   assert.match(serverSource, /new Pool\(options\)/);

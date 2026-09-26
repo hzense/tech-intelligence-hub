@@ -13,6 +13,18 @@ export const editorialRoleColumns = {
 export async function assertEditorialRole(client, role) {
   if (!['writer', 'reader'].includes(role))
     throw new EditorialSignalError('editorial_role_invalid');
+  const capabilities = Object.entries(editorialRoleColumns[role]).flatMap(([table, names]) =>
+    names.flatMap((name) => [
+      `${table}|${name}|SELECT`,
+      ...(role === 'writer' && table === 'editorial_signal_revisions'
+        ? [`${table}|${name}|INSERT`]
+        : []),
+    ]),
+  );
+  return assertRestrictedApplicationRole(client, `hzense_editorial_${role}`, capabilities);
+}
+// Shared fail-closed ambient authority check; callers supply a static capability list.
+export async function assertRestrictedApplicationRole(client, roleName, capabilities) {
   // pg_init_privs records initial catalog ACLs, but not information_schema's
   // initdb SQL grants. Its fallback is restricted to bootstrap-owned built-ins
   // (OID < FirstNormalObjectId), never newly created user objects.
@@ -99,7 +111,7 @@ export async function assertEditorialRole(client, role) {
             AND members.refobjid=e.oid AND members.classid='pg_proc'::regclass AND members.deptype='e')=118)) AS safe
     FROM pg_roles r WHERE r.rolname=current_user`)
   ).rows[0];
-  if (!identity?.safe || identity.name !== `hzense_editorial_${role}`)
+  if (!identity?.safe || identity.name !== roleName)
     throw new EditorialSignalError('editorial_role_invalid');
   const vectorFunctions = (await client.query(editorialVectorQuery)).rows;
   if (
@@ -114,16 +126,7 @@ export async function assertEditorialRole(client, role) {
     CROSS JOIN (VALUES ('SELECT'),('INSERT'),('UPDATE'),('REFERENCES')) p(privilege)
     WHERE n.nspname!~'^pg_' AND n.nspname<>'information_schema' AND c.relkind IN ('r','p','v','m','f') AND a.attnum>0 AND NOT a.attisdropped AND has_column_privilege(c.oid,a.attnum,p.privilege)`)
   ).rows;
-  const expected = new Set(
-    Object.entries(editorialRoleColumns[role]).flatMap(([table, names]) =>
-      names.flatMap((name) => [
-        `${table}|${name}|SELECT`,
-        ...(role === 'writer' && table === 'editorial_signal_revisions'
-          ? [`${table}|${name}|INSERT`]
-          : []),
-      ]),
-    ),
-  );
+  const expected = new Set(capabilities);
   const mutable = (
     await client.query(
       `SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname!~'^pg_' AND n.nspname<>'information_schema' AND c.relkind IN ('r','p','v','m','f') AND has_table_privilege(c.oid,'DELETE,TRUNCATE,TRIGGER,MAINTAIN')) AS unsafe`,

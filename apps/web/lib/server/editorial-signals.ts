@@ -54,6 +54,11 @@ export async function getEditorialSignals(): Promise<SignalEntry[]> {
   await connection();
   return reader().list();
 }
+/** Background workers have no Next request context; same public view and ACL. */
+export async function readEditorialSignalsForTask(): Promise<SignalEntry[]> {
+  if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED !== '1') return [];
+  return reader().list();
+}
 export async function getEditorialSignalById(id: string): Promise<SignalEntry | undefined> {
   if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED !== '1') return undefined;
   await connection();

@@ -1801,6 +1801,104 @@ export const editorialPublicSignals = pgView('editorial_public_signals', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
 }).existing();
 
+export const automationConfigs = pgTable(
+  'automation_configs',
+  {
+    id: uuid('id').primaryKey(),
+    ownerId: text('owner_id').notNull(),
+    revision: integer('revision').notNull(),
+    config: jsonb('config').notNull(),
+    enabled: boolean('enabled').notNull(),
+    nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('automation_configs_id_owner_id_key').on(t.id, t.ownerId),
+    index('automation_configs_due_idx').on(t.enabled, t.nextRunAt),
+    check('automation_configs_owner_id_check', sql`length(${t.ownerId}) BETWEEN 1 AND 200`),
+    check('automation_configs_revision_check', sql`${t.revision} > 0`),
+    check('automation_configs_config_check', sql`jsonb_typeof(${t.config}) = 'object'`),
+  ],
+);
+
+export const automationRuns = pgTable(
+  'automation_runs',
+  {
+    id: uuid('id').primaryKey(),
+    configId: uuid('config_id').notNull(),
+    ownerId: text('owner_id').notNull(),
+    configRevision: integer('config_revision').notNull(),
+    snapshot: jsonb('snapshot').notNull(),
+    slot: text('slot').notNull(),
+    trigger: text('trigger').notNull(),
+    status: text('status').notNull(),
+    phase: text('phase').notNull(),
+    result: jsonb('result'),
+    frozenInputs: jsonb('frozen_inputs'),
+    errorCode: text('error_code'),
+    leaseToken: uuid('lease_token'),
+    leaseUntil: timestamp('lease_until', { withTimezone: true }),
+    budgetDay: date('budget_day'),
+    reservedMicrousd: bigint('reserved_microusd', { mode: 'number' }).notNull().default(0),
+    chargedMicrousd: bigint('charged_microusd', { mode: 'number' }).notNull().default(0),
+    costSource: text('cost_source'),
+    publicationStatus: text('publication_status').notNull().default('private'),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.configId, t.ownerId],
+      foreignColumns: [automationConfigs.id, automationConfigs.ownerId],
+    }),
+    uniqueIndex('automation_runs_config_id_slot_key').on(t.configId, t.slot),
+    index('automation_runs_owner_created_idx').on(t.ownerId, t.createdAt),
+    index('automation_runs_budget_day_idx').on(t.budgetDay),
+    check('automation_runs_owner_id_check', sql`length(${t.ownerId}) BETWEEN 1 AND 200`),
+    check('automation_runs_revision_check', sql`${t.configRevision} > 0`),
+    check('automation_runs_snapshot_check', sql`jsonb_typeof(${t.snapshot}) = 'object'`),
+    check('automation_runs_slot_check', sql`length(${t.slot}) BETWEEN 1 AND 100`),
+    check('automation_runs_trigger_check', sql`${t.trigger} IN ('manual','scheduled')`),
+    check(
+      'automation_runs_status_check',
+      sql`${t.status} IN ('queued','running','completed','failed','unknown','cancelled')`,
+    ),
+    check('automation_runs_phase_check', sql`length(${t.phase}) BETWEEN 1 AND 60`),
+    check(
+      'automation_runs_frozen_inputs_check',
+      sql`${t.frozenInputs} IS NULL OR jsonb_typeof(${t.frozenInputs}) = 'object'`,
+    ),
+    check('automation_runs_reserved_check', sql`${t.reservedMicrousd} >= 0`),
+    check('automation_runs_charged_check', sql`${t.chargedMicrousd} >= 0`),
+    check(
+      'automation_runs_cost_source_check',
+      sql`${t.costSource} IS NULL OR ${t.costSource} IN ('provider','estimate','reserve')`,
+    ),
+    check(
+      'automation_runs_publication_status_check',
+      sql`${t.publicationStatus} IN ('private','published','withdrawn')`,
+    ),
+    check(
+      'automation_runs_result_check',
+      sql`${t.result} IS NULL OR jsonb_typeof(${t.result}) = 'object'`,
+    ),
+    check(
+      'automation_runs_error_code_check',
+      sql`${t.errorCode} IS NULL OR ${t.errorCode} ~ '^[a-z][a-z0-9_]{0,79}$'`,
+    ),
+  ],
+);
+
+// The migration owns the filtered, security-barrier view definition.
+export const publishedTopicInsights = pgView('published_topic_insights', {
+  id: uuid('id'),
+  result: jsonb('result'),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
+}).existing();
+
 export const searchDocuments = pgTable(
   'search_documents',
   {

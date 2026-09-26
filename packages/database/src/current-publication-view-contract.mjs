@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import { editorialPublicColumns, editorialPublicViewHashes } from './editorial-signal-catalog.mjs';
 import {
+  publishedTopicInsightColumns,
+  publishedTopicInsightViewExpressions,
+  canonicalPublishedTopicInsightView,
+} from './automation-catalog.mjs';
+import {
   currentPublicSignalColumns,
   currentPublicSignalViewHashes,
 } from './current-publication-catalog.mjs';
@@ -9,7 +14,9 @@ import {
 // Legacy Runtime and Topic sync must recognize the schema but retain their old ACLs.
 export function isExactCurrentPublicSignalRelation(relation, expectedOwner) {
   return (
-    ['current_public_signals', 'editorial_public_signals'].includes(relation.name) &&
+    ['current_public_signals', 'editorial_public_signals', 'published_topic_insights'].includes(
+      relation.name,
+    ) &&
     relation.relkind === 'v' &&
     relation.relpersistence === 'p' &&
     relation.owner === expectedOwner &&
@@ -38,8 +45,15 @@ export async function collectCurrentPublicSignalViewProblems(client, expectedOwn
       columns: editorialPublicColumns,
       hashes: editorialPublicViewHashes,
     },
+    published_topic_insights: {
+      columns: publishedTopicInsightColumns,
+      expressions: publishedTopicInsightViewExpressions,
+    },
   };
-  if (result.rows.length !== 2 || result.rows.some((view) => !Object.hasOwn(contracts, view.name)))
+  if (
+    result.rows.length !== Object.keys(contracts).length ||
+    result.rows.some((view) => !Object.hasOwn(contracts, view.name))
+  )
     return ['current public Signal view set mismatch'];
   for (const view of result.rows) {
     const contract = contracts[view.name];
@@ -48,7 +62,10 @@ export async function collectCurrentPublicSignalViewProblems(client, expectedOwn
       JSON.stringify(view.options) !== JSON.stringify(['security_barrier=true']) ||
       JSON.stringify(view.columns) !== JSON.stringify(contract.columns) ||
       typeof view.definition !== 'string' ||
-      !contract.hashes.has(createHash('sha256').update(view.definition.trim()).digest('hex'))
+      !(
+        contract.hashes?.has(createHash('sha256').update(view.definition.trim()).digest('hex')) ||
+        contract.expressions?.has(canonicalPublishedTopicInsightView(view.definition.trim()))
+      )
     ) {
       return ['current public Signal view contract mismatch'];
     }

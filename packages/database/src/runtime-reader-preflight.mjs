@@ -733,6 +733,7 @@ async function inspectRuntimeReaderTarget(
     ...expectedTableNames,
     'current_public_signals',
     'editorial_public_signals',
+    'published_topic_insights',
   ]);
   const actualRelations = new Set(relations.rows.map((row) => row.name));
   const missingRelations = setDifference(expectedRelations, actualRelations);
@@ -743,7 +744,11 @@ async function inspectRuntimeReaderTarget(
     );
   }
   for (const relation of relations.rows) {
-    if (['current_public_signals', 'editorial_public_signals'].includes(relation.name)) {
+    if (
+      ['current_public_signals', 'editorial_public_signals', 'published_topic_insights'].includes(
+        relation.name,
+      )
+    ) {
       if (!isExactCurrentPublicSignalRelation(relation, target.database_owner)) {
         throw new Error('Runtime reader current public Signal view relation contract mismatch');
       }

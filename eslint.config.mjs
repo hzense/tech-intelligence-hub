@@ -11,6 +11,7 @@ export default tseslint.config(
       '**/.well-known/workflow/**',
       '**/.workflow-data/**',
       '**/.generation-worker/**',
+      '**/.automation-worker/**',
     ],
   },
   js.configs.recommended,

@@ -3,5 +3,6 @@
   "regions": ["iad1"],
   "functions": {
     "app/.well-known/workflow/v1/step/route.js": { "maxDuration": 300 }
-  }
+  },
+  "crons": [{ "path": "/api/cron/automation", "schedule": "0 1 * * *" }]
 }

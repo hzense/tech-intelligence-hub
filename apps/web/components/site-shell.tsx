@@ -3,6 +3,8 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { MobileNavigation } from './mobile-navigation';
 import { ThemeToggle } from './theme-toggle';
+import { historicalNavigation, primaryNavigation } from '../lib/site-navigation';
+import styles from './site-shell.module.css';
 
 export function SiteShell({ children }: { children: ReactNode }) {
   return (
@@ -17,13 +19,11 @@ export function SiteShell({ children }: { children: ReactNode }) {
             </span>
           </Link>
           <nav className="desktop-nav" aria-label="主导航">
-            <Link href="/daily">每日简报</Link>
-            <Link href="/weekly">周报</Link>
-            <Link href="/insights">洞察</Link>
-            <Link href="/topics">专题</Link>
-            <Link href="/signals">信号</Link>
-            <Link href="/resources">资源</Link>
-            <Link href="/radar">雷达</Link>
+            {primaryNavigation.map((item) => (
+              <Link key={item.href} href={item.href}>
+                {item.label}
+              </Link>
+            ))}
           </nav>
           <div className="header-actions">
             <Link className="search-link" href="/search" aria-label="搜索">
@@ -44,7 +44,16 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <strong>HZense</strong>
             <span>感知科技的变化</span>
           </div>
-          <p>结构化信号，关联证据，更清晰的决策。</p>
+          <div>
+            <p>结构化信号，关联证据，更清晰的决策。</p>
+            <nav aria-label="历史内容" className={styles.history}>
+              {historicalNavigation.map((item) => (
+                <Link key={item.href} href={item.href}>
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
           <span>© 2026 HZense</span>
         </div>
       </footer>

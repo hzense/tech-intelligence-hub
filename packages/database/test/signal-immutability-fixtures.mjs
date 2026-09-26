@@ -115,9 +115,31 @@ export function editorialPublicSignalViewFixture(owner = 'hzense_migrator') {
   };
 }
 
+export function publishedTopicInsightViewFixture(owner = 'hzense_migrator') {
+  return {
+    name: 'published_topic_insights',
+    owner,
+    options: ['security_barrier=true'],
+    columns: [
+      ['id', 'uuid'],
+      ['result', 'jsonb'],
+      ['published_at', 'timestamp with time zone'],
+    ],
+    definition: ` SELECT id,
+    result,
+    published_at
+   FROM automation_runs
+  WHERE status = 'completed'::text AND publication_status = 'published'::text AND (snapshot ->> 'kind'::text) = 'topic_insight'::text;`,
+  };
+}
+
 export function signalImmutabilityFixture(owner = 'hzense_migrator') {
   return {
-    views: [currentPublicSignalViewFixture(owner), editorialPublicSignalViewFixture(owner)],
+    views: [
+      currentPublicSignalViewFixture(owner),
+      editorialPublicSignalViewFixture(owner),
+      publishedTopicInsightViewFixture(owner),
+    ],
     triggers: sealedSignalTriggers.map((contract) => ({
       ...contract,
       table_owner: owner,

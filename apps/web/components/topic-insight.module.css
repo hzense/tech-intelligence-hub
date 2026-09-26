@@ -1,0 +1,22 @@
+.report {
+  max-width: 78ch;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.report section {
+  margin-block: 2rem;
+}
+.summary {
+  font-size: 1.15rem;
+}
+.meta {
+  color: var(--muted, #657086);
+  font-size: 0.9rem;
+}
+.body {
+  white-space: pre-wrap;
+}
+.report a {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}

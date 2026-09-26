@@ -1,68 +1,52 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { SiteShell } from '@/components/site-shell';
-import { getTopicEntries } from '@/lib/content-runtime';
-import {
-  formatTopicMaturity,
-  formatTopicStatus,
-  formatTopicStrategicValue,
-  formatTopicTrend,
-} from '@/lib/topic-presentation';
+import { getTopicEntries, formatZhDate } from '@/lib/content-runtime';
+import { getSignalEntries } from '@/lib/seed-runtime';
+import { isCurrentSignal } from '@/lib/public-exploration-core';
+import { visibleTopicInsights } from '@/lib/server/topic-insights';
 
+export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
-  title: '专题',
-  description: 'HZense 持续跟踪的关键科技专题、成熟度、趋势与战略价值。',
-  alternates: {
-    canonical: '/topics',
-  },
-  openGraph: {
-    title: 'HZense 专题',
-    description: '沿着专题脉络持续观察技术变化。',
-    url: '/topics',
-    type: 'website',
-  },
+  title: '专题洞察',
+  description: '基于当前公开信号持续跟踪技术专题，区分事实、判断与不确定性。',
+  alternates: { canonical: '/topics' },
 };
-
 export default async function TopicsPage() {
-  const entries = await getTopicEntries();
-
+  const [entries, signals] = await Promise.all([getTopicEntries(), getSignalEntries()]);
+  const insights = await visibleTopicInsights(signals);
   return (
     <SiteShell>
       <main className="page-main section-shell">
         <section className="page-hero">
-          <p className="kicker">HZENSE 专题</p>
-          <h1>持续跟踪技术变化。</h1>
-          <p>从关注度、趋势、成熟度和战略价值四个维度，组织值得长期观察的技术方向。</p>
+          <p className="kicker">HZENSE 专题洞察</p>
+          <h1>从信号中形成判断。</h1>
+          <p>
+            每个专题持续汇聚公开信号。深度报告由 AI
+            基于固定证据生成，管理员确认后展示；暂无报告时明确标记跟踪中。
+          </p>
         </section>
-        <section className="topics-index-grid" aria-label="专题列表">
-          {entries.map((entry) => (
-            <Link
-              className="topic-index-card"
-              href={`/topics/${entry.frontMatter.id}`}
-              key={entry.frontMatter.id}
-            >
-              <div className="topic-index-meta">
-                <span>{formatTopicStatus(entry.frontMatter.status)}</span>
-                <strong>{entry.assessment?.attention ?? '—'}</strong>
-              </div>
-              <h2>{entry.frontMatter.title}</h2>
-              <p>{entry.summary}</p>
-              <dl className="topic-metric-row">
-                <div>
-                  <dt>趋势</dt>
-                  <dd>{formatTopicTrend(entry.assessment?.trend)}</dd>
+        <section className="topics-index-grid" aria-label="专题洞察列表">
+          {entries.map((entry) => {
+            const id = entry.frontMatter.id;
+            const latest = insights.find((row) => row.result.topicIds.includes(id));
+            const count = signals.filter((s) => isCurrentSignal(s) && s.topics.includes(id)).length;
+            return (
+              <Link className="topic-index-card" href={`/topics/${id}`} key={id}>
+                <div className="topic-index-meta">
+                  <span>{latest ? '已确认洞察' : '跟踪中'}</span>
+                  <strong>{count} 条当前信号</strong>
                 </div>
-                <div>
-                  <dt>成熟度</dt>
-                  <dd>{formatTopicMaturity(entry.assessment?.maturity)}</dd>
-                </div>
-                <div>
-                  <dt>战略价值</dt>
-                  <dd>{formatTopicStrategicValue(entry.assessment?.strategic_value)}</dd>
-                </div>
-              </dl>
-            </Link>
-          ))}
+                <h2>{entry.frontMatter.title}</h2>
+                <p>{latest?.result.report.summary ?? entry.summary}</p>
+                <p>
+                  {latest
+                    ? `分析日期：${formatZhDate(latest.result.generatedAt.slice(0, 10))} · ${latest.result.inputs.length} 条证据信号`
+                    : '尚无已确认的深度报告，不以历史评分代替当前判断。'}
+                </p>
+              </Link>
+            );
+          })}
         </section>
       </main>
     </SiteShell>

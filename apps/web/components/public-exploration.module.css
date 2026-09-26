@@ -1,0 +1,138 @@
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 1.5rem 0;
+}
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.6rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.button[aria-current='page'] {
+  background: var(--color-ink, #162641);
+  color: var(--color-paper, #fff);
+}
+.filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 1.25rem;
+  border: 1px solid #aab4c5;
+  border-radius: 1rem;
+}
+.filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.filters input,
+.filters select {
+  width: 100%;
+  min-height: 44px;
+  min-width: 0;
+  padding: 0.6rem;
+  border: 1px solid #aab4c5;
+  border-radius: 0.4rem;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+.filters option {
+  color: #162641;
+  background: #fff;
+}
+.actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.note {
+  line-height: 1.7;
+  margin: 1rem 0;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.card {
+  border: 1px solid #aab4c5;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.card h2,
+.card h3 {
+  font-size: 1.25rem;
+  line-height: 1.5;
+  margin: 0.75rem 0;
+}
+.card p {
+  line-height: 1.7;
+  margin: 0.75rem 0;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin: 0.75rem 0;
+}
+.links a {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.group {
+  margin: 2rem 0;
+}
+.group > h2 {
+  font-size: 1.4rem;
+  margin: 1rem 0;
+}
+.empty {
+  padding: 2rem;
+  border: 1px dashed #aab4c5;
+  border-radius: 1rem;
+  line-height: 1.8;
+}
+.button:focus-visible,
+.filters input:focus-visible,
+.filters select:focus-visible,
+.card a:focus-visible {
+  outline: 3px solid #4b6fda;
+  outline-offset: 3px;
+}
+@media (max-width: 900px) {
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .filters,
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .card {
+    padding: 1rem;
+  }
+}

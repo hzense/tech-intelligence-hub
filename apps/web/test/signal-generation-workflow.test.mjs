@@ -10,11 +10,12 @@ test('Turbo restores the private worker required by the Workflow output trace', 
   const turbo = JSON.parse(await readFile(new URL('../../../turbo.json', import.meta.url), 'utf8'));
   const outputs = (turbo.tasks['@hzense/web#build'] ?? turbo.tasks.build).outputs;
   assert.ok(outputs.includes('.generation-worker/**'));
+  assert.ok(outputs.includes('.automation-worker/**'));
   assert.ok(outputs.includes('.next/**'));
   const next = await readFile(new URL('../next.config.ts', import.meta.url), 'utf8');
   assert.match(
     next,
-    /'\/.well-known\/workflow\/v1\/step': \['\.\/.generation-worker\/worker.cjs'\]/,
+    /'\/.well-known\/workflow\/v1\/step': \[\s*'\.\/.generation-worker\/worker.cjs',\s*'\.\/.automation-worker\/worker.cjs',\s*\]/,
   );
 });
 
