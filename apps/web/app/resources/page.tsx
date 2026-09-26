@@ -47,7 +47,8 @@ export default async function ResourcesPage({
           <p className="kicker">HZENSE RESOURCES</p>
           <h1>理解信号背后的参与者。</h1>
           <p>
-            资源来自已公开信号中的组织与人物。以近 30 天关联信号数排序，不将共同出现误写成任职关系。
+            已登记资源来自公开信号中的组织与人物。仅有名称、尚无实体 ID
+            的关联仍在信号页展示，不冒充已登记资源。
           </p>
         </section>
         <nav className={styles.toolbar} aria-label="资源范围">
@@ -101,9 +102,7 @@ export default async function ResourcesPage({
           共 {entries.length} 项。
         </p>
         {entries.length === 0 ? (
-          <p className={styles.empty}>
-            暂无匹配的公开资源。信号确认发布后，关联组织和人物会自动出现在这里。
-          </p>
+          <p className={styles.empty}>暂无匹配的已登记资源。仅有名称的关联请到信号页查看。</p>
         ) : (
           <section className={styles.grid} aria-label="资源列表">
             {entries.map((entry) => (

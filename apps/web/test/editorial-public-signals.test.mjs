@@ -189,7 +189,8 @@ test('server entrypoints gate readers, bind requests, and remove old indexed sig
   const detail = await source('../app/signals/[id]/page.tsx');
   assert.match(detail, /export const dynamic = 'force-dynamic'/);
   assert.doesNotMatch(detail, /generateStaticParams/);
-  assert.match(detail, /entry\.publication_basis === 'manual_confirmation'/);
+  assert.match(detail, /toUnifiedSignal\(entry\)/);
+  assert.match(detail, /unified\.assessment === null/);
   assert.match(detail, /未提供公开来源链接/);
   assert.match(detail, /href=\{`\/topics\/\$\{topic\}`\}/);
 });

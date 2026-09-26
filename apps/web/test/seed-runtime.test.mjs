@@ -32,6 +32,18 @@ test('resolves a public Signal by its stable id', async () => {
   assert.equal((await getSignalEntryById(firstSignal.id))?.id, firstSignal.id);
 });
 
+test('legacy Seed projects named public relations without changing archive eligibility', async () => {
+  const signal = (await getSignalEntries()).find((entry) => entry.id === 'signal-20221130-chatgpt');
+  assert.ok(signal);
+  assert.equal(signal.public_version, undefined);
+  assert.deepEqual(
+    signal.public_organizations?.map((entry) => [entry.id, entry.name]),
+    [['company-openai', 'OpenAI']],
+  );
+  assert.equal(signal.public_sources?.[0]?.url, signal.source_url);
+  assert.equal(signal.public_topics?.[0]?.id, 'topic-foundation-models');
+});
+
 test('only exposes active Resources and resolves their stable ids', async () => {
   const resources = await getResourceEntries();
   const firstResource = resources[0];
