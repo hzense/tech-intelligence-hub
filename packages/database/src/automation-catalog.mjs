@@ -2,7 +2,11 @@ import { canonicalPublicationControlCheck as canonical } from './signal-publicat
 
 const required = (type) => [type, true];
 const optional = (type) => [type, false];
-const forms = (...sql) => sql.map((value) => canonical(`CHECK (${value})`));
+// PostgreSQL's pg_get_constraintdef adds an outer expression pair for some
+// operators while retaining the same grouping. Accept both renderings, but
+// preserve every inner parenthesis, cast and literal for drift detection.
+const forms = (...sql) =>
+  sql.flatMap((value) => [canonical(`CHECK (${value})`), canonical(`CHECK ((${value}))`)]);
 
 export const automationColumns = {
   automation_configs: {
