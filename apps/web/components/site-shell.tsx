@@ -3,7 +3,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { MobileNavigation } from './mobile-navigation';
 import { ThemeToggle } from './theme-toggle';
-import { primaryNavigation } from '../lib/site-navigation';
+import { primaryNavigation, repositoryUrl } from '../lib/site-navigation';
 
 export function SiteShell({ children }: { children: ReactNode }) {
   return (
@@ -29,8 +29,14 @@ export function SiteShell({ children }: { children: ReactNode }) {
               <span aria-hidden="true">⌕</span>
             </Link>
             <ThemeToggle />
-            <a className="ask-link" href="mailto:hello@hzense.com">
-              联系 HZense <span>↗</span>
+            <a
+              className="ask-link"
+              href={repositoryUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="前往 HZense GitHub 代码仓库（在新窗口打开）"
+            >
+              联系 HZense <span aria-hidden="true">↗</span>
             </a>
             <MobileNavigation />
           </div>

@@ -6,7 +6,13 @@ import {
   type InsightEntry,
   type TopicEntry,
 } from './content-runtime.ts';
-import { formatEntityType } from './resource-presentation.ts';
+import {
+  formatEntityType,
+  resourceHref,
+  resourceIntroduction,
+  resourceTopics,
+} from './resource-presentation.ts';
+import type { PublicEntitySummary } from './public-exploration-core.ts';
 import {
   getResourceEntries,
   getSeedEntityMap,
@@ -28,6 +34,7 @@ import {
   type SearchResult,
   type SearchType,
 } from '@hzense/search/ranking';
+import type { TopicInsightResult } from './topic-insight-core.ts';
 
 export {
   isSearchType,
@@ -36,7 +43,68 @@ export {
   type SearchType,
 } from '@hzense/search/ranking';
 
-function topicKeywords(ids: string[], topicTitleMap: Map<string, string>): string {
+type VisibleTopicInsightSearchEntry = {
+  id: string;
+  result: TopicInsightResult;
+  published_at: string;
+};
+
+/** The caller must pass only rows validated against the current public Signal reader. */
+export function rankVisibleTopicInsightResults(
+  rows: readonly VisibleTopicInsightSearchEntry[],
+  query: string,
+  topicTitleMap: ReadonlyMap<string, string>,
+): SearchResult[] {
+  const documents: SearchDocument[] = rows.map((row) => ({
+    id: `published-topic-insight-${row.id}`,
+    type: 'insight',
+    title: row.result.report.title,
+    summary: row.result.report.summary,
+    href: `/topics/${row.result.topicIds[0]}/editions/${row.id}`,
+    date: row.published_at.slice(0, 10),
+    keywords: [
+      topicKeywords(row.result.topicIds, topicTitleMap),
+      row.result.report.sections.map((section) => section.heading).join(' '),
+    ].join(' '),
+    body: [
+      ...row.result.report.sections.map((section) => section.body),
+      ...row.result.report.uncertainties,
+    ].join('\n'),
+  }));
+  return rankSearchDocuments(documents, query, 'insight');
+}
+
+/** Search only entities represented in the same current public directory as /resources. */
+export function rankVisibleResourceResults(
+  entities: readonly PublicEntitySummary[],
+  query: string,
+  topicNames: ReadonlyMap<string, string>,
+): SearchResult[] {
+  const documents: SearchDocument[] = entities
+    .filter(
+      (entity) =>
+        entity.signals.length > 0 &&
+        (entity.type === 'company' || entity.type === 'institution' || entity.type === 'person'),
+    )
+    .map((entity) => ({
+      id: `searchdoc-resource-${entity.id}`,
+      type: 'resource' as const,
+      title: entity.name,
+      summary: resourceIntroduction(entity, topicNames),
+      href: resourceHref(entity),
+      ...(entity.latestAt ? { date: entity.latestAt.slice(0, 10) } : {}),
+      keywords: [
+        entity.id,
+        entity.type,
+        formatEntityType(entity.type),
+        ...resourceTopics(entity, topicNames).map((topic) => `${topic.id} ${topic.name}`),
+      ].join(' '),
+      body: '',
+    }));
+  return rankSearchDocuments(documents, query, 'resource');
+}
+
+function topicKeywords(ids: string[], topicTitleMap: ReadonlyMap<string, string>): string {
   return ids.map((id) => `${id} ${topicTitleMap.get(id) ?? ''}`).join(' ');
 }
 
@@ -128,7 +196,7 @@ function resourceCandidate(entity: SeedEntity): SearchProjectionCandidate {
     publication: { kind: 'resource', status: entity.status },
     title: entity.name,
     summary: `${typeLabel} · HZense 活跃资源`,
-    href: `/resources/${entity.id}`,
+    href: resourceHref(entity),
     keywords: `${entity.id} ${entity.type} ${typeLabel}`,
     body: '',
     importance: 1,

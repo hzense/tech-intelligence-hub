@@ -1,18 +1,24 @@
 import type { MetadataRoute } from 'next';
 import process from 'node:process';
 import { readSignalReadMode } from '@/lib/public-signal-reader-core';
-import { getResourceEntries, getSignalEntries } from '@/lib/seed-runtime';
 import { getInsightEntries, getTopicEntries } from '@/lib/content-runtime';
+import { getPublicExploration } from '@/lib/public-exploration-runtime';
+import { resourceHref } from '@/lib/resource-presentation';
+import { visibleTopicInsights } from '@/lib/server/topic-insights';
 
 const siteUrl = 'https://hzense.com';
 
+// Published insight visibility can change when a source Signal is revised or withdrawn.
+export const dynamic = 'force-dynamic';
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [insightEntries, resourceEntries, signalEntries, topicEntries] = await Promise.all([
+  const [insightEntries, exploration, topicEntries] = await Promise.all([
     getInsightEntries(),
-    getResourceEntries(),
-    getSignalEntries(),
+    getPublicExploration(),
     getTopicEntries(),
   ]);
+  const signalEntries = exploration.signals;
+  const publishedTopicInsights = await visibleTopicInsights(signalEntries);
 
   return [
     {
@@ -20,14 +26,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'daily',
       priority: 1,
     },
-    {
-      url: `${siteUrl}/insights`,
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
     ...insightEntries.map((entry) => ({
       url: `${siteUrl}/insights/${entry.frontMatter.id}`,
       lastModified: new Date(`${entry.frontMatter.date}T00:00:00Z`),
+      changeFrequency: 'monthly' as const,
+      priority: 0.8,
+    })),
+    ...publishedTopicInsights.map((row) => ({
+      url: `${siteUrl}/topics/${row.result.topicIds[0]}/editions/${row.id}`,
+      lastModified: new Date(row.published_at),
       changeFrequency: 'monthly' as const,
       priority: 0.8,
     })),
@@ -36,16 +43,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'weekly',
       priority: 0.8,
     },
-    ...resourceEntries.map((entry) => ({
-      url: `${siteUrl}/resources/${entry.id}`,
-      changeFrequency: 'monthly' as const,
-      priority: 0.7,
-    })),
-    {
-      url: `${siteUrl}/radar`,
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
+    ...exploration.entities
+      .filter(
+        (entity) =>
+          entity.signals.length > 0 &&
+          (entity.type === 'company' || entity.type === 'institution' || entity.type === 'person'),
+      )
+      .map((entity) => ({
+        url: `${siteUrl}${resourceHref(entity)}`,
+        changeFrequency: 'monthly' as const,
+        priority: 0.7,
+      })),
     {
       url: `${siteUrl}/signals`,
       changeFrequency: 'weekly',

@@ -1,4 +1,190 @@
 import type { SeedEntity } from '@hzense/content';
+import type { InsightEntry } from './content-runtime.ts';
+import type { PublicEntitySummary } from './public-exploration-core.ts';
+import type { TopicInsightResult } from './topic-insight-core.ts';
+
+export interface ResourceMedia {
+  /** A reviewed image of this exact entity, never a name-based image search. */
+  url: string;
+  sourceUrl: string;
+  credit: string;
+  license: string;
+  kind: 'logo' | 'portrait';
+}
+
+// Curated public files. Wikimedia's file pages document identity, author and
+// licence; unlisted IDs deliberately receive a typographic placeholder.
+const mediaByEntity: Readonly<Record<string, ResourceMedia>> = {
+  'company-openai': {
+    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/6/66/OpenAI_logo_2025_%28symbol%29.svg/330px-OpenAI_logo_2025_%28symbol%29.svg.png',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:OpenAI_logo_2025_(symbol).svg',
+    credit: 'OpenAI',
+    license: '著作权及商标说明见来源页',
+    kind: 'logo',
+  },
+  'company-microsoft': {
+    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/44/Microsoft_logo.svg/330px-Microsoft_logo.svg.png',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Microsoft_logo.svg',
+    credit: 'Microsoft',
+    license: '著作权及商标说明见来源页',
+    kind: 'logo',
+  },
+  'company-nvidia': {
+    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a4/NVIDIA_logo.svg/330px-NVIDIA_logo.svg.png',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:NVIDIA_logo.svg',
+    credit: 'NVIDIA',
+    license: '著作权及商标说明见来源页',
+    kind: 'logo',
+  },
+  // Apple is deliberately left as an initial until its cross-jurisdiction
+  // reuse status has been checked, rather than declaring it public domain.
+  'company-google': {
+    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/330px-Google_%22G%22_logo.svg.png',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Google_%22G%22_logo.svg',
+    credit: 'Google',
+    license: '著作权及商标说明见来源页',
+    kind: 'logo',
+  },
+  'person-satya-nadella': {
+    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/Satya_Nadella.jpg/330px-Satya_Nadella.jpg',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Satya_Nadella.jpg',
+    credit: 'OFFICIAL LEWEB PHOTOS',
+    license: 'CC BY 2.0',
+    kind: 'portrait',
+  },
+  'person-lisa-su': {
+    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/5/5c/Dr._Lisa_Su.jpg/330px-Dr._Lisa_Su.jpg',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Dr._Lisa_Su.jpg',
+    credit: 'Deepon',
+    license: 'CC BY-SA 4.0',
+    kind: 'portrait',
+  },
+  'person-jensen-huang': {
+    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/Jensen_Huang_20231109.jpg/330px-Jensen_Huang_20231109.jpg',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Jensen_Huang_20231109.jpg',
+    credit: '總統府，裁切：Yu tptw',
+    license: 'CC BY 2.0',
+    kind: 'portrait',
+  },
+  'person-tim-cook': {
+    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/8/88/Tim_Cook_March_2026_%28cropped%29.jpg/330px-Tim_Cook_March_2026_%28cropped%29.jpg',
+    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Tim_Cook_March_2026_(cropped).jpg',
+    credit: 'Tessa Bury',
+    license: 'CC BY 4.0；使用裁切版',
+    kind: 'portrait',
+  },
+};
+
+export function resourceMedia(id: string): ResourceMedia | undefined {
+  return mediaByEntity[id];
+}
+
+export function resourceInitials(name: string): string {
+  const words = name.trim().split(/\s+/);
+  return words.length > 1
+    ? words
+        .slice(0, 2)
+        .map((word) => [...word][0] ?? '')
+        .join('')
+        .toLocaleUpperCase('en')
+    : [...name.trim()].slice(0, 2).join('').toLocaleUpperCase('en');
+}
+
+export function resourceHref(entity: Pick<PublicEntitySummary, 'id' | 'type'>): string {
+  return entity.type === 'person' ? `/persons/${entity.id}` : `/resources/${entity.id}`;
+}
+
+export function resourceIntroduction(
+  entity: PublicEntitySummary,
+  topicNames: ReadonlyMap<string, string>,
+): string {
+  const identity =
+    entity.type === 'person'
+      ? `${entity.name} 是本站公开信号关联的人物`
+      : `${entity.name} 是本站收录的${formatEntityType(entity.type)}`;
+  if (!entity.signals.length) return `${identity}，暂无公开关联信号。`;
+  const top = resourceTopics(entity, topicNames)[0];
+  return `${identity}，关联 ${entity.signals.length} 条公开信号${top ? `，主要涉及${top.name}` : ''}。`;
+}
+
+export function resourceTopics(
+  entity: PublicEntitySummary,
+  topicNames: ReadonlyMap<string, string>,
+): { id: string; name: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const signal of entity.signals) {
+    for (const id of new Set(signal.topics)) {
+      if (topicNames.has(id)) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+  }
+  return [...counts]
+    .map(([id, count]) => ({ id, name: topicNames.get(id)!, count }))
+    .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
+}
+
+export function resourceTrendObservation(entity: PublicEntitySummary, now: Date) {
+  const end = now.getTime();
+  const day = 86_400_000;
+  const recentStart = end - 30 * day;
+  const previousStart = end - 60 * day;
+  let recent = 0;
+  let previous = 0;
+  for (const signal of entity.signals) {
+    const time = Date.parse(signal.occurred_at);
+    if (time <= end && time >= recentStart) recent++;
+    else if (time < recentStart && time >= previousStart) previous++;
+  }
+  return { recent, previous, asOf: now.toISOString() };
+}
+
+export interface ResourceReportLink {
+  id: string;
+  href: string;
+  title: string;
+  summary: string;
+  date: string;
+  kind: '已确认专题洞察' | '已发布洞察';
+}
+
+/** A shared cited Signal is an auditable connection, not endorsement by the entity. */
+export function relatedResourceReports(
+  entity: PublicEntitySummary,
+  topicReports: readonly { id: string; result: TopicInsightResult }[],
+  fileReports: readonly InsightEntry[],
+): ResourceReportLink[] {
+  const signalIds = new Set(entity.signals.map((signal) => signal.id));
+  return [
+    ...topicReports.flatMap((row): ResourceReportLink[] =>
+      row.result.inputs.some((input) => signalIds.has(input.id)) && row.result.topicIds[0]
+        ? [
+            {
+              id: `topic:${row.id}`,
+              href: `/topics/${row.result.topicIds[0]}/editions/${row.id}`,
+              title: row.result.report.title,
+              summary: row.result.report.summary,
+              date: row.result.generatedAt,
+              kind: '已确认专题洞察',
+            },
+          ]
+        : [],
+    ),
+    ...fileReports.flatMap((row): ResourceReportLink[] =>
+      row.frontMatter.companies?.includes(entity.id) ||
+      row.frontMatter.evidence_signals.some((id) => signalIds.has(id))
+        ? [
+            {
+              id: `file:${row.frontMatter.id}`,
+              href: `/insights/${row.frontMatter.id}`,
+              title: row.frontMatter.title,
+              summary: row.summary,
+              date: row.frontMatter.date,
+              kind: '已发布洞察',
+            },
+          ]
+        : [],
+    ),
+  ].sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
+}
 
 const entityTypeLabels = {
   person: '人物',

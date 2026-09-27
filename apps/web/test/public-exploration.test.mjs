@@ -206,6 +206,15 @@ test('withdrawals remove new entities and co-occurrence; archive registry remain
   );
   assert.equal(entries[0].recentCount, 0);
 });
+test('active registry restores concrete organization type without replacing a public signal name', () => {
+  const entries = buildPublicEntityDirectory(
+    [signal({ public_organizations: [{ ...organization, name: 'OpenAI 最新名称' }] })],
+    [{ id: 'org-a', name: '旧名称', type: 'company', status: 'active' }],
+  );
+  const organizationEntry = entries.find((entry) => entry.id === 'org-a');
+  assert.equal(organizationEntry?.name, 'OpenAI 最新名称');
+  assert.equal(organizationEntry?.type, 'company');
+});
 test('activity ranking orders current organizations by actual recent distinct Signal IDs', () => {
   const directory = buildPublicEntityDirectory(
     [

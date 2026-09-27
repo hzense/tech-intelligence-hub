@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { primaryNavigation } from '../lib/site-navigation';
+import { primaryNavigation, repositoryUrl } from '../lib/site-navigation';
 
 export function MobileNavigation() {
   const [isOpen, setIsOpen] = useState(false);
@@ -31,7 +31,13 @@ export function MobileNavigation() {
             </Link>
           ))}
         </nav>
-        <a className="mobile-menu-contact" href="mailto:hello@hzense.com">
+        <a
+          className="mobile-menu-contact"
+          href={repositoryUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="前往 HZense GitHub 代码仓库（在新窗口打开）"
+        >
           联系 HZense <span aria-hidden="true">↗</span>
         </a>
       </div>

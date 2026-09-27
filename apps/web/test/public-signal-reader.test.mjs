@@ -268,6 +268,6 @@ test('server routing is request-bound, current-only and does not prerender Signa
   assert.match(seed, /getPublicSignals\(\)/);
   assert.match(seed, /getPublicSignalById\(id\)/);
   assert.doesNotMatch(seed, /catch|unstable_cache/);
-  assert.match(await source('../app/sitemap.ts'), /getSignalEntries\(\)/);
+  assert.match(await source('../app/sitemap.ts'), /getPublicExploration\(\)/);
   assert.match(await source('../app/radar/page.tsx'), /permanentRedirect\('\/'\)/);
 });

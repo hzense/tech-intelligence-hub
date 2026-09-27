@@ -3,7 +3,7 @@ import type { SignalEntry } from '@/lib/public-signal-reader-core';
 import { formatZhDate } from '@/lib/content-runtime';
 import { formatSignalType } from '@/lib/signal-presentation';
 import { toUnifiedSignal } from '@/lib/unified-signal-core';
-import styles from './public-exploration.module.css';
+import styles from './public-signal-cards.module.css';
 
 export function PublicSignalCards({ signals }: { signals: readonly SignalEntry[] }) {
   return (
@@ -16,23 +16,27 @@ export function PublicSignalCards({ signals }: { signals: readonly SignalEntry[]
               <time dateTime={unified.occurredAt}>
                 {formatZhDate(unified.occurredAt.slice(0, 10))}
               </time>
-              <span>{unified.type ? formatSignalType(unified.type) : '未分类'}</span>
-              <span>
-                {unified.publication.state === 'archive'
-                  ? '历史档案'
-                  : unified.publication.basis === 'manual_confirmation'
-                    ? '管理员确认'
-                    : '当前公开版本'}
+              <span className={styles.type}>
+                {unified.type ? formatSignalType(unified.type) : '未分类'}
               </span>
             </div>
             <h3>
               <Link href={`/signals/${unified.id}`}>{unified.title}</Link>
             </h3>
-            <p>{unified.summary}</p>
+            <p className={styles.summary}>{unified.summary}</p>
+            {unified.topics.length > 0 && (
+              <div className={styles.topics} aria-label="相关专题">
+                {unified.topics.slice(0, 3).map((topic) => (
+                  <Link key={topic.id} href={`/topics/${topic.id}`}>
+                    {topic.title}
+                  </Link>
+                ))}
+              </div>
+            )}
             {!!unified.people.length && (
               <div className={styles.links}>
                 <span>人物：</span>
-                {unified.people.map((person, index) =>
+                {unified.people.slice(0, 3).map((person, index) =>
                   person.id ? (
                     <Link key={person.id} href={`/persons/${person.id}`}>
                       {person.name}
@@ -46,7 +50,7 @@ export function PublicSignalCards({ signals }: { signals: readonly SignalEntry[]
             {!!unified.organizations.length && (
               <div className={styles.links}>
                 <span>组织：</span>
-                {unified.organizations.map((organization, index) =>
+                {unified.organizations.slice(0, 3).map((organization, index) =>
                   organization.id ? (
                     <Link key={organization.id} href={`/resources/${organization.id}`}>
                       {organization.name}
@@ -57,17 +61,14 @@ export function PublicSignalCards({ signals }: { signals: readonly SignalEntry[]
                 )}
               </div>
             )}
-            {unified.topics.length > 0 && (
-              <div className={styles.links}>
-                <span>专题：</span>
-                {unified.topics.map((topic) => (
-                  <Link key={topic.id} href={`/topics/${topic.id}`}>
-                    {topic.title}
-                  </Link>
-                ))}
-              </div>
-            )}
-            <Link href={`/signals/${unified.id}`}>查看事实与公开来源 →</Link>
+            <div className={styles.footer}>
+              <span>
+                {unified.sources.length
+                  ? `${unified.sources.length} 项公开来源`
+                  : '未提供公开来源链接'}
+              </span>
+              <Link href={`/signals/${unified.id}`}>查看详情 ↗</Link>
+            </div>
           </article>
         );
       })}

@@ -1,120 +1,166 @@
 import Link from 'next/link';
-import { SiteShell } from './site-shell';
+import { ResourceImage } from './resource-cards';
 import { PublicSignalCards } from './public-signal-cards';
-import styles from './public-exploration.module.css';
+import { SiteShell } from './site-shell';
+import styles from './resource-directory.module.css';
 import { formatZhDate } from '@/lib/content-runtime';
-import { isCurrentSignal, type PublicEntitySummary } from '@/lib/public-exploration-core';
-import { formatEntityType } from '@/lib/resource-presentation';
-import { formatRelationType } from '@/lib/resource-presentation';
-import type { SeedRelation, SeedEntity } from '@hzense/content';
+import type { PublicEntitySummary } from '@/lib/public-exploration-core';
+import {
+  formatEntityType,
+  resourceIntroduction,
+  resourceMedia,
+  resourceTopics,
+  resourceTrendObservation,
+  type ResourceReportLink,
+} from '@/lib/resource-presentation';
+import { toUnifiedSignal } from '@/lib/unified-signal-core';
 
 export function PublicEntityDetail({
   entity,
-  relations = [],
-  seedEntities = [],
+  topicNames,
+  reports,
 }: {
   entity: PublicEntitySummary;
-  relations?: SeedRelation[];
-  seedEntities?: SeedEntity[];
+  topicNames: ReadonlyMap<string, string>;
+  reports: readonly ResourceReportLink[];
 }) {
-  const current = entity.signals.filter(isCurrentSignal);
-  const archive = entity.signals.filter((signal) => !isCurrentSignal(signal));
   const person = entity.type === 'person';
+  const associated = person ? entity.relatedOrganizations : entity.relatedPeople;
+  const topics = resourceTopics(entity, topicNames).slice(0, 4);
+  const observation = resourceTrendObservation(entity, new Date());
+  const latest = entity.signals[0];
+  const media = resourceMedia(entity.id);
   const roles = [
     ...new Set(
-      current
-        .flatMap((signal) =>
-          [...(signal.public_people ?? []), ...(signal.public_organizations ?? [])]
-            .filter((reference) => reference.id === entity.id)
-            .map((reference) => reference.event_role),
-        )
+      entity.signals
+        .flatMap((signal) => {
+          const unified = toUnifiedSignal(signal);
+          return [...unified.people, ...unified.organizations];
+        })
+        .filter((reference) => reference.id === entity.id)
+        .map((reference) => reference.eventRole.trim())
         .filter(Boolean),
     ),
   ];
   return (
     <SiteShell>
       <main className="article-main section-shell">
-        <Link className="back-link" href={person ? '/persons' : '/resources'}>
-          ← 返回{person ? '人物' : '资源'}目录
+        <Link
+          className="back-link"
+          href={person ? '/resources#people' : '/resources#organizations'}
+        >
+          ← 返回资源目录
         </Link>
         <header className="article-header">
-          <div className="article-meta">
-            <span>
-              {person ? '人物' : current.length ? '相关组织' : formatEntityType(entity.type)}
-            </span>
-            {current.length === 0 && <span>历史档案</span>}
+          <div className={styles.detailHeader}>
+            <ResourceImage entity={entity} />
+            <div>
+              <p className="kicker">{formatEntityType(entity.type)} · 资源档案</p>
+              <h1>{entity.name}</h1>
+              <p>{resourceIntroduction(entity, topicNames)}</p>
+            </div>
           </div>
-          <h1>{entity.name}</h1>
-          <p>
-            关联来自当前公开信号；同事件出现不代表存在任职、隶属或合作关系。人物同名但 ID
-            不同的记录不会自动合并。
-          </p>
           <div className="brief-stats">
-            <span>{current.length} 条当前信号</span>
-            <span>{archive.length} 条历史信号</span>
+            <span>{entity.signals.length} 条公开关联信号</span>
+            <span>{reports.length} 份关联洞察</span>
+            {entity.latestAt && <span>最近事件 {formatZhDate(entity.latestAt.slice(0, 10))}</span>}
           </div>
-        </header>
-        {entity.latestAt && (
-          <p className={styles.note}>最近关联事件：{formatZhDate(entity.latestAt.slice(0, 10))}</p>
-        )}
-        {roles.length > 0 && (
-          <p className={styles.note}>
-            公开事件中的角色：{roles.join('、')}。具体依据请查看对应信号。
-          </p>
-        )}
-        <section className={styles.group}>
-          <h2>{person ? '同事件组织' : '同事件关键人物'}</h2>
-          <p>仅展示信号中已公开的关联，不推断当前职务或任职有效期。</p>
-          <div className={styles.links}>
-            {(person ? entity.relatedOrganizations : entity.relatedPeople).map((reference) => (
-              <Link
-                className={styles.button}
-                key={reference.id}
-                href={person ? `/resources/${reference.id}` : `/persons/${reference.id}`}
-              >
-                {reference.name}
-              </Link>
-            ))}
-          </div>
-          {(person ? entity.relatedOrganizations : entity.relatedPeople).length === 0 && (
-            <p className={styles.empty}>暂无公开关联资料。</p>
-          )}
-        </section>
-        <section className={styles.group}>
-          <h2>当前关联信号</h2>
-          {current.length ? (
-            <PublicSignalCards signals={current} />
-          ) : (
-            <p className={styles.empty}>暂无当前公开关联信号。</p>
-          )}
-        </section>
-        {archive.length > 0 && (
-          <section className={styles.group}>
-            <h2>历史信号档案</h2>
-            <p className={styles.note}>保留历史内容与引用，不代表已按新版发布规则核验。</p>
-            <PublicSignalCards signals={archive} />
-          </section>
-        )}
-        {relations.length > 0 && (
-          <section className={styles.group}>
-            <h2>历史实体关系</h2>
-            <p className={styles.note}>
-              以下为原有资源档案中的关系登记，并非本次事件推导的当前任职关系。
+          {media && (
+            <p className={styles.attribution}>
+              图像：{media.credit} · {media.license} ·{' '}
+              <a href={media.sourceUrl} target="_blank" rel="noopener noreferrer">
+                来源与授权
+              </a>
+              。{person ? '照片' : '标识'}仅用于指认资源，不表示该组织或人物认可本站。
             </p>
-            {relations.map((relation) => {
-              const source = seedEntities.find((entry) => entry.id === relation.source);
-              const target = seedEntities.find((entry) => entry.id === relation.target);
-              if (!source || !target) return null;
-              return (
-                <p className={styles.links} key={relation.id}>
-                  <Link href={`/resources/${source.id}`}>{source.name}</Link>
-                  <span>{formatRelationType(relation.relation_type)}</span>
-                  <Link href={`/resources/${target.id}`}>{target.name}</Link>
-                </p>
-              );
-            })}
-          </section>
-        )}
+          )}
+        </header>
+
+        <section className={styles.detailSection} aria-labelledby="resource-trend">
+          <h2 id="resource-trend">技术发展趋势观察</h2>
+          <div className={styles.observation}>
+            <p>
+              截至 {observation.asOf.slice(0, 10)}（UTC），该资源关联的公开信号在近 30 天有{' '}
+              {observation.recent} 条，前一个 30 天有 {observation.previous} 条。
+              这是本站事件覆盖数量，不足以单独判断行业增长或衰退。
+            </p>
+            {topics.length > 0 ? (
+              <p>
+                关联议题主要包括{' '}
+                {topics.map((topic) => `${topic.name}（${topic.count} 条）`).join('、')}。
+                {latest ? `最近一次关联事件为“${latest.title}”。` : ''}
+              </p>
+            ) : (
+              <p>关联信号尚无可用议题映射，暂不推断技术演进方向。</p>
+            )}
+            {reports[0] ? (
+              <p>
+                关联报告《<Link href={reports[0].href}>{reports[0].title}</Link>》的摘要：
+                {reports[0].summary} 这是相关议题的研判，不等于对该资源的独立评价。
+              </p>
+            ) : (
+              <p>暂无可公开的关联洞察报告；以下信号提供可追溯的事件脉络。</p>
+            )}
+          </div>
+          {roles.length > 0 && (
+            <p className={styles.note}>
+              公开信号记录的事件角色：{roles.join('、')}；以具体信号为准。
+            </p>
+          )}
+        </section>
+
+        <section className={styles.detailSection} aria-labelledby="resource-signals">
+          <h2 id="resource-signals">关联信号 · {entity.signals.length}</h2>
+          <p className={styles.note}>
+            全部公开记录按事件发生时间排序，各信号保留自身的来源和发布状态。
+          </p>
+          {entity.signals.length ? (
+            <PublicSignalCards signals={entity.signals} />
+          ) : (
+            <p className={styles.empty}>尚无公开关联信号。</p>
+          )}
+        </section>
+
+        <section className={styles.detailSection} aria-labelledby="resource-insights">
+          <h2 id="resource-insights">关联洞察 · {reports.length}</h2>
+          <p className={styles.note}>
+            仅关联已公开且引用本资源信号的报告，或明确登记该组织的文件报告；共享信号不代表报告直接评价该人物或组织。
+          </p>
+          {reports.length ? (
+            <div className={styles.reportGrid}>
+              {reports.map((report) => (
+                <Link className={styles.reportCard} href={report.href} key={report.id}>
+                  <span>
+                    {report.kind} · {formatZhDate(report.date.slice(0, 10))}
+                  </span>
+                  <h3>{report.title}</h3>
+                  <p>{report.summary}</p>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className={styles.empty}>暂无符合公开条件的关联洞察报告。</p>
+          )}
+        </section>
+
+        <section className={styles.detailSection} aria-labelledby="resource-participants">
+          <h2 id="resource-participants">{person ? '同事件组织' : '同事件人物'}</h2>
+          <p className={styles.note}>同一公开事件出现不等于任职、隶属、合作或持续关系。</p>
+          {associated.length ? (
+            <div className={styles.relations}>
+              {associated.map((reference) => (
+                <Link
+                  href={person ? `/resources/${reference.id}` : `/persons/${reference.id}`}
+                  key={reference.id}
+                >
+                  {reference.name}
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className={styles.empty}>暂无可核实 ID 的同事件参与者。</p>
+          )}
+        </section>
       </main>
     </SiteShell>
   );
