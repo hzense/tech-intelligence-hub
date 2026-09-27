@@ -7,15 +7,15 @@ import { buildSignalRadar } from '@/lib/signal-radar-model';
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
   title: '技术演进雷达',
-  description: '在同一张雷达中查看全部公开信号的领域分布、月度演进与最近事件。',
+  description: '在交互雷达中查看公开信号的领域与分类热度、人物和公司资源，以及关联信号。',
   alternates: { canonical: '/' },
 };
 
 export default async function Home() {
   const data = await getPublicExploration();
-  const model = buildSignalRadar(data.signals, data.taxonomy.topics);
+  const model = buildSignalRadar(data.signals, data.taxonomy.topics, { entities: data.entities });
   return (
-    <SiteShell>
+    <SiteShell showFooter={false}>
       <SignalRadar model={model} />
     </SiteShell>
   );

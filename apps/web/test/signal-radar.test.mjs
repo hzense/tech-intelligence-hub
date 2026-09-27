@@ -163,6 +163,152 @@ test('second-level bars resolve deeper topics and count each signal once per sub
   assert.equal(result.subtopics[0].id, 'topic-agents');
 });
 
+test('domain and every taxonomy depth expose the same ordered, deduplicated signal identities', () => {
+  const result = compute([
+    legacy('old', '2026-04-01T00:00:00.000Z', {
+      topics: ['topic-tool-use', 'topic-agent-memory'],
+    }),
+    signal('recent', '2026-09-20T00:00:00.000Z', {
+      topics: ['topic-tool-use', 'topic-agent-memory', 'topic-agents', 'topic-security'],
+    }),
+    signal('root-only', '2026-09-15T00:00:00.000Z', { topics: ['topic-ai'] }),
+    signal('zduplicate', '2026-09-20T00:00:00.000Z', {
+      topics: ['topic-tool-use', 'topic-agent-memory', 'topic-agents', 'topic-security'],
+      title: 'Signal recent',
+      summary: 'Summary recent',
+    }),
+  ]);
+  const ai = result.domains.find((domain) => domain.id === 'topic-ai');
+  const agents = result.categories.find((category) => category.id === 'topic-agents');
+  const toolUse = result.categories.find((category) => category.id === 'topic-tool-use');
+  const memory = result.categories.find((category) => category.id === 'topic-agent-memory');
+  const direct = result.subtopics.find((category) => category.id === 'topic-agents');
+  assert.deepEqual(
+    result.signalIndex.map((entry) => entry.id),
+    ['recent', 'root-only', 'old'],
+  );
+  assert.deepEqual(ai.signalIds, ['recent', 'root-only', 'old']);
+  assert.deepEqual(agents.signalIds, ['recent', 'old']);
+  assert.deepEqual(toolUse.signalIds, ['recent', 'old']);
+  assert.deepEqual(memory.signalIds, ['recent', 'old']);
+  assert.deepEqual(direct.signalIds, agents.signalIds);
+  assert.deepEqual([agents.domainId, agents.parentId, agents.depth], ['topic-ai', 'topic-ai', 1]);
+  assert.deepEqual(
+    [toolUse.domainId, toolUse.parentId, toolUse.depth],
+    ['topic-ai', 'topic-agents', 2],
+  );
+  assert.deepEqual([agents.totalCount, agents.recentCount], [2, 1]);
+  assert.deepEqual(
+    result.signalIndex.find((entry) => entry.id === 'recent'),
+    {
+      id: 'recent',
+      title: 'Signal recent',
+      summary: 'Summary recent',
+      occurredAt: '2026-09-20T00:00:00.000Z',
+      domainIds: ['topic-ai', 'topic-security'],
+    },
+  );
+  assert.equal(result.exclusions.duplicateCount, 1);
+  assert.equal(JSON.stringify(result).includes('NaN'), false);
+});
+
+test('top five resources rank exact public person/company identities by 30-day events', () => {
+  const entities = [
+    ...Array.from({ length: 4 }, (_, index) => ({
+      id: `person-${index}`,
+      name: `Person ${index}`,
+      type: 'person',
+    })),
+    ...Array.from({ length: 3 }, (_, index) => ({
+      id: `company-${index}`,
+      name: `Company ${index}`,
+      type: 'company',
+    })),
+    { id: 'institution-0', name: 'Agency', type: 'institution' },
+  ];
+  const reference = (id, people, organizations, at = '2026-09-25T12:00:00.000Z') =>
+    signal(id, at, {
+      publication_basis: 'source_evidence',
+      public_version: 1,
+      public_people: people.map((person) => ({ id: person, name: person, event_role: '' })),
+      public_organizations: organizations.map((organization) => ({
+        id: organization,
+        name: organization,
+        event_role: '',
+      })),
+    });
+  const first = reference('first', ['person-0', 'person-1'], ['company-0', 'institution-0']);
+  const result = compute(
+    [
+      first,
+      { ...first, id: 'zduplicate' },
+      reference('second', ['person-0'], ['company-0'], '2026-09-24T12:00:00.000Z'),
+      reference('third', ['person-2'], ['company-1'], '2026-09-23T12:00:00.000Z'),
+      reference('fourth', ['person-3'], ['company-2'], '2026-09-22T12:00:00.000Z'),
+      legacy('archive', '2026-06-01T00:00:00.000Z', {
+        entities: ['person-1', 'person-1', 'company-1', 'institution-0'],
+      }),
+    ],
+    { entities },
+  );
+  assert.equal(result.topResources.length, 5);
+  assert.deepEqual(
+    result.topResources.map((resource) => [resource.id, resource.recentCount, resource.totalCount]),
+    [
+      ['company-0', 2, 2],
+      ['person-0', 2, 2],
+      ['company-1', 1, 2],
+      ['person-1', 1, 2],
+      ['company-2', 1, 1],
+    ],
+  );
+  assert.deepEqual(result.topResources.find((resource) => resource.id === 'person-1').signalIds, [
+    'first',
+    'archive',
+  ]);
+  assert.equal(
+    result.topResources.some((resource) => resource.id === 'institution-0'),
+    false,
+  );
+  assert.equal(result.exclusions.duplicateCount, 1);
+  assert.equal(
+    result.topResources[0].signalIds.every((id) =>
+      result.signalIndex.some((entry) => entry.id === id),
+    ),
+    true,
+  );
+  assert.equal(compute([first]).topResources.length, 0);
+});
+
+test('manual name-only publication is not assigned an unverified resource identity', () => {
+  const result = compute(
+    [
+      signal('manual', undefined, {
+        public_people: [{ id: 'person-0', name: 'Unverified Ada', event_role: '' }],
+        public_organizations: [{ id: 'company-0', name: 'Unverified Lab', event_role: '' }],
+      }),
+      legacy('historical', '2026-01-01T00:00:00.000Z', {
+        entities: ['person-0', 'company-0'],
+      }),
+    ],
+    {
+      entities: [
+        { id: 'person-0', name: 'Ada', type: 'person' },
+        { id: 'company-0', name: 'Lab', type: 'company' },
+      ],
+    },
+  );
+  assert.deepEqual(
+    result.topResources.map((resource) => resource.signalIds),
+    [['historical'], ['historical']],
+  );
+  assert.ok(result.topResources.every((resource) => resource.recentCount === 0));
+  assert.deepEqual(
+    result.signalIndex.map((entry) => entry.id),
+    ['manual', 'historical'],
+  );
+});
+
 test('a removed public entry disappears, small samples stay numeric, invalid cutoffs fail', () => {
   assert.equal(compute([signal('one')]).totalCount, 1);
   const cleared = compute([]);
@@ -194,24 +340,36 @@ const render = (model) =>
 
 test('radar renders a unified accessible visualization and links to both signal kinds', () => {
   const html = render(
-    compute([
-      legacy('archive'),
-      signal('current', undefined, { title: '<script>not markup</script>' }),
-    ]),
+    compute(
+      [
+        legacy('archive', '2026-03-03T00:00:00.000Z', {
+          entities: ['person-0', 'company-0'],
+        }),
+        signal('current', undefined, { title: '<script>not markup</script>' }),
+      ],
+      {
+        entities: [
+          { id: 'person-0', name: 'Ada', type: 'person' },
+          { id: 'company-0', name: 'Lab', type: 'company' },
+        ],
+      },
+    ),
   );
   assert.match(html, /技术演进雷达/);
-  assert.match(html, /领域雷达/);
-  assert.match(html, /领域内部的关注落点/);
-  assert.match(html, /不能跨两行比较长度/);
-  assert.match(html, /aria-label="领域雷达/);
+  assert.match(html, /可点击的领域、分类和资源雷达/);
+  assert.match(html, /领域内分类/);
+  assert.match(html, /人工智能，近 30 日 1 条/);
+  assert.match(html, /全站人物／公司 TOP 5/);
+  assert.match(html, /资源第 1 名/);
+  assert.match(html, /aria-pressed="true"/);
+  assert.match(html, /aria-live="polite"/);
   assert.match(html, /href="\/signals\/archive"/);
   assert.match(html, /href="\/signals\/current"/);
   assert.match(html, /&lt;script&gt;/);
   assert.doesNotMatch(html, /<script>not markup/);
-  assert.match(html, /每格为当月事件数/);
-  assert.match(html, /不声称它们是综合热度榜/);
-  assert.doesNotMatch(html, /排除历史档案|仅使用当前公开集合|实时热度/);
-  assert.match(render(compute([])), /暂无可展示的信号/);
+  assert.match(html, /热度按本站已公开、去重的信号/);
+  assert.doesNotMatch(html, /最近发生的信号|雷达概况/);
+  assert.match(render(compute([])), /该节点暂无符合当前公开口径的信号/);
 });
 
 test('homepage authority, redirect and navigation exclude retired report routes', async () => {
@@ -226,6 +384,8 @@ test('homepage authority, redirect and navigation exclude retired report routes'
   const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
   const home = await read('../app/page.tsx');
   assert.match(home, /getPublicExploration/);
+  assert.match(home, /entities: data\.entities/);
+  assert.match(home, /showFooter=\{false\}/);
   assert.match(home, /force-dynamic/);
   assert.doesNotMatch(home, /getRadarEntries|getDailyEntries|catch\s*\(/);
   assert.match(await read('../app/radar/page.tsx'), /permanentRedirect\('\/'\)/);

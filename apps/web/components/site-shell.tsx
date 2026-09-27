@@ -5,7 +5,13 @@ import { MobileNavigation } from './mobile-navigation';
 import { ThemeToggle } from './theme-toggle';
 import { primaryNavigation, repositoryUrl } from '../lib/site-navigation';
 
-export function SiteShell({ children }: { children: ReactNode }) {
+export function SiteShell({
+  children,
+  showFooter = true,
+}: {
+  children: ReactNode;
+  showFooter?: boolean;
+}) {
   return (
     <div className="site-frame">
       <header className="site-header">
@@ -43,16 +49,18 @@ export function SiteShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       {children}
-      <footer className="site-footer">
-        <div className="section-shell footer-inner">
-          <div>
-            <strong>HZense</strong>
-            <span>感知科技的变化</span>
+      {showFooter && (
+        <footer className="site-footer">
+          <div className="section-shell footer-inner">
+            <div>
+              <strong>HZense</strong>
+              <span>感知科技的变化</span>
+            </div>
+            <p>结构化信号，关联证据，更清晰的决策。</p>
+            <span>© 2026 HZense</span>
           </div>
-          <p>结构化信号，关联证据，更清晰的决策。</p>
-          <span>© 2026 HZense</span>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }
