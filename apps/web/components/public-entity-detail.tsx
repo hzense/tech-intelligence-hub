@@ -9,6 +9,7 @@ import {
   formatEntityType,
   resourceIntroduction,
   resourceMedia,
+  resourceProfile,
   resourceTopics,
   resourceTrendObservation,
   type ResourceReportLink,
@@ -30,6 +31,7 @@ export function PublicEntityDetail({
   const observation = resourceTrendObservation(entity, new Date());
   const latest = entity.signals[0];
   const media = resourceMedia(entity.id);
+  const profile = resourceProfile(entity.id);
   const roles = [
     ...new Set(
       entity.signals
@@ -57,7 +59,7 @@ export function PublicEntityDetail({
             <div>
               <p className="kicker">{formatEntityType(entity.type)} · 资源档案</p>
               <h1>{entity.name}</h1>
-              <p>{resourceIntroduction(entity, topicNames)}</p>
+              <p>{resourceIntroduction(entity)}</p>
             </div>
           </div>
           <div className="brief-stats">
@@ -65,6 +67,15 @@ export function PublicEntityDetail({
             <span>{reports.length} 份关联洞察</span>
             {entity.latestAt && <span>最近事件 {formatZhDate(entity.latestAt.slice(0, 10))}</span>}
           </div>
+          {profile && (
+            <p className={styles.attribution}>
+              简介来源：
+              <a href={profile.sourceUrl} target="_blank" rel="noopener noreferrer">
+                查看人物或组织资料
+              </a>
+              。简介描述资源本身；下方关联数量仅反映本站公开信号。
+            </p>
+          )}
           {media && (
             <p className={styles.attribution}>
               图像：{media.credit} · {media.license} ·{' '}

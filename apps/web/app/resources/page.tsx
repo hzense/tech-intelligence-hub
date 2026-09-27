@@ -44,7 +44,7 @@ export default async function ResourcesPage() {
         >
           <div className={styles.sectionHeading}>
             <h2 id="organization-heading">相关组织</h2>
-            <p>每张卡片概括公开信号，不代表任职或合作关系。</p>
+            <p>简介说明组织背景与业务；关联议题和活跃度单独来自本站公开信号。</p>
           </div>
           {organizations.length ? (
             <div className={styles.grid}>
@@ -59,7 +59,7 @@ export default async function ResourcesPage() {
         <section className={styles.section} id="people" aria-labelledby="people-heading">
           <div className={styles.sectionHeading}>
             <h2 id="people-heading">关键人物</h2>
-            <p>仅展示已登记人物；头像缺少可靠来源时显示姓名缩写。</p>
+            <p>简介说明人物身份与经历；头像缺少可靠来源时显示姓名缩写。</p>
           </div>
           {people.length ? (
             <div className={styles.grid}>
