@@ -11,7 +11,7 @@ import {
   parseRadarRange,
   radarRankingVersion,
 } from '../lib/signal-radar-model.ts';
-import { primaryNavigation, historicalNavigation } from '../lib/site-navigation.ts';
+import { primaryNavigation } from '../lib/site-navigation.ts';
 
 const now = new Date('2026-09-26T12:00:00.000Z');
 const topics = [
@@ -199,7 +199,7 @@ test('radar rendering exposes score limitations, publication basis, count gaps, 
   assert.doesNotMatch(html, /历史回顾样例|实时热度|独立核验通过/);
 });
 
-test('homepage authority, redirect and shared navigation preserve history outside primary menus', async () => {
+test('homepage authority, redirect and navigation exclude retired report routes', async () => {
   assert.deepEqual(
     primaryNavigation.map((item) => item.href),
     ['/', '/signals', '/topics', '/resources'],
@@ -208,16 +208,12 @@ test('homepage authority, redirect and shared navigation preserve history outsid
     primaryNavigation.map((item) => item.label),
     ['雷达', '信号', '专题洞察', '资源'],
   );
-  assert.deepEqual(
-    historicalNavigation.map((item) => item.href),
-    ['/daily', '/weekly'],
-  );
   const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
   const home = await read('../app/page.tsx');
   assert.match(home, /getPublicExploration/);
   assert.match(home, /force-dynamic/);
   assert.doesNotMatch(home, /getRadarEntries|getDailyEntries|catch\s*\(/);
   assert.match(await read('../app/radar/page.tsx'), /permanentRedirect\('\/'\)/);
-  assert.match(await read('../components/site-shell.tsx'), /historicalNavigation\.map/);
+  assert.doesNotMatch(await read('../components/site-shell.tsx'), /\/daily|\/weekly/);
   assert.match(await read('../components/mobile-navigation.tsx'), /primaryNavigation\.map/);
 });

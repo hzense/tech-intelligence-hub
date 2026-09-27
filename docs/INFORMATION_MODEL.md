@@ -20,6 +20,8 @@
 
 > **2026-09-27 公开逻辑结构：** [统一 Signal 逻辑模型](UNIFIED_SIGNAL_MODEL.md) 将历史 Seed、证据合格发表和人工确认发表映射为同一公开字段集合，明确发布依据、可空评分及仅名称的人物／组织。该适配层不合并物理表、不回填生产数据，也不授予新的发表资格；下文物理表与版本契约仍各自有效。
 
+> **2026-09-27 日报／周报退役：** 下文 Daily／Weekly 流程与字段是历史模型说明，不再是当前内容生产或公开路由契约。仓库中的日报、周报文件、生成器、公开页面和发布门禁已删除；第 40 节的物理数据库设计及既有不可变迁移不受此次代码仓清理影响。
+
 ---
 
 # 1. 目标
@@ -32,7 +34,7 @@ HZense 的 Information Model 定义系统中的内容、实体、关系、信号
 2. **人物、公司、技术、论文、Topic 等对象如何关联？**
 3. **Signals 如何逐步演化为 Daily、Weekly、Insights 与 Radar？**
 
-现行模型的既有知识流（新版切换后 Daily／Weekly 仅保留历史归档）：
+以下是已退役的旧版知识流，不表示当前仍生产或保留 Daily／Weekly 档案：
 
 > **Sources → Signals → Daily Intelligence → Weekly Intelligence → Topics → Insights → Radar**
 
@@ -715,7 +717,6 @@ source_id: source-openai-blog
 source_url: https://openai.com/example-event
 summary: string
 importance: 4
-strength: 3
 confidence: 0.9
 novelty: 0.8
 entities:
@@ -785,7 +786,7 @@ V1 不做复杂 ML 评分，采用透明指标。
 0.0 – 1.0
 ```
 
-表示来源和事实可信度。
+表示新闻报道的可信程度，综合来源可靠性和事实证据；不是事件未来发生的概率，也不是模型自报置信度。现有分数属于历史编辑估计，尚未校准为统计概率。
 
 ## Novelty
 
@@ -1421,6 +1422,8 @@ radar_snapshots N ───── N signals
 ## 40.4 声明式约束与索引
 
 数据库直接保证以下规则：
+
+此处记录现有物理表约束；`strength` 已从当前 Seed 和统一公开 Signal 逻辑结构移除，但旧表与不可变版本仍保留该列。物理迁移另行设计和授权，不用虚构分数填充旧表。
 
 - `sources.trust_score` 为 `0..100`，`allowed_hosts` 必须为非空数组。
 - `signals.source_url` 必须以 `https://` 开头；`importance` 与 `strength` 为 `1..5`；`confidence` 与 `novelty` 为 `0..1`。

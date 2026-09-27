@@ -220,7 +220,7 @@ function canonicalCatalog(catalog: SeedCatalog): SeedCatalog {
   };
 }
 
-function legacyVersion(signal: SeedSignal): SignalVersionSnapshot {
+function legacyVersion(signal: SeedSignal, strength: number): SignalVersionSnapshot {
   const dayPrecision = isUtcMidnight(signal.occurred_at);
   return createSignalVersionSnapshot({
     signal_id: signal.id,
@@ -237,7 +237,7 @@ function legacyVersion(signal: SeedSignal): SignalVersionSnapshot {
     summary: signal.summary,
     analysis: null,
     importance: signal.importance,
-    strength: signal.strength,
+    strength,
     confidence: signal.confidence,
     novelty: signal.novelty,
     revision_reason:
@@ -250,10 +250,27 @@ function legacyVersion(signal: SeedSignal): SignalVersionSnapshot {
 /**
  * Pure, deterministic preview. No clock, network, database, downloads, or writes.
  * This does not create evidence, infer people, compare stored versions, or permit publication.
- * Pass the six SeedCatalog arrays; LoadedSeedCatalog.taxonomy is validated separately by its loader.
+ * Historical 3.0.0 snapshots require a real legacy strength value. Current
+ * Seed omits it and cannot be coerced into this immutable database contract.
  */
 export function planLegacySignalImport(input: unknown): LegacySignalImportPlan {
-  const catalog = canonicalCatalog(parseSeedCatalog(input));
+  const historical = z
+    .object({
+      signals: z.array(z.object({ id, strength: z.number().int().min(1).max(5) }).passthrough()),
+    })
+    .passthrough()
+    .parse(input);
+  const strengths = new Map(historical.signals.map((signal) => [signal.id, signal.strength]));
+  const catalog = canonicalCatalog(
+    parseSeedCatalog({
+      ...historical,
+      signals: historical.signals.map((signal) => {
+        const { strength, ...currentSignal } = signal;
+        void strength;
+        return currentSignal;
+      }),
+    }),
+  );
   const legacyReferences = catalog.signals.map((signal): LegacySignalReference => ({
     signal_id: signal.id,
     version: 1,
@@ -277,7 +294,7 @@ export function planLegacySignalImport(input: unknown): LegacySignalImportPlan {
   const payload = {
     schema_version: SIGNAL_VERSION_SCHEMA_VERSION,
     mode: 'dry_run' as const,
-    versions: catalog.signals.map(legacyVersion),
+    versions: catalog.signals.map((signal) => legacyVersion(signal, strengths.get(signal.id)!)),
     legacy_references: legacyReferences,
     legacy_catalog: catalog,
     counts: {

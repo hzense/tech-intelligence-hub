@@ -34,31 +34,15 @@ function topicDocument(file: string, id: string, parent?: string): ContentDocume
 describe('content cross-reference validation', () => {
   it('accepts references that resolve to seed and content records', () => {
     const documents = [
-      document('daily.md', {
-        id: 'daily-2024-06-20',
-        title: 'Daily',
-        type: 'daily',
+      document('insight.md', {
+        id: 'insight-foundation-models',
+        title: 'Insight',
+        type: 'insight',
         status: 'published',
-        edition: 'historical_example',
         date: '2024-06-20',
-        language: 'en',
-        summary: 'Summary',
-        signal_count: 1,
-        major_developments: 1,
-        rising_topics: ['topic-foundation-models'],
-        signal_refs: ['signal-gpt4o'],
-      }),
-      document('weekly.md', {
-        id: 'weekly-2024-w25',
-        title: 'Weekly',
-        type: 'weekly',
-        status: 'published',
-        week: '2024-W25',
-        start_date: '2024-06-17',
-        end_date: '2024-06-23',
-        signal_count: 1,
-        daily_refs: ['daily-2024-06-20'],
-        featured_topics: ['topic-foundation-models'],
+        importance: 3,
+        topics: ['topic-foundation-models'],
+        evidence_signals: ['signal-gpt4o'],
       }),
     ];
 
@@ -88,18 +72,6 @@ describe('content cross-reference validation', () => {
         topics: [],
         evidence_signals: [],
       }),
-      document('weekly.md', {
-        id: 'weekly-2024-w25',
-        title: 'Weekly',
-        type: 'weekly',
-        status: 'published',
-        week: '2024-W25',
-        start_date: '2024-06-17',
-        end_date: '2024-06-23',
-        signal_count: 1,
-        daily_refs: ['daily-missing'],
-        featured_topics: [],
-      }),
     ];
 
     expect(findReferenceIssues(documents, catalogs)).toEqual(
@@ -119,12 +91,6 @@ describe('content cross-reference validation', () => {
           field: 'evidence_signals',
           reason: 'missing',
           target: 'signal-missing',
-        }),
-        expect.objectContaining({
-          field: 'daily_refs',
-          kind: 'daily',
-          reason: 'missing',
-          target: 'daily-missing',
         }),
       ]),
     );

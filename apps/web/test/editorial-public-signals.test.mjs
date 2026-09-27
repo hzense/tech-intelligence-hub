@@ -52,7 +52,7 @@ function row(overrides = {}) {
 test('manual public DTO has no fabricated scores or URLs, and allowlists its fields', () => {
   const [entry] = mapEditorialSignalRows([row()]);
   assert.equal(entry.publication_basis, 'manual_confirmation');
-  for (const metric of ['confidence', 'importance', 'strength', 'novelty'])
+  for (const metric of ['confidence', 'importance', 'novelty'])
     assert.equal(metric in entry, false);
   assert.deepEqual(entry.public_sources, []);
   assert.equal(entry.source_url, '');
@@ -178,10 +178,7 @@ test('server entrypoints gate readers, bind requests, and remove old indexed sig
   assert.match(reader, /max: 2/);
   assert.doesNotMatch(reader, /unstable_cache|use cache|private\./);
   const search = await source('../lib/server/search.ts');
-  assert.equal(
-    (search.match(/return mergeCurrentSignalSearch\(legacy, current\)/g) ?? []).length,
-    2,
-  );
+  assert.equal((search.match(/return mergeCurrentSignalSearch\(/g) ?? []).length, 2);
   assert.match(
     await source('../lib/search-runtime.ts'),
     /publication_basis !== 'manual_confirmation'/,
@@ -192,7 +189,7 @@ test('server entrypoints gate readers, bind requests, and remove old indexed sig
   assert.match(detail, /toUnifiedSignal\(entry\)/);
   assert.match(detail, /unified\.assessment === null/);
   assert.match(detail, /未提供公开来源链接/);
-  assert.match(detail, /href=\{`\/topics\/\$\{topic\}`\}/);
+  assert.match(detail, /href=\{`\/topics\/\$\{topic\.id\}`\}/);
 });
 
 test('actual server search orchestration cannot resurrect an editorial hit from the old index in any mode', async () => {

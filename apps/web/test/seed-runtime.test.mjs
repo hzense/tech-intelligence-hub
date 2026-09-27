@@ -33,12 +33,14 @@ test('resolves a public Signal by its stable id', async () => {
 });
 
 test('legacy Seed projects named public relations without changing archive eligibility', async () => {
-  const signal = (await getSignalEntries()).find((entry) => entry.id === 'signal-20221130-chatgpt');
+  const signal = (await getSignalEntries()).find(
+    (entry) => entry.id === 'signal-20260901-claude-fable-mythos-51',
+  );
   assert.ok(signal);
   assert.equal(signal.public_version, undefined);
   assert.deepEqual(
     signal.public_organizations?.map((entry) => [entry.id, entry.name]),
-    [['company-openai', 'OpenAI']],
+    [['company-anthropic', 'Anthropic']],
   );
   assert.equal(signal.public_sources?.[0]?.url, signal.source_url);
   assert.equal(signal.public_topics?.[0]?.id, 'topic-foundation-models');
@@ -53,11 +55,13 @@ test('only exposes active Resources and resolves their stable ids', async () => 
   assert.equal((await getResourceEntryById(firstResource.id))?.id, firstResource.id);
 });
 
-test('loads validated Radar snapshots in reverse date and attention order', async () => {
+test('does not reuse Radar scores whose historical Signal evidence was removed', async () => {
   const [snapshots, signals] = await Promise.all([getRadarSnapshots(), getSignalEntries()]);
   const signalById = new Map(signals.map((signal) => [signal.id, signal]));
 
-  assert.ok(snapshots.length > 0);
+  assert.deepEqual(snapshots, []);
+  assert.ok(signals.every((signal) => signal.occurred_at >= '2026-01-01T00:00:00Z'));
+  assert.equal(await getSignalEntryById('signal-20221130-chatgpt'), undefined);
   assert.ok(snapshots.every((snapshot) => snapshot.attention >= 0 && snapshot.attention <= 100));
   for (const snapshot of snapshots) {
     assert.ok(snapshot.reasoning.trim().length > 0);

@@ -9,6 +9,7 @@ import { readSignalReadMode, mergeCurrentSignalSearch } from '../public-signal-r
 import { searchPublicSignals } from './public-signals';
 
 export async function searchPublishedContent(query: string, type?: SearchType) {
+  if (type === 'daily' || type === 'weekly') return [];
   if (readSignalReadMode(process.env) === 'database') {
     if (type === 'signal') return searchPublicSignals(query);
     const [legacy, current] = await Promise.all([
@@ -20,7 +21,10 @@ export async function searchPublishedContent(query: string, type?: SearchType) {
       }),
       type ? Promise.resolve([]) : searchPublicSignals(query),
     ]);
-    return mergeCurrentSignalSearch(legacy, current);
+    return mergeCurrentSignalSearch(
+      legacy.filter((result) => result.type !== 'daily' && result.type !== 'weekly'),
+      current,
+    );
   }
   // A persisted search document is never authority for a current Signal.
   const [legacy, current] = await Promise.all([
@@ -34,5 +38,8 @@ export async function searchPublishedContent(query: string, type?: SearchType) {
         }),
     !type || type === 'signal' ? searchInProcess(query, 'signal') : Promise.resolve([]),
   ]);
-  return mergeCurrentSignalSearch(legacy, current);
+  return mergeCurrentSignalSearch(
+    legacy.filter((result) => result.type !== 'daily' && result.type !== 'weekly'),
+    current,
+  );
 }

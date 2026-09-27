@@ -1,14 +1,10 @@
 import type { SeedEntity, SeedSignal } from '@hzense/content';
 import {
-  getDailyEntries,
   getInsightEntries,
   getTopicEntries,
   getTopicTitleMap,
-  getWeeklyEntries,
-  type DailyEntry,
   type InsightEntry,
   type TopicEntry,
-  type WeeklyEntry,
 } from './content-runtime.ts';
 import { formatEntityType } from './resource-presentation.ts';
 import {
@@ -45,8 +41,8 @@ function topicKeywords(ids: string[], topicTitleMap: Map<string, string>): strin
 }
 
 function publishedContentCandidate(
-  entry: DailyEntry | WeeklyEntry | InsightEntry,
-  type: 'daily' | 'weekly' | 'insight',
+  entry: InsightEntry,
+  type: 'insight',
   href: string,
   documentDate: string,
   topicIds: string[],
@@ -146,8 +142,6 @@ export async function getSearchDocumentProjections(
   includeSignals = true,
 ): Promise<CanonicalSearchDocument[]> {
   const [
-    dailyEntries,
-    weeklyEntries,
     insightEntries,
     topicEntries,
     signalEntries,
@@ -156,8 +150,6 @@ export async function getSearchDocumentProjections(
     entityMap,
     sourceMap,
   ] = await Promise.all([
-    getDailyEntries(),
-    getWeeklyEntries(),
     getInsightEntries(),
     getTopicEntries(),
     includeSignals ? getSignalEntries() : Promise.resolve([]),
@@ -168,26 +160,6 @@ export async function getSearchDocumentProjections(
   ]);
 
   const candidates: SearchProjectionCandidate[] = [
-    ...dailyEntries.map((entry) =>
-      publishedContentCandidate(
-        entry,
-        'daily',
-        `/daily/${entry.frontMatter.date}`,
-        entry.frontMatter.date,
-        entry.frontMatter.rising_topics,
-        topicTitleMap,
-      ),
-    ),
-    ...weeklyEntries.map((entry) =>
-      publishedContentCandidate(
-        entry,
-        'weekly',
-        `/weekly/${entry.frontMatter.week}`,
-        entry.frontMatter.end_date,
-        entry.frontMatter.featured_topics,
-        topicTitleMap,
-      ),
-    ),
     ...insightEntries.map((entry) =>
       publishedContentCandidate(
         entry,

@@ -3,8 +3,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { MobileNavigation } from './mobile-navigation';
 import { ThemeToggle } from './theme-toggle';
-import { historicalNavigation, primaryNavigation } from '../lib/site-navigation';
-import styles from './site-shell.module.css';
+import { primaryNavigation } from '../lib/site-navigation';
 
 export function SiteShell({ children }: { children: ReactNode }) {
   return (
@@ -44,16 +43,7 @@ export function SiteShell({ children }: { children: ReactNode }) {
             <strong>HZense</strong>
             <span>感知科技的变化</span>
           </div>
-          <div>
-            <p>结构化信号，关联证据，更清晰的决策。</p>
-            <nav aria-label="历史内容" className={styles.history}>
-              {historicalNavigation.map((item) => (
-                <Link key={item.href} href={item.href}>
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
+          <p>结构化信号，关联证据，更清晰的决策。</p>
           <span>© 2026 HZense</span>
         </div>
       </footer>

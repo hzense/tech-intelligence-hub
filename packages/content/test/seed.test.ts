@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { loadSeedCatalog } from '../src/seed.js';
+import { loadSeedCatalog, parseSeedCatalog, validateSeedCatalog } from '../src/seed.js';
 
 const temporaryRoots: string[] = [];
 
@@ -44,7 +44,6 @@ cross_domain_relations: []
   source_url: https://example.com/signal
   summary: Example summary
   importance: 3
-  strength: 3
   confidence: 0.8
   novelty: 0.7
   topics: []
@@ -99,7 +98,6 @@ async function createRadarSeedRoot({
   source_url: ${sourceUrl}
   summary: Example summary
   importance: 3
-  strength: 3
   confidence: 0.8
   novelty: 0.7
   topics: [${signalTopics.join(', ')}]
@@ -127,6 +125,39 @@ async function createRadarSeedRoot({
 
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true })));
+});
+
+describe('historical Signal entity roles', () => {
+  it('retains news credibility but rejects retired strength in the current Seed contract', async () => {
+    const root = await createSeedRoot('2026-08-20T00:00:00Z');
+    const loaded = await loadFixtureCatalog(root);
+    expect(loaded.signals[0]?.confidence).toBe(0.8);
+    expect(loaded.signals[0]).not.toHaveProperty('strength');
+    const { taxonomy: _taxonomy, ...catalog } = loaded;
+    void _taxonomy;
+    expect(() =>
+      parseSeedCatalog({
+        ...catalog,
+        signals: [{ ...catalog.signals[0], strength: 3 }],
+      }),
+    ).toThrow();
+  });
+
+  it('requires each role to refer to a linked person or organization', async () => {
+    const root = await createSeedRoot('2024-02-29T00:00:00Z');
+    const catalog = await loadFixtureCatalog(root);
+    catalog.entities.push(
+      { id: 'person-example', type: 'person', name: 'Person', status: 'active' },
+      { id: 'paper-example', type: 'paper', name: 'Paper', status: 'active' },
+    );
+    catalog.signals[0]!.entities = ['person-example', 'paper-example'];
+    catalog.signals[0]!.entity_roles = { 'person-example': '作者' };
+    expect(() => validateSeedCatalog(catalog)).not.toThrow();
+    catalog.signals[0]!.entity_roles = { 'missing-person': '作者' };
+    expect(() => validateSeedCatalog(catalog)).toThrow(/Unlinked entity role/);
+    catalog.signals[0]!.entity_roles = { 'paper-example': '作者' };
+    expect(() => validateSeedCatalog(catalog)).toThrow(/Unsupported entity role/);
+  });
 });
 
 describe('seed datetime validation', () => {

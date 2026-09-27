@@ -9,31 +9,38 @@ import {
 } from '../lib/radar-model.ts';
 import { getRadarSnapshots } from '../lib/seed-runtime.ts';
 
-test('builds the current Radar from validated snapshots', async () => {
+const sampleSnapshot = {
+  id: 'radar-synthetic-ai-security',
+  topic: 'topic-ai-security',
+  date: '2026-09-01',
+  domain: 'security',
+  attention: 55,
+  trend: 'growth',
+  maturity: 'emerging',
+  strategic_value: 'medium',
+  confidence: 0.5,
+  evidence_signals: ['signal-synthetic'],
+  reasoning: 'Synthetic test fixture',
+};
+
+test('does not expose retired Seed Radar snapshots', async () => {
   const snapshots = await getRadarSnapshots();
   const entries = filterLatestRadarSnapshots(snapshots);
 
-  assert.ok(entries.length > 0);
-  assert.equal(new Set(entries.map((entry) => entry.topic)).size, entries.length);
-  for (const entry of entries) {
-    const latestDate = snapshots
-      .filter((snapshot) => snapshot.topic === entry.topic)
-      .reduce((latest, snapshot) => (snapshot.date > latest ? snapshot.date : latest), '');
-    assert.equal(entry.date, latestDate);
-  }
+  assert.deepEqual(snapshots, []);
+  assert.deepEqual(entries, []);
 });
 
-test('selects the newest snapshot for a Topic regardless of input order', async () => {
-  const source = (await getRadarSnapshots())[0];
-  assert.ok(source);
+test('selects the newest snapshot for a Topic regardless of input order', () => {
+  const source = sampleSnapshot;
   const older = { ...source, id: 'radar-older', date: '2026-08-27', attention: 99 };
   const newer = { ...source, id: 'radar-newer', date: '2026-08-29', attention: 40 };
 
   assert.deepEqual(filterLatestRadarSnapshots([older, newer]), [newer]);
 });
 
-test('filters Radar entries by shareable dimensions', async () => {
-  const entries = filterLatestRadarSnapshots(await getRadarSnapshots(), {
+test('filters Radar entries by shareable dimensions', () => {
+  const entries = filterLatestRadarSnapshots([sampleSnapshot], {
     domain: 'security',
     maturity: 'emerging',
     trend: 'growth',
@@ -48,10 +55,9 @@ test('filters Radar entries by shareable dimensions', async () => {
   );
 });
 
-test('finds the latest Radar date independently of attention order', async () => {
-  const [higherAttention, lowerAttention] = await getRadarSnapshots();
-  assert.ok(higherAttention && lowerAttention);
-  assert.ok(higherAttention.attention > lowerAttention.attention);
+test('finds the latest Radar date independently of attention order', () => {
+  const higherAttention = { ...sampleSnapshot, attention: 95 };
+  const lowerAttention = { ...sampleSnapshot, id: 'radar-lower', attention: 55 };
 
   assert.equal(
     getLatestRadarSnapshotDate([
@@ -63,8 +69,8 @@ test('finds the latest Radar date independently of attention order', async () =>
   assert.equal(getLatestRadarSnapshotDate([]), undefined);
 });
 
-test('keeps Radar nodes on the attention axis and spreads same-lane points', async () => {
-  const entries = filterLatestRadarSnapshots(await getRadarSnapshots());
+test('keeps Radar nodes on the attention axis and spreads same-lane points', () => {
+  const entries = filterLatestRadarSnapshots([sampleSnapshot]);
   const positions = getRadarNodePositions(entries);
 
   assert.equal(positions.size, entries.length);

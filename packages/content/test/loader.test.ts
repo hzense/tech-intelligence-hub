@@ -13,7 +13,7 @@ async function createFixture() {
   const seedRoot = join(root, 'seed');
   const taxonomyFile = join(root, 'taxonomy.yaml');
   await Promise.all([
-    mkdir(join(contentRoot, 'daily', '2024'), { recursive: true }),
+    mkdir(join(contentRoot, 'insights'), { recursive: true }),
     mkdir(join(contentRoot, 'topics'), { recursive: true }),
     mkdir(seedRoot, { recursive: true }),
   ]);
@@ -56,7 +56,6 @@ cross_domain_relations: []
   source_url: https://example.com/signal
   summary: Example summary
   importance: 3
-  strength: 3
   confidence: 0.8
   novelty: 0.7
   topics: [topic-ai]
@@ -92,22 +91,20 @@ describe('loadContent', () => {
   it('loads Markdown and MDX into deterministic, render-ready entries', async () => {
     const { contentRoot, seedRoot, taxonomyFile } = await createFixture();
     await writeFile(
-      join(contentRoot, 'daily', '2024', '2024-06-20.md'),
+      join(contentRoot, 'insights', 'example.md'),
       `---
-id: daily-2024-06-20
-title: 示例简报
-type: daily
+id: insight-example
+title: 示例洞察
+type: insight
 status: published
-edition: historical_example
 date: 2024-06-20
 language: zh-CN
 summary: 来自 front matter 的摘要。
-signal_count: 1
-major_developments: 1
-rising_topics: [topic-ai]
-signal_refs: [signal-example]
+importance: 3
+topics: [topic-ai]
+evidence_signals: [signal-example]
 ---
-# 示例简报
+# 示例洞察
 
 ## 执行摘要
 这是第一段。
@@ -119,16 +116,16 @@ signal_refs: [signal-example]
     const entries = await loadContent({ contentRoot, seedRoot, taxonomyFile });
 
     expect(entries.map((entry) => entry.relativePath)).toEqual([
-      'daily/2024/2024-06-20.md',
+      'insights/example.md',
       'topics/ai.md',
     ]);
-    const [daily, topic] = entries;
-    if (!daily || !topic || daily.frontMatter.type !== 'daily')
-      throw new Error('Expected Daily and Topic entries');
-    expect(daily.slug).toBe('daily/2024/2024-06-20');
-    expect(daily.frontMatter.date).toBe('2024-06-20');
-    expect(daily.summary).toBe('来自 front matter 的摘要。');
-    expect(daily.sections).toEqual([
+    const [insight, topic] = entries;
+    if (!insight || !topic || insight.frontMatter.type !== 'insight')
+      throw new Error('Expected Insight and Topic entries');
+    expect(insight.slug).toBe('insights/example');
+    expect(insight.frontMatter.date).toBe('2024-06-20');
+    expect(insight.summary).toBe('来自 front matter 的摘要。');
+    expect(insight.sections).toEqual([
       { heading: '执行摘要', level: 2, paragraphs: ['这是第一段。'] },
       { heading: '基础模型｜平台变化', level: 2, paragraphs: ['这是第二段。'] },
     ]);
@@ -138,20 +135,17 @@ signal_refs: [signal-example]
   it('rejects broken cross-references with the file and field', async () => {
     const { contentRoot, seedRoot, taxonomyFile } = await createFixture();
     await writeFile(
-      join(contentRoot, 'daily', '2024', '2024-06-20.md'),
+      join(contentRoot, 'insights', 'example.md'),
       `---
-id: daily-2024-06-20
+id: insight-example
 title: Broken
-type: daily
+type: insight
 status: published
-edition: historical_example
 date: 2024-06-20
-language: en
 summary: Broken reference.
-signal_count: 1
-major_developments: 1
-rising_topics: [topic-ai]
-signal_refs: [signal-missing]
+importance: 3
+topics: [topic-ai]
+evidence_signals: [signal-missing]
 ---
 ## 执行摘要
 Broken reference.
@@ -162,7 +156,7 @@ Broken reference.
     );
 
     await expect(loadContent({ contentRoot, seedRoot, taxonomyFile })).rejects.toThrow(
-      'daily/2024/2024-06-20.md: signal_refs missing signal "signal-missing"',
+      'insights/example.md: evidence_signals missing signal "signal-missing"',
     );
   });
 

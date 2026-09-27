@@ -186,7 +186,7 @@ export async function getSignalWorkbenchDetail({ pool, request }) {
       await client.query(
         `/* workbench:snapshot */
       SELECT version,left(title,300) AS title,type,occurred_at,date_precision,left(date_basis,1000) AS date_basis,captured_at,
-        left(summary,4000) AS summary,left(analysis,12000) AS analysis,importance,strength,confidence,novelty,
+        left(summary,4000) AS summary,left(analysis,12000) AS analysis,importance,confidence,novelty,
         left(revision_reason,1000) AS revision_reason,origin,created_at,
         (length(title)>300 OR length(date_basis)>1000 OR length(summary)>4000 OR COALESCE(length(analysis)>12000,false) OR length(revision_reason)>1000) AS text_truncated
       FROM public.signal_versions WHERE signal_id=$1 AND version=$2 LIMIT 1`,
@@ -209,7 +209,6 @@ export async function getSignalWorkbenchDetail({ pool, request }) {
       summary: text.read(snapshotRow.summary, 4000),
       analysis: snapshotRow.analysis == null ? null : text.read(snapshotRow.analysis, 12000),
       importance: number(snapshotRow.importance),
-      strength: number(snapshotRow.strength),
       confidence: number(snapshotRow.confidence),
       novelty: number(snapshotRow.novelty),
       revision_reason: text.read(snapshotRow.revision_reason, 1000),

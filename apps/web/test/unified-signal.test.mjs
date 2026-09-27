@@ -15,7 +15,6 @@ const base = {
   topics: ['topic-one'],
   entities: ['person-one'],
   importance: 3,
-  strength: 2,
   confidence: 0.8,
   novelty: 0.5,
 };
@@ -37,12 +36,22 @@ test('legacy and qualified signals share the same public shape without changing 
   assert.equal(qualified.publication.version, 2);
   assert.equal(qualified.assessment.importance, 3);
   assert.equal(qualified.people[0].id, 'person-one');
+  assert.deepEqual(qualified.relatedEntities, []);
+});
+
+test('historical non-participant entities remain visible without becoming people or organizations', () => {
+  const legacy = toUnifiedSignal({
+    ...base,
+    legacy_related_entities: [{ id: 'model-one', name: 'Model One', type: 'model' }],
+  });
+  assert.deepEqual(legacy.people, []);
+  assert.deepEqual(legacy.organizations, []);
+  assert.deepEqual(legacy.relatedEntities, [{ id: 'model-one', name: 'Model One', type: 'model' }]);
 });
 
 test('manual signal keeps names but has no invented entity identity or assessment', () => {
-  const { importance, strength, confidence, novelty, ...withoutAssessment } = base;
+  const { importance, confidence, novelty, ...withoutAssessment } = base;
   void importance;
-  void strength;
   void confidence;
   void novelty;
   const manual = toUnifiedSignal({
@@ -61,5 +70,6 @@ test('manual signal keeps names but has no invented entity identity or assessmen
   assert.equal(manual.assessment, null);
   assert.deepEqual(manual.people, [{ id: null, name: 'Named Person', eventRole: '' }]);
   assert.deepEqual(manual.organizations, [{ id: null, name: 'Named Organization', eventRole: '' }]);
+  assert.deepEqual(manual.relatedEntities, []);
   assert.deepEqual(manual.sources, []);
 });

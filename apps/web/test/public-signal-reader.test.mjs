@@ -27,7 +27,6 @@ function row(overrides = {}) {
     summary: 'Public summary',
     analysis: 'Public analysis',
     importance: 3,
-    strength: 4,
     confidence: '0.8',
     novelty: '0.5',
     topics: [{ id: 'topic-ai', title: 'Public AI Topic' }],
@@ -80,6 +79,8 @@ test('maps only explicitly allowed public DTO fields and keeps event/capture tim
   assert.equal(signal.public_version, 3);
   assert.equal(signal.publication_revision, 2);
   assert.equal(signal.confidence, 0.8);
+  assert.equal('strength' in signal, false);
+  assert.doesNotMatch(publicSignalListQuery, /\bstrength\b/);
   assert.equal(signal.occurred_at, '2026-09-01T00:00:00.000Z');
   assert.equal(signal.captured_at, '2026-09-02T00:00:00.000Z');
   assert.deepEqual(signal.entities, ['person-one', 'org-one']);

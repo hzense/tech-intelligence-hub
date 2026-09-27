@@ -2,30 +2,16 @@ import type { MetadataRoute } from 'next';
 import process from 'node:process';
 import { readSignalReadMode } from '@/lib/public-signal-reader-core';
 import { getResourceEntries, getSignalEntries } from '@/lib/seed-runtime';
-import {
-  getDailyEntries,
-  getInsightEntries,
-  getTopicEntries,
-  getWeeklyEntries,
-} from '@/lib/content-runtime';
+import { getInsightEntries, getTopicEntries } from '@/lib/content-runtime';
 
 const siteUrl = 'https://hzense.com';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [
-    dailyEntries,
-    insightEntries,
-    resourceEntries,
-    signalEntries,
-    topicEntries,
-    weeklyEntries,
-  ] = await Promise.all([
-    getDailyEntries(),
+  const [insightEntries, resourceEntries, signalEntries, topicEntries] = await Promise.all([
     getInsightEntries(),
     getResourceEntries(),
     getSignalEntries(),
     getTopicEntries(),
-    getWeeklyEntries(),
   ]);
 
   return [
@@ -34,28 +20,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'daily',
       priority: 1,
     },
-    {
-      url: `${siteUrl}/daily`,
-      changeFrequency: 'daily',
-      priority: 0.9,
-    },
-    ...dailyEntries.map((entry) => ({
-      url: `${siteUrl}/daily/${entry.frontMatter.date}`,
-      lastModified: new Date(`${entry.frontMatter.date}T00:00:00Z`),
-      changeFrequency: 'never' as const,
-      priority: 0.7,
-    })),
-    {
-      url: `${siteUrl}/weekly`,
-      changeFrequency: 'weekly',
-      priority: 0.9,
-    },
-    ...weeklyEntries.map((entry) => ({
-      url: `${siteUrl}/weekly/${entry.frontMatter.week}`,
-      lastModified: new Date(`${entry.frontMatter.end_date}T00:00:00Z`),
-      changeFrequency: 'never' as const,
-      priority: 0.8,
-    })),
     {
       url: `${siteUrl}/insights`,
       changeFrequency: 'weekly',

@@ -58,7 +58,6 @@ function detail(version = 3, sourceUrl = 'https://example.com/source') {
       summary: 'Synthetic private summary',
       analysis: '<script>private-script-marker</script>',
       importance: 3,
-      strength: 3,
       confidence: 0.8,
       novelty: 0.5,
       revision_reason: 'Synthetic revision',

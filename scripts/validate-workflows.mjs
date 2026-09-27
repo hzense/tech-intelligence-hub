@@ -94,7 +94,7 @@ for (const file of workflowFiles) {
 }
 
 const ci = parse(await readFile(join(workflowRoot, 'ci.yml'), 'utf8'));
-for (const jobId of ['foundation', 'database-migrations', 'daily-publication-gate']) {
+for (const jobId of ['foundation', 'database-migrations']) {
   if (!ci.jobs?.[jobId]) issues.push(`ci.yml: missing required gate job ${jobId}`);
 }
 

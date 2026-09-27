@@ -27,11 +27,10 @@ export interface PublicSignalSource {
 }
 export type SignalEntry = (
   | (SeedSignal & { publication_basis?: 'source_evidence' })
-  | (Omit<SeedSignal, 'type' | 'importance' | 'strength' | 'confidence' | 'novelty'> & {
+  | (Omit<SeedSignal, 'type' | 'importance' | 'confidence' | 'novelty'> & {
       publication_basis: 'manual_confirmation';
       type: 'editorial';
       importance?: never;
-      strength?: never;
       confidence?: never;
       novelty?: never;
     })
@@ -43,6 +42,8 @@ export type SignalEntry = (
   public_organizations?: PublicSignalPerson[];
   public_sources?: PublicSignalSource[];
   public_topics?: { id: string; title: string }[];
+  /** Historical Seed links to models, papers, products and other non-participant entities. */
+  legacy_related_entities?: { id: string; name: string; type: string }[];
 };
 
 export class PublicSignalReaderError extends Error {
@@ -173,7 +174,6 @@ export function mapPublicSignalRows(rows: unknown[]): SignalEntry[] {
       source_url: sources[0].url,
       summary: text(row.summary),
       importance: number(row.importance, 1, 5, true),
-      strength: number(row.strength, 1, 5, true),
       confidence: number(row.confidence, 0, 1),
       novelty: number(row.novelty, 0, 1),
       topics: topics.map((topic) => topic.id),

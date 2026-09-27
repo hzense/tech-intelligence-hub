@@ -9,7 +9,6 @@ const date = z.preprocess(
       : value,
   z.iso.date(),
 );
-const dateTime = z.iso.datetime({ offset: true });
 const language = z.enum(['zh-CN', 'en']);
 const contentStatus = z.enum(['draft', 'review', 'published', 'archived']);
 const topicStatus = z.enum(['watching', 'active', 'strategic', 'archived']);
@@ -25,39 +24,6 @@ const common = z.object({
   tags: z.array(z.string()).optional(),
 });
 
-export const dailySchema = common.extend({
-  type: z.literal('daily'),
-  status: contentStatus,
-  edition: z.enum(['historical_example', 'live']),
-  date,
-  language,
-  summary: z.string().trim().min(1),
-  signal_count: z.number().int().positive(),
-  major_developments: z.number().int().positive(),
-  rising_topics: z.array(id).min(1),
-  signal_refs: z.array(id).min(1),
-  importance: importance.optional(),
-  timezone: z.literal('Europe/Berlin').optional(),
-  window_start_at: dateTime.optional(),
-  occurrence_start_at: dateTime.optional(),
-  cutoff_at: dateTime.optional(),
-  generator_version: z.enum(['daily-v1', 'daily-v2']).optional(),
-  input_fingerprint: z
-    .string()
-    .regex(/^sha256:[a-f0-9]{64}$/)
-    .optional(),
-});
-export const weeklySchema = common.extend({
-  type: z.literal('weekly'),
-  status: contentStatus,
-  week: z.string().regex(/^\d{4}-W\d{2}$/),
-  start_date: date,
-  end_date: date,
-  signal_count: z.number().int().nonnegative(),
-  daily_refs: z.array(id).default([]),
-  featured_topics: topicIds,
-  importance: importance.optional(),
-});
 export const insightSchema = common.extend({
   type: z.literal('insight'),
   status: contentStatus,
@@ -98,8 +64,6 @@ export const paperNoteSchema = common.extend({
 });
 
 export const frontMatterSchema = z.discriminatedUnion('type', [
-  dailySchema,
-  weeklySchema,
   insightSchema,
   briefingSchema,
   topicSchema,

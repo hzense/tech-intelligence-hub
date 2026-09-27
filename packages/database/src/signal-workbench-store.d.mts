@@ -49,7 +49,6 @@ export interface SignalWorkbenchSnapshot {
   summary: string;
   analysis: string | null;
   importance: number;
-  strength: number;
   confidence: number;
   novelty: number;
   revision_reason: string;
