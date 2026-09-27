@@ -5,10 +5,12 @@ import { compareSearchResults, type SearchResult, type SearchType } from '@hzens
 import { readSearchMode, searchWithMode } from '../search-mode';
 import { getInsightEntries, getTopicTitleMap } from '../content-runtime';
 import {
+  rankVisibleResourceResults,
   rankVisibleTopicInsightResults,
   searchPublishedContent as searchInProcess,
 } from '../search-runtime';
 import { getSignalEntries } from '../seed-runtime';
+import { getPublicExploration } from '../public-exploration-runtime';
 import { searchRuntimeDocuments } from './runtime-reader';
 import { readSignalReadMode, mergeCurrentSignalSearch } from '../public-signal-reader-core';
 import { searchPublicSignals } from './public-signals';
@@ -57,6 +59,13 @@ async function searchCurrentTopicInsights(
   return rankVisibleTopicInsightResults(await visibleTopicInsights(signals), query, topicTitleMap);
 }
 
+async function searchCurrentResources(query: string, type?: SearchType): Promise<SearchResult[]> {
+  if (type !== undefined && type !== 'resource') return [];
+  const exploration = await getPublicExploration();
+  const topicNames = new Map(exploration.taxonomy.topics.map((topic) => [topic.id, topic.name]));
+  return rankVisibleResourceResults(exploration.entities, query, topicNames);
+}
+
 export async function searchPublishedContent(query: string, type?: SearchType) {
   if (type === 'daily' || type === 'weekly') return [];
   if (readSignalReadMode(process.env) === 'database') {
@@ -69,9 +78,7 @@ export async function searchPublishedContent(query: string, type?: SearchType) {
         database: () => searchRuntimeDocuments(query, type),
       }),
       type ? Promise.resolve([]) : searchPublicSignals(query),
-      !type || type === 'resource'
-        ? searchInProcess(query, 'resource', false)
-        : Promise.resolve([]),
+      searchCurrentResources(query, type),
       searchCurrentTopicInsights(query, type),
     ]);
     return mergeCurrentResourceSearch(
@@ -91,7 +98,7 @@ export async function searchPublishedContent(query: string, type?: SearchType) {
           database: () => searchRuntimeDocuments(query, type),
         }),
     !type || type === 'signal' ? searchInProcess(query, 'signal') : Promise.resolve([]),
-    !type || type === 'resource' ? searchInProcess(query, 'resource', false) : Promise.resolve([]),
+    searchCurrentResources(query, type),
     searchCurrentTopicInsights(query, type),
   ]);
   return mergeCurrentResourceSearch(

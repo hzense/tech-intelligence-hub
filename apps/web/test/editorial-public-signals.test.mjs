@@ -223,6 +223,7 @@ test('actual server search orchestration cannot resurrect an editorial hit from 
             const modules = {
               'server-only': 'export {};',
               '../search-runtime': `export async function searchPublishedContent(q,t,include=true) { return t === "resource" ? globalThis.__editorialSearchTest.resources : include ? globalThis.__editorialSearchTest.current : []; }
+                 export function rankVisibleResourceResults(entities) { return entities; }
                  export function rankVisibleTopicInsightResults(rows) {
                    return rows.map(row => ({ id: 'published-topic-insight-' + row.id, type: 'insight', title: row.result.report.title,
                      summary: row.result.report.summary,
@@ -233,6 +234,9 @@ test('actual server search orchestration cannot resurrect an editorial hit from 
                  export async function getTopicTitleMap() { return new Map([['topic-ai', '人工智能']]); }`,
               '../seed-runtime':
                 'export async function getSignalEntries() { return globalThis.__editorialSearchTest.signals; }',
+              '../public-exploration-runtime': `export async function getPublicExploration() {
+                return { entities: globalThis.__editorialSearchTest.resources, taxonomy: { topics: [] } };
+              }`,
               './runtime-reader':
                 'export async function searchRuntimeDocuments() { return globalThis.__editorialSearchTest.indexed; }',
               './public-signals':
@@ -245,7 +249,7 @@ test('actual server search orchestration cannot resurrect an editorial hit from 
             plugin.onResolve(
               {
                 filter:
-                  /^(server-only|\.\.\/search-runtime|\.\.\/content-runtime|\.\.\/seed-runtime|\.\/runtime-reader|\.\/public-signals|\.\/topic-insights)$/,
+                  /^(server-only|\.\.\/search-runtime|\.\.\/content-runtime|\.\.\/seed-runtime|\.\.\/public-exploration-runtime|\.\/runtime-reader|\.\/public-signals|\.\/topic-insights)$/,
               },
               (args) => ({ path: args.path, namespace: 'test-provider' }),
             );

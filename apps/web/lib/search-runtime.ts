@@ -6,7 +6,13 @@ import {
   type InsightEntry,
   type TopicEntry,
 } from './content-runtime.ts';
-import { formatEntityType, resourceHref } from './resource-presentation.ts';
+import {
+  formatEntityType,
+  resourceHref,
+  resourceIntroduction,
+  resourceTopics,
+} from './resource-presentation.ts';
+import type { PublicEntitySummary } from './public-exploration-core.ts';
 import {
   getResourceEntries,
   getSeedEntityMap,
@@ -66,6 +72,36 @@ export function rankVisibleTopicInsightResults(
     ].join('\n'),
   }));
   return rankSearchDocuments(documents, query, 'insight');
+}
+
+/** Search only entities represented in the same current public directory as /resources. */
+export function rankVisibleResourceResults(
+  entities: readonly PublicEntitySummary[],
+  query: string,
+  topicNames: ReadonlyMap<string, string>,
+): SearchResult[] {
+  const documents: SearchDocument[] = entities
+    .filter(
+      (entity) =>
+        entity.signals.length > 0 &&
+        (entity.type === 'company' || entity.type === 'institution' || entity.type === 'person'),
+    )
+    .map((entity) => ({
+      id: `searchdoc-resource-${entity.id}`,
+      type: 'resource' as const,
+      title: entity.name,
+      summary: resourceIntroduction(entity, topicNames),
+      href: resourceHref(entity),
+      ...(entity.latestAt ? { date: entity.latestAt.slice(0, 10) } : {}),
+      keywords: [
+        entity.id,
+        entity.type,
+        formatEntityType(entity.type),
+        ...resourceTopics(entity, topicNames).map((topic) => `${topic.id} ${topic.name}`),
+      ].join(' '),
+      body: '',
+    }));
+  return rankSearchDocuments(documents, query, 'resource');
 }
 
 function topicKeywords(ids: string[], topicTitleMap: ReadonlyMap<string, string>): string {

@@ -6,6 +6,7 @@ import { getInsightEntries, getTopicEntries, getTopicTitleMap } from '../lib/con
 import { formatEntityType, resourceHref } from '../lib/resource-presentation.ts';
 import {
   getSearchDocumentProjections,
+  rankVisibleResourceResults,
   rankVisibleTopicInsightResults,
 } from '../lib/search-runtime.ts';
 import {
@@ -111,6 +112,79 @@ test('ranks only supplied, currently visible topic reports with their real detai
   assert.equal(rankVisibleTopicInsightResults(rows, '评估门槛', titles).length, 1);
   assert.equal(rankVisibleTopicInsightResults(rows, 'AI 安全', titles).length, 1);
   assert.deepEqual(rankVisibleTopicInsightResults([], '安全边界', titles), []);
+});
+
+test('resource search follows visible public directory entities, not only Seed records', () => {
+  const signal = { id: 'public-signal', topics: ['topic-ai'] };
+  const entries = [
+    {
+      id: 'company-newcomer',
+      name: '新创研究所',
+      type: 'institution',
+      signals: [signal],
+      recentCount: 1,
+      latestAt: '2026-09-26T10:00:00Z',
+      relatedPeople: [],
+      relatedOrganizations: [],
+    },
+    {
+      id: 'person-newcomer',
+      name: '研究员甲',
+      type: 'person',
+      signals: [signal],
+      recentCount: 1,
+      latestAt: '2026-09-26T10:00:00Z',
+      relatedPeople: [],
+      relatedOrganizations: [],
+    },
+    {
+      id: 'company-withdrawn',
+      name: '撤回机构',
+      type: 'company',
+      signals: [],
+      recentCount: 0,
+      relatedPeople: [],
+      relatedOrganizations: [],
+    },
+    {
+      id: 'model-hidden',
+      name: '非资源实体',
+      type: 'model',
+      signals: [signal],
+      recentCount: 1,
+      relatedPeople: [],
+      relatedOrganizations: [],
+    },
+  ];
+  const topicNames = new Map([['topic-ai', '人工智能']]);
+
+  const organization = rankVisibleResourceResults(entries, '新创研究所', topicNames);
+  assert.deepEqual(
+    organization.map(({ id, href, date, type }) => ({ id, href, date, type })),
+    [
+      {
+        id: 'searchdoc-resource-company-newcomer',
+        href: '/resources/company-newcomer',
+        date: '2026-09-26',
+        type: 'resource',
+      },
+    ],
+  );
+  assert.equal(
+    rankVisibleResourceResults(entries, '研究员甲', topicNames)[0]?.href,
+    '/persons/person-newcomer',
+  );
+  assert.equal(rankVisibleResourceResults(entries, '人工智能', topicNames).length, 2);
+  assert.deepEqual(rankVisibleResourceResults(entries, '撤回机构', topicNames), []);
+  assert.deepEqual(rankVisibleResourceResults(entries, '非资源实体', topicNames), []);
+  assert.deepEqual(
+    rankVisibleResourceResults(
+      entries.slice(0, 1).map((entity) => ({ ...entity, signals: [] })),
+      '新创研究所',
+      topicNames,
+    ),
+    [],
+  );
 });
 
 test('assembles currently publishable projection types from the real content and seed catalogs', async () => {
