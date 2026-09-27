@@ -2,6 +2,9 @@ import type { SeedEntity } from '@hzense/content';
 import type { InsightEntry } from './content-runtime.ts';
 import type { PublicEntitySummary } from './public-exploration-core.ts';
 import type { TopicInsightResult } from './topic-insight-core.ts';
+import { organizationProfiles } from './resource-organization-profiles.ts';
+import { personProfiles } from './resource-person-profiles.ts';
+import { extraResourceMedia } from './resource-media-extra.ts';
 
 export interface ResourceMedia {
   /** A reviewed image of this exact entity, never a name-based image search. */
@@ -76,7 +79,16 @@ const mediaByEntity: Readonly<Record<string, ResourceMedia>> = {
 };
 
 export function resourceMedia(id: string): ResourceMedia | undefined {
-  return mediaByEntity[id];
+  return mediaByEntity[id] ?? extraResourceMedia[id];
+}
+
+export interface ResourceProfile {
+  introduction: string;
+  sourceUrl: string;
+}
+
+export function resourceProfile(id: string): ResourceProfile | undefined {
+  return personProfiles[id] ?? organizationProfiles[id];
 }
 
 export function resourceInitials(name: string): string {
@@ -94,17 +106,11 @@ export function resourceHref(entity: Pick<PublicEntitySummary, 'id' | 'type'>): 
   return entity.type === 'person' ? `/persons/${entity.id}` : `/resources/${entity.id}`;
 }
 
-export function resourceIntroduction(
-  entity: PublicEntitySummary,
-  topicNames: ReadonlyMap<string, string>,
-): string {
-  const identity =
-    entity.type === 'person'
-      ? `${entity.name} 是本站公开信号关联的人物`
-      : `${entity.name} 是本站收录的${formatEntityType(entity.type)}`;
-  if (!entity.signals.length) return `${identity}，暂无公开关联信号。`;
-  const top = resourceTopics(entity, topicNames)[0];
-  return `${identity}，关联 ${entity.signals.length} 条公开信号${top ? `，主要涉及${top.name}` : ''}。`;
+export function resourceIntroduction(entity: PublicEntitySummary): string {
+  return (
+    resourceProfile(entity.id)?.introduction ??
+    `${entity.name}的${entity.type === 'person' ? '身份与履历' : '背景与业务'}简介尚待来源核实。`
+  );
 }
 
 export function resourceTopics(

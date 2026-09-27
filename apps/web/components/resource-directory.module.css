@@ -105,7 +105,12 @@
   text-decoration: none;
 }
 
-.mediaCredit {
+.attributionLinks {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.attributionLinks a {
   color: var(--muted);
   font-size: 0.7rem;
   line-height: 1.4;
@@ -176,10 +181,6 @@
   margin: 0;
   line-height: 1.65;
   color: var(--muted);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
 }
 
 .topicList {

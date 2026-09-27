@@ -7,6 +7,7 @@ import {
   resourceInitials,
   resourceIntroduction,
   resourceMedia,
+  resourceProfile,
   resourceTopics,
 } from '@/lib/resource-presentation';
 import styles from './resource-directory.module.css';
@@ -60,6 +61,7 @@ export function ResourceCard({
 }) {
   const topics = resourceTopics(entity, topicNames).slice(0, 2);
   const media = resourceMedia(entity.id);
+  const profile = resourceProfile(entity.id);
   return (
     <article className={styles.card}>
       <Link className={styles.cardLink} href={resourceHref(entity)}>
@@ -69,7 +71,7 @@ export function ResourceCard({
         </div>
         <div>
           <h3>{entity.name}</h3>
-          <p className={styles.introduction}>{resourceIntroduction(entity, topicNames)}</p>
+          <p className={styles.introduction}>{resourceIntroduction(entity)}</p>
         </div>
         <div className={styles.topicList} aria-label="关联议题">
           {topics.length ? (
@@ -83,15 +85,29 @@ export function ResourceCard({
           <strong>查看资料 ↗</strong>
         </div>
       </Link>
-      {media && (
-        <a
-          className={styles.mediaCredit}
-          href={media.sourceUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          图像：{media.credit} · {media.license} · 来源与许可 ↗
-        </a>
+      {(profile || media) && (
+        <div className={styles.attributionLinks}>
+          {profile && (
+            <a
+              href={profile.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${entity.name}简介来源（在新窗口打开）`}
+            >
+              简介来源 ↗
+            </a>
+          )}
+          {media && (
+            <a
+              href={media.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`${entity.name}图像来源与许可（在新窗口打开）`}
+            >
+              图像：{media.credit} · {media.license} · 来源与许可 ↗
+            </a>
+          )}
+        </div>
       )}
     </article>
   );

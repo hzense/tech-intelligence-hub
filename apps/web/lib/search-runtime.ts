@@ -90,7 +90,7 @@ export function rankVisibleResourceResults(
       id: `searchdoc-resource-${entity.id}`,
       type: 'resource' as const,
       title: entity.name,
-      summary: resourceIntroduction(entity, topicNames),
+      summary: resourceIntroduction(entity),
       href: resourceHref(entity),
       ...(entity.latestAt ? { date: entity.latestAt.slice(0, 10) } : {}),
       keywords: [
