@@ -178,7 +178,8 @@ test('server entrypoints gate readers, bind requests, and remove old indexed sig
   assert.match(reader, /max: 2/);
   assert.doesNotMatch(reader, /unstable_cache|use cache|private\./);
   const search = await source('../lib/server/search.ts');
-  assert.equal((search.match(/return mergeCurrentSignalSearch\(/g) ?? []).length, 2);
+  assert.equal((search.match(/mergeCurrentSignalSearch\(/g) ?? []).length, 2);
+  assert.equal((search.match(/return mergeCurrentResourceSearch\(/g) ?? []).length, 2);
   assert.match(
     await source('../lib/search-runtime.ts'),
     /publication_basis !== 'manual_confirmation'/,
@@ -194,7 +195,7 @@ test('server entrypoints gate readers, bind requests, and remove old indexed sig
 
 test('actual server search orchestration cannot resurrect an editorial hit from the old index in any mode', async () => {
   const result = searchSignalEntries(mapEditorialSignalRows([row()]), 'editorial')[0];
-  const state = { current: [result], indexed: [result], insights: [] };
+  const state = { current: [result], indexed: [result], insights: [], resources: [] };
   globalThis.__editorialSearchTest = state;
   const previousSignalMode = process.env.HZENSE_SIGNAL_READ_MODE;
   const previousSearchMode = process.env.HZENSE_SEARCH_MODE;
@@ -212,7 +213,7 @@ test('actual server search orchestration cannot resurrect an editorial hit from 
             const modules = {
               'server-only': 'export {};',
               '../search-runtime':
-                'export async function searchPublishedContent(q,t,include=true) { return include ? globalThis.__editorialSearchTest.current : []; }',
+                'export async function searchPublishedContent(q,t,include=true) { return t === "resource" ? globalThis.__editorialSearchTest.resources : include ? globalThis.__editorialSearchTest.current : []; }',
               '../content-runtime':
                 'export async function getInsightEntries() { return globalThis.__editorialSearchTest.insights; }',
               './runtime-reader':
@@ -275,6 +276,28 @@ test('actual server search orchestration cannot resurrect an editorial hit from 
         );
         state.insights = [];
         assert.deepEqual(await searchPublishedContent('editorial', type), []);
+      }
+    }
+    const retiredResource = {
+      ...result,
+      id: 'searchdoc-resource-retired',
+      type: 'resource',
+      href: '/resources/retired',
+    };
+    const currentResource = {
+      ...retiredResource,
+      id: 'searchdoc-resource-current',
+      href: '/resources/current',
+    };
+    state.indexed = [retiredResource];
+    state.resources = [currentResource];
+    for (const signalMode of ['legacy', 'database']) {
+      process.env.HZENSE_SIGNAL_READ_MODE = signalMode;
+      for (const type of [undefined, 'resource']) {
+        assert.deepEqual(
+          (await searchPublishedContent('editorial', type)).map((entry) => entry.href),
+          ['/resources/current'],
+        );
       }
     }
   } finally {

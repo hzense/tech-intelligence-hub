@@ -785,6 +785,21 @@ input {
   font-size: 17px;
   line-height: 1.75;
 }
+.brief-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 20px;
+}
+.brief-stats span,
+.brief-stats a {
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
 .signal-preview-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

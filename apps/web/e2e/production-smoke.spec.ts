@@ -138,6 +138,7 @@ test('Resources preserve historical entity details and show current scope separa
   await page.goto(detailHref as string);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('main.article-main')).toBeVisible();
+  await expect(page.locator('.brief-stats')).toHaveCSS('display', 'flex');
 });
 
 test('Radar is the homepage and does not invent an unsupported heat score', async ({
