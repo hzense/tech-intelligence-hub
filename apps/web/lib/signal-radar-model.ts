@@ -1,5 +1,9 @@
 import type { SignalEntry } from './public-signal-reader-core.ts';
-import { signalDomainIds, type ExplorationTopic } from './public-exploration-core.ts';
+import {
+  signalDomainIds,
+  type ExplorationTopic,
+  type PublicEntitySummary,
+} from './public-exploration-core.ts';
 import { signalPublication, toUnifiedSignal } from './unified-signal-core.ts';
 
 export const radarRankingVersion = 'radar-event-time-v2';
@@ -29,6 +33,7 @@ export interface RadarDomainObservation {
   previousCount: number;
   monthlyCounts: number[];
   latestAt: string | null;
+  signalIds: string[];
 }
 
 export interface RadarSubtopicObservation {
@@ -38,6 +43,36 @@ export interface RadarSubtopicObservation {
   domainName: string;
   totalCount: number;
   recentCount: number;
+  signalIds: string[];
+}
+
+export interface RadarCategoryObservation {
+  id: string;
+  name: string;
+  parentId: string;
+  domainId: string;
+  depth: number;
+  totalCount: number;
+  recentCount: number;
+  signalIds: string[];
+}
+
+export interface RadarResourceObservation {
+  id: string;
+  name: string;
+  type: 'person' | 'company';
+  /** Distinct events in the trailing 30 days, not a composite industry score. */
+  recentCount: number;
+  totalCount: number;
+  signalIds: string[];
+}
+
+export interface RadarSignalIndexEntry {
+  id: string;
+  title: string;
+  summary: string;
+  occurredAt: string;
+  domainIds: string[];
 }
 
 /**
@@ -48,7 +83,10 @@ export interface RadarSubtopicObservation {
 export function buildSignalRadar(
   signals: readonly SignalEntry[],
   topics: readonly ExplorationTopic[],
-  { now = new Date() }: { now?: Date } = {},
+  {
+    now = new Date(),
+    entities = [],
+  }: { now?: Date; entities?: readonly Pick<PublicEntitySummary, 'id' | 'name' | 'type'>[] } = {},
 ) {
   const asOf = now.getTime();
   if (!Number.isFinite(asOf)) throw new Error('Invalid radar cutoff');
@@ -109,6 +147,10 @@ export function buildSignalRadar(
     fingerprints.add(fingerprint);
     eligible.push(entry);
   }
+  eligible.sort(
+    (left, right) =>
+      Date.parse(right.occurred_at) - Date.parse(left.occurred_at) || compareId(left.id, right.id),
+  );
 
   const domains: RadarDomainObservation[] = topics
     .filter((topic) => topic.parentId === null)
@@ -120,9 +162,45 @@ export function buildSignalRadar(
       previousCount: 0,
       monthlyCounts: months.map(() => 0),
       latestAt: null,
+      signalIds: [],
     }));
   const domainMap = new Map(domains.map((domain) => [domain.id, domain]));
   const topicMap = new Map(topics.map((topic) => [topic.id, topic]));
+  // Keep the full taxonomy path: an event tagged at depth three contributes
+  // once to each ancestor category, but never twice through sibling tags.
+  const topicPaths = new Map<string, ExplorationTopic[]>();
+  for (const topic of topics) {
+    const path: ExplorationTopic[] = [];
+    const visited = new Set<string>();
+    let current: ExplorationTopic | undefined = topic;
+    while (current && !visited.has(current.id)) {
+      path.push(current);
+      visited.add(current.id);
+      if (current.parentId === null) break;
+      current = topicMap.get(current.parentId);
+    }
+    if (current?.parentId === null && domainMap.has(current.id)) {
+      topicPaths.set(topic.id, path.reverse());
+    }
+  }
+  const categories: RadarCategoryObservation[] = topics.flatMap((topic) => {
+    const path = topicPaths.get(topic.id);
+    return topic.parentId && path && path.length > 1
+      ? [
+          {
+            id: topic.id,
+            name: topic.name,
+            parentId: topic.parentId,
+            domainId: path[0]!.id,
+            depth: path.length - 1,
+            totalCount: 0,
+            recentCount: 0,
+            signalIds: [],
+          },
+        ]
+      : [];
+  });
+  const categoryMap = new Map(categories.map((category) => [category.id, category]));
   const subtopics: RadarSubtopicObservation[] = topics.flatMap((topic) => {
     const domain = topic.parentId ? domainMap.get(topic.parentId) : undefined;
     return domain
@@ -134,11 +212,27 @@ export function buildSignalRadar(
             domainName: domain.name,
             totalCount: 0,
             recentCount: 0,
+            signalIds: [],
           },
         ]
       : [];
   });
   const subtopicMap = new Map(subtopics.map((topic) => [topic.id, topic]));
+  const resources: RadarResourceObservation[] = entities.flatMap((entity) =>
+    entity.type === 'person' || entity.type === 'company'
+      ? [
+          {
+            id: entity.id,
+            name: entity.name,
+            type: entity.type,
+            totalCount: 0,
+            recentCount: 0,
+            signalIds: [],
+          },
+        ]
+      : [],
+  );
+  const resourceMap = new Map(resources.map((resource) => [resource.id, resource]));
   const domainsBySignal = new Map<string, string[]>();
   let unmappedCount = 0;
   let recentCount = 0;
@@ -152,22 +246,38 @@ export function buildSignalRadar(
     if (latestAt === null || occurredAt > latestAt) latestAt = occurredAt;
     const ids = signalDomainIds(entry, topics);
     domainsBySignal.set(entry.id, ids);
-    const subtopicIds = new Set<string>();
+    const categoryIds = new Set<string>();
     for (const id of entry.topics) {
-      let topic = topicMap.get(id);
-      const visited = new Set<string>();
-      while (topic && !subtopicMap.has(topic.id) && topic.parentId) {
-        if (visited.has(topic.id)) break;
-        visited.add(topic.id);
-        topic = topicMap.get(topic.parentId);
-      }
-      if (topic && subtopicMap.has(topic.id)) subtopicIds.add(topic.id);
+      for (const topic of topicPaths.get(id)?.slice(1) ?? []) categoryIds.add(topic.id);
     }
-    for (const id of subtopicIds) {
+    for (const id of categoryIds) {
+      const category = categoryMap.get(id);
+      if (category) {
+        category.totalCount++;
+        if (occurred >= recentStart) category.recentCount++;
+        category.signalIds.push(entry.id);
+      }
       const subtopic = subtopicMap.get(id);
       if (!subtopic) continue;
       subtopic.totalCount++;
       if (occurred >= recentStart) subtopic.recentCount++;
+      subtopic.signalIds.push(entry.id);
+    }
+    const resourceIds = new Set(
+      signalPublication(entry).state === 'published'
+        ? [
+            ...toUnifiedSignal(entry).people.map((person) => person.id),
+            ...toUnifiedSignal(entry).organizations.map((organization) => organization.id),
+          ]
+        : entry.entities,
+    );
+    for (const id of resourceIds) {
+      if (id === null) continue;
+      const resource = resourceMap.get(id);
+      if (!resource) continue;
+      resource.totalCount++;
+      if (occurred >= recentStart) resource.recentCount++;
+      resource.signalIds.push(entry.id);
     }
     if (!ids.length) unmappedCount++;
     if (occurred >= recentStart) recentCount++;
@@ -177,6 +287,7 @@ export function buildSignalRadar(
       const domain = domainMap.get(id);
       if (!domain) continue;
       domain.totalCount++;
+      domain.signalIds.push(entry.id);
       if (occurred >= recentStart) domain.recentCount++;
       else if (occurred >= previousStart) domain.previousCount++;
       if (index !== undefined) domain.monthlyCounts[index] = (domain.monthlyCounts[index] ?? 0) + 1;
@@ -195,28 +306,45 @@ export function buildSignalRadar(
       right.recentCount - left.recentCount ||
       compareId(left.id, right.id),
   );
-
-  const latestSignals: RadarSignal[] = eligible
+  categories.sort(
+    (left, right) =>
+      compareId(left.domainId, right.domainId) ||
+      left.depth - right.depth ||
+      right.recentCount - left.recentCount ||
+      right.totalCount - left.totalCount ||
+      compareId(left.id, right.id),
+  );
+  const topResources = resources
+    .filter((resource) => resource.totalCount > 0)
     .sort(
       (left, right) =>
-        Date.parse(right.occurred_at) - Date.parse(left.occurred_at) ||
+        right.recentCount - left.recentCount ||
+        right.totalCount - left.totalCount ||
         compareId(left.id, right.id),
     )
-    .slice(0, 10)
-    .map((signal) => {
-      const importance = toUnifiedSignal(signal).assessment?.importance;
-      return {
-        signal,
-        domainIds: domainsBySignal.get(signal.id) ?? [],
-        importance:
-          typeof importance === 'number' &&
-          Number.isInteger(importance) &&
-          importance >= 1 &&
-          importance <= 5
-            ? importance
-            : null,
-      };
-    });
+    .slice(0, 5);
+  const signalIndex: RadarSignalIndexEntry[] = eligible.map((signal) => ({
+    id: signal.id,
+    title: signal.title,
+    summary: signal.summary,
+    occurredAt: signal.occurred_at,
+    domainIds: domainsBySignal.get(signal.id) ?? [],
+  }));
+
+  const latestSignals: RadarSignal[] = eligible.slice(0, 10).map((signal) => {
+    const importance = toUnifiedSignal(signal).assessment?.importance;
+    return {
+      signal,
+      domainIds: domainsBySignal.get(signal.id) ?? [],
+      importance:
+        typeof importance === 'number' &&
+        Number.isInteger(importance) &&
+        importance >= 1 &&
+        importance <= 5
+          ? importance
+          : null,
+    };
+  });
   return {
     asOf: now.toISOString(),
     rankingVersion: radarRankingVersion,
@@ -233,6 +361,9 @@ export function buildSignalRadar(
     domains,
     focusDomains,
     subtopics,
+    categories,
+    topResources,
+    signalIndex,
     latestSignals,
     exclusions: { invalidDates, futureDates, duplicateCount },
     unmappedCount,
