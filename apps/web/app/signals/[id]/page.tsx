@@ -5,7 +5,6 @@ import { SiteShell } from '@/components/site-shell';
 import { formatZhDate } from '@/lib/content-runtime';
 import { formatPercentage, formatSignalType } from '@/lib/signal-presentation';
 import { getSignalEntryById } from '@/lib/seed-runtime';
-import { isCurrentSignal } from '@/lib/public-exploration-core';
 import { toUnifiedSignal } from '@/lib/unified-signal-core';
 
 interface SignalDetailProps {
@@ -54,7 +53,6 @@ export default async function SignalDetailPage({ params }: SignalDetailProps) {
         </Link>
         <header className="article-header">
           <div className="article-meta">
-            {!isCurrentSignal(entry) ? <span>历史信号档案</span> : null}
             <span>{unified.type ? formatSignalType(unified.type) : '未分类'}</span>
             <time dateTime={entry.occurred_at}>{formatZhDate(entry.occurred_at.slice(0, 10))}</time>
           </div>

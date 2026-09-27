@@ -2,20 +2,17 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { SiteShell } from '@/components/site-shell';
-import {
-  formatZhDate,
-  getInsightEntries,
-  getInsightEntryById,
-  getTopicTitleMap,
-} from '@/lib/content-runtime';
+import { InsightEvidenceTimeline } from '@/components/insight-evidence-timeline';
+import pageStyles from '@/components/topic-insight-pages.module.css';
+import reportStyles from '@/components/topic-insight.module.css';
+import { formatZhDate, getInsightEntryById, getTopicTitleMap } from '@/lib/content-runtime';
+import { getSignalEntries } from '@/lib/seed-runtime';
 
 interface InsightDetailProps {
   params: Promise<{ id: string }>;
 }
 
-export async function generateStaticParams() {
-  return (await getInsightEntries()).map((entry) => ({ id: entry.frontMatter.id }));
-}
+export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: InsightDetailProps): Promise<Metadata> {
   const { id } = await params;
@@ -42,25 +39,30 @@ export async function generateMetadata({ params }: InsightDetailProps): Promise<
 
 export default async function InsightDetailPage({ params }: InsightDetailProps) {
   const { id } = await params;
-  const [entry, topicTitleMap] = await Promise.all([getInsightEntryById(id), getTopicTitleMap()]);
+  const [entry, topicTitleMap, signals] = await Promise.all([
+    getInsightEntryById(id),
+    getTopicTitleMap(),
+    getSignalEntries(),
+  ]);
   if (!entry) notFound();
+  const signalsById = new Map(signals.map((signal) => [signal.id, signal]));
+  const evidence = entry.frontMatter.evidence_signals.flatMap((signalId) => {
+    const signal = signalsById.get(signalId);
+    return signal ? [signal] : [];
+  });
 
   return (
     <SiteShell>
       <main className="article-main section-shell">
-        <Link className="back-link" href="/insights">
-          ← 返回全部洞察
-        </Link>
-        <header className="article-header">
-          <div className="article-meta">
-            <span>HZENSE 洞察</span>
-            <time dateTime={entry.frontMatter.date}>{formatZhDate(entry.frontMatter.date)}</time>
-          </div>
+        <header className={pageStyles.editionHero}>
+          <Link className={pageStyles.backLink} href="/topics">
+            ← 所有专题洞察
+          </Link>
+          <p className={pageStyles.eyebrow}>HZENSE / 深度报告</p>
           <h1>{entry.frontMatter.title}</h1>
-          <p>{entry.summary}</p>
-          <div className="brief-stats">
-            <span>重要度 {entry.frontMatter.importance}/5</span>
-            <span>{entry.frontMatter.evidence_signals.length} 条证据信号</span>
+          <div className={pageStyles.editionStats}>
+            <span>发布于 {formatZhDate(entry.frontMatter.date)}</span>
+            <span>{evidence.length} 条可公开读取的证据</span>
             {entry.frontMatter.topics.map((topic) => (
               <Link href={`/topics/${topic}`} key={topic}>
                 {topicTitleMap.get(topic) ?? topic}
@@ -68,23 +70,40 @@ export default async function InsightDetailPage({ params }: InsightDetailProps) 
             ))}
           </div>
         </header>
-        <article className="insight-detail-body">
+        <article className={reportStyles.report} aria-label="洞察报告正文">
+          <div className={reportStyles.lead}>
+            <p className={reportStyles.eyebrow}>报告摘要</p>
+            <p className={reportStyles.summary}>{entry.summary}</p>
+          </div>
+          <InsightEvidenceTimeline signals={evidence} />
           {entry.sections.map((section, index) => (
-            <section className="insight-section" key={section.heading}>
-              <span>0{index + 1} · 分析</span>
-              <h2>{section.heading}</h2>
-              {section.paragraphs.map((paragraph) => (
-                <p key={paragraph}>{paragraph}</p>
-              ))}
+            <section className={reportStyles.editorialSection} key={section.heading}>
+              <div className={reportStyles.sectionHeading}>
+                <span>{String(index + 1).padStart(2, '0')} / 分析</span>
+                <h2>{section.heading}</h2>
+              </div>
+              <div className={reportStyles.sectionBody}>
+                {section.paragraphs.map((paragraph) => (
+                  <p key={paragraph}>{paragraph}</p>
+                ))}
+              </div>
             </section>
           ))}
-          <aside className="insight-evidence">
-            <strong>证据关联</strong>
-            <p>
-              本洞察关联 {entry.frontMatter.evidence_signals.length} 条已校验信号；
-              专题与实体引用由内容验证层持续检查。
-            </p>
-          </aside>
+          <section className={reportStyles.uncertainties} aria-labelledby="editorial-evidence">
+            <p className={reportStyles.eyebrow}>可追溯阅读</p>
+            <h2 id="editorial-evidence">关联证据信号</h2>
+            {evidence.length ? (
+              <ul>
+                {evidence.map((signal) => (
+                  <li key={signal.id}>
+                    <Link href={`/signals/${signal.id}`}>{signal.title} ↗</Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>关联信号暂不可公开读取，不展示虚构的证据图表或链接。</p>
+            )}
+          </section>
         </article>
       </main>
     </SiteShell>

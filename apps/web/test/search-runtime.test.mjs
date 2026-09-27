@@ -3,8 +3,11 @@ import test from 'node:test';
 
 import { rankSearchDocuments } from '@hzense/search/ranking';
 import { getInsightEntries, getTopicEntries, getTopicTitleMap } from '../lib/content-runtime.ts';
-import { formatEntityType } from '../lib/resource-presentation.ts';
-import { getSearchDocumentProjections } from '../lib/search-runtime.ts';
+import { formatEntityType, resourceHref } from '../lib/resource-presentation.ts';
+import {
+  getSearchDocumentProjections,
+  rankVisibleTopicInsightResults,
+} from '../lib/search-runtime.ts';
 import {
   getResourceEntries,
   getSeedEntityMap,
@@ -68,6 +71,48 @@ test('requires every normalized query term and respects type filters', () => {
   );
 });
 
+test('ranks only supplied, currently visible topic reports with their real detail URL', () => {
+  const rows = [
+    {
+      id: 'published-edition-1',
+      published_at: '2026-09-26T14:00:00.000Z',
+      result: {
+        topicIds: ['topic-ai-security'],
+        report: {
+          title: '安全边界研判',
+          summary: '多方信号显示防护要求提高。',
+          sections: [{ heading: '证据变化', body: '模型部署提出新的评估门槛。' }],
+          uncertainties: ['覆盖范围仍有限。'],
+        },
+      },
+    },
+  ];
+  const titles = new Map([['topic-ai-security', 'AI 安全']]);
+  const byTitle = rankVisibleTopicInsightResults(rows, '安全边界', titles);
+  assert.equal(byTitle.length, 1);
+  assert.deepEqual(
+    {
+      id: byTitle[0].id,
+      type: byTitle[0].type,
+      href: byTitle[0].href,
+      date: byTitle[0].date,
+      title: byTitle[0].title,
+      summary: byTitle[0].summary,
+    },
+    {
+      id: 'published-topic-insight-published-edition-1',
+      type: 'insight',
+      href: '/topics/topic-ai-security/editions/published-edition-1',
+      date: '2026-09-26',
+      title: '安全边界研判',
+      summary: '多方信号显示防护要求提高。',
+    },
+  );
+  assert.equal(rankVisibleTopicInsightResults(rows, '评估门槛', titles).length, 1);
+  assert.equal(rankVisibleTopicInsightResults(rows, 'AI 安全', titles).length, 1);
+  assert.deepEqual(rankVisibleTopicInsightResults([], '安全边界', titles), []);
+});
+
 test('assembles currently publishable projection types from the real content and seed catalogs', async () => {
   const [
     projections,
@@ -125,7 +170,9 @@ test('assembles currently publishable projection types from the real content and
       typedProjections.map((projection) => projection.sourceId).sort(),
       expectedSourceIds.sort(),
     );
-    assert.ok(typedProjections.every((projection) => projection.href.startsWith(prefix)));
+    if (sourceType !== 'resource') {
+      assert.ok(typedProjections.every((projection) => projection.href.startsWith(prefix)));
+    }
     assert.ok(
       typedProjections.every(
         (projection) => projection.id === `searchdoc-${sourceType}-${projection.sourceId}`,
@@ -221,7 +268,9 @@ test('assembles currently publishable projection types from the real content and
 
   for (const resource of resourceEntries) {
     const typeLabel = formatEntityType(resource.type);
-    assertProjectionFields(projectionFor('resource', resource.id), {
+    const projection = projectionFor('resource', resource.id);
+    assert.equal(projection.href, resourceHref(resource));
+    assertProjectionFields(projection, {
       title: canonicalText(resource.name),
       summary: `${typeLabel} · HZense 活跃资源`,
       keywords: `${resource.id} ${resource.type} ${typeLabel}`,

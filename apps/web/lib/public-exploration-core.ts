@@ -309,8 +309,17 @@ export function buildPublicEntityDirectory(
     for (const organization of unified.organizations)
       if (organization.id !== null) add(organization.id, organization.name, 'institution');
   }
-  for (const entity of seedEntities)
-    if (entity.status === 'active') add(entity.id, entity.name, entity.type);
+  for (const entity of seedEntities) {
+    if (entity.status !== 'active') continue;
+    const existing = directory.get(entity.id);
+    if (existing) {
+      // Public signals supply the current display name; the registry knows whether
+      // an organization is a company, institution, or another concrete type.
+      existing.type = entity.type;
+    } else {
+      add(entity.id, entity.name, entity.type);
+    }
+  }
   const cutoff = now.getTime() - 30 * 86_400_000;
   for (const signal of sorted) {
     const ids = new Set(

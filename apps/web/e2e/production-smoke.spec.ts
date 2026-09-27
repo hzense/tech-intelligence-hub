@@ -2,16 +2,22 @@ import { expect, test } from '@playwright/test';
 
 test('Radar homepage renders with canonical metadata', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle('雷达 · 当前技术态势');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('当前技术态势');
+  await expect(page).toHaveTitle('技术演进雷达');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('技术演进雷达');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://hzense.com');
-  await expect(page.getByRole('heading', { level: 2, name: '近期信号 TOP 10' })).toBeVisible();
+  await expect(page.getByRole('img', { name: /领域雷达/ })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: '重点落在哪里' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: '观察重心如何移动' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: '最近发生的信号' })).toBeVisible();
   if ((page.viewportSize()?.width ?? 0) > 700) {
     await expect(
       page
         .getByRole('navigation', { name: '主导航' })
         .getByRole('link', { name: '雷达', exact: true }),
     ).toHaveAttribute('href', '/');
+    await expect(
+      page.getByRole('link', { name: '前往 HZense GitHub 代码仓库（在新窗口打开）' }),
+    ).toHaveAttribute('href', 'https://github.com/hzense/tech-intelligence-hub');
   }
 });
 
@@ -47,7 +53,7 @@ test('legacy Insights index redirects to Topic insights', async ({ page }) => {
   await page.goto('/insights');
   await expect(page).toHaveURL(/\/topics$/);
   await expect(page).toHaveTitle('专题洞察 · HZense');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('从信号中形成判断');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('理解变化');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     'https://hzense.com/topics',
@@ -57,13 +63,18 @@ test('legacy Insights index redirects to Topic insights', async ({ page }) => {
 test('Topics list and detail routes connect related intelligence', async ({ page, request }) => {
   await page.goto('/topics');
   await expect(page).toHaveTitle('专题洞察 · HZense');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('从信号中形成判断');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('理解变化');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     'https://hzense.com/topics',
   );
+  await expect(page.getByRole('heading', { level: 2, name: '洞察报告' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: '跟踪专题' })).toBeVisible();
 
-  const detailHref = await page.locator('a.topic-index-card').first().getAttribute('href');
+  const detailHref = await page
+    .locator('section[aria-labelledby="topics-heading"] a[href^="/topics/"]')
+    .first()
+    .getAttribute('href');
   expect(detailHref).toMatch(/^\/topics\/[^/]+$/);
 
   const sitemapResponse = await request.get('/sitemap.xml');
@@ -71,32 +82,36 @@ test('Topics list and detail routes connect related intelligence', async ({ page
 
   await page.goto(detailHref as string);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.locator('header.article-header')).toBeVisible();
-  await expect(page.locator('section.topic-related-section').first()).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: '专题报告' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: '关联信号' })).toBeVisible();
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     `https://hzense.com${detailHref}`,
   );
 });
 
-test('Signals separate current publication from historical Seed archives', async ({
+test('Signals show one chronological card stream with reachable detail pages', async ({
   page,
   request,
 }) => {
   await page.goto('/signals');
   await expect(page).toHaveTitle('信号 · HZense');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('记录变化发生的时刻');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('每一个变化，都有迹可循。');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     'https://hzense.com/signals',
   );
-  await expect(
-    page.getByRole('navigation', { name: '信号范围' }).getByRole('link', { name: '历史档案' }),
-  ).toHaveAttribute('href', '/signals?archive=1');
-
-  await page.goto('/signals?archive=1');
+  await expect(page.getByRole('heading', { level: 2, name: '全部信号' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '信号范围' })).toHaveCount(0);
+  await expect(page.locator('main form')).toHaveCount(0);
+  const signalCards = page.locator('section[aria-label="信号列表"] article');
+  expect(await signalCards.count()).toBeGreaterThan(0);
+  const dates = await signalCards
+    .locator('time')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('datetime') ?? ''));
+  expect(dates).toEqual([...dates].sort((left, right) => right.localeCompare(left)));
   const detailHref = await page
-    .locator('main article h3 a[href^="/signals/"]')
+    .locator('section[aria-label="信号列表"] article h3 a[href^="/signals/"]')
     .first()
     .getAttribute('href');
   expect(detailHref).toMatch(/^\/signals\/[^/]+$/);
@@ -112,57 +127,62 @@ test('Signals separate current publication from historical Seed archives', async
   );
 });
 
-test('Resources preserve historical entity details and show current scope separately', async ({
+test('Resources show organization and person cards with linked trend details', async ({
   page,
   request,
 }) => {
   await page.goto('/resources');
   await expect(page).toHaveTitle('资源 · HZense');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('理解信号背后的参与者');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('把参与者放回技术变化中。');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     'https://hzense.com/resources',
   );
+  await expect(page.getByRole('heading', { level: 2, name: '相关组织' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: '关键人物' })).toBeVisible();
   await expect(
-    page.getByRole('navigation', { name: '资源范围' }).getByRole('link', { name: '关键人物' }),
-  ).toHaveAttribute('href', '/persons');
+    page.getByRole('navigation', { name: '跳转到资源类型' }).getByRole('link', { name: /人物/ }),
+  ).toHaveAttribute('href', '#people');
 
-  await page.goto('/resources?archive=1&type=all');
   const detailHref = await page
-    .locator('main section[aria-label="资源列表"] article h2 a[href^="/resources/"]')
+    .locator('section#organizations a[href^="/resources/"]')
     .first()
     .getAttribute('href');
   expect(detailHref).toMatch(/^\/resources\/[^/]+$/);
+  const personHref = await page
+    .locator('section#people a[href^="/persons/"]')
+    .first()
+    .getAttribute('href');
+  expect(personHref).toMatch(/^\/persons\/[^/]+$/);
   const sitemapResponse = await request.get('/sitemap.xml');
-  expect(await sitemapResponse.text()).toContain('https://hzense.com' + detailHref);
+  const sitemap = await sitemapResponse.text();
+  expect(sitemap).toContain('https://hzense.com' + detailHref);
+  expect(sitemap).toContain('https://hzense.com' + personHref);
   await page.goto(detailHref as string);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('main.article-main')).toBeVisible();
-  await expect(page.locator('.brief-stats')).toHaveCSS('display', 'flex');
+  await expect(page.getByRole('heading', { level: 2, name: '技术发展趋势观察' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: /关联信号/ })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: /关联洞察/ })).toBeVisible();
+  await page.goto(personHref as string);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 2, name: '技术发展趋势观察' })).toBeVisible();
 });
 
-test('Radar is the homepage and does not invent an unsupported heat score', async ({
+test('legacy Radar route redirects home and shows observed counts without a heat score', async ({
   page,
   request,
 }) => {
   await page.goto('/radar');
   await expect(page).toHaveURL(/\/$/);
-  await expect(page).toHaveTitle('雷达 · 当前技术态势');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('当前技术态势');
-  await expect(page.getByRole('heading', { level: 2, name: '近期信号 TOP 10' })).toBeVisible();
-  await expect(page.getByText('未评估', { exact: true })).toBeVisible();
+  await expect(page).toHaveTitle('技术演进雷达');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('技术演进雷达');
+  await expect(page.getByText(/不能直接推断产业热度或增长率/)).toBeVisible();
   await expect(page.locator('nav.desktop-nav a[href="/"]')).toHaveAttribute('href', '/');
-  expect(await page.locator('ol li').count()).toBeLessThanOrEqual(10);
+  expect(await page.locator('main ol li').count()).toBeLessThanOrEqual(10);
   const sitemapResponse = await request.get('/sitemap.xml');
   expect(await sitemapResponse.text()).toContain('https://hzense.com');
-  await page
-    .getByRole('navigation', { name: '热点时间窗口' })
-    .getByRole('link', { name: '24 小时' })
-    .click();
-  await expect(page).toHaveURL(/\/\?range=24h/);
-  await expect(
-    page.getByRole('navigation', { name: '热点时间窗口' }).getByRole('link', { name: '24 小时' }),
-  ).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('navigation', { name: '热点时间窗口' })).toHaveCount(0);
 });
 
 test('mobile navigation keeps every primary route reachable', async ({ page }) => {
@@ -186,9 +206,15 @@ test('mobile navigation keeps every primary route reachable', async ({ page }) =
 
   await mobileNavigation.getByRole('link', { name: '雷达' }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('当前技术态势');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('技术演进雷达');
   await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
   await expect(mobileNavigation).toBeHidden();
+  await menuButton.click();
+  await expect(
+    page.locator('#mobile-menu').getByRole('link', {
+      name: '前往 HZense GitHub 代码仓库（在新窗口打开）',
+    }),
+  ).toHaveAttribute('href', 'https://github.com/hzense/tech-intelligence-hub');
 });
 
 test('search finds and filters published intelligence', async ({ page }) => {

@@ -180,6 +180,7 @@ test('server entrypoints gate readers, bind requests, and remove old indexed sig
   const search = await source('../lib/server/search.ts');
   assert.equal((search.match(/mergeCurrentSignalSearch\(/g) ?? []).length, 2);
   assert.equal((search.match(/return mergeCurrentResourceSearch\(/g) ?? []).length, 2);
+  assert.match(search, /visibleTopicInsights\(signals\)/);
   assert.match(
     await source('../lib/search-runtime.ts'),
     /publication_basis !== 'manual_confirmation'/,
@@ -195,10 +196,19 @@ test('server entrypoints gate readers, bind requests, and remove old indexed sig
 
 test('actual server search orchestration cannot resurrect an editorial hit from the old index in any mode', async () => {
   const result = searchSignalEntries(mapEditorialSignalRows([row()]), 'editorial')[0];
-  const state = { current: [result], indexed: [result], insights: [], resources: [] };
+  const state = {
+    current: [result],
+    indexed: [result],
+    insights: [],
+    resources: [],
+    topicInsights: [],
+    signals: [],
+    validatedSignalIds: [],
+  };
   globalThis.__editorialSearchTest = state;
   const previousSignalMode = process.env.HZENSE_SIGNAL_READ_MODE;
   const previousSearchMode = process.env.HZENSE_SEARCH_MODE;
+  const previousTopicInsightsFlag = process.env.HZENSE_TOPIC_INSIGHTS_ENABLED;
   try {
     const bundled = await build({
       entryPoints: [new URL('../lib/server/search.ts', import.meta.url).pathname],
@@ -212,19 +222,30 @@ test('actual server search orchestration cannot resurrect an editorial hit from 
           setup(plugin) {
             const modules = {
               'server-only': 'export {};',
-              '../search-runtime':
-                'export async function searchPublishedContent(q,t,include=true) { return t === "resource" ? globalThis.__editorialSearchTest.resources : include ? globalThis.__editorialSearchTest.current : []; }',
-              '../content-runtime':
-                'export async function getInsightEntries() { return globalThis.__editorialSearchTest.insights; }',
+              '../search-runtime': `export async function searchPublishedContent(q,t,include=true) { return t === "resource" ? globalThis.__editorialSearchTest.resources : include ? globalThis.__editorialSearchTest.current : []; }
+                 export function rankVisibleTopicInsightResults(rows) {
+                   return rows.map(row => ({ id: 'published-topic-insight-' + row.id, type: 'insight', title: row.result.report.title,
+                     summary: row.result.report.summary,
+                     href: '/topics/' + row.result.topicIds[0] + '/editions/' + row.id,
+                     date: row.published_at.slice(0,10), keywords: '', body: '', score: 20 }));
+                 }`,
+              '../content-runtime': `export async function getInsightEntries() { return globalThis.__editorialSearchTest.insights; }
+                 export async function getTopicTitleMap() { return new Map([['topic-ai', '人工智能']]); }`,
+              '../seed-runtime':
+                'export async function getSignalEntries() { return globalThis.__editorialSearchTest.signals; }',
               './runtime-reader':
                 'export async function searchRuntimeDocuments() { return globalThis.__editorialSearchTest.indexed; }',
               './public-signals':
                 'export async function searchPublicSignals() { return globalThis.__editorialSearchTest.current; }',
+              './topic-insights': `export async function visibleTopicInsights(signals) {
+                   globalThis.__editorialSearchTest.validatedSignalIds = signals.map(signal => signal.id);
+                   return globalThis.__editorialSearchTest.topicInsights;
+                 }`,
             };
             plugin.onResolve(
               {
                 filter:
-                  /^(server-only|\.\.\/search-runtime|\.\.\/content-runtime|\.\/runtime-reader|\.\/public-signals)$/,
+                  /^(server-only|\.\.\/search-runtime|\.\.\/content-runtime|\.\.\/seed-runtime|\.\/runtime-reader|\.\/public-signals|\.\/topic-insights)$/,
               },
               (args) => ({ path: args.path, namespace: 'test-provider' }),
             );
@@ -300,11 +321,61 @@ test('actual server search orchestration cannot resurrect an editorial hit from 
         );
       }
     }
+    state.indexed = [
+      {
+        ...result,
+        id: 'searchdoc-insight-draft',
+        type: 'insight',
+        href: '/topics/topic-ai/editions/draft',
+      },
+    ];
+    state.current = [];
+    state.resources = [];
+    state.insights = [];
+    state.signals = [{ id: 'public-evidence' }];
+    state.topicInsights = [
+      {
+        id: 'published-report',
+        published_at: '2026-09-26T14:00:00.000Z',
+        result: {
+          topicIds: ['topic-ai'],
+          report: { title: '专题报告', summary: '公开摘要' },
+        },
+      },
+    ];
+    process.env.HZENSE_TOPIC_INSIGHTS_ENABLED = '1';
+    for (const signalMode of ['legacy', 'database']) {
+      process.env.HZENSE_SIGNAL_READ_MODE = signalMode;
+      for (const type of [undefined, 'insight']) {
+        assert.deepEqual(
+          (await searchPublishedContent('专题报告', type)).map((entry) => entry.href),
+          ['/topics/topic-ai/editions/published-report'],
+        );
+        assert.deepEqual(state.validatedSignalIds, ['public-evidence']);
+      }
+      assert.deepEqual(await searchPublishedContent('专题报告', 'resource'), []);
+    }
+    state.topicInsights = [];
+    assert.deepEqual(await searchPublishedContent('专题报告', 'insight'), []);
+    state.topicInsights = [
+      {
+        id: 'published-report',
+        published_at: '2026-09-26T14:00:00.000Z',
+        result: {
+          topicIds: ['topic-ai'],
+          report: { title: '专题报告', summary: '公开摘要' },
+        },
+      },
+    ];
+    process.env.HZENSE_TOPIC_INSIGHTS_ENABLED = '0';
+    assert.deepEqual(await searchPublishedContent('专题报告', 'insight'), []);
   } finally {
     if (previousSignalMode === undefined) delete process.env.HZENSE_SIGNAL_READ_MODE;
     else process.env.HZENSE_SIGNAL_READ_MODE = previousSignalMode;
     if (previousSearchMode === undefined) delete process.env.HZENSE_SEARCH_MODE;
     else process.env.HZENSE_SEARCH_MODE = previousSearchMode;
+    if (previousTopicInsightsFlag === undefined) delete process.env.HZENSE_TOPIC_INSIGHTS_ENABLED;
+    else process.env.HZENSE_TOPIC_INSIGHTS_ENABLED = previousTopicInsightsFlag;
     delete globalThis.__editorialSearchTest;
   }
 });

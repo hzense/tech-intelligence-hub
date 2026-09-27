@@ -6,7 +6,7 @@ import {
   type InsightEntry,
   type TopicEntry,
 } from './content-runtime.ts';
-import { formatEntityType } from './resource-presentation.ts';
+import { formatEntityType, resourceHref } from './resource-presentation.ts';
 import {
   getResourceEntries,
   getSeedEntityMap,
@@ -28,6 +28,7 @@ import {
   type SearchResult,
   type SearchType,
 } from '@hzense/search/ranking';
+import type { TopicInsightResult } from './topic-insight-core.ts';
 
 export {
   isSearchType,
@@ -36,7 +37,38 @@ export {
   type SearchType,
 } from '@hzense/search/ranking';
 
-function topicKeywords(ids: string[], topicTitleMap: Map<string, string>): string {
+type VisibleTopicInsightSearchEntry = {
+  id: string;
+  result: TopicInsightResult;
+  published_at: string;
+};
+
+/** The caller must pass only rows validated against the current public Signal reader. */
+export function rankVisibleTopicInsightResults(
+  rows: readonly VisibleTopicInsightSearchEntry[],
+  query: string,
+  topicTitleMap: ReadonlyMap<string, string>,
+): SearchResult[] {
+  const documents: SearchDocument[] = rows.map((row) => ({
+    id: `published-topic-insight-${row.id}`,
+    type: 'insight',
+    title: row.result.report.title,
+    summary: row.result.report.summary,
+    href: `/topics/${row.result.topicIds[0]}/editions/${row.id}`,
+    date: row.published_at.slice(0, 10),
+    keywords: [
+      topicKeywords(row.result.topicIds, topicTitleMap),
+      row.result.report.sections.map((section) => section.heading).join(' '),
+    ].join(' '),
+    body: [
+      ...row.result.report.sections.map((section) => section.body),
+      ...row.result.report.uncertainties,
+    ].join('\n'),
+  }));
+  return rankSearchDocuments(documents, query, 'insight');
+}
+
+function topicKeywords(ids: string[], topicTitleMap: ReadonlyMap<string, string>): string {
   return ids.map((id) => `${id} ${topicTitleMap.get(id) ?? ''}`).join(' ');
 }
 
@@ -128,7 +160,7 @@ function resourceCandidate(entity: SeedEntity): SearchProjectionCandidate {
     publication: { kind: 'resource', status: entity.status },
     title: entity.name,
     summary: `${typeLabel} · HZense 活跃资源`,
-    href: `/resources/${entity.id}`,
+    href: resourceHref(entity),
     keywords: `${entity.id} ${entity.type} ${typeLabel}`,
     body: '',
     importance: 1,
