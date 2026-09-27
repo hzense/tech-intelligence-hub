@@ -8,6 +8,209 @@
 - { id: company-boston-dynamics, type: company, name: Boston Dynamics, status: active }
 - { id: company-d-matrix, type: company, name: d-Matrix, status: active }
 - { id: company-skild-ai, type: company, name: Skild AI, status: active }
+- { id: company-hut8, type: company, name: Hut 8, status: active }
+- { id: company-intel, type: company, name: Intel, status: active }
+- { id: company-samsung-electronics, type: company, name: Samsung Electronics, status: active }
+- { id: company-broadcom, type: company, name: Broadcom, status: active }
+- { id: company-sk-hynix, type: company, name: SK hynix, status: active }
+- { id: company-microsoft, type: company, name: Microsoft, status: active }
+- { id: company-amazon, type: company, name: Amazon, status: active }
+- { id: company-amd, type: company, name: AMD, status: active }
+- { id: company-taalas, type: company, name: Taalas, status: active }
+- { id: company-waymo, type: company, name: Waymo, status: active }
+- { id: company-qualcomm, type: company, name: Qualcomm, status: active }
+- { id: company-moonshot-ai, type: company, name: Moonshot AI, status: active }
+- { id: company-cxmt, type: company, name: CXMT, status: active }
+- { id: company-semianalysis, type: company, name: SemiAnalysis, status: active }
+- { id: company-alphabet, type: company, name: Alphabet, status: active }
+- { id: company-sk-group, type: company, name: SK Group, status: active }
+- { id: company-sk-telecom, type: company, name: SK Telecom, status: active }
+- { id: company-mediatek, type: company, name: MediaTek, status: active }
+- { id: company-hugging-face, type: company, name: Hugging Face, status: active }
+- {
+    id: company-cloverleaf-infrastructure,
+    type: company,
+    name: Cloverleaf Infrastructure,
+    status: active,
+  }
+- { id: company-firmus, type: company, name: Firmus, status: active }
+- { id: company-sharon-ai, type: company, name: Sharon AI, status: active }
+- { id: company-iren, type: company, name: IREN, status: active }
+- { id: company-megaport, type: company, name: Megaport, status: active }
+- { id: company-resetdata, type: company, name: ResetData, status: active }
+- { id: company-cdc, type: company, name: CDC, status: active }
+- { id: company-nextdc, type: company, name: NEXTDC, status: active }
+- { id: company-airtrunk, type: company, name: AirTrunk, status: active }
+- { id: company-enflame, type: company, name: Enflame, status: active }
+- { id: company-united-daily-news, type: company, name: United Daily News, status: active }
+- {
+    id: institution-european-commission,
+    type: institution,
+    name: European Commission,
+    status: active,
+  }
+- { id: institution-white-house, type: institution, name: The White House, status: active }
+- { id: institution-fsb, type: institution, name: Financial Stability Board, status: active }
+- {
+    id: institution-fcc,
+    type: institution,
+    name: Federal Communications Commission,
+    status: active,
+  }
+- {
+    id: institution-china-mofcom,
+    type: institution,
+    name: China's Ministry of Commerce,
+    status: active,
+  }
+- {
+    id: institution-german-government,
+    type: institution,
+    name: German Federal Government,
+    status: active,
+  }
+- { id: institution-china-politburo, type: institution, name: CPC Politburo, status: active }
+- {
+    id: institution-china-state-council,
+    type: institution,
+    name: State Council of China,
+    status: active,
+  }
+- {
+    id: institution-china-ndrc,
+    type: institution,
+    name: National Development and Reform Commission,
+    status: active,
+  }
+- {
+    id: institution-china-nda,
+    type: institution,
+    name: National Data Administration of China,
+    status: active,
+  }
+- {
+    id: institution-us-house,
+    type: institution,
+    name: U.S. House of Representatives,
+    status: active,
+  }
+- { id: institution-xinhua, type: institution, name: Xinhua News Agency, status: active }
+- { id: person-ashish-vaswani, type: person, name: Ashish Vaswani, status: active }
+- { id: person-noam-shazeer, type: person, name: Noam Shazeer, status: active }
+- { id: person-niki-parmar, type: person, name: Niki Parmar, status: active }
+- { id: person-jakob-uszkoreit, type: person, name: Jakob Uszkoreit, status: active }
+- { id: person-llion-jones, type: person, name: Llion Jones, status: active }
+- { id: person-aidan-gomez, type: person, name: Aidan N. Gomez, status: active }
+- { id: person-lukasz-kaiser, type: person, name: Lukasz Kaiser, status: active }
+- { id: person-illia-polosukhin, type: person, name: Illia Polosukhin, status: active }
+- { id: person-asher-genoot, type: person, name: Asher Genoot, status: active }
+- { id: person-lip-bu-tan, type: person, name: Lip-Bu Tan, status: active }
+- { id: person-dave-zinsner, type: person, name: Dave Zinsner, status: active }
+- { id: person-ted-lieu, type: person, name: Ted W. Lieu, status: active }
+- { id: person-nathaniel-moran, type: person, name: Nathaniel Moran, status: active }
+- { id: person-jinman-han, type: person, name: Jinman Han, status: active }
+- { id: person-hock-tan, type: person, name: Hock Tan, status: active }
+- { id: person-young-hyun-jun, type: person, name: Young Hyun Jun, status: active }
+- { id: person-charlie-kawwas, type: person, name: Charlie Kawwas, status: active }
+- { id: person-satya-nadella, type: person, name: Satya Nadella, status: active }
+- { id: person-amy-hood, type: person, name: Amy Hood, status: active }
+- { id: person-andy-jassy, type: person, name: Andy Jassy, status: active }
+- { id: person-lisa-su, type: person, name: Lisa Su, status: active }
+- { id: person-jean-hu, type: person, name: Jean Hu, status: active }
+- { id: person-vamsi-boppana, type: person, name: Vamsi Boppana, status: active }
+- { id: person-ljubisa-bajic, type: person, name: Ljubisa Bajic, status: active }
+- { id: person-tekedra-mawakana, type: person, name: Tekedra Mawakana, status: active }
+- { id: person-kwak-noh-jung, type: person, name: Kwak Noh-Jung, status: active }
+- { id: person-cristiano-amon, type: person, name: Cristiano Amon, status: active }
+- { id: person-prasad-kalyanaraman, type: person, name: Prasad Kalyanaraman, status: active }
+- { id: person-andrew-bailey, type: person, name: Andrew Bailey, status: active }
+- { id: person-jensen-huang, type: person, name: Jensen Huang, status: active }
+- { id: person-tim-cook, type: person, name: Tim Cook, status: active }
+- { id: person-peter-welinder, type: person, name: Peter Welinder, status: active }
+- { id: person-brett-adcock, type: person, name: Brett Adcock, status: active }
+- { id: person-david-soria-parra, type: person, name: David Soria Parra, status: active }
+- { id: person-justin-spahr-summers, type: person, name: Justin Spahr-Summers, status: active }
+- { id: person-aishwarya-mahesh, type: person, name: Aishwarya Mahesh, status: active }
+- {
+    id: person-jeremie-eliahou-ontiveros,
+    type: person,
+    name: Jeremie Eliahou Ontiveros,
+    status: active,
+  }
+- { id: person-ajey-pandey, type: person, name: Ajey Pandey, status: active }
+- { id: person-reyk-knuhtsen, type: person, name: Reyk Knuhtsen, status: active }
+- { id: person-maya-barkin, type: person, name: Maya Barkin, status: active }
+- { id: person-sebastian-orejas, type: person, name: Sebastian Orejas, status: active }
+- { id: person-nicolas-bontigui, type: person, name: Nicolas Bontigui, status: active }
+- { id: person-eric-junqi-wen, type: person, name: Eric (Junqi) Wen, status: active }
+- { id: person-kimbo-chen, type: person, name: Kimbo Chen, status: active }
+- { id: person-shubham-choudhari, type: person, name: Shubham Choudhari, status: active }
+- { id: person-bryan-shan, type: person, name: Bryan Shan, status: active }
+- { id: person-daniel-nishball, type: person, name: Daniel Nishball, status: active }
+- { id: person-myron-xie, type: person, name: Myron Xie, status: active }
+- { id: person-max-kan, type: person, name: Max Kan, status: active }
+- { id: person-joey-brookhart, type: person, name: Joey Brookhart, status: active }
+- { id: person-doug-olaughlin, type: person, name: Doug O'Laughlin, status: active }
+- { id: person-dylan-patel, type: person, name: Dylan Patel, status: active }
+- { id: person-cam-quilici, type: person, name: Cam Quilici, status: active }
+- { id: person-robert-boswall, type: person, name: Robert Boswall, status: active }
+- { id: person-wega-chu, type: person, name: Wega Chu, status: active }
+- { id: person-evan-cloutier, type: person, name: Evan Cloutier, status: active }
+- { id: person-jordan-nanos, type: person, name: Jordan Nanos, status: active }
+- { id: person-alec-ibarra, type: person, name: Alec Ibarra, status: active }
+- { id: person-sam-harshe, type: person, name: Sam Harshe, status: active }
+- { id: person-pratt-bhatt, type: person, name: Pratt Bhatt, status: active }
+- { id: person-ray-wang, type: person, name: Ray Wang, status: active }
+- { id: person-ellie-holbrook, type: person, name: Ellie Holbrook, status: active }
+- { id: person-mark-zuckerberg, type: person, name: Mark Zuckerberg, status: active }
+- { id: person-sundar-pichai, type: person, name: Sundar Pichai, status: active }
+- { id: person-tom-brown, type: person, name: Tom Brown, status: active }
+- { id: person-chey-tae-won, type: person, name: Chey Tae-won, status: active }
+- { id: person-sid-sheth, type: person, name: Sid Sheth, status: active }
+- { id: person-deepak-pathak, type: person, name: Deepak Pathak, status: active }
+- { id: person-rick-tsai, type: person, name: Rick Tsai, status: active }
+- { id: person-raj-mirpuri, type: person, name: Raj Mirpuri, status: active }
+- { id: person-oliver-curtis, type: person, name: Oliver Curtis, status: active }
+- { id: person-james-manning, type: person, name: James Manning, status: active }
+- { id: person-daniel-roberts, type: person, name: Daniel Roberts, status: active }
+- { id: person-michael-reid, type: person, name: Michael Reid, status: active }
+- { id: person-marcel-zalloua, type: person, name: Marcel Zalloua, status: active }
+- { id: person-greg-boorer, type: person, name: Greg Boorer, status: active }
+- { id: person-clem-delangue, type: person, name: Clem Delangue, status: active }
+- { id: person-jakub-pachocki, type: person, name: Jakub Pachocki, status: active }
+- { id: person-jager-mcconnell, type: person, name: Jager McConnell, status: active }
+- { id: person-thomas-li, type: person, name: Thomas Li, status: active }
+- { id: person-craig-falls, type: person, name: Craig Falls, status: active }
+- { id: person-walden-yan, type: person, name: Walden Yan, status: active }
+- { id: person-silas-alberti, type: person, name: Silas Alberti, status: active }
+- { id: person-alex-mashrabov, type: person, name: Alex Mashrabov, status: active }
+- { id: person-david-berry, type: person, name: David Berry, status: active }
+- { id: person-nico-caprez, type: person, name: Nico Caprez, status: active }
+- { id: person-lei-jun, type: person, name: 雷军, status: active }
+- { id: person-michael-kratsios, type: person, name: Michael Kratsios, status: active }
+- { id: person-scott-bessent, type: person, name: Scott Bessent, status: active }
+- { id: person-xiang-ligang, type: person, name: 项立刚, status: active }
+- { id: person-li-chao, type: person, name: 李超, status: active }
+- { id: person-liu-liehong, type: person, name: 刘烈宏, status: active }
+- { id: person-li-qiang, type: person, name: 李强, status: active }
+- { id: person-xi-jinping, type: person, name: 习近平, status: active }
+- { id: person-donald-trump, type: person, name: Donald J. Trump, status: active }
+- { id: person-wang-yanhui, type: person, name: 王艳辉, status: active }
+- { id: person-jacob-klein, type: person, name: Jacob Klein, status: active }
+- { id: person-huang-zhenxin, type: person, name: 黄震昕, status: active }
+- { id: person-song-hyun-jong, type: person, name: Song Hyun-jong, status: active }
+- { id: person-karsten-wildberger, type: person, name: Karsten Wildberger, status: active }
+- { id: person-klaus-mueller, type: person, name: Klaus Müller, status: active }
+- { id: person-henna-virkkunen, type: person, name: Henna Virkkunen, status: active }
+- { id: person-sam-altman, type: person, name: Sam Altman, status: active }
+- { id: person-richard-ho, type: person, name: Richard Ho, status: active }
+- { id: person-elon-musk, type: person, name: Elon Musk, status: active }
+- { id: person-amelia-glaese, type: person, name: Amelia Glaese, status: active }
+- { id: person-fouad-matin, type: person, name: Fouad Matin, status: active }
+- { id: person-zhao-lidong, type: person, name: 赵立东, status: active }
+- { id: person-zhang-yalin, type: person, name: 张亚林, status: active }
+- { id: person-paul-triolo, type: person, name: Paul Triolo, status: active }
+- { id: person-sebastien-bubeck, type: person, name: Sebastien Bubeck, status: active }
 - { id: product-chatgpt, type: product, name: ChatGPT, status: active }
 - { id: model-gpt-4, type: model, name: GPT-4, status: active }
 - { id: model-gpt-4o, type: model, name: GPT-4o, status: active }

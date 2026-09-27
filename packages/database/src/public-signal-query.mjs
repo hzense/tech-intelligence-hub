@@ -1,6 +1,6 @@
 // Explicit public allowlist, not SELECT * or a private evidence/material query.
 const columns = `signal_id, version, publication_revision, title, type, occurred_at,
-  captured_at, summary, analysis, importance, strength, confidence, novelty,
+  captured_at, summary, analysis, importance, confidence, novelty,
   topics, people, organizations, sources`;
 
 export const publicSignalListQuery = `SELECT ${columns}

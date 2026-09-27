@@ -65,7 +65,7 @@
 - **Taxonomy YAML** = Topic ID、英文规范名、primary parent 与跨域关系的 Source of Truth。
 - **Seed Topics** = Taxonomy 的受控运行时子集，并拥有 Topic `status`。
 - **切换后的 PostgreSQL 业务层** = Signal、人物／组织、证据关系、专题洞察正文版本与运行配置的权威；搜索、趋势和活跃度为可重建投影，不是第二套事实源。
-- **Git / Markdown** = 代码、迁移、Taxonomy、旧 Daily／Weekly／Insight 档案和可移植导出；本地化 Topic 内容在其适配迁移前仍依现行契约，不由 AI 随意改写。
+- **Git / Markdown** = 代码、迁移、Taxonomy、仍受支持的 Insight／Topic 内容和可移植导出；已退役的 Daily／Weekly 不再作为内容档案保留。
 - **PostgreSQL `topics`** = Taxonomy 的派生投影，既有投影规则继续生效；新洞察版本不自行创建不受控 Topic 身份。
 - 网站 = Presentation + Intelligence Application Layer。
 
@@ -103,14 +103,12 @@ UI 使用 Tailwind CSS 和自建 Design System，可少量采用 Radix UI / shad
 ```text
 content/
 ├── insights/
-├── daily/
-├── weekly/
 ├── topics/
 ├── briefings/
 └── papers/
 ```
 
-历史内容继续使用既有 Front Matter 校验及稳定 ID。Daily／Weekly 在新版切换后停止新增；旧 Insight 逐条映射到专题洞察版本或保留只读原页，不因导航合并丢失正文。
+仍受支持的历史内容继续使用既有 Front Matter 校验及稳定 ID。Daily／Weekly 内容与公开路由已移除；旧 Insight 逐条映射到专题洞察版本或保留只读原页，不因导航合并丢失正文。
 
 ## 7. PostgreSQL 数据域
 
@@ -226,9 +224,9 @@ Signal 默认 `auto_publish`，合格内容无需逐条人工审核；可显式�
 
 新旧关系变更、人物证据失效、原文撤稿均触发重新核验和派生更新。仅链接失效不是事实撤回依据。当前新发表开关优先于旧任务配置；独立授权的屏蔽／撤回不能被暂停采集的开关误封。
 
-## 12. HZense Daily 自动化（现行兼容，切换后停产）
+## 12. HZense Daily 自动化（历史设计，已退役）
 
-本节仅保留已有实现契约；不是新增开发路线。新版周度分析直接消费合格 Signal，输出专题洞察版本，不生成新的 Daily／Weekly。新版验收后再明确停用旧定时任务、自动 Draft PR 和相关产品断言，同时保留历史渲染及必要通用门禁。
+本节仅记录历史设计，不是当前实现或新增路线。新版周度分析直接消费合格 Signal，输出专题洞察版本，不生成 Daily／Weekly。旧定时任务、自动 Draft PR、相关产品断言和历史渲染已移除；通用 CI 门禁仍保留。
 
 ```text
 Signals Today → Cluster by Topic → Rank → Select Important Events
@@ -236,7 +234,7 @@ Signals Today → Cluster by Topic → Rank → Select Important Events
 → Draft HZense Daily → Human Review → Publish Markdown → Git Commit
 ```
 
-Continuous Daily 的当前实现采用 `daily-v2` 确定性契约：以 Europe/Berlin 07:00 为每日 cutoff，要求已审核 Signal 同时满足前一天 07:00 至 cutoff 的采集窗口和 `[cutoff − 72 小时, cutoff]` 的事件／公告发生窗口；历史补录不因近期采集而成为当日新闻。生成带证据、双窗口和输入指纹的 `status: draft`，再由 Draft PR 承载人工事实核验、原创研判和发布状态切换。发布校验重算相同选材规则；生成与发布分属只读/最小写权限 Job，机器人不得 mark ready、approve 或 merge。完整运行与回滚手册见 [`CONTINUOUS_DAILY.md`](./CONTINUOUS_DAILY.md)。
+Continuous Daily 属于已退役的历史实现。日报和周报内容、生成器、公开页面与发布门禁均已移除；当前站点以 Signal 为基础信息单元，不再运行日报／周报生产流程。
 
 ## 13. GitHub / Monorepo
 
@@ -248,8 +246,6 @@ tech-intelligence-hub/
 ├── apps/worker/             # 拟议：后台分步任务执行
 ├── content/
 │   ├── insights/
-│   ├── daily/
-│   ├── weekly/
 │   ├── topics/
 │   ├── briefings/
 │   └── papers/
@@ -321,7 +317,7 @@ https://hzense.com
 /admin        受保护管理后台，含 imports / runs / ai / sources / topics
 ```
 
-旧 `/daily`、`/weekly` 与详情保留只读；`/insights/[id]` 逐条映射或保留，`/radar` 在新首页验收后重定向 `/`。完整迁移表见 [新版设计第 11 节](SIGNAL_FIRST_REDESIGN.md#11-历史迁移与旧功能退场)。
+旧 `/daily`、`/weekly` 与详情已移除；`/insights/[id]` 逐条映射或保留，`/radar` 可重定向 `/`。完整迁移表见 [新版设计第 11 节](SIGNAL_FIRST_REDESIGN.md#11-历史迁移与旧功能退场)。
 
 环境域名策略：
 

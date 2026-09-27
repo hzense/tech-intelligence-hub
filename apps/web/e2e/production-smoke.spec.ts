@@ -1,62 +1,6 @@
-import { fileURLToPath } from 'node:url';
-import { loadContent, type ContentEntry, type FrontMatter } from '@hzense/content';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
-type DailyEntry = ContentEntry<Extract<FrontMatter, { type: 'daily' }>>;
-
-async function getPublishedDailyEntries(): Promise<DailyEntry[]> {
-  const entries = await loadContent({
-    contentRoot: fileURLToPath(new URL('../../../content/', import.meta.url)),
-    seedRoot: fileURLToPath(new URL('../../../data/seed/', import.meta.url)),
-    taxonomyFile: fileURLToPath(new URL('../../../data/taxonomy/taxonomy.yaml', import.meta.url)),
-  });
-  return entries
-    .filter(
-      (entry): entry is DailyEntry =>
-        entry.frontMatter.type === 'daily' && entry.frontMatter.status === 'published',
-    )
-    .sort((left, right) => right.frontMatter.date.localeCompare(left.frontMatter.date));
-}
-
-function expectedDailyLabel(entry: DailyEntry): string {
-  return entry.frontMatter.edition === 'live' ? '正式简报' : '历史回顾样例';
-}
-
-async function expectDailyDetail(page: Page, entry: DailyEntry): Promise<void> {
-  const detailHref = `/daily/${entry.frontMatter.date}`;
-  await page.goto(detailHref);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(entry.frontMatter.title);
-  await expect(page.locator('.article-meta')).toContainText(expectedDailyLabel(entry));
-  const evidence = page.locator('.daily-evidence');
-  await expect(evidence.locator('article')).toHaveCount(entry.frontMatter.signal_refs.length);
-  for (const [index, signalId] of entry.frontMatter.signal_refs.entries()) {
-    const card = evidence.locator('article').nth(index);
-    await expect(card.locator('a[href^="/signals/"]')).toHaveAttribute(
-      'href',
-      `/signals/${signalId}`,
-    );
-    const sourceLink = card.locator('a[target="_blank"]');
-    await expect(sourceLink).toHaveAttribute('href', /^https:\/\//);
-    await expect(sourceLink).toHaveAttribute('rel', 'noopener noreferrer');
-  }
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-    'href',
-    `https://hzense.com${detailHref}`,
-  );
-}
-
-async function getFirstDailyHref(page: Page): Promise<string> {
-  const href = await page.locator('a.daily-list-feature').first().getAttribute('href');
-  expect(href).toMatch(/^\/daily\/[^/]+$/);
-  return href as string;
-}
-
-test('Radar homepage and historical Daily routes render with canonical metadata', async ({
-  page,
-}) => {
-  const dailyEntries = await getPublishedDailyEntries();
-  const latest = dailyEntries[0];
-  if (!latest) throw new Error('Daily smoke tests require published content');
+test('Radar homepage renders with canonical metadata', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle('雷达 · 当前技术态势');
   await expect(page.getByRole('heading', { level: 1 })).toContainText('当前技术态势');
@@ -69,42 +13,18 @@ test('Radar homepage and historical Daily routes render with canonical metadata'
         .getByRole('link', { name: '雷达', exact: true }),
     ).toHaveAttribute('href', '/');
   }
-
-  await page.goto('/daily');
-  await expect(page).toHaveTitle('每日简报 · HZense');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('值得带入今天的重要信号');
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-    'href',
-    'https://hzense.com/daily',
-  );
-  await expect(page.locator('a.daily-list-feature')).toHaveCount(dailyEntries.length);
-  await expect(page.locator('a.daily-list-feature').first().locator('.archive-label')).toHaveText(
-    expectedDailyLabel(latest),
-  );
-
-  const detailHref = await getFirstDailyHref(page);
-  expect(detailHref).toBe(`/daily/${latest.frontMatter.date}`);
-  await expectDailyDetail(page, latest);
-});
-
-test('historical Daily examples retain their edition label and evidence', async ({ page }) => {
-  const historical = (await getPublishedDailyEntries()).find(
-    (entry) => entry.frontMatter.edition === 'historical_example',
-  );
-  if (!historical) throw new Error('Daily smoke tests require a published historical example');
-  await page.goto('/daily');
-  const card = page.locator(`a.daily-list-feature[href="/daily/${historical.frontMatter.date}"]`);
-  await expect(card.locator('.archive-label')).toHaveText('历史回顾样例');
-  await expectDailyDetail(page, historical);
 });
 
 test('metadata routes and custom 404 are available', async ({ page, request }) => {
-  await page.goto('/daily');
-  const detailHref = await getFirstDailyHref(page);
-
   const sitemapResponse = await request.get('/sitemap.xml');
   expect(sitemapResponse.ok()).toBeTruthy();
-  expect(await sitemapResponse.text()).toContain(`https://hzense.com${detailHref}`);
+  const sitemap = await sitemapResponse.text();
+  expect(sitemap).toContain('https://hzense.com/signals');
+  expect(sitemap).not.toContain('https://hzense.com/daily');
+  expect(sitemap).not.toContain('https://hzense.com/weekly');
+  for (const retiredPath of ['/daily', '/daily/2026-09-12', '/weekly', '/weekly/2024-W25']) {
+    expect((await request.get(retiredPath)).status()).toBe(404);
+  }
 
   const robotsResponse = await request.get('/robots.txt');
   expect(robotsResponse.ok()).toBeTruthy();
@@ -153,40 +73,6 @@ test('Topics list and detail routes connect related intelligence', async ({ page
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('header.article-header')).toBeVisible();
   await expect(page.locator('section.topic-related-section').first()).toBeVisible();
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-    'href',
-    `https://hzense.com${detailHref}`,
-  );
-});
-
-test('Weekly list and detail routes connect Daily and Topic evidence', async ({
-  page,
-  request,
-}) => {
-  await page.goto('/weekly');
-  await expect(page).toHaveTitle('每周综述 · HZense');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('把一周变化连成趋势');
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
-    'href',
-    'https://hzense.com/weekly',
-  );
-
-  const detailHref = await page.locator('a.weekly-index-card').first().getAttribute('href');
-  expect(detailHref).toMatch(/^\/weekly\/[^/]+$/);
-
-  const sitemapResponse = await request.get('/sitemap.xml');
-  expect(await sitemapResponse.text()).toContain(`https://hzense.com${detailHref}`);
-
-  await page.goto(detailHref as string);
-  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  await expect(page.locator('article.weekly-detail-body')).toBeVisible();
-  await expect(page.locator('section.weekly-related-section')).toBeVisible();
-  await expect(
-    page.locator('section.weekly-related-section a[href^="/daily/"]').first(),
-  ).toBeVisible();
-  await expect(
-    page.locator('section.weekly-related-section a[href^="/topics/"]').first(),
-  ).toBeVisible();
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     `https://hzense.com${detailHref}`,
@@ -252,6 +138,7 @@ test('Resources preserve historical entity details and show current scope separa
   await page.goto(detailHref as string);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(page.locator('main.article-main')).toBeVisible();
+  await expect(page.locator('.brief-stats')).toHaveCSS('display', 'flex');
 });
 
 test('Radar is the homepage and does not invent an unsupported heat score', async ({

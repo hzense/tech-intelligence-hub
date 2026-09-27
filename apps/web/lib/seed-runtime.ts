@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import process from 'node:process';
 import { readSignalReadMode, type SignalEntry } from './public-signal-reader-core.ts';
+import { projectLegacySignalEntries } from './legacy-signal-projection.ts';
 import {
   loadSeedCatalog,
   type SeedEntity,
@@ -27,43 +28,7 @@ export async function getSignalEntries(): Promise<SignalEntry[]> {
     process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED === '1'
       ? await (await import('./server/editorial-signals.ts')).getEditorialSignals()
       : [];
-  const catalog = await getSeedCatalog();
-  const entityById = new Map(catalog.entities.map((entity) => [entity.id, entity]));
-  const sourceById = new Map(catalog.sources.map((source) => [source.id, source]));
-  const topicById = new Map(catalog.topics.map((topic) => [topic.id, topic]));
-  const legacy = catalog.signals
-    .filter((signal) => signal.status === 'accepted' || signal.status === 'reviewed')
-    .sort(
-      (left, right) =>
-        right.occurred_at.localeCompare(left.occurred_at) ||
-        right.importance - left.importance ||
-        left.title.localeCompare(right.title),
-    );
-  const normalizedLegacy: SignalEntry[] = legacy
-    .filter((entry) => !entry.id.startsWith('editorial-'))
-    .map((entry) => ({
-      ...entry,
-      public_people: entry.entities.flatMap((id) => {
-        const entity = entityById.get(id);
-        return entity?.type === 'person'
-          ? [{ id: entity.id, name: entity.name, event_role: '' }]
-          : [];
-      }),
-      public_organizations: entry.entities.flatMap((id) => {
-        const entity = entityById.get(id);
-        return entity?.type === 'company' || entity?.type === 'institution'
-          ? [{ id: entity.id, name: entity.name, event_role: '' }]
-          : [];
-      }),
-      public_topics: entry.topics.map((id) => ({ id, title: topicById.get(id)?.title ?? id })),
-      public_sources: [
-        {
-          id: entry.source_id,
-          name: sourceById.get(entry.source_id)?.name ?? entry.source_id,
-          url: entry.source_url,
-        },
-      ],
-    }));
+  const normalizedLegacy = projectLegacySignalEntries(await getSeedCatalog());
   return [...normalizedLegacy, ...editorial].sort((left, right) =>
     right.occurred_at.localeCompare(left.occurred_at),
   );

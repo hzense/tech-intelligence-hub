@@ -2,7 +2,6 @@ import { readdir, readFile } from 'node:fs/promises';
 import { extname, join, relative, sep } from 'node:path';
 import matter from 'gray-matter';
 import { findReferenceIssues, type ContentDocument, type ReferenceCatalogs } from './references.js';
-import { validateDailyIntegrity } from './daily.js';
 import { validateFrontMatter, type FrontMatter } from './schema.js';
 import { loadSeedCatalog } from './seed.js';
 import { validateTopicContentProjection } from './taxonomy.js';
@@ -172,7 +171,6 @@ export async function loadContent({
   }
 
   validateTopicContentProjection(documents, seedCatalog.topics, seedCatalog.taxonomy);
-  validateDailyIntegrity(entries, seedCatalog);
 
   return entries.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 }

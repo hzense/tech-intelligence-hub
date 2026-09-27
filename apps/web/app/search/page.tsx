@@ -8,7 +8,7 @@ import { searchPublishedContent } from '@/lib/server/search';
 
 export const metadata: Metadata = {
   title: '搜索',
-  description: '搜索 HZense 已发布的简报、洞察、专题、信号与资源。',
+  description: '搜索 HZense 已发布的洞察、专题、信号与资源。',
   alternates: {
     canonical: '/search',
   },
@@ -33,12 +33,19 @@ function filterHref(query: string, type?: SearchType): string {
   return `/search?${parameters.toString()}`;
 }
 
+const visibleSearchTypes: readonly SearchType[] = searchTypes.filter(
+  (type) => type !== 'daily' && type !== 'weekly',
+);
+
 export default async function SearchPage({ searchParams }: SearchPageProps) {
   const parameters = await searchParams;
   const query = firstValue(parameters.q).trim();
   const inputError = searchQueryError(query);
   const requestedType = firstValue(parameters.type);
-  const selectedType = isSearchType(requestedType) ? requestedType : undefined;
+  const selectedType =
+    isSearchType(requestedType) && visibleSearchTypes.includes(requestedType)
+      ? requestedType
+      : undefined;
   const results = query && !inputError ? await searchPublishedContent(query, selectedType) : [];
 
   return (
@@ -47,7 +54,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         <section className="page-hero search-hero">
           <p className="kicker">HZENSE SEARCH</p>
           <h1>搜索结构化科技情报。</h1>
-          <p>覆盖已发布的每日简报、周报、洞察、专题、信号与资源，并保留原始内容入口。</p>
+          <p>覆盖已发布的洞察、专题、信号与资源，并保留原始内容入口。</p>
         </section>
 
         <form className="search-form" action="/search" role="search">
@@ -66,7 +73,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             />
             <select name="type" defaultValue={selectedType ?? ''} aria-label="内容类型">
               <option value="">全部类型</option>
-              {searchTypes.map((type) => (
+              {visibleSearchTypes.map((type) => (
                 <option value={type} key={type}>
                   {searchTypeLabels[type]}
                 </option>
@@ -86,7 +93,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
               <Link className={!selectedType ? 'active' : undefined} href={filterHref(query)}>
                 全部
               </Link>
-              {searchTypes.map((type) => (
+              {visibleSearchTypes.map((type) => (
                 <Link
                   className={selectedType === type ? 'active' : undefined}
                   href={filterHref(query, type)}

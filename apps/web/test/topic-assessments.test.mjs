@@ -15,6 +15,20 @@ import {
   formatRadarTrend,
 } from '../lib/radar-presentation.ts';
 
+const sampleSnapshot = {
+  id: 'radar-synthetic-ai-security',
+  topic: 'topic-ai-security',
+  date: '2026-09-01',
+  domain: 'security',
+  attention: 55,
+  trend: 'growth',
+  maturity: 'emerging',
+  strategic_value: 'medium',
+  confidence: 0.5,
+  evidence_signals: ['signal-synthetic'],
+  reasoning: 'Synthetic test fixture',
+};
+
 function topic(id, status = 'active') {
   return {
     filePath: `topics/${id}.md`,
@@ -30,7 +44,7 @@ function topic(id, status = 'active') {
 test('Topic list, detail and homepage Radar reader share each complete latest assessment', async () => {
   const topics = await getTopicEntries();
   const radar = await getRadarEntries();
-  assert.ok(radar.some((entry) => entry.snapshot.topic === 'topic-ai-security'));
+  assert.deepEqual(radar, []);
   for (const entry of radar) {
     const id = entry.snapshot.topic;
     const listed = topics.find((item) => item.frontMatter.id === id);
@@ -54,8 +68,8 @@ test('Topic list, detail and homepage Radar reader share each complete latest as
   );
 });
 
-test('selects all metrics from the newest snapshot, not the highest score or input order', async () => {
-  const source = (await getRadarSnapshots())[0];
+test('selects all metrics from the newest snapshot, not the highest score or input order', () => {
+  const source = sampleSnapshot;
   const older = { ...source, date: '2026-08-01', attention: 99, trend: 'rapid_growth' };
   const newer = {
     ...source,
@@ -77,8 +91,8 @@ test('selects all metrics from the newest snapshot, not the highest score or inp
   }
 });
 
-test('never falls back to legacy Markdown or a previously projected assessment', async () => {
-  const source = (await getRadarSnapshots())[0];
+test('never falls back to legacy Markdown or a previously projected assessment', () => {
+  const source = sampleSnapshot;
   const legacy = topic(source.topic);
   Object.assign(legacy.frontMatter, {
     attention: 85,
@@ -94,8 +108,8 @@ test('never falls back to legacy Markdown or a previously projected assessment',
   assert.equal(formatTopicStrategicValue(result.assessment?.strategic_value), '待评估');
 });
 
-test('keeps unassessed Topics last, excludes archived pages and does not mutate cached documents', async () => {
-  const source = (await getRadarSnapshots())[0];
+test('keeps unassessed Topics last, excludes archived pages and does not mutate cached documents', () => {
+  const source = sampleSnapshot;
   const unknown = topic('topic-unknown');
   const scored = topic(source.topic);
   const archived = topic('topic-archived', 'archived');

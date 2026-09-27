@@ -33,8 +33,12 @@ function content(overrides: Partial<SignalVersionContent> = {}): SignalVersionCo
   };
 }
 
-function catalog(): SeedCatalog {
-  const signal: SeedSignal = {
+type HistoricalCatalog = Omit<SeedCatalog, 'signals'> & {
+  signals: (SeedSignal & { strength: number })[];
+};
+
+function catalog(): HistoricalCatalog {
+  const signal: SeedSignal & { strength: number } = {
     id: 'signal-example',
     event_key: 'event-example',
     title: ' Example title ',
@@ -468,7 +472,7 @@ describe('pure legacy Signal import preview', () => {
     }
   });
 
-  it('previews every real Seed Signal without writing, downloading, or fabricating evidence', async () => {
+  it('refuses to fabricate retired strength when previewing current Seed into historical snapshots', async () => {
     const loaded = await loadSeedCatalog(
       fileURLToPath(new URL('../../../data/seed', import.meta.url)),
       fileURLToPath(new URL('../../../data/taxonomy/taxonomy.yaml', import.meta.url)),
@@ -481,32 +485,7 @@ describe('pure legacy Signal import preview', () => {
       sources: loaded.sources,
       topics: loaded.topics,
     };
-    const plan = planLegacySignalImport(input);
     expect(input.signals.length).toBeGreaterThan(0);
-    expect(plan.versions).toHaveLength(input.signals.length);
-    expect(plan.counts.unpublished).toBe(input.signals.length);
-    expect(plan.counts.pending_verification).toBe(input.signals.length);
-    expect(plan.counts.legacy_public_candidates).toBe(
-      input.signals.filter((signal) => signal.status === 'accepted' || signal.status === 'reviewed')
-        .length,
-    );
-    for (const signal of input.signals) {
-      const version = plan.versions.find((entry) => entry.signal_id === signal.id)!;
-      const reference = plan.legacy_references.find((entry) => entry.signal_id === signal.id)!;
-      expect(signalVersionSnapshotSchema.safeParse(version).success).toBe(true);
-      expect(version).toMatchObject({
-        title: signal.title,
-        occurred_at: signal.occurred_at,
-        captured_at: signal.captured_at,
-        summary: signal.summary,
-        legacy_status: signal.status,
-      });
-      expect(reference.source_url).toBe(signal.source_url);
-      expect(reference.source_id).toBe(signal.source_id);
-      expect(reference.topics).toEqual([...signal.topics].sort());
-      expect(reference.entities).toEqual([...signal.entities].sort());
-    }
-    expect(JSON.stringify(plan)).not.toContain('"public_source_evidence"');
-    expect(JSON.stringify(plan)).not.toContain('"signal_version_people"');
+    expect(() => planLegacySignalImport(input)).toThrow();
   });
 });

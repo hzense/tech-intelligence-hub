@@ -52,7 +52,7 @@ function row(overrides = {}) {
 test('manual public DTO has no fabricated scores or URLs, and allowlists its fields', () => {
   const [entry] = mapEditorialSignalRows([row()]);
   assert.equal(entry.publication_basis, 'manual_confirmation');
-  for (const metric of ['confidence', 'importance', 'strength', 'novelty'])
+  for (const metric of ['confidence', 'importance', 'novelty'])
     assert.equal(metric in entry, false);
   assert.deepEqual(entry.public_sources, []);
   assert.equal(entry.source_url, '');
@@ -178,10 +178,8 @@ test('server entrypoints gate readers, bind requests, and remove old indexed sig
   assert.match(reader, /max: 2/);
   assert.doesNotMatch(reader, /unstable_cache|use cache|private\./);
   const search = await source('../lib/server/search.ts');
-  assert.equal(
-    (search.match(/return mergeCurrentSignalSearch\(legacy, current\)/g) ?? []).length,
-    2,
-  );
+  assert.equal((search.match(/mergeCurrentSignalSearch\(/g) ?? []).length, 2);
+  assert.equal((search.match(/return mergeCurrentResourceSearch\(/g) ?? []).length, 2);
   assert.match(
     await source('../lib/search-runtime.ts'),
     /publication_basis !== 'manual_confirmation'/,
@@ -192,12 +190,12 @@ test('server entrypoints gate readers, bind requests, and remove old indexed sig
   assert.match(detail, /toUnifiedSignal\(entry\)/);
   assert.match(detail, /unified\.assessment === null/);
   assert.match(detail, /未提供公开来源链接/);
-  assert.match(detail, /href=\{`\/topics\/\$\{topic\}`\}/);
+  assert.match(detail, /href=\{`\/topics\/\$\{topic\.id\}`\}/);
 });
 
 test('actual server search orchestration cannot resurrect an editorial hit from the old index in any mode', async () => {
   const result = searchSignalEntries(mapEditorialSignalRows([row()]), 'editorial')[0];
-  const state = { current: [result], indexed: [result] };
+  const state = { current: [result], indexed: [result], insights: [], resources: [] };
   globalThis.__editorialSearchTest = state;
   const previousSignalMode = process.env.HZENSE_SIGNAL_READ_MODE;
   const previousSearchMode = process.env.HZENSE_SEARCH_MODE;
@@ -215,7 +213,9 @@ test('actual server search orchestration cannot resurrect an editorial hit from 
             const modules = {
               'server-only': 'export {};',
               '../search-runtime':
-                'export async function searchPublishedContent(q,t,include=true) { return include ? globalThis.__editorialSearchTest.current : []; }',
+                'export async function searchPublishedContent(q,t,include=true) { return t === "resource" ? globalThis.__editorialSearchTest.resources : include ? globalThis.__editorialSearchTest.current : []; }',
+              '../content-runtime':
+                'export async function getInsightEntries() { return globalThis.__editorialSearchTest.insights; }',
               './runtime-reader':
                 'export async function searchRuntimeDocuments() { return globalThis.__editorialSearchTest.indexed; }',
               './public-signals':
@@ -224,7 +224,7 @@ test('actual server search orchestration cannot resurrect an editorial hit from 
             plugin.onResolve(
               {
                 filter:
-                  /^(server-only|\.\.\/search-runtime|\.\/runtime-reader|\.\/public-signals)$/,
+                  /^(server-only|\.\.\/search-runtime|\.\.\/content-runtime|\.\/runtime-reader|\.\/public-signals)$/,
               },
               (args) => ({ path: args.path, namespace: 'test-provider' }),
             );
@@ -250,6 +250,54 @@ test('actual server search orchestration cannot resurrect an editorial hit from 
           assert.deepEqual(await searchPublishedContent('editorial', type), []);
         }
         assert.deepEqual(await searchPublishedContent('editorial', 'resource'), []);
+      }
+    }
+    const retiredInsight = {
+      ...result,
+      id: 'searchdoc-insight-retired',
+      type: 'insight',
+      href: '/insights/retired',
+    };
+    const currentInsight = {
+      ...retiredInsight,
+      id: 'searchdoc-insight-current',
+      href: '/insights/current',
+    };
+    process.env.HZENSE_SEARCH_MODE = 'database';
+    state.current = [];
+    state.indexed = [retiredInsight, currentInsight];
+    for (const signalMode of ['legacy', 'database']) {
+      process.env.HZENSE_SIGNAL_READ_MODE = signalMode;
+      for (const type of [undefined, 'insight']) {
+        state.insights = [{ frontMatter: { id: 'current' } }];
+        assert.deepEqual(
+          (await searchPublishedContent('editorial', type)).map((entry) => entry.href),
+          ['/insights/current'],
+        );
+        state.insights = [];
+        assert.deepEqual(await searchPublishedContent('editorial', type), []);
+      }
+    }
+    const retiredResource = {
+      ...result,
+      id: 'searchdoc-resource-retired',
+      type: 'resource',
+      href: '/resources/retired',
+    };
+    const currentResource = {
+      ...retiredResource,
+      id: 'searchdoc-resource-current',
+      href: '/resources/current',
+    };
+    state.indexed = [retiredResource];
+    state.resources = [currentResource];
+    for (const signalMode of ['legacy', 'database']) {
+      process.env.HZENSE_SIGNAL_READ_MODE = signalMode;
+      for (const type of [undefined, 'resource']) {
+        assert.deepEqual(
+          (await searchPublishedContent('editorial', type)).map((entry) => entry.href),
+          ['/resources/current'],
+        );
       }
     }
   } finally {

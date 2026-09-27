@@ -17,12 +17,14 @@ export interface UnifiedSignal {
   };
   assessment: {
     importance: number;
-    strength: number;
+    /** Credibility of the reported news; not a forecast probability. */
     confidence: number;
     novelty: number;
   } | null;
   people: { id: string | null; name: string; eventRole: string }[];
   organizations: { id: string | null; name: string; eventRole: string }[];
+  /** Preserve historical non-participant entity references; never recast them as people. */
+  relatedEntities: { id: string; name: string; type: string }[];
   topics: { id: string; title: string }[];
   sources: { id: string; name: string; url: string }[];
 }
@@ -46,7 +48,6 @@ export function toUnifiedSignal(entry: SignalEntry): UnifiedSignal {
       ? null
       : {
           importance: entry.importance,
-          strength: entry.strength,
           confidence: entry.confidence,
           novelty: entry.novelty,
         };
@@ -69,6 +70,8 @@ export function toUnifiedSignal(entry: SignalEntry): UnifiedSignal {
     assessment,
     people: participants(entry.public_people ?? []),
     organizations: participants(entry.public_organizations ?? []),
+    relatedEntities:
+      publication.basis === 'legacy_seed' ? (entry.legacy_related_entities ?? []) : [],
     topics: entry.public_topics ?? entry.topics.map((id) => ({ id, title: id })),
     sources:
       entry.public_sources ??

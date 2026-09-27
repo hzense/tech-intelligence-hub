@@ -80,11 +80,17 @@ const signalSchema = z.object({
   source_url: httpsUrl,
   summary: z.string().min(1),
   importance: z.number().int().min(1).max(5),
-  strength: z.number().int().min(1).max(5),
+  /** Editorial estimate of how credible the reported news is, not outcome certainty. */
   confidence: z.number().min(0).max(1),
   novelty: z.number().min(0).max(1),
   topics: z.array(id).default([]),
   entities: z.array(id).default([]),
+  entity_roles: z
+    .record(
+      id,
+      z.string().refine((value) => value.trim().length > 0),
+    )
+    .optional(),
 });
 
 const relationSchema = z.object({
@@ -197,7 +203,8 @@ export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
 
   const topicById = new Map(catalog.topics.map((topic) => [topic.id, topic]));
   const topicIds = new Set(topicById.keys());
-  const entityIds = new Set(catalog.entities.map((entity) => entity.id));
+  const entityById = new Map(catalog.entities.map((entity) => [entity.id, entity]));
+  const entityIds = new Set(entityById.keys());
   const sourceById = new Map(catalog.sources.map((source) => [source.id, source]));
   const signalById = new Map(catalog.signals.map((signal) => [signal.id, signal]));
   const radarTopicDates = new Set<string>();
@@ -275,6 +282,15 @@ export function validateSeedCatalog(catalog: SeedCatalog): SeedCatalog {
     }
     for (const entity of signal.entities) {
       if (!entityIds.has(entity)) throw new Error(`Unknown entity ${entity} in ${signal.id}`);
+    }
+    for (const entityId of Object.keys(signal.entity_roles ?? {})) {
+      if (!signal.entities.includes(entityId)) {
+        throw new Error(`Unlinked entity role ${entityId} in ${signal.id}`);
+      }
+      const type = entityById.get(entityId)?.type;
+      if (type !== 'person' && type !== 'company' && type !== 'institution') {
+        throw new Error(`Unsupported entity role ${entityId} in ${signal.id}`);
+      }
     }
   }
 

@@ -65,6 +65,8 @@ describe('datas source-dated Seed promotion', () => {
     for (const decision of imported) {
       const candidate = candidates.find((c) => c.id === decision.candidate_id)!;
       const signal = catalog.signals.find((s) => s.id === decision.signal_id);
+      const retainedScores = { ...(decision.scores ?? {}) };
+      delete retainedScores.strength;
       expect(signal).toMatchObject({
         event_key: candidate.event_key_suggestion,
         status: 'accepted',
@@ -72,7 +74,7 @@ describe('datas source-dated Seed promotion', () => {
         captured_at: candidate.captured_at,
         source_id: decision.source_id,
         source_url: decision.source_url,
-        ...decision.scores,
+        ...retainedScores,
       });
       expect(candidate.seed_promotion).toMatchObject({
         status: 'imported',

@@ -102,7 +102,7 @@ test('root content changes invalidate build and test hashes without changing app
       'data/seed/entities.yaml',
       'data/seed/radar.yaml',
       'data/taxonomy/taxonomy.yaml',
-      'content/daily/2026/example.md',
+      'content/insights/example.md',
     ];
     for (const path of inputs) await put(path, 'initial\n');
     execFileSync('git', ['init', '--quiet'], { cwd: root });
@@ -131,11 +131,11 @@ test('root content changes invalidate build and test hashes without changing app
       await put(path, 'initial\n');
       assert.deepEqual(snapshot(), baseline, 'restored input must restore the hash');
     }
-    await put('content/daily/2026/new.md', 'new article\n');
+    await put('content/insights/new.md', 'new article\n');
     const added = snapshot();
     assert.notEqual(added['@hzense/web#build'], baseline['@hzense/web#build']);
     assert.notEqual(added['@hzense/web#test'], baseline['@hzense/web#test']);
-    await rm(join(root, 'content/daily/2026/new.md'));
+    await rm(join(root, 'content/insights/new.md'));
     assert.deepEqual(snapshot(), baseline, 'removed new content must restore the hash');
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -2,13 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { rankSearchDocuments } from '@hzense/search/ranking';
-import {
-  getDailyEntries,
-  getInsightEntries,
-  getTopicEntries,
-  getTopicTitleMap,
-  getWeeklyEntries,
-} from '../lib/content-runtime.ts';
+import { getInsightEntries, getTopicEntries, getTopicTitleMap } from '../lib/content-runtime.ts';
 import { formatEntityType } from '../lib/resource-presentation.ts';
 import { getSearchDocumentProjections } from '../lib/search-runtime.ts';
 import {
@@ -31,10 +25,10 @@ const documents = [
   },
   {
     id: 'body-match',
-    type: 'daily',
-    title: '每日简报',
+    type: 'topic',
+    title: '技术洞察',
     summary: '技术变化',
-    href: '/daily/2024-01-01',
+    href: '/topics/body-match',
     keywords: '',
     body: 'AI 安全边界正在扩大',
   },
@@ -69,16 +63,14 @@ test('ranks title matches above body-only matches', () => {
 test('requires every normalized query term and respects type filters', () => {
   assert.equal(rankSearchDocuments(documents, 'AI 不存在').length, 0);
   assert.deepEqual(
-    rankSearchDocuments(documents, 'ＡＩ 安全', 'daily').map((result) => result.id),
+    rankSearchDocuments(documents, 'ＡＩ 安全', 'topic').map((result) => result.id),
     ['body-match'],
   );
 });
 
-test('assembles all six public projection types from the real content and seed catalogs', async () => {
+test('assembles currently publishable projection types from the real content and seed catalogs', async () => {
   const [
     projections,
-    dailyEntries,
-    weeklyEntries,
     insightEntries,
     topicEntries,
     signalEntries,
@@ -88,8 +80,6 @@ test('assembles all six public projection types from the real content and seed c
     sourceMap,
   ] = await Promise.all([
     getSearchDocumentProjections(),
-    getDailyEntries(),
-    getWeeklyEntries(),
     getInsightEntries(),
     getTopicEntries(),
     getSignalEntries(),
@@ -107,26 +97,16 @@ test('assembles all six public projection types from the real content and seed c
   }
 
   const expectedSourceIdsByType = new Map([
-    ['daily', dailyEntries.map((entry) => entry.frontMatter.id)],
-    ['weekly', weeklyEntries.map((entry) => entry.frontMatter.id)],
     ['insight', insightEntries.map((entry) => entry.frontMatter.id)],
     ['topic', topicEntries.map((entry) => entry.frontMatter.id)],
     ['signal', signalEntries.map((signal) => signal.id)],
     ['resource', resourceEntries.map((resource) => resource.id)],
   ]);
 
-  assert.deepEqual([...projectionsByType.keys()].sort(), [
-    'daily',
-    'insight',
-    'resource',
-    'signal',
-    'topic',
-    'weekly',
-  ]);
+  assert.deepEqual([...projectionsByType.keys()].sort(), ['resource', 'signal', 'topic']);
+  assert.ok(!projectionsByType.has('daily') && !projectionsByType.has('weekly'));
 
   const expectedHrefPrefix = {
-    daily: '/daily/',
-    weekly: '/weekly/',
     insight: '/insights/',
     topic: '/topics/',
     signal: '/signals/',
@@ -135,10 +115,15 @@ test('assembles all six public projection types from the real content and seed c
 
   for (const [sourceType, prefix] of Object.entries(expectedHrefPrefix)) {
     const typedProjections = projectionsByType.get(sourceType);
+    const expectedSourceIds = expectedSourceIdsByType.get(sourceType);
+    if (expectedSourceIds.length === 0) {
+      assert.equal(typedProjections, undefined, `retired ${sourceType} has no search projection`);
+      continue;
+    }
     assert.ok(typedProjections?.length > 0, `expected a real ${sourceType} projection`);
     assert.deepEqual(
       typedProjections.map((projection) => projection.sourceId).sort(),
-      expectedSourceIdsByType.get(sourceType).sort(),
+      expectedSourceIds.sort(),
     );
     assert.ok(typedProjections.every((projection) => projection.href.startsWith(prefix)));
     assert.ok(
@@ -148,8 +133,6 @@ test('assembles all six public projection types from the real content and seed c
     );
   }
 
-  assert.ok(dailyEntries.every((entry) => entry.frontMatter.status === 'published'));
-  assert.ok(weeklyEntries.every((entry) => entry.frontMatter.status === 'published'));
   assert.ok(insightEntries.every((entry) => entry.frontMatter.status === 'published'));
   assert.ok(
     topicEntries.every((entry) =>
@@ -182,40 +165,6 @@ test('assembles all six public projection types from the real content and seed c
       },
       expected,
     );
-  }
-
-  for (const entry of dailyEntries) {
-    const { frontMatter } = entry;
-    assertProjectionFields(projectionFor('daily', frontMatter.id), {
-      title: canonicalText(frontMatter.title),
-      summary: canonicalText(entry.summary),
-      keywords: canonicalKeywords([
-        ...(frontMatter.tags ?? []),
-        expectedTopicKeywords(frontMatter.rising_topics, topicTitleMap),
-        entry.sections.map((section) => section.heading).join(' '),
-      ]),
-      body: canonicalText(entry.body),
-      importance: frontMatter.importance ?? 1,
-      topics: canonicalIds(frontMatter.rising_topics),
-      entities: [],
-    });
-  }
-
-  for (const entry of weeklyEntries) {
-    const { frontMatter } = entry;
-    assertProjectionFields(projectionFor('weekly', frontMatter.id), {
-      title: canonicalText(frontMatter.title),
-      summary: canonicalText(entry.summary),
-      keywords: canonicalKeywords([
-        ...(frontMatter.tags ?? []),
-        expectedTopicKeywords(frontMatter.featured_topics, topicTitleMap),
-        entry.sections.map((section) => section.heading).join(' '),
-      ]),
-      body: canonicalText(entry.body),
-      importance: frontMatter.importance ?? 1,
-      topics: canonicalIds(frontMatter.featured_topics),
-      entities: [],
-    });
   }
 
   for (const entry of insightEntries) {
@@ -283,11 +232,11 @@ test('assembles all six public projection types from the real content and seed c
     });
   }
 
-  for (const sourceType of ['daily', 'weekly', 'insight', 'signal']) {
+  for (const sourceType of ['insight', 'signal']) {
     assert.ok(
-      projectionsByType
-        .get(sourceType)
-        .every((projection) => /^\d{4}-\d{2}-\d{2}$/.test(projection.documentDate)),
+      (projectionsByType.get(sourceType) ?? []).every((projection) =>
+        /^\d{4}-\d{2}-\d{2}$/.test(projection.documentDate),
+      ),
     );
   }
   assert.ok(projectionsByType.get('topic').every((projection) => projection.documentDate === null));

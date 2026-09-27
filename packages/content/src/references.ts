@@ -1,6 +1,6 @@
 import type { FrontMatter } from './schema.js';
 
-export type ReferenceKind = 'content' | 'daily' | 'entity' | 'signal' | 'topic';
+export type ReferenceKind = 'content' | 'entity' | 'signal' | 'topic';
 
 export interface ContentDocument {
   file: string;
@@ -141,7 +141,6 @@ export function findReferenceIssues(
 ): ReferenceIssue[] {
   const issues: ReferenceIssue[] = [];
   const contentIds = new Set<string>();
-  const dailyIds = new Set<string>();
 
   for (const document of documents) {
     const { id, type } = document.frontMatter;
@@ -155,7 +154,6 @@ export function findReferenceIssues(
       });
     }
     contentIds.add(id);
-    if (type === 'daily') dailyIds.add(id);
     if (type === 'topic') {
       if (!catalogs.topicIds.has(id)) {
         issues.push({
@@ -174,35 +172,6 @@ export function findReferenceIssues(
   for (const document of documents) {
     const frontMatter = document.frontMatter;
     switch (frontMatter.type) {
-      case 'daily':
-        checkTopicReferences(
-          issues,
-          document,
-          'rising_topics',
-          frontMatter.rising_topics,
-          topicIds,
-          catalogs.archivedTopicIds,
-        );
-        checkReferences(
-          issues,
-          document,
-          'signal_refs',
-          'signal',
-          frontMatter.signal_refs,
-          catalogs.signalIds,
-        );
-        break;
-      case 'weekly':
-        checkReferences(issues, document, 'daily_refs', 'daily', frontMatter.daily_refs, dailyIds);
-        checkTopicReferences(
-          issues,
-          document,
-          'featured_topics',
-          frontMatter.featured_topics,
-          topicIds,
-          catalogs.archivedTopicIds,
-        );
-        break;
       case 'insight':
         checkTopicReferences(
           issues,

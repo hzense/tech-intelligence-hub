@@ -384,8 +384,8 @@ function SignalDetailContent({ data }: { data: SignalWorkbenchDetail }) {
           <dd className={styles.prose}>{snapshot.revision_reason}</dd>
           <dt>记录评分</dt>
           <dd>
-            重要度 {snapshot.importance} · 强度 {snapshot.strength} · 置信度 {snapshot.confidence} ·
-            新颖度 {snapshot.novelty}
+            重要度 {snapshot.importance} · 置信度（新闻可信程度）{snapshot.confidence} · 新颖度{' '}
+            {snapshot.novelty}
           </dd>
         </dl>
       </section>

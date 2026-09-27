@@ -11,10 +11,6 @@ test('traces repository content required by deployed routes', () => {
   assert.ok(includes);
   for (const route of [
     '/',
-    '/daily',
-    '/daily/[date]',
-    '/weekly',
-    '/weekly/[week]',
     '/insights',
     '/insights/[id]',
     '/radar',
