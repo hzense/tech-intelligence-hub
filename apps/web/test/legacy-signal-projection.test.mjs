@@ -113,6 +113,7 @@ test('SemiAnalysis is attributed as an information source, not a related company
   );
   for (const signal of signals) {
     assert.equal(signal.public_sources?.[0]?.name, 'SemiAnalysis');
+    assert.equal(signal.title.includes('SemiAnalysis'), false, signal.id);
     assert.equal(signal.entities.includes('company-semianalysis'), false);
     assert.equal(
       signal.public_organizations?.some((entity) => entity.name === 'SemiAnalysis'),

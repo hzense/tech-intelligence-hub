@@ -530,7 +530,7 @@
     person-andy-jassy: 财报发言人
 - id: 'signal-20260729-semianalysis-lego-datacenters'
   event_key: 'event-semianalysis-lego-datacenters'
-  title: 'SemiAnalysis 发布模块化数据中心研究'
+  title: '模块化数据中心建设的工期与成本研究'
   type: 'research'
   occurred_at: '2026-07-29T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -572,7 +572,7 @@
     person-henna-virkkunen: 欧盟委员会7月20日指南公告发言人（非8月2日条款实施人）
 - id: 'signal-20260803-semianalysis-kimi-k3-architecture'
   event_key: 'event-semianalysis-kimi-k3-architecture'
-  title: 'SemiAnalysis 分析 Kimi K3 架构与推理系统'
+  title: 'Kimi K3 状态、缓存与通信架构分析'
   type: 'research'
   occurred_at: '2026-08-03T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -683,7 +683,7 @@
     person-ljubisa-bajic: 公告发言人
 - id: 'signal-20260725-semianalysis-amd-cuda'
   event_key: 'event-semianalysis-amd-cuda'
-  title: 'SemiAnalysis 研究 AMD 软件生态与机架可靠性'
+  title: 'AMD 软件生态与机架交付对 CUDA 竞争的影响分析'
   type: 'research'
   occurred_at: '2026-07-25T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -706,7 +706,7 @@
     person-myron-xie: 文章署名作者
 - id: 'signal-20260618-semianalysis-datacenter-cancellation'
   event_key: 'event-semianalysis-datacenter-cancellation'
-  title: 'SemiAnalysis 研究数据中心取消与延期统计'
+  title: '美国数据中心项目取消与延期统计口径研究'
   type: 'research'
   occurred_at: '2026-06-18T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -729,7 +729,7 @@
     person-jeremie-eliahou-ontiveros: 文章署名作者
 - id: 'signal-20260810-semianalysis-tilert'
   event_key: 'event-semianalysis-tilert'
-  title: 'SemiAnalysis 发布 TileRT 低延迟推理研究'
+  title: 'TileRT 低延迟推理性能的配置依赖分析'
   type: 'research'
   occurred_at: '2026-08-10T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -752,7 +752,7 @@
     person-cam-quilici: 文章署名作者
 - id: 'signal-20260303-semianalysis-pjm-load-forecast'
   event_key: 'event-semianalysis-pjm-load-forecast'
-  title: 'SemiAnalysis 讨论 AI 负荷预测与 PJM 容量价格'
+  title: 'AI 数据中心负荷预测与 PJM 容量价格研究'
   type: 'research'
   occurred_at: '2026-03-03T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -817,7 +817,7 @@
     company-nvidia: 否认特制 LPU 传闻的声明方
 - id: 'signal-20260819-semianalysis-cerebras-cs4'
   event_key: 'event-semianalysis-cerebras-cs4'
-  title: 'SemiAnalysis 分析 Cerebras CS-4'
+  title: 'Cerebras CS-4 芯片与系统设计变化分析'
   type: 'research'
   occurred_at: '2026-08-19T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -865,7 +865,7 @@
     person-nico-caprez: NVIDIA 副总裁、公告发言人
 - id: 'signal-20260625-semianalysis-us-grid-btm'
   event_key: 'event-semianalysis-us-grid-btm'
-  title: 'SemiAnalysis 研究美国电网与表后电源约束'
+  title: '美国电网接入与表后电源可靠容量约束研究'
   type: 'research'
   occurred_at: '2026-06-25T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -909,7 +909,7 @@
     company-nvidia: 媒体所报道拟调价产品的供应方（调价未获确认）
 - id: 'signal-20260821-semianalysis-open-models'
   event_key: 'event-semianalysis-open-models'
-  title: 'SemiAnalysis 研究开放模型追赶趋势'
+  title: '开放模型基准能力追赶趋势与局限分析'
   type: 'research'
   occurred_at: '2026-08-21T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -953,7 +953,7 @@
     person-li-qiang: 会议主持人
 - id: 'signal-20260824-semianalysis-agentx'
   event_key: 'event-semianalysis-agentx'
-  title: 'SemiAnalysis 发布 AgentX InferenceXv3'
+  title: 'AgentX / InferenceXv3 代理与缓存复用负载评测'
   type: 'research'
   occurred_at: '2026-08-24T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -1017,7 +1017,7 @@
     person-tekedra-mawakana: 公告发言人
 - id: 'signal-20260825-semianalysis-jalapeno'
   event_key: 'event-semianalysis-jalapeno'
-  title: 'SemiAnalysis 发布 Jalapeño 芯片分析'
+  title: 'Jalapeño 芯片架构与推理表现分析'
   type: 'research'
   occurred_at: '2026-08-25T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -1082,7 +1082,7 @@
     person-kwak-noh-jung: 奠基仪式出席人
 - id: 'signal-20260816-semianalysis-pjm-modeling'
   event_key: 'event-semianalysis-pjm-modeling'
-  title: 'SemiAnalysis 发布 PJM 可靠容量建模研究'
+  title: 'PJM 可靠容量建模与成本估计争议分析'
   type: 'research'
   occurred_at: '2026-08-16T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -1166,7 +1166,7 @@
     person-lei-jun: 小米董事长、就量产与终端适配发言
 - id: 'signal-20260807-semianalysis-gcp-model-economics'
   event_key: 'event-semianalysis-gcp-model-economics'
-  title: 'SemiAnalysis 讨论 GCP 与第一方模型的商业关系'
+  title: 'GCP 与第一方模型商业价值分配研究'
   type: 'research'
   occurred_at: '2026-08-07T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -1233,7 +1233,7 @@
     person-andrew-bailey: 信函署名主席
 - id: 'signal-20260830-semianalysis-neocloud-security'
   event_key: 'event-semianalysis-neocloud-security'
-  title: 'SemiAnalysis 发布 Neocloud 安全研究'
+  title: 'Neocloud 多租户隔离与凭据安全研究'
   type: 'research'
   occurred_at: '2026-08-30T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -1306,7 +1306,7 @@
     person-fouad-matin: OpenAI 研究员、安全限制简报发言人
 - id: 'signal-20260901-semianalysis-korea-sovereign-ai'
   event_key: 'event-semianalysis-korea-sovereign-ai'
-  title: 'SemiAnalysis 研究韩国主权 AI 投资'
+  title: '韩国主权 AI 投资的容量规划与价值分配研究'
   type: 'research'
   occurred_at: '2026-09-01T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -1478,7 +1478,7 @@
     person-jakub-pachocki: OpenAI 首席科学家、文章署名作者
 - id: 'signal-20260907-semianalysis-tpu-inferencex'
   event_key: 'event-semianalysis-tpu-inferencex'
-  title: 'SemiAnalysis 发布 TPU InferenceX 研究'
+  title: 'TPU InferenceX 外部推理服务性能与成本分析'
   type: 'research'
   occurred_at: '2026-09-07T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
@@ -1571,7 +1571,7 @@
     person-thomas-li: Daloopa CEO、数据合作方发言人
 - id: 'signal-20260910-semianalysis-btm-power'
   event_key: 'event-semianalysis-btm-power'
-  title: 'SemiAnalysis 发布表后电力建设研究'
+  title: '数据中心表后电力建设的设备、燃料与融资约束研究'
   type: 'research'
   occurred_at: '2026-09-10T00:00:00Z'
   captured_at: '2026-09-11T21:15:59Z'
