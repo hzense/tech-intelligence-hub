@@ -54,6 +54,7 @@
     - 'person-marcel-zalloua'
     - 'person-greg-boorer'
   entity_roles:
+    company-nvidia: 合作公告方
     company-firmus: 合作伙伴
     company-sharon-ai: 合作伙伴
     company-iren: 合作伙伴
@@ -88,6 +89,8 @@
     - 'company-d-matrix'
     - 'person-sid-sheth'
   entity_roles:
+    company-nvidia: NVLink Fusion 技术合作方
+    company-d-matrix: Raptor XPU 集成计划方
     person-sid-sheth: 公告发言人
 - id: signal-20260910-skild-nvidia-physical-ai
   event_key: event-20260910-skild-nvidia-physical-ai
@@ -108,6 +111,8 @@
     - 'company-skild-ai'
     - 'person-deepak-pathak'
   entity_roles:
+    company-nvidia: 训练与仿真技术合作方
+    company-skild-ai: Skild S1 模型开发方
     person-deepak-pathak: 公告发言人
 - id: signal-20260910-anthropic-threat-report
   event_key: event-20260910-anthropic-threat-report
@@ -125,6 +130,7 @@
   topics: [topic-ai-security]
   entities: [company-anthropic, person-jacob-klein]
   entity_roles:
+    company-anthropic: 报告发布与调查机构
     person-jacob-klein: Anthropic 威胁情报负责人、报告解读受访人（非报告署名作者）
 - id: 'signal-20260719-kimi-k3-subscription-pause'
   event_key: 'event-kimi-k3-subscription-pause'
@@ -185,6 +191,7 @@
     - 'company-hugging-face'
     - 'person-clem-delangue'
   entity_roles:
+    company-openai: 事故披露机构
     company-hugging-face: 事件涉及方
     person-clem-delangue: 事件回应发言人
 - id: 'signal-20260722-alphabet-q2-results'
@@ -207,6 +214,7 @@
     - 'company-alphabet'
     - 'person-sundar-pichai'
   entity_roles:
+    company-google: Alphabet 财报披露的 Google Cloud 业务主体
     company-alphabet: 财报发布方
     person-sundar-pichai: 财报发言人
 - id: 'signal-20260722-amd-anthropic-mi450-partnership'
@@ -230,6 +238,7 @@
     - 'person-lisa-su'
     - 'person-tom-brown'
   entity_roles:
+    company-anthropic: 合作方
     company-amd: 合作方
     person-lisa-su: 公告发言人
     person-tom-brown: 公告发言人
@@ -315,6 +324,7 @@
     - 'person-chey-tae-won'
     - 'person-jensen-huang'
   entity_roles:
+    company-nvidia: 合作方
     company-sk-group: 合作方
     company-sk-hynix: 合作方
     company-sk-telecom: 合作方
@@ -453,6 +463,7 @@
     - 'company-meta'
     - 'person-mark-zuckerberg'
   entity_roles:
+    company-meta: 财报发布方
     person-mark-zuckerberg: 财报发言人
 - id: 'signal-20260729-germany-ai-act-implementation'
   event_key: 'event-germany-ai-act-implementation'
@@ -622,8 +633,13 @@
   topics:
     - 'topic-ai-security'
   entities:
+    - 'institution-aisi'
     - 'company-anthropic'
     - 'company-openai'
+  entity_roles:
+    institution-aisi: 评估实施与事件披露机构
+    company-anthropic: 被测 Mythos 5 模型提供方（非评估实施方）
+    company-openai: 被测 GPT-5.6-Sol 模型提供方（非评估实施方）
 - id: 'signal-20260804-amd-q2-results'
   event_key: 'event-amd-q2-results'
   title: 'AMD 二季度数据中心收入披露'
@@ -777,6 +793,7 @@
     - 'person-sam-altman'
     - 'person-jensen-huang'
   entity_roles:
+    company-openai: 项目加入方
     person-sam-altman: OpenAI 首席执行官、同日项目合作公告发言人
     person-jensen-huang: NVIDIA 首席执行官、同日项目合作公告发言人
 - id: 'signal-20260820-nvidia-china-lpu-denial'
@@ -796,6 +813,8 @@
     - 'topic-ai-infrastructure'
   entities:
     - 'company-nvidia'
+  entity_roles:
+    company-nvidia: 否认特制 LPU 传闻的声明方
 - id: 'signal-20260819-semianalysis-cerebras-cs4'
   event_key: 'event-semianalysis-cerebras-cs4'
   title: 'SemiAnalysis 分析 Cerebras CS-4'
@@ -840,6 +859,7 @@
     - 'person-david-berry'
     - 'person-nico-caprez'
   entity_roles:
+    company-nvidia: 投资与基础设施合作方
     company-cloverleaf-infrastructure: 合作方
     person-david-berry: Cloverleaf 联合创始人兼 CEO、公告发言人
     person-nico-caprez: NVIDIA 副总裁、公告发言人
@@ -885,6 +905,8 @@
     - 'topic-ai-infrastructure'
   entities:
     - 'company-nvidia'
+  entity_roles:
+    company-nvidia: 媒体所报道拟调价产品的供应方（调价未获确认）
 - id: 'signal-20260821-semianalysis-open-models'
   event_key: 'event-semianalysis-open-models'
   title: 'SemiAnalysis 研究开放模型追赶趋势'
@@ -972,6 +994,7 @@
     - 'company-openai'
     - 'person-richard-ho'
   entity_roles:
+    company-openai: Jalapeño 芯片及测试结果披露方
     person-richard-ho: OpenAI 硬件副总裁、首批结果介绍人
 - id: 'signal-20260825-waymo-munich-testing'
   event_key: 'event-waymo-munich-testing'
@@ -1013,6 +1036,7 @@
     - 'person-myron-xie'
     - 'person-jordan-nanos'
   entity_roles:
+    company-openai: 研究分析的 Jalapeño 芯片开发方（非文章发布方）
     person-bryan-shan: 文章署名作者
     person-myron-xie: 文章署名作者
     person-jordan-nanos: 文章署名作者
@@ -1035,6 +1059,7 @@
     - 'company-nvidia'
     - 'person-jensen-huang'
   entity_roles:
+    company-nvidia: 财报发布方
     person-jensen-huang: 财报发言人
 - id: 'signal-20260827-skhynix-indiana-groundbreaking'
   event_key: 'event-skhynix-indiana-groundbreaking'
@@ -1118,6 +1143,7 @@
     - 'company-openai'
     - 'person-elon-musk'
   entity_roles:
+    company-openai: 拟终止模型服务合同的公告方（尚未停止服务）
     person-elon-musk: OpenAI 公告提及的 SpaceX 相关人物（非终止合同决策者；违约为 OpenAI 主张）
 - id: 'signal-20260829-cxmt-lpddr6-production'
   event_key: 'event-cxmt-lpddr6-production'
@@ -1160,6 +1186,7 @@
     - 'person-doug-olaughlin'
     - 'person-dylan-patel'
   entity_roles:
+    company-google: GCP 与第一方模型业务的研究分析对象（非文章发布方）
     person-max-kan: 文章署名作者
     person-joey-brookhart: 文章署名作者
     person-doug-olaughlin: 文章署名作者
@@ -1249,6 +1276,7 @@
     - 'person-jensen-huang'
     - 'person-rick-tsai'
   entity_roles:
+    company-nvidia: 合作与投资公告方
     company-mediatek: 合作方
     person-jensen-huang: 公告发言人
     person-rick-tsai: 公告发言人
@@ -1273,6 +1301,7 @@
     - 'person-amelia-glaese'
     - 'person-fouad-matin'
   entity_roles:
+    company-openai: 安全能力分级披露机构
     person-amelia-glaese: OpenAI 研究副总裁、安全能力分级简报发言人
     person-fouad-matin: OpenAI 研究员、安全限制简报发言人
 - id: 'signal-20260901-semianalysis-korea-sovereign-ai'
@@ -1338,9 +1367,8 @@
   novelty: 0.7
   topics:
     - 'topic-ai-infrastructure'
-  entities: ['institution-xinhua', 'person-li-chao', 'person-wang-yanhui']
+  entities: ['person-li-chao', 'person-wang-yanhui']
   entity_roles:
-    institution-xinhua: 报道发布方
     person-li-chao: 报道受访政策官员
     person-wang-yanhui: 报道受访行业人士
 - id: 'signal-20260903-openai-gpt6-astra-launch'
@@ -1387,6 +1415,7 @@
     - 'company-hugging-face'
     - 'person-jensen-huang'
   entity_roles:
+    company-nvidia: 拟收购方（协议未交割）
     company-hugging-face: 拟被收购方
     person-jensen-huang: NVIDIA 收购协议公告署名作者
 - id: 'signal-20260905-us-china-ai-talks-september-report'
@@ -1404,9 +1433,8 @@
   novelty: 0.7
   topics:
     - 'topic-ai-security'
-  entities: ['company-united-daily-news', 'person-paul-triolo']
+  entities: ['person-paul-triolo']
   entity_roles:
-    company-united-daily-news: 报道发布方
     person-paul-triolo: 报道引述的 AI 政策评论人士（非会谈代表）
 - id: 'signal-20260906-openai-research-acceleration'
   event_key: 'event-openai-research-acceleration'
@@ -1425,6 +1453,8 @@
     - 'topic-ai-agents'
   entities:
     - 'company-openai'
+  entity_roles:
+    company-openai: 内部科研自动化进展披露机构
 - id: 'signal-20260906-openai-safety-threshold-essay'
   event_key: 'event-openai-safety-threshold-essay'
   title: 'OpenAI 首席科学家倡议安全门槛约束研发'
@@ -1488,6 +1518,7 @@
     - 'company-openai'
     - 'person-sebastien-bubeck'
   entity_roles:
+    company-openai: 候选证明材料公开机构（非数学成果认证方）
     person-sebastien-bubeck: OpenAI 研究员、成果公开前对外沟通者（非候选证明作者）
 - id: 'signal-20260908-amazon-qualcomm-ai-chips'
   event_key: 'event-amazon-qualcomm-ai-chips'

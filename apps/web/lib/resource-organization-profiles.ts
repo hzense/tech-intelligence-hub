@@ -172,10 +172,6 @@ export const organizationProfiles: Readonly<
     sourceUrl:
       'https://static.sse.com.cn/stock/disclosure/announcement/c/202604/002175_20260416_BH8W.pdf',
   },
-  'company-united-daily-news': {
-    introduction: '《联合报》是台湾新闻媒体，提供报纸与数字平台上的时事、社会和财经报道。',
-    sourceUrl: 'https://www.udngroup.com/journalism',
-  },
   'institution-european-commission': {
     introduction: '欧盟委员会是欧盟行政机构，负责提出法律和政策、监督执行并管理欧盟预算。',
     sourceUrl: 'https://commission.europa.eu/about/role_en',
@@ -224,8 +220,10 @@ export const organizationProfiles: Readonly<
     introduction: '美国众议院是美国国会两院之一，承担立法、监督和选区代表职责。',
     sourceUrl: 'https://www.house.gov/the-house-explained',
   },
-  'institution-xinhua': {
-    introduction: '新华社是中国国家通讯社，提供面向国内外的多语种新闻采集与发布服务。',
-    sourceUrl: 'https://www.news.cn/xinhuashe/jbqk.htm',
+  'institution-aisi': {
+    introduction:
+      '英国人工智能安全研究所评估前沿 AI 模型的能力与风险，并发布相关研究和安全测试结果。',
+    sourceUrl:
+      'https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing',
   },
 };

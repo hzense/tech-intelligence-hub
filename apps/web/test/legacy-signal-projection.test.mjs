@@ -64,10 +64,12 @@ test('every existing historical Signal projects without losing identities, refer
     for (const person of signal.people) {
       assert.equal(entityById.get(person.id)?.type, 'person');
       assert.equal(person.eventRole, raw.entity_roles?.[person.id] ?? '');
+      assert.ok(person.eventRole.trim(), `${raw.id}: ${person.id} needs an event role`);
     }
     for (const organization of signal.organizations) {
       assert.ok(['company', 'institution'].includes(entityById.get(organization.id)?.type));
       assert.equal(organization.eventRole, raw.entity_roles?.[organization.id] ?? '');
+      assert.ok(organization.eventRole.trim(), `${raw.id}: ${organization.id} needs an event role`);
     }
     for (const related of signal.relatedEntities) {
       assert.equal(entityById.get(related.id)?.type, related.type);
@@ -119,7 +121,23 @@ test('SemiAnalysis is attributed as an information source, not a related company
   }
 });
 
-test('historical entity backfill distinguishes a decision maker from a reporting publisher', async () => {
+test('AISI is both the incident-report source and the named evaluator, not just a publisher', async () => {
+  const catalog = await loadSeedCatalog(seedRoot, taxonomyFile);
+  const entry = projectLegacySignalEntries(catalog).find(
+    (signal) => signal.id === 'signal-20260804-aisi-agent-cyber-evaluation',
+  );
+  assert.equal(entry?.public_sources?.[0]?.name, 'UK AI Security Institute');
+  assert.deepEqual(
+    entry?.public_organizations?.map((organization) => [organization.id, organization.event_role]),
+    [
+      ['institution-aisi', '评估实施与事件披露机构'],
+      ['company-anthropic', '被测 Mythos 5 模型提供方（非评估实施方）'],
+      ['company-openai', '被测 GPT-5.6-Sol 模型提供方（非评估实施方）'],
+    ],
+  );
+});
+
+test('historical entity backfill keeps reporting publishers as sources, not event organizations', async () => {
   const catalog = await loadSeedCatalog(seedRoot, taxonomyFile);
   const projected = projectLegacySignalEntries(catalog);
   const meeting = projected.find(
@@ -128,16 +146,43 @@ test('historical entity backfill distinguishes a decision maker from a reporting
   const marketReport = projected.find(
     (entry) => entry.id === 'signal-20260902-china-ic-production-statistics',
   );
+  const talksReport = projected.find(
+    (entry) => entry.id === 'signal-20260905-us-china-ai-talks-september-report',
+  );
   const companyRelease = projected.find(
     (entry) => entry.id === 'signal-20260901-claude-fable-mythos-51',
   );
   assert.equal(meeting?.public_people[0]?.event_role, '会议主持人');
   assert.equal(meeting?.public_organizations[0]?.event_role, '会议机构');
-  assert.equal(marketReport?.public_organizations[0]?.event_role, '报道发布方');
+  assert.deepEqual(marketReport?.public_organizations, []);
+  assert.equal(marketReport?.public_sources?.[0]?.name, '新华社 / 新华网');
   assert.deepEqual(
     marketReport?.public_people.map((person) => person.event_role),
     ['报道受访政策官员', '报道受访行业人士'],
   );
+  assert.deepEqual(talksReport?.public_organizations, []);
+  assert.equal(talksReport?.public_sources?.[0]?.name, '联合报系');
+  assert.deepEqual(
+    talksReport?.public_people.map((person) => person.event_role),
+    ['报道引述的 AI 政策评论人士（非会谈代表）'],
+  );
+  for (const entityId of ['institution-xinhua', 'company-united-daily-news']) {
+    assert.equal(
+      catalog.entities.some((entity) => entity.id === entityId),
+      false,
+    );
+  }
+  const sourceTypeById = new Map(catalog.sources.map((source) => [source.id, source.type]));
+  for (const entry of projected) {
+    if (!['news_media', 'newsletter'].includes(sourceTypeById.get(entry.source_id))) continue;
+    assert.equal(
+      entry.public_organizations?.some((entity) =>
+        ['报道发布方', '研究发布方', '转载方', '信息来源'].includes(entity.event_role),
+      ),
+      false,
+      entry.id,
+    );
+  }
   assert.deepEqual(
     companyRelease?.public_people.map((person) => person.event_role),
     ['Jane Street 早期体验发言人', 'Cognition 早期体验发言人'],
