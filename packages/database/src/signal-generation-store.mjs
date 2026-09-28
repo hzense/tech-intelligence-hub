@@ -414,6 +414,7 @@ export async function createSignalGeneration({
       `generation:create:${owner}`,
     ]);
     if (retryOf !== undefined) {
+      await expireRunning(client, owner, { id: retryOf });
       const parent = await run(client, owner, retryOf, true);
       if (
         parent.batch_id !== request.batchId ||
@@ -600,7 +601,7 @@ export async function listSignalGenerations({
     readOnly,
   );
 }
-export async function claimSignalGeneration({ pool, owner, id, currentLimits }) {
+export async function claimSignalGeneration({ pool, owner, id, currentLimits, queuedAt }) {
   object(currentLimits, ['batchLimitMicrousd', 'dailyLimitMicrousd'], 'invalid_configuration');
   integer(currentLimits.batchLimitMicrousd);
   integer(currentLimits.dailyLimitMicrousd);
@@ -621,6 +622,17 @@ export async function claimSignalGeneration({ pool, owner, id, currentLimits }) 
         ).rows[0] ?? row;
     }
     if (row.status !== 'pending') return { claimed: false, run: row };
+    // Queue timestamps are millisecond-precision, strictly increasing dispatch
+    // fences. Once queued, only that dispatch may claim the task atomically.
+    if (row.progress_phase === 'queued' || queuedAt !== undefined) {
+      const current = (
+        await client.query(`SELECT $1::timestamptz = $2::timestamptz AS current`, [
+          row.progress_at,
+          queuedAt ?? null,
+        ])
+      ).rows[0].current;
+      if (row.progress_phase !== 'queued' || !current) return { claimed: false, run: row };
+    }
     const enrichment = await candidateEnrichmentLedgerAvailable(client);
     const active = (
       await client.query(
@@ -791,7 +803,9 @@ export async function queueSignalGeneration({ pool, owner, id }) {
     return (
       await client.query(
         `UPDATE public.signal_generation_runs
-      SET progress_phase='queued',progress_at=COALESCE(progress_at,clock_timestamp())
+      SET progress_phase='queued',progress_at=greatest(
+        date_trunc('milliseconds',clock_timestamp()),
+        date_trunc('milliseconds',progress_at)+interval '1 millisecond')
       WHERE id=$1 RETURNING ${columns}`,
         [id],
       )
@@ -824,14 +838,15 @@ export async function updateSignalGenerationProgress({ pool, owner, id, token, p
   });
 }
 
-export async function failQueuedSignalGeneration({ pool, owner, id }) {
+export async function failQueuedSignalGeneration({ pool, owner, id, queuedAt }) {
   return transaction(pool, async (client) => {
     await run(client, owner, id, true);
     await client.query(
       `UPDATE public.signal_generation_runs SET status='failed',
       error_code='generation_dispatch_failed',finished_at=clock_timestamp()
-      WHERE id=$1 AND status='pending' AND deleted_at IS NULL`,
-      [id],
+      WHERE id=$1 AND status='pending' AND deleted_at IS NULL
+        AND progress_phase='queued' AND progress_at=$2::timestamptz`,
+      [id, queuedAt ?? null],
     );
   });
 }

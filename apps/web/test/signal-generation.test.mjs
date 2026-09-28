@@ -539,7 +539,10 @@ test('short admission route dispatches a long worker with bookkeeping and lease 
   assert.match(sandbox, /generationSandboxTimeoutMs = 30 \* 60 \* 1000/);
   assert.ok(30 * 60 * 1000 > generationTimeoutMs);
   assert.ok(leaseMinutes > 30);
-  assert.match(route, /await start\(signalGenerationWorkflow, \[owner, id\]\)/);
+  assert.match(
+    route,
+    /await start\(signalGenerationWorkflow, \[\s*owner,\s*id,\s*new Date\(run.progress_at!\).toISOString\(\),?\s*\]\)/,
+  );
 });
 
 test('business deadline aborts exactly once, retains unknown usage and never retries a late response', async (t) => {
@@ -1116,9 +1119,11 @@ test('legacy unknown tasks expose failed status and deletion only after their ex
   };
   assert.equal(generationDto(run).status, 'failed');
   assert.equal(generationDto(run).can_delete, false);
+  assert.equal(generationDto(run).can_retry, false);
   run.lease_until = new Date(Date.now() - 60000);
   const dto = generationDto(run);
   assert.equal(dto.can_delete, true);
+  assert.equal(dto.can_retry, true);
   assert.equal(dto.error_code, 'generation_unknown');
   assert.equal(dto.charged_microusd, '203730');
   assert.equal(dto.reserved_microusd, '203730');

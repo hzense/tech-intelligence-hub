@@ -127,6 +127,9 @@ export function generationDto(run: SignalGenerationRun) {
     profile_id: run.profile_id,
     profile_revision: run.profile_revision,
     status: expired || run.status === 'unknown' ? 'failed' : run.status,
+    can_retry:
+      leaseReleased &&
+      (expired || ['completed', 'failed', 'unknown', 'cancelled'].includes(run.status)),
     can_delete:
       (run.status !== 'running' || expired) &&
       (!['unknown', 'cancelled'].includes(run.status) || leaseReleased),
