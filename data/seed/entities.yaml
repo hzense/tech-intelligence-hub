@@ -21,7 +21,6 @@
 - { id: company-qualcomm, type: company, name: Qualcomm, status: active }
 - { id: company-moonshot-ai, type: company, name: Moonshot AI, status: active }
 - { id: company-cxmt, type: company, name: CXMT, status: active }
-- { id: company-semianalysis, type: company, name: SemiAnalysis, status: active }
 - { id: company-alphabet, type: company, name: Alphabet, status: active }
 - { id: company-sk-group, type: company, name: SK Group, status: active }
 - { id: company-sk-telecom, type: company, name: SK Telecom, status: active }

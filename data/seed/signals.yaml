@@ -533,12 +533,10 @@
   topics:
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-nicolas-bontigui'
     - 'person-eric-junqi-wen'
     - 'person-jeremie-eliahou-ontiveros'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-nicolas-bontigui: 文章署名作者
     person-eric-junqi-wen: 文章署名作者
     person-jeremie-eliahou-ontiveros: 文章署名作者
@@ -578,13 +576,11 @@
     - 'topic-foundation-models'
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-kimbo-chen'
     - 'person-shubham-choudhari'
     - 'person-bryan-shan'
     - 'person-dylan-patel'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-kimbo-chen: 文章署名作者
     person-shubham-choudhari: 文章署名作者
     person-bryan-shan: 文章署名作者
@@ -685,12 +681,10 @@
   topics:
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-bryan-shan'
     - 'person-daniel-nishball'
     - 'person-myron-xie'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-bryan-shan: 文章署名作者
     person-daniel-nishball: 文章署名作者
     person-myron-xie: 文章署名作者
@@ -710,12 +704,10 @@
   topics:
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-reyk-knuhtsen'
     - 'person-maya-barkin'
     - 'person-jeremie-eliahou-ontiveros'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-reyk-knuhtsen: 文章署名作者
     person-maya-barkin: 文章署名作者
     person-jeremie-eliahou-ontiveros: 文章署名作者
@@ -735,12 +727,10 @@
   topics:
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-bryan-shan'
     - 'person-daniel-nishball'
     - 'person-cam-quilici'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-bryan-shan: 文章署名作者
     person-daniel-nishball: 文章署名作者
     person-cam-quilici: 文章署名作者
@@ -760,12 +750,10 @@
   topics:
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-aishwarya-mahesh'
     - 'person-jeremie-eliahou-ontiveros'
     - 'person-ajey-pandey'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-aishwarya-mahesh: 文章署名作者
     person-jeremie-eliahou-ontiveros: 文章署名作者
     person-ajey-pandey: 文章署名作者
@@ -824,12 +812,10 @@
   topics:
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-myron-xie'
     - 'person-bryan-shan'
     - 'person-wega-chu'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-myron-xie: 文章署名作者
     person-bryan-shan: 文章署名作者
     person-wega-chu: 文章署名作者
@@ -873,13 +859,11 @@
   topics:
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-jeremie-eliahou-ontiveros'
     - 'person-sebastian-orejas'
     - 'person-ellie-holbrook'
     - 'person-dylan-patel'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-jeremie-eliahou-ontiveros: 文章署名作者
     person-sebastian-orejas: 文章署名作者
     person-ellie-holbrook: 文章署名作者
@@ -917,13 +901,11 @@
   topics:
     - 'topic-foundation-models'
   entities:
-    - 'company-semianalysis'
     - 'person-evan-cloutier'
     - 'person-max-kan'
     - 'person-jordan-nanos'
     - 'person-dylan-patel'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-evan-cloutier: 文章署名作者
     person-max-kan: 文章署名作者
     person-jordan-nanos: 文章署名作者
@@ -964,12 +946,10 @@
     - 'topic-ai-agents'
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-cam-quilici'
     - 'person-bryan-shan'
     - 'person-alec-ibarra'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-cam-quilici: 文章署名作者
     person-bryan-shan: 文章署名作者
     person-alec-ibarra: 文章署名作者
@@ -1029,12 +1009,10 @@
     - 'topic-ai-infrastructure'
   entities:
     - 'company-openai'
-    - 'company-semianalysis'
     - 'person-bryan-shan'
     - 'person-myron-xie'
     - 'person-jordan-nanos'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-bryan-shan: 文章署名作者
     person-myron-xie: 文章署名作者
     person-jordan-nanos: 文章署名作者
@@ -1093,12 +1071,10 @@
   topics:
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-robert-boswall'
     - 'person-reyk-knuhtsen'
     - 'person-jeremie-eliahou-ontiveros'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-robert-boswall: 文章署名作者
     person-reyk-knuhtsen: 文章署名作者
     person-jeremie-eliahou-ontiveros: 文章署名作者
@@ -1179,13 +1155,11 @@
     - 'topic-ai-infrastructure'
   entities:
     - 'company-google'
-    - 'company-semianalysis'
     - 'person-max-kan'
     - 'person-joey-brookhart'
     - 'person-doug-olaughlin'
     - 'person-dylan-patel'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-max-kan: 文章署名作者
     person-joey-brookhart: 文章署名作者
     person-doug-olaughlin: 文章署名作者
@@ -1247,12 +1221,10 @@
     - 'topic-ai-security'
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-jordan-nanos'
     - 'person-sam-harshe'
     - 'person-pratt-bhatt'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-jordan-nanos: 文章署名作者
     person-sam-harshe: 文章署名作者
     person-pratt-bhatt: 文章署名作者
@@ -1319,13 +1291,11 @@
   topics:
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-max-kan'
     - 'person-ray-wang'
     - 'person-myron-xie'
     - 'person-dylan-patel'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-max-kan: 文章署名作者
     person-ray-wang: 文章署名作者
     person-myron-xie: 文章署名作者
@@ -1492,12 +1462,10 @@
   topics:
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-alec-ibarra'
     - 'person-cam-quilici'
     - 'person-bryan-shan'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-alec-ibarra: 文章署名作者
     person-cam-quilici: 文章署名作者
     person-bryan-shan: 文章署名作者
@@ -1586,12 +1554,10 @@
   topics:
     - 'topic-ai-infrastructure'
   entities:
-    - 'company-semianalysis'
     - 'person-ellie-holbrook'
     - 'person-robert-boswall'
     - 'person-jeremie-eliahou-ontiveros'
   entity_roles:
-    company-semianalysis: 研究发布方
     person-ellie-holbrook: 文章署名作者
     person-robert-boswall: 文章署名作者
     person-jeremie-eliahou-ontiveros: 文章署名作者

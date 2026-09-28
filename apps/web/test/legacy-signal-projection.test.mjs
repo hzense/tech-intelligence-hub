@@ -99,6 +99,26 @@ test('source-backed historical people and organizations remain archive relations
   assert.equal(toUnifiedSignal(acquisition).publication.state, 'archive');
 });
 
+test('SemiAnalysis is attributed as an information source, not a related company', async () => {
+  const catalog = await loadSeedCatalog(seedRoot, taxonomyFile);
+  const signals = projectLegacySignalEntries(catalog).filter(
+    (entry) => entry.source_id === 'source-semianalysis',
+  );
+  assert.ok(signals.length > 0);
+  assert.equal(
+    catalog.entities.some((entity) => entity.id === 'company-semianalysis'),
+    false,
+  );
+  for (const signal of signals) {
+    assert.equal(signal.public_sources?.[0]?.name, 'SemiAnalysis');
+    assert.equal(signal.entities.includes('company-semianalysis'), false);
+    assert.equal(
+      signal.public_organizations?.some((entity) => entity.name === 'SemiAnalysis'),
+      false,
+    );
+  }
+});
+
 test('historical entity backfill distinguishes a decision maker from a reporting publisher', async () => {
   const catalog = await loadSeedCatalog(seedRoot, taxonomyFile);
   const projected = projectLegacySignalEntries(catalog);

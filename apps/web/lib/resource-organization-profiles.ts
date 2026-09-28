@@ -108,10 +108,6 @@ export const organizationProfiles: Readonly<
     introduction: '长鑫存储（CXMT）生产用于手机、个人电脑和服务器等设备的 DRAM 存储芯片。',
     sourceUrl: 'https://www.cxmt.com/en/about.html',
   },
-  'company-semianalysis': {
-    introduction: 'SemiAnalysis 是独立研究机构，分析半导体、人工智能及其供应链和基础设施。',
-    sourceUrl: 'https://semianalysis.com/about/',
-  },
   'company-alphabet': {
     introduction:
       'Alphabet 是 Google 及 Waymo 等业务的控股公司，经营互联网服务、云计算与其他技术项目。',

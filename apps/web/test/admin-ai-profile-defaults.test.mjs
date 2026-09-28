@@ -59,6 +59,7 @@ test('extraction defaults require sourced people, date precision and conservativ
     '未知',
     'CEO',
     '记者署名',
+    '区分信息源与事件参与组织',
     'Taxonomy',
     'needs_person_evidence',
     'needs_public_evidence',
