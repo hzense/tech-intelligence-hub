@@ -7,6 +7,7 @@ import { URL } from 'node:url';
 import {
   createSignalGenerationInvoker,
   generationInput,
+  generationRules,
 } from '../lib/signal-generation-provider.ts';
 import { generationTimeoutMs } from '../lib/signal-generation-diagnostics.ts';
 import { AiProbeError } from '../lib/ai-provider-transport.ts';
@@ -26,6 +27,11 @@ const output = parseImportOutput({
   fragments: [{ text: 'Alice presented the Example processor.', locator: { paragraph: 1 } }],
 });
 const source = buildGenerationSource(output);
+
+test('generation rules keep the information source out of participant organizations', () => {
+  assert.match(generationRules, /资料发布平台.*只作为来源/);
+  assert.match(generationRules, /不要把信息源填入 organizations/);
+});
 const apiKey = 'synthetic-generation-key-only';
 const settings = {
   timeout_ms: 3000,
