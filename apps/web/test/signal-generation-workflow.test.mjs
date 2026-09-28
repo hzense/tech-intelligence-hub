@@ -47,7 +47,7 @@ test('short steps poll detached work and never replay an uncertain invocation', 
                 ? 'export async function sleep(value){globalThis.__workflowTest.waits.push(value);}'
                 : args.path.endsWith('/signal-generation')
                   ? 'export async function failQueuedGeneration(owner,id){globalThis.__workflowTest.failed.push([owner,id]);}'
-                  : "export async function startGenerationSandbox(owner,id){const f=globalThis.__workflowTest;f.calls.push([owner,id]);if(f.startError)throw new Error('secret');return f.noStart?null:{sandboxName:'sandbox',commandId:'command'};} export async function pollGenerationSandbox(handle){const f=globalThis.__workflowTest;f.polls.push(handle);const n=f.next.shift();if(n instanceof Error)throw n;return n??f.fallback??'finished';} export async function stopGenerationSandbox(handle){globalThis.__workflowTest.stops.push(handle);}",
+                  : "export async function startGenerationSandbox(owner,id,queuedAt){const f=globalThis.__workflowTest;f.calls.push([owner,id,queuedAt]);if(f.startError)throw new Error('secret');return f.noStart?null:{sandboxName:'sandbox',commandId:'command'};} export async function pollGenerationSandbox(handle){const f=globalThis.__workflowTest;f.polls.push(handle);const n=f.next.shift();if(n instanceof Error)throw n;if(f.pollError)throw new Error('query unavailable');return n??f.fallback??'finished';} export async function stopGenerationSandbox(handle){globalThis.__workflowTest.stops.push(handle);}",
           }));
         },
       },
@@ -77,9 +77,18 @@ test('short steps poll detached work and never replay an uncertain invocation', 
     assert.equal(await signalGenerationWorkflow('owner', 'task'), 'finished');
     assert.equal(f.calls.length, 2);
     f = setup({ next: [new Error('unknown')] });
-    await assert.rejects(signalGenerationWorkflow('owner', 'task'), /unknown/);
+    assert.equal(await signalGenerationWorkflow('owner', 'task'), 'finished');
+    assert.equal(f.polls.length, 2);
     assert.equal(f.calls.length, 1);
     assert.equal(f.stops.length, 1);
+    f = setup({ pollError: true });
+    assert.equal(
+      await signalGenerationWorkflow('owner', 'task', 'dispatch'),
+      'observation_unconfirmed',
+    );
+    assert.equal(f.stops.length, 0);
+    assert.equal(f.failed.length, 0);
+    assert.deepEqual(f.calls, [['owner', 'task', 'dispatch']]);
     f = setup({ startError: true });
     await assert.rejects(signalGenerationWorkflow('owner', 'task'), /generation_dispatch_failed/);
     assert.equal(f.failed.length, 1);
@@ -89,10 +98,10 @@ test('short steps poll detached work and never replay an uncertain invocation', 
     assert.equal(f.calls.length, 60);
     assert.equal(f.failed.length, 1);
     f = setup({ fallback: 'running' });
-    assert.equal(await signalGenerationWorkflow('owner', 'task'), 'running');
+    assert.equal(await signalGenerationWorkflow('owner', 'task'), 'observation_unconfirmed');
     assert.equal(f.calls.length, 1);
     assert.equal(f.polls.length, 64);
-    assert.equal(f.stops.length, 1);
+    assert.equal(f.stops.length, 0);
     f = setup({ noStart: true });
     assert.equal(await signalGenerationWorkflow('owner', 'task'), 'already_started_or_finished');
     assert.equal(f.polls.length, 0);

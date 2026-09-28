@@ -32,6 +32,7 @@ async function startSandbox(
   id: string,
   kind: 'signal-generation' | 'candidate-enrichment',
   pending: () => Promise<boolean>,
+  queuedAt?: string,
 ): Promise<GenerationSandboxHandle | null> {
   // Validates ownership before any infrastructure allocation. The worker performs
   // the atomic claim/budget reservation; duplicate dispatch cannot call AI twice.
@@ -68,7 +69,7 @@ async function startSandbox(
         { path: '/vercel/sandbox/worker.cjs', content: worker },
         {
           path: '/vercel/sandbox/task.json',
-          content: Buffer.from(JSON.stringify({ kind, owner, id, env })),
+          content: Buffer.from(JSON.stringify({ kind, owner, id, env, queuedAt })),
         },
       ],
       { signal },
@@ -89,13 +90,24 @@ async function startSandbox(
 export async function startGenerationSandbox(
   owner: string,
   id: string,
+  queuedAt?: string,
 ): Promise<GenerationSandboxHandle | null> {
   if (!generationConfigured()) throw new Error('not_configured');
   return startSandbox(
     owner,
     id,
     'signal-generation',
-    async () => (await generationDetail(owner, id))?.status === 'pending',
+    async () => {
+      const run = await generationDetail(owner, id);
+      return (
+        run?.status === 'pending' &&
+        run.progress_phase === 'queued' &&
+        !!queuedAt &&
+        !!run.progress_at &&
+        new Date(run.progress_at).toISOString() === queuedAt
+      );
+    },
+    queuedAt,
   );
 }
 

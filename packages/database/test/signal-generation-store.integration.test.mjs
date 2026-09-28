@@ -161,6 +161,7 @@ suite('private AI generation PostgreSQL ledger', () => {
     expect(Number(queued.reserved_microusd)).toBe(0);
     const claim = await claimSignalGeneration({
       ...args,
+      queuedAt: queued.progress_at.toISOString(),
       currentLimits: { batchLimitMicrousd: 5000000, dailyLimitMicrousd: 10000000 },
     });
     expect(claim.claimed).toBe(true);
@@ -192,6 +193,48 @@ suite('private AI generation PostgreSQL ledger', () => {
     await expect(updateSignalGenerationProgress({ ...progress, phase: 'saving' })).rejects.toThrow(
       'stale_attempt',
     );
+  });
+  it('fences superseded dispatches, including late failures and concurrent claims', async () => {
+    const task = await createSignalGeneration(input());
+    const owned = args(task);
+    const first = await queueSignalGeneration(owned);
+    const second = await queueSignalGeneration(owned);
+    const a = { ...owned, queuedAt: first.progress_at.toISOString() };
+    const b = { ...owned, queuedAt: second.progress_at.toISOString() };
+    expect(new Date(b.queuedAt).getTime()).toBeGreaterThan(new Date(a.queuedAt).getTime());
+    await failQueuedSignalGeneration(a);
+    await failQueuedSignalGeneration(owned); // Legacy dispatch has no authority.
+    expect((await getSignalGeneration({ ...owned, readOnly: true })).status).toBe('pending');
+    expect((await claimSignalGeneration(a)).claimed).toBe(false);
+    expect((await claimSignalGeneration(owned)).claimed).toBe(false);
+    const claims = await Promise.all([claimSignalGeneration(b), claimSignalGeneration(b)]);
+    expect(claims.filter((claim) => claim.claimed)).toHaveLength(1);
+    await failQueuedSignalGeneration(b);
+    expect((await getSignalGeneration({ ...owned, readOnly: true })).status).toBe('running');
+  });
+  it('only the current queued dispatch can record a confirmed failure', async () => {
+    const task = await createSignalGeneration(input());
+    const queued = await queueSignalGeneration(args(task));
+    await failQueuedSignalGeneration({ ...args(task), queuedAt: queued.progress_at.toISOString() });
+    expect((await getSignalGeneration({ ...args(task), readOnly: true })).status).toBe('failed');
+  });
+  it('retries an expired running task without requiring deletion or changing its ledger', async () => {
+    const value = input();
+    const parent = await claimed(value);
+    await pool.query(
+      "UPDATE signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [parent.id],
+    );
+    const child = await createSignalGeneration({
+      ...value,
+      request: { ...value.request, id: randomUUID() },
+      retryOf: parent.id,
+    });
+    expect(child.status).toBe('pending');
+    const old = await getSignalGeneration({ ...args(parent), readOnly: true });
+    expect(old.status).toBe('unknown');
+    expect(old.deleted_at).toBeNull();
+    expect(old.reserved_microusd).toBe(parent.reserved_microusd);
   });
   afterAll(async () => {
     await rolePool?.end();

@@ -161,7 +161,9 @@ test(
           rejectedError = null;
           res.statusCode = ['invalid_request', 'input_too_large', 'invalid_source'].includes(error)
             ? 400
-            : 409;
+            : error === 'not_found'
+              ? 404
+              : 409;
           res.end(
             JSON.stringify({
               error,
@@ -1316,6 +1318,124 @@ test(
         assert.notEqual(commands.at(-1).id, originalId);
         assert.equal(commands.at(-1).itemId, smallItemId);
         assert.equal(commands.filter((command) => command.action === 'run').length, 0);
+        await page.close();
+      },
+    );
+
+    for (const code of [
+      'duplicate_source',
+      'source_unavailable',
+      'cancelled',
+      'profile_not_ready',
+      'connection_unavailable',
+      'task_active',
+      'not_found',
+    ]) {
+      await t.test(
+        `definite ${code} rejection survives reload and permits verified abandonment`,
+        async () => {
+          const page = await newPage();
+          await page.goto(origin);
+          await selectInput(page);
+          await page.getByRole('checkbox').check();
+          rejectedError = code;
+          await page
+            .getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true })
+            .click();
+          const abandon = page.getByRole('button', { name: '核对并放弃未创建请求' });
+          await expect(abandon).toBeEnabled();
+          const originalId = commands[0].id;
+          await page.reload();
+          await expect(abandon).toBeEnabled();
+          await abandon.click();
+          await expect(page.getByLabel('导入已解析资料')).toBeEnabled();
+          assert.deepEqual(commands, [commands[0], { action: 'detail', id: originalId }]);
+          assert.equal(
+            await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+            null,
+          );
+          await page.close();
+        },
+      );
+    }
+    await t.test(
+      'visible published task can prepare and create a retry without deleting or executing',
+      async () => {
+        const page = await newPage();
+        const parent = {
+          id: pendingItemId,
+          status: 'completed',
+          can_delete: false,
+          can_retry: true,
+          batch_id: batchId,
+          item_id: itemId,
+          profile_id: profileId,
+          profile_revision: 2,
+          charged_microusd: 12345,
+          reserved_microusd: 50000,
+          created_at: '2026-09-17T12:00:00Z',
+          result: { classification: 'private', candidates: [] },
+        };
+        runs = [parent];
+        const before = globalThis.structuredClone(parent);
+        await page.goto(origin);
+        await page.getByRole('checkbox').check();
+        await page.getByRole('button', { name: '重新生成', exact: true }).click();
+        await expect(page.getByRole('checkbox')).not.toBeChecked();
+        const create = page.getByRole('button', {
+          name: '创建重新生成任务（不调用 AI）',
+          exact: true,
+        });
+        await expect(create).toBeDisabled();
+        assert.equal(commands.length, 0);
+        await page.getByRole('checkbox').check();
+        page.once('dialog', (dialog) => dialog.accept());
+        await create.click();
+        await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
+        assert.equal(commands.length, 1);
+        assert.equal(commands[0].action, 'create');
+        assert.equal(commands[0].retryOf, parent.id);
+        assert.notEqual(commands[0].id, parent.id);
+        assert.deepEqual(parent, before);
+        await page.reload();
+        assert.equal(
+          commands.filter((command) => ['run', 'delete'].includes(command.action)).length,
+          0,
+        );
+        await page.close();
+      },
+    );
+
+    await t.test(
+      'selecting an existing pending task clears an unsent retry selection',
+      async () => {
+        const page = await newPage();
+        const parent = {
+          id: pendingItemId,
+          status: 'completed',
+          can_retry: true,
+          can_delete: true,
+          batch_id: batchId,
+          item_id: itemId,
+          profile_id: profileId,
+          profile_revision: 2,
+          charged_microusd: 0,
+          reserved_microusd: 0,
+          created_at: '2026-09-17T12:00:00Z',
+        };
+        runs = [parent, { ...parent, id: smallItemId, status: 'pending', can_retry: false }];
+        await page.goto(origin);
+        await page.getByRole('button', { name: '重新生成', exact: true }).click();
+        await expect(page.getByRole('region', { name: '重新生成确认' })).toBeVisible();
+        await page.getByRole('button', { name: '选择此任务并核对接收方' }).click();
+        await expect(page.getByRole('region', { name: '重新生成确认' })).toHaveCount(0);
+        assert.equal(commands.length, 0);
+        const saved = await page.evaluate(
+          (key) => JSON.parse(globalThis.sessionStorage.getItem(key)),
+          storageKey,
+        );
+        assert.equal(saved.id, smallItemId);
+        assert.equal(saved.retryOf, undefined);
         await page.close();
       },
     );

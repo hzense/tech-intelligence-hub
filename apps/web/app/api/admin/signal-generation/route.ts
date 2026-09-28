@@ -26,7 +26,11 @@ export const GET = createGenerationHandler({
   enqueue: async (owner, id) => {
     const run = await queueGeneration(owner, id);
     if (run.status === 'pending') {
-      const workflow = await start(signalGenerationWorkflow, [owner, id]);
+      const workflow = await start(signalGenerationWorkflow, [
+        owner,
+        id,
+        new Date(run.progress_at!).toISOString(),
+      ]);
       console.info(
         JSON.stringify({
           event: 'signal_generation_dispatched',

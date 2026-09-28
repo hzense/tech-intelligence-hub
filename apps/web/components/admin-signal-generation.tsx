@@ -33,6 +33,7 @@ type GenerationRun = {
   reserved_microusd: number | string;
   charged_microusd: number | string;
   can_delete?: boolean;
+  can_retry?: boolean;
   retry_of?: string | null;
   progress_phase?: string | null;
   progress_at?: string | null;
@@ -61,6 +62,14 @@ const rejectionCodes = [
   'invalid_request',
   'revision_conflict',
   'task_deleted',
+  'duplicate_source',
+  'source_unavailable',
+  'cancelled',
+  'profile_not_ready',
+  'connection_unavailable',
+  'task_active',
+  'not_found',
+  'limit_exceeded',
 ] as const;
 type CreateRejection = {
   request: PendingRequest;
@@ -298,10 +307,12 @@ export function AdminSignalGeneration({
   const [pending, setPending] = useState<PendingRequest | null>(null);
   const [rejectedCreateId, setRejectedCreateId] = useState<string | null>(null);
   const [retryTarget, setRetryTarget] = useState<string | null>(null);
+  const [retryDraft, setRetryDraft] = useState<GenerationRun | null>(null);
   const [storageReady, setStorageReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const taskListRef = useRef<HTMLElement>(null);
+  const retryDraftRef = useRef<HTMLElement>(null);
   const [listNavigation, setListNavigation] = useState(0);
   const [message, setMessage] = useState('');
   const [detail, setDetail] = useState<GenerationRun | null>(null);
@@ -331,9 +342,12 @@ export function AdminSignalGeneration({
     ),
   );
   const tracked = data.runs.find((run) => run.id === pending?.id);
-  const recipientProfile = pending
+  const selectedRequest = pending ?? (retryDraft ? requestFor(retryDraft) : null);
+  const recipientProfile = selectedRequest
     ? data.profiles.find(
-        (entry) => entry.id === pending.profileId && entry.revision === pending.profileRevision,
+        (entry) =>
+          entry.id === selectedRequest.profileId &&
+          entry.revision === selectedRequest.profileRevision,
       )
     : profile;
   const terminal =
@@ -346,6 +360,12 @@ export function AdminSignalGeneration({
     .sort()
     .join(',');
   const [pollError, setPollError] = useState(false);
+
+  useEffect(() => {
+    if (!retryDraft) return;
+    retryDraftRef.current?.focus({ preventScroll: true });
+    retryDraftRef.current?.scrollIntoView({ block: 'center', behavior: 'instant' });
+  }, [retryDraft]);
 
   useEffect(() => {
     if (!listNavigation) return;
@@ -474,12 +494,14 @@ export function AdminSignalGeneration({
       !storageReady ||
       !consent ||
       (retry && (!pending || !retryTarget || rejectedCreateId !== pending.id)) ||
-      (!pending && sourceBlocked) ||
-      (!pending && (!profile?.readiness.ready || !items.some((item) => item.id === itemId)))
+      (!pending && !retryDraft && sourceBlocked) ||
+      (!pending &&
+        !retryDraft &&
+        (!profile?.readiness.ready || !items.some((item) => item.id === itemId)))
     )
       return;
     if (
-      retry &&
+      (retry || retryDraft) &&
       !window.confirm(
         '创建重新生成任务？旧结果和费用会保留；手动执行新任务将再次调用 AI，并可能再次计费。',
       )
@@ -488,19 +510,23 @@ export function AdminSignalGeneration({
     await perform(async () => {
       const request = retry
         ? { ...pending!, id: crypto.randomUUID(), retryOf: retryTarget! }
-        : (pending ?? {
-            id: crypto.randomUUID(),
-            batchId,
-            itemId,
-            profileId,
-            profileRevision: profile!.revision,
-          });
+        : (pending ??
+          (retryDraft
+            ? { ...requestFor(retryDraft), id: crypto.randomUUID(), retryOf: retryDraft.id }
+            : {
+                id: crypto.randomUUID(),
+                batchId,
+                itemId,
+                profileId,
+                profileRevision: profile!.revision,
+              }));
       if (!(retry ? replacePending(pending!, request) : storePending(request))) {
         setStorageReady(false);
         setMessage('请求 ID 保存失败，未发送创建或 AI 请求。');
         return;
       }
       setPending(request);
+      setRetryDraft(null);
       setRejectedCreateId(null);
       setRetryTarget(null);
       // Revoke an older definite rejection before any new request is sent.
@@ -516,9 +542,8 @@ export function AdminSignalGeneration({
       } catch (error) {
         if (
           error instanceof SafeRequestError &&
-          ((error.status === 400 &&
-            ['input_too_large', 'invalid_source', 'invalid_request'].includes(error.code)) ||
-            (error.status === 409 && ['revision_conflict', 'task_deleted'].includes(error.code)))
+          [400, 404, 409].includes(error.status ?? 0) &&
+          rejectionCodes.some((code) => code === error.code)
         ) {
           // These rejections do not create a new task. A deleted receipt remains
           // protected by server deduplication. Clearing local tracking still needs
@@ -665,6 +690,7 @@ export function AdminSignalGeneration({
       return;
     }
     setPending(request);
+    setRetryDraft(null);
     setConsent(false);
     setMessage('已选择原任务。请核对接收方并重新确认外发授权；未调用 AI。');
   }
@@ -764,7 +790,10 @@ export function AdminSignalGeneration({
       >
         手动刷新列表
       </button>
-      <fieldset disabled={!configured || busy || Boolean(pending)} className={styles.panel}>
+      <fieldset
+        disabled={!configured || busy || Boolean(pending || retryDraft)}
+        className={styles.panel}
+      >
         <legend>选择输入与配置</legend>
         <label>
           导入已解析资料
@@ -849,7 +878,32 @@ export function AdminSignalGeneration({
           </section>
         )}
       </fieldset>
-      {(profile || pending) && (
+      {retryDraft && (
+        <section
+          ref={retryDraftRef}
+          tabIndex={-1}
+          className={styles.panel}
+          aria-label="重新生成确认"
+        >
+          <p>重新生成自任务：{retryDraft.id}。旧结果、发布关联和费用保留。</p>
+          <p>
+            资料：
+            {retryDraft.source_name ?? sourceNames.get(retryDraft.item_id) ?? retryDraft.item_id} ·
+            配置：{recipientProfile?.name ?? retryDraft.profile_id} r{retryDraft.profile_revision}
+          </p>
+          <p>请核对原任务配置并重新勾选授权，然后创建新任务；创建不调用 AI。</p>
+          <button
+            disabled={busy}
+            onClick={() => {
+              setRetryDraft(null);
+              setConsent(false);
+            }}
+          >
+            取消重新生成
+          </button>
+        </section>
+      )}
+      {(profile || pending || retryDraft) && (
         <p>
           资料发送至：{recipientProfile?.provider_host ?? '所选任务模型供应商（请先核对配置快照）'}
         </p>
@@ -876,12 +930,18 @@ export function AdminSignalGeneration({
           !storageReady ||
           !consent ||
           Boolean(tracked) ||
-          (!pending && sourceBlocked) ||
-          (!pending && (!profile?.readiness.ready || !items.some((item) => item.id === itemId)))
+          (!pending && !retryDraft && sourceBlocked) ||
+          (!pending &&
+            !retryDraft &&
+            (!profile?.readiness.ready || !items.some((item) => item.id === itemId)))
         }
         onClick={() => void create()}
       >
-        {pending ? '使用原编号重新确认创建（不调用 AI）' : '创建生成任务（不调用 AI）'}
+        {pending
+          ? '使用原编号重新确认创建（不调用 AI）'
+          : retryDraft
+            ? '创建重新生成任务（不调用 AI）'
+            : '创建生成任务（不调用 AI）'}
       </button>
       {pending && !tracked && (
         <section className={styles.panel} aria-label="请求恢复">
@@ -1051,6 +1111,23 @@ export function AdminSignalGeneration({
                       >
                         任务详情
                       </Link>
+                      {run.can_retry === true && (
+                        <button
+                          disabled={!configured || busy || !storageReady || Boolean(pending)}
+                          onClick={() => {
+                            setRetryDraft(run);
+                            setBatchId(run.batch_id);
+                            setItemId(run.item_id);
+                            setProfileId(run.profile_id);
+                            setConsent(false);
+                            setMessage(
+                              '已选择重新生成。请核对原任务并重新授权；尚未创建任务或调用 AI。',
+                            );
+                          }}
+                        >
+                          重新生成
+                        </button>
+                      )}
                       <details className={styles.moreActions}>
                         <summary>更多操作</summary>
                         <p className={styles.id}>请求 ID：{run.id}</p>

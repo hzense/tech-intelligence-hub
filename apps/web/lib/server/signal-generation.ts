@@ -167,7 +167,7 @@ export async function generationRecord(owner: string, id: string) {
 export async function candidateReviewDetail(owner: string, id: string, index: number) {
   return buildCandidateReview(await generationRecord(owner, id), index);
 }
-export async function executeGeneration(owner: string, body: unknown) {
+export async function executeGeneration(owner: string, body: unknown, queuedAt?: string) {
   if (!generationConfigured()) throw new GenerationError('not_configured');
   const config = readGenerationConfiguration(process.env);
   const ai = readAiBackendConfiguration(process.env);
@@ -200,6 +200,7 @@ export async function executeGeneration(owner: string, body: unknown) {
         owner,
         id,
         currentLimits: { batchLimitMicrousd: config.batch, dailyLimitMicrousd: config.daily },
+        ...(queuedAt === undefined ? {} : { queuedAt }),
       }),
     finish: (owner, args) => store.finishSignalGeneration({ pool: generationPool, owner, ...args }),
     cancel: (owner, id) => store.cancelSignalGeneration({ pool: generationPool, owner, id }),
@@ -219,6 +220,11 @@ export async function queueGeneration(owner: string, id: string) {
   return generationDto(await store.queueSignalGeneration({ pool: generationPool, owner, id }));
 }
 
-export async function failQueuedGeneration(owner: string, id: string) {
-  await store.failQueuedSignalGeneration({ pool: generationPool, owner, id });
+export async function failQueuedGeneration(owner: string, id: string, queuedAt?: string) {
+  await store.failQueuedSignalGeneration({
+    pool: generationPool,
+    owner,
+    id,
+    ...(queuedAt === undefined ? {} : { queuedAt }),
+  });
 }

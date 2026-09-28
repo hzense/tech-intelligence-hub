@@ -165,7 +165,7 @@ test('disabled generation history is owner-scoped, read-only and independent of 
     Object.assign(service.ancillary, { aiFails, importFails });
     const value = await service.generationDashboard('admin');
     assert.deepEqual(value, {
-      runs: [{ ...detail, can_delete: true }],
+      runs: [{ ...detail, can_delete: true, can_retry: true }],
       profiles: [],
       batches: [],
       dailyUsage: undefined,

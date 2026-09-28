@@ -82,7 +82,10 @@ export function listSignalGenerations(
   args: Owned & { batchId?: string; itemId?: string; readOnly?: boolean; legacyReadOnly?: boolean },
 ): Promise<SignalGenerationRun[]>;
 export function claimSignalGeneration(
-  args: RunArgs & { currentLimits: { batchLimitMicrousd: number; dailyLimitMicrousd: number } },
+  args: RunArgs & {
+    queuedAt?: string;
+    currentLimits: { batchLimitMicrousd: number; dailyLimitMicrousd: number };
+  },
 ): Promise<{ claimed: boolean; run: SignalGenerationRun }>;
 export function finishSignalGeneration(
   args: RunArgs & {
@@ -104,4 +107,4 @@ export function updateSignalGenerationProgress(
     phase: 'generating' | 'validating' | 'saving';
   },
 ): Promise<void>;
-export function failQueuedSignalGeneration(args: RunArgs): Promise<void>;
+export function failQueuedSignalGeneration(args: RunArgs & { queuedAt?: string }): Promise<void>;
