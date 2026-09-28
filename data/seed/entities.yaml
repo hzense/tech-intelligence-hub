@@ -41,7 +41,6 @@
 - { id: company-nextdc, type: company, name: NEXTDC, status: active }
 - { id: company-airtrunk, type: company, name: AirTrunk, status: active }
 - { id: company-enflame, type: company, name: Enflame, status: active }
-- { id: company-united-daily-news, type: company, name: United Daily News, status: active }
 - {
     id: institution-european-commission,
     type: institution,
@@ -93,7 +92,7 @@
     name: U.S. House of Representatives,
     status: active,
   }
-- { id: institution-xinhua, type: institution, name: Xinhua News Agency, status: active }
+- { id: institution-aisi, type: institution, name: UK AI Security Institute, status: active }
 - { id: person-ashish-vaswani, type: person, name: Ashish Vaswani, status: active }
 - { id: person-noam-shazeer, type: person, name: Noam Shazeer, status: active }
 - { id: person-niki-parmar, type: person, name: Niki Parmar, status: active }
