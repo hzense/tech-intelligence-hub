@@ -294,19 +294,25 @@ export function buildSignalRadar(
       if (domain.latestAt === null || occurredAt > domain.latestAt) domain.latestAt = occurredAt;
     }
   }
-  const focusDomains = [...domains].sort(
+  // The taxonomy defines possible directions; the public radar only shows
+  // directions actually represented by an eligible Signal. Older events still
+  // count, even when the trailing 30-day window is quiet.
+  const observedDomains = domains.filter((domain) => domain.totalCount > 0);
+  const observedSubtopics = subtopics.filter((subtopic) => subtopic.totalCount > 0);
+  const observedCategories = categories.filter((category) => category.totalCount > 0);
+  const focusDomains = [...observedDomains].sort(
     (left, right) =>
       right.recentCount - left.recentCount ||
       right.totalCount - left.totalCount ||
       compareId(left.id, right.id),
   );
-  subtopics.sort(
+  observedSubtopics.sort(
     (left, right) =>
       right.totalCount - left.totalCount ||
       right.recentCount - left.recentCount ||
       compareId(left.id, right.id),
   );
-  categories.sort(
+  observedCategories.sort(
     (left, right) =>
       compareId(left.domainId, right.domainId) ||
       left.depth - right.depth ||
@@ -357,11 +363,11 @@ export function buildSignalRadar(
     previousCount,
     earliestAt,
     latestAt,
-    observedDomainCount: domains.filter((domain) => domain.totalCount > 0).length,
-    domains,
+    observedDomainCount: observedDomains.length,
+    domains: observedDomains,
     focusDomains,
-    subtopics,
-    categories,
+    subtopics: observedSubtopics,
+    categories: observedCategories,
     topResources,
     signalIndex,
     latestSignals,

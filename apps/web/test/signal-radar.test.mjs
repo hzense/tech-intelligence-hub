@@ -163,6 +163,36 @@ test('second-level bars resolve deeper topics and count each signal once per sub
   assert.equal(result.subtopics[0].id, 'topic-agents');
 });
 
+test('radar only exposes domains and categories backed by eligible signals', () => {
+  const result = compute([
+    legacy('old-agents', '2026-01-01T00:00:00.000Z', {
+      topics: ['topic-tool-use'],
+    }),
+    signal('future-security', '2026-10-01T00:00:00.000Z', {
+      topics: ['topic-security'],
+    }),
+  ]);
+  assert.deepEqual(
+    result.domains.map((domain) => domain.id),
+    ['topic-ai'],
+  );
+  assert.deepEqual(
+    result.focusDomains.map((domain) => domain.id),
+    ['topic-ai'],
+  );
+  assert.deepEqual(
+    result.subtopics.map((topic) => topic.id),
+    ['topic-agents'],
+  );
+  assert.deepEqual(
+    result.categories.map((category) => category.id),
+    ['topic-agents', 'topic-tool-use'],
+  );
+  assert.equal(result.domains[0].recentCount, 0);
+  assert.equal(result.domains[0].totalCount, 1);
+  assert.equal(result.observedDomainCount, 1);
+});
+
 test('domain and every taxonomy depth expose the same ordered, deduplicated signal identities', () => {
   const result = compute([
     legacy('old', '2026-04-01T00:00:00.000Z', {
@@ -314,7 +344,9 @@ test('a removed public entry disappears, small samples stay numeric, invalid cut
   const cleared = compute([]);
   assert.equal(cleared.totalCount, 0);
   assert.deepEqual(cleared.latestSignals, []);
-  assert.ok(cleared.domains.every((domain) => domain.totalCount === 0));
+  assert.deepEqual(cleared.domains, []);
+  assert.deepEqual(cleared.subtopics, []);
+  assert.deepEqual(cleared.categories, []);
   assert.equal('growthRate' in compute([signal('one')]).domains[0], false);
   assert.throws(() => compute([], { now: new Date('invalid') }));
 });
@@ -370,6 +402,19 @@ test('radar renders a unified accessible visualization and links to both signal 
   assert.match(html, /热度按本站已公开、去重的信号/);
   assert.doesNotMatch(html, /最近发生的信号|雷达概况/);
   assert.match(render(compute([])), /该节点暂无符合当前公开口径的信号/);
+});
+
+test('radar markup hides empty domains and categories but keeps quiet historical directions', () => {
+  const html = render(
+    compute([
+      legacy('old-agents', '2026-01-01T00:00:00.000Z', {
+        topics: ['topic-tool-use'],
+      }),
+    ]),
+  );
+  assert.match(html, /人工智能，近 30 日 0 条，累计 1 条/);
+  assert.doesNotMatch(html, /安全，近 30 日/);
+  assert.doesNotMatch(html, /智能体记忆/);
 });
 
 test('homepage authority, redirect and navigation exclude retired report routes', async () => {
