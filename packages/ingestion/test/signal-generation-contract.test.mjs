@@ -31,6 +31,41 @@ const candidate = () => ({
 const output = () => ({ candidates: [candidate()], reason: '从合成资料提取，仍待独立核验。' });
 const normalize = (value) => normalizeGeneratedCandidates(value, buildGenerationSource(input()));
 
+test('national leaders are removed from derived people without deleting candidates or source evidence', () => {
+  const value = output();
+  value.candidates[0].persons.push({
+    name: '习近平',
+    role: '国家主席',
+    organization: null,
+    evidence: [ref('习近平发表讲话')],
+  });
+  const source = buildGenerationSource(
+    parseImportOutput({
+      fragments: [{ text: `${original}习近平发表讲话。`, locator: { paragraph: 1 } }],
+    }),
+  );
+  const before = JSON.stringify({ value, source });
+  const result = normalizeGeneratedCandidates(value, source);
+  assert.equal(result.candidates.length, 1);
+  assert.deepEqual(
+    result.candidates[0].persons.map((person) => person.name),
+    ['李明'],
+  );
+  assert.deepEqual(result.candidates[0].claims, value.candidates[0].claims);
+  assert.equal(result.candidates[0].summary, value.candidates[0].summary);
+  assert.deepEqual(result.candidates[0].organizations, value.candidates[0].organizations);
+  assert.equal(JSON.stringify({ value, source }), before);
+
+  value.candidates[0].persons.shift();
+  const noPerson = normalizeGeneratedCandidates(value, source).candidates[0];
+  assert.deepEqual(noPerson.persons, []);
+  assert.ok(noPerson.issues.includes('needs_person_evidence'));
+  assert.deepEqual(noPerson.claims, value.candidates[0].claims);
+
+  value.candidates[0].persons[0].evidence = [ref('invented quote')];
+  assert.throws(() => normalizeGeneratedCandidates(value, source));
+});
+
 test('rejected batches never retain model-provided reason text, including mixed batches', () => {
   const bad = { ...candidate(), title: 'a'.repeat(81) };
   for (const candidates of [[bad], [bad, candidate()]]) {

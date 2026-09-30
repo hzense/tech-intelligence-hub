@@ -3,10 +3,18 @@ import test from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
-import { createCandidateEnrichmentInvoker } from '../lib/candidate-enrichment-provider.ts';
+import {
+  createCandidateEnrichmentInvoker,
+  enrichmentRules,
+} from '../lib/candidate-enrichment-provider.ts';
+import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
 import { validateEnrichmentSource } from '../lib/material-enrichment.ts';
 
 const { Response } = globalThis;
+
+test('enrichment retains the mandatory person scope independently of saved stage prompts', () => {
+  assert.ok(enrichmentRules.includes(PERSON_RESOURCE_POLICY_TEXT));
+});
 
 const source = {
   classification: 'private',

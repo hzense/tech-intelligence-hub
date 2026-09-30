@@ -37,6 +37,33 @@ export function editorialFixture() {
   };
 }
 describe('editorial confirmation contract', () => {
+  it.each([
+    'Donald J. Trump',
+    '习近平（会议主持者）',
+    'Donald J. Trump (speaker)',
+    '李强 / 国务院',
+  ])('blocks %s on new writes without changing historical reads or withdrawal', (person) => {
+    const { request, material } = editorialFixture();
+    const content = { ...request.content, persons: [person] };
+    expect(normalizeEditorialContent(content)).toEqual(content);
+    for (const action of ['draft', 'publish']) {
+      expect(() => normalizeEditorialRequest({ ...request, content, action }, material)).toThrow(
+        'excluded_person',
+      );
+    }
+    expect(
+      normalizeEditorialRequest({ ...request, content, action: 'withdraw' }, material).action,
+    ).toBe('withdraw');
+    expect(
+      normalizeEditorialRequest(
+        {
+          ...request,
+          content: { ...request.content, persons: ['Scott Bessent', 'Ted Lieu'] },
+        },
+        material,
+      ).action,
+    ).toBe('publish');
+  });
   it('normalizes immutable material consistently across draft, publish and withdraw', () => {
     const { request, material } = editorialFixture();
     material.title = ` ${material.title}\n`;

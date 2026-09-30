@@ -128,6 +128,43 @@ afterEach(async () => {
 });
 
 describe('historical Signal entity roles', () => {
+  it('rejects excluded people in the current catalog but permits structural archive inspection', async () => {
+    const root = await createSeedRoot('2026-08-20T00:00:00Z');
+    const { taxonomy: _taxonomy, ...catalog } = await loadFixtureCatalog(root);
+    void _taxonomy;
+    const person = {
+      id: 'person-donald-trump',
+      type: 'person',
+      name: 'Donald J. Trump',
+      status: 'active',
+    };
+    expect(() => parseSeedCatalog({ ...catalog, entities: [person] })).not.toThrow();
+    await writeFile(join(root, 'entities.yaml'), JSON.stringify([person]));
+    await expect(loadFixtureCatalog(root)).rejects.toThrow('Excluded public person');
+  });
+
+  it('rejects explicit national leadership roles without requiring a known name', async () => {
+    const root = await createSeedRoot('2026-08-20T00:00:00Z');
+    const catalog = await loadFixtureCatalog(root);
+    await writeFile(
+      join(root, 'entities.yaml'),
+      JSON.stringify([
+        { id: 'person-example', type: 'person', name: 'Example Person', status: 'active' },
+      ]),
+    );
+    await writeFile(
+      join(root, 'signals.yaml'),
+      JSON.stringify([
+        {
+          ...catalog.signals[0],
+          entities: ['person-example'],
+          entity_roles: { 'person-example': '国家元首' },
+        },
+      ]),
+    );
+    await expect(loadFixtureCatalog(root)).rejects.toThrow('Excluded public person');
+  });
+
   it('retains news credibility but rejects retired strength in the current Seed contract', async () => {
     const root = await createSeedRoot('2026-08-20T00:00:00Z');
     const loaded = await loadFixtureCatalog(root);

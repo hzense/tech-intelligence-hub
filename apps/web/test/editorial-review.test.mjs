@@ -200,3 +200,27 @@ test('API does not leak database errors and preserves ambiguous commit status', 
     assert.deepEqual(await response.json(), { error: expected });
   }
 });
+
+test('API returns the actionable person-policy rejection without leaking raw errors', async () => {
+  const handler = createEditorialHandler({
+    session: async () => ({ user: { id: 'owner' } }),
+    origin: () => 'https://hzense.test',
+    read: async () => null,
+    write: async () => {
+      throw Object.assign(new Error('private database details'), { code: 'excluded_person' });
+    },
+  });
+  const response = await handler(
+    new Request('https://hzense.test/api/admin/editorial-signals', {
+      method: 'POST',
+      headers: {
+        host: 'hzense.test',
+        origin: 'https://hzense.test',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(request()),
+    }),
+  );
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'excluded_person' });
+});

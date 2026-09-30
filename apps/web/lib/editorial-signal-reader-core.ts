@@ -1,4 +1,5 @@
 import { rankSearchDocuments } from '@hzense/search/ranking';
+import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import { readCandidateRoleConfiguration } from './candidate-review-config.ts';
 import {
   PublicSignalReaderError,
@@ -77,9 +78,10 @@ export function mapEditorialSignalRows(rows: unknown[]): SignalEntry[] {
         name: text(name),
         event_role: '',
       }));
-    const persons = names(content.persons, 'person');
+    const recordedPersons = names(content.persons, 'person');
     const organizations = names(content.organizations, 'organization');
-    if (!persons.length || !organizations.length) return fail();
+    if (!recordedPersons.length || !organizations.length) return fail();
+    const persons = recordedPersons.filter((person) => !isExcludedPublicPerson(person));
     const topics = array(content.topics).map((value) => {
       const topic = object(value);
       const id = text(topic.id);

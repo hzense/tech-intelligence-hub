@@ -1,4 +1,5 @@
 import type { SeedSignal } from '@hzense/content';
+import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import {
   assertSearchQuery,
   compareSearchResults,
@@ -154,13 +155,15 @@ export function mapPublicSignalRows(rows: unknown[]): SignalEntry[] {
   return rows.map((value) => {
     const row = object(value);
     const sources = array(row.sources).map(source);
-    const persons = people(row.people);
+    const recordedPersons = people(row.people);
     const organizations = people(row.organizations);
     const topics = array(row.topics).map((value) => {
       const topic = object(value);
       return { id: id(topic.id), title: text(topic.title) };
     });
-    if (!sources[0] || persons.length === 0 || !signalTypes.has(text(row.type))) return fail();
+    if (!sources[0] || recordedPersons.length === 0 || !signalTypes.has(text(row.type)))
+      return fail();
+    const persons = recordedPersons.filter((person) => !isExcludedPublicPerson(person));
     // status is a legacy rendering adapter only. Eligibility derives exclusively
     // from current_public_signals; no Seed status is used to grant publication.
     return {

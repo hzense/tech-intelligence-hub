@@ -120,6 +120,9 @@ importers:
 
   packages/content:
     dependencies:
+      '@hzense/ingestion':
+        specifier: workspace:*
+        version: link:../ingestion
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3

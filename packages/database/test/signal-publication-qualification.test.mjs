@@ -537,6 +537,18 @@ describe('recorded publication qualification, not publication or authorization',
     },
   );
 
+  it('excludes national leadership from new qualification without excluding industry leaders', () => {
+    const value = bundle();
+    value.people[0].event_role = '国家元首';
+    expectCode(() => qualifySignalPublicationBundle(value), 'excluded_person');
+    value.people[0].event_role = 'company president';
+    expect(() => qualifySignalPublicationBundle(value)).not.toThrow();
+    value.entities[0].id = 'person-li-qiang';
+    value.people[0].person_id = 'person-li-qiang';
+    value.person_profiles[0].entity_id = 'person-li-qiang';
+    expectCode(() => qualifySignalPublicationBundle(value), 'excluded_person');
+  });
+
   it('requires at least one person, supporting link and runtime topic', () => {
     const noPeople = bundle();
     noPeople.people = [];

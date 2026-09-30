@@ -1,6 +1,7 @@
 import { TextEncoder } from 'node:util';
 import { countTokens } from 'gpt-tokenizer/encoding/o200k_base';
 import { parseImportOutput } from './import-task-contract.mjs';
+import { isExcludedPublicPerson } from './person-resource-policy.mjs';
 
 export const GENERATION_LIMITS = Object.freeze({
   inputTokens: 100000,
@@ -340,15 +341,17 @@ function normalizeCandidates(value, source, partial = false) {
           : 'invalid_evidence',
       );
       const persons = check('persons', () =>
-        list(candidate.persons, 12).map((person) => {
-          record(person, ['name', 'role', 'organization', 'evidence']);
-          return {
-            name: string(person.name, 150),
-            role: string(person.role, 200),
-            organization: person.organization === null ? null : string(person.organization, 200),
-            evidence: references(person.evidence, fragments),
-          };
-        }),
+        list(candidate.persons, 12)
+          .map((person) => {
+            record(person, ['name', 'role', 'organization', 'evidence']);
+            return {
+              name: string(person.name, 150),
+              role: string(person.role, 200),
+              organization: person.organization === null ? null : string(person.organization, 200),
+              evidence: references(person.evidence, fragments),
+            };
+          })
+          .filter((person) => !isExcludedPublicPerson(person)),
       );
       const organizations = check('organizations', () => {
         const names = list(candidate.organizations, 12).map((name) => string(name, 200));

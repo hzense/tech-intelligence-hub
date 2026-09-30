@@ -1,4 +1,5 @@
 import { TextEncoder } from 'node:util';
+import { isExcludedPublicPerson } from './person-resource-policy.mjs';
 import {
   GENERATION_LIMITS,
   normalizeGeneratedCandidates,
@@ -108,13 +109,16 @@ export function assessCandidateEnrichment(value, candidate, source) {
       original.index > 4
     )
       fail('invalid_enrichment_candidate');
+    // Only the derived proposal applies today's resource scope. The saved
+    // candidate remains immutable, while existing in-scope people stay locked.
+    const originalPeople = original.persons.filter((person) => !isExcludedPublicPerson(person));
     const merged = {
       title: original.title,
       summary: original.summary,
       event_date: original.event_date ?? value.event_date,
       event_date_evidence:
         original.event_date === null ? value.event_date_evidence : original.event_date_evidence,
-      persons: original.persons.length ? original.persons : value.persons,
+      persons: originalPeople.length ? originalPeople : value.persons,
       organizations: [...new Set([...original.organizations, ...value.organizations])],
       claims: original.claims,
     };

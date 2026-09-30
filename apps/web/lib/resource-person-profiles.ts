@@ -369,20 +369,6 @@ export const personProfiles: Readonly<Record<string, { introduction: string; sou
       introduction: '刘烈宏是中国国家数据局局长，负责数据基础制度和数字经济发展工作。',
       sourceUrl: 'https://www.nda.gov.cn/sjj/jgsz/jld/llh/list/index_pc_1.html',
     },
-    'person-li-qiang': {
-      introduction: '李强是中国国务院总理，主持国务院工作。',
-      sourceUrl: 'https://app.www.gov.cn/govdata/gov/202608/17/552041/articleNew.html',
-    },
-    'person-xi-jinping': {
-      introduction: '习近平是中国国家主席，参与国家科技和产业发展政策的决策。',
-      sourceUrl:
-        'https://www.news.cn/politics/leaders/20260708/56ca39eefcbb43d6bd8cd5bf88f10b93/c.html',
-    },
-    'person-donald-trump': {
-      introduction: 'Donald Trump 是美国总统，其政府提出人工智能基础设施和产业政策。',
-      sourceUrl:
-        'https://www.whitehouse.gov/releases/2026/07/president-trumps-ratepayer-protection-pledge-secures-american-ai-dominance-protects-consumers/',
-    },
     'person-wang-yanhui': {
       introduction: '王艳辉是集微网创始人，长期报道和研究半导体产业。',
       sourceUrl: 'https://new.laoyaoba.com/n/683317',

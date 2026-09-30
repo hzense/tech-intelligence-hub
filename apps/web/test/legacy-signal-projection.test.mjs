@@ -87,8 +87,7 @@ test('source-backed historical people and organizations remain archive relations
   const acquisition = projected.find(
     (entry) => entry.id === 'signal-20260806-amd-taalas-acquisition',
   );
-  assert.equal(policy?.public_people.length, 1);
-  assert.equal(policy?.public_people[0]?.event_role, '承诺扩展推广人');
+  assert.deepEqual(policy?.public_people, []);
   assert.deepEqual(
     policy?.public_organizations.map((entity) => entity.name),
     ['The White House'],
@@ -153,7 +152,7 @@ test('historical entity backfill keeps reporting publishers as sources, not even
   const companyRelease = projected.find(
     (entry) => entry.id === 'signal-20260901-claude-fable-mythos-51',
   );
-  assert.equal(meeting?.public_people[0]?.event_role, '会议主持人');
+  assert.deepEqual(meeting?.public_people, []);
   assert.equal(meeting?.public_organizations[0]?.event_role, '会议机构');
   assert.deepEqual(
     marketReport?.public_organizations.map((organization) => organization.id),
@@ -219,4 +218,30 @@ test('historical projection rejects broken references instead of displaying opaq
     () => projectLegacySignalEntries({ ...catalog, signals: [{ ...first, topics: ['missing'] }] }),
     /Unknown historical Signal topic/,
   );
+});
+
+test('historical leader-only links are hidden without removing the Signal or rewriting its body', async () => {
+  const catalog = await loadSeedCatalog(seedRoot, taxonomyFile);
+  const leader = { id: 'person-li-qiang', name: '李强', type: 'person', status: 'active' };
+  const sourceSignal = {
+    ...catalog.signals[0],
+    title: '李强主持会议',
+    summary: '李强主持会议，公布政策部署。',
+    entities: [leader.id],
+    entity_roles: { [leader.id]: '会议主持人' },
+  };
+  const [entry] = projectLegacySignalEntries({
+    ...catalog,
+    entities: [...catalog.entities, leader],
+    signals: [sourceSignal],
+  });
+  assert.equal(entry.id, sourceSignal.id);
+  assert.equal(entry.title, sourceSignal.title);
+  assert.equal(entry.summary, sourceSignal.summary);
+  assert.equal(entry.source_url, sourceSignal.source_url);
+  assert.deepEqual(entry.topics, sourceSignal.topics);
+  assert.deepEqual(entry.entities, []);
+  assert.deepEqual(entry.public_people, []);
+  assert.deepEqual(entry.entity_roles, {});
+  assert.deepEqual(sourceSignal.entities, [leader.id]);
 });

@@ -73,3 +73,29 @@ test('manual signal keeps names but has no invented entity identity or assessmen
   assert.deepEqual(manual.relatedEntities, []);
   assert.deepEqual(manual.sources, []);
 });
+
+test('unified contract excludes leaders from every publication basis but preserves factual names', () => {
+  const participants = [
+    { id: 'person-xi-jinping', name: '习近平', event_role: '会议主持者' },
+    { id: 'person-ceo', name: 'Jensen Huang', event_role: '公司总裁' },
+  ];
+  for (const publication of [
+    {},
+    { public_version: 1 },
+    { publication_basis: 'manual_confirmation', type: 'editorial' },
+  ]) {
+    const entry = toUnifiedSignal({
+      ...base,
+      ...publication,
+      summary: '习近平主持会议；研究人员介绍技术。',
+      public_people: participants,
+      public_organizations: [{ id: 'org-one', name: '技术公司', event_role: '组织' }],
+    });
+    assert.deepEqual(
+      entry.people.map((person) => person.name),
+      ['Jensen Huang'],
+    );
+    assert.match(entry.summary, /习近平/);
+    assert.equal(entry.organizations[0].name, '技术公司');
+  }
+});

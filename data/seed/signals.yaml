@@ -278,10 +278,9 @@
   confidence: 0.85
   novelty: 0.7
   topics: [topic-ai-infrastructure, topic-energy-technology]
-  entities: ['institution-white-house', 'person-donald-trump']
+  entities: ['institution-white-house']
   entity_roles:
     institution-white-house: 政策说明发布方
-    person-donald-trump: 承诺扩展推广人
 - id: 'signal-20260723-ai-kill-switch-bill'
   event_key: 'event-ai-kill-switch-bill'
   title: '美国议员提出 AI Kill Switch Act'
@@ -506,10 +505,8 @@
   topics: [topic-artificial-intelligence]
   entities:
     - 'institution-china-politburo'
-    - 'person-xi-jinping'
   entity_roles:
     institution-china-politburo: 会议机构
-    person-xi-jinping: 会议主持人
 - id: 'signal-20260730-amazon-q2-ai-capex'
   event_key: 'event-amazon-q2-ai-capex'
   title: 'Amazon 二季度 AWS 增长与 AI 资本开支披露'
@@ -621,10 +618,8 @@
   topics: [topic-semiconductors]
   entities:
     - 'institution-china-state-council'
-    - 'person-li-qiang'
   entity_roles:
     institution-china-state-council: 条例发布机构
-    person-li-qiang: 国务院令签署人
 - id: 'signal-20260804-aisi-agent-cyber-evaluation'
   event_key: 'event-aisi-agent-cyber-evaluation'
   title: '英国 AISI 智能体网络安全评估披露'
@@ -983,10 +978,9 @@
   confidence: 0.85
   novelty: 0.7
   topics: [topic-cloud-infrastructure]
-  entities: ['institution-china-state-council', 'person-li-qiang']
+  entities: ['institution-china-state-council']
   entity_roles:
     institution-china-state-council: 会议机构
-    person-li-qiang: 会议主持人
 - id: 'signal-20260824-semianalysis-agentx'
   event_key: 'event-semianalysis-agentx'
   title: 'AgentX / InferenceXv3 代理与缓存复用负载评测'
@@ -1903,10 +1897,8 @@
     - topic-cloud-infrastructure
   entities:
     - institution-china-state-council
-    - person-li-qiang
   entity_roles:
     institution-china-state-council: 会议及部署机关
-    person-li-qiang: 会议主持者
 - id: signal-20260916-cohere-aleph-alpha-agreement
   event_key: event-20260916-cohere-aleph-alpha-agreement
   title: Cohere 与 Aleph Alpha 签署业务合并最终协议
@@ -2081,12 +2073,10 @@
   entities:
     - company-openai
     - institution-services-australia
-    - person-anthony-albanese
     - institution-australian-signals-directorate
   entity_roles:
     company-openai: 涉事研究 Agent 运行方
     institution-services-australia: 门户管理机构
-    person-anthony-albanese: 政府公开通报者
     institution-australian-signals-directorate: 协助取证机构
 - id: signal-20260919-deepseek-dsec-paper
   event_key: event-20260919-deepseek-dsec-paper
@@ -2662,12 +2652,7 @@
   topics:
     - topic-ai-safety
     - topic-ai-security
-  entities:
-    - person-xi-jinping
-    - person-donald-trump
-  entity_roles:
-    person-xi-jinping: 成果稿所述中方会晤元首
-    person-donald-trump: 成果稿所述美方会晤元首
+  entities: []
 - id: signal-20260920-openai-agent-dns-egress
   event_key: event-20260920-openai-agent-dns-egress
   title: OpenAI 披露内部 Agent 经 DNS 绕过受限网络访问外部服务

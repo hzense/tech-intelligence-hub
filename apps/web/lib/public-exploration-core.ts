@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import type { SeedEntity } from '@hzense/content';
+import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import type { SignalEntry, PublicSignalPerson } from './public-signal-reader-core.ts';
 import { signalPublication, toUnifiedSignal } from './unified-signal-core.ts';
 
@@ -131,7 +132,11 @@ export function selectSignals(
   topics: readonly ExplorationTopic[],
   seedEntities: readonly SeedEntity[] = [],
 ) {
-  const entities = new Map(seedEntities.map((entity) => [entity.id, entity]));
+  const entities = new Map(
+    seedEntities
+      .filter((entity) => entity.type !== 'person' || !isExcludedPublicPerson(entity))
+      .map((entity) => [entity.id, entity]),
+  );
   const topicNames = new Map(topics.map((topic) => [topic.id, topic.name]));
   const scope = signals.filter((entry) =>
     filters.archive ? !isCurrentSignal(entry) : isCurrentSignal(entry),
@@ -183,7 +188,7 @@ export function selectSignals(
               entry.title,
               entry.summary,
               entry.analysis ?? '',
-              ...(entry.public_people ?? []).map((person) => person.name),
+              ...unified.people.map((person) => person.name),
               ...(entry.public_organizations ?? []).map((organization) => organization.name),
               ...entry.topics.map((id) => topicNames.get(id) ?? id),
               ...entry.entities.map((id) => entities.get(id)?.name ?? ''),
@@ -285,7 +290,18 @@ export function buildPublicEntityDirectory(
   now = new Date(),
 ): PublicEntitySummary[] {
   const directory = new Map<string, PublicEntitySummary>();
+  // A historical registry may omit a person's office. Do not restore an identity
+  // that a current/legacy Signal explicitly classifies outside the person scope.
+  const excludedPersonIds = new Set(
+    signals.flatMap((signal) =>
+      (signal.public_people ?? [])
+        .filter((person) => isExcludedPublicPerson(person))
+        .map((person) => person.id),
+    ),
+  );
   const add = (id: string, name: string, type: SeedEntity['type']) => {
+    if (type === 'person' && (excludedPersonIds.has(id) || isExcludedPublicPerson({ id, name })))
+      return;
     if (!directory.has(id))
       directory.set(id, {
         id,
@@ -311,6 +327,13 @@ export function buildPublicEntityDirectory(
   }
   for (const entity of seedEntities) {
     if (entity.status !== 'active') continue;
+    if (
+      entity.type === 'person' &&
+      (excludedPersonIds.has(entity.id) || isExcludedPublicPerson(entity))
+    ) {
+      directory.delete(entity.id);
+      continue;
+    }
     const existing = directory.get(entity.id);
     if (existing) {
       // Public signals supply the current display name; the registry knows whether
@@ -339,7 +362,12 @@ export function buildPublicEntityDirectory(
       for (const person of signal.publication_basis === 'manual_confirmation'
         ? []
         : (signal.public_people ?? [])) {
-        if (person.id !== id && !entity.relatedPeople.some((item) => item.id === person.id))
+        if (
+          !isExcludedPublicPerson(person) &&
+          !excludedPersonIds.has(person.id) &&
+          person.id !== id &&
+          !entity.relatedPeople.some((item) => item.id === person.id)
+        )
           entity.relatedPeople.push(person);
       }
       for (const organization of signal.publication_basis === 'manual_confirmation'

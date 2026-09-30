@@ -24,6 +24,7 @@ const messages: Record<string, string> = {
   topic_reference_invalid: '领域已停用或名称有变化，请重新读取并选择。',
   not_configured: '人工发布尚未配置完成。',
   invalid_request: '字段格式不正确，请检查日期和名称长度。',
+  excluded_person: '人物不收录国家元首或政府首脑，请移除该人物；不要用无事件依据的人物替代。',
 };
 
 async function api(url: string, options: RequestInit = {}) {

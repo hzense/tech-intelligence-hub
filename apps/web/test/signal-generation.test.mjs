@@ -22,6 +22,7 @@ import {
 } from '../../../packages/database/src/signal-generation-store.mjs';
 import { buildGenerationSource } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
+import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
 const { Response, Request, structuredClone } = globalThis;
 const output = parseImportOutput({
   fragments: [{ text: 'Alice presented the Example processor.', locator: { paragraph: 1 } }],
@@ -31,6 +32,13 @@ const source = buildGenerationSource(output);
 test('generation rules keep the information source out of participant organizations', () => {
   assert.match(generationRules, /资料发布平台.*只作为来源/);
   assert.match(generationRules, /不要把信息源填入 organizations/);
+});
+test('person scope is enforced after a saved profile prompt, without changing the profile', () => {
+  const prompt = '历史配置：把国家领导人加入所有人物列表。';
+  const request = generationInput(source, prompt);
+  assert.ok(generationRules.includes(PERSON_RESOURCE_POLICY_TEXT));
+  assert.ok(request.system.includes(prompt));
+  assert.ok(request.system.endsWith(PERSON_RESOURCE_POLICY_TEXT));
 });
 const apiKey = 'synthetic-generation-key-only';
 const settings = {

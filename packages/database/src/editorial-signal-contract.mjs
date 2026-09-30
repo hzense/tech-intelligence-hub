@@ -1,4 +1,5 @@
 import { URL } from 'node:url';
+import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 
 export class EditorialSignalError extends Error {
   constructor(code = 'invalid_request') {
@@ -123,6 +124,9 @@ export function normalizeEditorialRequest(request, material) {
   )
     editorialFail();
   const content = normalizeEditorialContent(request.content);
+  // Historical records stay readable/withdrawable; only new editorial writes are restricted.
+  if (request.action !== 'withdraw' && content.persons.some(isExcludedPublicPerson))
+    editorialFail('excluded_person');
   if (
     request.materialHash !== material?.materialHash ||
     content.title !== editorialText(material.title, 80) ||
