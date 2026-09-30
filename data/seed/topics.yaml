@@ -16,3 +16,122 @@
 - id: 'topic-autonomous-systems'
   title: 'Autonomous Systems'
   status: 'watching'
+- id: topic-advanced-packaging
+  title: Advanced Packaging
+  status: active
+- id: topic-agent-security
+  title: Agent Security
+  status: active
+- id: topic-ai-accelerators
+  title: AI Accelerators
+  status: active
+- id: topic-ai-networking
+  title: AI Networking
+  status: active
+- id: topic-ai-safety
+  title: AI Safety
+  status: active
+- id: topic-artificial-intelligence
+  title: Artificial Intelligence
+  status: active
+- id: topic-autonomous-navigation
+  title: Autonomous Navigation
+  status: active
+- id: topic-cloud-infrastructure
+  title: Cloud & Infrastructure
+  status: active
+- id: topic-cloud-security
+  title: Cloud Security
+  status: active
+- id: topic-cpu
+  title: CPU
+  status: active
+- id: topic-cybersecurity
+  title: Cybersecurity
+  status: active
+- id: topic-dram
+  title: DRAM
+  status: active
+- id: topic-embodied-ai
+  title: Embodied AI
+  status: active
+- id: topic-energy-technology
+  title: Energy Technology
+  status: active
+- id: topic-foundry
+  title: Foundry
+  status: active
+- id: topic-gpu
+  title: GPU
+  status: active
+- id: topic-hardware-security
+  title: Hardware Security
+  status: active
+- id: topic-hbm
+  title: HBM
+  status: active
+- id: topic-identity-access
+  title: Identity & Access
+  status: active
+- id: topic-inference-infrastructure
+  title: Inference Infrastructure
+  status: active
+- id: topic-language-models
+  title: Language Models
+  status: active
+- id: topic-memory
+  title: Memory
+  status: active
+- id: topic-model-security
+  title: Model Security
+  status: active
+- id: topic-physical-ai
+  title: Physical AI
+  status: active
+- id: topic-reasoning-models
+  title: Reasoning Models
+  status: active
+- id: topic-robot-learning
+  title: Robot Learning
+  status: active
+- id: topic-semiconductor-supply-chain
+  title: Semiconductor Supply Chain
+  status: active
+- id: topic-semiconductors
+  title: Semiconductors
+  status: active
+- id: topic-software-supply-chain-security
+  title: Software Supply Chain Security
+  status: active
+- id: topic-tool-use
+  title: Tool Use
+  status: active
+- id: topic-training-infrastructure
+  title: Training Infrastructure
+  status: active
+
+- id: topic-ai-supply-chain-security
+  title: AI Supply Chain Security
+  status: active
+- id: topic-lithography
+  title: Lithography
+  status: active
+- id: topic-ai-data-infrastructure
+  title: AI Data Infrastructure
+  status: active
+- id: topic-ai-runtime-security
+  title: AI Runtime Security
+  status: active
+- id: topic-space-technology
+  title: Space Technology
+  status: active
+- id: topic-multimodal-models
+  title: Multimodal Models
+  status: active
+- id: topic-agent-architecture
+  title: Agent Architecture
+  status: active
+
+- id: topic-robotics
+  title: Robotics
+  status: active

@@ -41,9 +41,13 @@ describe('Topic database projection', () => {
     const projection = buildTopicDatabaseProjection(seed.taxonomy, seed.topics);
 
     expect(seed.taxonomy.topics).toHaveLength(62);
-    expect(seed.topics).toHaveLength(6);
+    expect(seed.topics.length).toBeGreaterThan(0);
     expect(projection).toHaveLength(seed.taxonomy.topics.length);
-    expect(projection.filter((topic) => topic.runtimeEnabled)).toHaveLength(6);
+    expect(
+      new Set(projection.filter((topic) => topic.runtimeEnabled).map((topic) => topic.id)),
+    ).toEqual(
+      new Set(seed.topics.filter((topic) => topic.status !== 'archived').map((topic) => topic.id)),
+    );
     expect(new Set(projection.map((topic) => topic.id))).toEqual(seed.taxonomy.topicIds);
   });
 

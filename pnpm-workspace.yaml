@@ -8,6 +8,8 @@ overrides:
   '@workflow/world-local>undici': '7.29.1'
   '@workflow/world-vercel>undici': '7.29.1'
   '@workflow/core>nanoid': '5.1.16'
+  # minimatch 10 uses brace-expansion 5; patch its recursion/CPU DoS fixes only.
+  'minimatch@10>brace-expansion': '5.0.12'
 
 allowBuilds:
   '@swc/core': true

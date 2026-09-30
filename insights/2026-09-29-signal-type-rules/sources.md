@@ -1,0 +1,16 @@
+# 规则设计依据
+
+2026-09-29 本地只读核对。此处引用当前项目代码和审核快照，不是对其中新闻事实重新联网核验；类别规则均为本次产品设计决定，不冒充外部行业标准。
+
+| 编号 | 来源                                                                                                                                                                                                                                         | 支持的结论                                                                                               |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| S1   | [Seed 契约](../../packages/content/src/seed.ts)，第 55–103 行；[类型显示名](../../apps/web/lib/signal-presentation.ts)，第 3–19 行                                                                                                           | 15 种事件类型；事件／采集日期、来源、评分、topics、entities、角色现有结构                                |
+| S2   | [人工发布契约](../../packages/database/src/editorial-signal-contract.mjs)，第 47–98、125–136 行                                                                                                                                              | 严格内容字段不含 type；标题 80、摘要 500、领域最多 5 项；当前四项 readiness 和确认门禁                   |
+| S3   | [人工发布读取](../../apps/web/lib/editorial-signal-reader-core.ts)，第 74–106 行；[页面 readiness](../../apps/web/lib/editorial-review.ts)，第 22–36 行                                                                                      | 读写和 UI 均要求人物、组织；reader 使用 editorial 而非事件类型                                           |
+| S4   | [统一逻辑模型](../../docs/UNIFIED_SIGNAL_MODEL.md)；[实际公开契约](../../apps/web/lib/unified-signal-core.ts)，第 4–29、43–81 行                                                                                                             | 来源与实体集合分离，manual 的名字不是已验证实体 ID，type 可 null，assessment 可 null，发布依据与类型分离 |
+| S5   | [本批确认记录](../2026-09-29-daily-signal-review/publication.md)；[逐条候选与缺项](../2026-09-29-daily-signal-review/candidate-index.md)                                                                                                     | 28 条本地接受，11 条待补；不代表部署完成或数据库发布                                                     |
+| S6   | [7–8 月候选审核](../2026-09-29-daily-signal-review/july-august-candidates.yaml)，第 344–446 行；[9 月候选审核](../2026-09-29-daily-signal-review/september-candidates.yaml)，第 773–1014 行                                                  | 匿名发言人、上市人物、机构署名研究和未明确执行机构等已有边界                                             |
+| S7   | [旧证据合格发布读取](../../apps/web/lib/public-signal-reader-core.ts)，第 163 行；[默认 AI 提示词](../../apps/web/lib/admin-ai-profile-defaults.ts)，第 19–39 行；[旧 Signal-first 设计](../../docs/SIGNAL_FIRST_REDESIGN.md)，第 166–178 行 | 旧读通道与提示词同样要求人物；新规则不能只更新 UI，也不能自动变更签名发布协议                            |
+| S8   | [人工材料准备](../../apps/web/lib/server/editorial-review.ts)，第 113–115 行；[人工发布读取](../../apps/web/lib/editorial-signal-reader-core.ts)，第 109–110 行                                                                              | 公开来源链接可为空，采集时间当前映射为发布时间；新规则增加的证据／时间要求需实际开发                     |
+
+规则生效与生产状态不能用旧文档开头的阶段记录推断。本批未核验当前部署、数据库迁移或环境开关，也没有变更它们。

@@ -1,0 +1,680 @@
+{
+  "schema": "hzense-pending-signal-completion-v1",
+  "completed_on": "2026-09-29",
+  "rules_file": "insights/2026-09-29-signal-type-rules/design-doc.md",
+  "rules_sha256": "1df0091e41390750fb1b65f385e7be60c43b7e0670599795c84db7e1c68bd3c8",
+  "status": "awaiting_admin_confirmation",
+  "publication_authorized": false,
+  "formal_seed_changed": false,
+  "scope": "Five revised research candidates only. Original candidate snapshots, acceptance ledger and runtime rules remain unchanged.",
+  "entity_catalog_policy": "Reuse frozen catalog-context and original bundle entities/sources; register only explicitly evidenced additional entities in this candidate revision package. Proposed IDs are not database IDs or publication approvals.",
+  "revisions": [
+    {
+      "signal_id": "signal-20260727-cxmt-star-listing",
+      "original_bundle": "july-august-candidates.yaml",
+      "original_sha256": "0832eaba59117a20a647c02546b60d825a0bcede70a2ecf8d08d652e3a6f8306",
+      "revised_sha256": "618f7ddddba6de7d19c98af1c9e628af664429e5e305e79313e3cec220aa4b78",
+      "changed_fields": ["summary", "entities", "entity_roles"],
+      "content_review_status": "ready_for_confirmation",
+      "event_date_basis": "2026-07-27 为上交所 7 月 24 日公告所列的上市交易起始日；不是公告日或采集日。00:00:00Z 沿用日级存储约定。",
+      "limitations": "不将发行价视为上市交易价，不推断首日表现或技术能力；战略配售基金组合和员工资管计划另存融资明细，不补无依据高管。",
+      "resolved_items": [
+        "补齐原文已披露战略投资组织及相关基金组合管理角色",
+        "保留完整基金组合、员工配售计划层级与原法律主体",
+        "明确发行价为人民币并保留上市阶段"
+      ],
+      "evidence": [
+        {
+          "url": "https://www.sse.com.cn/disclosure/announcement/listing/ipo/c/c_20260724_10826610.shtml",
+          "locator": "正文上市交易起始日、证券简称和代码；上证公告（股票）[2026]21号",
+          "published_on": "2026-07-24",
+          "claim": "长鑫科技集团股份有限公司（688825）自2026年7月27日起在科创板上市交易。"
+        },
+        {
+          "url": "https://static.cninfo.com.cn/finalpage/2026-07-24/1225439534.PDF",
+          "locator": "PDF第4页发行价；第30页社保管理说明；第31–37页本次战略配售情况",
+          "published_on": "2026-07-24",
+          "claim": "发行价人民币8.66元/股；战略配售组织、管理相关社保/养老组合的主体及员工配售计划。"
+        }
+      ],
+      "original_local_refs": ["ChatGPT每日简报_2026-07-27.md:31"],
+      "original_scores_reason": "importance 4 为大型 DRAM 企业上市；confidence 0.95 基于交易所；novelty 0.8 为独立融资里程碑"
+    },
+    {
+      "signal_id": "signal-20260819-unitree-star-listing",
+      "original_bundle": "july-august-candidates.yaml",
+      "original_sha256": "12fa17743b144883d2e732076fb8bbd7ecf001901e3ee2618657b3ffd9dee579",
+      "revised_sha256": "6403b5cd74109ee4ad7dea0669634291ad679cd31e928f17d773374e320be964",
+      "changed_fields": ["summary", "entities", "entity_roles"],
+      "content_review_status": "ready_for_confirmation",
+      "event_date_basis": "2026-08-19 为上交所 8 月 18 日公告所列上市交易起始日；不以8月14日发行结果公告或采集日替代。",
+      "limitations": "IPO 融资不等于机器人技术获得独立验证；发行价格不同于交易价格；保荐子公司跟投与母公司承销身份分开。未从二手报道补估值和总募资金额。",
+      "resolved_items": [
+        "补齐7个具名投资/基金组合管理组织",
+        "区分社保组合、员工计划及保荐子公司跟投",
+        "明确人民币发行价和全部新股的发行口径"
+      ],
+      "evidence": [
+        {
+          "url": "https://www.sse.com.cn/disclosure/announcement/listing/ipo/c/c_20260818_10829204.shtml",
+          "locator": "正文上市交易起始日、主体和证券代码；上证公告（股票）[2026]25号",
+          "published_on": "2026-08-18",
+          "claim": "宇树科技股份有限公司（688836）自2026年8月19日起在科创板上市交易。"
+        },
+        {
+          "url": "https://static.cninfo.com.cn/finalpage/2026-08-14/1225472623.PDF",
+          "locator": "PDF第1页发行价格、发行数量；第3页战略配售结果；URL日期为8月14日，签章页日期本次未单独读取",
+          "published_on": null,
+          "claim": "人民币150.80元/股，发行4,044.6434万股且全部为新股；战略配售投资组织及组合、员工计划。"
+        }
+      ],
+      "original_local_refs": [
+        "ChatGPT每日简报_2026-08-20.md:11",
+        "ChatGPT每日简报_2026-08-05.md:172"
+      ],
+      "original_scores_reason": "importance 4 为人形机器人公司上市；confidence 0.95 基于交易所；novelty 0.8 为独立融资里程碑"
+    },
+    {
+      "signal_id": "signal-20260908-us-agencies-ai-distillation-advisory",
+      "original_bundle": "september-candidates.yaml",
+      "original_sha256": "79073d873e8fc6d0857424bff612462a8edf6cde0aec5782bb187b995fa3cff3",
+      "revised_sha256": "9983ad1fcec1cc5e51e5890474fa3e7703f368181767461f47fe9a5c8d09e303",
+      "changed_fields": ["title", "type", "summary", "entity_roles"],
+      "content_review_status": "ready_for_confirmation",
+      "event_date_basis": "2026-09-08 是 NSA 官方新闻稿的公告/披露日，不表示被指蒸馏活动从该日开始。",
+      "limitations": "本次只据NSA官方新闻稿确认公开披露与机构归属；没有独立验证所指活动，也未读取完整联合报告PDF，不补未经读取的具体企业、模型或请求量。",
+      "resolved_items": [
+        "按主要事件由policy修为security",
+        "明确三机构为联合安全公告发布方",
+        "区分披露日期与活动日期并保留指控归属"
+      ],
+      "evidence": [
+        {
+          "url": "https://www.nsa.gov/Press-Room/Press-Releases-Statements/Press-Release-View/Article/4592113/nsa-and-others-warn-china-based-ai-companies-are-distilling-us-frontier-ai-mode/",
+          "locator": "日期栏、首段三发布方和后续检测/缓解建议段落",
+          "published_on": "2026-09-08",
+          "claim": "NSA、FBI、CISA联合发布指向美国前沿模型的蒸馏滥用指控及防护建议；非司法认定。"
+        }
+      ],
+      "original_local_refs": ["ChatGPT每日简报_2026-09-10.md:22"],
+      "original_scores_reason": "编辑估计 importance 4/5、confidence 0.95、novelty 0.85；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。"
+    },
+    {
+      "signal_id": "signal-20260917-anthropic-rd-automation-index",
+      "original_bundle": "september-candidates.yaml",
+      "original_sha256": "b685296f63036d63b11ab573cd198ccec133c5caff26d16d804a58041cfd07b3",
+      "revised_sha256": "1131204f27eb99aad343975a34980c80ebf24520f03d1c48ee1cae239398ba0b",
+      "changed_fields": ["summary", "entities", "entity_roles"],
+      "content_review_status": "ready_for_confirmation",
+      "event_date_basis": "2026-09-17 由 Anthropic 官方 Research 列表对应文章条目支持；文章正文未单列页首日期，不再声称正文日期已核实。",
+      "limitations": "机构内部自测、模型判级与固定任务篮子限制外推。按每人每周一单位平均分配到任务的权重统计，不是实际工时。Jack Clark 为研究指导而非共同作者；本修订只新增明确共同作者。",
+      "resolved_items": [
+        "新增Marina Favaro与Phillie Wright共同作者关系",
+        "明确26%是7月固定任务篮子加权的8月AL4占比",
+        "补官方列表发表日期依据，保留内部自测、未测得AL5和外推限制"
+      ],
+      "evidence": [
+        {
+          "url": "https://www.anthropic.com/institute/measuring-pace-of-ai-development",
+          "locator": "Measuring AI-led AI R&D、Appendix同名小节、结尾署名段",
+          "published_on": null,
+          "claim": "Marina Favaro与Phillie Wright为共同作者；Jack Clark为研究指导；固定7月任务篮子、人周任务权重、8月26% AL4及未测得AL5。"
+        },
+        {
+          "url": "https://www.anthropic.com/research",
+          "locator": "Measurements for understanding the pace of AI development inside frontier labs条目",
+          "published_on": null,
+          "claim": "列表标示该文章发表于2026-09-17；此处日期是文章条目日期，不是研究列表本身发布日期。"
+        }
+      ],
+      "original_local_refs": ["ChatGPT每日简报_2026-09-18.md:24"],
+      "original_scores_reason": "编辑估计 importance 4/5、confidence 0.9、novelty 0.8；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。"
+    },
+    {
+      "signal_id": "signal-20260920-openai-agent-dns-egress",
+      "original_bundle": "september-candidates.yaml",
+      "original_sha256": "33d51b01dfa2c49af008845a1b8b47ddf0482eb6ce6e9ba5d18ad7df714f6b71",
+      "revised_sha256": "d9154eca0a687d3ef7a5f0698c7b57a5ab3c859bf4ed64a1ad9f400f13b8b1b7",
+      "changed_fields": ["summary", "entity_roles"],
+      "content_review_status": "ready_for_confirmation",
+      "event_date_basis": "原报告页首 Sample/Discovery 为2026-09-20，Report updated为2026-09-25；首次发布日期未单列。事件日与报告更新日分开。",
+      "limitations": "仅针对原文披露的内部研究事件；客户损失和受影响人数未给出，不能推断无损失。事件时间线未标时区，不补UTC；处置状态截至9月25日，不推断9月29日仍暂停或已全部恢复。",
+      "resolved_items": [
+        "将约2.5小时计时起点修正为人工确认告警",
+        "将暂停、阻断和调查状态明确限定到9月25日报告更新",
+        "说明跨环境验证与调查仍继续，不泛化为全部模型停止或全面修复"
+      ],
+      "evidence": [
+        {
+          "url": "https://alignment.openai.com/misalignment-reports/an-agent-used-dns-to-reach-an-external-chatbot/",
+          "locator": "页首Sample/Discovery和Report updated；Summary、Incident timeline、Investigation and response",
+          "published_on": null,
+          "updated_on": "2026-09-25",
+          "claim": "9月20日发生；人工确认10:05:06至12:34:30终止；截至9月25日更新已加两层阻断、限定范围暂停且更广调查和验证仍继续。"
+        }
+      ],
+      "original_local_refs": ["ChatGPT每日简报_2026-09-28.md:28"],
+      "original_scores_reason": "编辑估计 importance 5/5、confidence 0.95、novelty 0.9；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。"
+    }
+  ],
+  "financing_details": [
+    {
+      "signal_id": "signal-20260727-cxmt-star-listing",
+      "source_url": "https://static.cninfo.com.cn/finalpage/2026-07-24/1225439534.PDF",
+      "locator": "PDF第30页管理说明、第31–37页战略配售情况",
+      "organizations": [
+        {
+          "entity_id": "institution-national-council-social-security-fund",
+          "legal_name": "全国社会保障基金理事会",
+          "role": "本次战略配售相关社保及养老投资组合管理机构；实际参与组合另列融资明细"
+        },
+        {
+          "entity_id": "company-china-structural-reform-fund-ii",
+          "legal_name": "中国国有企业结构调整基金二期股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-picc-property-casualty",
+          "legal_name": "中国人民财产保险股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-china-life-insurance",
+          "legal_name": "中国人寿保险股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-china-post-life-insurance",
+          "legal_name": "中邮人寿保险股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-taikang-life-insurance",
+          "legal_name": "泰康人寿保险有限责任公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-chongqing-transsion-technology",
+          "legal_name": "重庆传音科技有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-shanghai-lanqi-hongli",
+          "legal_name": "上海澜起红利企业管理合伙企业（有限合伙）",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-xian-eswin-material-technology",
+          "legal_name": "西安奕斯伟材料科技股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-piotech",
+          "legal_name": "拓荆科技股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-anji-microelectronics-shanghai",
+          "legal_name": "安集微电子科技（上海）股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-tongfu-microelectronics",
+          "legal_name": "通富微电子股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-amec-shanghai",
+          "legal_name": "中微半导体（上海）有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-beijing-etown-semiconductor",
+          "legal_name": "北京屹唐半导体科技股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-huaqin-technology",
+          "legal_name": "华勤技术股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-shanghai-silicon-industry-group",
+          "legal_name": "上海硅产业集团股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-wuhan-yibayiling",
+          "legal_name": "武汉壹捌壹零企业管理有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-tcl-technology-group",
+          "legal_name": "TCL 科技集团股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-nio-power-technology-hefei",
+          "legal_name": "蔚来动力科技（合肥）有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-shenzhen-sankuai-network",
+          "legal_name": "深圳三快网络科技有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-shanghai-haoyu-information",
+          "legal_name": "上海灏裕信息科技有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-hangzhou-aliyun-feitian",
+          "legal_name": "杭州阿里云飞天信息技术有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-zte-corporation",
+          "legal_name": "中兴通讯股份有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-chery-intelligent-auto-hefei",
+          "legal_name": "奇瑞智能汽车科技（合肥）有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-cicc-wealth-management",
+          "legal_name": "中国中金财富证券有限公司",
+          "role": "本次 IPO 保荐人相关子公司跟投"
+        },
+        {
+          "entity_id": "company-csc-investment",
+          "legal_name": "中信建投投资有限公司",
+          "role": "本次 IPO 保荐人相关子公司跟投"
+        }
+      ],
+      "investment_vehicles": [
+        {
+          "name": "全国社保基金一零九组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第31页"
+        },
+        {
+          "name": "全国社保基金五零二组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第31页"
+        },
+        {
+          "name": "全国社保基金六零一组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第31页"
+        },
+        {
+          "name": "全国社保基金二一零六组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32页"
+        },
+        {
+          "name": "基本养老保险基金九零四组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32页"
+        },
+        {
+          "name": "基本养老保险基金一二零五组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32页"
+        },
+        {
+          "name": "基本养老保险基金一九零九组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32页"
+        },
+        {
+          "name": "基本养老保险基金二一零八组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32页"
+        },
+        {
+          "name": "社保基金划转三零零八组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32页"
+        },
+        {
+          "name": "全国社保基金四零一组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32页"
+        },
+        {
+          "name": "全国社保基金一零一组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32页"
+        },
+        {
+          "name": "基本养老保险基金一九零六组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32页"
+        },
+        {
+          "name": "基本养老保险基金二零零六组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32页"
+        },
+        {
+          "name": "基本养老保险基金二一零七组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32页"
+        },
+        {
+          "name": "社保基金划转三零零七组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第32–33页"
+        },
+        {
+          "name": "基本养老保险基金八零八组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第33页"
+        },
+        {
+          "name": "全国社保基金四一三组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第33页"
+        },
+        {
+          "name": "全国社保基金二零零二组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第33页"
+        },
+        {
+          "name": "基本养老保险基金二一零四组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第33页"
+        },
+        {
+          "name": "社保基金划转三零零四组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第33页"
+        },
+        {
+          "name": "基本养老保险基金二零零三组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第33页"
+        },
+        {
+          "name": "基本养老保险基金一二零六组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第33页"
+        },
+        {
+          "name": "全国社会保障基金可持续投资产品-银华2006组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第33页"
+        },
+        {
+          "name": "全国社会保障基金战略新兴产品-银华2107组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第33页"
+        },
+        {
+          "name": "基本养老保险基金八零四组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第33页"
+        },
+        {
+          "name": "全国社会保障基金一一八组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第33页"
+        },
+        {
+          "name": "全国社保基金一一七组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第34页"
+        },
+        {
+          "name": "社保基金1103组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第34页"
+        },
+        {
+          "name": "基本养老保险基金一九零五组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第34页"
+        },
+        {
+          "name": "基本养老保险基金九零二组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第34页"
+        },
+        {
+          "name": "全国社保基金四一二组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第34页"
+        },
+        {
+          "name": "基本养老基金一九零二组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第34页"
+        },
+        {
+          "name": "社保基金2101组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第34页"
+        },
+        {
+          "name": "基本养老保险基金二一零三组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第34页"
+        },
+        {
+          "name": "社保基金划转三零零三组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第34页"
+        },
+        {
+          "name": "全国社保基金一一四组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第34页"
+        },
+        {
+          "name": "中信建投基金-共赢66号员工参与战略配售集合资产管理计划",
+          "kind": "employee_asset_management_plan",
+          "related_entity_id": "company-cxmt",
+          "role": "发行人员工参与本次战略配售的专项资管计划；不是发行人自营投资或自然人",
+          "locator": "PDF第31、36–37页"
+        },
+        {
+          "name": "中信建投基金-共赢67号员工参与战略配售集合资产管理计划",
+          "kind": "employee_asset_management_plan",
+          "related_entity_id": "company-cxmt",
+          "role": "发行人员工参与本次战略配售的专项资管计划；不是发行人自营投资或自然人",
+          "locator": "PDF第31、36–37页"
+        },
+        {
+          "name": "中信建投基金-共赢68号员工参与战略配售集合资产管理计划",
+          "kind": "employee_asset_management_plan",
+          "related_entity_id": "company-cxmt",
+          "role": "发行人员工参与本次战略配售的专项资管计划；不是发行人自营投资或自然人",
+          "locator": "PDF第31、36–37页"
+        },
+        {
+          "name": "中信建投基金-共赢69号员工参与战略配售集合资产管理计划",
+          "kind": "employee_asset_management_plan",
+          "related_entity_id": "company-cxmt",
+          "role": "发行人员工参与本次战略配售的专项资管计划；不是发行人自营投资或自然人",
+          "locator": "PDF第31、36–37页"
+        }
+      ]
+    },
+    {
+      "signal_id": "signal-20260819-unitree-star-listing",
+      "source_url": "https://static.cninfo.com.cn/finalpage/2026-08-14/1225472623.PDF",
+      "locator": "PDF第3页战略配售结果",
+      "organizations": [
+        {
+          "entity_id": "institution-national-council-social-security-fund",
+          "legal_name": "全国社会保障基金理事会",
+          "role": "本次战略配售表列社保投资主体，涉及六零一、五零二、一零九三个组合；组合层次另列融资明细"
+        },
+        {
+          "entity_id": "company-deepseek",
+          "legal_name": "杭州深度求索人工智能基础技术研究有限公司",
+          "role": "本次 IPO 战略配售投资方（杭州深度求索人工智能基础技术研究有限公司）",
+          "identity_evidence": [
+            {
+              "url": "https://cdn.deepseek.com/policies/zh-CN/deepseek-privacy-policy.html",
+              "locator": "政策首段法律主体及DeepSeek服务名称；更新/生效日期",
+              "published_on": "2026-02-10",
+              "claim": "DeepSeek服务由杭州深度求索人工智能基础技术研究有限公司及关联公司推出；本次文件投资方为同名杭州法律主体。"
+            }
+          ]
+        },
+        {
+          "entity_id": "company-cnpc-kunlun-capital",
+          "legal_name": "中国石油集团昆仑资本有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-csg-finance-holdings",
+          "legal_name": "南方电网产融控股集团有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-tianyi-capital-holdings",
+          "legal_name": "天翼资本控股有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-shanghai-qishan-investment",
+          "legal_name": "上海启善投资有限公司",
+          "role": "本次 IPO 战略配售投资方"
+        },
+        {
+          "entity_id": "company-citic-securities-investment",
+          "legal_name": "中信证券投资有限公司",
+          "role": "本次 IPO 保荐人相关子公司跟投"
+        }
+      ],
+      "investment_vehicles": [
+        {
+          "name": "全国社保基金六零一组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第3页"
+        },
+        {
+          "name": "全国社保基金五零二组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第3页"
+        },
+        {
+          "name": "全国社保基金一零九组合",
+          "kind": "social_security_or_pension_portfolio",
+          "related_entity_id": "institution-national-council-social-security-fund",
+          "role": "本次 IPO 战略配售参与组合；不是独立公司或自然人",
+          "locator": "PDF第3页"
+        },
+        {
+          "name": "中信证券资管宇树科技员工参与科创板战略配售1号集合资产管理计划",
+          "kind": "employee_asset_management_plan",
+          "related_entity_id": "company-unitree",
+          "role": "发行人员工参与本次战略配售的专项资管计划；不是发行人自营投资或自然人",
+          "locator": "PDF第3页"
+        },
+        {
+          "name": "中信证券资管宇树科技员工参与科创板战略配售2号集合资产管理计划",
+          "kind": "employee_asset_management_plan",
+          "related_entity_id": "company-unitree",
+          "role": "发行人员工参与本次战略配售的专项资管计划；不是发行人自营投资或自然人",
+          "locator": "PDF第3页"
+        }
+      ]
+    }
+  ],
+  "runtime_limitations": [
+    "新类别内容规则尚未接入生产发布校验；内容可确认不表示旧人物/组织必填门禁已经放宽。",
+    "长鑫修订候选有27个组织实体；现行editorial-signal-contract.mjs的organizations最多24项，不可静默截断。",
+    "新实体、source-sse、已有候选中的NSA/FBI/CISA/Unitree及topic-robotics等正式目录登记仍须后续执行；本包不写Seed或生产库。"
+  ],
+  "input_file_sha256": {
+    "insights/2026-09-29-daily-signal-review/july-august-candidates.yaml": "658ce34d0741aa4d3a461b36611d5c0c83ed6a371fcfe079f867119a5dace0b3",
+    "insights/2026-09-29-daily-signal-review/september-candidates.yaml": "fcc2f588d47a51b5239446b80e44a7e00b6fff2ad07c55c8d3e8a50ef7d5e14d",
+    "insights/2026-09-29-daily-signal-review/publication.json": "f57ca2316f64366a7babcf856b841f625afbfd0ab27829f61e8266ac30261c72",
+    "insights/2026-09-29-signal-type-rules/design-doc.md": "1df0091e41390750fb1b65f385e7be60c43b7e0670599795c84db7e1c68bd3c8"
+  },
+  "verification_scope": "Per-candidate hashes, strict Seed candidate contract, Unicode bounds, entity roles, source references, unchanged identities/dates/scores and preserved publication ledger. Evidence confidence remains editorial and source-attributed."
+}

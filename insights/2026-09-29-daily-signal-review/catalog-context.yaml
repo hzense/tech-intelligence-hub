@@ -1,0 +1,370 @@
+# 批次只读目录快照：2026-09-29；供候选归档复验，不是运行时配置。
+# 候选新增实体与来源仍定义在两个 candidates.yaml 内；此处只保留其引用的既有条目。
+topics:
+  - id: topic-artificial-intelligence
+    title: Artificial Intelligence
+    status: active
+  - id: topic-foundation-models
+    title: Foundation Models
+    status: active
+  - id: topic-language-models
+    title: Language Models
+    status: active
+  - id: topic-multimodal-models
+    title: Multimodal Models
+    status: active
+  - id: topic-reasoning-models
+    title: Reasoning Models
+    status: active
+  - id: topic-small-models
+    title: Small Models
+    status: active
+  - id: topic-ai-agents
+    title: AI Agents
+    status: active
+  - id: topic-agent-architecture
+    title: Agent Architecture
+    status: active
+  - id: topic-tool-use
+    title: Tool Use
+    status: active
+  - id: topic-agent-memory
+    title: Memory
+    status: active
+  - id: topic-multi-agent-systems
+    title: Multi-Agent Systems
+    status: active
+  - id: topic-agent-protocols
+    title: Agent Protocols
+    status: active
+  - id: topic-ai-security
+    title: AI Security
+    status: active
+  - id: topic-model-security
+    title: Model Security
+    status: active
+  - id: topic-agent-security
+    title: Agent Security
+    status: active
+  - id: topic-prompt-injection
+    title: Prompt Injection
+    status: active
+  - id: topic-ai-supply-chain-security
+    title: AI Supply Chain Security
+    status: active
+  - id: topic-ai-runtime-security
+    title: AI Runtime Security
+    status: active
+  - id: topic-ai-infrastructure
+    title: AI Infrastructure
+    status: active
+  - id: topic-training-infrastructure
+    title: Training Infrastructure
+    status: active
+  - id: topic-inference-infrastructure
+    title: Inference Infrastructure
+    status: active
+  - id: topic-ai-networking
+    title: AI Networking
+    status: active
+  - id: topic-ai-data-infrastructure
+    title: AI Data Infrastructure
+    status: active
+  - id: topic-ai-safety
+    title: AI Safety
+    status: active
+  - id: topic-physical-ai
+    title: Physical AI
+    status: active
+  - id: topic-cybersecurity
+    title: Cybersecurity
+    status: active
+  - id: topic-cloud-security
+    title: Cloud Security
+    status: active
+  - id: topic-endpoint-security
+    title: Endpoint Security
+    status: active
+  - id: topic-identity-access
+    title: Identity & Access
+    status: active
+  - id: topic-application-security
+    title: Application Security
+    status: active
+  - id: topic-network-security
+    title: Network Security
+    status: active
+  - id: topic-data-security
+    title: Data Security
+    status: active
+  - id: topic-zero-trust
+    title: Zero Trust
+    status: active
+  - id: topic-software-supply-chain-security
+    title: Software Supply Chain Security
+    status: active
+  - id: topic-hardware-security
+    title: Hardware Security
+    status: active
+  - id: topic-semiconductors
+    title: Semiconductors
+    status: active
+  - id: topic-gpu
+    title: GPU
+    status: active
+  - id: topic-cpu
+    title: CPU
+    status: active
+  - id: topic-ai-accelerators
+    title: AI Accelerators
+    status: active
+  - id: topic-memory
+    title: Memory
+    status: active
+  - id: topic-hbm
+    title: HBM
+    status: active
+  - id: topic-dram
+    title: DRAM
+    status: active
+  - id: topic-advanced-packaging
+    title: Advanced Packaging
+    status: active
+  - id: topic-lithography
+    title: Lithography
+    status: active
+  - id: topic-foundry
+    title: Foundry
+    status: active
+  - id: topic-eda
+    title: EDA
+    status: active
+  - id: topic-chiplets
+    title: Chiplets
+    status: active
+  - id: topic-semiconductor-supply-chain
+    title: Semiconductor Supply Chain
+    status: active
+  - id: topic-robotics
+    title: Robotics
+    status: active
+  - id: topic-humanoid-robotics
+    title: Humanoid Robotics
+    status: active
+  - id: topic-industrial-robotics
+    title: Industrial Robotics
+    status: active
+  - id: topic-service-robotics
+    title: Service Robotics
+    status: active
+  - id: topic-robot-learning
+    title: Robot Learning
+    status: active
+  - id: topic-embodied-ai
+    title: Embodied AI
+    status: active
+  - id: topic-autonomous-navigation
+    title: Autonomous Navigation
+    status: active
+  - id: topic-robot-hardware
+    title: Robot Hardware
+    status: active
+  - id: topic-quantum
+    title: Quantum
+    status: active
+  - id: topic-cloud-infrastructure
+    title: Cloud & Infrastructure
+    status: active
+  - id: topic-autonomous-systems
+    title: Autonomous Systems
+    status: active
+  - id: topic-energy-technology
+    title: Energy Technology
+    status: active
+  - id: topic-space-technology
+    title: Space Technology
+    status: active
+  - id: topic-biotechnology
+    title: Biotechnology
+    status: active
+entities:
+  - { id: company-coreweave, type: company, name: CoreWeave, status: active }
+  - { id: company-oracle, type: company, name: Oracle, status: active }
+  - id: company-openai
+    type: company
+    name: OpenAI
+    status: active
+  - id: company-anthropic
+    type: company
+    name: Anthropic
+    status: active
+  - id: company-meta
+    type: company
+    name: Meta
+    status: active
+  - id: company-google
+    type: company
+    name: Google
+    status: active
+  - id: company-nvidia
+    type: company
+    name: NVIDIA
+    status: active
+  - id: company-intel
+    type: company
+    name: Intel
+    status: active
+  - id: company-samsung-electronics
+    type: company
+    name: Samsung Electronics
+    status: active
+  - id: company-microsoft
+    type: company
+    name: Microsoft
+    status: active
+  - id: company-amd
+    type: company
+    name: AMD
+    status: active
+  - id: company-moonshot-ai
+    type: company
+    name: Moonshot AI
+    status: active
+  - id: company-cxmt
+    type: company
+    name: CXMT
+    status: active
+  - id: institution-fcc
+    type: institution
+    name: Federal Communications Commission
+    status: active
+  - id: institution-china-mofcom
+    type: institution
+    name: China's Ministry of Commerce
+    status: active
+  - id: institution-china-state-council
+    type: institution
+    name: State Council of China
+    status: active
+  - id: person-lisa-su
+    type: person
+    name: Lisa Su
+    status: active
+  - id: person-jensen-huang
+    type: person
+    name: Jensen Huang
+    status: active
+  - id: person-bryan-shan
+    type: person
+    name: Bryan Shan
+    status: active
+  - id: person-daniel-nishball
+    type: person
+    name: Daniel Nishball
+    status: active
+  - id: person-dylan-patel
+    type: person
+    name: Dylan Patel
+    status: active
+  - id: person-cam-quilici
+    type: person
+    name: Cam Quilici
+    status: active
+  - id: person-jordan-nanos
+    type: person
+    name: Jordan Nanos
+    status: active
+  - id: person-alec-ibarra
+    type: person
+    name: Alec Ibarra
+    status: active
+  - id: person-sam-harshe
+    type: person
+    name: Sam Harshe
+    status: active
+  - id: person-mark-zuckerberg
+    type: person
+    name: Mark Zuckerberg
+    status: active
+  - id: person-li-qiang
+    type: person
+    name: 李强
+    status: active
+  - id: person-xi-jinping
+    type: person
+    name: 习近平
+    status: active
+  - id: person-donald-trump
+    type: person
+    name: Donald J. Trump
+    status: active
+  - id: company-cerebras
+    type: company
+    name: Cerebras Systems
+    status: active
+sources:
+  - id: source-arxiv
+    name: arXiv
+    type: paper
+    trust_score: 90
+    active: true
+    allowed_hosts:
+      - arxiv.org
+  - id: source-openai
+    name: OpenAI
+    type: company_blog
+    trust_score: 95
+    active: true
+    allowed_hosts:
+      - openai.com
+  - id: source-anthropic
+    name: Anthropic
+    type: company_blog
+    trust_score: 95
+    active: true
+    allowed_hosts:
+      - anthropic.com
+  - id: source-google
+    name: Google
+    type: company_blog
+    trust_score: 95
+    active: true
+    allowed_hosts:
+      - google.com
+      - blog.google
+  - id: source-nvidia
+    name: NVIDIA
+    type: company_blog
+    trust_score: 95
+    active: true
+    allowed_hosts:
+      - nvidia.com
+  - id: source-microsoft
+    name: Microsoft
+    type: company_blog
+    trust_score: 95
+    active: true
+    allowed_hosts:
+      - microsoft.com
+  - id: source-semianalysis
+    name: SemiAnalysis
+    type: newsletter
+    trust_score: 85
+    active: true
+    allowed_hosts:
+      - newsletter.semianalysis.com
+      - inferencex.semianalysis.com
+  - id: source-tcs
+    name: Tata Consultancy Services
+    type: company_blog
+    trust_score: 95
+    active: true
+    allowed_hosts:
+      - tcs.com
+  - id: source-nsa
+    name: National Security Agency
+    type: website
+    trust_score: 95
+    active: true
+    allowed_hosts:
+      - nsa.gov

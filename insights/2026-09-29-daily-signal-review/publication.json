@@ -1,0 +1,314 @@
+{
+  "schema": "hzense-daily-signal-publication-confirmation-v1",
+  "confirmed_at": "2026-09-29T14:22:09.107Z",
+  "authorization": "user_confirmed_all_four_field_complete_candidates",
+  "scope": "local_seed_acceptance; PR, deployment and production database operations are separate",
+  "input_candidates": 39,
+  "accepted_count": 28,
+  "deferred_count": 11,
+  "formal_seed_before": 71,
+  "formal_seed_after": 99,
+  "accepted": [
+    {
+      "signal_id": "signal-20260716-tsmc-ai-arizona-guidance",
+      "event_key": "event-20260716-tsmc-ai-arizona-guidance",
+      "bundle": "july-august-candidates.yaml",
+      "accepted_snapshot_sha256": "b7ccc37468d89a38b371f35d580e6417d9ab9c5649f41be831dd77a74c1d1686"
+    },
+    {
+      "signal_id": "signal-20260730-china-ads-safety-standard",
+      "event_key": "event-20260730-china-ads-safety-standard",
+      "bundle": "july-august-candidates.yaml",
+      "accepted_snapshot_sha256": "d3d7a83184ff6a1bbfc96eafa14bb4ae1e7ba07e1b07f6099ce861c810006bb8"
+    },
+    {
+      "signal_id": "signal-20260806-softbank-q1-fy2026-ai-investments",
+      "event_key": "event-20260806-softbank-q1-fy2026-ai-investments",
+      "bundle": "july-august-candidates.yaml",
+      "accepted_snapshot_sha256": "b5fb06e39e191087d9551ba00a40433839a97d2354a99a231a4d41408a29bd28"
+    },
+    {
+      "signal_id": "signal-20260818-cerebras-cs4-launch",
+      "event_key": "event-20260818-cerebras-cs4-launch",
+      "bundle": "july-august-candidates.yaml",
+      "accepted_snapshot_sha256": "2f4a5f64f714e4e51a597d2d614870cd76abe2faf4751e7b62490990584db2a1"
+    },
+    {
+      "signal_id": "signal-20260824-keelung-b300-indictment",
+      "event_key": "event-20260824-keelung-b300-indictment",
+      "bundle": "july-august-candidates.yaml",
+      "accepted_snapshot_sha256": "0a11a11a66bb25be5577c9c421fea01d9202230aca00dbd0d6c1975914b8b693"
+    },
+    {
+      "signal_id": "signal-20260911-semianalysis-nvidia-backstop",
+      "event_key": "event-20260911-semianalysis-nvidia-backstop",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "6e22bfc3099616891376e61510bfdf823a91f052fc77faf459f6155afe8875a4"
+    },
+    {
+      "signal_id": "signal-20260905-tcs-hypervault-hyderabad",
+      "event_key": "event-20260905-tcs-hypervault-hyderabad",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "b283e321db2c879eddd00ee3dfb1d978066df67a436284e0d0b931610fd63f67"
+    },
+    {
+      "signal_id": "signal-20260908-mistral-series-d",
+      "event_key": "event-20260908-mistral-series-d",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "2d5b9969540e523e97ab74f5be391b59b112059dfd4355b06c0c7602b4c99c29"
+    },
+    {
+      "signal_id": "signal-20260907-asml-tsmc-high-na-masks",
+      "event_key": "event-20260907-asml-tsmc-high-na-masks",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "a8ade9049c56e79987c30aa2be40694bb27cde1ffd3588b1c69c1f7f365cf9b6"
+    },
+    {
+      "signal_id": "signal-20260911-china-compute-network",
+      "event_key": "event-20260911-china-compute-network",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "6c491504e46b0c29c9d2de84863a833f6a5545965f5038efacb2387ef4c322a8"
+    },
+    {
+      "signal_id": "signal-20260916-cohere-aleph-alpha-agreement",
+      "event_key": "event-20260916-cohere-aleph-alpha-agreement",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "694c6c7ce442e80f9e3f5ac68a225074fa487e49efc664935b3b6b70b7bdff9a"
+    },
+    {
+      "signal_id": "signal-20260918-anthropic-accenture-evaluation",
+      "event_key": "event-20260918-anthropic-accenture-evaluation",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "2fb51e20e162ce826b1090e138ec98795f76d300f3b7e4f87d51ec13941fd035"
+    },
+    {
+      "signal_id": "signal-20260922-alibaba-zhenwu-v900",
+      "event_key": "event-20260922-alibaba-zhenwu-v900",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "5730ad06358515a81f5af74eed6697f934d9809a8068a5d1f0db358a09b1e8e3"
+    },
+    {
+      "signal_id": "signal-20260922-claude-opus-55",
+      "event_key": "event-20260922-claude-opus-55",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "8b84dbbb955a768f3524901c395ac81b3cc1e9f5fbede28421f83a7b966571bd"
+    },
+    {
+      "signal_id": "signal-20260922-palo-alto-unit42-frontier-ai",
+      "event_key": "event-20260922-palo-alto-unit42-frontier-ai",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "04a5ebbfda19c777c44d450a1a29d4fe5773266c2ce623ca5a5e4fab1ee2ce78"
+    },
+    {
+      "signal_id": "signal-20260918-semianalysis-engram-offload",
+      "event_key": "event-20260918-semianalysis-engram-offload",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "612d01134c6c7dd674e08bbe911ceed467f96aecbabb35f9652552b4960d3bd1"
+    },
+    {
+      "signal_id": "signal-20260618-openai-medicare-portal",
+      "event_key": "event-20260618-openai-medicare-portal",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "f450667a677cac4540d4a4838edc469d8844dc15bb14098c934579eac122a0cd"
+    },
+    {
+      "signal_id": "signal-20260919-deepseek-dsec-paper",
+      "event_key": "event-20260919-deepseek-dsec-paper",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "8f38d50993da761ffea74e65764dfce04ba683cbc0e80aff0c60722b4becb128"
+    },
+    {
+      "signal_id": "signal-20260923-semianalysis-clustermax-3",
+      "event_key": "event-20260923-semianalysis-clustermax-3",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "cd34cc2be67118116222f8ee6e49ec36991258d758c3f4a365d8d9e05257477b"
+    },
+    {
+      "signal_id": "signal-20260924-google-suncatcher-orbit-test",
+      "event_key": "event-20260924-google-suncatcher-orbit-test",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "d54eecddbc0bbb40347af2186b447fa87177b92f3555b4ec9b6c984483f0b485"
+    },
+    {
+      "signal_id": "signal-20260923-meta-muse-ai-glasses",
+      "event_key": "event-20260923-meta-muse-ai-glasses",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "18cc41c55165af050ef207202ad784b82915af21b5a6f596d56938a9022848f2"
+    },
+    {
+      "signal_id": "signal-20260921-semianalysis-inference-data-movement",
+      "event_key": "event-20260921-semianalysis-inference-data-movement",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "0abfb2c931e4225899c64887f764775b6404a0e7a52fe04e350e9843db4075fe"
+    },
+    {
+      "signal_id": "signal-20260925-microsoft-copilot-home-code-autopilot",
+      "event_key": "event-20260925-microsoft-copilot-home-code-autopilot",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "79014356103555f4c1f5b78123f3c913ce248bd42625e232b35bd9bc3391d9e6"
+    },
+    {
+      "signal_id": "signal-20260925-semianalysis-china-datacenter-model",
+      "event_key": "event-20260925-semianalysis-china-datacenter-model",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "65eb83161c13e471c4373f9e051b20255d9a4682ef70d2dbf16ceef9d89193f5"
+    },
+    {
+      "signal_id": "signal-20260924-akamai-anthropic-cloud-commitment",
+      "event_key": "event-20260924-akamai-anthropic-cloud-commitment",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "f9c085e2fc9b377f7b41d269a014c0de3ea92fbbd325cf9187e6107dbfbdc0d4"
+    },
+    {
+      "signal_id": "signal-20260926-semianalysis-panther-lake-teardown",
+      "event_key": "event-20260926-semianalysis-panther-lake-teardown",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "ccdac1b242f94ca11b744cf6fd827c68f7371b1875edd9176e128beaa9080ba8"
+    },
+    {
+      "signal_id": "signal-20260928-amd-world-labs-agreement",
+      "event_key": "event-20260928-amd-world-labs-agreement",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "0d120308f71b363a84162a3f7f16acb61074e067277863204332022e1ff04f18"
+    },
+    {
+      "signal_id": "signal-20260928-nvidia-open-agent-safety-platform",
+      "event_key": "event-20260928-nvidia-open-agent-safety-platform",
+      "bundle": "september-candidates.yaml",
+      "accepted_snapshot_sha256": "ae3d2e427253aff750fd7917aeddb2481ade06c6fe280a2375c7d592a950190c"
+    }
+  ],
+  "deferred": [
+    {
+      "signal_id": "signal-20260724-open-weights-coalition-letter",
+      "reason": "missing_person"
+    },
+    {
+      "signal_id": "signal-20260727-cxmt-star-listing",
+      "reason": "missing_person"
+    },
+    {
+      "signal_id": "signal-20260730-mofcom-fcc-robot-response",
+      "reason": "missing_person"
+    },
+    {
+      "signal_id": "signal-20260817-ecb-ai-equity-risk-blog",
+      "reason": "missing_organization"
+    },
+    {
+      "signal_id": "signal-20260819-unitree-star-listing",
+      "reason": "missing_person"
+    },
+    {
+      "signal_id": "signal-20260826-alibaba-ai-share-placement",
+      "reason": "missing_person"
+    },
+    {
+      "signal_id": "signal-20260908-us-agencies-ai-distillation-advisory",
+      "reason": "missing_person"
+    },
+    {
+      "signal_id": "signal-20260916-openai-misalignment-framework",
+      "reason": "missing_person"
+    },
+    {
+      "signal_id": "signal-20260917-anthropic-rd-automation-index",
+      "reason": "missing_person"
+    },
+    {
+      "signal_id": "signal-20260926-us-china-ai-incident-channel",
+      "reason": "missing_organization"
+    },
+    {
+      "signal_id": "signal-20260920-openai-agent-dns-egress",
+      "reason": "missing_person"
+    }
+  ],
+  "registered_entities": [
+    "company-tsmc",
+    "person-cc-wei",
+    "institution-china-miit",
+    "person-sun-hang",
+    "company-softbank-group",
+    "person-yoshimitsu-goto",
+    "person-angela-yeung",
+    "person-eric-gardner",
+    "institution-keelung-prosecutors",
+    "person-hsiao-yong-li",
+    "person-oliver-kennon",
+    "person-terence-ong",
+    "company-tcs",
+    "company-hypervault",
+    "person-revanth-reddy",
+    "company-mistral",
+    "institution-scaleup-europe-fund",
+    "company-psg-equity",
+    "person-arthur-mensch",
+    "company-asml",
+    "person-christophe-fouquet",
+    "company-cohere",
+    "company-aleph-alpha",
+    "person-ilhan-scheer",
+    "company-accenture",
+    "person-julie-sweet",
+    "person-marc-warner",
+    "company-alibaba-group",
+    "company-t-head",
+    "person-eddie-wu",
+    "person-fabian-hedin",
+    "person-aleksandar-mitic",
+    "company-palo-alto-networks",
+    "person-sam-rubin",
+    "person-mccall-mcintyre",
+    "person-michael-moore",
+    "company-deepseek",
+    "institution-services-australia",
+    "person-anthony-albanese",
+    "institution-australian-signals-directorate",
+    "person-jialiang-huang",
+    "person-hongxuan-tang",
+    "person-jingchang-chen",
+    "person-samuel-kruse",
+    "company-nebius",
+    "company-planet",
+    "person-travis-beals",
+    "person-tanj-bennett",
+    "person-jared-spataro",
+    "company-bytedance",
+    "person-everlyn",
+    "person-patrick-schaabi",
+    "company-akamai",
+    "person-tom-leighton",
+    "person-adith-shankar",
+    "person-daniel-sanchez",
+    "person-allison-elliott",
+    "company-world-labs",
+    "person-fei-fei-li"
+  ],
+  "registered_sources": [
+    "source-tsmc",
+    "source-samr-standards",
+    "source-softbank-group",
+    "source-cerebras",
+    "source-keelung-prosecutors",
+    "source-mistral",
+    "source-asml",
+    "source-china-moe-xinhua",
+    "source-cohere-aleph-alpha-wire",
+    "source-alibaba-cloud",
+    "source-palo-alto-networks",
+    "source-australian-pm",
+    "source-meta-newsroom",
+    "source-akamai",
+    "source-amd-globenewswire"
+  ],
+  "registered_topics": [
+    "topic-ai-supply-chain-security",
+    "topic-lithography",
+    "topic-ai-data-infrastructure",
+    "topic-ai-runtime-security",
+    "topic-space-technology",
+    "topic-multimodal-models",
+    "topic-agent-architecture"
+  ]
+}

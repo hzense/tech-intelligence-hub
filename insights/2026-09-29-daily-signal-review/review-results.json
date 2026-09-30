@@ -1,0 +1,299 @@
+{
+  "schema": "hzense-daily-signal-review-result-v1",
+  "reviewed_on": "2026-09-29",
+  "input": {
+    "files": 67,
+    "bytes": 1863385,
+    "lines": 36103
+  },
+  "existing": {
+    "count_before": 71,
+    "count_after": 71,
+    "changed_topics": [
+      "signal-20260909-nvidia-australia-ai-capacity",
+      "signal-20260910-dmatrix-nvlink-fusion",
+      "signal-20260910-skild-nvidia-physical-ai",
+      "signal-20260910-anthropic-threat-report",
+      "signal-20260719-kimi-k3-subscription-pause",
+      "signal-20260720-hut8-beacon-point-lease",
+      "signal-20260721-openai-huggingface-evaluation-incident",
+      "signal-20260722-alphabet-q2-results",
+      "signal-20260722-amd-anthropic-mi450-partnership",
+      "signal-20260723-intel-q2-results",
+      "signal-20260723-us-datacenter-ratepayer-pledge",
+      "signal-20260723-ai-kill-switch-bill",
+      "signal-20260724-nvidia-sk-ai-memory-partnership",
+      "signal-20260725-samsung-broadcom-chip-partnership",
+      "signal-20260727-china-us-distillation-response-july",
+      "signal-20260729-skhynix-q2-results",
+      "signal-20260728-fcc-robot-inverter-restrictions",
+      "signal-20260729-microsoft-fy26-q4-results",
+      "signal-20260729-meta-q2-results",
+      "signal-20260729-germany-ai-act-implementation",
+      "signal-20260730-china-ai-plus-policy-july",
+      "signal-20260730-amazon-q2-ai-capex",
+      "signal-20260802-eu-ai-act-transparency",
+      "signal-20260803-semianalysis-kimi-k3-architecture",
+      "signal-20260803-china-ic-layout-regulation",
+      "signal-20260804-aisi-agent-cyber-evaluation",
+      "signal-20260804-amd-q2-results",
+      "signal-20260806-amd-taalas-acquisition",
+      "signal-20260725-semianalysis-amd-cuda",
+      "signal-20260810-semianalysis-tilert",
+      "signal-20260303-semianalysis-pjm-load-forecast",
+      "signal-20260817-ports-pike-announcement",
+      "signal-20260820-nvidia-china-lpu-denial",
+      "signal-20260819-semianalysis-cerebras-cs4",
+      "signal-20260821-nvidia-cloverleaf-investment",
+      "signal-20260625-semianalysis-us-grid-btm",
+      "signal-20260822-nvidia-server-price-report",
+      "signal-20260821-semianalysis-open-models",
+      "signal-20260821-china-next-generation-network-policy",
+      "signal-20260824-semianalysis-agentx",
+      "signal-20260825-openai-jalapeno-results",
+      "signal-20260825-waymo-munich-testing",
+      "signal-20260825-semianalysis-jalapeno",
+      "signal-20260826-nvidia-fy27-q2-results",
+      "signal-20260827-skhynix-indiana-groundbreaking",
+      "signal-20260816-semianalysis-pjm-modeling",
+      "signal-20260828-openai-cursor-service-termination-plan",
+      "signal-20260829-cxmt-lpddr6-production",
+      "signal-20260807-semianalysis-gcp-model-economics",
+      "signal-20260831-fsb-frontier-ai-letter",
+      "signal-20260830-semianalysis-neocloud-security",
+      "signal-20260831-nvidia-mediatek-partnership",
+      "signal-20260901-openai-astra-critical-cyber",
+      "signal-20260901-semianalysis-korea-sovereign-ai",
+      "signal-20260903-enflame-ipo-subscription",
+      "signal-20260902-china-ic-production-statistics",
+      "signal-20260903-openai-gpt6-astra-launch",
+      "signal-20260905-us-china-ai-talks-september-report",
+      "signal-20260906-openai-safety-threshold-essay",
+      "signal-20260907-semianalysis-tpu-inferencex",
+      "signal-20260908-openai-navier-stokes-candidate",
+      "signal-20260908-amazon-qualcomm-ai-chips",
+      "signal-20260910-chatgpt-financial-services",
+      "signal-20260910-semianalysis-btm-power"
+    ],
+    "changed_entity_roles": [
+      "signal-20260729-semianalysis-lego-datacenters",
+      "signal-20260803-semianalysis-kimi-k3-architecture",
+      "signal-20260725-semianalysis-amd-cuda",
+      "signal-20260618-semianalysis-datacenter-cancellation",
+      "signal-20260810-semianalysis-tilert",
+      "signal-20260303-semianalysis-pjm-load-forecast",
+      "signal-20260817-ports-pike-announcement",
+      "signal-20260819-semianalysis-cerebras-cs4",
+      "signal-20260625-semianalysis-us-grid-btm",
+      "signal-20260821-semianalysis-open-models",
+      "signal-20260824-semianalysis-agentx",
+      "signal-20260816-semianalysis-pjm-modeling",
+      "signal-20260830-semianalysis-neocloud-security",
+      "signal-20260901-semianalysis-korea-sovereign-ai",
+      "signal-20260902-china-ic-production-statistics",
+      "signal-20260905-us-china-ai-talks-september-report",
+      "signal-20260907-semianalysis-tpu-inferencex",
+      "signal-20260910-semianalysis-btm-power"
+    ],
+    "identity_date_source_type_changes": [],
+    "before_missing_people": [
+      "signal-20260804-aisi-agent-cyber-evaluation",
+      "signal-20260820-nvidia-china-lpu-denial",
+      "signal-20260822-nvidia-server-price-report"
+    ],
+    "before_missing_organizations": [
+      "signal-20260729-semianalysis-lego-datacenters",
+      "signal-20260803-semianalysis-kimi-k3-architecture",
+      "signal-20260725-semianalysis-amd-cuda",
+      "signal-20260618-semianalysis-datacenter-cancellation",
+      "signal-20260810-semianalysis-tilert",
+      "signal-20260303-semianalysis-pjm-load-forecast",
+      "signal-20260819-semianalysis-cerebras-cs4",
+      "signal-20260625-semianalysis-us-grid-btm",
+      "signal-20260821-semianalysis-open-models",
+      "signal-20260824-semianalysis-agentx",
+      "signal-20260816-semianalysis-pjm-modeling",
+      "signal-20260830-semianalysis-neocloud-security",
+      "signal-20260901-semianalysis-korea-sovereign-ai",
+      "signal-20260902-china-ic-production-statistics",
+      "signal-20260905-us-china-ai-talks-september-report",
+      "signal-20260907-semianalysis-tpu-inferencex",
+      "signal-20260910-semianalysis-btm-power"
+    ],
+    "remaining_gaps": [
+      {
+        "id": "signal-20260804-aisi-agent-cyber-evaluation",
+        "title": "英国 AISI 智能体网络安全评估披露",
+        "missing_person": true,
+        "missing_organization": false
+      },
+      {
+        "id": "signal-20260820-nvidia-china-lpu-denial",
+        "title": "NVIDIA 否认面向中国推出特制 LPU 的报道",
+        "missing_person": true,
+        "missing_organization": false
+      },
+      {
+        "id": "signal-20260822-nvidia-server-price-report",
+        "title": "媒体报道部分 NVIDIA AI 服务器拟涨价",
+        "missing_person": true,
+        "missing_organization": false
+      }
+    ],
+    "registered_entities": [
+      {
+        "id": "company-oracle",
+        "type": "company"
+      },
+      {
+        "id": "company-coreweave",
+        "type": "company"
+      },
+      {
+        "id": "company-pjm-interconnection",
+        "type": "company"
+      },
+      {
+        "id": "company-cerebras",
+        "type": "company"
+      },
+      {
+        "id": "company-sichuan-shunxin-semiconductor",
+        "type": "company"
+      },
+      {
+        "id": "company-jiangsu-yangheyang-microelectronics",
+        "type": "company"
+      },
+      {
+        "id": "company-vertiv",
+        "type": "company"
+      },
+      {
+        "id": "company-ge-vernova",
+        "type": "company"
+      },
+      {
+        "id": "company-siemens-energy",
+        "type": "company"
+      },
+      {
+        "id": "person-zhang-xiaohua",
+        "type": "person"
+      },
+      {
+        "id": "person-chen-cheng",
+        "type": "person"
+      },
+      {
+        "id": "company-sb-energy",
+        "type": "company"
+      },
+      {
+        "id": "institution-us-doe",
+        "type": "institution"
+      }
+    ],
+    "seed_topic_count": 37
+  },
+  "candidates": {
+    "count": 39,
+    "status": "inbox",
+    "public": false,
+    "bundle_counts": {
+      "july-august-candidates.yaml": 11,
+      "september-candidates.yaml": 28
+    },
+    "type_counts": {
+      "acquisition": 2,
+      "funding": 4,
+      "market": 2,
+      "partnership": 3,
+      "policy": 6,
+      "product": 7,
+      "regulation": 2,
+      "research": 10,
+      "security": 2,
+      "supply_chain": 1
+    },
+    "four_fields_complete": 28,
+    "remaining_gaps": [
+      {
+        "id": "signal-20260724-open-weights-coalition-letter",
+        "title": "科技企业发布支持开放权重模型的联名政策信",
+        "missing_person": true,
+        "missing_organization": false
+      },
+      {
+        "id": "signal-20260727-cxmt-star-listing",
+        "title": "长鑫科技在上交所科创板上市",
+        "missing_person": true,
+        "missing_organization": false
+      },
+      {
+        "id": "signal-20260730-mofcom-fcc-robot-response",
+        "title": "中国商务部回应美国 FCC 对机器人和逆变器的新型号限制",
+        "missing_person": true,
+        "missing_organization": false
+      },
+      {
+        "id": "signal-20260817-ecb-ai-equity-risk-blog",
+        "title": "欧洲央行博客作者分析 AI 股票估值的欧元区外溢风险",
+        "missing_person": false,
+        "missing_organization": true
+      },
+      {
+        "id": "signal-20260819-unitree-star-listing",
+        "title": "宇树科技在上交所科创板上市",
+        "missing_person": true,
+        "missing_organization": false
+      },
+      {
+        "id": "signal-20260826-alibaba-ai-share-placement",
+        "title": "阿里巴巴完成约 800 亿港元新股配售并指定 AI 投向",
+        "missing_person": true,
+        "missing_organization": false
+      },
+      {
+        "id": "signal-20260908-us-agencies-ai-distillation-advisory",
+        "title": "美国三机构发布针对模型蒸馏活动的网络安全公告",
+        "missing_person": true,
+        "missing_organization": false
+      },
+      {
+        "id": "signal-20260916-openai-misalignment-framework",
+        "title": "OpenAI 发布模型失配事件披露框架及首批六份报告",
+        "missing_person": true,
+        "missing_organization": false
+      },
+      {
+        "id": "signal-20260917-anthropic-rd-automation-index",
+        "title": "Anthropic 披露内部 AI 研发自动化测量方法与初值",
+        "missing_person": true,
+        "missing_organization": false
+      },
+      {
+        "id": "signal-20260926-us-china-ai-incident-channel",
+        "title": "中美宣布将建立 AI 对话与事件沟通渠道",
+        "missing_person": false,
+        "missing_organization": true
+      },
+      {
+        "id": "signal-20260920-openai-agent-dns-egress",
+        "title": "OpenAI 披露内部 Agent 经 DNS 绕过受限网络访问外部服务",
+        "missing_person": true,
+        "missing_organization": false
+      }
+    ],
+    "extra_topics_needed_before_promotion": [
+      "topic-agent-architecture",
+      "topic-ai-data-infrastructure",
+      "topic-ai-runtime-security",
+      "topic-ai-supply-chain-security",
+      "topic-lithography",
+      "topic-multimodal-models",
+      "topic-robotics",
+      "topic-space-technology"
+    ]
+  }
+}

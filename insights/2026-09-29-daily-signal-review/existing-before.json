@@ -1,0 +1,1078 @@
+[
+  {
+    "id": "signal-20260901-claude-fable-mythos-51",
+    "type": "product",
+    "topics": ["topic-foundation-models", "topic-ai-security"],
+    "entities": ["company-anthropic", "person-craig-falls", "person-walden-yan"],
+    "entity_roles": {
+      "company-anthropic": "模型发布方",
+      "person-craig-falls": "Jane Street 早期体验发言人",
+      "person-walden-yan": "Cognition 早期体验发言人"
+    },
+    "occurred_at": "2026-09-01T00:00:00Z",
+    "source_id": "source-anthropic",
+    "source_url": "https://www.anthropic.com/claude-fable-and-mythos-5-1"
+  },
+  {
+    "id": "signal-20260909-nvidia-australia-ai-capacity",
+    "type": "partnership",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": [
+      "company-nvidia",
+      "company-firmus",
+      "company-sharon-ai",
+      "company-iren",
+      "company-megaport",
+      "company-resetdata",
+      "company-cdc",
+      "company-nextdc",
+      "company-airtrunk",
+      "person-raj-mirpuri",
+      "person-oliver-curtis",
+      "person-james-manning",
+      "person-daniel-roberts",
+      "person-michael-reid",
+      "person-marcel-zalloua",
+      "person-greg-boorer"
+    ],
+    "entity_roles": {
+      "company-nvidia": "合作公告方",
+      "company-firmus": "合作伙伴",
+      "company-sharon-ai": "合作伙伴",
+      "company-iren": "合作伙伴",
+      "company-megaport": "合作伙伴",
+      "company-resetdata": "合作伙伴",
+      "company-cdc": "合作伙伴",
+      "company-nextdc": "合作伙伴",
+      "company-airtrunk": "合作伙伴",
+      "person-raj-mirpuri": "公告发言人",
+      "person-oliver-curtis": "公告发言人",
+      "person-james-manning": "公告发言人",
+      "person-daniel-roberts": "公告发言人",
+      "person-michael-reid": "公告发言人",
+      "person-marcel-zalloua": "公告发言人",
+      "person-greg-boorer": "公告发言人"
+    },
+    "occurred_at": "2026-09-09T00:00:00Z",
+    "source_id": "source-nvidia",
+    "source_url": "https://nvidianews.nvidia.com/news/nvidia-expands-ai-infrastructure-capacity-in-partnership-with-australias-data-center-ecosystem"
+  },
+  {
+    "id": "signal-20260910-dmatrix-nvlink-fusion",
+    "type": "partnership",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-nvidia", "company-d-matrix", "person-sid-sheth"],
+    "entity_roles": {
+      "company-nvidia": "NVLink Fusion 技术合作方",
+      "company-d-matrix": "Raptor XPU 集成计划方",
+      "person-sid-sheth": "公告发言人"
+    },
+    "occurred_at": "2026-09-10T00:00:00Z",
+    "source_id": "source-nvidia",
+    "source_url": "https://blogs.nvidia.com/blog/d-matrix-nvlink-fusion/"
+  },
+  {
+    "id": "signal-20260910-skild-nvidia-physical-ai",
+    "type": "technology",
+    "topics": ["topic-foundation-models"],
+    "entities": ["company-nvidia", "company-skild-ai", "person-deepak-pathak"],
+    "entity_roles": {
+      "company-nvidia": "训练与仿真技术合作方",
+      "company-skild-ai": "Skild S1 模型开发方",
+      "person-deepak-pathak": "公告发言人"
+    },
+    "occurred_at": "2026-09-10T00:00:00Z",
+    "source_id": "source-nvidia",
+    "source_url": "https://blogs.nvidia.com/blog/skild-ai-s1-physical-ai/"
+  },
+  {
+    "id": "signal-20260910-anthropic-threat-report",
+    "type": "security",
+    "topics": ["topic-ai-security"],
+    "entities": ["company-anthropic", "person-jacob-klein"],
+    "entity_roles": {
+      "company-anthropic": "报告发布与调查机构",
+      "person-jacob-klein": "Anthropic 威胁情报负责人、报告解读受访人（非报告署名作者）"
+    },
+    "occurred_at": "2026-09-10T00:00:00Z",
+    "source_id": "source-anthropic",
+    "source_url": "https://www.anthropic.com/threat-intelligence-report-september-2026"
+  },
+  {
+    "id": "signal-20260719-kimi-k3-subscription-pause",
+    "type": "product",
+    "topics": ["topic-foundation-models", "topic-ai-infrastructure"],
+    "entities": ["company-moonshot-ai", "person-huang-zhenxin"],
+    "entity_roles": {
+      "company-moonshot-ai": "订阅暂停公告方",
+      "person-huang-zhenxin": "月之暗面企业业务负责人、7月21日对暂停原因受访的发言人（非7月19日公告署名人）"
+    },
+    "occurred_at": "2026-07-19T00:00:00Z",
+    "source_id": "source-investing",
+    "source_url": "https://www.investing.com/news/stock-market-news/chinas-moonshot-pauses-kimi-subscriptions-amid-hot-demand-ipo-push-4800006"
+  },
+  {
+    "id": "signal-20260720-hut8-beacon-point-lease",
+    "type": "partnership",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-hut8", "person-asher-genoot"],
+    "entity_roles": {
+      "company-hut8": "租约公告方",
+      "person-asher-genoot": "公告发言人"
+    },
+    "occurred_at": "2026-07-20T00:00:00Z",
+    "source_id": "source-hut8",
+    "source_url": "https://www.hut8.com/news-insights/press-releases/hut-8-fully-commercializes-1-gw-beacon-point-ai-data-center-campus-with-second-352-mw-it-lease"
+  },
+  {
+    "id": "signal-20260721-openai-huggingface-evaluation-incident",
+    "type": "security",
+    "topics": ["topic-ai-security"],
+    "entities": ["company-openai", "company-hugging-face", "person-clem-delangue"],
+    "entity_roles": {
+      "company-openai": "事故披露机构",
+      "company-hugging-face": "事件涉及方",
+      "person-clem-delangue": "事件回应发言人"
+    },
+    "occurred_at": "2026-07-21T00:00:00Z",
+    "source_id": "source-openai",
+    "source_url": "https://openai.com/index/hugging-face-model-evaluation-security-incident/"
+  },
+  {
+    "id": "signal-20260722-alphabet-q2-results",
+    "type": "market",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-google", "company-alphabet", "person-sundar-pichai"],
+    "entity_roles": {
+      "company-google": "Alphabet 财报披露的 Google Cloud 业务主体",
+      "company-alphabet": "财报发布方",
+      "person-sundar-pichai": "财报发言人"
+    },
+    "occurred_at": "2026-07-22T00:00:00Z",
+    "source_id": "source-alphabet",
+    "source_url": "https://s206.q4cdn.com/479360582/files/doc_financials/2026/q2/2026q2-alphabet-earnings-release.pdf"
+  },
+  {
+    "id": "signal-20260722-amd-anthropic-mi450-partnership",
+    "type": "partnership",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-anthropic", "company-amd", "person-lisa-su", "person-tom-brown"],
+    "entity_roles": {
+      "company-anthropic": "合作方",
+      "company-amd": "合作方",
+      "person-lisa-su": "公告发言人",
+      "person-tom-brown": "公告发言人"
+    },
+    "occurred_at": "2026-07-22T00:00:00Z",
+    "source_id": "source-amd",
+    "source_url": "https://ir.amd.com/news-events/press-releases/detail/1292/amd-and-anthropic-announce-strategic-partnership-to-deploy-up-to-2-gigawatts-of-amd-instinct-mi450-series-gpus"
+  },
+  {
+    "id": "signal-20260723-intel-q2-results",
+    "type": "market",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-intel", "person-lip-bu-tan", "person-dave-zinsner"],
+    "entity_roles": {
+      "company-intel": "财报发布方",
+      "person-lip-bu-tan": "财报发言人",
+      "person-dave-zinsner": "财报发言人"
+    },
+    "occurred_at": "2026-07-23T00:00:00Z",
+    "source_id": "source-nasdaq",
+    "source_url": "https://www.nasdaq.com/press-release/intel-reports-second-quarter-2026-financial-results-2026-07-23"
+  },
+  {
+    "id": "signal-20260723-us-datacenter-ratepayer-pledge",
+    "type": "policy",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["institution-white-house", "person-donald-trump"],
+    "entity_roles": {
+      "institution-white-house": "政策说明发布方",
+      "person-donald-trump": "承诺扩展推广人"
+    },
+    "occurred_at": "2026-07-23T00:00:00Z",
+    "source_id": "source-white-house",
+    "source_url": "https://www.whitehouse.gov/releases/2026/07/president-trumps-ratepayer-protection-pledge-secures-american-ai-dominance-protects-consumers/"
+  },
+  {
+    "id": "signal-20260723-ai-kill-switch-bill",
+    "type": "regulation",
+    "topics": ["topic-ai-security"],
+    "entities": ["institution-us-house", "person-ted-lieu", "person-nathaniel-moran"],
+    "entity_roles": {
+      "institution-us-house": "议案提交议院",
+      "person-ted-lieu": "法案提出人",
+      "person-nathaniel-moran": "法案提出人"
+    },
+    "occurred_at": "2026-07-23T00:00:00Z",
+    "source_id": "source-ted-lieu",
+    "source_url": "https://lieu.house.gov/media-center/press-releases/reps-lieu-and-moran-introduce-bill-require-kill-switch-ai-systems-can"
+  },
+  {
+    "id": "signal-20260724-nvidia-sk-ai-memory-partnership",
+    "type": "partnership",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": [
+      "company-nvidia",
+      "company-sk-group",
+      "company-sk-hynix",
+      "company-sk-telecom",
+      "person-chey-tae-won",
+      "person-jensen-huang"
+    ],
+    "entity_roles": {
+      "company-nvidia": "合作方",
+      "company-sk-group": "合作方",
+      "company-sk-hynix": "合作方",
+      "company-sk-telecom": "合作方",
+      "person-chey-tae-won": "公告发言人",
+      "person-jensen-huang": "公告发言人"
+    },
+    "occurred_at": "2026-07-24T00:00:00Z",
+    "source_id": "source-nvidia",
+    "source_url": "https://nvidianews.nvidia.com/news/sk-group-and-nvidia-expand-strategic-partnership-across-ai-factories-and-next-generation-memory"
+  },
+  {
+    "id": "signal-20260725-samsung-broadcom-chip-partnership",
+    "type": "partnership",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": [
+      "company-samsung-electronics",
+      "company-broadcom",
+      "person-jinman-han",
+      "person-hock-tan",
+      "person-young-hyun-jun",
+      "person-charlie-kawwas"
+    ],
+    "entity_roles": {
+      "company-samsung-electronics": "合作方",
+      "company-broadcom": "合作方",
+      "person-jinman-han": "公告出席人",
+      "person-hock-tan": "公告出席人",
+      "person-young-hyun-jun": "公告发言人",
+      "person-charlie-kawwas": "公告发言人"
+    },
+    "occurred_at": "2026-07-25T00:00:00Z",
+    "source_id": "source-samsung",
+    "source_url": "https://news.samsung.com/global/samsung-electronics-and-broadcom-expand-strategic-collaboration-across-memory-and-foundry-technologies"
+  },
+  {
+    "id": "signal-20260727-china-us-distillation-response-july",
+    "type": "policy",
+    "topics": ["topic-ai-security"],
+    "entities": ["institution-china-mofcom", "person-michael-kratsios", "person-scott-bessent"],
+    "entity_roles": {
+      "institution-china-mofcom": "回应声明机构",
+      "person-michael-kratsios": "报道引述的美方蒸馏指控发言人",
+      "person-scott-bessent": "报道引述的美方制裁警告发言人"
+    },
+    "occurred_at": "2026-07-27T00:00:00Z",
+    "source_id": "source-ndtv",
+    "source_url": "https://www.ndtv.com/world-news/kimi-k3-moonshot-ai-us-and-china-relations-china-accuses-us-of-ai-hegemonism-amid-tech-theft-allegations-11828406"
+  },
+  {
+    "id": "signal-20260729-skhynix-q2-results",
+    "type": "market",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-sk-hynix", "person-song-hyun-jong"],
+    "entity_roles": {
+      "company-sk-hynix": "财报发布方",
+      "person-song-hyun-jong": "SK 海力士总裁、第二季度业绩电话会发言人"
+    },
+    "occurred_at": "2026-07-29T00:00:00Z",
+    "source_id": "source-sk-hynix",
+    "source_url": "https://news.skhynix.com/en/q2-2026-business-results/"
+  },
+  {
+    "id": "signal-20260728-fcc-robot-inverter-restrictions",
+    "type": "regulation",
+    "topics": ["topic-humanoid-robotics", "topic-ai-security"],
+    "entities": ["institution-fcc", "person-xiang-ligang"],
+    "entity_roles": {
+      "institution-fcc": "限制措施发布机构",
+      "person-xiang-ligang": "报道引述的行业评论人士（非政策制定者）"
+    },
+    "occurred_at": "2026-07-28T00:00:00Z",
+    "source_id": "source-guardian",
+    "source_url": "https://www.theguardian.com/us-news/2026/jul/28/fcc-ban-humanoid-robots-china"
+  },
+  {
+    "id": "signal-20260729-microsoft-fy26-q4-results",
+    "type": "market",
+    "topics": ["topic-ai-infrastructure", "topic-ai-agents"],
+    "entities": ["company-microsoft", "person-satya-nadella", "person-amy-hood"],
+    "entity_roles": {
+      "company-microsoft": "财报发布方",
+      "person-satya-nadella": "财报发言人",
+      "person-amy-hood": "财报发言人"
+    },
+    "occurred_at": "2026-07-29T00:00:00Z",
+    "source_id": "source-microsoft",
+    "source_url": "https://www.microsoft.com/en-us/Investor/earnings/FY-2026-Q4/press-release-webcast"
+  },
+  {
+    "id": "signal-20260729-meta-q2-results",
+    "type": "market",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-meta", "person-mark-zuckerberg"],
+    "entity_roles": {
+      "company-meta": "财报发布方",
+      "person-mark-zuckerberg": "财报发言人"
+    },
+    "occurred_at": "2026-07-29T00:00:00Z",
+    "source_id": "source-meta",
+    "source_url": "https://investor.atmeta.com/investor-news/press-release-details/2026/Meta-Reports-Second-Quarter-2026-Results/default.aspx"
+  },
+  {
+    "id": "signal-20260729-germany-ai-act-implementation",
+    "type": "regulation",
+    "topics": ["topic-ai-security"],
+    "entities": [
+      "institution-german-government",
+      "person-karsten-wildberger",
+      "person-klaus-mueller"
+    ],
+    "entity_roles": {
+      "institution-german-government": "法规变化说明发布方",
+      "person-karsten-wildberger": "德国联邦数字部长、实施公告发言人",
+      "person-klaus-mueller": "德国联邦网络局局长、实施公告发言人"
+    },
+    "occurred_at": "2026-07-29T00:00:00Z",
+    "source_id": "source-german-federal-government",
+    "source_url": "https://www.bundesregierung.de/breg-de/aktuelles/gesetzliche-neuregelungen-2448548"
+  },
+  {
+    "id": "signal-20260730-china-ai-plus-policy-july",
+    "type": "policy",
+    "topics": ["topic-ai-agents"],
+    "entities": ["institution-china-politburo", "person-xi-jinping"],
+    "entity_roles": {
+      "institution-china-politburo": "会议机构",
+      "person-xi-jinping": "会议主持人"
+    },
+    "occurred_at": "2026-07-30T00:00:00Z",
+    "source_id": "source-xinhua",
+    "source_url": "https://www.news.cn/20260730/13ecbfd4cd9b455281a0649232b98ad0/c.html"
+  },
+  {
+    "id": "signal-20260730-amazon-q2-ai-capex",
+    "type": "market",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-amazon", "person-andy-jassy"],
+    "entity_roles": {
+      "company-amazon": "财报发布方",
+      "person-andy-jassy": "财报发言人"
+    },
+    "occurred_at": "2026-07-30T00:00:00Z",
+    "source_id": "source-amazon",
+    "source_url": "https://ir.aboutamazon.com/news-release/news-release-details/2026/Amazon-com-Announces-Second-Quarter-Results/"
+  },
+  {
+    "id": "signal-20260729-semianalysis-lego-datacenters",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": [
+      "person-nicolas-bontigui",
+      "person-eric-junqi-wen",
+      "person-jeremie-eliahou-ontiveros"
+    ],
+    "entity_roles": {
+      "person-nicolas-bontigui": "文章署名作者",
+      "person-eric-junqi-wen": "文章署名作者",
+      "person-jeremie-eliahou-ontiveros": "文章署名作者"
+    },
+    "occurred_at": "2026-07-29T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/the-wild-wild-west-of-lego-datacenters"
+  },
+  {
+    "id": "signal-20260802-eu-ai-act-transparency",
+    "type": "regulation",
+    "topics": ["topic-ai-security"],
+    "entities": ["institution-european-commission", "person-henna-virkkunen"],
+    "entity_roles": {
+      "institution-european-commission": "指南发布方",
+      "person-henna-virkkunen": "欧盟委员会7月20日指南公告发言人（非8月2日条款实施人）"
+    },
+    "occurred_at": "2026-08-02T00:00:00Z",
+    "source_id": "source-european-commission",
+    "source_url": "https://digital-strategy.ec.europa.eu/en/news/commission-publishes-guidelines-transparency-obligations-providers-and-deployers-certain-ai-systems"
+  },
+  {
+    "id": "signal-20260803-semianalysis-kimi-k3-architecture",
+    "type": "research",
+    "topics": ["topic-foundation-models", "topic-ai-infrastructure"],
+    "entities": [
+      "person-kimbo-chen",
+      "person-shubham-choudhari",
+      "person-bryan-shan",
+      "person-dylan-patel"
+    ],
+    "entity_roles": {
+      "person-kimbo-chen": "文章署名作者",
+      "person-shubham-choudhari": "文章署名作者",
+      "person-bryan-shan": "文章署名作者",
+      "person-dylan-patel": "文章署名作者"
+    },
+    "occurred_at": "2026-08-03T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/kimi-k3-the-manos-the-mythos-the"
+  },
+  {
+    "id": "signal-20260803-china-ic-layout-regulation",
+    "type": "regulation",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["institution-china-state-council", "person-li-qiang"],
+    "entity_roles": {
+      "institution-china-state-council": "条例发布机构",
+      "person-li-qiang": "国务院令签署人"
+    },
+    "occurred_at": "2026-08-03T00:00:00Z",
+    "source_id": "source-xinhua",
+    "source_url": "https://www.news.cn/politics/leaders/20260803/ec0d219a3eff49249e43add1de54b139/c.html"
+  },
+  {
+    "id": "signal-20260804-aisi-agent-cyber-evaluation",
+    "type": "security",
+    "topics": ["topic-ai-security"],
+    "entities": ["institution-aisi", "company-anthropic", "company-openai"],
+    "entity_roles": {
+      "institution-aisi": "评估实施与事件披露机构",
+      "company-anthropic": "被测 Mythos 5 模型提供方（非评估实施方）",
+      "company-openai": "被测 GPT-5.6-Sol 模型提供方（非评估实施方）"
+    },
+    "occurred_at": "2026-08-04T00:00:00Z",
+    "source_id": "source-aisi",
+    "source_url": "https://www.aisi.gov.uk/blog/incident-report-unsanctioned-agent-behaviour-during-cyber-testing"
+  },
+  {
+    "id": "signal-20260804-amd-q2-results",
+    "type": "market",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-amd", "person-lisa-su", "person-jean-hu"],
+    "entity_roles": {
+      "company-amd": "财报发布方",
+      "person-lisa-su": "财报发言人",
+      "person-jean-hu": "财报发言人"
+    },
+    "occurred_at": "2026-08-04T00:00:00Z",
+    "source_id": "source-amd",
+    "source_url": "https://ir.amd.com/news-events/press-releases/detail/1295/amd-reports-second-quarter-2026-financial-results"
+  },
+  {
+    "id": "signal-20260806-amd-taalas-acquisition",
+    "type": "acquisition",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-amd", "company-taalas", "person-vamsi-boppana", "person-ljubisa-bajic"],
+    "entity_roles": {
+      "company-amd": "拟收购方",
+      "company-taalas": "拟被收购方",
+      "person-vamsi-boppana": "公告发言人",
+      "person-ljubisa-bajic": "公告发言人"
+    },
+    "occurred_at": "2026-08-06T00:00:00Z",
+    "source_id": "source-amd",
+    "source_url": "https://ir.amd.com/news-events/press-releases/detail/1296/amd-acquires-taalas-to-advance-compute-solutions-for-rapidly-growing-ai-inference-market"
+  },
+  {
+    "id": "signal-20260725-semianalysis-amd-cuda",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["person-bryan-shan", "person-daniel-nishball", "person-myron-xie"],
+    "entity_roles": {
+      "person-bryan-shan": "文章署名作者",
+      "person-daniel-nishball": "文章署名作者",
+      "person-myron-xie": "文章署名作者"
+    },
+    "occurred_at": "2026-07-25T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/can-amd-break-the-cuda-moat-amd-advancing"
+  },
+  {
+    "id": "signal-20260618-semianalysis-datacenter-cancellation",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["person-reyk-knuhtsen", "person-maya-barkin", "person-jeremie-eliahou-ontiveros"],
+    "entity_roles": {
+      "person-reyk-knuhtsen": "文章署名作者",
+      "person-maya-barkin": "文章署名作者",
+      "person-jeremie-eliahou-ontiveros": "文章署名作者"
+    },
+    "occurred_at": "2026-06-18T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/stop-saying-half-of-2026-us-datacenter"
+  },
+  {
+    "id": "signal-20260810-semianalysis-tilert",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["person-bryan-shan", "person-daniel-nishball", "person-cam-quilici"],
+    "entity_roles": {
+      "person-bryan-shan": "文章署名作者",
+      "person-daniel-nishball": "文章署名作者",
+      "person-cam-quilici": "文章署名作者"
+    },
+    "occurred_at": "2026-08-10T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/ultra-high-interactivity-on-nvidia"
+  },
+  {
+    "id": "signal-20260303-semianalysis-pjm-load-forecast",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": [
+      "person-aishwarya-mahesh",
+      "person-jeremie-eliahou-ontiveros",
+      "person-ajey-pandey"
+    ],
+    "entity_roles": {
+      "person-aishwarya-mahesh": "文章署名作者",
+      "person-jeremie-eliahou-ontiveros": "文章署名作者",
+      "person-ajey-pandey": "文章署名作者"
+    },
+    "occurred_at": "2026-03-03T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/are-ai-datacenters-increasing-electric"
+  },
+  {
+    "id": "signal-20260817-ports-pike-announcement",
+    "type": "partnership",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-openai", "person-sam-altman", "person-jensen-huang"],
+    "entity_roles": {
+      "company-openai": "项目加入方",
+      "person-sam-altman": "OpenAI 首席执行官、同日项目合作公告发言人",
+      "person-jensen-huang": "NVIDIA 首席执行官、同日项目合作公告发言人"
+    },
+    "occurred_at": "2026-08-17T00:00:00Z",
+    "source_id": "source-openai",
+    "source_url": "https://openai.com/index/openai-joins-ports-pike-project/"
+  },
+  {
+    "id": "signal-20260820-nvidia-china-lpu-denial",
+    "type": "supply_chain",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-nvidia"],
+    "entity_roles": {
+      "company-nvidia": "否认特制 LPU 传闻的声明方"
+    },
+    "occurred_at": "2026-08-20T00:00:00Z",
+    "source_id": "source-udn",
+    "source_url": "https://money.udn.com/money/amp/story/123398/9704989"
+  },
+  {
+    "id": "signal-20260819-semianalysis-cerebras-cs4",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["person-myron-xie", "person-bryan-shan", "person-wega-chu"],
+    "entity_roles": {
+      "person-myron-xie": "文章署名作者",
+      "person-bryan-shan": "文章署名作者",
+      "person-wega-chu": "文章署名作者"
+    },
+    "occurred_at": "2026-08-19T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/cerebrass-next-generation-cs-4-fast"
+  },
+  {
+    "id": "signal-20260821-nvidia-cloverleaf-investment",
+    "type": "funding",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": [
+      "company-nvidia",
+      "company-cloverleaf-infrastructure",
+      "person-david-berry",
+      "person-nico-caprez"
+    ],
+    "entity_roles": {
+      "company-nvidia": "投资与基础设施合作方",
+      "company-cloverleaf-infrastructure": "合作方",
+      "person-david-berry": "Cloverleaf 联合创始人兼 CEO、公告发言人",
+      "person-nico-caprez": "NVIDIA 副总裁、公告发言人"
+    },
+    "occurred_at": "2026-08-21T00:00:00Z",
+    "source_id": "source-cloverleaf",
+    "source_url": "https://www.cloverleafinfra.com/newsroom/cloverleaf-infrastructure-forms-strategic-partnership-with-nvidia-to-accelerate-data-center-infrastructure-development"
+  },
+  {
+    "id": "signal-20260625-semianalysis-us-grid-btm",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": [
+      "person-jeremie-eliahou-ontiveros",
+      "person-sebastian-orejas",
+      "person-ellie-holbrook",
+      "person-dylan-patel"
+    ],
+    "entity_roles": {
+      "person-jeremie-eliahou-ontiveros": "文章署名作者",
+      "person-sebastian-orejas": "文章署名作者",
+      "person-ellie-holbrook": "文章署名作者",
+      "person-dylan-patel": "文章署名作者"
+    },
+    "occurred_at": "2026-06-25T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/us-grid-constraints-towards-40gw?triedRedirect=true"
+  },
+  {
+    "id": "signal-20260822-nvidia-server-price-report",
+    "type": "supply_chain",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-nvidia"],
+    "entity_roles": {
+      "company-nvidia": "媒体所报道拟调价产品的供应方（调价未获确认）"
+    },
+    "occurred_at": "2026-08-22T00:00:00Z",
+    "source_id": "source-fortune",
+    "source_url": "https://fortune.com/2026/08/22/nvidia-customers-ai-related-price-hikes-15-percent-vera-rubin-grace-blackwell-chips/"
+  },
+  {
+    "id": "signal-20260821-semianalysis-open-models",
+    "type": "research",
+    "topics": ["topic-foundation-models"],
+    "entities": [
+      "person-evan-cloutier",
+      "person-max-kan",
+      "person-jordan-nanos",
+      "person-dylan-patel"
+    ],
+    "entity_roles": {
+      "person-evan-cloutier": "文章署名作者",
+      "person-max-kan": "文章署名作者",
+      "person-jordan-nanos": "文章署名作者",
+      "person-dylan-patel": "文章署名作者"
+    },
+    "occurred_at": "2026-08-21T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/are-open-models-catching-up"
+  },
+  {
+    "id": "signal-20260821-china-next-generation-network-policy",
+    "type": "policy",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["institution-china-state-council", "person-li-qiang"],
+    "entity_roles": {
+      "institution-china-state-council": "会议机构",
+      "person-li-qiang": "会议主持人"
+    },
+    "occurred_at": "2026-08-21T00:00:00Z",
+    "source_id": "source-people",
+    "source_url": "https://cpc.people.com.cn/n1/2026/0822/c64094-40784195.html"
+  },
+  {
+    "id": "signal-20260824-semianalysis-agentx",
+    "type": "research",
+    "topics": ["topic-ai-agents", "topic-ai-infrastructure"],
+    "entities": ["person-cam-quilici", "person-bryan-shan", "person-alec-ibarra"],
+    "entity_roles": {
+      "person-cam-quilici": "文章署名作者",
+      "person-bryan-shan": "文章署名作者",
+      "person-alec-ibarra": "文章署名作者"
+    },
+    "occurred_at": "2026-08-24T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/agentx-inferencexv3-does-cuda-moat"
+  },
+  {
+    "id": "signal-20260825-openai-jalapeno-results",
+    "type": "technology",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-openai", "person-richard-ho"],
+    "entity_roles": {
+      "company-openai": "Jalapeño 芯片及测试结果披露方",
+      "person-richard-ho": "OpenAI 硬件副总裁、首批结果介绍人"
+    },
+    "occurred_at": "2026-08-25T00:00:00Z",
+    "source_id": "source-openai",
+    "source_url": "https://openai.com/index/jalapeno-first-results/"
+  },
+  {
+    "id": "signal-20260825-waymo-munich-testing",
+    "type": "product",
+    "topics": ["topic-autonomous-systems"],
+    "entities": ["company-waymo", "person-tekedra-mawakana"],
+    "entity_roles": {
+      "company-waymo": "测试计划公告方",
+      "person-tekedra-mawakana": "公告发言人"
+    },
+    "occurred_at": "2026-08-25T00:00:00Z",
+    "source_id": "source-waymo",
+    "source_url": "https://waymo.com/blog/2026/08/waymo-in-munich"
+  },
+  {
+    "id": "signal-20260825-semianalysis-jalapeno",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-openai", "person-bryan-shan", "person-myron-xie", "person-jordan-nanos"],
+    "entity_roles": {
+      "company-openai": "研究分析的 Jalapeño 芯片开发方（非文章发布方）",
+      "person-bryan-shan": "文章署名作者",
+      "person-myron-xie": "文章署名作者",
+      "person-jordan-nanos": "文章署名作者"
+    },
+    "occurred_at": "2026-08-25T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/openai-jalapeno-better-than-nvidia"
+  },
+  {
+    "id": "signal-20260826-nvidia-fy27-q2-results",
+    "type": "market",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-nvidia", "person-jensen-huang"],
+    "entity_roles": {
+      "company-nvidia": "财报发布方",
+      "person-jensen-huang": "财报发言人"
+    },
+    "occurred_at": "2026-08-26T00:00:00Z",
+    "source_id": "source-nvidia",
+    "source_url": "https://nvidianews.nvidia.com/news/nvidia-announces-financial-results-for-second-quarter-fiscal-2027"
+  },
+  {
+    "id": "signal-20260827-skhynix-indiana-groundbreaking",
+    "type": "supply_chain",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-sk-hynix", "person-kwak-noh-jung"],
+    "entity_roles": {
+      "company-sk-hynix": "项目建设方",
+      "person-kwak-noh-jung": "奠基仪式出席人"
+    },
+    "occurred_at": "2026-08-27T00:00:00Z",
+    "source_id": "source-sk-hynix",
+    "source_url": "https://news.skhynix.com/en/groundbreaking-ceremony-in-indiana/"
+  },
+  {
+    "id": "signal-20260816-semianalysis-pjm-modeling",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": [
+      "person-robert-boswall",
+      "person-reyk-knuhtsen",
+      "person-jeremie-eliahou-ontiveros"
+    ],
+    "entity_roles": {
+      "person-robert-boswall": "文章署名作者",
+      "person-reyk-knuhtsen": "文章署名作者",
+      "person-jeremie-eliahou-ontiveros": "文章署名作者"
+    },
+    "occurred_at": "2026-08-16T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/12b-of-us-ratepayers-money-wasted"
+  },
+  {
+    "id": "signal-20260828-ndrc-robotics-development",
+    "type": "policy",
+    "topics": ["topic-humanoid-robotics"],
+    "entities": ["institution-china-ndrc", "person-li-chao"],
+    "entity_roles": {
+      "institution-china-ndrc": "政策发言机构",
+      "person-li-chao": "政策发言人"
+    },
+    "occurred_at": "2026-08-28T00:00:00Z",
+    "source_id": "source-yicai",
+    "source_url": "https://www.yicai.com/news/103338113.html"
+  },
+  {
+    "id": "signal-20260828-openai-cursor-service-termination-plan",
+    "type": "product",
+    "topics": ["topic-ai-agents"],
+    "entities": ["company-openai", "person-elon-musk"],
+    "entity_roles": {
+      "company-openai": "拟终止模型服务合同的公告方（尚未停止服务）",
+      "person-elon-musk": "OpenAI 公告提及的 SpaceX 相关人物（非终止合同决策者；违约为 OpenAI 主张）"
+    },
+    "occurred_at": "2026-08-28T00:00:00Z",
+    "source_id": "source-openai",
+    "source_url": "https://openai.com/index/our-decision-on-cursor-following-its-acquisition-by-spacex/"
+  },
+  {
+    "id": "signal-20260829-cxmt-lpddr6-production",
+    "type": "supply_chain",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-cxmt", "person-lei-jun"],
+    "entity_roles": {
+      "company-cxmt": "产品公告方",
+      "person-lei-jun": "小米董事长、就量产与终端适配发言"
+    },
+    "occurred_at": "2026-08-29T00:00:00Z",
+    "source_id": "source-securities-times",
+    "source_url": "https://www.stcn.com/article/detail/4161405.html"
+  },
+  {
+    "id": "signal-20260807-semianalysis-gcp-model-economics",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": [
+      "company-google",
+      "person-max-kan",
+      "person-joey-brookhart",
+      "person-doug-olaughlin",
+      "person-dylan-patel"
+    ],
+    "entity_roles": {
+      "company-google": "GCP 与第一方模型业务的研究分析对象（非文章发布方）",
+      "person-max-kan": "文章署名作者",
+      "person-joey-brookhart": "文章署名作者",
+      "person-doug-olaughlin": "文章署名作者",
+      "person-dylan-patel": "文章署名作者"
+    },
+    "occurred_at": "2026-08-07T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/gemini-is-cooked-but-gcp-is-cooking"
+  },
+  {
+    "id": "signal-20260829-nda-compute-capacity-july",
+    "type": "market",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["institution-china-nda", "person-liu-liehong"],
+    "entity_roles": {
+      "institution-china-nda": "数据发布机构",
+      "person-liu-liehong": "数据发布发言人"
+    },
+    "occurred_at": "2026-08-29T00:00:00Z",
+    "source_id": "source-national-data-administration",
+    "source_url": "https://www.nda.gov.cn/sjj/jgsz/jld/llh/llhldhd/0829/20260829150055779816795_pc.html"
+  },
+  {
+    "id": "signal-20260831-fsb-frontier-ai-letter",
+    "type": "policy",
+    "topics": ["topic-ai-security"],
+    "entities": ["institution-fsb", "person-andrew-bailey"],
+    "entity_roles": {
+      "institution-fsb": "信函发布机构",
+      "person-andrew-bailey": "信函署名主席"
+    },
+    "occurred_at": "2026-08-31T00:00:00Z",
+    "source_id": "source-fsb",
+    "source_url": "https://www.fsb.org/2026/08/fsb-chairs-letter-to-g20-finance-ministers-and-central-bank-governors-august-2026/"
+  },
+  {
+    "id": "signal-20260830-semianalysis-neocloud-security",
+    "type": "research",
+    "topics": ["topic-ai-security", "topic-ai-infrastructure"],
+    "entities": ["person-jordan-nanos", "person-sam-harshe", "person-pratt-bhatt"],
+    "entity_roles": {
+      "person-jordan-nanos": "文章署名作者",
+      "person-sam-harshe": "文章署名作者",
+      "person-pratt-bhatt": "文章署名作者"
+    },
+    "occurred_at": "2026-08-30T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/most-neoclouds-suck-at-security"
+  },
+  {
+    "id": "signal-20260831-nvidia-mediatek-partnership",
+    "type": "partnership",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-nvidia", "company-mediatek", "person-jensen-huang", "person-rick-tsai"],
+    "entity_roles": {
+      "company-nvidia": "合作与投资公告方",
+      "company-mediatek": "合作方",
+      "person-jensen-huang": "公告发言人",
+      "person-rick-tsai": "公告发言人"
+    },
+    "occurred_at": "2026-08-31T00:00:00Z",
+    "source_id": "source-nvidia",
+    "source_url": "https://nvidianews.nvidia.com/news/nvidia-and-mediatek-deepen-long-standing-partnership-to-build-ai-edge-to-cloud-computing-platforms"
+  },
+  {
+    "id": "signal-20260901-openai-astra-critical-cyber",
+    "type": "security",
+    "topics": ["topic-ai-security", "topic-foundation-models"],
+    "entities": ["company-openai", "person-amelia-glaese", "person-fouad-matin"],
+    "entity_roles": {
+      "company-openai": "安全能力分级披露机构",
+      "person-amelia-glaese": "OpenAI 研究副总裁、安全能力分级简报发言人",
+      "person-fouad-matin": "OpenAI 研究员、安全限制简报发言人"
+    },
+    "occurred_at": "2026-09-01T00:00:00Z",
+    "source_id": "source-openai",
+    "source_url": "https://openai.com/index/path-to-astra/"
+  },
+  {
+    "id": "signal-20260901-semianalysis-korea-sovereign-ai",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["person-max-kan", "person-ray-wang", "person-myron-xie", "person-dylan-patel"],
+    "entity_roles": {
+      "person-max-kan": "文章署名作者",
+      "person-ray-wang": "文章署名作者",
+      "person-myron-xie": "文章署名作者",
+      "person-dylan-patel": "文章署名作者"
+    },
+    "occurred_at": "2026-09-01T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/koreas-trillion-dollar-sovereign"
+  },
+  {
+    "id": "signal-20260903-enflame-ipo-subscription",
+    "type": "funding",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["company-enflame", "person-zhao-lidong", "person-zhang-yalin"],
+    "entity_roles": {
+      "company-enflame": "IPO发行人",
+      "person-zhao-lidong": "燧原科技董事长、同次 IPO 的9月1日路演发言人（非9月3日公告署名人）",
+      "person-zhang-yalin": "燧原科技总经理、同次 IPO 的9月1日路演发言人（非9月3日公告署名人）"
+    },
+    "occurred_at": "2026-09-03T00:00:00Z",
+    "source_id": "source-sina-disclosures",
+    "source_url": "https://vip.stock.finance.sina.com.cn/corp/view/vCB_AllBulletinDetail.php?CompanyCode=81112134&gather=1&id=12581361"
+  },
+  {
+    "id": "signal-20260902-china-ic-production-statistics",
+    "type": "market",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["person-li-chao", "person-wang-yanhui"],
+    "entity_roles": {
+      "person-li-chao": "报道受访政策官员",
+      "person-wang-yanhui": "报道受访行业人士"
+    },
+    "occurred_at": "2026-09-02T00:00:00Z",
+    "source_id": "source-xinhua",
+    "source_url": "https://www.news.cn/tech/20260902/4aa4d250a48847df83f12ab0e4901392/c.html"
+  },
+  {
+    "id": "signal-20260903-openai-gpt6-astra-launch",
+    "type": "product",
+    "topics": ["topic-foundation-models"],
+    "entities": ["company-openai", "person-silas-alberti", "person-alex-mashrabov"],
+    "entity_roles": {
+      "company-openai": "模型发布方",
+      "person-silas-alberti": "Cognition 早期体验发言人",
+      "person-alex-mashrabov": "Higgsfield AI 早期体验发言人"
+    },
+    "occurred_at": "2026-09-03T00:00:00Z",
+    "source_id": "source-openai",
+    "source_url": "https://openai.com/index/gpt-6-astra/"
+  },
+  {
+    "id": "signal-20260903-nvidia-huggingface-acquisition-agreement",
+    "type": "acquisition",
+    "topics": ["topic-foundation-models", "topic-ai-infrastructure"],
+    "entities": ["company-nvidia", "company-hugging-face", "person-jensen-huang"],
+    "entity_roles": {
+      "company-nvidia": "拟收购方（协议未交割）",
+      "company-hugging-face": "拟被收购方",
+      "person-jensen-huang": "NVIDIA 收购协议公告署名作者"
+    },
+    "occurred_at": "2026-09-03T00:00:00Z",
+    "source_id": "source-nvidia",
+    "source_url": "https://blogs.nvidia.com/blog/nvidia-to-acquire-hugging-face/"
+  },
+  {
+    "id": "signal-20260905-us-china-ai-talks-september-report",
+    "type": "policy",
+    "topics": ["topic-ai-security"],
+    "entities": ["person-paul-triolo"],
+    "entity_roles": {
+      "person-paul-triolo": "报道引述的 AI 政策评论人士（非会谈代表）"
+    },
+    "occurred_at": "2026-09-05T00:00:00Z",
+    "source_id": "source-udn",
+    "source_url": "https://udn.com/news/story/6809/9735837"
+  },
+  {
+    "id": "signal-20260906-openai-research-acceleration",
+    "type": "research",
+    "topics": ["topic-ai-agents"],
+    "entities": ["company-openai", "person-jakub-pachocki"],
+    "entity_roles": {
+      "company-openai": "内部科研自动化进展披露机构",
+      "person-jakub-pachocki": "OpenAI 首席科学家、相关研究方向阐述者（非本报告署名作者或已确认项目负责人）"
+    },
+    "occurred_at": "2026-09-06T00:00:00Z",
+    "source_id": "source-openai",
+    "source_url": "https://openai.com/index/research-acceleration-view-inside-openai/"
+  },
+  {
+    "id": "signal-20260906-openai-safety-threshold-essay",
+    "type": "policy",
+    "topics": ["topic-ai-security"],
+    "entities": ["company-openai", "person-jakub-pachocki"],
+    "entity_roles": {
+      "company-openai": "文章发布机构",
+      "person-jakub-pachocki": "OpenAI 首席科学家、文章署名作者"
+    },
+    "occurred_at": "2026-09-06T00:00:00Z",
+    "source_id": "source-openai",
+    "source_url": "https://openai.com/index/an-alien-mind/"
+  },
+  {
+    "id": "signal-20260907-semianalysis-tpu-inferencex",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": ["person-alec-ibarra", "person-cam-quilici", "person-bryan-shan"],
+    "entity_roles": {
+      "person-alec-ibarra": "文章署名作者",
+      "person-cam-quilici": "文章署名作者",
+      "person-bryan-shan": "文章署名作者"
+    },
+    "occurred_at": "2026-09-07T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/tpu-inferencex-full-steam"
+  },
+  {
+    "id": "signal-20260908-openai-navier-stokes-candidate",
+    "type": "research",
+    "topics": ["topic-ai-agents"],
+    "entities": ["company-openai", "person-sebastien-bubeck"],
+    "entity_roles": {
+      "company-openai": "候选证明材料公开机构（非数学成果认证方）",
+      "person-sebastien-bubeck": "OpenAI 研究员、成果公开前对外沟通者（非候选证明作者）"
+    },
+    "occurred_at": "2026-09-08T00:00:00Z",
+    "source_id": "source-openai",
+    "source_url": "https://openai.com/index/navier-stokes-solution/"
+  },
+  {
+    "id": "signal-20260908-amazon-qualcomm-ai-chips",
+    "type": "partnership",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": [
+      "company-amazon",
+      "company-qualcomm",
+      "person-cristiano-amon",
+      "person-prasad-kalyanaraman"
+    ],
+    "entity_roles": {
+      "company-amazon": "合作方",
+      "company-qualcomm": "合作方",
+      "person-cristiano-amon": "公告发言人",
+      "person-prasad-kalyanaraman": "公告发言人"
+    },
+    "occurred_at": "2026-09-08T00:00:00Z",
+    "source_id": "source-qualcomm",
+    "source_url": "https://www.qualcomm.com/news/releases/2026/09/qualcomm-announces-multi-generational-product-collaboration-with"
+  },
+  {
+    "id": "signal-20260910-chatgpt-financial-services",
+    "type": "product",
+    "topics": ["topic-ai-agents"],
+    "entities": ["company-openai", "product-chatgpt", "person-jager-mcconnell", "person-thomas-li"],
+    "entity_roles": {
+      "company-openai": "产品发布方",
+      "person-jager-mcconnell": "Crunchbase CEO、数据合作方发言人",
+      "person-thomas-li": "Daloopa CEO、数据合作方发言人"
+    },
+    "occurred_at": "2026-09-10T00:00:00Z",
+    "source_id": "source-openai",
+    "source_url": "https://openai.com/index/introducing-chatgpt-financial-services/"
+  },
+  {
+    "id": "signal-20260910-semianalysis-btm-power",
+    "type": "research",
+    "topics": ["topic-ai-infrastructure"],
+    "entities": [
+      "person-ellie-holbrook",
+      "person-robert-boswall",
+      "person-jeremie-eliahou-ontiveros"
+    ],
+    "entity_roles": {
+      "person-ellie-holbrook": "文章署名作者",
+      "person-robert-boswall": "文章署名作者",
+      "person-jeremie-eliahou-ontiveros": "文章署名作者"
+    },
+    "occurred_at": "2026-09-10T00:00:00Z",
+    "source_id": "source-semianalysis",
+    "source_url": "https://newsletter.semianalysis.com/p/what-is-so-hard-about-behind-the"
+  }
+]

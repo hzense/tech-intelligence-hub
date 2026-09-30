@@ -2,7 +2,8 @@
  * Reviewed, identity-specific introductions for the public resource directory.
  * A source must identify the person and directly support the stated role or work.
  * Do not infer current employment from an article byline or a co-mentioned Signal.
- * Reviewed 2026-09-27; mutable offices should be rechecked periodically.
+ * Reviewed 2026-09-27; additions reviewed 2026-09-29.
+ * Mutable offices should be rechecked periodically.
  */
 export const personProfiles: Readonly<Record<string, { introduction: string; sourceUrl: string }>> =
   {
@@ -454,5 +455,13 @@ export const personProfiles: Readonly<Record<string, { introduction: string; sou
     'person-sebastien-bubeck': {
       introduction: 'Sébastien Bubeck 是人工智能研究者，研究大语言模型推理与数学能力。',
       sourceUrl: 'https://www.pacm.princeton.edu/events/recent-advances-llms-mathematics',
+    },
+    'person-zhang-xiaohua': {
+      introduction: '张晓花担任四川顺芯半导体科技有限公司总经理。',
+      sourceUrl: 'https://www.news.cn/tech/20260902/4aa4d250a48847df83f12ab0e4901392/c.html',
+    },
+    'person-chen-cheng': {
+      introduction: '陈程担任江苏扬贺扬微电子科技有限公司运营总监。',
+      sourceUrl: 'https://www.news.cn/tech/20260902/4aa4d250a48847df83f12ab0e4901392/c.html',
     },
   };

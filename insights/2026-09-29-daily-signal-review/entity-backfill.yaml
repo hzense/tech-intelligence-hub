@@ -1,0 +1,83 @@
+# 每个角色的原文与边界见 existing-entities-review.md 的 S01–S25。
+# 只补正文核心参与方/研究对象，来源平台不是事件组织。
+entities:
+  - { id: company-oracle, type: company, name: Oracle, status: active }
+  - { id: company-coreweave, type: company, name: CoreWeave, status: active }
+  - { id: company-pjm-interconnection, type: company, name: PJM Interconnection, status: active }
+  - { id: company-cerebras, type: company, name: Cerebras Systems, status: active }
+  - {
+      id: company-sichuan-shunxin-semiconductor,
+      type: company,
+      name: 四川顺芯半导体科技有限公司,
+      status: active,
+    }
+  - {
+      id: company-jiangsu-yangheyang-microelectronics,
+      type: company,
+      name: 江苏扬贺扬微电子科技有限公司,
+      status: active,
+    }
+  - { id: company-vertiv, type: company, name: Vertiv, status: active }
+  - { id: company-ge-vernova, type: company, name: GE Vernova, status: active }
+  - { id: company-siemens-energy, type: company, name: Siemens Energy, status: active }
+  - { id: person-zhang-xiaohua, type: person, name: 张晓花, status: active }
+  - { id: person-chen-cheng, type: person, name: 陈程, status: active }
+  - { id: company-sb-energy, type: company, name: SB Energy, status: active }
+  - { id: institution-us-doe, type: institution, name: U.S. Department of Energy, status: active }
+roles:
+  signal-20260817-ports-pike-announcement:
+    company-sb-energy: 数据中心建设、拥有和运营方及租赁出租方
+    company-nvidia: 计算基础设施供应、拟议投资与初期建设信用支持方
+    institution-us-doe: 前 Portsmouth 场地与基础设施合作机构
+  signal-20260729-semianalysis-lego-datacenters:
+    company-amazon: AWS 模块化数据中心设计的研究对象（非文章作者）
+    company-meta: Prometheus 模块化机房案例的研究对象（非文章作者）
+    company-vertiv: 模块化电力、制冷与数据中心方案的研究对象
+  signal-20260803-semianalysis-kimi-k3-architecture:
+    company-moonshot-ai: 被分析的 Kimi K3 模型及 FlashKDA 内核研发方
+  signal-20260725-semianalysis-amd-cuda:
+    company-amd: 被分析的 GPU、ROCm 软件与机架方案供应方
+    company-nvidia: CUDA 生态及 GPU 架构的对比研究对象
+  signal-20260618-semianalysis-datacenter-cancellation:
+    company-oracle: Project Jupiter 数据中心延期与许可案例的研究对象（延期结论为作者判断）
+    company-coreweave: 所用数据中心交付延期案例的研究对象
+  signal-20260810-semianalysis-tilert:
+    company-nvidia: TileRT 测试使用的 GPU 硬件供应方（非 TileRT 软件作者）
+    company-cerebras: 低延迟推理专用硬件的对比研究对象
+  signal-20260303-semianalysis-pjm-load-forecast:
+    company-pjm-interconnection: 容量拍卖、负荷预测及电价机制的研究对象（非政府监管机构）
+  signal-20260819-semianalysis-cerebras-cs4:
+    company-cerebras: 被分析的 CS-4 系统研发与供应方（非文章作者）
+  signal-20260625-semianalysis-us-grid-btm:
+    company-pjm-interconnection: 电网接入、容量认定和可靠容量约束的案例研究对象
+  signal-20260821-semianalysis-open-models:
+    company-moonshot-ai: Kimi 系列开放模型能力演进的研究对象
+    company-openai: GPT 系列对比模型供应方
+    company-anthropic: Claude 系列与代理产品对比研究对象
+  signal-20260824-semianalysis-agentx:
+    company-amd: AgentX 测试中的 GPU 与 ATOM 推理软件供应方
+    company-nvidia: AgentX 测试中的 GPU 与推理软件对比对象
+  signal-20260816-semianalysis-pjm-modeling:
+    company-pjm-interconnection: 可靠容量模型与拍卖设计的研究对象（非已被裁定违规的机构）
+  signal-20260830-semianalysis-neocloud-security:
+    company-microsoft: 文中 Azure 特定环境安全检查的被测服务供应方
+    company-coreweave: 文中特定环境安全检查比较的被测云服务供应方
+  signal-20260901-semianalysis-korea-sovereign-ai:
+    company-nvidia: 韩国主权 AI 算力供应及价值分配的研究对象
+    company-sk-hynix: 韩国主权 AI 内存供应及价值分配的研究对象
+    company-samsung-electronics: 韩国主权 AI 基础设施及供应链的研究对象
+  signal-20260902-china-ic-production-statistics:
+    institution-china-ndrc: 报道受访官员所属政策机构（非统计数据的唯一发布者）
+    company-sichuan-shunxin-semiconductor: 报道实地采访的芯片封装生产企业
+    company-jiangsu-yangheyang-microelectronics: 报道采访的存储芯片研发设计与销售企业
+    person-zhang-xiaohua: 四川顺芯半导体总经理、报道受访企业负责人
+    person-chen-cheng: 江苏扬贺扬微电子运营总监、报道受访企业负责人
+  signal-20260905-us-china-ai-talks-september-report:
+    institution-white-house: 报道引述的会期回应机构（当时否认已安排相关会议，非会谈已举行的证明）
+  signal-20260907-semianalysis-tpu-inferencex:
+    company-google: 被测 Ironwood TPU 及云服务供应方
+    company-nvidia: B200/B300 GPU 推理对比对象
+  signal-20260910-semianalysis-btm-power:
+    company-oracle: Project Jupiter 表后电力许可与方案调整案例的研究对象
+    company-ge-vernova: 文中燃气轮机供给与订单的研究对象（非全部容量的承建方）
+    company-siemens-energy: 文中燃气轮机供给与订单的研究对象（非全部容量的承建方）

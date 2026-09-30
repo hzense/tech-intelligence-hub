@@ -228,3 +228,457 @@
     status: active,
   }
 - { id: dataset-swe-bench, type: dataset, name: SWE-bench, status: active }
+
+# 2026-09-29 日报全量复审：正文支持的实体，角色证据见本批 existing-entities-review.md。
+- id: company-oracle
+  type: company
+  name: Oracle
+  status: active
+- id: company-coreweave
+  type: company
+  name: CoreWeave
+  status: active
+- id: company-pjm-interconnection
+  type: company
+  name: PJM Interconnection
+  status: active
+- id: company-cerebras
+  type: company
+  name: Cerebras Systems
+  status: active
+- id: company-sichuan-shunxin-semiconductor
+  type: company
+  name: 四川顺芯半导体科技有限公司
+  status: active
+- id: company-jiangsu-yangheyang-microelectronics
+  type: company
+  name: 江苏扬贺扬微电子科技有限公司
+  status: active
+- id: company-vertiv
+  type: company
+  name: Vertiv
+  status: active
+- id: company-ge-vernova
+  type: company
+  name: GE Vernova
+  status: active
+- id: company-siemens-energy
+  type: company
+  name: Siemens Energy
+  status: active
+- id: person-zhang-xiaohua
+  type: person
+  name: 张晓花
+  status: active
+- id: person-chen-cheng
+  type: person
+  name: 陈程
+  status: active
+- { id: company-sb-energy, type: company, name: SB Energy, status: active }
+- { id: institution-us-doe, type: institution, name: U.S. Department of Energy, status: active }
+
+- id: company-tsmc
+  type: company
+  name: TSMC
+  status: active
+- id: person-cc-wei
+  type: person
+  name: C. C. Wei
+  status: active
+- id: institution-china-miit
+  type: institution
+  name: Ministry of Industry and Information Technology of China
+  status: active
+- id: person-sun-hang
+  type: person
+  name: 孙航
+  status: active
+- id: company-softbank-group
+  type: company
+  name: SoftBank Group
+  status: active
+- id: person-yoshimitsu-goto
+  type: person
+  name: Yoshimitsu Goto
+  status: active
+- id: person-angela-yeung
+  type: person
+  name: Angela Yeung
+  status: active
+- id: person-eric-gardner
+  type: person
+  name: Eric Gardner
+  status: active
+- id: institution-keelung-prosecutors
+  type: institution
+  name: Taiwan Keelung District Prosecutors Office
+  status: active
+- id: person-hsiao-yong-li
+  type: person
+  name: 蕭詠勵
+  status: active
+- id: person-oliver-kennon
+  type: person
+  name: Oliver Kennon
+  status: active
+- id: person-terence-ong
+  type: person
+  name: Terence Ong
+  status: active
+- id: company-tcs
+  type: company
+  name: Tata Consultancy Services
+  status: active
+- id: company-hypervault
+  type: company
+  name: TCS HyperVault
+  status: active
+- id: person-revanth-reddy
+  type: person
+  name: A. Revanth Reddy
+  status: active
+- id: company-mistral
+  type: company
+  name: Mistral AI
+  status: active
+- id: institution-scaleup-europe-fund
+  type: institution
+  name: Scaleup Europe Fund
+  status: active
+- id: company-psg-equity
+  type: company
+  name: PSG Equity
+  status: active
+- id: person-arthur-mensch
+  type: person
+  name: Arthur Mensch
+  status: active
+- id: company-asml
+  type: company
+  name: ASML
+  status: active
+- id: person-christophe-fouquet
+  type: person
+  name: Christophe Fouquet
+  status: active
+- id: company-cohere
+  type: company
+  name: Cohere
+  status: active
+- id: company-aleph-alpha
+  type: company
+  name: Aleph Alpha
+  status: active
+- id: person-ilhan-scheer
+  type: person
+  name: Ilhan Scheer
+  status: active
+- id: company-accenture
+  type: company
+  name: Accenture
+  status: active
+- id: person-julie-sweet
+  type: person
+  name: Julie Sweet
+  status: active
+- id: person-marc-warner
+  type: person
+  name: Marc Warner
+  status: active
+- id: company-alibaba-group
+  type: company
+  name: Alibaba Group
+  status: active
+- id: company-t-head
+  type: company
+  name: T-Head
+  status: active
+- id: person-eddie-wu
+  type: person
+  name: Eddie Wu
+  status: active
+- id: person-fabian-hedin
+  type: person
+  name: Fabian Hedin
+  status: active
+- id: person-aleksandar-mitic
+  type: person
+  name: Aleksandar Mitic
+  status: active
+- id: company-palo-alto-networks
+  type: company
+  name: Palo Alto Networks
+  status: active
+- id: person-sam-rubin
+  type: person
+  name: Sam Rubin
+  status: active
+- id: person-mccall-mcintyre
+  type: person
+  name: McCall McIntyre
+  status: active
+- id: person-michael-moore
+  type: person
+  name: Michael Moore
+  status: active
+- id: company-deepseek
+  type: company
+  name: DeepSeek
+  status: active
+- id: institution-services-australia
+  type: institution
+  name: Services Australia
+  status: active
+- id: person-anthony-albanese
+  type: person
+  name: Anthony Albanese
+  status: active
+- id: institution-australian-signals-directorate
+  type: institution
+  name: Australian Signals Directorate
+  status: active
+- id: person-jialiang-huang
+  type: person
+  name: Jialiang Huang
+  status: active
+- id: person-hongxuan-tang
+  type: person
+  name: Hongxuan Tang
+  status: active
+- id: person-jingchang-chen
+  type: person
+  name: Jingchang Chen
+  status: active
+- id: person-samuel-kruse
+  type: person
+  name: Samuel Kruse
+  status: active
+- id: company-nebius
+  type: company
+  name: Nebius
+  status: active
+- id: company-planet
+  type: company
+  name: Planet Labs
+  status: active
+- id: person-travis-beals
+  type: person
+  name: Travis Beals
+  status: active
+- id: person-tanj-bennett
+  type: person
+  name: Tanj Bennett
+  status: active
+- id: person-jared-spataro
+  type: person
+  name: Jared Spataro
+  status: active
+- id: company-bytedance
+  type: company
+  name: ByteDance
+  status: active
+- id: person-everlyn
+  type: person
+  name: Everlyn
+  status: active
+- id: person-patrick-schaabi
+  type: person
+  name: Patrick Schaabi
+  status: active
+- id: company-akamai
+  type: company
+  name: Akamai Technologies
+  status: active
+- id: person-tom-leighton
+  type: person
+  name: Tom Leighton
+  status: active
+- id: person-adith-shankar
+  type: person
+  name: Adith Shankar
+  status: active
+- id: person-daniel-sanchez
+  type: person
+  name: Daniel Sanchez
+  status: active
+- id: person-allison-elliott
+  type: person
+  name: Allison Elliott
+  status: active
+- id: company-world-labs
+  type: company
+  name: World Labs
+  status: active
+- id: person-fei-fei-li
+  type: person
+  name: Fei-Fei Li
+  status: active
+
+- id: institution-national-council-social-security-fund
+  type: institution
+  name: 全国社会保障基金理事会
+  status: active
+- id: company-china-structural-reform-fund-ii
+  type: company
+  name: 中国国有企业结构调整基金二期股份有限公司
+  status: active
+- id: company-picc-property-casualty
+  type: company
+  name: 中国人民财产保险股份有限公司
+  status: active
+- id: company-china-life-insurance
+  type: company
+  name: 中国人寿保险股份有限公司
+  status: active
+- id: company-china-post-life-insurance
+  type: company
+  name: 中邮人寿保险股份有限公司
+  status: active
+- id: company-taikang-life-insurance
+  type: company
+  name: 泰康人寿保险有限责任公司
+  status: active
+- id: company-chongqing-transsion-technology
+  type: company
+  name: 重庆传音科技有限公司
+  status: active
+- id: company-shanghai-lanqi-hongli
+  type: company
+  name: 上海澜起红利企业管理合伙企业（有限合伙）
+  status: active
+- id: company-xian-eswin-material-technology
+  type: company
+  name: 西安奕斯伟材料科技股份有限公司
+  status: active
+- id: company-piotech
+  type: company
+  name: 拓荆科技股份有限公司
+  status: active
+- id: company-anji-microelectronics-shanghai
+  type: company
+  name: 安集微电子科技（上海）股份有限公司
+  status: active
+- id: company-tongfu-microelectronics
+  type: company
+  name: 通富微电子股份有限公司
+  status: active
+- id: company-amec-shanghai
+  type: company
+  name: 中微半导体（上海）有限公司
+  status: active
+- id: company-beijing-etown-semiconductor
+  type: company
+  name: 北京屹唐半导体科技股份有限公司
+  status: active
+- id: company-huaqin-technology
+  type: company
+  name: 华勤技术股份有限公司
+  status: active
+- id: company-shanghai-silicon-industry-group
+  type: company
+  name: 上海硅产业集团股份有限公司
+  status: active
+- id: company-wuhan-yibayiling
+  type: company
+  name: 武汉壹捌壹零企业管理有限公司
+  status: active
+- id: company-tcl-technology-group
+  type: company
+  name: TCL 科技集团股份有限公司
+  status: active
+- id: company-nio-power-technology-hefei
+  type: company
+  name: 蔚来动力科技（合肥）有限公司
+  status: active
+- id: company-shenzhen-sankuai-network
+  type: company
+  name: 深圳三快网络科技有限公司
+  status: active
+- id: company-shanghai-haoyu-information
+  type: company
+  name: 上海灏裕信息科技有限公司
+  status: active
+- id: company-hangzhou-aliyun-feitian
+  type: company
+  name: 杭州阿里云飞天信息技术有限公司
+  status: active
+- id: company-zte-corporation
+  type: company
+  name: 中兴通讯股份有限公司
+  status: active
+- id: company-chery-intelligent-auto-hefei
+  type: company
+  name: 奇瑞智能汽车科技（合肥）有限公司
+  status: active
+- id: company-cicc-wealth-management
+  type: company
+  name: 中国中金财富证券有限公司
+  status: active
+- id: company-csc-investment
+  type: company
+  name: 中信建投投资有限公司
+  status: active
+- id: person-malin-andersson
+  type: person
+  name: Malin Andersson
+  status: active
+- id: person-johannes-breckenfelder
+  type: person
+  name: Johannes Breckenfelder
+  status: active
+- id: person-stefano-corradin
+  type: person
+  name: Stefano Corradin
+  status: active
+- id: person-kalin-nikolov
+  type: person
+  name: Kalin Nikolov
+  status: active
+- id: person-maria-antonietta-viola
+  type: person
+  name: Maria Antonietta Viola
+  status: active
+- id: company-unitree
+  type: company
+  name: Unitree Robotics
+  status: active
+- id: company-cnpc-kunlun-capital
+  type: company
+  name: 中国石油集团昆仑资本有限公司
+  status: active
+- id: company-csg-finance-holdings
+  type: company
+  name: 南方电网产融控股集团有限公司
+  status: active
+- id: company-tianyi-capital-holdings
+  type: company
+  name: 天翼资本控股有限公司
+  status: active
+- id: company-shanghai-qishan-investment
+  type: company
+  name: 上海启善投资有限公司
+  status: active
+- id: company-citic-securities-investment
+  type: company
+  name: 中信证券投资有限公司
+  status: active
+- id: institution-nsa
+  type: institution
+  name: National Security Agency
+  status: active
+- id: institution-fbi
+  type: institution
+  name: Federal Bureau of Investigation
+  status: active
+- id: institution-cisa
+  type: institution
+  name: Cybersecurity and Infrastructure Security Agency
+  status: active
+- id: person-marina-favaro
+  type: person
+  name: Marina Favaro
+  status: active
+- id: person-phillie-wright
+  type: person
+  name: Phillie Wright
+  status: active

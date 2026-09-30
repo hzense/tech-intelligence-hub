@@ -1,0 +1,89 @@
+# 逐条人工语义复审；不是按关键词自动贴标签。type 保留单一事件类型。
+# 依据为既有标题、摘要及来源。标签是编辑分类，不是新增的事实主张。
+# 优先细分领域；跨域可多选，避免无意义重复祖先标签。ID 沿用权威 taxonomy。
+signal-20260901-claude-fable-mythos-51: [topic-foundation-models, topic-ai-security]
+signal-20260909-nvidia-australia-ai-capacity: [topic-ai-infrastructure, topic-energy-technology]
+signal-20260910-dmatrix-nvlink-fusion:
+  [topic-inference-infrastructure, topic-ai-networking, topic-ai-accelerators]
+signal-20260910-skild-nvidia-physical-ai:
+  [topic-physical-ai, topic-robot-learning, topic-embodied-ai]
+signal-20260910-anthropic-threat-report: [topic-ai-security, topic-cybersecurity]
+signal-20260719-kimi-k3-subscription-pause:
+  [topic-foundation-models, topic-inference-infrastructure]
+signal-20260720-hut8-beacon-point-lease: [topic-ai-infrastructure, topic-energy-technology]
+signal-20260721-openai-huggingface-evaluation-incident:
+  [topic-model-security, topic-software-supply-chain-security]
+signal-20260722-alphabet-q2-results: [topic-cloud-infrastructure, topic-ai-infrastructure]
+signal-20260722-amd-anthropic-mi450-partnership: [topic-training-infrastructure, topic-gpu]
+signal-20260723-intel-q2-results: [topic-cpu, topic-foundry, topic-ai-infrastructure]
+signal-20260723-us-datacenter-ratepayer-pledge: [topic-ai-infrastructure, topic-energy-technology]
+signal-20260723-ai-kill-switch-bill: [topic-ai-safety]
+signal-20260724-nvidia-sk-ai-memory-partnership: [topic-gpu, topic-hbm, topic-ai-infrastructure]
+signal-20260725-samsung-broadcom-chip-partnership:
+  [topic-memory, topic-foundry, topic-advanced-packaging]
+signal-20260727-china-us-distillation-response-july: [topic-foundation-models, topic-model-security]
+signal-20260729-skhynix-q2-results: [topic-memory, topic-hbm]
+signal-20260728-fcc-robot-inverter-restrictions:
+  [topic-humanoid-robotics, topic-hardware-security, topic-energy-technology]
+signal-20260729-microsoft-fy26-q4-results:
+  [topic-cloud-infrastructure, topic-ai-agents, topic-ai-infrastructure]
+signal-20260729-meta-q2-results: [topic-training-infrastructure]
+signal-20260729-germany-ai-act-implementation: [topic-artificial-intelligence, topic-ai-safety]
+signal-20260730-china-ai-plus-policy-july: [topic-artificial-intelligence]
+signal-20260730-amazon-q2-ai-capex: [topic-cloud-infrastructure, topic-ai-infrastructure]
+signal-20260729-semianalysis-lego-datacenters: [topic-ai-infrastructure]
+signal-20260802-eu-ai-act-transparency: [topic-artificial-intelligence, topic-ai-safety]
+signal-20260803-semianalysis-kimi-k3-architecture:
+  [topic-foundation-models, topic-inference-infrastructure, topic-ai-networking]
+signal-20260803-china-ic-layout-regulation: [topic-semiconductors]
+signal-20260804-aisi-agent-cyber-evaluation:
+  [topic-ai-agents, topic-agent-security, topic-cybersecurity]
+signal-20260804-amd-q2-results: [topic-ai-infrastructure, topic-gpu, topic-cpu]
+signal-20260806-amd-taalas-acquisition: [topic-ai-accelerators, topic-inference-infrastructure]
+signal-20260725-semianalysis-amd-cuda: [topic-gpu, topic-inference-infrastructure]
+signal-20260618-semianalysis-datacenter-cancellation: [topic-ai-infrastructure]
+signal-20260810-semianalysis-tilert: [topic-inference-infrastructure, topic-gpu]
+signal-20260303-semianalysis-pjm-load-forecast: [topic-ai-infrastructure, topic-energy-technology]
+signal-20260817-ports-pike-announcement: [topic-ai-infrastructure, topic-energy-technology]
+signal-20260820-nvidia-china-lpu-denial: [topic-ai-accelerators, topic-inference-infrastructure]
+signal-20260819-semianalysis-cerebras-cs4: [topic-ai-accelerators, topic-inference-infrastructure]
+signal-20260821-nvidia-cloverleaf-investment: [topic-ai-infrastructure, topic-energy-technology]
+signal-20260625-semianalysis-us-grid-btm: [topic-ai-infrastructure, topic-energy-technology]
+signal-20260822-nvidia-server-price-report: [topic-gpu, topic-semiconductor-supply-chain]
+signal-20260821-semianalysis-open-models: [topic-foundation-models, topic-language-models]
+signal-20260821-china-next-generation-network-policy: [topic-cloud-infrastructure]
+signal-20260824-semianalysis-agentx: [topic-ai-agents, topic-inference-infrastructure, topic-gpu]
+signal-20260825-openai-jalapeno-results: [topic-ai-accelerators, topic-inference-infrastructure]
+signal-20260825-waymo-munich-testing: [topic-autonomous-systems, topic-autonomous-navigation]
+signal-20260825-semianalysis-jalapeno: [topic-ai-accelerators, topic-inference-infrastructure]
+signal-20260826-nvidia-fy27-q2-results: [topic-gpu, topic-ai-infrastructure]
+signal-20260827-skhynix-indiana-groundbreaking:
+  [topic-hbm, topic-advanced-packaging, topic-semiconductor-supply-chain]
+signal-20260816-semianalysis-pjm-modeling: [topic-ai-infrastructure, topic-energy-technology]
+signal-20260828-ndrc-robotics-development: [topic-humanoid-robotics]
+signal-20260828-openai-cursor-service-termination-plan: [topic-ai-agents, topic-foundation-models]
+signal-20260829-cxmt-lpddr6-production: [topic-dram, topic-semiconductor-supply-chain]
+signal-20260807-semianalysis-gcp-model-economics:
+  [topic-cloud-infrastructure, topic-foundation-models]
+signal-20260829-nda-compute-capacity-july: [topic-ai-infrastructure]
+signal-20260831-fsb-frontier-ai-letter: [topic-ai-security, topic-cybersecurity]
+signal-20260830-semianalysis-neocloud-security:
+  [topic-cloud-security, topic-identity-access, topic-ai-infrastructure]
+signal-20260831-nvidia-mediatek-partnership: [topic-ai-accelerators, topic-ai-infrastructure]
+signal-20260901-openai-astra-critical-cyber:
+  [topic-model-security, topic-cybersecurity, topic-foundation-models]
+signal-20260901-semianalysis-korea-sovereign-ai: [topic-ai-infrastructure, topic-memory]
+signal-20260903-enflame-ipo-subscription: [topic-ai-accelerators, topic-semiconductor-supply-chain]
+signal-20260902-china-ic-production-statistics: [topic-semiconductors]
+signal-20260903-openai-gpt6-astra-launch: [topic-foundation-models, topic-reasoning-models]
+signal-20260903-nvidia-huggingface-acquisition-agreement:
+  [topic-foundation-models, topic-ai-infrastructure]
+signal-20260905-us-china-ai-talks-september-report: [topic-ai-safety]
+signal-20260906-openai-research-acceleration: [topic-ai-agents]
+signal-20260906-openai-safety-threshold-essay: [topic-ai-safety]
+signal-20260907-semianalysis-tpu-inferencex: [topic-ai-accelerators, topic-inference-infrastructure]
+signal-20260908-openai-navier-stokes-candidate: [topic-ai-agents, topic-reasoning-models]
+signal-20260908-amazon-qualcomm-ai-chips:
+  [topic-ai-accelerators, topic-ai-networking, topic-inference-infrastructure]
+signal-20260910-chatgpt-financial-services: [topic-ai-agents, topic-tool-use]
+signal-20260910-semianalysis-btm-power: [topic-ai-infrastructure, topic-energy-technology]

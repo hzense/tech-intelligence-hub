@@ -1,8 +1,9 @@
 /**
  * Curated, entity-specific introductions. These describe the organization
  * itself, not the number or topic of its relationships in this site.
- * `sourceUrl` points to the organization's own site or a primary filing.
- * Reviewed on 2026-09-27; revisit time-sensitive business descriptions.
+ * `sourceUrl` points to the organization's own site, a primary filing,
+ * or an original interview that directly identifies its business.
+ * Reviewed on 2026-09-27; additions reviewed on 2026-09-29.
  */
 export const organizationProfiles: Readonly<
   Record<string, { introduction: string; sourceUrl: string }>
@@ -171,6 +172,53 @@ export const organizationProfiles: Readonly<
     introduction: '燧原科技研发和销售云端人工智能芯片及相关算力产品。',
     sourceUrl:
       'https://static.sse.com.cn/stock/disclosure/announcement/c/202604/002175_20260416_BH8W.pdf',
+  },
+  'company-oracle': {
+    introduction: 'Oracle 提供数据库、企业应用软件与云计算基础设施，服务企业的数据管理和业务运营。',
+    sourceUrl: 'https://www.oracle.com/corporate/',
+  },
+  'company-coreweave': {
+    introduction: 'CoreWeave 提供面向人工智能训练与推理的 GPU 云计算、存储和网络基础设施。',
+    sourceUrl: 'https://coreweave.com/about-us',
+  },
+  'company-pjm-interconnection': {
+    introduction:
+      'PJM Interconnection 是美国区域输电组织，协调 13 个州及哥伦比亚特区全部或部分地区的批发电力输送。',
+    sourceUrl: 'https://www.pjm.com/about-pjm',
+  },
+  'company-cerebras': {
+    introduction:
+      'Cerebras Systems 研发晶圆级人工智能处理器与计算系统，并提供模型训练和推理云服务。',
+    sourceUrl: 'https://www.cerebras.ai/company',
+  },
+  'company-sichuan-shunxin-semiconductor': {
+    introduction: '四川顺芯半导体科技有限公司从事芯片生产，业务涵盖芯片封装与检测等环节。',
+    sourceUrl: 'https://www.news.cn/tech/20260902/4aa4d250a48847df83f12ab0e4901392/c.html',
+  },
+  'company-jiangsu-yangheyang-microelectronics': {
+    introduction:
+      '江苏扬贺扬微电子科技有限公司从事芯片研发、设计和销售，产品应用于消费电子、车载中控等领域。',
+    sourceUrl: 'https://www.news.cn/tech/20260902/4aa4d250a48847df83f12ab0e4901392/c.html',
+  },
+  'company-vertiv': {
+    introduction: 'Vertiv 提供数据中心与通信设施的供电、制冷、机柜和配套服务等数字基础设施。',
+    sourceUrl: 'https://www.vertiv.com/en-us/about/about-us/',
+  },
+  'company-ge-vernova': {
+    introduction: 'GE Vernova 是能源技术企业，业务涵盖发电、风电、电网设备和电气化软件与服务。',
+    sourceUrl: 'https://www.gevernova.com/company/about',
+  },
+  'company-siemens-energy': {
+    introduction: 'Siemens Energy 提供发电、输电、储能和工业电气化技术，覆盖传统与可再生能源领域。',
+    sourceUrl: 'https://www.siemens-energy.com/global/en/home/company/about.html',
+  },
+  'company-sb-energy': {
+    introduction: 'SB Energy 是美国数据中心与电力基础设施企业，从事项目开发、建设和运营。',
+    sourceUrl: 'https://sbenergy.com/',
+  },
+  'institution-us-doe': {
+    introduction: '美国能源部是负责能源、科学研究及核安全等事务的联邦行政部门。',
+    sourceUrl: 'https://www.energy.gov/mission',
   },
   'institution-european-commission': {
     introduction: '欧盟委员会是欧盟行政机构，负责提出法律和政策、监督执行并管理欧盟预算。',
