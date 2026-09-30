@@ -353,3 +353,145 @@
   active: true
   allowed_hosts:
     - 'stcn.com'
+
+- id: source-tsmc
+  name: TSMC Investor Relations
+  type: company_blog
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - tsmc.com
+- id: source-samr-standards
+  name: National Standards Information Public Service Platform
+  type: regulator
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - samr.gov.cn
+- id: source-softbank-group
+  name: SoftBank Group Investor Relations
+  type: company_blog
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - group.softbank
+- id: source-cerebras
+  name: Cerebras
+  type: company_blog
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - cerebras.ai
+- id: source-keelung-prosecutors
+  name: Taiwan Keelung District Prosecutors Office
+  type: regulator
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - moj.gov.tw
+- id: source-mistral
+  name: Mistral AI
+  type: company_blog
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - mistral.ai
+- id: source-asml
+  name: ASML
+  type: company_blog
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - asml.com
+- id: source-china-moe-xinhua
+  name: 中国教育部转载新华社
+  type: regulator
+  trust_score: 85
+  active: true
+  allowed_hosts:
+    - moe.gov.cn
+- id: source-cohere-aleph-alpha-wire
+  name: Cohere 与 Aleph Alpha 署名新闻稿
+  type: news_media
+  trust_score: 90
+  active: true
+  allowed_hosts:
+    - prnewswire.com
+- id: source-alibaba-cloud
+  name: Alibaba Cloud
+  type: company_blog
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - alibabacloud.com
+- id: source-palo-alto-networks
+  name: Palo Alto Networks
+  type: company_blog
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - paloaltonetworks.com
+- id: source-australian-pm
+  name: Prime Minister of Australia
+  type: regulator
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - pm.gov.au
+- id: source-meta-newsroom
+  name: Meta Newsroom
+  type: company_blog
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - about.fb.com
+- id: source-akamai
+  name: Akamai
+  type: company_blog
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - akamai.com
+- id: source-amd-globenewswire
+  name: AMD 署名 GlobeNewswire 公告
+  type: news_media
+  trust_score: 90
+  active: true
+  allowed_hosts:
+    - globenewswire.com
+
+- id: source-sse
+  name: Shanghai Stock Exchange
+  type: regulator
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - sse.com.cn
+- id: source-china-mofcom
+  name: Ministry of Commerce of China
+  type: regulator
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - mofcom.gov.cn
+- id: source-ecb
+  name: European Central Bank Blog
+  type: research_lab
+  trust_score: 90
+  active: true
+  allowed_hosts:
+    - ecb.europa.eu
+- id: source-alibaba-group
+  name: Alibaba Group Investor Relations
+  type: company_blog
+  trust_score: 95
+  active: true
+  allowed_hosts:
+    - alibabagroup.com
+- id: source-chinese-embassy
+  name: Chinese Embassy statement
+  type: regulator
+  trust_score: 90
+  active: true
+  allowed_hosts:
+    - china-embassy.gov.cn

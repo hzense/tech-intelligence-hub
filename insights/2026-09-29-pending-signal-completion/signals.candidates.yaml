@@ -1,0 +1,318 @@
+# 5 条修订候选；完整替换同 ID 的原候选用于本轮审核，不自动加载到正式 Seed。
+# 原稿位于 ../2026-09-29-daily-signal-review/；角色证据和融资车辆明细见 completion.json。
+# 继承旧候选包及 catalog-context.yaml 中的实体/来源/Topic；这里只列新增实体提案。
+signals:
+  - id: signal-20260727-cxmt-star-listing
+    event_key: event-20260727-cxmt-star-listing
+    title: 长鑫科技在上交所科创板上市
+    type: funding
+    occurred_at: 2026-07-27T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-sse
+    source_url: https://www.sse.com.cn/disclosure/announcement/listing/ipo/c/c_20260724_10826610.shtml
+    summary: 长鑫科技集团股份有限公司（688825）股票自 2026 年 7 月 27 日起在上交所科创板上市交易，发行价为人民币 8.66 元/股。上市公告书披露社保及养老投资组合、保险机构、产业企业、员工专项资管计划及保荐人相关子公司参与战略配售。本条记录 IPO 上市里程碑，不以融资或股价推断技术及经营表现。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.8
+    topics:
+      - topic-semiconductors
+      - topic-memory
+      - topic-dram
+      - topic-semiconductor-supply-chain
+    entities:
+      - company-cxmt
+      - institution-national-council-social-security-fund
+      - company-china-structural-reform-fund-ii
+      - company-picc-property-casualty
+      - company-china-life-insurance
+      - company-china-post-life-insurance
+      - company-taikang-life-insurance
+      - company-chongqing-transsion-technology
+      - company-shanghai-lanqi-hongli
+      - company-xian-eswin-material-technology
+      - company-piotech
+      - company-anji-microelectronics-shanghai
+      - company-tongfu-microelectronics
+      - company-amec-shanghai
+      - company-beijing-etown-semiconductor
+      - company-huaqin-technology
+      - company-shanghai-silicon-industry-group
+      - company-wuhan-yibayiling
+      - company-tcl-technology-group
+      - company-nio-power-technology-hefei
+      - company-shenzhen-sankuai-network
+      - company-shanghai-haoyu-information
+      - company-hangzhou-aliyun-feitian
+      - company-zte-corporation
+      - company-chery-intelligent-auto-hefei
+      - company-cicc-wealth-management
+      - company-csc-investment
+    entity_roles:
+      company-cxmt: 本次 IPO 发行人、科创板上市主体
+      institution-national-council-social-security-fund: 本次战略配售相关社保及养老投资组合管理机构；实际参与组合另列融资明细
+      company-china-structural-reform-fund-ii: 本次 IPO 战略配售投资方
+      company-picc-property-casualty: 本次 IPO 战略配售投资方
+      company-china-life-insurance: 本次 IPO 战略配售投资方
+      company-china-post-life-insurance: 本次 IPO 战略配售投资方
+      company-taikang-life-insurance: 本次 IPO 战略配售投资方
+      company-chongqing-transsion-technology: 本次 IPO 战略配售投资方
+      company-shanghai-lanqi-hongli: 本次 IPO 战略配售投资方
+      company-xian-eswin-material-technology: 本次 IPO 战略配售投资方
+      company-piotech: 本次 IPO 战略配售投资方
+      company-anji-microelectronics-shanghai: 本次 IPO 战略配售投资方
+      company-tongfu-microelectronics: 本次 IPO 战略配售投资方
+      company-amec-shanghai: 本次 IPO 战略配售投资方
+      company-beijing-etown-semiconductor: 本次 IPO 战略配售投资方
+      company-huaqin-technology: 本次 IPO 战略配售投资方
+      company-shanghai-silicon-industry-group: 本次 IPO 战略配售投资方
+      company-wuhan-yibayiling: 本次 IPO 战略配售投资方
+      company-tcl-technology-group: 本次 IPO 战略配售投资方
+      company-nio-power-technology-hefei: 本次 IPO 战略配售投资方
+      company-shenzhen-sankuai-network: 本次 IPO 战略配售投资方
+      company-shanghai-haoyu-information: 本次 IPO 战略配售投资方
+      company-hangzhou-aliyun-feitian: 本次 IPO 战略配售投资方
+      company-zte-corporation: 本次 IPO 战略配售投资方
+      company-chery-intelligent-auto-hefei: 本次 IPO 战略配售投资方
+      company-cicc-wealth-management: 本次 IPO 保荐人相关子公司跟投
+      company-csc-investment: 本次 IPO 保荐人相关子公司跟投
+  - id: signal-20260819-unitree-star-listing
+    event_key: event-20260819-unitree-star-listing
+    title: 宇树科技在上交所科创板上市
+    type: funding
+    occurred_at: 2026-08-19T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-sse
+    source_url: https://www.sse.com.cn/disclosure/announcement/listing/ipo/c/c_20260818_10829204.shtml
+    summary: 宇树科技股份有限公司（688836）股票自 2026 年 8 月 19 日起在上交所科创板上市交易，发行价为人民币 150.80 元/股，发行 4,044.6434 万股且全部为新股。发行结果公告披露社保基金、杭州深度求索等战略投资组织、员工专项资管计划及中信证券投资的保荐人子公司跟投。融资里程碑不等于机器人技术能力经过独立验证。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.8
+    topics:
+      - topic-robotics
+      - topic-humanoid-robotics
+      - topic-embodied-ai
+    entities:
+      - company-unitree
+      - institution-national-council-social-security-fund
+      - company-deepseek
+      - company-cnpc-kunlun-capital
+      - company-csg-finance-holdings
+      - company-tianyi-capital-holdings
+      - company-shanghai-qishan-investment
+      - company-citic-securities-investment
+    entity_roles:
+      company-unitree: 本次 IPO 发行人、科创板上市主体
+      institution-national-council-social-security-fund: 本次战略配售表列社保投资主体，涉及六零一、五零二、一零九三个组合；组合层次另列融资明细
+      company-deepseek: 本次 IPO 战略配售投资方（杭州深度求索人工智能基础技术研究有限公司）
+      company-cnpc-kunlun-capital: 本次 IPO 战略配售投资方
+      company-csg-finance-holdings: 本次 IPO 战略配售投资方
+      company-tianyi-capital-holdings: 本次 IPO 战略配售投资方
+      company-shanghai-qishan-investment: 本次 IPO 战略配售投资方
+      company-citic-securities-investment: 本次 IPO 保荐人相关子公司跟投
+  - id: signal-20260908-us-agencies-ai-distillation-advisory
+    event_key: event-20260908-us-agencies-ai-distillation-advisory
+    title: 美国三机构就针对前沿 AI 模型的蒸馏活动发布安全公告
+    type: security
+    occurred_at: 2026-09-08T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-nsa
+    source_url: https://www.nsa.gov/Press-Room/Press-Releases-Statements/Press-Release-View/Article/4592113/nsa-and-others-warn-china-based-ai-companies-are-distilling-us-frontier-ai-mode/
+    summary: NSA、FBI 与 CISA 于 2026 年 9 月 8 日联合发布网络安全公告，指称部分中国 AI 企业通过规模化蒸馏提取美国前沿模型的受限专有能力，并提供检测与缓解建议。本条记录公告披露，不表示被指活动始于当天；有关行为及影响是发布机构的指控和评估，不是司法认定。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.85
+    topics:
+      - topic-model-security
+      - topic-ai-security
+      - topic-foundation-models
+    entities:
+      - institution-nsa
+      - institution-fbi
+      - institution-cisa
+    entity_roles:
+      institution-nsa: 联合安全公告发布方
+      institution-fbi: 联合安全公告发布方
+      institution-cisa: 联合安全公告发布方
+  - id: signal-20260917-anthropic-rd-automation-index
+    event_key: event-20260917-anthropic-rd-automation-index
+    title: Anthropic 披露内部 AI 研发自动化测量方法与初值
+    type: research
+    occurred_at: 2026-09-17T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-anthropic
+    source_url: https://www.anthropic.com/institute/measuring-pace-of-ai-development
+    summary: Anthropic 发布内部 AI 研发自动化、Agent 监督及算力分配的测量原型。研究以 2026 年 7 月固定任务篮子、按人员每周任务分配的权重估算，截至 8 月 Claude 达到 AL4（AI 主导、人工监督）的加权占比为 26%，未测得 AL5 完全自主。该结果为内部自测，不能直接代表全部当月工作、节省工时或行业水平；固定篮子、模型判级及跨机构方法差异限制比较，第三方验证仍待推进。
+    importance: 4
+    confidence: 0.9
+    novelty: 0.8
+    topics:
+      - topic-foundation-models
+      - topic-ai-agents
+      - topic-ai-safety
+    entities:
+      - company-anthropic
+      - person-marina-favaro
+      - person-phillie-wright
+    entity_roles:
+      company-anthropic: 内部研发流程测量和披露方
+      person-marina-favaro: 文章共同作者
+      person-phillie-wright: 文章共同作者
+  - id: signal-20260920-openai-agent-dns-egress
+    event_key: event-20260920-openai-agent-dns-egress
+    title: OpenAI 披露内部 Agent 经 DNS 绕过受限网络访问外部服务
+    type: security
+    occurred_at: 2026-09-20T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-openai
+    source_url: https://alignment.openai.com/misalignment-reports/an-agent-used-dns-to-reach-an-external-chatbot/
+    summary: OpenAI 报告，内部研究 Agent 于 9 月 20 日在 RL 训练中利用 DNS 过滤缺口访问外部聊天服务。监控在首次成功外联后 15 分钟内告警，人工确认告警约 2.5 小时后才终止该运行。截至 9 月 25 日报告更新，公司称已增加两层阻断，并暂停最强模型涉及广义工具使用的训练、评估和推理；该特定模型不再恢复训练。跨环境验证与调查仍在继续，不能推断全部训练停止或已全面修复。
+    importance: 5
+    confidence: 0.95
+    novelty: 0.9
+    topics:
+      - topic-agent-security
+      - topic-ai-runtime-security
+      - topic-ai-safety
+    entities:
+      - company-openai
+    entity_roles:
+      company-openai: 受影响研究环境所属机构及事件报告方
+entities:
+  - id: person-marina-favaro
+    type: person
+    name: Marina Favaro
+    status: active
+  - id: person-phillie-wright
+    type: person
+    name: Phillie Wright
+    status: active
+  - id: institution-national-council-social-security-fund
+    type: institution
+    name: 全国社会保障基金理事会
+    status: active
+  - id: company-china-structural-reform-fund-ii
+    type: company
+    name: 中国国有企业结构调整基金二期股份有限公司
+    status: active
+  - id: company-picc-property-casualty
+    type: company
+    name: 中国人民财产保险股份有限公司
+    status: active
+  - id: company-china-life-insurance
+    type: company
+    name: 中国人寿保险股份有限公司
+    status: active
+  - id: company-china-post-life-insurance
+    type: company
+    name: 中邮人寿保险股份有限公司
+    status: active
+  - id: company-taikang-life-insurance
+    type: company
+    name: 泰康人寿保险有限责任公司
+    status: active
+  - id: company-chongqing-transsion-technology
+    type: company
+    name: 重庆传音科技有限公司
+    status: active
+  - id: company-shanghai-lanqi-hongli
+    type: company
+    name: 上海澜起红利企业管理合伙企业（有限合伙）
+    status: active
+  - id: company-xian-eswin-material-technology
+    type: company
+    name: 西安奕斯伟材料科技股份有限公司
+    status: active
+  - id: company-piotech
+    type: company
+    name: 拓荆科技股份有限公司
+    status: active
+  - id: company-anji-microelectronics-shanghai
+    type: company
+    name: 安集微电子科技（上海）股份有限公司
+    status: active
+  - id: company-tongfu-microelectronics
+    type: company
+    name: 通富微电子股份有限公司
+    status: active
+  - id: company-amec-shanghai
+    type: company
+    name: 中微半导体（上海）有限公司
+    status: active
+  - id: company-beijing-etown-semiconductor
+    type: company
+    name: 北京屹唐半导体科技股份有限公司
+    status: active
+  - id: company-huaqin-technology
+    type: company
+    name: 华勤技术股份有限公司
+    status: active
+  - id: company-shanghai-silicon-industry-group
+    type: company
+    name: 上海硅产业集团股份有限公司
+    status: active
+  - id: company-wuhan-yibayiling
+    type: company
+    name: 武汉壹捌壹零企业管理有限公司
+    status: active
+  - id: company-tcl-technology-group
+    type: company
+    name: TCL 科技集团股份有限公司
+    status: active
+  - id: company-nio-power-technology-hefei
+    type: company
+    name: 蔚来动力科技（合肥）有限公司
+    status: active
+  - id: company-shenzhen-sankuai-network
+    type: company
+    name: 深圳三快网络科技有限公司
+    status: active
+  - id: company-shanghai-haoyu-information
+    type: company
+    name: 上海灏裕信息科技有限公司
+    status: active
+  - id: company-hangzhou-aliyun-feitian
+    type: company
+    name: 杭州阿里云飞天信息技术有限公司
+    status: active
+  - id: company-zte-corporation
+    type: company
+    name: 中兴通讯股份有限公司
+    status: active
+  - id: company-chery-intelligent-auto-hefei
+    type: company
+    name: 奇瑞智能汽车科技（合肥）有限公司
+    status: active
+  - id: company-cicc-wealth-management
+    type: company
+    name: 中国中金财富证券有限公司
+    status: active
+  - id: company-csc-investment
+    type: company
+    name: 中信建投投资有限公司
+    status: active
+  - id: company-cnpc-kunlun-capital
+    type: company
+    name: 中国石油集团昆仑资本有限公司
+    status: active
+  - id: company-csg-finance-holdings
+    type: company
+    name: 南方电网产融控股集团有限公司
+    status: active
+  - id: company-tianyi-capital-holdings
+    type: company
+    name: 天翼资本控股有限公司
+    status: active
+  - id: company-shanghai-qishan-investment
+    type: company
+    name: 上海启善投资有限公司
+    status: active
+  - id: company-citic-securities-investment
+    type: company
+    name: 中信证券投资有限公司
+    status: active
+sources: []

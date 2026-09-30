@@ -21,7 +21,15 @@
 
 ## 尚无充分依据的空缺
 
-仍未登记人物的四条为 `signal-20260804-aisi-agent-cyber-evaluation`、`signal-20260820-nvidia-china-lpu-denial`、`signal-20260822-nvidia-server-price-report`、`signal-20260906-openai-research-acceleration`。先前[人物补证记录](2026-09-27-signal-entity-backfill.md#第三轮人物挖掘跨来源核对2026-09-27)已说明为何不从匿名报道、配图或公司职位推断具名参与者。
+本轮审查时未登记人物的四条为 `signal-20260804-aisi-agent-cyber-evaluation`、`signal-20260820-nvidia-china-lpu-denial`、`signal-20260822-nvidia-server-price-report`、`signal-20260906-openai-research-acceleration`。先前[人物补证记录](2026-09-27-signal-entity-backfill.md#第三轮人物挖掘跨来源核对2026-09-27)已说明为何不从匿名报道、配图或公司职位推断具名参与者。后续针对科研自动化进展的关联补充见下节；以上四条是补充前的历史盘点。
+
+### 科研自动化进展人物关联补充（2026-09-28）
+
+用户确认将 `person-jakub-pachocki` 关联到 `signal-20260906-openai-research-acceleration`，角色限定为“OpenAI 首席科学家、相关研究方向阐述者（非本报告署名作者或已确认项目负责人）”。复用既有人物身份，不新增同名人物。
+
+依据为 Jakub Pachocki 同日署名的 [An Alien Mind](https://openai.com/index/an-alien-mind/)：文章的 “What is next?” 段落明确阐述构建自动化 AI 研究员、将其用于对齐研究并保持人类参与的研究方向。关联来自其具名阐述与同一研究方向的联系，不仅是首席科学家职位推断。[科研自动化进展报告](https://openai.com/index/research-acceleration-view-inside-openai/)本身仍署名 OpenAI，没有公布具体项目或统计负责人，因此不把他标为报告作者或具体项目负责人。
+
+补充后 Seed 仍有 71 条信号，未登记人物降为 3 条；未登记事件组织仍为 17 条。本节记录仓库数据变更，线上生效须另行验证部署。
 
 SemiAnalysis 文章的署名研究作者继续保留为人物关系，`entity_roles` 明确为“文章署名作者”，不表示他们参与文章分析的产业事件。是否让“作者”计入雷达人物热度属于独立的评分口径决定，本次不改变权重或伪造参与者。
 

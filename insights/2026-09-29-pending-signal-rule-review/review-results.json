@@ -1,0 +1,214 @@
+{
+  "schema": "hzense-signal-type-rule-review-v1",
+  "reviewed_on": "2026-09-29",
+  "rules_file": "insights/2026-09-29-signal-type-rules/design-doc.md",
+  "rules_sha256": "1df0091e41390750fb1b65f385e7be60c43b7e0670599795c84db7e1c68bd3c8",
+  "scope": "11 deferred local research candidates only; no publication or data mutation",
+  "counts": {
+    "ready_for_confirmation": 6,
+    "needs_revision": 5,
+    "needs_evidence": 0
+  },
+  "current_formal_seed_count": 99,
+  "candidate_status_changed": false,
+  "publication_authorized_by_this_review": false,
+  "runtime_rule_changed": false,
+  "decisions": [
+    {
+      "signal_id": "signal-20260724-open-weights-coalition-letter",
+      "title": "科技企业发布支持开放权重模型的联名政策信",
+      "candidate_sha256": "e4f3aef540fe1204a9c6230b78b2e5e57aada1761b18449abd9f4a15cfecad7c",
+      "current_type": "policy",
+      "recommended_type": "policy",
+      "content_review_status": "ready_for_confirmation",
+      "reason": "机构联名政策倡议不强制具名人物；名单版本差异保留为边界。",
+      "proposed_changes": ["名单后来扩张改为当前官方版本名单不同，避免推断完整签署时间线。"],
+      "evidence_report": "policy-review.md",
+      "registration_needed": {
+        "entities": [],
+        "source": null,
+        "topics": []
+      }
+    },
+    {
+      "signal_id": "signal-20260727-cxmt-star-listing",
+      "title": "长鑫科技在上交所科创板上市",
+      "candidate_sha256": "0832eaba59117a20a647c02546b60d825a0bcede70a2ecf8d08d652e3a6f8306",
+      "current_type": "funding",
+      "recommended_type": "funding",
+      "content_review_status": "needs_revision",
+      "reason": "上市核心事实已支持，但缺本次已披露战略投资组织及投资角色。",
+      "proposed_changes": [
+        "补战略配售主体及法律身份，区分基金组合、投资机构和保荐子公司跟投；不补无关高管。"
+      ],
+      "evidence_report": "finance-review.md",
+      "registration_needed": {
+        "entities": [],
+        "source": "source-sse",
+        "topics": []
+      }
+    },
+    {
+      "signal_id": "signal-20260730-mofcom-fcc-robot-response",
+      "title": "中国商务部回应美国 FCC 对机器人和逆变器的新型号限制",
+      "candidate_sha256": "8c32c5d9a57bd777710fa3faeec88bfbbb3bcc44ef402313f1c7e8c43236cd20",
+      "current_type": "policy",
+      "recommended_type": "policy",
+      "content_review_status": "ready_for_confirmation",
+      "reason": "商务部表态主体及条件性阶段明确，匿名发言人不阻断。",
+      "proposed_changes": ["优先使用商务部原创文字全文；区分覆盖清单对象与新型号认证限制。"],
+      "evidence_report": "policy-review.md",
+      "registration_needed": {
+        "entities": [],
+        "source": "source-china-mofcom",
+        "topics": ["topic-robotics"]
+      }
+    },
+    {
+      "signal_id": "signal-20260817-ecb-ai-equity-risk-blog",
+      "title": "欧洲央行博客作者分析 AI 股票估值的欧元区外溢风险",
+      "candidate_sha256": "9b06d71be301a0fc5ab9cb472651c621c4457d2cb347cac39b7d9f56dbb27d2f",
+      "current_type": "research",
+      "recommended_type": "research",
+      "content_review_status": "ready_for_confirmation",
+      "reason": "五名作者及研究归属明确，不强制组织，不把作者观点当央行立场。",
+      "proposed_changes": [],
+      "evidence_report": "research-review.md",
+      "registration_needed": {
+        "entities": [
+          "person-malin-andersson",
+          "person-johannes-breckenfelder",
+          "person-stefano-corradin",
+          "person-kalin-nikolov",
+          "person-maria-antonietta-viola"
+        ],
+        "source": "source-ecb",
+        "topics": []
+      }
+    },
+    {
+      "signal_id": "signal-20260819-unitree-star-listing",
+      "title": "宇树科技在上交所科创板上市",
+      "candidate_sha256": "12fa17743b144883d2e732076fb8bbd7ecf001901e3ee2618657b3ffd9dee579",
+      "current_type": "funding",
+      "recommended_type": "funding",
+      "content_review_status": "needs_revision",
+      "reason": "上市核心事实已支持，发行文件的战略投资组织尚未关联。",
+      "proposed_changes": [
+        "补具名战略投资组织、保荐子公司跟投及员工配售计划角色；不将承销商直接当投资人。"
+      ],
+      "evidence_report": "finance-review.md",
+      "registration_needed": {
+        "entities": ["company-unitree"],
+        "source": "source-sse",
+        "topics": ["topic-robotics"]
+      }
+    },
+    {
+      "signal_id": "signal-20260826-alibaba-ai-share-placement",
+      "title": "阿里巴巴完成约 800 亿港元新股配售并指定 AI 投向",
+      "candidate_sha256": "6c55e9504efad92dcc8bbb023265de3b93bd53cfde6d1ee2bb4aef8cde2091f9",
+      "current_type": "funding",
+      "recommended_type": "funding",
+      "content_review_status": "ready_for_confirmation",
+      "reason": "完成日期、配售规模和净资金用途得到官方完成公告支持。",
+      "proposed_changes": [
+        "旧辅助定价时间线改为页面日8月24日与正文日期8月23日分别记录；不改变8月26日完成事件。"
+      ],
+      "evidence_report": "finance-review.md",
+      "registration_needed": {
+        "entities": [],
+        "source": "source-alibaba-group",
+        "topics": []
+      }
+    },
+    {
+      "signal_id": "signal-20260908-us-agencies-ai-distillation-advisory",
+      "title": "美国三机构发布针对模型蒸馏活动的网络安全公告",
+      "candidate_sha256": "79073d873e8fc6d0857424bff612462a8edf6cde0aec5782bb187b995fa3cff3",
+      "current_type": "policy",
+      "recommended_type": "security",
+      "content_review_status": "needs_revision",
+      "reason": "主事实为被指蒸馏滥用活动和防护公告，应由policy改为security。",
+      "proposed_changes": [
+        "仅改建议类型及必要归因措辞；9月8日标明为披露日，不把机构指控写成司法认定。"
+      ],
+      "evidence_report": "policy-review.md",
+      "registration_needed": {
+        "entities": ["institution-nsa", "institution-fbi", "institution-cisa"],
+        "source": null,
+        "topics": []
+      }
+    },
+    {
+      "signal_id": "signal-20260916-openai-misalignment-framework",
+      "title": "OpenAI 发布模型失配事件披露框架及首批六份报告",
+      "candidate_sha256": "a4a2c9bc559ba73e49e10910d1e55fce803f7b63c832bf18f3974e6efaf2e0cd",
+      "current_type": "policy",
+      "recommended_type": "policy",
+      "content_review_status": "ready_for_confirmation",
+      "reason": "公司正式署名的披露制度与倡议，类型policy准确，不强制个人。",
+      "proposed_changes": [],
+      "evidence_report": "research-review.md",
+      "registration_needed": {
+        "entities": [],
+        "source": null,
+        "topics": []
+      }
+    },
+    {
+      "signal_id": "signal-20260917-anthropic-rd-automation-index",
+      "title": "Anthropic 披露内部 AI 研发自动化测量方法与初值",
+      "candidate_sha256": "b685296f63036d63b11ab573cd198ccec133c5caff26d16d804a58041cfd07b3",
+      "current_type": "research",
+      "recommended_type": "research",
+      "content_review_status": "needs_revision",
+      "reason": "原文明列共同作者，且26%需要固定任务篮子和人员周权重口径。",
+      "proposed_changes": [
+        "补Marina Favaro和Phillie Wright共同作者角色；若关联Jack Clark，仅用研究指导。",
+        "修订26%为固定7月任务篮子加权的8月AL4占比；以官方Research列表支持9月17日发表日。"
+      ],
+      "evidence_report": "research-review.md",
+      "registration_needed": {
+        "entities": [],
+        "source": null,
+        "topics": []
+      }
+    },
+    {
+      "signal_id": "signal-20260926-us-china-ai-incident-channel",
+      "title": "中美宣布将建立 AI 对话与事件沟通渠道",
+      "candidate_sha256": "de5da0cb6a92c80c7598f61665c0e77c4e673885656ca740b684eddc6ee73d3a",
+      "current_type": "policy",
+      "recommended_type": "policy",
+      "content_review_status": "ready_for_confirmation",
+      "reason": "有明确会晤代表和官方成果稿；未披露执行部门不阻断政策倡议。",
+      "proposed_changes": ["明确9月26日为中方成果公告日；不声称渠道已运行或外交部为技术执行机构。"],
+      "evidence_report": "policy-review.md",
+      "registration_needed": {
+        "entities": [],
+        "source": "source-chinese-embassy",
+        "topics": []
+      }
+    },
+    {
+      "signal_id": "signal-20260920-openai-agent-dns-egress",
+      "title": "OpenAI 披露内部 Agent 经 DNS 绕过受限网络访问外部服务",
+      "candidate_sha256": "33d51b01dfa2c49af008845a1b8b47ddf0482eb6ce6e9ba5d18ad7df714f6b71",
+      "current_type": "security",
+      "recommended_type": "security",
+      "content_review_status": "needs_revision",
+      "reason": "原稿终止时延起点含混，暂停及调查状态未锚定报告日。",
+      "proposed_changes": [
+        "人工确认告警约2.5小时后终止，并非训练运行总时长；状态截至9月25日报告更新。",
+        "补环境验证和调查仍继续，不写全面修复，不推断9月29日仍暂停。"
+      ],
+      "evidence_report": "research-review.md",
+      "registration_needed": {
+        "entities": [],
+        "source": null,
+        "topics": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,3186 @@
+{
+  "schema": "hzense-daily-signal-review-inventory-v1",
+  "input_root_hint": "datas/日报",
+  "reviewed_on": "2026-09-29",
+  "file_count": 67,
+  "total_bytes": 1863385,
+  "total_lines": 36103,
+  "unsupported_files": [],
+  "files": [
+    {
+      "file": "ChatGPT每日简报_2026-07-20.md",
+      "sha256": "bd465f54786df144839cf7ff0db1f0cbbb1b3b056302a0eec512cef706b9107a",
+      "bytes": 16028,
+      "lines": 158,
+      "cited_url_count": 13,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 12,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 14,
+          "heading": "1. 台积电重申AI芯片“多年强劲需求”，美国扩产规模继续上调"
+        },
+        {
+          "line": 23,
+          "heading": "2. 油价和收益率上升正在给“AI交易”提高盈利门槛"
+        },
+        {
+          "line": 83,
+          "heading": "2. 中国算力与机器人产业继续扩容，但官方口径需结合商业化指标观察"
+        },
+        {
+          "line": 126,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-21.md",
+      "sha256": "2f656da199865f33cc163f36af13c61ae08359b5559192a4c1440844f1d019e3",
+      "bytes": 23009,
+      "lines": 209,
+      "cited_url_count": 20,
+      "matched_existing_signals": ["signal-20260720-hut8-beacon-point-lease"],
+      "technology_section_headings": [
+        {
+          "line": 14,
+          "heading": "二、AI / 科技"
+        },
+        {
+          "line": 16,
+          "heading": "1. Kimi K3需求压过现有算力，Moonshot暂停新订阅"
+        },
+        {
+          "line": 30,
+          "heading": "2. Hut 8签下98亿美元AI数据中心租约，电力成为核心资产"
+        },
+        {
+          "line": 47,
+          "heading": "3. 美股小幅收低：中东风险与科技巨头财报形成拉锯"
+        },
+        {
+          "line": 146,
+          "heading": "1. AI竞争正在从“模型竞赛”变成“系统工程竞赛”"
+        },
+        {
+          "line": 172,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-22.md",
+      "sha256": "e98757ca02467f9cbd700bd254e43484f23d003224353d35f60f640041f691e1",
+      "bytes": 22603,
+      "lines": 234,
+      "cited_url_count": 20,
+      "matched_existing_signals": ["signal-20260721-openai-huggingface-evaluation-incident"],
+      "technology_section_headings": [
+        {
+          "line": 18,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 20,
+          "heading": "1. OpenAI网络能力评估突破隔离，Hugging Face生产基础设施遭入侵"
+        },
+        {
+          "line": 45,
+          "heading": "2. 据Reuters：中美拟于9月举行本届美国政府首次正式AI对话"
+        },
+        {
+          "line": 62,
+          "heading": "3. 美欧芯片股同步反弹，市场把焦点重新押向科技财报"
+        },
+        {
+          "line": 166,
+          "heading": "一、AI安全的瓶颈从“模型是否拒答”转向“系统是否可控”"
+        },
+        {
+          "line": 172,
+          "heading": "二、资本市场在交易AI盈利，实体经济却在吸收能源与信贷压力"
+        },
+        {
+          "line": 197,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-23.md",
+      "sha256": "4c7562d44fc32060d2123a4d5447a00c921c1fafca15ef16a1bec6bce340f86e",
+      "bytes": 22754,
+      "lines": 305,
+      "cited_url_count": 22,
+      "matched_existing_signals": [
+        "signal-20260722-alphabet-q2-results",
+        "signal-20260722-amd-anthropic-mi450-partnership"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 18,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 20,
+          "heading": "1. Alphabet云业务增长82%，但AI资本开支令自由现金流转负"
+        },
+        {
+          "line": 56,
+          "heading": "2. AMD最高投资Anthropic 50亿美元，锁定最多2吉瓦AI算力部署"
+        },
+        {
+          "line": 228,
+          "heading": "1. AI从能力竞赛进入资产负债表竞赛"
+        },
+        {
+          "line": 239,
+          "heading": "2. 地缘风险通过油价和利率进入科技估值"
+        },
+        {
+          "line": 266,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-24.md",
+      "sha256": "03adc7be86c847a5a9e7e46f2b97cf7c261543d307789642eec7470b76f6f7f5",
+      "bytes": 25178,
+      "lines": 283,
+      "cited_url_count": 24,
+      "matched_existing_signals": [
+        "signal-20260723-intel-q2-results",
+        "signal-20260723-us-datacenter-ratepayer-pledge"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 16,
+          "heading": "一、AI与科技"
+        },
+        {
+          "line": 18,
+          "heading": "1. Intel第二季度营收增长25%，AI代理带动服务器CPU需求，但代工业务仍未盈利"
+        },
+        {
+          "line": 46,
+          "heading": "2. 美国扩大“数据中心自付电力增量成本”承诺，AI竞争开始进入电价分配政治"
+        },
+        {
+          "line": 78,
+          "heading": "3. 美股遭遇一个月来最大单日跌幅：AI开支疑虑与油价冲击形成共振"
+        },
+        {
+          "line": 206,
+          "heading": "六、综合深度分析：AI、能源与利率正在汇成同一条约束链"
+        },
+        {
+          "line": 216,
+          "heading": "1. AI公司的比较优势将从模型能力扩展到“基础设施融资能力”"
+        },
+        {
+          "line": 240,
+          "heading": "AI与科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-25.md",
+      "sha256": "063cee7c728488a901cd18caa78dcfa55f4b241078d6d22ca34b10af17cfc8e2",
+      "bytes": 17043,
+      "lines": 203,
+      "cited_url_count": 21,
+      "matched_existing_signals": ["signal-20260723-ai-kill-switch-bill"],
+      "technology_section_headings": [
+        {
+          "line": 12,
+          "heading": "一、AI与科技"
+        },
+        {
+          "line": 14,
+          "heading": "1. 科技企业集体为开放权重模型辩护，美国同时推进AI“紧急关停”立法"
+        },
+        {
+          "line": 45,
+          "heading": "2. 油价从地缘风险转为估值与货币政策变量，科技股资本开支承压"
+        },
+        {
+          "line": 163,
+          "heading": "AI与科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-26.md",
+      "sha256": "394fd09bf14706ea56e393855c3f7ca0d9425b1fbab1135b13ff335942e9b56d",
+      "bytes": 20898,
+      "lines": 289,
+      "cited_url_count": 22,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 17,
+          "heading": "一、AI与科技"
+        },
+        {
+          "line": 19,
+          "heading": "1. 韩国企业与美国科技公司签署约9500亿美元AI合作意向，算力竞争转向“芯片—内存—电力”一体化"
+        },
+        {
+          "line": 216,
+          "heading": "六、综合深度分析：AI投资、能源冲击与国家产业政策正在合流"
+        },
+        {
+          "line": 220,
+          "heading": "1. AI项目越来越像能源和工业项目"
+        },
+        {
+          "line": 224,
+          "heading": "2. 能源价格决定科技估值的上限"
+        },
+        {
+          "line": 248,
+          "heading": "AI与科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-27.md",
+      "sha256": "e63ca334b5aebdc8dc122254d33c89e955dcf545deafc89a06961e8192f453aa",
+      "bytes": 19657,
+      "lines": 203,
+      "cited_url_count": 14,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 16,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 18,
+          "heading": "1. 英伟达据报拟为OpenAI俄亥俄州数据中心提供约2,500亿美元融资担保"
+        },
+        {
+          "line": 31,
+          "heading": "2. 长鑫科技上市首日上涨466%，AI存储需求与国产替代叙事共振"
+        },
+        {
+          "line": 63,
+          "heading": "2. 本周央行决策与大型科技公司财报成为下一阶段定价核心"
+        },
+        {
+          "line": 98,
+          "heading": "1. 长鑫科技IPO成为观察中国科技自主与资本市场定价的窗口"
+        },
+        {
+          "line": 145,
+          "heading": "深度分析：从“芯片稀缺”转向“资本与能源稀缺”"
+        },
+        {
+          "line": 167,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-28.md",
+      "sha256": "53c18a90822eabf46cd4979534db2dcae8eff381c9dca3ecdd02a813e35d640c",
+      "bytes": 21332,
+      "lines": 227,
+      "cited_url_count": 18,
+      "matched_existing_signals": ["signal-20260727-china-us-distillation-response-july"],
+      "technology_section_headings": [
+        {
+          "line": 16,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 18,
+          "heading": "1. AI融资担忧引发全球芯片股抛售"
+        },
+        {
+          "line": 50,
+          "heading": "1. 半导体抛售压倒油价回落利好，亚洲市场剧烈震荡"
+        },
+        {
+          "line": 114,
+          "heading": "2. 长鑫科技上市后的估值波动体现国产芯片资产稀缺性"
+        },
+        {
+          "line": 146,
+          "heading": "2. ASML暴跌凸显欧洲科技产业的集中度风险"
+        },
+        {
+          "line": 162,
+          "heading": "深度分析：AI产业正在进入“信用、设备与能源”三重约束阶段"
+        },
+        {
+          "line": 189,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-29.md",
+      "sha256": "723fecfdc55f755a85edd6f4a65b1d02aa6355fbf696fc34bc362bbd3374ba00",
+      "bytes": 25299,
+      "lines": 269,
+      "cited_url_count": 25,
+      "matched_existing_signals": ["signal-20260728-fcc-robot-inverter-restrictions"],
+      "technology_section_headings": [
+        {
+          "line": 18,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 20,
+          "heading": "1. 芯片抛售进入高波动阶段：利润暴增也无法满足AI预期"
+        },
+        {
+          "line": 40,
+          "heading": "2. 美国限制新的外国人形机器人和联网逆变器，主要指向中国供应链"
+        },
+        {
+          "line": 61,
+          "heading": "1. 美联储决议前市场剧烈分化，AI资产与能源资产同时重定价"
+        },
+        {
+          "line": 80,
+          "heading": "2. 全球通胀预期重新上调，AI投资暂时支撑增长"
+        },
+        {
+          "line": 127,
+          "heading": "1. 美国机器人禁令将中美竞争推向“具身智能＋电力基础设施”"
+        },
+        {
+          "line": 142,
+          "heading": "2. 中国半导体自主化预期继续冲击全球设备估值"
+        },
+        {
+          "line": 178,
+          "heading": "2. 欧洲芯片股下跌，战略自主与盈利现实发生碰撞"
+        },
+        {
+          "line": 195,
+          "heading": "深度分析：AI泡沫是否正在破裂？"
+        },
+        {
+          "line": 226,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-30.md",
+      "sha256": "c32629b7a77334097df552f20df91b61bd175405be0ab39c5a23076adb5568b5",
+      "bytes": 35676,
+      "lines": 337,
+      "cited_url_count": 45,
+      "matched_existing_signals": [
+        "signal-20260728-fcc-robot-inverter-restrictions",
+        "signal-20260729-microsoft-fy26-q4-results",
+        "signal-20260729-meta-q2-results",
+        "signal-20260729-germany-ai-act-implementation",
+        "signal-20260730-china-ai-plus-policy-july"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 21,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 23,
+          "heading": "1. 微软与Meta财报分化：市场开始区分“AI收入兑现”与“AI现金消耗”"
+        },
+        {
+          "line": 50,
+          "heading": "2. 德国把欧盟AI规则落到国内执行，金融业AI应用进入可抽查阶段"
+        },
+        {
+          "line": 166,
+          "heading": "7. 政治局会议定调下半年：扩内需、稳风险、反“内卷”与“人工智能+”并行"
+        },
+        {
+          "line": 187,
+          "heading": "8. 中国警告反制美国机器人与电力逆变器禁令，技术竞争进一步延伸到实体设备"
+        },
+        {
+          "line": 248,
+          "heading": "1. “资本开支”正在成为科技与宏观经济的共同变量"
+        },
+        {
+          "line": 252,
+          "heading": "2. “国家安全”正重塑实体供应链，而不再局限于芯片"
+        },
+        {
+          "line": 275,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-07-31.md",
+      "sha256": "149a083208474d35a9c275ba26e43d836822446c7f8de99ff595de5a1523b3e3",
+      "bytes": 24896,
+      "lines": 242,
+      "cited_url_count": 35,
+      "matched_existing_signals": [
+        "signal-20260730-china-ai-plus-policy-july",
+        "signal-20260729-semianalysis-lego-datacenters"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 16,
+          "heading": "一、AI／科技"
+        },
+        {
+          "line": 56,
+          "heading": "1. 美国二季度 GDP 放缓，但消费和 AI 投资仍有韧性；科技股推动美股大涨"
+        },
+        {
+          "line": 174,
+          "heading": "1. AI 繁荣正在从芯片周期升级为“工业建设周期”"
+        },
+        {
+          "line": 178,
+          "heading": "2. 宏观经济开始被 AI 投资“同时抬高和扭曲”"
+        },
+        {
+          "line": 190,
+          "heading": "AI／科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-01.md",
+      "sha256": "1875bb31bdb6fdeee226848e3f754ed84fbab1b36b7017d85bb75eddfc6b77fe",
+      "bytes": 27021,
+      "lines": 260,
+      "cited_url_count": 36,
+      "matched_existing_signals": [
+        "signal-20260730-amazon-q2-ai-capex",
+        "signal-20260729-semianalysis-lego-datacenters"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 16,
+          "heading": "一、AI／科技"
+        },
+        {
+          "line": 18,
+          "heading": "亚马逊验证 AI 云需求，并加深对 OpenAI 的资本与基础设施绑定"
+        },
+        {
+          "line": 182,
+          "heading": "主线一：AI 资本开支进入“必须证明回报”的阶段"
+        },
+        {
+          "line": 186,
+          "heading": "主线二：模型、云和芯片的纵向绑定正在加深"
+        },
+        {
+          "line": 207,
+          "heading": "AI／科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-02.md",
+      "sha256": "581e5d8dc0c7d7c2f30ca2e5f0a06ef58440f4685e45dda6c62365486b7a6210",
+      "bytes": 23734,
+      "lines": 217,
+      "cited_url_count": 24,
+      "matched_existing_signals": [
+        "signal-20260729-semianalysis-lego-datacenters",
+        "signal-20260802-eu-ai-act-transparency"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 15,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 17,
+          "heading": "1. 欧盟 AI 法案第 50 条开始适用：生成式 AI 进入“必须被识别”的阶段"
+        },
+        {
+          "line": 37,
+          "heading": "2. SemiAnalysis 固定观察：AI 数据中心开始“乐高化”，但真正稀缺的是机电交付能力"
+        },
+        {
+          "line": 176,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-03.md",
+      "sha256": "b37a0d9dbb48468ca0cd18935655afe4ede12ca181b0549ec248357c211d463b",
+      "bytes": 27196,
+      "lines": 258,
+      "cited_url_count": 27,
+      "matched_existing_signals": ["signal-20260729-semianalysis-lego-datacenters"],
+      "technology_section_headings": [
+        {
+          "line": 15,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 17,
+          "heading": "1. 欧盟扩大执行 AI 法案：第 50 条透明度义务正式适用"
+        },
+        {
+          "line": 39,
+          "heading": "2. SemiAnalysis 固定洞察：模块化数据中心能缩短工期，但无法制造电网容量"
+        },
+        {
+          "line": 213,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-04.md",
+      "sha256": "e2935ed74c74fcc7c3802e6103ddf7a065fab693ec990b35c8a10d4efbecfa4a",
+      "bytes": 20058,
+      "lines": 189,
+      "cited_url_count": 23,
+      "matched_existing_signals": [
+        "signal-20260803-semianalysis-kimi-k3-architecture",
+        "signal-20260803-china-ic-layout-regulation"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 14,
+          "heading": "一、AI／科技"
+        },
+        {
+          "line": 16,
+          "heading": "1. 美国拟启动前沿AI模型的自愿网络安全测试框架"
+        },
+        {
+          "line": 31,
+          "heading": "2. SemiAnalysis最新洞察：Kimi K3的效率来自系统协同，而非单一“线性注意力”"
+        },
+        {
+          "line": 51,
+          "heading": "3. 亚马逊市值首次突破3万亿美元：市场奖励AI收入兑现，但现金流压力仍在"
+        },
+        {
+          "line": 125,
+          "heading": "1. AI竞争正在从“模型发布”转向“可验证能力＋系统效率”"
+        },
+        {
+          "line": 129,
+          "heading": "2. AI资本开支进入“收入兑现分水岭”"
+        },
+        {
+          "line": 149,
+          "heading": "AI／科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-05.md",
+      "sha256": "47de87796735b21459006e71a19d3fb780bee51667b6cf4a7ec8e1df537c3021",
+      "bytes": 33666,
+      "lines": 316,
+      "cited_url_count": 41,
+      "matched_existing_signals": ["signal-20260803-semianalysis-kimi-k3-architecture"],
+      "technology_section_headings": [
+        {
+          "line": 17,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 19,
+          "heading": "1. 英国测试发现前沿AI智能体越权；美国拟议框架排除开放权重模型"
+        },
+        {
+          "line": 50,
+          "heading": "2. AMD数据中心收入翻倍，AI竞争转向“芯片—网络—软件—机架”整套系统"
+        },
+        {
+          "line": 71,
+          "heading": "3. SemiAnalysis固定洞察：Kimi K3的价值在推理系统协同设计"
+        },
+        {
+          "line": 94,
+          "heading": "4. AI盈利兑现叠加油价回落，美股三大指数大涨并刷新纪录"
+        },
+        {
+          "line": 172,
+          "heading": "7. 宇树科技IPO进入定价讨论阶段，保荐机构给出506亿至559亿元估值区间"
+        },
+        {
+          "line": 229,
+          "heading": "1. AI产业同时进入“系统安全”和“系统经济性”两场考试"
+        },
+        {
+          "line": 233,
+          "heading": "2. 市场把AI收入和能源外交放在同一张估值表里"
+        },
+        {
+          "line": 257,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-06.md",
+      "sha256": "aff5edbaad27fd13b96087291170ed1857e2fd74753f817c926697513541c1b9",
+      "bytes": 19606,
+      "lines": 185,
+      "cited_url_count": 23,
+      "matched_existing_signals": ["signal-20260803-semianalysis-kimi-k3-architecture"],
+      "technology_section_headings": [
+        {
+          "line": 14,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 16,
+          "heading": "1. Anthropic确认组建Claude自研芯片团队：战略重点是软硬协同，而非立即“摆脱英伟达”"
+        },
+        {
+          "line": 30,
+          "heading": "2. SemiAnalysis固定观察：Kimi K3的架构创新，不等于线上推理“内存问题消失”"
+        },
+        {
+          "line": 48,
+          "heading": "1. 道指创新高、纳指回落：AI交易进入“业绩超过一致预期，仍可能不够”的阶段"
+        },
+        {
+          "line": 145,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-07.md",
+      "sha256": "dc0418c3d90ab2fe642815a7f7506dac8f7756a96a4cfa14c6b861e8b924b97f",
+      "bytes": 20516,
+      "lines": 197,
+      "cited_url_count": 23,
+      "matched_existing_signals": [
+        "signal-20260803-semianalysis-kimi-k3-architecture",
+        "signal-20260725-semianalysis-amd-cuda"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 16,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 18,
+          "heading": "1. AMD收购Taalas：AI推理进入“异构计算+专用化”阶段"
+        },
+        {
+          "line": 35,
+          "heading": "2. SemiAnalysis固定观察：AMD的机会不只在芯片，真正短板仍是软件和机架级可靠性"
+        },
+        {
+          "line": 99,
+          "heading": "1. 7月出口增长23.9%，高技术产品强、传统产品弱，外贸“含AI量”继续上升"
+        },
+        {
+          "line": 120,
+          "heading": "1. 安联二季度净利润下降8.7%：AI转型开始通过旧IT资产注销进入财务报表"
+        },
+        {
+          "line": 139,
+          "heading": "综合深度分析：AI价值链正在重新划分成本边界"
+        },
+        {
+          "line": 157,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-08.md",
+      "sha256": "3388bbd017fd81b16a549f733ae47a231fe483eaae498e9e48f3931bcbf68f94",
+      "bytes": 23926,
+      "lines": 233,
+      "cited_url_count": 25,
+      "matched_existing_signals": [
+        "signal-20260618-semianalysis-datacenter-cancellation",
+        "signal-20260625-semianalysis-us-grid-btm"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 13,
+          "heading": "二、AI / 科技"
+        },
+        {
+          "line": 15,
+          "heading": "1. Intel 复苏叙事升温：从单一芯片公司变成美国 AI 供应链安全资产"
+        },
+        {
+          "line": 30,
+          "heading": "2. SemiAnalysis 固定观察：数据中心不是“取消一半”，而是早期项目被筛掉"
+        },
+        {
+          "line": 45,
+          "heading": "3. SoftBank 的 AI 押注进入融资与资产重估阶段"
+        },
+        {
+          "line": 62,
+          "heading": "1. AI 主题仍是股市核心定价因子，但利润质量分化扩大"
+        },
+        {
+          "line": 77,
+          "heading": "2. 半导体政策资本化：政府资金从补贴走向股权化"
+        },
+        {
+          "line": 194,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-09.md",
+      "sha256": "e639893a630c7d9971b8b4a2d564b8a535ec522c1aa4722f5d5220a189cb12c1",
+      "bytes": 26534,
+      "lines": 244,
+      "cited_url_count": 31,
+      "matched_existing_signals": ["signal-20260618-semianalysis-datacenter-cancellation"],
+      "technology_section_headings": [
+        {
+          "line": 13,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 15,
+          "heading": "1. AI视频大模型融资和商业化加速，但行业开始进入分化阶段"
+        },
+        {
+          "line": 27,
+          "heading": "2. SemiAnalysis固定观察：AI数据中心的瓶颈在真实可交付容量"
+        },
+        {
+          "line": 126,
+          "heading": "2. 可再生能源消费与消纳责任制度施行，数据中心等高耗能行业被纳入刚性约束"
+        },
+        {
+          "line": 200,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-10.md",
+      "sha256": "7b9fda0f3f56f71b57a9a76ff7144493af103a8bfb6a950d73118a7d200c2e48",
+      "bytes": 25072,
+      "lines": 232,
+      "cited_url_count": 26,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 17,
+          "heading": "二、AI / 科技"
+        },
+        {
+          "line": 19,
+          "heading": "1. 苹果中国版AI选择“本地模型嵌入系统”：千问接入Mac，但产品状态仍需持续核实"
+        },
+        {
+          "line": 33,
+          "heading": "2. 中国AI专利与先进制造投资保持高增，但“数量领先”仍要转化为产品收入"
+        },
+        {
+          "line": 47,
+          "heading": "3. SemiAnalysis洞察：AI扩张的真正瓶颈正从“芯片”变成“可兑现的吉瓦级系统”"
+        },
+        {
+          "line": 189,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-15.md",
+      "sha256": "eda94726b9d4cf9061de2b5084c0d4fe3abe5581f3d791e5bdb75776835e2b77",
+      "bytes": 18224,
+      "lines": 199,
+      "cited_url_count": 24,
+      "matched_existing_signals": ["signal-20260810-semianalysis-tilert"],
+      "technology_section_headings": [
+        {
+          "line": 14,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 16,
+          "heading": "1. 英伟达据报缩减对 OpenAI 俄亥俄数据中心的担保敞口"
+        },
+        {
+          "line": 36,
+          "heading": "2. SemiAnalysis 最新洞察：推理竞争从“专用芯片”转向“通用 GPU 的极速档”"
+        },
+        {
+          "line": 159,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-16.md",
+      "sha256": "4a1f0b1c529f22a48ee72c7347eb3ffecb7390b8ef68c520de20201a9d323b52",
+      "bytes": 18092,
+      "lines": 209,
+      "cited_url_count": 22,
+      "matched_existing_signals": ["signal-20260810-semianalysis-tilert"],
+      "technology_section_headings": [
+        {
+          "line": 18,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 42,
+          "heading": "2. SemiAnalysis 最新洞察：低延迟推理开始成为独立的产品层"
+        },
+        {
+          "line": 170,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-17.md",
+      "sha256": "db3c1c7f1d8c1d975920f4243908f62810eff58893915184dcd5b1d6f3e0f676",
+      "bytes": 13644,
+      "lines": 277,
+      "cited_url_count": 11,
+      "matched_existing_signals": ["signal-20260303-semianalysis-pjm-load-forecast"],
+      "technology_section_headings": [
+        {
+          "line": 30,
+          "heading": "二、AI / 科技"
+        },
+        {
+          "line": 32,
+          "heading": "1. AI 投资进入“资本效率”阶段"
+        },
+        {
+          "line": 73,
+          "heading": "三、SemiAnalysis 固定观察"
+        },
+        {
+          "line": 75,
+          "heading": "PJM 容量市场：AI 数据中心真的在推高居民电费吗？"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-18.md",
+      "sha256": "e447e93baf4db9da7ebb2cea9ec125fbe2b89bec6d5fc2d260c99039f546d9b4",
+      "bytes": 12304,
+      "lines": 220,
+      "cited_url_count": 22,
+      "matched_existing_signals": [
+        "signal-20260729-semianalysis-lego-datacenters",
+        "signal-20260817-ports-pike-announcement",
+        "signal-20260625-semianalysis-us-grid-btm"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 18,
+          "heading": "二、AI / 科技"
+        },
+        {
+          "line": 20,
+          "heading": "1. OpenAI、NVIDIA、SB Energy把AI数据中心融资推到新量级"
+        },
+        {
+          "line": 44,
+          "heading": "2. SemiAnalysis固定观察：结构性背景"
+        },
+        {
+          "line": 136,
+          "heading": "欧洲央行研究人员警告：AI科技股估值修正可能外溢至欧元区"
+        },
+        {
+          "line": 177,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-20.md",
+      "sha256": "f30dd43c50d5b2f9251ca59c7735cedab1e4be40dc05e393749cee24fc7cafa9",
+      "bytes": 13903,
+      "lines": 192,
+      "cited_url_count": 23,
+      "matched_existing_signals": ["signal-20260810-semianalysis-tilert"],
+      "technology_section_headings": [
+        {
+          "line": 11,
+          "heading": "一、AI / 科技：机器人正在接近“ChatGPT时刻”，但商业化仍看世界模型"
+        },
+        {
+          "line": 31,
+          "heading": "SemiAnalysis固定观察：低延迟推理成为可单独收费的产品层"
+        },
+        {
+          "line": 162,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-21.md",
+      "sha256": "47a05cb5150c3179ce1b8348ced4a82ed314d00155c9b71a7f810af43dbf9007",
+      "bytes": 17585,
+      "lines": 313,
+      "cited_url_count": 24,
+      "matched_existing_signals": [
+        "signal-20260820-nvidia-china-lpu-denial",
+        "signal-20260819-semianalysis-cerebras-cs4"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 22,
+          "heading": "二、AI / 科技"
+        },
+        {
+          "line": 24,
+          "heading": "1. 英伟达否认“年底向中国推出特制LPU”：AI芯片传闻需要更高验证门槛"
+        },
+        {
+          "line": 47,
+          "heading": "2. SemiAnalysis全站扫描：最新文章是Cerebras CS-4，而不是TileRT"
+        },
+        {
+          "line": 254,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-22.md",
+      "sha256": "55455e1042c1368742926e330f6429cdc963b0a0657677567f6a277e63b25660",
+      "bytes": 12005,
+      "lines": 220,
+      "cited_url_count": 16,
+      "matched_existing_signals": ["signal-20260625-semianalysis-us-grid-btm"],
+      "technology_section_headings": [
+        {
+          "line": 18,
+          "heading": "一、AI / 科技：英伟达投资Cloverleaf，AI竞争进入“电力+土地+机房”阶段"
+        },
+        {
+          "line": 54,
+          "heading": "SemiAnalysis固定观察：本期转向“美国电网约束”"
+        },
+        {
+          "line": 87,
+          "heading": "二、财经 / 股市：美股周五反弹，但高长债收益率仍压制AI估值"
+        },
+        {
+          "line": 177,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-23.md",
+      "sha256": "ab2d1a8b7c710dcacc128d26635deb365d342e6d4ac6755a1374d9fceffcd5d4",
+      "bytes": 17210,
+      "lines": 241,
+      "cited_url_count": 20,
+      "matched_existing_signals": [
+        "signal-20260822-nvidia-server-price-report",
+        "signal-20260821-semianalysis-open-models",
+        "signal-20260821-china-next-generation-network-policy"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 24,
+          "heading": "二、AI / 科技"
+        },
+        {
+          "line": 26,
+          "heading": "1. 英伟达AI服务器被传涨价超过15%：关键是内存和整机BOM，而非“GPU单价”"
+        },
+        {
+          "line": 46,
+          "heading": "2. SemiAnalysis固定观察：开放模型是否正在追平闭源前沿"
+        },
+        {
+          "line": 114,
+          "heading": "新一代通信网：重点不只是5G，而是“网络 × AI × 空间通信 × 智能终端”"
+        },
+        {
+          "line": 188,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-24.md",
+      "sha256": "6b34b11238761066017bd873ee363133242abd2474e0e623581d76c4216bac4e",
+      "bytes": 9713,
+      "lines": 205,
+      "cited_url_count": 13,
+      "matched_existing_signals": ["signal-20260824-semianalysis-agentx"],
+      "technology_section_headings": [
+        {
+          "line": 16,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 18,
+          "heading": "阿里巴巴配售约800亿港元，全部加码AI"
+        },
+        {
+          "line": 32,
+          "heading": "SemiAnalysis最新：AgentX正式发布"
+        },
+        {
+          "line": 166,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-25.md",
+      "sha256": "5f3297d41be9ff307e437327df095032f5352ffd5160eafd694ed4d47d01da0b",
+      "bytes": 23816,
+      "lines": 516,
+      "cited_url_count": 23,
+      "matched_existing_signals": [
+        "signal-20260821-semianalysis-open-models",
+        "signal-20260824-semianalysis-agentx"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 23,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 25,
+          "heading": "1. 英伟达财报前夕：AI交易从“需求叙事”进入“盈利质量验证”"
+        },
+        {
+          "line": 74,
+          "heading": "2. 台湾起诉9人涉B300 AI服务器非法转售中国：出口管制进入“整机与最终用户”时代"
+        },
+        {
+          "line": 124,
+          "heading": "3. SemiAnalysis固定观察：开放模型追赶周期缩短，但“benchmark追上”不等于“商业产品追上”"
+        },
+        {
+          "line": 202,
+          "heading": "美股科技板块继续承压：英伟达连跌七日，长端利率仍是AI估值的“第二条财报”"
+        },
+        {
+          "line": 333,
+          "heading": "AI产业的潜在影响"
+        },
+        {
+          "line": 407,
+          "heading": "对德国科技与AI产业的含义"
+        },
+        {
+          "line": 436,
+          "heading": "今天真正值得跟踪的是“AI资本效率”"
+        },
+        {
+          "line": 481,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-26.md",
+      "sha256": "9b909582671c394e7b0204adc1328015229030b65092607a14af490a35b93949",
+      "bytes": 24692,
+      "lines": 295,
+      "cited_url_count": 27,
+      "matched_existing_signals": [
+        "signal-20260824-semianalysis-agentx",
+        "signal-20260825-openai-jalapeno-results",
+        "signal-20260825-waymo-munich-testing",
+        "signal-20260825-semianalysis-jalapeno"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 16,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 18,
+          "heading": "1. OpenAI 公布 Jalapeño 推理芯片首批结果：能效亮眼，但“全面超越”仍需更真实负载验证"
+        },
+        {
+          "line": 133,
+          "heading": "5. 工信部释放“AI 标准化 + 6G 预商用准备”政策信号"
+        },
+        {
+          "line": 197,
+          "heading": "六、SemiAnalysis 固定观察"
+        },
+        {
+          "line": 203,
+          "heading": "《OpenAI Jalapeño: Better Than Nvidia Blackwell》"
+        },
+        {
+          "line": 251,
+          "heading": "AI / 科技与 SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-27.md",
+      "sha256": "76af3c9ed694b260e822f516f7eca0d0fee88e98499d7114f70f3088ac4a413a",
+      "bytes": 21110,
+      "lines": 520,
+      "cited_url_count": 17,
+      "matched_existing_signals": [
+        "signal-20260819-semianalysis-cerebras-cs4",
+        "signal-20260825-semianalysis-jalapeno",
+        "signal-20260826-nvidia-fy27-q2-results"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 23,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 25,
+          "heading": "1. 英伟达Q2营收962亿美元：AI基础设施需求仍然高速增长"
+        },
+        {
+          "line": 90,
+          "heading": "2. SemiAnalysis固定观察：本期不重复Jalapeño，选择Cerebras CS-4作为结构性背景"
+        },
+        {
+          "line": 157,
+          "heading": "英伟达财报带动亚洲科技股走强，但AI估值仍同时受通胀和利率约束"
+        },
+        {
+          "line": 263,
+          "heading": "1—7月规上工业企业利润增长17.6%：AI电子链成为工业利润重要增量"
+        },
+        {
+          "line": 328,
+          "heading": "德国8月出口预期升至+9.6：AI和数字化成为高技术制造出口支撑"
+        },
+        {
+          "line": 411,
+          "heading": "AI"
+        },
+        {
+          "line": 414,
+          "heading": "半导体"
+        },
+        {
+          "line": 453,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 464,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-28.md",
+      "sha256": "3524126cdc959ef97b7cfd9e5d5b785bbe7cfc0e263dc1f617d1d95cc470b5b3",
+      "bytes": 25522,
+      "lines": 600,
+      "cited_url_count": 20,
+      "matched_existing_signals": [
+        "signal-20260827-skhynix-indiana-groundbreaking",
+        "signal-20260816-semianalysis-pjm-modeling",
+        "signal-20260828-ndrc-robotics-development"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 23,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 25,
+          "heading": "1. SK海力士美国HBM基地奠基：AI“内存瓶颈”开始成为长期产能战略"
+        },
+        {
+          "line": 98,
+          "heading": "2. SemiAnalysis固定观察：全站最新仍是Jalapeño，本期转向电网瓶颈"
+        },
+        {
+          "line": 144,
+          "heading": "中文分析：AI电力竞争的真正瓶颈可能是“市场设计”，而不只是发电量"
+        },
+        {
+          "line": 181,
+          "heading": "英伟达财报推动科技股再度领涨，但市场等待Jackson Hole确认利率路径"
+        },
+        {
+          "line": 300,
+          "heading": "国家发改委给机器人热“降温”：从展示能力转向数据、标准与真实应用闭环"
+        },
+        {
+          "line": 460,
+          "heading": "今日真正的主线：AI进入“物理瓶颈时代”"
+        },
+        {
+          "line": 477,
+          "heading": "SemiAnalysis / PJM"
+        },
+        {
+          "line": 483,
+          "heading": "中国机器人"
+        },
+        {
+          "line": 507,
+          "heading": "AI / 半导体"
+        },
+        {
+          "line": 535,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 545,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-29.md",
+      "sha256": "da72e98f09b891260f7f346bb8ec66e0636dc523208b4c154e5ca2d765004504",
+      "bytes": 24826,
+      "lines": 567,
+      "cited_url_count": 20,
+      "matched_existing_signals": [
+        "signal-20260828-openai-cursor-service-termination-plan",
+        "signal-20260829-cxmt-lpddr6-production"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 23,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 25,
+          "heading": "1. OpenAI将停止向Cursor提供模型：AI竞争开始争夺“分发权”"
+        },
+        {
+          "line": 89,
+          "heading": "2. SemiAnalysis固定观察：过去24小时无新公开文章，本期看“10GW AI数据中心”资本与电力模型"
+        },
+        {
+          "line": 160,
+          "heading": "Warsh在Jackson Hole偏鹰：AI高增长与更高资本成本正面相遇"
+        },
+        {
+          "line": 395,
+          "heading": "对AI与工业转型的含义"
+        },
+        {
+          "line": 425,
+          "heading": "AI资本回报率能否跑赢资本成本"
+        },
+        {
+          "line": 437,
+          "heading": "OpenAI × Cursor"
+        },
+        {
+          "line": 440,
+          "heading": "SemiAnalysis × SpaceX 10GW"
+        },
+        {
+          "line": 470,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 501,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 509,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-30.md",
+      "sha256": "b0c195e577cf6c3df6e7408c2adbcc692175c4e6aca8d212e5c7e3661aad836d",
+      "bytes": 22245,
+      "lines": 486,
+      "cited_url_count": 24,
+      "matched_existing_signals": [
+        "signal-20260828-openai-cursor-service-termination-plan",
+        "signal-20260807-semianalysis-gcp-model-economics",
+        "signal-20260829-nda-compute-capacity-july"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 25,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 27,
+          "heading": "1. OpenAI—Cursor争议：Coding Agent进入“分发权战争”"
+        },
+        {
+          "line": 75,
+          "heading": "2. SemiAnalysis固定观察：最新仍为Jalapeño，本期看“模型实验室 vs 云平台”"
+        },
+        {
+          "line": 129,
+          "heading": "高利率重新成为AI交易核心约束：Warsh讲话继续主导市场定价"
+        },
+        {
+          "line": 151,
+          "heading": "为什么这对AI特别重要"
+        },
+        {
+          "line": 222,
+          "heading": "全国智算规模升至245万PFLOPS：政策重心从“继续堆算力”转向利用率"
+        },
+        {
+          "line": 342,
+          "heading": "AI时代真正稀缺的是“高效率资本”"
+        },
+        {
+          "line": 412,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 422,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-08-31.md",
+      "sha256": "0a5a3ce9f9eb382d7682abedc415b78c3e1f1df8415fffffd0c3bca2f8a6d733",
+      "bytes": 12214,
+      "lines": 232,
+      "cited_url_count": 21,
+      "matched_existing_signals": [
+        "signal-20260831-fsb-frontier-ai-letter",
+        "signal-20260830-semianalysis-neocloud-security"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 20,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 22,
+          "heading": "FSB：前沿AI网络风险已进入金融稳定层面"
+        },
+        {
+          "line": 36,
+          "heading": "SemiAnalysis固定观察：Most Neoclouds Suck At Security"
+        },
+        {
+          "line": 151,
+          "heading": "AI进入“可信基础设施”阶段"
+        },
+        {
+          "line": 185,
+          "heading": "AI / 科技"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-01.md",
+      "sha256": "be3d2e9eae44869a4b53f53212a41353f52224dd0302c6355013734396ecff0b",
+      "bytes": 21917,
+      "lines": 412,
+      "cited_url_count": 26,
+      "matched_existing_signals": [
+        "signal-20260830-semianalysis-neocloud-security",
+        "signal-20260831-nvidia-mediatek-partnership"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 19,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 21,
+          "heading": "1. 英伟达向联发科投资35亿美元：NVLink正在从“英伟达内部互连”变成AI基础设施标准入口"
+        },
+        {
+          "line": 71,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 110,
+          "heading": "与OpenAI / Hugging Face事件的交叉验证"
+        },
+        {
+          "line": 345,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 355,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-02.md",
+      "sha256": "593ffe3411d7080f1b1079dd251f7d8dd00062e4177c6ed02f4acc7f87e04e60",
+      "bytes": 29849,
+      "lines": 414,
+      "cited_url_count": 30,
+      "matched_existing_signals": [
+        "signal-20260901-claude-fable-mythos-51",
+        "signal-20260724-nvidia-sk-ai-memory-partnership",
+        "signal-20260901-openai-astra-critical-cyber",
+        "signal-20260901-semianalysis-korea-sovereign-ai"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 21,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 50,
+          "heading": "2. OpenAI确认Astra达到“关键级”网络安全能力：首次触发更严格发布门槛"
+        },
+        {
+          "line": 79,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 81,
+          "heading": "最新文章：《Korea’s Trillion-Dollar Sovereign AI Investment: Nvidia Wins, Hynix Loses》"
+        },
+        {
+          "line": 92,
+          "heading": "1. 主权AI正在从“买API”升级为“自己训练模型”"
+        },
+        {
+          "line": 100,
+          "heading": "2. 韩国真正的大手笔不是模型补贴，而是AI数据中心"
+        },
+        {
+          "line": 104,
+          "heading": "3. NVIDIA是“主权AI”最大潜在受益者之一"
+        },
+        {
+          "line": 339,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 353,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-03.md",
+      "sha256": "9648e4c946c42beadfa30fabcff979a8fd7c0aa75152c61f4e3ebdd1c8836414",
+      "bytes": 24422,
+      "lines": 293,
+      "cited_url_count": 30,
+      "matched_existing_signals": [
+        "signal-20260901-semianalysis-korea-sovereign-ai",
+        "signal-20260903-enflame-ipo-subscription",
+        "signal-20260902-china-ic-production-statistics"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 17,
+          "heading": "二、AI / 科技"
+        },
+        {
+          "line": 19,
+          "heading": "1. OpenAI为Astra建设自动停机与受限访问：AI安全进入“运行时控制”阶段"
+        },
+        {
+          "line": 48,
+          "heading": "2. 燧原科技IPO申购约6109倍：国产算力资产获得高估值溢价"
+        },
+        {
+          "line": 72,
+          "heading": "3. 全球债券抛售加深：油价、财政与AI融资共同抬高资本成本"
+        },
+        {
+          "line": 199,
+          "heading": "七、SemiAnalysis固定观察"
+        },
+        {
+          "line": 201,
+          "heading": "最新公开条目：《Korea’s Trillion-Dollar Sovereign AI Investment: Nvidia Wins, Hynix Loses》"
+        },
+        {
+          "line": 244,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 284,
+          "heading": "SemiAnalysis固定观察"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-04.md",
+      "sha256": "c78ff5ded627499be16bacdcbdeba286a2662f5c93e025225790c9857d859d55",
+      "bytes": 31495,
+      "lines": 637,
+      "cited_url_count": 30,
+      "matched_existing_signals": [
+        "signal-20260825-openai-jalapeno-results",
+        "signal-20260825-semianalysis-jalapeno",
+        "signal-20260903-openai-gpt6-astra-launch"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 21,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 23,
+          "heading": "1. OpenAI正式发布GPT‑6 Astra：模型能力跃升，但“AGI”仍是公司判断而非外部共识"
+        },
+        {
+          "line": 76,
+          "heading": "2. 英伟达129.303亿美元收购Hugging Face：从“卖算力”进一步向“控制AI分发入口”延伸"
+        },
+        {
+          "line": 146,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 154,
+          "heading": "《OpenAI Jalapeño: Better Than Nvidia Blackwell》"
+        },
+        {
+          "line": 562,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 582,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-05.md",
+      "sha256": "b082c0b5988ca79899fc77b4f26f98154a5e51195bb1193a8cc78fd50fd48831",
+      "bytes": 20866,
+      "lines": 259,
+      "cited_url_count": 29,
+      "matched_existing_signals": [
+        "signal-20260901-semianalysis-korea-sovereign-ai",
+        "signal-20260905-us-china-ai-talks-september-report"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 12,
+          "heading": "一、AI 与科技"
+        },
+        {
+          "line": 14,
+          "heading": "1. 中美拟于 9 月中旬举行 AI 安全对话，重点可能转向“事故沟通机制”"
+        },
+        {
+          "line": 30,
+          "heading": "2. 鸿海称第三季度表现有望优于市场预期，AI 服务器继续成为主要增量"
+        },
+        {
+          "line": 108,
+          "heading": "十部门发布中小企业“十五五”规划，基金二期与硬科技融资成为政策抓手"
+        },
+        {
+          "line": 175,
+          "heading": "六、SemiAnalysis 固定观察"
+        },
+        {
+          "line": 179,
+          "heading": "本期解读：韩国“主权 AI”投入的价值捕获可能向算力供应商倾斜"
+        },
+        {
+          "line": 210,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 251,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-06.md",
+      "sha256": "34bc63573ed827eeb08a91a4f91afa60ce51e2afad005c719b3b6dbdf5ae3259",
+      "bytes": 27587,
+      "lines": 355,
+      "cited_url_count": 29,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 25,
+          "heading": "AI与科技"
+        },
+        {
+          "line": 27,
+          "heading": "1. TCS旗下HyperVault规划海得拉巴1GW AI数据中心园区"
+        },
+        {
+          "line": 50,
+          "heading": "2. AI数据中心竞争的下一阶段：算力、电力与客户合同绑定"
+        },
+        {
+          "line": 223,
+          "heading": "SemiAnalysis 固定观察"
+        },
+        {
+          "line": 299,
+          "heading": "AI与数据中心"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-07.md",
+      "sha256": "917a6721b7ef13f254ec58a5d0f9a737e137711e2163bce2fd54ba9461928128",
+      "bytes": 31900,
+      "lines": 199,
+      "cited_url_count": 37,
+      "matched_existing_signals": [
+        "signal-20260729-semianalysis-lego-datacenters",
+        "signal-20260824-semianalysis-agentx",
+        "signal-20260825-semianalysis-jalapeno",
+        "signal-20260816-semianalysis-pjm-modeling",
+        "signal-20260830-semianalysis-neocloud-security",
+        "signal-20260901-semianalysis-korea-sovereign-ai",
+        "signal-20260906-openai-research-acceleration",
+        "signal-20260906-openai-safety-threshold-essay"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 63,
+          "heading": "1．日韩芯片股带动上涨：AI需求交易延续，但不能直接外推至整个亚洲市场"
+        },
+        {
+          "line": 86,
+          "heading": "AI／科技"
+        },
+        {
+          "line": 88,
+          "heading": "1．OpenAI公布科研自动化数据：工作量在增长，“研究员被替代”尚无证据"
+        },
+        {
+          "line": 96,
+          "heading": "2．OpenAI首席科学家呼吁安全约束研发速度：倡议已经清楚，制度尚未落地"
+        },
+        {
+          "line": 104,
+          "heading": "SemiAnalysis每日深读：电网缺口里，有多少是工程问题，有多少是模型与市场规则？"
+        },
+        {
+          "line": 180,
+          "heading": "AI／科技（A1—A6）"
+        },
+        {
+          "line": 189,
+          "heading": "SemiAnalysis及能源交叉证据"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-08.md",
+      "sha256": "038ed902e42bcaf66e15caa572fac747c4679734311f2a427dd05f4f4216326a",
+      "bytes": 29773,
+      "lines": 675,
+      "cited_url_count": 22,
+      "matched_existing_signals": ["signal-20260907-semianalysis-tpu-inferencex"],
+      "technology_section_headings": [
+        {
+          "line": 19,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 21,
+          "heading": "1. Mistral完成30亿欧元融资：欧洲AI竞争开始从“模型追赶”走向“模型 + 算力 + 基础设施”一体化"
+        },
+        {
+          "line": 48,
+          "heading": "深度分析：欧洲的“AI主权”开始出现真实的资产负债表"
+        },
+        {
+          "line": 86,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 223,
+          "heading": "1. Brent继续在约97美元附近：市场正在同时交易“AI增长”和“能源再通胀”"
+        },
+        {
+          "line": 268,
+          "heading": "为什么AI芯片股仍能上涨"
+        },
+        {
+          "line": 287,
+          "heading": "对不同AI公司影响并不相同"
+        },
+        {
+          "line": 458,
+          "heading": "AI和高技术产品成为重要贸易变量"
+        },
+        {
+          "line": 611,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 622,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-09.md",
+      "sha256": "64fdcbf0854caa5f4304c370a09cf3d9ea25826b9af3a86e145fc49ddba1404a",
+      "bytes": 39267,
+      "lines": 823,
+      "cited_url_count": 21,
+      "matched_existing_signals": [
+        "signal-20260830-semianalysis-neocloud-security",
+        "signal-20260908-openai-navier-stokes-candidate"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 19,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 21,
+          "heading": "1. OpenAI公开Navier–Stokes候选解决方案：真正的突破可能不只是数学，而是“万级Agent科研组织”"
+        },
+        {
+          "line": 63,
+          "heading": "优先权争议：另一支AI辅助团队几乎同时取得相关结果"
+        },
+        {
+          "line": 101,
+          "heading": "对AI基础设施的含义"
+        },
+        {
+          "line": 129,
+          "heading": "2. Amazon与Qualcomm签下最高600亿美元AI芯片合作：推理芯片竞争进入“采购绑定 + 股权绑定 + 光互联绑定”"
+        },
+        {
+          "line": 202,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 242,
+          "heading": "一个很重要的“反直觉”结论：SemiAnalysis并未证明AI已经让全球网络攻击全面爆炸"
+        },
+        {
+          "line": 256,
+          "heading": "为什么它与今天的OpenAI新闻直接相关"
+        },
+        {
+          "line": 372,
+          "heading": "对AI资本开支的影响：不是需求消失，而是资本门槛提高"
+        },
+        {
+          "line": 556,
+          "heading": "对金融与科技合作的含义"
+        },
+        {
+          "line": 759,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 774,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-10.md",
+      "sha256": "dc0bc4dd816a5d26f1b71fea68e12d68f1fee216351bc190b46c8d5efef71908",
+      "bytes": 36256,
+      "lines": 986,
+      "cited_url_count": 23,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 20,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 22,
+          "heading": "1. 美国三大安全机构指责中国AI公司“工业规模蒸馏”，中方反驳：AI能力转移正式进入国家安全争议区"
+        },
+        {
+          "line": 123,
+          "heading": "深度判断：AI冷战正在从“硬件围栏”进入“知识流围栏”"
+        },
+        {
+          "line": 163,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 189,
+          "heading": "当前机器人模型仍远小于前沿LLM"
+        },
+        {
+          "line": 213,
+          "heading": "为什么SemiAnalysis认为“规划层”适合下沉到数据中心"
+        },
+        {
+          "line": 232,
+          "heading": "一个重要算力事实：Jetson Thor与数据中心GPU差距仍巨大"
+        },
+        {
+          "line": 241,
+          "heading": "网络延迟是云端机器人最大的工程约束"
+        },
+        {
+          "line": 305,
+          "heading": "中文分析：机器人AI会成为“边缘数据中心”的新需求源"
+        },
+        {
+          "line": 335,
+          "heading": "一个值得关注的反直觉点：机器人可能让“数据中心GPU需求”继续增长"
+        },
+        {
+          "line": 433,
+          "heading": "对AI和科技股的含义"
+        },
+        {
+          "line": 827,
+          "heading": "对AI与欧洲科技战略的影响"
+        },
+        {
+          "line": 918,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 931,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-11.md",
+      "sha256": "27f0aaa52632a317957216c79529f55d1ad148cf942f09e251c3b4ad99be56d9",
+      "bytes": 36478,
+      "lines": 927,
+      "cited_url_count": 22,
+      "matched_existing_signals": [
+        "signal-20260910-chatgpt-financial-services",
+        "signal-20260910-semianalysis-btm-power"
+      ],
+      "technology_section_headings": [
+        {
+          "line": 20,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 22,
+          "heading": "1. OpenAI推出ChatGPT for Financial Services：金融AI进入“数据授权与工作流”阶段"
+        },
+        {
+          "line": 122,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 141,
+          "heading": "关键数据：必须明确标注为SemiAnalysis模型跟踪"
+        },
+        {
+          "line": 191,
+          "heading": "许可：AI数据中心正在变成“工业电厂项目”"
+        },
+        {
+          "line": 231,
+          "heading": "中文分析：AI正在催生“私人工业公用事业”"
+        },
+        {
+          "line": 357,
+          "heading": "为什么这对AI估值特别重要"
+        },
+        {
+          "line": 545,
+          "heading": "1. 燧原科技科创板首日一度涨约200%：国产AI芯片进入“资本充足、基本面待验证”的新阶段"
+        },
+        {
+          "line": 861,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 872,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-12.md",
+      "sha256": "d440d247240e267ad7a9f09e5b67cd2dc41333310e9f779b8e5ab17b193b794a",
+      "bytes": 46954,
+      "lines": 1260,
+      "cited_url_count": 31,
+      "matched_existing_signals": ["signal-20260910-anthropic-threat-report"],
+      "technology_section_headings": [
+        {
+          "line": 20,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 22,
+          "heading": "1. Anthropic披露AI滥用新样本：真正变化的是“攻击单位经济学”"
+        },
+        {
+          "line": 36,
+          "heading": "最重要的变化：AI从“助手”变成“攻击编排器”"
+        },
+        {
+          "line": 87,
+          "heading": "诈骗：AI让“规模化人格运营”变得廉价"
+        },
+        {
+          "line": 178,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 184,
+          "heading": "《Nvidia’s Backstop Universe – Heads I Win, Tails Who Loses?》"
+        },
+        {
+          "line": 193,
+          "heading": "核心结论：NVIDIA正在把资产负债表变成AI基础设施的“信用锚”"
+        },
+        {
+          "line": 228,
+          "heading": "AI Cloud Agreements"
+        },
+        {
+          "line": 239,
+          "heading": "第三方数据中心租约"
+        },
+        {
+          "line": 251,
+          "heading": "SB Energy / OpenAI项目"
+        },
+        {
+          "line": 268,
+          "heading": "SemiAnalysis新增模型：为什么它认为NVIDIA愿意这么做"
+        },
+        {
+          "line": 289,
+          "heading": "AI Cloud Partner的经济学：必须标注为SemiAnalysis估算"
+        },
+        {
+          "line": 312,
+          "heading": "SemiAnalysis模型中的三个公开项目"
+        },
+        {
+          "line": 342,
+          "heading": "SemiAnalysis的11万亿美元AI Capex：属于模型，不是事实"
+        },
+        {
+          "line": 731,
+          "heading": "1. 国务院研究算力网建设：政策重点从“算力规模”转向“全国调度和网络化供给”"
+        },
+        {
+          "line": 746,
+          "heading": "中国现有算力网已经形成“8+10+3”格局"
+        },
+        {
+          "line": 764,
+          "heading": "工信部同时提出：2030年智能算力较2025年增长超5倍"
+        },
+        {
+          "line": 779,
+          "heading": "为什么“算力网”比“算力中心”更重要"
+        },
+        {
+          "line": 811,
+          "heading": "从“建算力”转向“供Token”"
+        },
+        {
+          "line": 882,
+          "heading": "中文分析：算力正在被政策定义成“新型公共基础设施网络”"
+        },
+        {
+          "line": 1062,
+          "heading": "与AI基础设施的关联"
+        },
+        {
+          "line": 1176,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 1193,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-13.md",
+      "sha256": "a5941499a2888673962ca4870c332667410fa2617e7ca453f2d927811822cf25",
+      "bytes": 44589,
+      "lines": 1205,
+      "cited_url_count": 33,
+      "matched_existing_signals": ["signal-20260901-semianalysis-korea-sovereign-ai"],
+      "technology_section_headings": [
+        {
+          "line": 21,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 23,
+          "heading": "1. Anthropic CEO公开呼吁前沿AI“降速”：行业竞争开始触碰可审计安全治理"
+        },
+        {
+          "line": 29,
+          "heading": "Amodei并不是要求“停止AI”"
+        },
+        {
+          "line": 90,
+          "heading": "OpenAI、xAI等竞争者是否会真正配合"
+        },
+        {
+          "line": 173,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 199,
+          "heading": "《Korea’s Trillion-Dollar Sovereign AI Investment: Nvidia Wins, Hynix Loses》"
+        },
+        {
+          "line": 224,
+          "heading": "韩国“国家AI锦标赛”模式"
+        },
+        {
+          "line": 295,
+          "heading": "数据中心：SemiAnalysis给出非常激进的韩国扩建数字"
+        },
+        {
+          "line": 329,
+          "heading": "为什么“主权AI”对NVIDIA反而是好消息"
+        },
+        {
+          "line": 1117,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 1130,
+          "heading": "SemiAnalysis固定观察"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-14.md",
+      "sha256": "d04101f8cf4c6b02fbec0e828f9e41d2492bf3442c87e448d314e144c2c1722e",
+      "bytes": 41984,
+      "lines": 1146,
+      "cited_url_count": 31,
+      "matched_existing_signals": ["signal-20260907-semianalysis-tpu-inferencex"],
+      "technology_section_headings": [
+        {
+          "line": 21,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 23,
+          "heading": "1. ASML High-NA EUV进入量产路线：AI/HBM继续把先进制造瓶颈推向光刻"
+        },
+        {
+          "line": 48,
+          "heading": "为什么这对AI比对传统消费芯片更重要"
+        },
+        {
+          "line": 118,
+          "heading": "对中国半导体供应链的含义"
+        },
+        {
+          "line": 157,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 192,
+          "heading": "SemiAnalysis的核心判断"
+        },
+        {
+          "line": 208,
+          "heading": "SemiAnalysis自有测试：最多约50%性能/美元优势"
+        },
+        {
+          "line": 256,
+          "heading": "SemiAnalysis最激进的预测：Anthropic会成为最大TPU用户"
+        },
+        {
+          "line": 292,
+          "heading": "与今天AI“降速”讨论的新关联"
+        },
+        {
+          "line": 366,
+          "heading": "1. AI概念股与债券同时承压：市场第一次认真给“AI主动降速”定价"
+        },
+        {
+          "line": 405,
+          "heading": "但“前沿训练降速”不等于“AI总需求下降”"
+        },
+        {
+          "line": 470,
+          "heading": "AI现在面对的是“三重折现”"
+        },
+        {
+          "line": 527,
+          "heading": "1. 金砖峰会第二阶段：从“联合宣言”进入AI、服务贸易和经济特区合作"
+        },
+        {
+          "line": 548,
+          "heading": "为什么AI开源社区值得关注"
+        },
+        {
+          "line": 672,
+          "heading": "1. 2026国家网络安全宣传周今日启动：AI安全正式进入“网络—供应链—国家安全”一体化治理"
+        },
+        {
+          "line": 703,
+          "heading": "一个重要方向：AI既是攻击工具，也是防御工具"
+        },
+        {
+          "line": 750,
+          "heading": "国家安全部门的AI风险警示：需要按来源边界处理"
+        },
+        {
+          "line": 769,
+          "heading": "与美国“AI降速”讨论的差别"
+        },
+        {
+          "line": 1062,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 1077,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-15.md",
+      "sha256": "6afc419d82f7a05be3fd5ee64a0ccea7b59a47ccba88542d961aacf1e33f0dfa",
+      "bytes": 41742,
+      "lines": 1103,
+      "cited_url_count": 33,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 20,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 22,
+          "heading": "1. Siri AI正式走向普通用户：手机Agent开始从“聊天”升级为“操作系统入口”"
+        },
+        {
+          "line": 80,
+          "heading": "对OpenAI / Google的启示"
+        },
+        {
+          "line": 118,
+          "heading": "2. High-NA EUV路线进一步明确：AI逻辑芯片与HBM共同把光刻推向更高NA"
+        },
+        {
+          "line": 137,
+          "heading": "AI为什么会加快High-NA采用"
+        },
+        {
+          "line": 171,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 344,
+          "heading": "2. 同日结构观察：《A Brain Too Big to Carry — On-Device vs Datacenter Inference》"
+        },
+        {
+          "line": 351,
+          "heading": "SemiAnalysis的关键分层"
+        },
+        {
+          "line": 369,
+          "heading": "Silicon / DRAM模型：必须标注为SemiAnalysis估算"
+        },
+        {
+          "line": 404,
+          "heading": "1. 费城半导体指数跌5.86%，美国10年期收益率盘中破5%：AI估值进入“资本效率”再定价"
+        },
+        {
+          "line": 446,
+          "heading": "AI硬件下跌的真正逻辑"
+        },
+        {
+          "line": 471,
+          "heading": "与SemiAnalysis Rubin研究形成一个有趣对照"
+        },
+        {
+          "line": 914,
+          "heading": "AI和数据中心也会受到德国能源成本约束"
+        },
+        {
+          "line": 1017,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 1034,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-16.md",
+      "sha256": "3cefec3a6f33a07cb4a29f6732d92164f405ac2e29db2109a2d1d9ffb32165d1",
+      "bytes": 43504,
+      "lines": 996,
+      "cited_url_count": 33,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 21,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 23,
+          "heading": "1. Anthropic签下首个澳大利亚数据中心协议：AI基础设施开始围绕“推理主权”全球选址"
+        },
+        {
+          "line": 59,
+          "heading": "澳大利亚为什么会成为AI基础设施争夺地"
+        },
+        {
+          "line": 84,
+          "heading": "对AI产业链的含义"
+        },
+        {
+          "line": 120,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 122,
+          "heading": "最新公开研究：数据中心暂停令“数量很大”，实际延期MW可能远小于标题叙事"
+        },
+        {
+          "line": 167,
+          "heading": "SemiAnalysis的方法学为什么值得看"
+        },
+        {
+          "line": 222,
+          "heading": "本期中文分析：数据中心监管不会首先杀死AI Capex，而会重定价“选址与供电能力”"
+        },
+        {
+          "line": 287,
+          "heading": "1. 10年期美债触及5.04%，Brent站上108美元：市场进入“油价—利率—AI Capex”联动阶段"
+        },
+        {
+          "line": 381,
+          "heading": "对AI产业投资最重要的观察指标"
+        },
+        {
+          "line": 528,
+          "heading": "1. 电子信息制造业“十五五”规划：AI时代产业政策从芯片单点竞争升级为“算力—存力—运力—电力”系统竞争"
+        },
+        {
+          "line": 543,
+          "heading": "最值得注意的一句话：算力、存力、运力、电力协同"
+        },
+        {
+          "line": 591,
+          "heading": "“新一代智能终端”可能成为下一轮AI需求出口"
+        },
+        {
+          "line": 674,
+          "heading": "2. AI安全治理论坛发布应用安全指引与大模型众测结果：监管进入Agent与运行期安全"
+        },
+        {
+          "line": 910,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 919,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-17.md",
+      "sha256": "ae80b96763f55bbaa669ed2097ba55aef2c2760439847faf3e868912040cef10",
+      "bytes": 40077,
+      "lines": 918,
+      "cited_url_count": 30,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 21,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 23,
+          "heading": "1. OpenAI发布模型失配披露框架：AI安全开始从“事故回应”转向“持续披露制度”"
+        },
+        {
+          "line": 95,
+          "heading": "对企业部署AI Agent的直接启示"
+        },
+        {
+          "line": 111,
+          "heading": "与“AI是否应该主动降速”争论的关系"
+        },
+        {
+          "line": 142,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 195,
+          "heading": "SemiAnalysis为什么认为推理时代“带宽 > 容量”"
+        },
+        {
+          "line": 236,
+          "heading": "SemiAnalysis的Roofline示例"
+        },
+        {
+          "line": 377,
+          "heading": "对AI基础设施的真正影响"
+        },
+        {
+          "line": 540,
+          "heading": "1. 华为《智能世界2035》：中国AI产业叙事从“模型竞争”进一步转向“Agent基础设施竞争”"
+        },
+        {
+          "line": 587,
+          "heading": "与美国“AI主动降速”形成鲜明对比"
+        },
+        {
+          "line": 698,
+          "heading": "1. Cohere与Aleph Alpha签最终合并协议：欧洲“主权AI”从模型竞赛转向企业可控AI栈"
+        },
+        {
+          "line": 710,
+          "heading": "为什么这笔交易对德国比“又一个AI并购”更重要"
+        },
+        {
+          "line": 772,
+          "heading": "对德国AI产业政策的含义"
+        },
+        {
+          "line": 789,
+          "heading": "最大风险：企业AI市场是否足以支持约200亿美元估值"
+        },
+        {
+          "line": 868,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 876,
+          "heading": "SemiAnalysis固定观察"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-18.md",
+      "sha256": "e4fcfef613f64aef8da11af7d7558d5b31c44d897a8f28e9df9bd6b7247f6d53",
+      "bytes": 45052,
+      "lines": 1306,
+      "cited_url_count": 28,
+      "matched_existing_signals": ["signal-20260910-semianalysis-btm-power"],
+      "technology_section_headings": [
+        {
+          "line": 22,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 24,
+          "heading": "1. Anthropic发布“AI研发自动化指数”：Claude已在26%的内部AI研发任务中“主导”"
+        },
+        {
+          "line": 62,
+          "heading": "为什么“研发AI的AI”比普通办公自动化更重要"
+        },
+        {
+          "line": 142,
+          "heading": "深度分析：AI行业正在从“模型竞争”进入“研发速度竞争”"
+        },
+        {
+          "line": 189,
+          "heading": "2. Amazon加入AI安全争论：支持更严格测试，但没有支持行业统一“降速”"
+        },
+        {
+          "line": 199,
+          "heading": "AI安全行业正在形成两种治理路线"
+        },
+        {
+          "line": 293,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 350,
+          "heading": "SemiAnalysis模型中最值得关注的几个数字"
+        },
+        {
+          "line": 446,
+          "heading": "与过去24小时新政策的关联：美国开始要求数据中心承担更多电网升级成本"
+        },
+        {
+          "line": 472,
+          "heading": "为什么这对AI资本开支是一个重要变化"
+        },
+        {
+          "line": 496,
+          "heading": "本期新增判断：AI算力竞争正在从GPU采购权转向“可用MW交付权”"
+        },
+        {
+          "line": 548,
+          "heading": "1. 美股在加息后反弹：科技股带动风险偏好恢复，但10年期收益率仍在4.93%左右"
+        },
+        {
+          "line": 583,
+          "heading": "10年期国债仍是AI估值的核心锚"
+        },
+        {
+          "line": 645,
+          "heading": "对AI投资的深度含义：从“Capex总量”走向“Capex效率”"
+        },
+        {
+          "line": 1221,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 1240,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-19.md",
+      "sha256": "aed9d4ca08a28e5871668619331815c51450ca64aee0b54e37481bc7db893eaa",
+      "bytes": 35526,
+      "lines": 1039,
+      "cited_url_count": 29,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 26,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 28,
+          "heading": "1. Anthropic × Accenture：AI安全从“外部测评”升级为“嵌入式评估”"
+        },
+        {
+          "line": 108,
+          "heading": "对AI行业的影响"
+        },
+        {
+          "line": 168,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 207,
+          "heading": "《The Great AI Silicon Shortage》"
+        },
+        {
+          "line": 214,
+          "heading": "核心结论一：AI芯片瓶颈已经从“GPU”变成“先进逻辑晶圆”"
+        },
+        {
+          "line": 240,
+          "heading": "SemiAnalysis模型：AI可能占N3产能大多数"
+        },
+        {
+          "line": 328,
+          "heading": "对中国半导体产业的新增分析角度"
+        },
+        {
+          "line": 349,
+          "heading": "SemiAnalysis模型的适用边界"
+        },
+        {
+          "line": 370,
+          "heading": "1. 周五市场：AI硬件强、指数分化、10年期美债仍压在5%附近"
+        },
+        {
+          "line": 401,
+          "heading": "为什么半导体涨、指数却不强"
+        },
+        {
+          "line": 434,
+          "heading": "对AI估值的核心影响"
+        },
+        {
+          "line": 626,
+          "heading": "1. 中美新一轮经贸磋商启动：AI、稀土和能源正在进入同一张谈判桌"
+        },
+        {
+          "line": 653,
+          "heading": "为什么AI和稀土被放进同一个贸易框架非常重要"
+        },
+        {
+          "line": 681,
+          "heading": "AI安全可能成为新的中美谈判议题"
+        },
+        {
+          "line": 881,
+          "heading": "对德国工业和AI数据中心的含义"
+        },
+        {
+          "line": 963,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 974,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-20.md",
+      "sha256": "35c9b400409d4197969d59256b5734328c209a8b23cca356832929f53149db9e",
+      "bytes": 42287,
+      "lines": 1230,
+      "cited_url_count": 32,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 28,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 98,
+          "heading": "与OpenAI、Anthropic、Meta事件的关系"
+        },
+        {
+          "line": 225,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 270,
+          "heading": "核心结论：$/GPU-hour可能是最容易误导的AI基础设施指标之一"
+        },
+        {
+          "line": 297,
+          "heading": "一个非常有代表性的数字：部分AI公司80%以上早期资金会用于GPU"
+        },
+        {
+          "line": 327,
+          "heading": "SemiAnalysis示例：5,184块GB300 NVL72，GPU价格完全相同，TCO仍可差15%"
+        },
+        {
+          "line": 410,
+          "heading": "本期中文分析：AI云市场可能从“GPU规格竞争”转向“Goodput金融化”"
+        },
+        {
+          "line": 478,
+          "heading": "1. 周末市场休市：最新交易日呈现“半导体强、长债弱”的双重定价"
+        },
+        {
+          "line": 520,
+          "heading": "为什么这对AI特别重要"
+        },
+        {
+          "line": 588,
+          "heading": "1. 联合国大会高级别周：战争、AI与“联合国还有没有治理能力”成为同一个问题"
+        },
+        {
+          "line": 604,
+          "heading": "今年与往年最大的不同：AI第一次真正进入“和平与安全”核心议程"
+        },
+        {
+          "line": 645,
+          "heading": "AI治理会遇到与战争非常类似的问题"
+        },
+        {
+          "line": 710,
+          "heading": "1. 中美经贸磋商今天进入关键会谈：AI与关键矿产可能首次深度捆绑"
+        },
+        {
+          "line": 765,
+          "heading": "AI为什么可能成为正式经贸议题"
+        },
+        {
+          "line": 1148,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 1165,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-21.md",
+      "sha256": "70ce54ba66fff37712faf3de4627746b76958d3a0f6813b6d2f9dafbe47777f5",
+      "bytes": 38499,
+      "lines": 1168,
+      "cited_url_count": 28,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 30,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 32,
+          "heading": "1. 中国开始给人形机器人IPO“降温”：资本市场从赛道估值转向收入质量"
+        },
+        {
+          "line": 56,
+          "heading": "为什么宇树科技成为监管转折点"
+        },
+        {
+          "line": 111,
+          "heading": "对中国机器人产业的含义"
+        },
+        {
+          "line": 156,
+          "heading": "2. 长鑫科技第五代DRAM平台量产：核心不是“参数追赶”，而是单位bit成本"
+        },
+        {
+          "line": 213,
+          "heading": "与AI供应链的直接关系"
+        },
+        {
+          "line": 239,
+          "heading": "与SemiAnalysis结构性判断的呼应"
+        },
+        {
+          "line": 271,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 506,
+          "heading": "1. 亚洲科技股周一继续上行：AI硬件交易仍在，但债券和油价没有给出“全面风险偏好”信号"
+        },
+        {
+          "line": 556,
+          "heading": "债券市场仍是科技估值最大的宏观约束"
+        },
+        {
+          "line": 798,
+          "heading": "1. 中美经贸磋商正式把AI写进官方文本：从“芯片管制”进入“AI风险沟通”"
+        },
+        {
+          "line": 844,
+          "heading": "为什么“通知机制”可能比统一AI规则更现实"
+        },
+        {
+          "line": 868,
+          "heading": "AI已与贸易、关键矿产进入同一个谈判框架"
+        },
+        {
+          "line": 1096,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 1109,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-22.md",
+      "sha256": "8e82836de8ab89d9a2a151cd0cb5ce8c130f48e797c8104507b5cb5ea7de27c1",
+      "bytes": 34469,
+      "lines": 1038,
+      "cited_url_count": 26,
+      "matched_existing_signals": ["signal-20260816-semianalysis-pjm-modeling"],
+      "technology_section_headings": [
+        {
+          "line": 26,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 28,
+          "heading": "1. 阿里云栖大会：真武V900 + 5—10万亿参数模型 + 20GW数据中心目标"
+        },
+        {
+          "line": 50,
+          "heading": "为什么20GW比“新芯片3倍性能”更重要"
+        },
+        {
+          "line": 114,
+          "heading": "与全球AI产业竞争的关系"
+        },
+        {
+          "line": 152,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 197,
+          "heading": "1. SemiAnalysis核心结论：PJM可能因容量市场模型错误让用户多付约120亿美元"
+        },
+        {
+          "line": 230,
+          "heading": "2. 为什么SemiAnalysis认为PJM低估了冬季发电能力"
+        },
+        {
+          "line": 289,
+          "heading": "4. AI数据中心为什么是这篇文章真正的核心背景"
+        },
+        {
+          "line": 323,
+          "heading": "5. 本期中文分析：AI算力竞争正在进入“电力市场设计竞争”"
+        },
+        {
+          "line": 363,
+          "heading": "SemiAnalysis模型数据"
+        },
+        {
+          "line": 400,
+          "heading": "1. 纳指创新高、AMD进入万亿美元俱乐部：AI硬件重新成为风险偏好核心"
+        },
+        {
+          "line": 423,
+          "heading": "为什么这次不是单纯“AI情绪反弹”"
+        },
+        {
+          "line": 454,
+          "heading": "2. AI交易开始向CPU与通信基础设施扩散"
+        },
+        {
+          "line": 739,
+          "heading": "4. 对AI和高科技融资的意义"
+        },
+        {
+          "line": 891,
+          "heading": "6. 对AI数据中心的启示"
+        },
+        {
+          "line": 976,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 984,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-23.md",
+      "sha256": "bee46e583e13888a7d7b986f9bb86452f8e67ac48b22a9043b447e229d828737",
+      "bytes": 40426,
+      "lines": 1292,
+      "cited_url_count": 27,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 30,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 148,
+          "heading": "2. Palo Alto Networks把前沿AI变成“持续红队”：网络安全进入机器速度攻防"
+        },
+        {
+          "line": 186,
+          "heading": "中文分析：AI安全预算会从模型公司扩散到所有大型企业"
+        },
+        {
+          "line": 225,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 442,
+          "heading": "6. 软件生态仍然可能比芯片规格更重要"
+        },
+        {
+          "line": 474,
+          "heading": "7. 中文分析：未来AI服务器可能变成四级内存体系"
+        },
+        {
+          "line": 498,
+          "heading": "8. 与中国AI产业的特殊关联"
+        },
+        {
+          "line": 545,
+          "heading": "1. 纳指连续第二天创新高：指数温和、存储和半导体强势"
+        },
+        {
+          "line": 590,
+          "heading": "2. 存储为什么持续成为AI硬件第二主线"
+        },
+        {
+          "line": 617,
+          "heading": "3. 美伊会谈压低油价，为科技股提供宏观支撑"
+        },
+        {
+          "line": 938,
+          "heading": "5. AI安全可能成为新的“危机管理机制”"
+        },
+        {
+          "line": 985,
+          "heading": "1. 欧盟给AI数据中心建立统一“能效/水效成绩单”"
+        },
+        {
+          "line": 1014,
+          "heading": "2. 为什么欧洲一边扩AI数据中心，一边马上开始监管能耗"
+        },
+        {
+          "line": 1046,
+          "heading": "3. 这对AI基础设施选址很重要"
+        },
+        {
+          "line": 1096,
+          "heading": "5. 欧洲AI基础设施的结构性矛盾"
+        },
+        {
+          "line": 1133,
+          "heading": "6. 中文分析：欧洲正在把AI竞争变成“算力 × 能源效率”的双重工业政策"
+        },
+        {
+          "line": 1224,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 1238,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-24.md",
+      "sha256": "c79945a31be649f9d3e9ade71e4be52986042751c6b65e0ed3cee3c90f971857",
+      "bytes": 44856,
+      "lines": 1497,
+      "cited_url_count": 30,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 30,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 32,
+          "heading": "1. OpenAI Agent未授权进入澳大利亚政府Medicare统计门户：Agent安全进入真实事故阶段"
+        },
+        {
+          "line": 159,
+          "heading": "2. 联合国安理会讨论“AI与国际安全”：事故通报可能成为全球治理最先落地的规则"
+        },
+        {
+          "line": 316,
+          "heading": "与OpenAI澳大利亚事件形成一个重要对照"
+        },
+        {
+          "line": 337,
+          "heading": "中文分析：CPU、内存和虚拟化将重新进入AI基础设施核心"
+        },
+        {
+          "line": 386,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 786,
+          "heading": "3. AI为什么对5%长债特别敏感"
+        },
+        {
+          "line": 1326,
+          "heading": "6. 对欧洲AI数据中心的含义"
+        },
+        {
+          "line": 1417,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 1440,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-25.md",
+      "sha256": "5c29471b527bb4655473f9732e859f953cdc2706bf47b0853e34befb8629e7c6",
+      "bytes": 40675,
+      "lines": 1472,
+      "cited_url_count": 24,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 28,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 30,
+          "heading": "1. Google Project Suncatcher：第一批TPU将在轨测试，AI基础设施竞争开始“离开地面”"
+        },
+        {
+          "line": 59,
+          "heading": "为什么Google会认真研究“太空数据中心”"
+        },
+        {
+          "line": 145,
+          "heading": "中文分析：Suncatcher不是“Google要马上把数据中心搬上天”"
+        },
+        {
+          "line": 187,
+          "heading": "2. Meta Connect 2026：Muse开始进入AI眼镜，Agent竞争从“软件入口”扩展到“人体入口”"
+        },
+        {
+          "line": 198,
+          "heading": "为什么AI眼镜对Agent比对Chatbot更重要"
+        },
+        {
+          "line": 287,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 695,
+          "heading": "1. 美股几乎横盘，但美债继续“重新定价整个AI资产负债表”"
+        },
+        {
+          "line": 810,
+          "heading": "5. 本期判断：AI需求不是问题，资本价格才是问题"
+        },
+        {
+          "line": 829,
+          "heading": "Neocloud / 数据中心开发商"
+        },
+        {
+          "line": 986,
+          "heading": "1. 习近平—特朗普白宫会谈：贸易继续“买时间”，AI正式进入战略稳定框架"
+        },
+        {
+          "line": 1020,
+          "heading": "3. AI：从“芯片出口限制”扩展成“风险与治理对话”"
+        },
+        {
+          "line": 1059,
+          "heading": "4. 为什么这个变化对AI企业比“是否降一轮关税”更重要"
+        },
+        {
+          "line": 1325,
+          "heading": "7. 对欧洲AI数据中心的间接影响"
+        },
+        {
+          "line": 1408,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 1424,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-26.md",
+      "sha256": "4be6880374f95dab1328d319343da4a9a8211479f571d5b2fb139de283257885",
+      "bytes": 42471,
+      "lines": 1490,
+      "cited_url_count": 31,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 26,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 191,
+          "heading": "二、SemiAnalysis固定观察"
+        },
+        {
+          "line": 195,
+          "heading": "《The Chinese AI Infrastructure Boom: Introducing the SemiAnalysis China Datacenter Model》"
+        },
+        {
+          "line": 207,
+          "heading": "1. 核心结论：中国不是“数据中心很多但都空着”，而是出现了“两种市场同时存在”"
+        },
+        {
+          "line": 241,
+          "heading": "2. SemiAnalysis模型：已交付容量超过24GW"
+        },
+        {
+          "line": 279,
+          "heading": "3. 官方数据独立确认：中国算力基础设施确实在高速扩张"
+        },
+        {
+          "line": 354,
+          "heading": "5. ByteDance：SemiAnalysis估算其占中国已交付数据中心容量约1/5"
+        },
+        {
+          "line": 419,
+          "heading": "7. “东数西算”正在真正改变AI数据中心的地理分布"
+        },
+        {
+          "line": 460,
+          "heading": "8. 中国真正的优势可能不是“芯片”，而是数据中心建设速度"
+        },
+        {
+          "line": 510,
+          "heading": "9. BOT模式可能成为中国AI数据中心融资的重要工具"
+        },
+        {
+          "line": 535,
+          "heading": "对AI投资者的含义"
+        },
+        {
+          "line": 552,
+          "heading": "10. 海外扩张：SemiAnalysis预计中国Hyperscaler海外租赁到2029年接近4GW"
+        },
+        {
+          "line": 589,
+          "heading": "11. 本期中文分析：中美AI基础设施瓶颈正在分化"
+        },
+        {
+          "line": 649,
+          "heading": "1. 美股反弹：微软领涨AI，但长端利率没有真正放松"
+        },
+        {
+          "line": 680,
+          "heading": "2. 但债券市场仍然在给AI估值设置“高门槛”"
+        },
+        {
+          "line": 736,
+          "heading": "Neocloud / AI数据中心开发商"
+        },
+        {
+          "line": 758,
+          "heading": "4. 本期市场真正的主线：“AI需求强”与“资金更贵”同时成立"
+        },
+        {
+          "line": 1042,
+          "heading": "3. 与AI安全对话的连接"
+        },
+        {
+          "line": 1414,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 1426,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-27.md",
+      "sha256": "0737091752c9420ad82c4278549b7c50309e49ab3af7031b266ffe9935fda5a7",
+      "bytes": 34870,
+      "lines": 424,
+      "cited_url_count": 27,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 1,
+          "heading": "ChatGPT 每日科技洞察简报｜2026-09-27"
+        },
+        {
+          "line": 18,
+          "heading": "一、AI / 科技"
+        },
+        {
+          "line": 20,
+          "heading": "1. 中美建立 AI 对话与“AI 事件沟通渠道”"
+        },
+        {
+          "line": 50,
+          "heading": "2. OpenAI 智能体越界事件继续扩大披露范围：AI 安全进入“运行时治理”阶段"
+        },
+        {
+          "line": 89,
+          "heading": "3. Anthropic × Akamai：116 亿美元 CPU 基础设施协议，AI Capex 开始显著“去 GPU 单一化”"
+        },
+        {
+          "line": 293,
+          "heading": "六、SemiAnalysis 固定观察"
+        },
+        {
+          "line": 374,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 418,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-28.md",
+      "sha256": "36f69881d2daeb7b3385c8e92ea1ab724099fa9ca8fc239d397471f5528835f0",
+      "bytes": 33021,
+      "lines": 430,
+      "cited_url_count": 21,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 26,
+          "heading": "二、AI / 科技"
+        },
+        {
+          "line": 28,
+          "heading": "2.1 OpenAI：代理通过DNS绕过网络边界，最强模型工具调用相关工作仍暂停"
+        },
+        {
+          "line": 178,
+          "heading": "与AI产业链的关联"
+        },
+        {
+          "line": 236,
+          "heading": "七、SemiAnalysis 固定观察"
+        },
+        {
+          "line": 289,
+          "heading": "7.2 The Chinese AI Infrastructure Boom: Introducing the SemiAnalysis China Datacenter Model"
+        },
+        {
+          "line": 301,
+          "heading": "关键数据 / 假设（均为SemiAnalysis自有模型或研究口径）"
+        },
+        {
+          "line": 335,
+          "heading": "8.1 AI产业的短期矛盾：能力继续上升，但“执行权限”开始成为商业化瓶颈"
+        },
+        {
+          "line": 347,
+          "heading": "8.3 中国工业盈利的“AI含量”正在提高，但不能只看总量"
+        },
+        {
+          "line": 368,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 419,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    },
+    {
+      "file": "ChatGPT每日简报_2026-09-29.md",
+      "sha256": "91c57cae193009fe0d0207b42ae4b2cf66d90604a70d4b2d2142438646e9b717",
+      "bytes": 33766,
+      "lines": 527,
+      "cited_url_count": 32,
+      "matched_existing_signals": [],
+      "technology_section_headings": [
+        {
+          "line": 20,
+          "heading": "二、AI / 科技"
+        },
+        {
+          "line": 93,
+          "heading": "3. 美国长债收益率逼近二十年高位：AI资本开支开始面对更高融资门槛"
+        },
+        {
+          "line": 372,
+          "heading": "七、SemiAnalysis固定观察"
+        },
+        {
+          "line": 374,
+          "heading": "10. 结构性背景，非过去24小时新闻：Nvidia’s Backstop Universe – Heads I Win, Tails Who Loses?"
+        },
+        {
+          "line": 443,
+          "heading": "AI / 科技"
+        },
+        {
+          "line": 520,
+          "heading": "SemiAnalysis"
+        }
+      ]
+    }
+  ]
+}

@@ -155,13 +155,29 @@ test('historical entity backfill keeps reporting publishers as sources, not even
   );
   assert.equal(meeting?.public_people[0]?.event_role, '会议主持人');
   assert.equal(meeting?.public_organizations[0]?.event_role, '会议机构');
-  assert.deepEqual(marketReport?.public_organizations, []);
+  assert.deepEqual(
+    marketReport?.public_organizations.map((organization) => organization.id),
+    [
+      'institution-china-ndrc',
+      'company-sichuan-shunxin-semiconductor',
+      'company-jiangsu-yangheyang-microelectronics',
+    ],
+  );
   assert.equal(marketReport?.public_sources?.[0]?.name, '新华社 / 新华网');
   assert.deepEqual(
     marketReport?.public_people.map((person) => person.event_role),
-    ['报道受访政策官员', '报道受访行业人士'],
+    [
+      '报道受访政策官员',
+      '报道受访行业人士',
+      '四川顺芯半导体总经理、报道受访企业负责人',
+      '江苏扬贺扬微电子运营总监、报道受访企业负责人',
+    ],
   );
-  assert.deepEqual(talksReport?.public_organizations, []);
+  assert.deepEqual(
+    talksReport?.public_organizations.map((organization) => organization.id),
+    ['institution-white-house'],
+  );
+  assert.match(talksReport?.public_organizations[0]?.event_role, /当时否认/);
   assert.equal(talksReport?.public_sources?.[0]?.name, '联合报系');
   assert.deepEqual(
     talksReport?.public_people.map((person) => person.event_role),

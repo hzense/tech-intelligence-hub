@@ -1,0 +1,10 @@
+{
+  "checked_at": "2026-09-29T12:59:52.580Z",
+  "url": "https://hzense.com/signals",
+  "http_status": 200,
+  "public_detail_links": 71,
+  "seed_count": 71,
+  "public_only": [],
+  "seed_only": [],
+  "scope": "public_list_ids_only; not database audit or post-change deployment verification"
+}

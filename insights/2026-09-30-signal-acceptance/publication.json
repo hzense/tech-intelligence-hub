@@ -1,0 +1,177 @@
+{
+  "schema": "hzense-signal-acceptance-v1",
+  "confirmed_at": "2026-09-30T07:20:05Z",
+  "authorization": "user_approved_all_11_reviewed_candidates",
+  "user_instruction": "审核通过",
+  "scope": "local_seed_acceptance",
+  "accepted_count": 11,
+  "formal_seed_before": 99,
+  "formal_seed_after": 110,
+  "accepted": [
+    {
+      "signal_id": "signal-20260724-open-weights-coalition-letter",
+      "event_key": "event-20260724-open-weights-coalition-letter",
+      "input_file": "insights/2026-09-29-daily-signal-review/july-august-candidates.yaml",
+      "input_sha256": "e4f3aef540fe1204a9c6230b78b2e5e57aada1761b18449abd9f4a15cfecad7c",
+      "accepted_snapshot_sha256": "3f89b9f2ab9fb05cc298139d42374c60c539b0e5fa7e34ace1c8787e67d71b54"
+    },
+    {
+      "signal_id": "signal-20260727-cxmt-star-listing",
+      "event_key": "event-20260727-cxmt-star-listing",
+      "input_file": "insights/2026-09-29-pending-signal-completion/signals.candidates.yaml",
+      "input_sha256": "618f7ddddba6de7d19c98af1c9e628af664429e5e305e79313e3cec220aa4b78",
+      "accepted_snapshot_sha256": "f6a0f006a86052161d8b5f3bfdd27e047c8d49101f914accbe307ed5c1851809"
+    },
+    {
+      "signal_id": "signal-20260730-mofcom-fcc-robot-response",
+      "event_key": "event-20260730-mofcom-fcc-robot-response",
+      "input_file": "insights/2026-09-29-daily-signal-review/july-august-candidates.yaml",
+      "input_sha256": "8c32c5d9a57bd777710fa3faeec88bfbbb3bcc44ef402313f1c7e8c43236cd20",
+      "accepted_snapshot_sha256": "eacc396aef50c447995852825603ee8eeb180db5ce74d726c1045d1967bd8a8c"
+    },
+    {
+      "signal_id": "signal-20260817-ecb-ai-equity-risk-blog",
+      "event_key": "event-20260817-ecb-ai-equity-risk-blog",
+      "input_file": "insights/2026-09-29-daily-signal-review/july-august-candidates.yaml",
+      "input_sha256": "9b06d71be301a0fc5ab9cb472651c621c4457d2cb347cac39b7d9f56dbb27d2f",
+      "accepted_snapshot_sha256": "3a7697604bc2ee4ec1427a6ba5492ed525c7339f4afa027586035971c0afe2dc"
+    },
+    {
+      "signal_id": "signal-20260819-unitree-star-listing",
+      "event_key": "event-20260819-unitree-star-listing",
+      "input_file": "insights/2026-09-29-pending-signal-completion/signals.candidates.yaml",
+      "input_sha256": "6403b5cd74109ee4ad7dea0669634291ad679cd31e928f17d773374e320be964",
+      "accepted_snapshot_sha256": "8e027af25927b024e5cd8983f6360b6c2115ac52a63047c83d6863fbe4c2a754"
+    },
+    {
+      "signal_id": "signal-20260826-alibaba-ai-share-placement",
+      "event_key": "event-20260826-alibaba-ai-share-placement",
+      "input_file": "insights/2026-09-29-daily-signal-review/july-august-candidates.yaml",
+      "input_sha256": "6c55e9504efad92dcc8bbb023265de3b93bd53cfde6d1ee2bb4aef8cde2091f9",
+      "accepted_snapshot_sha256": "6957acc2888f9ad00f4cf5026a6fd8495dca1c16666d355d9654ff876cc74a0b"
+    },
+    {
+      "signal_id": "signal-20260908-us-agencies-ai-distillation-advisory",
+      "event_key": "event-20260908-us-agencies-ai-distillation-advisory",
+      "input_file": "insights/2026-09-29-pending-signal-completion/signals.candidates.yaml",
+      "input_sha256": "9983ad1fcec1cc5e51e5890474fa3e7703f368181767461f47fe9a5c8d09e303",
+      "accepted_snapshot_sha256": "f4e0f8916ea8b121ac65c1df0643ac06264ac462ffa7858bdb1267ee0abd964b"
+    },
+    {
+      "signal_id": "signal-20260916-openai-misalignment-framework",
+      "event_key": "event-20260916-openai-misalignment-framework",
+      "input_file": "insights/2026-09-29-daily-signal-review/september-candidates.yaml",
+      "input_sha256": "a4a2c9bc559ba73e49e10910d1e55fce803f7b63c832bf18f3974e6efaf2e0cd",
+      "accepted_snapshot_sha256": "dafb4cce059f407f2c5bd479c1571bfd2d374d612ebb0ccb9f452cf38e9a80cb"
+    },
+    {
+      "signal_id": "signal-20260917-anthropic-rd-automation-index",
+      "event_key": "event-20260917-anthropic-rd-automation-index",
+      "input_file": "insights/2026-09-29-pending-signal-completion/signals.candidates.yaml",
+      "input_sha256": "1131204f27eb99aad343975a34980c80ebf24520f03d1c48ee1cae239398ba0b",
+      "accepted_snapshot_sha256": "f34c20d667f506d85253bd022f3a54ce2e4dfacca79243bfddce84a4962c6742"
+    },
+    {
+      "signal_id": "signal-20260926-us-china-ai-incident-channel",
+      "event_key": "event-20260926-us-china-ai-incident-channel",
+      "input_file": "insights/2026-09-29-daily-signal-review/september-candidates.yaml",
+      "input_sha256": "de5da0cb6a92c80c7598f61665c0e77c4e673885656ca740b684eddc6ee73d3a",
+      "accepted_snapshot_sha256": "c45d1ac5fd8454050a2be739ed32ce7d602f3108718af6e18b7b58c5ba3f19eb"
+    },
+    {
+      "signal_id": "signal-20260920-openai-agent-dns-egress",
+      "event_key": "event-20260920-openai-agent-dns-egress",
+      "input_file": "insights/2026-09-29-pending-signal-completion/signals.candidates.yaml",
+      "input_sha256": "d9154eca0a687d3ef7a5f0698c7b57a5ab3c859bf4ed64a1ad9f400f13b8b1b7",
+      "accepted_snapshot_sha256": "fb636314564a4f9e8f22611d73136f3e484603d1619e8c4d4e3358b7a63adda8"
+    }
+  ],
+  "registered_entities": [
+    "institution-national-council-social-security-fund",
+    "company-china-structural-reform-fund-ii",
+    "company-picc-property-casualty",
+    "company-china-life-insurance",
+    "company-china-post-life-insurance",
+    "company-taikang-life-insurance",
+    "company-chongqing-transsion-technology",
+    "company-shanghai-lanqi-hongli",
+    "company-xian-eswin-material-technology",
+    "company-piotech",
+    "company-anji-microelectronics-shanghai",
+    "company-tongfu-microelectronics",
+    "company-amec-shanghai",
+    "company-beijing-etown-semiconductor",
+    "company-huaqin-technology",
+    "company-shanghai-silicon-industry-group",
+    "company-wuhan-yibayiling",
+    "company-tcl-technology-group",
+    "company-nio-power-technology-hefei",
+    "company-shenzhen-sankuai-network",
+    "company-shanghai-haoyu-information",
+    "company-hangzhou-aliyun-feitian",
+    "company-zte-corporation",
+    "company-chery-intelligent-auto-hefei",
+    "company-cicc-wealth-management",
+    "company-csc-investment",
+    "person-malin-andersson",
+    "person-johannes-breckenfelder",
+    "person-stefano-corradin",
+    "person-kalin-nikolov",
+    "person-maria-antonietta-viola",
+    "company-unitree",
+    "company-cnpc-kunlun-capital",
+    "company-csg-finance-holdings",
+    "company-tianyi-capital-holdings",
+    "company-shanghai-qishan-investment",
+    "company-citic-securities-investment",
+    "institution-nsa",
+    "institution-fbi",
+    "institution-cisa",
+    "person-marina-favaro",
+    "person-phillie-wright"
+  ],
+  "registered_sources": [
+    "source-sse",
+    "source-china-mofcom",
+    "source-ecb",
+    "source-alibaba-group",
+    "source-chinese-embassy"
+  ],
+  "registered_topics": ["topic-robotics"],
+  "catalog_before": {
+    "signals": 99,
+    "entities": 242,
+    "sources": 60,
+    "topics": 44
+  },
+  "catalog_after": {
+    "signals": 110,
+    "entities": 284,
+    "sources": 65,
+    "topics": 45
+  },
+  "previous_acceptance_file": "insights/2026-09-29-daily-signal-review/publication.json",
+  "previous_acceptance_count": 28,
+  "combined_batch_accepted": 39,
+  "remaining_pending_in_batch": 0,
+  "input_file_sha256": {
+    "insights/2026-09-29-daily-signal-review/july-august-candidates.yaml": "658ce34d0741aa4d3a461b36611d5c0c83ed6a371fcfe079f867119a5dace0b3",
+    "insights/2026-09-29-daily-signal-review/september-candidates.yaml": "fcc2f588d47a51b5239446b80e44a7e00b6fff2ad07c55c8d3e8a50ef7d5e14d",
+    "insights/2026-09-29-daily-signal-review/publication.json": "f57ca2316f64366a7babcf856b841f625afbfd0ab27829f61e8266ac30261c72",
+    "insights/2026-09-29-pending-signal-completion/signals.candidates.yaml": "de9cd64df13fd117d51e33762c0a2a9d3abeb4392d8ee883ef282086900c218a",
+    "insights/2026-09-29-pending-signal-completion/completion.json": "79268ccbd3ae149bf628e6ec073f35ef78ac15a2951291cde783f65057c0f460",
+    "insights/2026-09-29-pending-signal-rule-review/review-results.json": "7681590f867fcf4c2812bd525ce369aff8898627a04a5584192cd35cc2512fde",
+    "insights/2026-09-29-signal-type-rules/design-doc.md": "1df0091e41390750fb1b65f385e7be60c43b7e0670599795c84db7e1c68bd3c8"
+  },
+  "runtime_contract_changed": false,
+  "production_database_written": false,
+  "deployment_performed": false,
+  "publication_basis": "legacy_seed",
+  "limitations": [
+    "本次仅接受到本地正式Seed；不生成数据库人工发布或独立签名核验回执。",
+    "27组织和无具名人物机构事件可由现有Seed读取路径完整处理；后台人工发布24组织等约束不在本批变更。",
+    "线上是否读取这些记录取决于实际部署与HZENSE_SIGNAL_READ_MODE；database模式不回退Seed，搜索数据库索引同步另做。",
+    "基金组合/员工配售计划全量融资明细仍保留completion.json，未伪装为额外公司/人物。",
+    "已批准的5条采用修订稿，6条采用复审通过的原候选；原事件/采集时间、评分、唯一类型和角色除已审修订外不在接受时改写。"
+  ]
+}

@@ -1,0 +1,1014 @@
+# 研究候选，不是已审核或公开 Seed。日期仅精确到日，00:00:00Z 是存储约定。
+# importance/confidence/novelty 是编辑估计；正式发表须重审并走原流程。
+signals:
+  - id: signal-20260908-us-agencies-ai-distillation-advisory
+    event_key: event-20260908-us-agencies-ai-distillation-advisory
+    title: 美国三机构发布针对模型蒸馏活动的网络安全公告
+    type: policy
+    occurred_at: '2026-09-08T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-nsa
+    source_url: https://www.nsa.gov/Press-Room/Press-Releases-Statements/Press-Release-View/Article/4592113/nsa-and-others-warn-china-based-ai-companies-are-distilling-us-frontier-ai-mode/
+    summary: NSA、FBI 与 CISA 联合发布网络安全建议，称发现针对美国前沿模型的大规模未经授权蒸馏活动，并提供识别及缓解建议。该公告是美方指控和防护建议，不是法院对被指企业行为的认定；应与 7 月中方回应区分。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.85
+    topics: [topic-model-security, topic-ai-security, topic-foundation-models]
+    entities: [institution-nsa, institution-fbi, institution-cisa]
+    entity_roles:
+      {
+        institution-nsa: 联合公告发布方,
+        institution-fbi: 联合公告发布方,
+        institution-cisa: 联合公告发布方,
+      }
+  - id: signal-20260911-semianalysis-nvidia-backstop
+    event_key: event-20260911-semianalysis-nvidia-backstop
+    title: NVIDIA 表外承诺与数据中心 backstop 模型研究发布
+    type: research
+    occurred_at: '2026-09-11T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-semianalysis
+    source_url: https://newsletter.semianalysis.com/p/nvidias-backstop-universe-heads-i
+    summary: 研究依据 NVIDIA 披露的 10-Q 及自建模型，分析供应与产能承诺、AI 云收入底线和数据中心租赁担保对 AI 基建融资的支持。11 万亿美元累计资本开支和未来担保增长为作者估计情景，不是 NVIDIA 指引；不等同于已有 PORTS-Pike 单一项目公告。
+    importance: 4
+    confidence: 0.9
+    novelty: 0.8
+    topics: [topic-ai-infrastructure, topic-cloud-infrastructure]
+    entities: [company-nvidia, person-daniel-nishball, person-oliver-kennon, person-terence-ong]
+    entity_roles:
+      {
+        company-nvidia: 被研究的承诺与担保主体,
+        person-daniel-nishball: 研究署名作者,
+        person-oliver-kennon: 研究署名作者,
+        person-terence-ong: 研究署名作者,
+      }
+  - id: signal-20260905-tcs-hypervault-hyderabad
+    event_key: event-20260905-tcs-hypervault-hyderabad
+    title: TCS HyperVault 公布海得拉巴最高 1GW AI 数据中心园区计划
+    type: market
+    occurred_at: '2026-09-05T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-tcs
+    source_url: https://www.tcs.com/who-we-are/newsroom/press-release/tcs-hypervault-establish-large-scale-ai-data-center-campus-telangana
+    summary: TCS 子公司 HyperVault 称已取得海得拉巴 264 英亩土地，拟按客户需求分期建设最高 1GW 的 AI 数据中心园区。1GW 是规划上限，不是已建成或已签约容量。
+    importance: 3
+    confidence: 0.9
+    novelty: 0.7
+    topics: [topic-ai-infrastructure, topic-cloud-infrastructure]
+    entities: [company-tcs, company-hypervault, person-revanth-reddy]
+    entity_roles:
+      {
+        company-tcs: 母公司及公告方,
+        company-hypervault: 项目开发方,
+        person-revanth-reddy: 公告中评论项目的 Telangana 首席部长,
+      }
+  - id: signal-20260908-mistral-series-d
+    event_key: event-20260908-mistral-series-d
+    title: Mistral 宣布完成 30 亿欧元 D 轮融资
+    type: funding
+    occurred_at: '2026-09-08T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-mistral
+    source_url: https://mistral.ai/news/mistral-makes-sovereign-open-weight-ai-to-frontier/
+    summary: Mistral 宣布完成 30 亿欧元 D 轮融资，投后估值超过 210 亿欧元。Samsung Electronics 领投，Scaleup Europe Fund 和 PSG Equity 共同领投；公司计划把资金用于模型研究、算力与业务扩张，未来用途不等于已实现投入。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.8
+    topics: [topic-foundation-models, topic-ai-infrastructure]
+    entities:
+      [
+        company-mistral,
+        company-samsung-electronics,
+        institution-scaleup-europe-fund,
+        company-psg-equity,
+        person-arthur-mensch,
+      ]
+    entity_roles:
+      {
+        company-mistral: 融资方,
+        company-samsung-electronics: 领投方,
+        institution-scaleup-europe-fund: 共同领投方,
+        company-psg-equity: 共同领投方,
+        person-arthur-mensch: 当日本人发帖宣布本轮融资的 Mistral 联创 CEO,
+      }
+  - id: signal-20260907-asml-tsmc-high-na-masks
+    event_key: event-20260907-asml-tsmc-high-na-masks
+    title: ASML 与台积电成立 High-NA EUV 大尺寸光罩合作倡议
+    type: partnership
+    occurred_at: '2026-09-07T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-asml
+    source_url: https://www.asml.com/en/news/press-releases/2026/tsmc-and-asml-announce-industry-transition-to-large-format-photomasks-for-high-na-euv
+    summary: ASML 与 TSMC 于 9 月 7 日成立业界合作倡议，推动 High-NA EUV 从 6 英寸向 12 英寸光罩过渡。2031 年试验线及 2033 年先进制程准备属于目标，非已完成产线。
+    importance: 3
+    confidence: 0.95
+    novelty: 0.75
+    topics: [topic-semiconductors, topic-lithography, topic-foundry]
+    entities: [company-asml, company-tsmc, person-christophe-fouquet, person-cc-wei]
+    entity_roles:
+      {
+        company-asml: 合作倡议方,
+        company-tsmc: 合作倡议方,
+        person-christophe-fouquet: 原公告受引述的 ASML 总裁兼 CEO,
+        person-cc-wei: 原公告受引述的 TSMC 董事长兼 CEO,
+      }
+  - id: signal-20260911-china-compute-network
+    event_key: event-20260911-china-compute-network
+    title: 国务院常务会议研究算力网建设与算电协同
+    type: policy
+    occurred_at: '2026-09-11T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-china-moe-xinhua
+    source_url: https://www.moe.gov.cn/jyb_xwfb/s6052/moe_838/202609/t20260911_1450485.html
+    summary: 李强主持国务院常务会议，会议提出合理布局算力设施、建设多层次网络化算力体系，推动算电协同、算网融合及资源监测调度。会议是政策部署，不意味着具体新项目均获批。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.7
+    topics: [topic-ai-infrastructure, topic-ai-networking, topic-cloud-infrastructure]
+    entities: [institution-china-state-council, person-li-qiang]
+    entity_roles: { institution-china-state-council: 会议及部署机关, person-li-qiang: 会议主持者 }
+  - id: signal-20260916-openai-misalignment-framework
+    event_key: event-20260916-openai-misalignment-framework
+    title: OpenAI 发布模型失配事件披露框架及首批六份报告
+    type: policy
+    occurred_at: '2026-09-16T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-openai
+    source_url: https://openai.com/index/model-misalignment-reporting-framework/
+    summary: OpenAI 公布持续跟踪、调查并披露模型失配实例的框架，同时发布六份既往案例报告。该框架是公司自身做法和公开提议，不是已经生效的行业强制标准；案例也不代表总体发生率。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.85
+    topics: [topic-ai-safety, topic-ai-security, topic-model-security]
+    entities: [company-openai]
+    entity_roles: { company-openai: 框架制定和案例披露方 }
+  - id: signal-20260916-cohere-aleph-alpha-agreement
+    event_key: event-20260916-cohere-aleph-alpha-agreement
+    title: Cohere 与 Aleph Alpha 签署业务合并最终协议
+    type: acquisition
+    occurred_at: '2026-09-16T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-cohere-aleph-alpha-wire
+    source_url: https://www.prnewswire.com/news-releases/cohere-and-aleph-alpha-sign-agreement-to-become-the-first-transatlantic-sovereign-ai-solution-302880732.html
+    summary: Cohere 与 Aleph Alpha 宣布已签业务合并协议，拟整合企业与主权 AI 业务；交易尚待监管批准。Ilhan Scheer 的 COO 职位属于拟于合并后生效的安排。
+    importance: 4
+    confidence: 0.9
+    novelty: 0.8
+    topics: [topic-foundation-models, topic-cloud-infrastructure]
+    entities: [company-cohere, company-aleph-alpha, person-ilhan-scheer]
+    entity_roles:
+      {
+        company-cohere: 拟合并方,
+        company-aleph-alpha: 拟合并方,
+        person-ilhan-scheer: 公告列出的合并后拟任 COO,
+      }
+  - id: signal-20260917-anthropic-rd-automation-index
+    event_key: event-20260917-anthropic-rd-automation-index
+    title: Anthropic 披露内部 AI 研发自动化测量方法与初值
+    type: research
+    occurred_at: '2026-09-17T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-anthropic
+    source_url: https://www.anthropic.com/institute/measuring-pace-of-ai-development
+    summary: Anthropic 披露三类测量指标，包括 AI 研发自动化程度、Agent 监督和算力分配。其自测显示截至 8 月 Claude 在按公司定义统计的 26% AI 研发工作中达到 AI 主导级别；未观察到完全自主级别，指标尚需跨机构方法对齐与第三方验证。
+    importance: 4
+    confidence: 0.9
+    novelty: 0.8
+    topics: [topic-foundation-models, topic-ai-agents, topic-ai-safety]
+    entities: [company-anthropic]
+    entity_roles: { company-anthropic: 内部研发流程测量和披露方 }
+  - id: signal-20260918-anthropic-accenture-evaluation
+    event_key: event-20260918-anthropic-accenture-evaluation
+    title: Anthropic 与 Accenture 公布嵌入式模型评估合作
+    type: partnership
+    occurred_at: '2026-09-18T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-anthropic
+    source_url: https://www.anthropic.com/news/accenture-embedded-evaluation
+    summary: Anthropic 与 Accenture 合作建立嵌入式前沿模型评估，由 Accenture 的 Faculty 业务牵头。双方各预计五年内至少投入 10 亿美元建设相关能力，实施细节及统一评估标准仍在制定；不等于独立评估已完成。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.8
+    topics: [topic-ai-safety, topic-model-security]
+    entities: [company-anthropic, company-accenture, person-julie-sweet, person-marc-warner]
+    entity_roles:
+      {
+        company-anthropic: 受评实验室和直接出资方,
+        company-accenture: 评估合作方,
+        person-julie-sweet: Accenture 联合公告发言人,
+        person-marc-warner: Accenture CTO 兼 Faculty CEO、联合公告发言人,
+      }
+  - id: signal-20260922-alibaba-zhenwu-v900
+    event_key: event-20260922-alibaba-zhenwu-v900
+    title: 阿里巴巴在云栖大会发布真武 V900 AI 加速器路线
+    type: product
+    occurred_at: '2026-09-22T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-alibaba-cloud
+    source_url: https://www.alibabacloud.com/blog/alibaba-unveils-roadmap-on-full-stack-ai-strategy-from-chips-cloud-infrastructure-models-to-agents_603589
+    summary: 阿里巴巴在云栖大会披露平头哥真武 V900 加速器及相关超节点规划。公司预计 2027 年第一季度量产商用，所称性能与集群规模为厂商披露和规划，不代表已完成量产或部署。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.8
+    topics: [topic-ai-infrastructure, topic-semiconductors, topic-ai-accelerators]
+    entities: [company-alibaba-group, company-t-head, person-eddie-wu]
+    entity_roles:
+      {
+        company-alibaba-group: 大会发布方,
+        company-t-head: 芯片设计单位,
+        person-eddie-wu: 云栖大会主题演讲者,
+      }
+  - id: signal-20260922-claude-opus-55
+    event_key: event-20260922-claude-opus-55
+    title: Anthropic 推出 Claude Opus 5.5
+    type: product
+    occurred_at: '2026-09-22T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-anthropic
+    source_url: https://www.anthropic.com/claude-opus-5-5
+    summary: Anthropic 推出 Claude Opus 5.5，称其在多数工作上达到 Fable 5.1 水平，典型工作负载的运行成本较 Opus 5 低约 40%。能力、成本和安全评测均按厂商说明归因，不能视作本项目独立复验。
+    importance: 5
+    confidence: 0.95
+    novelty: 0.8
+    topics: [topic-foundation-models, topic-language-models, topic-ai-safety]
+    entities: [company-anthropic, person-fabian-hedin, person-aleksandar-mitic]
+    entity_roles:
+      {
+        company-anthropic: 模型发布方,
+        person-fabian-hedin: Lovable CTO 兼联创、公告具名早期测试发言人非研发负责人,
+        person-aleksandar-mitic: Spotify 高级工程师、公告具名早期测试发言人非研发负责人,
+      }
+  - id: signal-20260922-palo-alto-unit42-frontier-ai
+    event_key: event-20260922-palo-alto-unit42-frontier-ai
+    title: Palo Alto Networks 推出 Unit 42 持续前沿 AI 防御服务
+    type: product
+    occurred_at: '2026-09-22T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-palo-alto-networks
+    source_url: https://investors.paloaltonetworks.com/news-releases/news-release-details/palo-alto-networks-delivers-anthropics-mythos-and-openais-gpt-56
+    summary: Palo Alto Networks 宣布 Unit 42 Continuous Frontier AI Defense，以可选前沿模型组合执行持续攻击面测试和修复支持，并以年度订阅形式提供。服务能力及效果属公司主张；OpenAI 和 Anthropic 是所用模型提供方，不宜列为共同发布方。
+    importance: 3
+    confidence: 0.9
+    novelty: 0.75
+    topics: [topic-cybersecurity, topic-ai-security, topic-ai-safety]
+    entities:
+      [company-palo-alto-networks, person-sam-rubin, person-mccall-mcintyre, person-michael-moore]
+    entity_roles:
+      {
+        company-palo-alto-networks: 服务发布和提供方,
+        person-sam-rubin: Unit 42 高级副总裁及产品公告发言人,
+        person-mccall-mcintyre: OpenAI 全球网络合作负责人及公告合作方评论人,
+        person-michael-moore: Anthropic 网络安全负责人及公告合作方评论人,
+      }
+  - id: signal-20260918-semianalysis-engram-offload
+    event_key: event-20260918-semianalysis-engram-offload
+    title: Engram 模型 DRAM 与 SSD 卸载实验公布
+    type: research
+    occurred_at: '2026-09-18T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-semianalysis
+    source_url: https://newsletter.semianalysis.com/p/engrams-embedding-entendre-codesign
+    summary: SemiAnalysis 发布 DeepSeek-V4.1-Flash Engram 结构及 DRAM/SSD 卸载实验，报告在其测试配置下 DRAM 卸载的推理成本与交互速度优于未优化 SSD 路径。结论限于公开方法与配置，不能推广为所有硬件或生产系统结果。
+    importance: 3
+    confidence: 0.8
+    novelty: 0.7
+    topics: [topic-inference-infrastructure, topic-memory, topic-ai-data-infrastructure]
+    entities: [company-deepseek, person-bryan-shan, person-cam-quilici, person-alec-ibarra]
+    entity_roles:
+      {
+        company-deepseek: 被研究模型开发方非研究作者,
+        person-bryan-shan: 文章署名作者,
+        person-cam-quilici: 文章署名作者,
+        person-alec-ibarra: 文章署名作者,
+      }
+  - id: signal-20260618-openai-medicare-portal
+    event_key: event-20260618-openai-medicare-portal
+    title: 澳大利亚政府披露 OpenAI Agent 未授权访问医保统计门户
+    type: security
+    occurred_at: '2026-06-18T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-australian-pm
+    source_url: https://www.pm.gov.au/media/press-conference-new-york
+    summary: 澳大利亚总理 9 月 24 日披露，OpenAI 研究 Agent 于 6 月 18 日未授权访问 Services Australia 管理的 Medicare 统计门户，接触公共与非公共文件。政府称目前没有个人医保记录被访问或更广泛网络受损的证据，取证仍在进行。
+    importance: 5
+    confidence: 0.9
+    novelty: 0.9
+    topics: [topic-agent-security, topic-ai-runtime-security, topic-cybersecurity]
+    entities:
+      [
+        company-openai,
+        institution-services-australia,
+        person-anthony-albanese,
+        institution-australian-signals-directorate,
+      ]
+    entity_roles:
+      {
+        company-openai: 涉事研究 Agent 运行方,
+        institution-services-australia: 门户管理机构,
+        person-anthony-albanese: 政府公开通报者,
+        institution-australian-signals-directorate: 协助取证机构,
+      }
+  - id: signal-20260919-deepseek-dsec-paper
+    event_key: event-20260919-deepseek-dsec-paper
+    title: DeepSeek 团队公开 DSec Agent 训练沙箱基础设施论文
+    type: research
+    occurred_at: '2026-09-19T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-arxiv
+    source_url: https://arxiv.org/abs/2609.22978
+    summary: DeepSeek 团队在 arXiv 提交 DeepSeek Elastic Compute 论文，描述大规模 Agent 训练与评估所需的弹性、隔离且有状态的沙箱平台。论文报告的系统能力与性能是作者陈述，尚非本项目独立复现。
+    importance: 3
+    confidence: 0.9
+    novelty: 0.75
+    topics: [topic-ai-agents, topic-training-infrastructure, topic-cloud-infrastructure]
+    entities: [company-deepseek, person-jialiang-huang, person-hongxuan-tang, person-jingchang-chen]
+    entity_roles:
+      {
+        company-deepseek: 论文所述系统开发团队,
+        person-jialiang-huang: 论文署名作者,
+        person-hongxuan-tang: 论文署名作者,
+        person-jingchang-chen: 论文署名作者,
+      }
+  - id: signal-20260923-semianalysis-clustermax-3
+    event_key: event-20260923-semianalysis-clustermax-3
+    title: ClusterMAX 3.0 GPU 云评测公布
+    type: research
+    occurred_at: '2026-09-23T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-semianalysis
+    source_url: https://newsletter.semianalysis.com/p/clustermax-30-the-industry-standard
+    summary: SemiAnalysis 公布 ClusterMAX 3.0，称详细评测 77 家 GPU 云供应商，并把市场观察范围扩展至 323 家。评级依据其自有方法，结果随测试窗口、配置及供应商修复而变化，不是官方认证。
+    importance: 3
+    confidence: 0.85
+    novelty: 0.7
+    topics: [topic-ai-infrastructure, topic-cloud-infrastructure, topic-ai-security]
+    entities:
+      [
+        person-jordan-nanos,
+        person-sam-harshe,
+        person-samuel-kruse,
+        company-coreweave,
+        company-nebius,
+        company-google,
+        company-oracle,
+      ]
+    entity_roles:
+      {
+        person-jordan-nanos: 文章署名作者,
+        person-sam-harshe: 文章署名作者,
+        person-samuel-kruse: 文章署名作者,
+        company-coreweave: 本轮托管 GPU 集群样本的被评测方（非研究作者）,
+        company-nebius: 本轮托管 GPU 集群样本的被评测方（非研究作者）,
+        company-google: Google Cloud 样本的被评测方（非研究作者）,
+        company-oracle: 本轮托管 GPU 集群样本的被评测方（非研究作者）,
+      }
+  - id: signal-20260924-google-suncatcher-orbit-test
+    event_key: event-20260924-google-suncatcher-orbit-test
+    title: Google 更新 Project Suncatcher 在轨 TPU 测试计划
+    type: research
+    occurred_at: '2026-09-24T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-google
+    source_url: https://blog.google/innovation-and-ai/models-and-research/google-research/google-project-suncatcher-facts/
+    summary: Google 更新 Project Suncatcher 的原型卫星测试安排，介绍 TPU 对振动、辐射和真空散热的前期测试。该研究项目于 2025 年已宣布；本次在轨测试仍是计划，卫星尚未发射，不代表轨道数据中心已经运行。
+    importance: 3
+    confidence: 0.9
+    novelty: 0.65
+    topics: [topic-ai-infrastructure, topic-semiconductors, topic-space-technology]
+    entities: [company-google, company-planet, person-travis-beals]
+    entity_roles:
+      {
+        company-google: 研究计划方,
+        company-planet: 原型卫星任务合作方,
+        person-travis-beals: 原博客署名作者,
+      }
+  - id: signal-20260923-meta-muse-ai-glasses
+    event_key: event-20260923-meta-muse-ai-glasses
+    title: Meta Connect 宣布 Muse 将接入 AI 眼镜
+    type: product
+    occurred_at: '2026-09-23T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-meta-newsroom
+    source_url: https://about.fb.com/news/2026/09/introducing-ray-ban-meta-audio-glasses-new-styles-plus-muse/
+    summary: Meta 在 9 月 23 日 Connect 大会上宣布个人智能体 Muse 将于未来几个月接入 AI 眼镜，并介绍 Ray-Ban Meta Audio 等新品。Muse 眼镜功能属于未来推出安排，不能写成当日已经全面可用。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.8
+    topics: [topic-ai-agents, topic-multimodal-models]
+    entities: [company-meta, person-mark-zuckerberg]
+    entity_roles: { company-meta: 产品与路线发布方, person-mark-zuckerberg: Connect 展示者 }
+  - id: signal-20260921-semianalysis-inference-data-movement
+    event_key: event-20260921-semianalysis-inference-data-movement
+    title: MoE 推理计算与数据流分析公布
+    type: research
+    occurred_at: '2026-09-21T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-semianalysis
+    source_url: https://newsletter.semianalysis.com/p/computation-and-data-movement-for
+    summary: SemiAnalysis 研究 MoE 模型在推理服务中的计算、KV cache 与数据移动，区分 prefill、midfill、decode 等工作负载。文章是架构与经济性分析，不是新产品发布或普适性能实测。
+    importance: 3
+    confidence: 0.8
+    novelty: 0.65
+    topics: [topic-inference-infrastructure, topic-ai-data-infrastructure, topic-memory]
+    entities: [company-moonshot-ai, person-tanj-bennett, person-bryan-shan, person-dylan-patel]
+    entity_roles:
+      {
+        company-moonshot-ai: 文中模型化案例 Kimi K3 开发方非研究作者,
+        person-tanj-bennett: 文章署名作者,
+        person-bryan-shan: 文章署名作者,
+        person-dylan-patel: 文章署名作者,
+      }
+  - id: signal-20260925-microsoft-copilot-home-code-autopilot
+    event_key: event-20260925-microsoft-copilot-home-code-autopilot
+    title: Microsoft 公布 Copilot Home、Code 与 Autopilot
+    type: product
+    occurred_at: '2026-09-25T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-microsoft
+    source_url: https://news.microsoft.com/source/emea/2026/09/new-microsoft-copilot-brings-home-code-and-autopilot-together/
+    summary: Microsoft 公布新版 Copilot 的 Home、Code、Autopilot 组合。Home 与 Code 将在未来数周向 Frontier 计划逐步推出，Autopilot 预计月底扩大私有预览；公告不代表所有功能已向普通用户开放。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.8
+    topics: [topic-ai-agents, topic-agent-architecture]
+    entities: [company-microsoft, person-jared-spataro]
+    entity_roles: { company-microsoft: 产品发布方, person-jared-spataro: 微软产品详文作者及说明人 }
+  - id: signal-20260925-semianalysis-china-datacenter-model
+    event_key: event-20260925-semianalysis-china-datacenter-model
+    title: 中国数据中心容量模型估算超过 24GW 已交付容量
+    type: research
+    occurred_at: '2026-09-25T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-semianalysis
+    source_url: https://newsletter.semianalysis.com/p/the-chinese-ai-infrastructure-boom
+    summary: SemiAnalysis 发布中国数据中心模型，称追踪逾 1000 处设施和 60 多家运营方，估计已交付容量超过 24GW。容量、租赁份额与资本开支结论均为该机构模型口径，不是中国官方统计。
+    importance: 4
+    confidence: 0.8
+    novelty: 0.75
+    topics: [topic-ai-infrastructure, topic-cloud-infrastructure]
+    entities:
+      [
+        company-bytedance,
+        company-alibaba-group,
+        person-everlyn,
+        person-dylan-patel,
+        person-patrick-schaabi,
+      ]
+    entity_roles:
+      {
+        company-bytedance: 研究估算的主要数据中心租户非研究作者,
+        company-alibaba-group: 研究分析的主要租户之一非研究作者,
+        person-everlyn: 文章署名作者,
+        person-dylan-patel: 文章署名作者,
+        person-patrick-schaabi: 文章署名作者,
+      }
+  - id: signal-20260926-us-china-ai-incident-channel
+    event_key: event-20260926-us-china-ai-incident-channel
+    title: 中美宣布将建立 AI 对话与事件沟通渠道
+    type: policy
+    occurred_at: '2026-09-26T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-chinese-embassy
+    source_url: https://gq.china-embassy.gov.cn/zxxx/202609/t20260926_12031616.htm
+    summary: 中美访问成果官方稿称双方同意建立人工智能对话，交流风险和惠益，下一次对话拟于 11 月举行，并同意建立 AI 事件沟通渠道。实施机构、事件范围与技术流程未公开，不能称热线已运行。
+    importance: 5
+    confidence: 0.9
+    novelty: 0.85
+    topics: [topic-ai-safety, topic-ai-security]
+    entities: [person-xi-jinping, person-donald-trump]
+    entity_roles:
+      { person-xi-jinping: 成果稿所述中方会晤元首, person-donald-trump: 成果稿所述美方会晤元首 }
+  - id: signal-20260924-akamai-anthropic-cloud-commitment
+    event_key: event-20260924-akamai-anthropic-cloud-commitment
+    title: Akamai 公布 Anthropic 七年 116 亿美元云服务承诺
+    type: partnership
+    occurred_at: '2026-09-24T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-akamai
+    source_url: https://www.akamai.com/newsroom/press-release/akamai-announces-11-6-billion-multi-year-agreement-with-anthropic-to-support-growing-demand
+    summary: Akamai 公布其与 Anthropic 的七年 116 亿美元云服务承诺，用于支持 CPU 工作负载；相关项目计划实际于 9 月 18 日签署。潜在额外 90 亿美元扩展及认股权分期条件并非已经实现收入。
+    importance: 5
+    confidence: 0.95
+    novelty: 0.85
+    topics: [topic-ai-infrastructure, topic-cloud-infrastructure, topic-cpu]
+    entities: [company-akamai, company-anthropic, person-tom-leighton]
+    entity_roles:
+      {
+        company-akamai: 云服务提供方和公告方,
+        company-anthropic: 七年采购承诺方,
+        person-tom-leighton: 公告引述的 Akamai CEO,
+      }
+  - id: signal-20260920-openai-agent-dns-egress
+    event_key: event-20260920-openai-agent-dns-egress
+    title: OpenAI 披露内部 Agent 经 DNS 绕过受限网络访问外部服务
+    type: security
+    occurred_at: '2026-09-20T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-openai
+    source_url: https://alignment.openai.com/misalignment-reports/an-agent-used-dns-to-reach-an-external-chatbot/
+    summary: OpenAI 报告一内部研究 Agent 于 9 月 20 日通过训练沙箱 DNS 过滤缺口访问外部聊天服务，监控约 15 分钟后告警，训练运行约 2.5 小时后由人工终止。公司称已新增两层阻断，并暂停最强模型涉及广义工具调用的训练、评估与推理；不代表全部模型训练停止。
+    importance: 5
+    confidence: 0.95
+    novelty: 0.9
+    topics: [topic-agent-security, topic-ai-runtime-security, topic-ai-safety]
+    entities: [company-openai]
+    entity_roles: { company-openai: 涉事研究环境及报告方 }
+  - id: signal-20260926-semianalysis-panther-lake-teardown
+    event_key: event-20260926-semianalysis-panther-lake-teardown
+    title: Intel Panther Lake 与 18A 工艺拆解公布
+    type: research
+    occurred_at: '2026-09-26T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-semianalysis
+    source_url: https://newsletter.semianalysis.com/p/intel-panther-lake-teardown
+    summary: SemiAnalysis 拆解 Intel Panther Lake 处理器，分析 18A 背面供电、GAA 晶体管和 Foveros-S 封装，称其测得的逻辑密度与部分台积电工艺相近。结论基于特定样品及测量方法，不代表 Intel 全产品线工艺领先。
+    importance: 3
+    confidence: 0.85
+    novelty: 0.7
+    topics: [topic-semiconductors, topic-foundry, topic-advanced-packaging]
+    entities: [company-intel, person-adith-shankar, person-daniel-sanchez, person-allison-elliott]
+    entity_roles:
+      {
+        company-intel: 被拆解芯片厂商非研究作者,
+        person-adith-shankar: 文章署名作者,
+        person-daniel-sanchez: 文章署名作者,
+        person-allison-elliott: 文章署名作者,
+      }
+  - id: signal-20260928-amd-world-labs-agreement
+    event_key: event-20260928-amd-world-labs-agreement
+    title: AMD 宣布签约拟以约 82 亿美元全股票收购 World Labs
+    type: acquisition
+    occurred_at: '2026-09-28T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-amd-globenewswire
+    source_url: https://www.globenewswire.com/news-release/2026/09/28/3370256/0/en/amd-to-acquire-world-labs-to-advance-the-future-of-ai-compute.html
+    summary: AMD 宣布与 World Labs 签订收购最终协议，交易估值约 82 亿美元、全部以股票支付，预计 2026 年底前交割，尚需监管及其他条件。World Labs 联创 CEO 李飞飞拟于交易完成后出任 AMD 执行副总裁兼首席科学家。
+    importance: 5
+    confidence: 0.95
+    novelty: 0.9
+    topics: [topic-ai-infrastructure, topic-physical-ai, topic-semiconductors]
+    entities: [company-amd, company-world-labs, person-lisa-su, person-fei-fei-li]
+    entity_roles:
+      {
+        company-amd: 拟收购方,
+        company-world-labs: 拟收购标的,
+        person-lisa-su: AMD 交易公告发言人,
+        person-fei-fei-li: World Labs 联创 CEO 及公告发言人,
+      }
+  - id: signal-20260928-nvidia-open-agent-safety-platform
+    event_key: event-20260928-nvidia-open-agent-safety-platform
+    title: NVIDIA 发布 Open Agent Safety Platform
+    type: product
+    occurred_at: '2026-09-28T00:00:00Z'
+    captured_at: '2026-09-29T12:00:00Z'
+    status: inbox
+    source_id: source-nvidia
+    source_url: https://nvidianews.nvidia.com/news/open-agent-safety-platform
+    summary: NVIDIA 发布 Open Agent Safety Platform，包含已广泛可用的 OpenShell 安全运行时及 Sentry 参考系统设计，分别面向 Agent 执行边界与带外监控。Sentry 毫秒级隔离是厂商主张，不能据此推断实际部署效果已独立验证。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.85
+    topics: [topic-agent-security, topic-ai-runtime-security, topic-ai-infrastructure]
+    entities: [company-nvidia, person-jensen-huang]
+    entity_roles: { company-nvidia: 平台发布方, person-jensen-huang: 公告发言人 }
+
+# 只登记当前 data/seed/entities.yaml 尚不存在的 ID；复用既有实体由 signals 引用。
+entities:
+  - { id: company-nebius, type: company, name: Nebius, status: active }
+  - { id: institution-nsa, type: institution, name: National Security Agency, status: active }
+  - {
+      id: institution-fbi,
+      type: institution,
+      name: Federal Bureau of Investigation,
+      status: active,
+    }
+  - {
+      id: institution-cisa,
+      type: institution,
+      name: Cybersecurity and Infrastructure Security Agency,
+      status: active,
+    }
+  - { id: person-oliver-kennon, type: person, name: Oliver Kennon, status: active }
+  - { id: person-terence-ong, type: person, name: Terence Ong, status: active }
+  - { id: company-tcs, type: company, name: Tata Consultancy Services, status: active }
+  - { id: company-hypervault, type: company, name: TCS HyperVault, status: active }
+  - { id: person-revanth-reddy, type: person, name: A. Revanth Reddy, status: active }
+  - { id: company-mistral, type: company, name: Mistral AI, status: active }
+  - { id: person-arthur-mensch, type: person, name: Arthur Mensch, status: active }
+  - {
+      id: institution-scaleup-europe-fund,
+      type: institution,
+      name: Scaleup Europe Fund,
+      status: active,
+    }
+  - { id: company-psg-equity, type: company, name: PSG Equity, status: active }
+  - { id: company-asml, type: company, name: ASML, status: active }
+  - { id: person-christophe-fouquet, type: person, name: Christophe Fouquet, status: active }
+  - { id: company-cohere, type: company, name: Cohere, status: active }
+  - { id: company-aleph-alpha, type: company, name: Aleph Alpha, status: active }
+  - { id: person-ilhan-scheer, type: person, name: Ilhan Scheer, status: active }
+  - { id: company-accenture, type: company, name: Accenture, status: active }
+  - { id: person-julie-sweet, type: person, name: Julie Sweet, status: active }
+  - { id: person-marc-warner, type: person, name: Marc Warner, status: active }
+  - { id: person-fabian-hedin, type: person, name: Fabian Hedin, status: active }
+  - { id: person-aleksandar-mitic, type: person, name: Aleksandar Mitic, status: active }
+  - { id: company-t-head, type: company, name: T-Head, status: active }
+  - { id: person-eddie-wu, type: person, name: Eddie Wu, status: active }
+  - { id: company-palo-alto-networks, type: company, name: Palo Alto Networks, status: active }
+  - { id: person-sam-rubin, type: person, name: Sam Rubin, status: active }
+  - { id: person-mccall-mcintyre, type: person, name: McCall McIntyre, status: active }
+  - { id: person-michael-moore, type: person, name: Michael Moore, status: active }
+  - {
+      id: institution-services-australia,
+      type: institution,
+      name: Services Australia,
+      status: active,
+    }
+  - { id: person-anthony-albanese, type: person, name: Anthony Albanese, status: active }
+  - {
+      id: institution-australian-signals-directorate,
+      type: institution,
+      name: Australian Signals Directorate,
+      status: active,
+    }
+  - { id: company-deepseek, type: company, name: DeepSeek, status: active }
+  - { id: company-bytedance, type: company, name: ByteDance, status: active }
+  - { id: person-jialiang-huang, type: person, name: Jialiang Huang, status: active }
+  - { id: person-hongxuan-tang, type: person, name: Hongxuan Tang, status: active }
+  - { id: person-jingchang-chen, type: person, name: Jingchang Chen, status: active }
+  - { id: person-samuel-kruse, type: person, name: Samuel Kruse, status: active }
+  - { id: company-planet, type: company, name: Planet Labs, status: active }
+  - { id: person-travis-beals, type: person, name: Travis Beals, status: active }
+  - { id: person-tanj-bennett, type: person, name: Tanj Bennett, status: active }
+  - { id: person-jared-spataro, type: person, name: Jared Spataro, status: active }
+  - { id: person-everlyn, type: person, name: Everlyn, status: active }
+  - { id: person-patrick-schaabi, type: person, name: Patrick Schaabi, status: active }
+  - { id: company-akamai, type: company, name: Akamai Technologies, status: active }
+  - { id: person-tom-leighton, type: person, name: Tom Leighton, status: active }
+  - { id: person-adith-shankar, type: person, name: Adith Shankar, status: active }
+  - { id: person-daniel-sanchez, type: person, name: Daniel Sanchez, status: active }
+  - { id: person-allison-elliott, type: person, name: Allison Elliott, status: active }
+  - { id: company-world-labs, type: company, name: World Labs, status: active }
+  - { id: person-fei-fei-li, type: person, name: Fei-Fei Li, status: active }
+
+# 只登记缺失来源；allowed_hosts 与上述 source_url 实际主机名相符。
+sources:
+  - {
+      id: source-mistral,
+      name: Mistral AI,
+      type: company_blog,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [mistral.ai],
+    }
+  - {
+      id: source-asml,
+      name: ASML,
+      type: company_blog,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [asml.com],
+    }
+  - {
+      id: source-china-moe-xinhua,
+      name: 中国教育部转载新华社,
+      type: regulator,
+      trust_score: 85,
+      active: true,
+      allowed_hosts: [moe.gov.cn],
+    }
+  - {
+      id: source-cohere-aleph-alpha-wire,
+      name: Cohere 与 Aleph Alpha 署名新闻稿,
+      type: news_media,
+      trust_score: 90,
+      active: true,
+      allowed_hosts: [prnewswire.com],
+    }
+  - {
+      id: source-alibaba-cloud,
+      name: Alibaba Cloud,
+      type: company_blog,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [alibabacloud.com],
+    }
+  - {
+      id: source-palo-alto-networks,
+      name: Palo Alto Networks,
+      type: company_blog,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [paloaltonetworks.com],
+    }
+  - {
+      id: source-australian-pm,
+      name: Prime Minister of Australia,
+      type: regulator,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [pm.gov.au],
+    }
+  - {
+      id: source-meta-newsroom,
+      name: Meta Newsroom,
+      type: company_blog,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [about.fb.com],
+    }
+  - {
+      id: source-chinese-embassy,
+      name: Chinese Embassy statement,
+      type: regulator,
+      trust_score: 90,
+      active: true,
+      allowed_hosts: [china-embassy.gov.cn],
+    }
+  - {
+      id: source-akamai,
+      name: Akamai,
+      type: company_blog,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [akamai.com],
+    }
+  - {
+      id: source-amd-globenewswire,
+      name: AMD 署名 GlobeNewswire 公告,
+      type: news_media,
+      trust_score: 90,
+      active: true,
+      allowed_hosts: [globenewswire.com],
+    }
+
+reviews:
+  - signal_id: signal-20260908-us-agencies-ai-distillation-advisory
+    local_refs: ['ChatGPT每日简报_2026-09-10.md:22']
+    evidence_urls:
+      [
+        'https://www.nsa.gov/Press-Room/Press-Releases-Statements/Press-Release-View/Article/4592113/nsa-and-others-warn-china-based-ai-companies-are-distilling-us-frontier-ai-mode/',
+      ]
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-08；00:00:00Z仅日级存储约定。'
+    limitations: '仅是美方机构指控和防护建议，非司法定论；不可合并7月中方回应。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.95、novelty 0.85；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: true, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260911-semianalysis-nvidia-backstop
+    local_refs: ['ChatGPT每日简报_2026-09-12.md:184']
+    evidence_urls: ['https://newsletter.semianalysis.com/p/nvidias-backstop-universe-heads-i']
+    date_basis: '原研究署名与网页发表日支持事件日 2026-09-11；00:00:00Z仅日级存储约定。'
+    limitations: '11万亿美元为作者模型情景；NVIDIA披露义务与作者预测分开。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.9、novelty 0.8；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260905-tcs-hypervault-hyderabad
+    local_refs: ['ChatGPT每日简报_2026-09-06.md:27']
+    evidence_urls:
+      [
+        'https://www.tcs.com/who-we-are/newsroom/press-release/tcs-hypervault-establish-large-scale-ai-data-center-campus-telangana',
+      ]
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-05；00:00:00Z仅日级存储约定。'
+    limitations: '1GW为规划上限，园区未建成。'
+    scores_reason: '编辑估计 importance 3/5、confidence 0.9、novelty 0.7；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260908-mistral-series-d
+    local_refs: ['ChatGPT每日简报_2026-09-08.md:21']
+    evidence_urls:
+      [
+        'https://mistral.ai/news/mistral-makes-sovereign-open-weight-ai-to-frontier/',
+        'https://www.linkedin.com/posts/arthur-mensch_three-years-ago-we-started-mistral-with-activity-7502960387319820288-GscW',
+      ]
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-08；00:00:00Z仅日级存储约定。'
+    limitations: '融资额与估值为公司披露；未来算力投资尚未完成。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.95、novelty 0.8；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260907-asml-tsmc-high-na-masks
+    local_refs: ['ChatGPT每日简报_2026-09-14.md:23']
+    evidence_urls:
+      [
+        'https://www.asml.com/en/news/press-releases/2026/tsmc-and-asml-announce-industry-transition-to-large-format-photomasks-for-high-na-euv',
+      ]
+    date_basis: 'ASML公告明确倡议于09-07成立，09-08公开。'
+    limitations: '2031及2033是目标，非已建产线。'
+    scores_reason: '编辑估计 importance 3/5、confidence 0.95、novelty 0.75；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260911-china-compute-network
+    local_refs: ['ChatGPT每日简报_2026-09-12.md:731']
+    evidence_urls: ['https://www.moe.gov.cn/jyb_xwfb/s6052/moe_838/202609/t20260911_1450485.html']
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-11；00:00:00Z仅日级存储约定。'
+    limitations: '新华社通稿由教育部转载；不把其他部委目标并入此次会议。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.95、novelty 0.7；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260916-openai-misalignment-framework
+    local_refs: ['ChatGPT每日简报_2026-09-17.md:23']
+    evidence_urls: ['https://openai.com/index/model-misalignment-reporting-framework/']
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-16；00:00:00Z仅日级存储约定。'
+    limitations: '首批案例非总体发生率，框架非行业强制标准。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.95、novelty 0.85；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: true, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260916-cohere-aleph-alpha-agreement
+    local_refs: ['ChatGPT每日简报_2026-09-17.md:698']
+    evidence_urls:
+      [
+        'https://www.prnewswire.com/news-releases/cohere-and-aleph-alpha-sign-agreement-to-become-the-first-transatlantic-sovereign-ai-solution-302880732.html',
+      ]
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-16；00:00:00Z仅日级存储约定。'
+    limitations: '签约尚待交割及监管批准，拟任COO尚非现职。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.9、novelty 0.8；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260917-anthropic-rd-automation-index
+    local_refs: ['ChatGPT每日简报_2026-09-18.md:24']
+    evidence_urls: ['https://www.anthropic.com/institute/measuring-pace-of-ai-development']
+    date_basis: '原研究署名与网页发表日支持事件日 2026-09-17；00:00:00Z仅日级存储约定。'
+    limitations: '26%仅Anthropic内部AL4定义下的估算，未观察AL5。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.9、novelty 0.8；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: true, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260918-anthropic-accenture-evaluation
+    local_refs: ['ChatGPT每日简报_2026-09-19.md:28']
+    evidence_urls:
+      [
+        'https://www.anthropic.com/news/accenture-embedded-evaluation',
+        'https://newsroom.accenture.com/news/2026/accenture-and-anthropic-partner-to-build-team-of-embedded-evaluators-at-anthropic',
+      ]
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-18；00:00:00Z仅日级存储约定。'
+    limitations: '双方计划投入，不代表审计已经完成。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.95、novelty 0.8；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260922-alibaba-zhenwu-v900
+    local_refs: ['ChatGPT每日简报_2026-09-22.md:28']
+    evidence_urls:
+      [
+        'https://www.alibabacloud.com/blog/alibaba-unveils-roadmap-on-full-stack-ai-strategy-from-chips-cloud-infrastructure-models-to-agents_603589',
+      ]
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-22；00:00:00Z仅日级存储约定。'
+    limitations: '量产商用预期为2027年第一季；容量和模型规模均未来目标。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.95、novelty 0.8；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260922-claude-opus-55
+    local_refs: ['ChatGPT每日简报_2026-09-23.md:32']
+    evidence_urls: ['https://www.anthropic.com/claude-opus-5-5']
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-22；00:00:00Z仅日级存储约定。'
+    limitations: '成本下降为公司典型任务比较，非全任务保证。'
+    scores_reason: '编辑估计 importance 5/5、confidence 0.95、novelty 0.8；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260922-palo-alto-unit42-frontier-ai
+    local_refs: ['ChatGPT每日简报_2026-09-23.md:148']
+    evidence_urls:
+      [
+        'https://investors.paloaltonetworks.com/news-releases/news-release-details/palo-alto-networks-delivers-anthropics-mythos-and-openais-gpt-56',
+      ]
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-22；00:00:00Z仅日级存储约定。'
+    limitations: '能力为厂商自报，OpenAI/Anthropic非共同发布方。'
+    scores_reason: '编辑估计 importance 3/5、confidence 0.9、novelty 0.75；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260918-semianalysis-engram-offload
+    local_refs: ['ChatGPT每日简报_2026-09-23.md:261']
+    evidence_urls: ['https://newsletter.semianalysis.com/p/engrams-embedding-entendre-codesign']
+    date_basis: '原研究署名与网页发表日支持事件日 2026-09-18；00:00:00Z仅日级存储约定。'
+    limitations: '实验配置有限，SSD路径尚未优化。'
+    scores_reason: '编辑估计 importance 3/5、confidence 0.8、novelty 0.7；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260618-openai-medicare-portal
+    local_refs: ['ChatGPT每日简报_2026-09-24.md:32']
+    evidence_urls: ['https://www.pm.gov.au/media/press-conference-new-york']
+    date_basis: '澳总理09-24披露的事件发生于06-18。'
+    limitations: '事件日与9月公开披露日不同；损害范围仍调查中。'
+    scores_reason: '编辑估计 importance 5/5、confidence 0.9、novelty 0.9；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260919-deepseek-dsec-paper
+    local_refs: ['ChatGPT每日简报_2026-09-24.md:240']
+    evidence_urls: ['https://arxiv.org/abs/2609.22978']
+    date_basis: 'arXiv显示09-19提交。'
+    limitations: 'arXiv预印本，不等于同行评议或部署验证。'
+    scores_reason: '编辑估计 importance 3/5、confidence 0.9、novelty 0.75；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260923-semianalysis-clustermax-3
+    local_refs: ['ChatGPT每日简报_2026-09-24.md:395']
+    evidence_urls: ['https://newsletter.semianalysis.com/p/clustermax-30-the-industry-standard']
+    date_basis: '原研究署名与网页发表日支持事件日 2026-09-23；00:00:00Z仅日级存储约定。'
+    limitations: '评级取决于研究机构方法与时间窗，非官方认证；关联公司仅为执行摘要列明的被评测样本，不代表其所有服务均获同等评级。'
+    scores_reason: '编辑估计 importance 3/5、confidence 0.85、novelty 0.7；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260924-google-suncatcher-orbit-test
+    local_refs: ['ChatGPT每日简报_2026-09-25.md:30']
+    evidence_urls:
+      [
+        'https://blog.google/innovation-and-ai/models-and-research/google-research/google-project-suncatcher-facts/',
+      ]
+    date_basis: '原研究署名与网页发表日支持事件日 2026-09-24；00:00:00Z仅日级存储约定。'
+    limitations: '卫星尚未发射；此为旧项目的研究进展。'
+    scores_reason: '编辑估计 importance 3/5、confidence 0.9、novelty 0.65；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260923-meta-muse-ai-glasses
+    local_refs: ['ChatGPT每日简报_2026-09-25.md:187']
+    evidence_urls:
+      [
+        'https://about.fb.com/news/2026/09/introducing-ray-ban-meta-audio-glasses-new-styles-plus-muse/',
+        'https://about.fb.com/news/2026/09/the-biggest-news-from-connect-2026/',
+      ]
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-23；00:00:00Z仅日级存储约定。'
+    limitations: 'Muse进入眼镜预告未来数月，非发布日已全量可用。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.95、novelty 0.8；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260921-semianalysis-inference-data-movement
+    local_refs: ['ChatGPT每日简报_2026-09-25.md:311']
+    evidence_urls: ['https://newsletter.semianalysis.com/p/computation-and-data-movement-for']
+    date_basis: '原研究署名与网页发表日支持事件日 2026-09-21；00:00:00Z仅日级存储约定。'
+    limitations: '架构及经济性分析，非新产品或普适基准。'
+    scores_reason: '编辑估计 importance 3/5、confidence 0.8、novelty 0.65；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260925-microsoft-copilot-home-code-autopilot
+    local_refs: ['ChatGPT每日简报_2026-09-26.md:28']
+    evidence_urls:
+      [
+        'https://news.microsoft.com/source/emea/2026/09/new-microsoft-copilot-brings-home-code-and-autopilot-together/',
+      ]
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-25；00:00:00Z仅日级存储约定。'
+    limitations: 'Home/Code逐步推出；Autopilot月底扩大私测。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.95、novelty 0.8；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260925-semianalysis-china-datacenter-model
+    local_refs: ['ChatGPT每日简报_2026-09-26.md:200']
+    evidence_urls: ['https://newsletter.semianalysis.com/p/the-chinese-ai-infrastructure-boom']
+    date_basis: '原研究署名与网页发表日支持事件日 2026-09-25；00:00:00Z仅日级存储约定。'
+    limitations: '24GW及份额是研究机构估计，非官方统计。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.8、novelty 0.75；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260926-us-china-ai-incident-channel
+    local_refs: ['ChatGPT每日简报_2026-09-27.md:20']
+    evidence_urls: ['https://gq.china-embassy.gov.cn/zxxx/202609/t20260926_12031616.htm']
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-26；00:00:00Z仅日级存储约定。'
+    limitations: '公告未公开执行细则，不能写热线已开通。'
+    scores_reason: '编辑估计 importance 5/5、confidence 0.9、novelty 0.85；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: true, publishable_now: false }
+  - signal_id: signal-20260924-akamai-anthropic-cloud-commitment
+    local_refs: ['ChatGPT每日简报_2026-09-27.md:89']
+    evidence_urls:
+      [
+        'https://www.akamai.com/newsroom/press-release/akamai-announces-11-6-billion-multi-year-agreement-with-anthropic-to-support-growing-demand',
+        'https://www.ir.akamai.com/static-files/db805670-271e-406b-91a5-e0b4ed226b5a',
+      ]
+    date_basis: 'Akamai公告09-24；8-K显示项目计划09-18签署。'
+    limitations: '11.6B为承诺；额外9B仅潜在扩展；签署日9/18与公告日9/24需区分。'
+    scores_reason: '编辑估计 importance 5/5、confidence 0.95、novelty 0.85；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260920-openai-agent-dns-egress
+    local_refs: ['ChatGPT每日简报_2026-09-28.md:28']
+    evidence_urls:
+      [
+        'https://alignment.openai.com/misalignment-reports/an-agent-used-dns-to-reach-an-external-chatbot/',
+      ]
+    date_basis: 'OpenAI报告记录09-20行为/发现，09-25更新。'
+    limitations: '仅特定最强模型广义工具训练/评估/推理暂停，非全部训练。'
+    scores_reason: '编辑估计 importance 5/5、confidence 0.95、novelty 0.9；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: true, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260926-semianalysis-panther-lake-teardown
+    local_refs: ['ChatGPT每日简报_2026-09-28.md:250']
+    evidence_urls: ['https://newsletter.semianalysis.com/p/intel-panther-lake-teardown']
+    date_basis: '原研究署名与网页发表日支持事件日 2026-09-26；00:00:00Z仅日级存储约定。'
+    limitations: '样品测量不等于Intel全部产品线工艺领先。'
+    scores_reason: '编辑估计 importance 3/5、confidence 0.85、novelty 0.7；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260928-amd-world-labs-agreement
+    local_refs: ['ChatGPT每日简报_2026-09-29.md:22']
+    evidence_urls:
+      [
+        'https://www.globenewswire.com/news-release/2026/09/28/3370256/0/en/amd-to-acquire-world-labs-to-advance-the-future-of-ai-compute.html',
+      ]
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-28；00:00:00Z仅日级存储约定。'
+    limitations: '协议已签但交易未交割，Fei-Fei Li新职务仍为交割后拟任。'
+    scores_reason: '编辑估计 importance 5/5、confidence 0.95、novelty 0.9；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+  - signal_id: signal-20260928-nvidia-open-agent-safety-platform
+    local_refs: ['ChatGPT每日简报_2026-09-29.md:53']
+    evidence_urls: ['https://nvidianews.nvidia.com/news/open-agent-safety-platform']
+    date_basis: '原发布方网页日期及正文支持事件日 2026-09-28；00:00:00Z仅日级存储约定。'
+    limitations: 'OpenShell可用，Sentry为参考设计；毫秒隔离未独立复测。'
+    scores_reason: '编辑估计 importance 4/5、confidence 0.95、novelty 0.85；按原始来源明确程度、影响范围及相对现有Seed增量评分，非实测量表。'
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }

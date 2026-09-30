@@ -1,0 +1,447 @@
+# 独立候选包；未写入正式 Seed。scores 为 2026-09-29 编辑估计，非独立模型测量。
+# occurred_at 的 00:00:00Z 是日级事件的存储惯例，不代表精确发生时刻。
+# topics 使用 data/taxonomy/taxonomy.yaml canonical ID；正式入库前须补齐 Seed Topic 投影。
+signals:
+  - id: signal-20260716-tsmc-ai-arizona-guidance
+    event_key: event-20260716-tsmc-ai-arizona-guidance
+    title: 台积电在二季度业绩会上披露 AI 需求和亚利桑那投资计划
+    type: supply_chain
+    occurred_at: 2026-07-16T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-tsmc
+    source_url: 'https://investor.tsmc.com/english/encrypt/files/encrypt_file/reports/2026-07/57b65edbfe6e480e74abe202be983ecbde79e934/TSMC%202Q26%20Transcript.pdf'
+    summary: 台积电在二季度业绩电话会上称对多年 AI 需求维持强劲判断，并讨论亚利桑那约 2650 亿美元的累计投资计划。该金额是计划投资总额，不代表相关晶圆、先进封装和研发设施已全部建成或投产。
+    importance: 4
+    confidence: 0.9
+    novelty: 0.75
+    topics: [topic-semiconductors, topic-foundry, topic-advanced-packaging, topic-ai-infrastructure]
+    entities: [company-tsmc, person-cc-wei]
+    entity_roles:
+      company-tsmc: 业绩与投资计划披露方
+      person-cc-wei: 台积电业绩电话会发言人
+  - id: signal-20260724-open-weights-coalition-letter
+    event_key: event-20260724-open-weights-coalition-letter
+    title: 科技企业发布支持开放权重模型的联名政策信
+    type: policy
+    occurred_at: 2026-07-24T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-nvidia
+    source_url: 'https://images.nvidia.com/pdf/Open-Weights-and-American-AI-Leadership.pdf'
+    summary: NVIDIA 托管的《Open Weights and American AI Leadership》联名信呼吁美国扩大算力和共享训练资源的可及性，并避免对开放权重模型施加过早、笼统的限制。PDF 名单后来扩张，当前版本不能证明其中所有组织都在 7 月 24 日首批签署。
+    importance: 3
+    confidence: 0.9
+    novelty: 0.7
+    topics: [topic-foundation-models, topic-ai-safety, topic-ai-security]
+    entities: [company-nvidia]
+    entity_roles:
+      company-nvidia: 原始信件托管方和公开可核实的签署组织
+  - id: signal-20260727-cxmt-star-listing
+    event_key: event-20260727-cxmt-star-listing
+    title: 长鑫科技在上交所科创板上市
+    type: funding
+    occurred_at: 2026-07-27T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-sse
+    source_url: 'https://www.sse.com.cn/disclosure/announcement/listing/ipo/c/c_20260724_10826610.shtml'
+    summary: 上交所公告明确长鑫科技（688825）股票自 2026 年 7 月 27 日起在科创板上市交易，发行人上市公告书披露发行价每股 8.66 元。本条记录上市融资里程碑，不以首日股价波动推断其技术或经营表现。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.8
+    topics: [topic-semiconductors, topic-memory, topic-dram, topic-semiconductor-supply-chain]
+    entities: [company-cxmt]
+    entity_roles:
+      company-cxmt: 科创板上市主体
+  - id: signal-20260730-china-ads-safety-standard
+    event_key: event-20260730-china-ads-safety-standard
+    title: 中国发布自动驾驶系统安全强制性国家标准 GB 44721-2026
+    type: regulation
+    occurred_at: 2026-07-30T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-samr-standards
+    source_url: 'https://std.samr.gov.cn/gb/search/gbDetailed?id=Izrd6QbE4dA%3D&mode=p'
+    summary: 全国标准信息公共服务平台列出强制性国家标准 GB 44721-2026《智能网联汽车 自动驾驶系统安全要求》于 2026 年 7 月 30 日发布，计划 2027 年 7 月 1 日实施。发布和实施应分别保留，不能写成目前已生效。
+    importance: 3
+    confidence: 0.95
+    novelty: 0.75
+    topics: [topic-autonomous-systems]
+    entities: [institution-china-miit, person-sun-hang]
+    entity_roles:
+      institution-china-miit: 标准归口部门
+      person-sun-hang: 标准平台列名的主要起草人之一
+  - id: signal-20260730-mofcom-fcc-robot-response
+    event_key: event-20260730-mofcom-fcc-robot-response
+    title: 中国商务部回应美国 FCC 对机器人和逆变器的新型号限制
+    type: policy
+    occurred_at: 2026-07-30T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-china-mofcom
+    source_url: 'https://video.mofcom.gov.cn/xwfb/2026/7/0d481ba8e61e41beb9e7edd592963871902.html'
+    summary: 中国商务部新闻发言人反对美国 FCC 将外国生产的先进机器人和电力逆变器新型号列入覆盖清单，并表示若美方坚持将予以反制。本条是中方政策回应，不能写成反制措施已经落地；美国 FCC 原限制另有现存信号。
+    importance: 3
+    confidence: 0.9
+    novelty: 0.65
+    topics: [topic-robotics, topic-energy-technology]
+    entities: [institution-china-mofcom, institution-fcc]
+    entity_roles:
+      institution-china-mofcom: 回应方
+      institution-fcc: 被回应的限制措施制定方
+  - id: signal-20260806-softbank-q1-fy2026-ai-investments
+    event_key: event-20260806-softbank-q1-fy2026-ai-investments
+    title: SoftBank Group 发布 FY2026 第一季度业绩与 AI 投资资料
+    type: market
+    occurred_at: 2026-08-06T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-softbank-group
+    source_url: 'https://group.softbank/media/Project/sbg/sbg/pdf/ir/financials/financial_reports/financial-report_q1fy2026_01_en.pdf'
+    summary: SoftBank Group 发布截至 2026 年 6 月的季度财报，披露当季向 OpenAI 追加投资 100 亿美元，7 月另追加 100 亿美元；报告同时列出投资估值收益和融资安排。已付款、估值变动与后续出资承诺分别计算，不能把账面收益当成现金回款。
+    importance: 3
+    confidence: 0.9
+    novelty: 0.55
+    topics: [topic-ai-infrastructure]
+    entities: [company-softbank-group, person-yoshimitsu-goto, company-openai]
+    entity_roles:
+      company-softbank-group: 季度业绩披露方
+      person-yoshimitsu-goto: 官方业绩要点署名首席财务官
+      company-openai: 财报披露的追加投资标的
+  - id: signal-20260817-ecb-ai-equity-risk-blog
+    event_key: event-20260817-ecb-ai-equity-risk-blog
+    title: 欧洲央行博客作者分析 AI 股票估值的欧元区外溢风险
+    type: research
+    occurred_at: 2026-08-17T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-ecb
+    source_url: 'https://www.ecb.europa.eu/press/blog/date/2026/html/ecb.blog20260817~754a8a4418.fi.html'
+    summary: 欧洲央行博客的五名署名作者分析 AI 相关科技股高估值、欧元区投资者对美国科技股的敞口及潜在市场传导。这是作者研究观点，原文注明不代表欧洲央行或欧元体系正式立场；市场修正并非已发生事实或确定预测。
+    importance: 3
+    confidence: 0.9
+    novelty: 0.7
+    topics: [topic-artificial-intelligence]
+    entities:
+      [
+        person-malin-andersson,
+        person-johannes-breckenfelder,
+        person-stefano-corradin,
+        person-kalin-nikolov,
+        person-maria-antonietta-viola,
+      ]
+    entity_roles:
+      person-malin-andersson: ECB Blog 署名作者
+      person-johannes-breckenfelder: ECB Blog 署名作者
+      person-stefano-corradin: ECB Blog 署名作者
+      person-kalin-nikolov: ECB Blog 署名作者
+      person-maria-antonietta-viola: ECB Blog 署名作者
+  - id: signal-20260818-cerebras-cs4-launch
+    event_key: event-20260818-cerebras-cs4-launch
+    title: Cerebras 发布 CS-4 晶圆级 AI 推理系统
+    type: product
+    occurred_at: 2026-08-18T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-cerebras
+    source_url: 'https://www.cerebras.ai/blog/introducing-cerebras-cs-4'
+    summary: Cerebras 发布 CS-4 系统，采用三颗 WSE-3 Turbo 处理器和新的 Nexus 机架平台，公告称首批出货将在当季开始。最高 30 倍 GPU 推理速度是厂商和特定测试口径，不能推广至全部负载，计划出货也不等于已全面交付。
+    importance: 4
+    confidence: 0.9
+    novelty: 0.85
+    topics:
+      [
+        topic-semiconductors,
+        topic-ai-accelerators,
+        topic-ai-infrastructure,
+        topic-inference-infrastructure,
+      ]
+    entities: [company-cerebras, person-angela-yeung, person-eric-gardner]
+    entity_roles:
+      company-cerebras: CS-4 产品发布方
+      person-angela-yeung: Cerebras 产品公告署名作者
+      person-eric-gardner: Cerebras 产品公告署名作者
+  - id: signal-20260819-unitree-star-listing
+    event_key: event-20260819-unitree-star-listing
+    title: 宇树科技在上交所科创板上市
+    type: funding
+    occurred_at: 2026-08-19T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-sse
+    source_url: 'https://www.sse.com.cn/disclosure/announcement/listing/ipo/c/c_20260818_10829204.shtml'
+    summary: 上交所公告明确宇树科技（688836）股票自 2026 年 8 月 19 日起在科创板上市交易，发行结果公告披露发行价每股 150.80 元。上市与此前保荐机构估值、公司技术展望分别记录，融资里程碑不等于机器人技术能力已获独立验证。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.8
+    topics: [topic-robotics, topic-humanoid-robotics, topic-embodied-ai]
+    entities: [company-unitree]
+    entity_roles:
+      company-unitree: 科创板上市主体
+  - id: signal-20260824-keelung-b300-indictment
+    event_key: event-20260824-keelung-b300-indictment
+    title: 台湾基隆地检署起诉 9 人涉 B300 AI 服务器不法出口案
+    type: regulation
+    occurred_at: 2026-08-24T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-keelung-prosecutors
+    source_url: 'https://www.klc.moj.gov.tw/media/450456/1150824%E5%9F%BA%E6%AA%A2%E5%81%B5%E7%B5%90%E4%B8%8D%E6%B3%95%E5%87%BA%E5%8F%A3%E9%AB%98%E9%9A%8E%E4%BC%BA%E6%9C%8D%E5%99%A8%E6%A1%88%E4%BB%B6%E6%96%B0%E8%81%9E%E7%A8%BF.pdf?mediaDL=true'
+    summary: 台湾基隆地方检察署宣布起诉 9 人，指控其通过虚假终端用户和第三地转运等方式取得 130 台 B300 服务器；检方称其中 74 台已转售出口，56 台未完成出口。案件仍属起诉阶段，被告姓名在原文中被遮盖，不得写成有罪判决。
+    importance: 3
+    confidence: 0.9
+    novelty: 0.75
+    topics:
+      [topic-semiconductors, topic-gpu, topic-ai-supply-chain-security, topic-hardware-security]
+    entities: [institution-keelung-prosecutors, person-hsiao-yong-li]
+    entity_roles:
+      institution-keelung-prosecutors: 起诉及新闻稿发布机关
+      person-hsiao-yong-li: 新闻稿列出的指挥侦办检察官
+  - id: signal-20260826-alibaba-ai-share-placement
+    event_key: event-20260826-alibaba-ai-share-placement
+    title: 阿里巴巴完成约 800 亿港元新股配售并指定 AI 投向
+    type: funding
+    occurred_at: 2026-08-26T00:00:00Z
+    captured_at: 2026-09-29T12:00:00Z
+    status: inbox
+    source_id: source-alibaba-group
+    source_url: 'https://home.alibabagroup.com/en-US/document-2029365886510432256'
+    summary: 阿里巴巴宣布完成约 800 亿港元、7.1 亿股的新股配售，价格为每股 112.70 港元。公司计划将约 60% 净募集资金用于全球计算基础设施，约 40% 用于超大规模 AI 数据中心和 Agentic Cloud 改造。这是资金用途计划，不等于相关设施已建成。
+    importance: 4
+    confidence: 0.95
+    novelty: 0.8
+    topics: [topic-ai-infrastructure, topic-training-infrastructure, topic-ai-agents]
+    entities: [company-alibaba-group]
+    entity_roles:
+      company-alibaba-group: 配售发行与募资用途公告方
+
+entities:
+  - { id: company-tsmc, type: company, name: TSMC, status: active }
+  - { id: person-cc-wei, type: person, name: C. C. Wei, status: active }
+  - {
+      id: institution-china-miit,
+      type: institution,
+      name: Ministry of Industry and Information Technology of China,
+      status: active,
+    }
+  - { id: person-sun-hang, type: person, name: 孙航, status: active }
+  - { id: company-softbank-group, type: company, name: SoftBank Group, status: active }
+  - { id: person-yoshimitsu-goto, type: person, name: Yoshimitsu Goto, status: active }
+  - { id: person-malin-andersson, type: person, name: Malin Andersson, status: active }
+  - {
+      id: person-johannes-breckenfelder,
+      type: person,
+      name: Johannes Breckenfelder,
+      status: active,
+    }
+  - { id: person-stefano-corradin, type: person, name: Stefano Corradin, status: active }
+  - { id: person-kalin-nikolov, type: person, name: Kalin Nikolov, status: active }
+  - {
+      id: person-maria-antonietta-viola,
+      type: person,
+      name: Maria Antonietta Viola,
+      status: active,
+    }
+  - { id: person-angela-yeung, type: person, name: Angela Yeung, status: active }
+  - { id: person-eric-gardner, type: person, name: Eric Gardner, status: active }
+  - { id: company-unitree, type: company, name: Unitree Robotics, status: active }
+  - {
+      id: institution-keelung-prosecutors,
+      type: institution,
+      name: Taiwan Keelung District Prosecutors Office,
+      status: active,
+    }
+  - { id: person-hsiao-yong-li, type: person, name: 蕭詠勵, status: active }
+  - { id: company-alibaba-group, type: company, name: Alibaba Group, status: active }
+
+sources:
+  - {
+      id: source-tsmc,
+      name: TSMC Investor Relations,
+      type: company_blog,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [tsmc.com],
+    }
+  - {
+      id: source-sse,
+      name: Shanghai Stock Exchange,
+      type: regulator,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [sse.com.cn],
+    }
+  - {
+      id: source-samr-standards,
+      name: National Standards Information Public Service Platform,
+      type: regulator,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [samr.gov.cn],
+    }
+  - {
+      id: source-china-mofcom,
+      name: Ministry of Commerce of China,
+      type: regulator,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [mofcom.gov.cn],
+    }
+  - {
+      id: source-softbank-group,
+      name: SoftBank Group Investor Relations,
+      type: company_blog,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [group.softbank],
+    }
+  - {
+      id: source-ecb,
+      name: European Central Bank Blog,
+      type: research_lab,
+      trust_score: 90,
+      active: true,
+      allowed_hosts: [ecb.europa.eu],
+    }
+  - {
+      id: source-cerebras,
+      name: Cerebras,
+      type: company_blog,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [cerebras.ai],
+    }
+  - {
+      id: source-keelung-prosecutors,
+      name: Taiwan Keelung District Prosecutors Office,
+      type: regulator,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [moj.gov.tw],
+    }
+  - {
+      id: source-alibaba-group,
+      name: Alibaba Group Investor Relations,
+      type: company_blog,
+      trust_score: 95,
+      active: true,
+      allowed_hosts: [alibabagroup.com],
+    }
+
+reviews:
+  - signal_id: signal-20260716-tsmc-ai-arizona-guidance
+    local_refs: ['ChatGPT每日简报_2026-07-20.md:14']
+    evidence_urls:
+      [
+        'https://investor.tsmc.com/english/encrypt/files/encrypt_file/reports/2026-07/57b65edbfe6e480e74abe202be983ecbde79e934/TSMC%202Q26%20Transcript.pdf',
+      ]
+    date_basis: 官方 2Q26 财报电话会日期 2026-07-16
+    limitations: Arizona 金额是多年总投资计划；Reuters 7/19 为后续报道；人物仅为电话会发言人
+    scores_reason: importance 4 基于先进制程和封装扩产规模；confidence 0.9 基于官方原文；novelty 0.75 为当季披露
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+    readiness_note: 人物、组织已具名；需新增实体与 Topic 投影；日级时间非精确时刻
+  - signal_id: signal-20260724-open-weights-coalition-letter
+    local_refs: ['ChatGPT每日简报_2026-07-25.md:14']
+    evidence_urls: ['https://images.nvidia.com/pdf/Open-Weights-and-American-AI-Leadership.pdf']
+    date_basis: 联名信 PDF 页首 2026-07-24
+    limitations: PDF 签署者名单后续扩张；不回填未经 7/24 快照核定的组织；具名人角色未在信中列出
+    scores_reason: importance 3 为政策倡议；confidence 0.9 基于原 PDF；novelty 0.7 为独立联名行动
+    readiness: { missing_person: true, missing_organization: false, publishable_now: false }
+    readiness_note: 有 NVIDIA 组织，缺已证实的具名事件人物；若发布路径强制人物则待补证
+  - signal_id: signal-20260727-cxmt-star-listing
+    local_refs: ['ChatGPT每日简报_2026-07-27.md:31']
+    evidence_urls:
+      [
+        'https://www.sse.com.cn/disclosure/announcement/listing/ipo/c/c_20260724_10826610.shtml',
+        'https://static.cninfo.com.cn/finalpage/2026-07-24/1225439534.PDF',
+      ]
+    date_basis: 上交所 7/24 静态公告正文列明 7/27 起上市；发行人上市公告书交叉核对
+    limitations: 不使用尚未从交易所行情核定的首日涨幅；未发现具名 IPO 事件人物
+    scores_reason: importance 4 为大型 DRAM 企业上市；confidence 0.95 基于交易所；novelty 0.8 为独立融资里程碑
+    readiness: { missing_person: true, missing_organization: false, publishable_now: false }
+    readiness_note: 组织已具名，人物空；需补来源与 Topic 投影
+  - signal_id: signal-20260730-china-ads-safety-standard
+    local_refs: ['ChatGPT每日简报_2026-08-09.md:39']
+    evidence_urls: ['https://std.samr.gov.cn/gb/search/gbDetailed?id=Izrd6QbE4dA%3D&mode=p']
+    date_basis: 标准平台列发布日期 2026-07-30
+    limitations: 实施日期为 2027-07-01；孙航仅为列名的主要起草人之一
+    scores_reason: importance 3 为强制安全标准；confidence 0.95 基于标准平台；novelty 0.75 为正式发布
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+    readiness_note: 人物与归口组织已具名；需补实体和 Topic 投影
+  - signal_id: signal-20260730-mofcom-fcc-robot-response
+    local_refs: ['ChatGPT每日简报_2026-07-30.md:187']
+    evidence_urls:
+      [
+        'https://video.mofcom.gov.cn/xwfb/2026/7/0d481ba8e61e41beb9e7edd592963871902.html',
+        'https://cacs.mofcom.gov.cn/article/gnwjmdt/sb/zm/202607/188785.html',
+      ]
+    date_basis: 商务部原始发布入口日期 2026-07-30；全文转载页为 7/31
+    limitations: 匿名发言人；反制是条件性声明，不是已出台措施；与 FCC 限制既有信号不同
+    scores_reason: importance 3 为跨境机器人设备政策回应；confidence 0.9 基于商务部；novelty 0.65 为事件后回应
+    readiness: { missing_person: true, missing_organization: false, publishable_now: false }
+    readiness_note: 组织已具名，人物空；需补来源与 Topic 投影
+  - signal_id: signal-20260806-softbank-q1-fy2026-ai-investments
+    local_refs: ['ChatGPT每日简报_2026-08-08.md:45']
+    evidence_urls:
+      [
+        'https://group.softbank/media/Project/sbg/sbg/pdf/ir/financials/financial_reports/financial-report_q1fy2026_01_en.pdf',
+        'https://group.softbank/en/news/webcast/20260806_02',
+      ]
+    date_basis: SoftBank 官方 FY2026 Q1 业绩发布 2026-08-06
+    limitations: 复核官方财报 PDF 第 1、5、6 页；本条只采用已核实的两笔 OpenAI 出资，不把尚未到期承诺写为完成；公司财报不等于本项目独立审计
+    scores_reason: importance 3 为重要 AI 投资者财报；confidence 0.9 基于精确财报正文；novelty 0.55 为常规季度披露
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+    readiness_note: 人物、组织与精确官方财报均已补齐，仍为待人工审核候选
+  - signal_id: signal-20260817-ecb-ai-equity-risk-blog
+    local_refs: ['ChatGPT每日简报_2026-08-18.md:136']
+    evidence_urls:
+      ['https://www.ecb.europa.eu/press/blog/date/2026/html/ecb.blog20260817~754a8a4418.fi.html']
+    date_basis: ECB Blog 页首 2026-08-17
+    limitations: 作者观点不代表 ECB 正式立场；未来市场修正为研究判断
+    scores_reason: importance 3 为金融风险分析；confidence 0.9 基于原文；novelty 0.7 为新研究发布
+    readiness: { missing_person: false, missing_organization: true, publishable_now: false }
+    readiness_note: 五名署名作者已核实；来源平台不是事件参与组织，如要求组织需明确平台角色
+  - signal_id: signal-20260818-cerebras-cs4-launch
+    local_refs: ['ChatGPT每日简报_2026-08-21.md:47']
+    evidence_urls: ['https://www.cerebras.ai/blog/introducing-cerebras-cs-4']
+    date_basis: Cerebras 官方产品文日期 2026-08-18
+    limitations: 30 倍属厂商特定测试；作者仅是公告署名人；勿与 8/19 SemiAnalysis 研究信号合并
+    scores_reason: importance 4 为新推理硬件平台；confidence 0.9 基于官方公告；novelty 0.85 为产品代际变化
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+    readiness_note: 人物、组织已具名；需补来源实体和 Topic 投影
+  - signal_id: signal-20260819-unitree-star-listing
+    local_refs: ['ChatGPT每日简报_2026-08-20.md:11', 'ChatGPT每日简报_2026-08-05.md:172']
+    evidence_urls:
+      [
+        'https://www.sse.com.cn/disclosure/announcement/listing/ipo/c/c_20260818_10829204.shtml',
+        'https://static.cninfo.com.cn/finalpage/2026-08-14/1225472623.PDF',
+      ]
+    date_basis: 上交所 8/18 静态公告正文列明 8/19 起上市；8/14 发行结果 PDF 核对价格
+    limitations: 8/20 日报仅将上市视为背景；王兴兴的技术讲话不是 IPO 公告发言；估值报道不是上市证据
+    scores_reason: importance 4 为人形机器人公司上市；confidence 0.95 基于交易所；novelty 0.8 为独立融资里程碑
+    readiness: { missing_person: true, missing_organization: false, publishable_now: false }
+    readiness_note: 组织已具名，人物空；需补来源和 Topic 投影
+  - signal_id: signal-20260824-keelung-b300-indictment
+    local_refs: ['ChatGPT每日简报_2026-08-25.md:74']
+    evidence_urls:
+      [
+        'https://www.klc.moj.gov.tw/media/450456/1150824%E5%9F%BA%E6%AA%A2%E5%81%B5%E7%B5%90%E4%B8%8D%E6%B3%95%E5%87%BA%E5%8F%A3%E9%AB%98%E9%9A%8E%E4%BC%BA%E6%9C%8D%E5%99%A8%E6%A1%88%E4%BB%B6%E6%96%B0%E8%81%9E%E7%A8%BF.pdf?mediaDL=true',
+      ]
+    date_basis: 基隆地检署新闻稿发稿日期民国 115 年 8 月 24 日
+    limitations: 仅为起诉；被告遮名；NVIDIA 与美超微非被起诉公司；蕭詠勵是侦办检察官
+    scores_reason: importance 3 为 GPU 供应链执法事件；confidence 0.9 基于检方原文；novelty 0.75 为新起诉
+    readiness: { missing_person: false, missing_organization: false, publishable_now: false }
+    readiness_note: 侦办检察官和检方具名；被告人物不得补造；需补来源、实体和 Topic 投影
+  - signal_id: signal-20260826-alibaba-ai-share-placement
+    local_refs: ['ChatGPT每日简报_2026-08-24.md:18']
+    evidence_urls:
+      [
+        'https://home.alibabagroup.com/en-US/document-2029365886510432256',
+        'https://alihome.alibaba-inc.com/en-US/document-2028384807859257344',
+      ]
+    date_basis: 阿里巴巴完成公告日期 2026-08-26；8/23 为拟议协议，8/24 为定价
+    limitations: 募资用途是计划，不是基础设施已经交付；官网联系人无业务决策角色
+    scores_reason: importance 4 为大型 AI 专项融资；confidence 0.95 基于公司完成公告；novelty 0.8 为已完成配售
+    readiness: { missing_person: true, missing_organization: false, publishable_now: false }
+    readiness_note: 组织已具名，人物空；需补来源实体和 Topic 投影
