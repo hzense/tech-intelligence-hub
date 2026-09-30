@@ -89,6 +89,27 @@ test('maps only explicitly allowed public DTO fields and keeps event/capture tim
   assert.equal('metadata' in signal, false);
 });
 
+test('qualified reader validates historical people then hides leaders without dropping their Signal', () => {
+  const leader = { id: 'person-donald-trump', name: 'Donald Trump', event_role: '政策发言人' };
+  const input = row({ people: [leader], summary: 'Donald Trump announced a policy.' });
+  const [entry] = mapPublicSignalRows([input]);
+  assert.equal(entry.id, input.signal_id);
+  assert.equal(entry.summary, input.summary);
+  assert.deepEqual(entry.public_people, []);
+  assert.deepEqual(entry.entities, ['org-one']);
+  assert.equal(entry.public_organizations[0].id, 'org-one');
+  assert.equal(entry.public_sources[0].url, 'https://example.com/event');
+  assert.deepEqual(input.people, [leader]);
+  assert.throws(() => mapPublicSignalRows([row({ people: [{ ...leader, event_role: '' }] })]), {
+    name: 'PublicSignalReaderError',
+  });
+  const permitted = [
+    { id: 'person-jensen-huang', name: 'Jensen Huang', event_role: '公司 CEO' },
+    { id: 'person-scott-bessent', name: 'Scott Bessent', event_role: '美国财政部长' },
+  ];
+  assert.deepEqual(mapPublicSignalRows([row({ people: permitted })])[0].public_people, permitted);
+});
+
 test('rejects malformed public rows, missing people, unsafe hrefs and non-finite scores', () => {
   for (const overrides of [
     { people: [] },

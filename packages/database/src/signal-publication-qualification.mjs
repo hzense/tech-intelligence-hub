@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import { types } from 'node:util';
+import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 
 const maximumInteger = 2_147_483_647;
 const maximumRows = 256;
@@ -21,6 +22,7 @@ const codes = new Set([
   'inactive_entity',
   'invalid_entity_profile',
   'reporting_role_disallowed',
+  'excluded_person',
   'inactive_topic',
   'identity_basis_unqualified',
   'request_key_reused',
@@ -582,6 +584,12 @@ export function qualifySignalPublicationBundle(input) {
           reject('invalid_entity_profile');
         }
         // A narrow exclusion of explicit reporting roles, not a fact/industry classifier.
+        if (
+          idField === 'person_id' &&
+          isExcludedPublicPerson({ id: entity.id, event_role: row.event_role })
+        ) {
+          reject('excluded_person');
+        }
         if (
           idField === 'person_id' &&
           /\b(?:reporter|journalist|byline)\b|记者/iu.test(row.event_role)

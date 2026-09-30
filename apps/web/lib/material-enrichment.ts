@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import {
   validateCandidateSourceBundle,
   type CandidateSourceBundle,
@@ -178,7 +179,9 @@ export function assessMaterialEnrichment(
     },
     checked,
   ).candidates[0]!;
-  for (const p of original.persons)
+  // Apply the current person-resource scope only to this derived proposal.
+  // The stored candidate/source remain unchanged; eligible original people stay locked.
+  for (const p of original.persons.filter((person) => !isExcludedPublicPerson(person)))
     if (
       !candidate.persons.some(
         (next) =>

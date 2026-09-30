@@ -1,4 +1,5 @@
 import type { SeedCatalog } from '@hzense/content';
+import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import type { SignalEntry } from './public-signal-reader-core.ts';
 
 /** Resolve historical references once, without upgrading Seed acceptance to publication. */
@@ -18,9 +19,26 @@ export function projectLegacySignalEntries(catalog: SeedCatalog): SignalEntry[] 
       });
       const source = sources.get(signal.source_id);
       if (!source) throw new Error(`Unknown historical Signal source in ${signal.id}`);
+      const visible = linked.filter(
+        (entity) =>
+          entity.type !== 'person' ||
+          !isExcludedPublicPerson({
+            ...entity,
+            event_role: signal.entity_roles?.[entity.id] ?? null,
+          }),
+      );
+      const visibleIds = new Set(visible.map((entity) => entity.id));
       return {
         ...signal,
-        public_people: linked
+        entities: signal.entities.filter((id) => visibleIds.has(id)),
+        ...(signal.entity_roles
+          ? {
+              entity_roles: Object.fromEntries(
+                Object.entries(signal.entity_roles).filter(([id]) => visibleIds.has(id)),
+              ),
+            }
+          : {}),
+        public_people: visible
           .filter((entity) => entity.type === 'person')
           .map((entity) => ({
             id: entity.id,

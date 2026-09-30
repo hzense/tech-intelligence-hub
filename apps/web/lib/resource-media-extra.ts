@@ -217,14 +217,6 @@ export const extraResourceMedia: Readonly<
     license: '美国联邦政府作品，公有领域',
     kind: 'portrait',
   },
-  'person-donald-trump': {
-    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/1/16/Official_Presidential_Portrait_of_President_Donald_J._Trump_%282025%29.jpg/330px-Official_Presidential_Portrait_of_President_Donald_J._Trump_%282025%29.jpg',
-    sourceUrl:
-      'https://commons.wikimedia.org/wiki/File:Official_Presidential_Portrait_of_President_Donald_J._Trump_(2025).jpg',
-    credit: 'Daniel Torok／The White House',
-    license: '美国联邦政府作品，公有领域',
-    kind: 'portrait',
-  },
   'person-henna-virkkunen': {
     url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/4/4d/Outdoor_portraits_of_Henna_Virkkunen%2C_Executive_Vice-President_of_the_EC_for_Tech_Sovereignty%2C_Security_and_Democracy_%28P-064862-00-06%29.jpg/330px-Outdoor_portraits_of_Henna_Virkkunen%2C_Executive_Vice-President_of_the_EC_for_Tech_Sovereignty%2C_Security_and_Democracy_%28P-064862-00-06%29.jpg',
     sourceUrl:
@@ -238,20 +230,6 @@ export const extraResourceMedia: Readonly<
     sourceUrl: 'https://commons.wikimedia.org/wiki/File:Elon_Musk_Royal_Society_(cropped).jpg',
     credit: 'Duncan.Hull／The Royal Society；使用裁切版',
     license: 'CC BY-SA 4.0；Commons VRT 已确认原图许可',
-    kind: 'portrait',
-  },
-  'person-xi-jinping': {
-    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/f/fd/Xi_Jinping_%282024%29_%28cropped%29.jpg/330px-Xi_Jinping_%282024%29_%28cropped%29.jpg',
-    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Xi_Jinping_(2024)_(cropped).jpg',
-    credit: 'Adam Schultz／The White House；使用裁切版',
-    license: '美国联邦政府作品，公有领域',
-    kind: 'portrait',
-  },
-  'person-li-qiang': {
-    url: 'https://thumb.wikimedia.org/wikipedia/commons/thumb/d/dc/Li_Qiang_%282024%29_%28cropped%29.jpg/330px-Li_Qiang_%282024%29_%28cropped%29.jpg',
-    sourceUrl: 'https://commons.wikimedia.org/wiki/File:Li_Qiang_(2024)_(cropped).jpg',
-    credit: '日本外務省；使用裁切版',
-    license: 'CC BY 4.0',
     kind: 'portrait',
   },
   'person-scott-bessent': {

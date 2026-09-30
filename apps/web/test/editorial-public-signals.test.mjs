@@ -62,6 +62,29 @@ test('manual public DTO has no fabricated scores or URLs, and allowlists its fie
   assert.equal(entry.occurred_at, '2026-09-24T00:00:00.000Z');
   assert.equal(JSON.stringify(entry).includes('DO NOT LEAK'), false);
 });
+test('manual reader hides leader names after validation while keeping organizations and factual text', () => {
+  const original = row();
+  original.content.persons = ['Anthony Albanese'];
+  original.content.summary = 'Anthony Albanese made the government announcement.';
+  const [entry] = mapEditorialSignalRows([original]);
+  assert.equal(entry.id, signalId);
+  assert.equal(entry.summary, original.content.summary);
+  assert.deepEqual(entry.public_people, []);
+  assert.equal(entry.public_organizations[0].name, 'Public Organization');
+  assert.deepEqual(original.content.persons, ['Anthony Albanese']);
+  assert.throws(
+    () =>
+      mapEditorialSignalRows([row({ content: { ...original.content, persons: ['李强', ''] } })]),
+    { name: 'PublicSignalReaderError' },
+  );
+  const [mixed] = mapEditorialSignalRows([
+    row({ content: { ...original.content, persons: ['李强', 'Jensen Huang', 'Scott Bessent'] } }),
+  ]);
+  assert.deepEqual(
+    mixed.public_people.map((person) => person.name),
+    ['Jensen Huang', 'Scott Bessent'],
+  );
+});
 test('reader validates required manual fields, safe source links, opaque ids and revision', () => {
   for (const content of [
     { persons: [] },

@@ -22,6 +22,49 @@ const candidate = {
   issues: ['needs_public_evidence', 'needs_person_evidence', 'needs_event_time'],
 };
 
+test('enrichment applies person scope to the proposal without rewriting an old candidate', () => {
+  const leader = {
+    name: '习近平',
+    role: '国家主席',
+    organization: null,
+    evidence: [reference('习近平发表讲话')],
+  };
+  const saved = { ...candidate, persons: [leader] };
+  const inputSource = {
+    ...source,
+    fragments: [{ ...source.fragments[0], text: `${text}习近平发表讲话。` }],
+  };
+  const proposal = {
+    event_date: null,
+    event_date_evidence: [],
+    persons: [
+      {
+        name: '李明',
+        role: '研究作者',
+        organization: '示例研究所',
+        evidence: [reference('研究作者李明在示例研究所')],
+      },
+    ],
+    organizations: [],
+  };
+  const before = JSON.stringify({ saved, inputSource, proposal });
+  const result = assessCandidateEnrichment(proposal, saved, inputSource);
+  assert.deepEqual(result.candidate.persons, proposal.persons);
+  assert.equal(JSON.stringify({ saved, inputSource, proposal }), before);
+  assert.deepEqual(result.candidate.claims, saved.claims);
+
+  const empty = assessCandidateEnrichment({ ...proposal, persons: [leader] }, saved, inputSource);
+  assert.deepEqual(empty.candidate.persons, []);
+  assert.ok(empty.candidate.issues.includes('needs_person_evidence'));
+
+  const mixed = { ...saved, persons: [leader, ...proposal.persons] };
+  assert.deepEqual(
+    assessCandidateEnrichment({ ...proposal, persons: [] }, mixed, inputSource).candidate.persons,
+    proposal.persons,
+  );
+  assert.equal(mixed.persons.length, 2);
+});
+
 test('enrichment only fills bounded fields and keeps the original candidate content private', () => {
   const result = assessCandidateEnrichment(
     {

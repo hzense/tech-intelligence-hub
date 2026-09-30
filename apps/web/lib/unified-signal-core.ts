@@ -1,4 +1,5 @@
 import type { SignalEntry } from './public-signal-reader-core.ts';
+import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 
 /** The public contract is independent of the historical storage path. */
 export interface UnifiedSignal {
@@ -68,7 +69,9 @@ export function toUnifiedSignal(entry: SignalEntry): UnifiedSignal {
     capturedAt: entry.captured_at,
     publication,
     assessment,
-    people: participants(entry.public_people ?? []),
+    people: participants(
+      (entry.public_people ?? []).filter((person) => !isExcludedPublicPerson(person)),
+    ),
     organizations: participants(entry.public_organizations ?? []),
     relatedEntities:
       publication.basis === 'legacy_seed' ? (entry.legacy_related_entities ?? []) : [],

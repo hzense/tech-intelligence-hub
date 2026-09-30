@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import { readSignalReadMode, type SignalEntry } from './public-signal-reader-core.ts';
 import { projectLegacySignalEntries } from './legacy-signal-projection.ts';
 import {
@@ -46,7 +47,11 @@ export async function getSignalEntryById(id: string): Promise<SignalEntry | unde
 }
 
 export async function getSeedEntityMap(): Promise<Map<string, SeedEntity>> {
-  return new Map((await getSeedCatalog()).entities.map((entity) => [entity.id, entity]));
+  return new Map(
+    (await getSeedCatalog()).entities
+      .filter((entity) => entity.type !== 'person' || !isExcludedPublicPerson(entity))
+      .map((entity) => [entity.id, entity]),
+  );
 }
 
 export async function getSeedSourceMap(): Promise<Map<string, SeedSource>> {
@@ -74,7 +79,10 @@ export async function getRadarSnapshots(): Promise<SeedRadarSnapshot[]> {
 
 export async function getResourceEntries(): Promise<SeedEntity[]> {
   return (await getSeedCatalog()).entities
-    .filter((entity) => entity.status === 'active')
+    .filter(
+      (entity) =>
+        entity.status === 'active' && (entity.type !== 'person' || !isExcludedPublicPerson(entity)),
+    )
     .sort(
       (left, right) => left.type.localeCompare(right.type) || left.name.localeCompare(right.name),
     );

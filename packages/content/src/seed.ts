@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
+import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import { loadTaxonomy, validateSeedTopicProjection, type TaxonomyCatalog } from './taxonomy.js';
 
 const id = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
@@ -311,6 +312,28 @@ export async function loadSeedCatalog(
     loadTaxonomy(taxonomyFile),
   ]);
   const catalog = validateSeedCatalog({ entities, radar, relations, signals, sources, topics });
+  // Current publication policy is separate from structural parsing of immutable archives.
+  const personById = new Map(
+    catalog.entities
+      .filter((entity) => entity.type === 'person')
+      .map((entity) => [entity.id, entity]),
+  );
+  for (const person of personById.values()) {
+    if (isExcludedPublicPerson(person)) {
+      throw new Error(`Excluded public person: ${person.id}`);
+    }
+  }
+  for (const signal of catalog.signals) {
+    for (const id of signal.entities) {
+      const person = personById.get(id);
+      if (
+        person &&
+        isExcludedPublicPerson({ ...person, event_role: signal.entity_roles?.[id] ?? null })
+      ) {
+        throw new Error(`Excluded public person ${id} in ${signal.id}`);
+      }
+    }
+  }
   validateSeedTopicProjection(catalog.topics, taxonomy);
   return { ...catalog, taxonomy };
 }

@@ -206,6 +206,63 @@ test('withdrawals remove new entities and co-occurrence; archive registry remain
   );
   assert.equal(entries[0].recentCount, 0);
 });
+test('resource directories and organization co-occurrences never restore excluded leader people', () => {
+  const leader = { id: 'person-li-qiang', name: '李强', event_role: '会议主持人' };
+  const minister = {
+    id: 'person-scott-bessent',
+    name: 'Scott Bessent',
+    event_role: '美国财政部长',
+  };
+  const people = [leader, minister, person];
+  const old = signal({
+    id: 'legacy',
+    public_version: undefined,
+    entities: [...people.map((item) => item.id), organization.id],
+    public_people: people,
+  });
+  const current = signal({ id: 'current', public_people: people });
+  const seeds = people.map((item) => ({ ...item, type: 'person', status: 'active' }));
+  const directory = buildPublicEntityDirectory([old, current], seeds);
+  assert.equal(
+    directory.some((item) => item.id === leader.id),
+    false,
+  );
+  assert.ok(directory.some((item) => item.id === minister.id));
+  assert.ok(directory.some((item) => item.id === person.id));
+  const org = directory.find((item) => item.id === organization.id);
+  assert.equal(org.signals.length, 2);
+  assert.deepEqual(
+    org.relatedPeople.map((item) => item.id).sort(),
+    [minister.id, person.id].sort(),
+  );
+  assert.equal(
+    selectSignals([old], parseSignalFilters({ archive: '1', person: leader.id }), topics, seeds)
+      .total,
+    0,
+  );
+  const manual = signal({
+    publication_basis: 'manual_confirmation',
+    public_version: undefined,
+    public_people: people,
+  });
+  assert.deepEqual(
+    nameOnlySignalFilters([manual], 'person').map((item) => item.name),
+    [minister.name, person.name],
+  );
+});
+test('a registry name without an office cannot restore a leader excluded by a Signal role', () => {
+  const leader = { id: 'person-role-only', name: 'Role-only Person', event_role: 'prime minister' };
+  const staleReference = { ...leader, event_role: 'speaker' };
+  const directory = buildPublicEntityDirectory(
+    [signal({ public_people: [leader] }), signal({ id: 'older', public_people: [staleReference] })],
+    [{ id: leader.id, name: leader.name, type: 'person', status: 'active' }],
+  );
+  assert.equal(
+    directory.some((item) => item.id === leader.id),
+    false,
+  );
+  assert.deepEqual(directory.find((item) => item.id === organization.id).relatedPeople, []);
+});
 test('active registry restores concrete organization type without replacing a public signal name', () => {
   const entries = buildPublicEntityDirectory(
     [signal({ public_organizations: [{ ...organization, name: 'OpenAI 最新名称' }] })],

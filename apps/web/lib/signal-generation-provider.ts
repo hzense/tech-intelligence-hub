@@ -7,6 +7,7 @@ import {
   type LanguageModelUsage,
 } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
 import { readApiCostMicrousd } from './ai-response-cost.ts';
 import { openRouterOptions, portableJsonSchema } from './ai-model-compatibility.ts';
 import {
@@ -81,12 +82,13 @@ export const generationRules = `仅提取本次原文中的技术事件，返回
 引用必须逐字出现在对应 fragment 的 text 中。事件日期未知填 null，禁止用上传或运行时间替代。
 event_date 为 null 时 event_date_evidence 必须为 []，不得附上相对日期或无法确定日期的引用。event_date 为 YYYY-MM-DD 时必须至少提供一条支持该日期的原文证据；不能可靠确定完整日期则返回 null 和 []。
 没有事件参与人物的证据就返回空 persons，不从组织名称猜测负责人；不创建实体 ID。
+${PERSON_RESOURCE_POLICY_TEXT}
 资料发布平台、通讯社或研究刊物只作为来源；除非原文证明其独立参与所述技术事件，不要把信息源填入 organizations。
 只生成私有待补证线索，不得声称 verified 或已经公开核验。只保留必要短引。`;
 
 /** Count the source, configured prompt and portable schema before reservation and again before POST. */
 export function generationInput(source: GenerationSource, stagePrompt: string) {
-  const system = `${generationRules}\n\n配置的提取提示词：\n${stagePrompt}`;
+  const system = `${generationRules}\n\n配置的提取提示词：\n${stagePrompt}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`;
   const prompt = JSON.stringify({ untrusted_source: source });
   const schema = portableJsonSchema(generationCandidateJsonSchema);
   // Local o200k_base estimate plus allowance for message/schema framing, not provider billing.

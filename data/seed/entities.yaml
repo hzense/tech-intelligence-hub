@@ -190,9 +190,6 @@
 - { id: person-xiang-ligang, type: person, name: 项立刚, status: active }
 - { id: person-li-chao, type: person, name: 李超, status: active }
 - { id: person-liu-liehong, type: person, name: 刘烈宏, status: active }
-- { id: person-li-qiang, type: person, name: 李强, status: active }
-- { id: person-xi-jinping, type: person, name: 习近平, status: active }
-- { id: person-donald-trump, type: person, name: Donald J. Trump, status: active }
 - { id: person-wang-yanhui, type: person, name: 王艳辉, status: active }
 - { id: person-jacob-klein, type: person, name: Jacob Klein, status: active }
 - { id: person-huang-zhenxin, type: person, name: 黄震昕, status: active }
@@ -428,10 +425,6 @@
 - id: institution-services-australia
   type: institution
   name: Services Australia
-  status: active
-- id: person-anthony-albanese
-  type: person
-  name: Anthony Albanese
   status: active
 - id: institution-australian-signals-directorate
   type: institution

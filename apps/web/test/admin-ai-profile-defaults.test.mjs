@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
 import {
   aiProfileDefaultTemperature,
   aiProfileDefaultPrompts,
@@ -22,6 +23,7 @@ test('profile defaults expose a bounded shared temperature and three separate ed
     assert.ok(prompt.length > 100 && prompt.length < 4000);
     assert.match(prompt, /[\u4e00-\u9fff]/);
     assert.doesNotMatch(prompt, /\b20\d{2}-\d{2}-\d{2}\b|gpt-|claude-|gemini-/i);
+    assert.ok(prompt.includes(PERSON_RESOURCE_POLICY_TEXT));
   }
 });
 

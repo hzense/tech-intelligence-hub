@@ -99,6 +99,42 @@ function output() {
   };
 }
 
+test('material enrichment drops only excluded old people without changing the historical candidate', () => {
+  const previous = {
+    ...candidate,
+    persons: [
+      {
+        name: '习近平',
+        role: '国家主席',
+        organization: null,
+        evidence: [ref(1, '习近平发表讲话')],
+      },
+    ],
+  };
+  const b = bundle(quote, source(['习近平发表讲话。', original.fragments[1].text]));
+  const input = materialEnrichmentInput(b, previous);
+  const before = JSON.stringify({ previous, b, input });
+  const value = output();
+  // The leader's cited original fragment is retained, so the supplement is third.
+  value.event_date_evidence = [ref(3, '2026-09-24')];
+  value.persons[0].evidence = [ref(3, 'Ada, researcher at Lab')];
+  value.claim_evidence = [[ref(3, quote)]];
+  value.organization_identities[0].evidence = [ref(3, 'Lab is a company.')];
+  const result = assessMaterialEnrichment(value, input.candidate, input.source, context);
+  assert.deepEqual(
+    result.candidate.persons.map((person) => person.name),
+    ['Ada'],
+  );
+  assert.equal(result.candidate.title, previous.title);
+  assert.equal(result.candidate.summary, previous.summary);
+  assert.equal(JSON.stringify({ previous, b, input }), before);
+
+  const eligibleOld = { ...input.candidate, persons: value.persons };
+  assert.throws(() =>
+    assessMaterialEnrichment({ ...value, persons: [] }, eligibleOld, input.source, context),
+  );
+});
+
 test('supplement publication preview shows validated people, organizations and topics without formal matches', () => {
   const b = bundle(),
     input = materialEnrichmentInput(b, candidate);

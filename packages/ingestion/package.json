@@ -6,6 +6,11 @@
     ".": {
       "types": "./src/import-manifest.d.mts",
       "default": "./src/import-manifest.mjs"
+    },
+    "./person-resource-policy": {
+      "types": "./src/person-resource-policy.d.mts",
+      "import": "./src/person-resource-policy.mjs",
+      "default": "./src/person-resource-policy.mjs"
     }
   },
   "scripts": {

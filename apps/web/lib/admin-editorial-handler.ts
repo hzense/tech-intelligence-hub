@@ -8,6 +8,7 @@ const safeErrors = new Set([
   'revision_conflict',
   'request_id_conflict',
   'confirmation_required',
+  'excluded_person',
   'review_incomplete',
   'topic_reference_invalid',
   'published_draft_forbidden',
