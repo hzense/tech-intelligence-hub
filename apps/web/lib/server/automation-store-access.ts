@@ -10,6 +10,11 @@ import {
 export function automationDatabaseConfiguration(reader = false) {
   if (process.env[reader ? 'HZENSE_TOPIC_INSIGHTS_ENABLED' : 'HZENSE_AUTOMATION_ENABLED'] !== '1')
     throw new AutomationError('not_configured');
+  return automationStorageConfiguration(reader);
+}
+// Configuration storage must remain available while paid execution is disabled.
+// The same restricted role, target, TLS and ACL checks still apply.
+export function automationStorageConfiguration(reader = false) {
   const raw =
     process.env[reader ? 'HZENSE_INSIGHT_READER_DATABASE_URL' : 'HZENSE_AUTOMATION_DATABASE_URL'];
   try {
@@ -35,7 +40,9 @@ function makePool(reader = false) {
   let pool: pg.Pool | undefined, url: string | undefined;
   return {
     async connect() {
-      const next = automationDatabaseConfiguration(reader);
+      const next = reader
+        ? automationDatabaseConfiguration(true)
+        : automationStorageConfiguration();
       if (url && next !== url) throw new AutomationError('not_configured');
       if (!pool) {
         url = next;
@@ -62,7 +69,15 @@ function makePool(reader = false) {
     },
   };
 }
-export const automationPool = makePool();
+export const automationConfigPool = makePool();
+// All workers keep the execution-gated connection; only configuration and
+// dashboard operations may use automationConfigPool directly.
+export const automationPool = {
+  async connect() {
+    automationDatabaseConfiguration();
+    return automationConfigPool.connect();
+  },
+};
 export const insightReaderPool = makePool(true);
 export async function freezeAutomationInputs(
   owner: string,

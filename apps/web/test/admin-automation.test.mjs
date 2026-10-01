@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAutomationHandler } from '../lib/admin-automation-handler.ts';
+import { AutomationError } from '../../../packages/database/src/automation-contract.mjs';
 
 const origin = 'https://hzense.com';
 const request = (method, body, headers = {}) =>
@@ -31,6 +32,18 @@ const deps = () => ({
   save: async () => ({ id: 'config' }),
   trigger: async () => ({ run: { id: 'run', owner_id: 'operator', lease_token: 'secret-token' } }),
   publish: async () => ({ id: 'run', owner_id: 'operator', lease_token: 'secret-token' }),
+});
+test('execution-disabled response is explicit and does not block configuration saves', async () => {
+  const handler = createAutomationHandler({
+    ...deps(),
+    trigger: async () => {
+      throw new AutomationError('execution_disabled');
+    },
+  });
+  assert.equal((await handler(request('POST', { action: 'save', request: {} }))).status, 200);
+  const response = await handler(request('POST', { action: 'trigger', request: {} }));
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'execution_disabled' });
 });
 test('automation admin API checks session and origin before execution', async () => {
   let calls = 0;

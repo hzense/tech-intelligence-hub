@@ -13,6 +13,7 @@ type Dependencies = {
 const exposed = new Set([
   'invalid_request',
   'not_configured',
+  'execution_disabled',
   'not_found',
   'revision_conflict',
   'request_id_conflict',

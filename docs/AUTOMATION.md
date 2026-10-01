@@ -13,6 +13,9 @@
 
 ## 安全边界
 
+- 配置存储与执行独立：配置列表和未启用配置的保存只使用 `HZENSE_AUTOMATION_DATABASE_URL`，仍核验专用角色、目标、TLS、Schema 与最小列权限，不要求 `HZENSE_AUTOMATION_ENABLED=1`、执行预算或导入／生成开关。保存仍验证所选 Profile 和连接是否符合要求，不调用模型。关键词可留空，也可填写最多 10 个关注词。
+- `HZENSE_AUTOMATION_ENABLED` 仅控制运行与开启计划；运行还须有合法预算及对应依赖服务。手动启动、Cron 派发和 Worker 数据库入口保留执行门禁，不能通过直接请求 API 绕过页面禁用。关闭执行时仍能查看配置／任务、保存未启用配置或关闭旧计划；仍处于启用状态的旧配置须先取消“允许定时执行”再保存，不静默改变已有授权。
+- 页面分别显示“存储未就绪”“存储就绪但执行未就绪”。开放保存不会自动运行；开启定时计划是独立的显式选择，首次运行仍是下一个 UTC 日期槽。专题公开读取仍由独立 Reader 开关控制。
 - 发现采用 OpenRouter `openrouter:web_search` 服务端工具，固定 Exa fast 引擎，不启用原生搜索回退；每次最多 3 次搜索、累计 8 个搜索结果、每个结果摘要最多 1,000 字符，模型输出最多 2,048 tokens。调用前经模型目录只读兼容性检查，实际检索计数缺失／为零时不会将模型记忆当作搜索结果。
 - 仅接受供应商 `url_citation` 中可追溯的公开地址。移除已知跟踪参数后与当前公开 Signal（含 Seed）、同一管理员已派发候选的采集记录去重；同批网址去重，跨网址相同解析内容由既有导入／生成检查阻断。模型被要求合并同一事件的转载，但语义去重不是确定性保证，仍须人工审阅。URL 检查、DNS/IP 防护、隔离解析、临时原件清理及原文证据要求不变。
 - 日期窗口依据发现结果所报的资料发布日期作初筛，不等于原文事件日期已核实；生成阶段仍须从原文识别事件日期，人工审核须区分旧事件重发和真正新进展。没有合格新来源时记录 `no_new_sources`，不创建空导入批次或编造候选。当前不保证全网覆盖、付费墙可读、RSS 订阅或 OCR。
@@ -39,7 +42,7 @@ OpenRouter 服务端搜索工具仍为 Beta，协议或模型支持可能变化�
 
 1. 对照 main 已合并代码与 CI，保留新备份并执行只读 preflight；恢复能力如未演练，要明确接受该风险。
 2. 单独审批 0026 迁移，迁移后运行完整只读结构核验。新角色脚本位于 db/roles/create_automation_roles.sql 和 db/roles/configure_automation_roles.sql，需按其限制分别执行和核对最小 ACL，不借用旧角色授权。
-3. 在 Production Secret 中配置两个专用数据库连接；设置 HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD、HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD、HZENSE_AUTOMATION_RESERVE_MICROUSD。确认 Cron Secret 配置和模型/导入既有门禁，再单独启用 HZENSE_AUTOMATION_ENABLED。公开专题另需 HZENSE_INSIGHT_READER_DATABASE_URL 与 HZENSE_TOPIC_INSIGHTS_ENABLED。
+3. 先在 Production Secret 配置 `HZENSE_AUTOMATION_DATABASE_URL` 并重新部署；执行开关保持关闭，核验配置保存及刷新读回、不生成任务。需要公开专题时再配置 `HZENSE_INSIGHT_READER_DATABASE_URL`。执行前另行设置 HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD、HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD、HZENSE_AUTOMATION_RESERVE_MICROUSD，确认 Cron Secret 配置和模型/导入既有门禁，再单独启用 HZENSE_AUTOMATION_ENABLED。公开专题另需 HZENSE_TOPIC_INSIGHTS_ENABLED。
 4. 先只读检查管理页和公开页，再做一次可追溯的“不选领域、不填网址”手动采集及专题验收：核对默认科技范围、实际检索、原文、去重、候选入库、费用、引用、人工确认、撤回与依赖信号变更后的下架。专题洞察仍需选择分析专题。最后再启用计划频率。
 
 不在文档、日志或 PR 中记录密码、完整连接串、原件或私有候选正文。
