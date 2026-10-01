@@ -81,6 +81,13 @@ export function readAutomationRun(input: {
   owner: string;
   id: string;
 }): Promise<AutomationRun>;
+export function beginSourceDiscovery(input: {
+  pool: unknown;
+  owner: string;
+  id: string;
+  token: string;
+}): Promise<void>;
+export function readCollectedSourceUrls(input: { pool: unknown; owner: string }): Promise<string[]>;
 export function updateAutomationRun(input: {
   pool: unknown;
   owner: string;

@@ -7,6 +7,8 @@ import { importsConfigured } from './import-service';
 import { generationConfigured } from './signal-generation';
 import { currentInsight } from '../topic-insight-core';
 import { readTaskPublicSignals } from './task-public-signals';
+import { getTopicEntries } from '../content-runtime';
+import { assertDiscoveryConnection } from '../source-discovery-provider';
 export type {
   AutomationRun,
   SaveAutomationRequest,
@@ -86,6 +88,23 @@ export async function saveAutomation(owner: string, request: store.SaveAutomatio
     if (!importsConfigured() || !generationConfigured())
       throw new store.AutomationError('not_configured');
     await generationAiAccess(config.profileId!, config.profileRevision!, false);
+    if (config.discovery) {
+      const access = await aiStageAccess(
+        config.profileId!,
+        config.profileRevision!,
+        'analyze',
+        false,
+      );
+      try {
+        assertDiscoveryConnection(access);
+      } catch {
+        throw new store.AutomationError('discovery_connection_unsupported');
+      }
+      const topics = new Set((await getTopicEntries()).map((entry) => entry.frontMatter.id));
+      if (config.topicIds.some((id) => !topics.has(id)))
+        throw new store.AutomationError('discovery_topic_invalid');
+      automationLimits();
+    }
   } else await aiStageAccess(config.profileId!, config.profileRevision!, 'analyze', false);
   return store.saveAutomationConfig({
     pool: automationPool,

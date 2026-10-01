@@ -39,8 +39,10 @@ export const nextConfig: NextConfig = {
     '/.well-known/workflow/v1/step': [
       './.generation-worker/worker.cjs',
       './.automation-worker/worker.cjs',
+      ...contentTrace,
     ],
-    '/api/admin/automation': ['./.automation-worker/worker.cjs'],
+    '/api/admin/automation': ['./.automation-worker/worker.cjs', ...contentTrace],
+    '/admin/sources': contentTrace,
     '/': contentTrace,
     '/insights': contentTrace,
     '/insights/[id]': contentTrace,

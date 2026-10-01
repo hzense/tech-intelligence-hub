@@ -7,6 +7,7 @@ export interface AutomationConfig {
   topicIds: string[];
   profileId: string | null;
   profileRevision: number | null;
+  discovery?: { keywords: string[]; lookbackDays: number; maxSources: number };
 }
 export class AutomationError extends Error {
   code: string;

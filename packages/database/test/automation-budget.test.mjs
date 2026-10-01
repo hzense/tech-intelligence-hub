@@ -4,7 +4,7 @@ import { claimAutomationRun } from '../src/automation-store.mjs';
 
 const owner = 'admin@example.invalid';
 
-function queuedRunHarness(used) {
+function queuedRunHarness(used, snapshot = { kind: 'topic_insight' }) {
   const id = randomUUID();
   const configId = randomUUID();
   const queries = [];
@@ -18,7 +18,7 @@ function queuedRunHarness(used) {
             config_id: configId,
             owner_id: owner,
             status: 'queued',
-            snapshot: { kind: 'topic_insight' },
+            snapshot,
             trigger: 'manual',
             config_revision: 1,
           },
@@ -35,6 +35,17 @@ function queuedRunHarness(used) {
 }
 
 describe('automation budget claim', () => {
+  it('reserves the global ledger for AI discovery, not just insight reports', async () => {
+    const { id, queries, pool } = queuedRunHarness(75, {
+      kind: 'source_collection',
+      discovery: { maxSources: 5 },
+    });
+    await expect(
+      claimAutomationRun({ pool, owner, id, limits: { batch: 100, daily: 100, reserve: 50 } }),
+    ).resolves.toBeNull();
+    expect(queries.some((sql) => sql.includes("phase='budget_exceeded'"))).toBe(true);
+    expect(queries.some((sql) => sql.includes("SET status='running'"))).toBe(false);
+  });
   it.each([
     ['missing limits', undefined, 0, 'not_configured'],
     ['daily limit exhausted', { batch: 100, daily: 100, reserve: 50 }, 75, 'budget_exceeded'],

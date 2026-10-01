@@ -46,6 +46,7 @@ export function normalizeAutomationConfig(value) {
     'topicIds',
     'profileId',
     'profileRevision',
+    ...(Object.hasOwn(value ?? {}, 'discovery') ? ['discovery'] : []),
   ]);
   if (
     !['source_collection', 'topic_insight'].includes(value.kind) ||
@@ -72,7 +73,33 @@ export function normalizeAutomationConfig(value) {
   const topicIds = value.topicIds.map((id) => automationText(id, 100));
   if (new Set(sourceUrls).size !== sourceUrls.length || new Set(topicIds).size !== topicIds.length)
     automationFail();
-  if (value.kind === 'source_collection' && (!sourceUrls.length || value.profileId === null))
+  let discovery;
+  if (value.discovery !== undefined) {
+    automationExact(value.discovery, ['keywords', 'lookbackDays', 'maxSources']);
+    const d = value.discovery;
+    if (
+      value.kind !== 'source_collection' ||
+      sourceUrls.length ||
+      !topicIds.length ||
+      !Array.isArray(d.keywords) ||
+      d.keywords.length > 10 ||
+      !Number.isInteger(d.lookbackDays) ||
+      d.lookbackDays < 1 ||
+      d.lookbackDays > 30 ||
+      !Number.isInteger(d.maxSources) ||
+      d.maxSources < 1 ||
+      d.maxSources > 8
+    )
+      automationFail();
+    const keywords = d.keywords.map((word) => automationText(word, 80));
+    if (new Set(keywords).size !== keywords.length) automationFail();
+    discovery = { keywords, lookbackDays: d.lookbackDays, maxSources: d.maxSources };
+  }
+  // Existing URL configurations remain explicit legacy jobs, never silently incur search fees.
+  if (
+    value.kind === 'source_collection' &&
+    ((!sourceUrls.length && !discovery) || value.profileId === null)
+  )
     automationFail();
   if (
     value.kind === 'topic_insight' &&
@@ -92,6 +119,7 @@ export function normalizeAutomationConfig(value) {
     topicIds,
     profileId: value.profileId,
     profileRevision: value.profileRevision,
+    ...(discovery ? { discovery } : {}),
   };
 }
 export const automationHash = (value) =>

@@ -35,11 +35,14 @@ const blank = (kind: Kind): AutomationConfig => ({
   name: '',
   kind,
   enabled: false,
-  frequency: kind === 'topic_insight' ? 'weekly' : 'manual',
+  frequency: kind === 'topic_insight' ? 'weekly' : 'daily',
   sourceUrls: [],
   topicIds: [],
   profileId: null,
   profileRevision: null,
+  ...(kind === 'source_collection'
+    ? { discovery: { keywords: [], lookbackDays: 2, maxSources: 5 } }
+    : {}),
 });
 const errors: Record<string, string> = {
   not_configured: '此功能尚未完成数据库、权限和预算配置。',
@@ -49,6 +52,16 @@ const errors: Record<string, string> = {
   budget_exceeded: '今日或单次预算不足，任务未启动。',
   profile_not_ready: '所选模型配置未就绪。',
   source_url_invalid: '来源链接格式或地址不符合导入规则。',
+  discovery_connection_unsupported:
+    '自动联网发现需要分阶段配置的“分析”模型使用 OpenRouter 连接；生成使用“提取”模型。',
+  discovery_topic_invalid: '所选领域已失效，请重新选择。',
+  discovery_search_unconfirmed:
+    '供应商未确认实际联网检索，已停止后续生成；请核对原任务，不要重复调用。',
+  discovery_invalid_output: '检索结果格式不符合要求，未用于生成；费用仍保留。',
+  discovery_unavailable: '联网发现未完成，请核对模型权限、连接与原任务。',
+  capability_failed: '分析模型不支持所需工具或上下文容量，请选择兼容模型。',
+  provider_rejected: '供应商拒绝请求，请核对搜索权限、模型与账户额度。',
+  timeout: '供应商响应超时，结果未知；请核对原任务和费用，不要直接重试。',
   insight_stale: '证据信号已改变或撤回，请重新生成报告。',
   dispatch_unknown: '任务已保存，但派发结果未知；请先刷新核对。',
 };
@@ -109,11 +122,41 @@ function TopicReport({ result }: { result: Record<string, unknown> }) {
   );
 }
 function SourceResult({ result }: { result: Record<string, unknown> }) {
+  const discovery = result.discovery as
+    | {
+        searchRequests?: number;
+        duplicates?: number;
+        rejected?: number;
+        articles?: { url: string; title: string; publishedAt: string }[];
+      }
+    | undefined;
   const ids = Array.isArray(result.generationIds)
     ? result.generationIds.filter((id): id is string => typeof id === 'string')
     : [];
   return (
     <div className={styles.report}>
+      {discovery ? (
+        <>
+          <p>
+            实际检索 {discovery.searchRequests ?? 0} 次 · 选中 {discovery.articles?.length ?? 0}{' '}
+            篇原文 · 已有或重复 {discovery.duplicates ?? 0} 项 · 不符合规则{' '}
+            {discovery.rejected ?? 0} 项
+          </p>
+          <details>
+            <summary>查看发现的来源</summary>
+            <ul>
+              {discovery.articles?.map((article) => (
+                <li key={article.url}>
+                  <a href={article.url} target="_blank" rel="noopener noreferrer">
+                    {article.title}
+                  </a>{' '}
+                  · {article.publishedAt}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </>
+      ) : null}
       {typeof result.batchId === 'string' ? (
         <Link href="/admin/imports">查看导入批次 · {result.batchId}</Link>
       ) : null}
@@ -156,7 +199,19 @@ export function AdminAutomation({
   }
   function edit(row: ConfigView | null) {
     setEditing(row);
-    setDraft(row ? row.config : blank(kind));
+    // An explicit save is required to convert a legacy fixed-URL schedule to paid discovery.
+    setDraft(
+      row
+        ? kind === 'source_collection' && !row.config.discovery
+          ? {
+              ...row.config,
+              sourceUrls: [],
+              enabled: false,
+              discovery: { keywords: [], lookbackDays: 2, maxSources: 5 },
+            }
+          : row.config
+        : blank(kind),
+    );
     createId.current = null;
     setMessage('');
   }
@@ -172,7 +227,15 @@ export function AdminAutomation({
         request: {
           id: editing?.id ?? createId.current,
           expectedRevision: editing?.revision ?? 0,
-          config: draft,
+          config: draft.discovery
+            ? {
+                ...draft,
+                discovery: {
+                  ...draft.discovery,
+                  keywords: draft.discovery.keywords.map((word) => word.trim()).filter(Boolean),
+                },
+              }
+            : draft,
           consent: true,
         },
       });
@@ -246,7 +309,7 @@ export function AdminAutomation({
         <h1>{kind === 'source_collection' ? '自动采集配置' : '专题洞察配置'}</h1>
         <p>
           {kind === 'source_collection'
-            ? '登记可信来源链接，按配置频率导入并建立私有信号生成任务。'
+            ? '选择关注领域和 AI 配置，自动搜索互联网、获取原文、去重并生成私有候选；无需填写网址。候选经人工确认后发布。'
             : '按专题选择当前公开信号，生成附有引用的私有报告，确认后公开。'}
         </p>
         {loadError ? (
@@ -279,6 +342,7 @@ export function AdminAutomation({
           <label>
             执行频率
             <select
+              aria-label="执行频率"
               value={draft.frequency}
               onChange={(e) =>
                 setDraft({ ...draft, frequency: e.target.value as AutomationConfig['frequency'] })
@@ -292,6 +356,7 @@ export function AdminAutomation({
           <label>
             分阶段模型配置
             <select
+              aria-label="分阶段模型配置"
               required
               value={draft.profileId ?? ''}
               onChange={(e) => {
@@ -313,48 +378,93 @@ export function AdminAutomation({
                 ))}
             </select>
           </label>
-          {kind === 'source_collection' ? (
-            <label className={styles.full}>
-              来源链接（每行一个，最多 8 个）
-              <textarea
-                rows={5}
-                value={draft.sourceUrls.join('\n')}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    sourceUrls: e.target.value
-                      .split('\n')
-                      .map((url) => url.trim())
-                      .filter(Boolean),
-                  })
-                }
-                placeholder="https://example.com/article"
-              />
-            </label>
-          ) : (
-            <fieldset className={styles.full}>
-              <legend>分析专题（最多 5 个）</legend>
-              <div className={styles.topics}>
-                {topics.map((topic) => (
-                  <label key={topic.id}>
-                    <input
-                      type="checkbox"
-                      checked={draft.topicIds.includes(topic.id)}
-                      onChange={(e) =>
-                        setDraft({
-                          ...draft,
-                          topicIds: e.target.checked
-                            ? [...draft.topicIds, topic.id]
-                            : draft.topicIds.filter((id) => id !== topic.id),
-                        })
-                      }
-                    />
-                    {topic.name}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          )}
+          {kind === 'source_collection' && draft.discovery ? (
+            <>
+              <p className={styles.full}>
+                使用所选配置的“分析”模型（OpenRouter，须支持工具调用）联网发现，使用“提取”模型生成信号；各自的费用分别记账。检索不使用分析阶段的报告提示词。手动网址／文件请使用导入页面。
+              </p>
+              {editing && !editing.config.discovery ? (
+                <p className={styles.full}>
+                  此为旧固定网址配置。保存后将转为联网发现并关闭原计划；请重新选择领域并确认是否启用定时执行。
+                </p>
+              ) : null}
+              <label className={styles.full}>
+                关注关键词或组织／人物（可选，用中文或英文逗号分隔，最多 10 个）
+                <input
+                  value={draft.discovery.keywords.join('，')}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      discovery: { ...draft.discovery!, keywords: e.target.value.split(/[,，]/) },
+                    })
+                  }
+                  placeholder="例如：推理芯片，智能体，英伟达"
+                />
+              </label>
+              <label>
+                检索时间范围
+                <select
+                  value={draft.discovery.lookbackDays}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      discovery: { ...draft.discovery!, lookbackDays: Number(e.target.value) },
+                    })
+                  }
+                >
+                  <option value={1}>近 1 天</option>
+                  <option value={2}>近 2 天</option>
+                  <option value={7}>近 7 天</option>
+                  <option value={30}>近 30 天</option>
+                </select>
+              </label>
+              <label>
+                每次最多读取原文数量
+                <input
+                  type="number"
+                  min={1}
+                  max={8}
+                  required
+                  value={draft.discovery.maxSources}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      discovery: { ...draft.discovery!, maxSources: Number(e.target.value) },
+                    })
+                  }
+                />
+              </label>
+              <p className={styles.full}>
+                每次最多搜索 3
+                次。原文获取失败或没有新信息时不编造候选。采集、导入、生成分别遵守服务器配置的预算；启用计划即授权按此范围定期执行，不自动发布。
+              </p>
+            </>
+          ) : null}
+          <fieldset className={styles.full}>
+            <legend>
+              {kind === 'source_collection' ? '关注领域' : '分析专题'}（至少 1 个，最多 5 个）
+            </legend>
+            <div className={styles.topics}>
+              {topics.map((topic) => (
+                <label key={topic.id}>
+                  <input
+                    type="checkbox"
+                    checked={draft.topicIds.includes(topic.id)}
+                    disabled={!draft.topicIds.includes(topic.id) && draft.topicIds.length >= 5}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        topicIds: e.target.checked
+                          ? [...draft.topicIds, topic.id]
+                          : draft.topicIds.filter((id) => id !== topic.id),
+                      })
+                    }
+                  />
+                  {topic.name}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <label className={styles.check}>
             <input
               type="checkbox"
@@ -363,7 +473,10 @@ export function AdminAutomation({
             />
             允许定时执行
           </label>
-          <button type="submit" disabled={!configured || busy || !draft.profileId}>
+          <button
+            type="submit"
+            disabled={!configured || busy || !draft.profileId || !draft.topicIds.length}
+          >
             {busy ? '处理中…' : '保存配置'}
           </button>
         </form>
@@ -395,6 +508,11 @@ export function AdminAutomation({
                   <tr key={row.id}>
                     <td>
                       {row.config.name} · r{row.revision}
+                      {kind === 'source_collection' ? (
+                        <small>
+                          {row.config.discovery ? 'AI 联网发现' : '旧固定网址配置（编辑可转换）'}
+                        </small>
+                      ) : null}
                     </td>
                     <td>{row.config.frequency}</td>
                     <td>{row.enabled ? '定时开启' : '仅手动'}</td>
@@ -439,7 +557,9 @@ export function AdminAutomation({
                     <td>{row.snapshot.name}</td>
                     <td>
                       {row.status} · {row.phase}
-                      {row.error_code ? <small>{row.error_code}</small> : null}
+                      {row.error_code ? (
+                        <small>{errors[row.error_code] ?? row.error_code}</small>
+                      ) : null}
                     </td>
                     <td>
                       {money(row.charged_microusd)}
