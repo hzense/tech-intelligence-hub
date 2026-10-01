@@ -1,6 +1,10 @@
 import type { Metadata } from 'next';
 import { requireAdminSession } from '@/lib/server/admin-auth';
-import { automationConfigured, automationDashboard } from '@/lib/server/automation';
+import {
+  automationStorageConfigured,
+  automationExecutionConfigured,
+  automationDashboard,
+} from '@/lib/server/automation';
 import { getAiDashboard } from '@/lib/server/admin-ai';
 import { getTopicEntries } from '@/lib/content-runtime';
 import { AdminAutomation } from '@/components/admin-automation';
@@ -12,7 +16,7 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic';
 export default async function AdminTopicsPage() {
   const session = await requireAdminSession();
-  const configured = automationConfigured();
+  const configured = automationStorageConfigured();
   const [stateResult, ai, entries] = await Promise.all([
     configured
       ? automationDashboard(session.user.id)
@@ -26,6 +30,7 @@ export default async function AdminTopicsPage() {
     <AdminAutomation
       kind="topic_insight"
       configured={configured && !stateResult.loadError}
+      executionEnabled={automationExecutionConfigured('topic_insight')}
       loadError={stateResult.loadError}
       initial={stateResult.state}
       profiles={ai.profiles.map(({ id, revision, name, readiness }) => ({

@@ -46,6 +46,7 @@ const blank = (kind: Kind): AutomationConfig => ({
 });
 const errors: Record<string, string> = {
   not_configured: '此功能尚未完成数据库、权限和预算配置。',
+  execution_disabled: '配置可保存，但采集执行尚未启用；本次未启动任务。',
   revision_conflict: '配置已由其他会话修改，请刷新后核对。',
   request_id_conflict: '请求编号与已有任务不匹配，请先核对任务。',
   task_active: '该配置已有正在执行的任务，请查看列表。',
@@ -173,6 +174,7 @@ function SourceResult({ result }: { result: Record<string, unknown> }) {
 export function AdminAutomation({
   kind,
   configured,
+  executionEnabled,
   loadError,
   initial,
   profiles,
@@ -180,6 +182,7 @@ export function AdminAutomation({
 }: {
   kind: Kind;
   configured: boolean;
+  executionEnabled: boolean;
   loadError: boolean;
   initial: Dashboard;
   profiles: Profile[];
@@ -254,6 +257,8 @@ export function AdminAutomation({
   async function run(row: ConfigView) {
     if (
       busy ||
+      !configured ||
+      !executionEnabled ||
       !window.confirm(
         `确认启动“${row.config.name}”？运行可能产生导入或模型费用，结果需在任务列表中核对。`,
       )
@@ -318,7 +323,13 @@ export function AdminAutomation({
             任务列表读取失败，已停用操作；请检查专用数据库连接及权限，不要将空列表当作没有任务。
           </p>
         ) : !configured ? (
-          <p role="status">数据库、专用权限和任务开关尚未启用；当前仅展示配置入口。</p>
+          <p role="status">
+            配置存储尚未就绪，暂不能保存；请配置专用数据库连接并完成迁移及权限核验。填写关键词或开启执行不能解决存储问题。
+          </p>
+        ) : !executionEnabled ? (
+          <p>
+            配置存储已就绪：可以保存配置。执行开关、预算或依赖服务尚未就绪，不能启动任务或开启定时执行。
+          </p>
         ) : null}
       </header>
       <section className={styles.card} aria-labelledby="config-title">
@@ -477,9 +488,10 @@ export function AdminAutomation({
             <input
               type="checkbox"
               checked={draft.enabled}
+              disabled={!configured || (!executionEnabled && !draft.enabled)}
               onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
             />
-            允许定时执行
+            允许定时执行（可能产生费用）
           </label>
           <button
             type="submit"
@@ -533,7 +545,11 @@ export function AdminAutomation({
                       <button type="button" disabled={busy} onClick={() => edit(row)}>
                         编辑
                       </button>
-                      <button type="button" disabled={busy} onClick={() => void run(row)}>
+                      <button
+                        type="button"
+                        disabled={busy || !configured || !executionEnabled}
+                        onClick={() => void run(row)}
+                      >
                         立即运行
                       </button>
                     </td>

@@ -1,7 +1,15 @@
 import 'server-only';
 import * as store from '../../../../packages/database/src/automation-store.mjs';
-import { normalizeAutomationConfig } from '../../../../packages/database/src/automation-contract.mjs';
-import { automationDatabaseConfiguration, automationPool } from './automation-store-access';
+import {
+  normalizeAutomationConfig,
+  type AutomationConfig,
+} from '../../../../packages/database/src/automation-contract.mjs';
+import {
+  automationDatabaseConfiguration,
+  automationStorageConfiguration,
+  automationConfigPool,
+  automationPool,
+} from './automation-store-access';
 import { aiStageAccess, generationAiAccess } from './admin-ai';
 import { importsConfigured } from './import-service';
 import { generationConfigured } from './signal-generation';
@@ -23,6 +31,28 @@ export function automationConfigured() {
     return false;
   }
 }
+export function automationStorageConfigured() {
+  try {
+    automationStorageConfiguration();
+    return true;
+  } catch {
+    return false;
+  }
+}
+export function automationExecutionConfigured(kind: AutomationConfig['kind']) {
+  try {
+    assertExecutionConfiguration(kind);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function assertExecutionConfiguration(kind: AutomationConfig['kind']) {
+  if (!automationConfigured()) throw new store.AutomationError('execution_disabled');
+  automationLimits();
+  if (kind === 'source_collection' && (!importsConfigured() || !generationConfigured()))
+    throw new store.AutomationError('not_configured');
+}
 export function automationLimits() {
   const limits = {
     batch: Number(process.env.HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD),
@@ -40,7 +70,7 @@ export function automationLimits() {
   return limits;
 }
 export async function automationDashboard(owner: string) {
-  const state = await store.readAutomationDashboard({ pool: automationPool, owner });
+  const state = await store.readAutomationDashboard({ pool: automationConfigPool, owner });
   return {
     configs: state.configs.map(
       ({ id, revision, config, enabled, next_run_at, created_at, updated_at }) => ({
@@ -84,9 +114,18 @@ export async function automationDashboard(owner: string) {
 }
 export async function saveAutomation(owner: string, request: store.SaveAutomationRequest) {
   const config = normalizeAutomationConfig(request.config);
+  // Saving an inactive configuration neither enables execution nor needs its
+  // budgets/import/generation services. Enabling a schedule remains protected.
+  if (config.enabled) assertExecutionConfiguration(config.kind);
+  await validateAutomationProfile(config);
+  return store.saveAutomationConfig({
+    pool: automationConfigPool,
+    owner,
+    request: { ...request, config },
+  });
+}
+async function validateAutomationProfile(config: AutomationConfig) {
   if (config.kind === 'source_collection') {
-    if (!importsConfigured() || !generationConfigured())
-      throw new store.AutomationError('not_configured');
     await generationAiAccess(config.profileId!, config.profileRevision!, false);
     if (config.discovery) {
       const access = await aiStageAccess(
@@ -103,17 +142,14 @@ export async function saveAutomation(owner: string, request: store.SaveAutomatio
       const topics = new Set((await getTopicEntries()).map((entry) => entry.frontMatter.id));
       if (config.topicIds.some((id) => !topics.has(id)))
         throw new store.AutomationError('discovery_topic_invalid');
-      automationLimits();
     }
   } else await aiStageAccess(config.profileId!, config.profileRevision!, 'analyze', false);
-  return store.saveAutomationConfig({
-    pool: automationPool,
-    owner,
-    request: { ...request, config },
-  });
 }
 async function dispatch(owner: string, id: string) {
   try {
+    const run = await store.readAutomationRun({ pool: automationPool, owner, id });
+    assertExecutionConfiguration(run.snapshot.kind);
+    await validateAutomationProfile(run.snapshot);
     const [{ start }, { automationWorkflow }] = await Promise.all([
       import('workflow/api'),
       import('../../workflows/automation'),
@@ -125,6 +161,8 @@ async function dispatch(owner: string, id: string) {
   }
 }
 export async function triggerAutomation(owner: string, request: store.TriggerAutomationRequest) {
+  if (!automationConfigured()) throw new store.AutomationError('execution_disabled');
+  automationLimits();
   const result = await store.enqueueAutomation({ pool: automationPool, owner, request });
   if (result.created) await dispatch(owner, result.run.id);
   return result;
