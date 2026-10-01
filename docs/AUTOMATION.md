@@ -42,6 +42,7 @@ OpenRouter 服务端搜索工具仍为 Beta，协议或模型支持可能变化�
 
 1. 对照 main 已合并代码与 CI，保留新备份并执行只读 preflight；恢复能力如未演练，要明确接受该风险。
 2. 单独审批 0026 迁移，迁移后运行完整只读结构核验。新角色脚本位于 db/roles/create_automation_roles.sql 和 db/roles/configure_automation_roles.sql，需按其限制分别执行和核对最小 ACL，不借用旧角色授权。
+   - 恢复尚未演练时，仅可在用户明确接受本次风险后使用 `accept-unverified-automation-storage`，风险范围为 `automation-storage-production-launch`。冻结完整 0000–0026 清单，只接受单个待迁移 0026；目标、备份及计划指纹来自新备份和当前 main 的只读预检。迁移审批还须绑定当次运行、过期时间、维护窗口与新 ACL 基线；旧范围及未来迁移不得混用。ACL 归档另需明确公开脱敏证据授权，角色授权和凭据仍在迁移核验后分别处理。
 3. 先在 Production Secret 配置 `HZENSE_AUTOMATION_DATABASE_URL` 并重新部署；执行开关保持关闭，核验配置保存及刷新读回、不生成任务。需要公开专题时再配置 `HZENSE_INSIGHT_READER_DATABASE_URL`。执行前另行设置 HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD、HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD、HZENSE_AUTOMATION_RESERVE_MICROUSD，确认 Cron Secret 配置和模型/导入既有门禁，再单独启用 HZENSE_AUTOMATION_ENABLED。公开专题另需 HZENSE_TOPIC_INSIGHTS_ENABLED。
 4. 先只读检查管理页和公开页，再做一次可追溯的“不选领域、不填网址”手动采集及专题验收：核对默认科技范围、实际检索、原文、去重、候选入库、费用、引用、人工确认、撤回与依赖信号变更后的下架。专题洞察仍需选择分析专题。最后再启用计划频率。
 

@@ -26,6 +26,7 @@ const candidateEnrichmentRecoveryPolicy = 'accept-unverified-candidate-enrichmen
 const candidateMaterialsRecoveryPolicy = 'accept-unverified-candidate-materials';
 const materialReviewRecoveryPolicy = 'accept-unverified-material-review';
 const editorialRecoveryPolicy = 'accept-unverified-editorial-publication';
+const automationRecoveryPolicy = 'accept-unverified-automation-storage';
 
 // A reviewed one-time rollout boundary, NOT the moving repository manifest.
 // Keep historical checksums pinned too, so approval identifies the complete
@@ -973,6 +974,97 @@ export function requireEditorialMigrationScope(preflight, migrations, approval, 
   return plan;
 }
 
+// Independent 0026 boundary; older risk approvals cannot authorize this migration.
+const automationManifest = Object.freeze([
+  ...editorialManifest,
+  Object.freeze([
+    '0026_automation_tasks.sql',
+    'e2a884c37b523a7d4aad19ec3155cd662c89228bf7fc006db93044eb73d23c21',
+  ]),
+]);
+export function automationTargetBinding(policy, preflight, backupId) {
+  requireGate(
+    ['host', 'port', 'database', 'user'].every(
+      (key) => typeof policy?.[key] === 'string' && policy[key].length > 0,
+    ) &&
+      preflight?.database === policy.database &&
+      preflight?.user === policy.user,
+    'automation-storage-target-required',
+  );
+  requireGate(
+    typeof backupId === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._:/-]{7,255}$/.test(backupId) &&
+      !/(^|[._:/-])(none|null|todo|pending|placeholder|example|changeme)($|[._:/-])/i.test(
+        backupId,
+      ),
+    'reviewed-backup-required',
+  );
+  return {
+    targetFingerprint: createHash('sha256')
+      .update('hzense/automation-storage-target/v1\0')
+      .update(
+        JSON.stringify([
+          policy.host.toLowerCase(),
+          policy.port,
+          preflight.database,
+          preflight.user,
+        ]),
+      )
+      .digest('hex'),
+    backupIdSha256: createHash('sha256').update(backupId).digest('hex'),
+  };
+}
+export function automationMigrationPlan(pendingMigrations, migrations, binding) {
+  requireGate(
+    Array.isArray(migrations) &&
+      migrations.length === automationManifest.length &&
+      Array.from(migrations).every(
+        (entry, index) =>
+          entry?.name === automationManifest[index][0] &&
+          entry?.checksum === automationManifest[index][1] &&
+          typeof entry?.sql === 'string' &&
+          createHash('sha256').update(entry.sql).digest('hex') === automationManifest[index][1],
+      ),
+    'automation-storage-migration-manifest-required',
+  );
+  requireGate(
+    Array.isArray(pendingMigrations) &&
+      pendingMigrations.length === 1 &&
+      Array.from(pendingMigrations).every(
+        (name, index) =>
+          name ===
+          automationManifest[automationManifest.length - pendingMigrations.length + index][0],
+      ),
+    'automation-storage-migration-scope-required',
+  );
+  requireGate(
+    digest.test(binding?.targetFingerprint ?? '') && digest.test(binding?.backupIdSha256 ?? ''),
+    'automation-storage-target-required',
+  );
+  const manifestFingerprint = createHash('sha256')
+    .update('hzense/automation-storage-migration-manifest/v1\0')
+    .update(JSON.stringify(automationManifest))
+    .digest('hex');
+  const { targetFingerprint, backupIdSha256 } = binding;
+  const planFingerprint = createHash('sha256')
+    .update('hzense/automation-storage-migration-plan/v1\0')
+    .update(
+      JSON.stringify({ manifestFingerprint, pendingMigrations, targetFingerprint, backupIdSha256 }),
+    )
+    .digest('hex');
+  return { manifestFingerprint, planFingerprint, targetFingerprint, backupIdSha256 };
+}
+export function requireAutomationMigrationScope(preflight, migrations, approval, binding) {
+  const plan = automationMigrationPlan(preflight?.pendingMigrations, migrations, binding);
+  requireGate(
+    ['manifestFingerprint', 'planFingerprint', 'targetFingerprint', 'backupIdSha256'].every(
+      (key) => approval?.[key] === plan[key],
+    ),
+    'automation-storage-migration-plan-mismatch',
+  );
+  return plan;
+}
+
 // Explicit exception, not fabricated evidence of a successful restore. The
 // protected Environment review remains the authority; these are declarations.
 function validateRecoveryPolicy(approval, operation) {
@@ -989,7 +1081,8 @@ function validateRecoveryPolicy(approval, operation) {
       policy === candidateEnrichmentRecoveryPolicy ||
       policy === candidateMaterialsRecoveryPolicy ||
       policy === materialReviewRecoveryPolicy ||
-      policy === editorialRecoveryPolicy,
+      policy === editorialRecoveryPolicy ||
+      policy === automationRecoveryPolicy,
     'unsupported-recovery-policy',
   );
   if (policy === 'verified') {
@@ -1008,28 +1101,31 @@ function validateRecoveryPolicy(approval, operation) {
       candidateMaterialsRecoveryPolicy,
       materialReviewRecoveryPolicy,
       editorialRecoveryPolicy,
+      automationRecoveryPolicy,
     ].includes(policy)
   ) {
     const prefix =
-      policy === editorialRecoveryPolicy
-        ? 'editorial-publication'
-        : policy === materialReviewRecoveryPolicy
-          ? 'material-review'
-          : policy === candidateMaterialsRecoveryPolicy
-            ? 'candidate-materials'
-            : policy === candidateEnrichmentRecoveryPolicy
-              ? 'candidate-enrichment'
-              : policy === candidateReviewRecoveryPolicy
-                ? 'candidate-review'
-                : policy === generationProgressRecoveryPolicy
-                  ? 'generation-progress'
-                  : policy === taskManagementRecoveryPolicy
-                    ? 'task-management'
-                    : policy === signalGenerationRecoveryPolicy
-                      ? 'signal-generation'
-                      : policy === importTasksRecoveryPolicy
-                        ? 'import-tasks'
-                        : 'ai-config';
+      policy === automationRecoveryPolicy
+        ? 'automation-storage'
+        : policy === editorialRecoveryPolicy
+          ? 'editorial-publication'
+          : policy === materialReviewRecoveryPolicy
+            ? 'material-review'
+            : policy === candidateMaterialsRecoveryPolicy
+              ? 'candidate-materials'
+              : policy === candidateEnrichmentRecoveryPolicy
+                ? 'candidate-enrichment'
+                : policy === candidateReviewRecoveryPolicy
+                  ? 'candidate-review'
+                  : policy === generationProgressRecoveryPolicy
+                    ? 'generation-progress'
+                    : policy === taskManagementRecoveryPolicy
+                      ? 'task-management'
+                      : policy === signalGenerationRecoveryPolicy
+                        ? 'signal-generation'
+                        : policy === importTasksRecoveryPolicy
+                          ? 'import-tasks'
+                          : 'ai-config';
     if (policy !== aiConfigRecoveryPolicy)
       requireGate(digest.test(approval.targetFingerprint ?? ''), `${prefix}-target-required`);
     requireGate(
@@ -1054,27 +1150,29 @@ function validateRecoveryPolicy(approval, operation) {
       approval.aclRecoveryReviewed === false &&
       !Object.hasOwn(approval, 'restoreEvidenceFingerprint') &&
       acceptance?.scope ===
-        (policy === editorialRecoveryPolicy
-          ? 'editorial-publication-production-launch'
-          : policy === materialReviewRecoveryPolicy
-            ? 'material-review-production-launch'
-            : policy === candidateMaterialsRecoveryPolicy
-              ? 'candidate-materials-production-launch'
-              : policy === candidateEnrichmentRecoveryPolicy
-                ? 'candidate-enrichment-production-launch'
-                : policy === candidateReviewRecoveryPolicy
-                  ? 'candidate-review-production-launch'
-                  : policy === generationProgressRecoveryPolicy
-                    ? 'generation-progress-production-launch'
-                    : policy === taskManagementRecoveryPolicy
-                      ? 'task-management-production-launch'
-                      : policy === signalGenerationRecoveryPolicy
-                        ? 'signal-generation-production-launch'
-                        : policy === importTasksRecoveryPolicy
-                          ? 'import-tasks-production-launch'
-                          : policy === aiConfigRecoveryPolicy
-                            ? 'ai-configuration-production-launch'
-                            : 'fts1-production-launch') &&
+        (policy === automationRecoveryPolicy
+          ? 'automation-storage-production-launch'
+          : policy === editorialRecoveryPolicy
+            ? 'editorial-publication-production-launch'
+            : policy === materialReviewRecoveryPolicy
+              ? 'material-review-production-launch'
+              : policy === candidateMaterialsRecoveryPolicy
+                ? 'candidate-materials-production-launch'
+                : policy === candidateEnrichmentRecoveryPolicy
+                  ? 'candidate-enrichment-production-launch'
+                  : policy === candidateReviewRecoveryPolicy
+                    ? 'candidate-review-production-launch'
+                    : policy === generationProgressRecoveryPolicy
+                      ? 'generation-progress-production-launch'
+                      : policy === taskManagementRecoveryPolicy
+                        ? 'task-management-production-launch'
+                        : policy === signalGenerationRecoveryPolicy
+                          ? 'signal-generation-production-launch'
+                          : policy === importTasksRecoveryPolicy
+                            ? 'import-tasks-production-launch'
+                            : policy === aiConfigRecoveryPolicy
+                              ? 'ai-configuration-production-launch'
+                              : 'fts1-production-launch') &&
       acceptance.accepted === true &&
       acceptance.historicalAclGapAccepted === true &&
       acceptance.acknowledgement === 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
@@ -1213,6 +1311,7 @@ export function publicRecoveryAcceptance(request, rawApproval) {
       candidateMaterialsRecoveryPolicy,
       materialReviewRecoveryPolicy,
       editorialRecoveryPolicy,
+      automationRecoveryPolicy,
     ].includes(request.approval?.recoveryPolicy)
   ) {
     return {
@@ -1346,6 +1445,7 @@ async function executeOperation(env, { operation, approval }) {
         candidateMaterialsRecoveryPolicy,
         materialReviewRecoveryPolicy,
         editorialRecoveryPolicy,
+        automationRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
     ) {
       const { productionDatabaseOptions, validateConnectionTarget } =
@@ -1356,28 +1456,31 @@ async function executeOperation(env, { operation, approval }) {
       const progress = approval.recoveryPolicy === generationProgressRecoveryPolicy;
       const taskManagement = approval.recoveryPolicy === taskManagementRecoveryPolicy;
       const candidateReview = approval.recoveryPolicy === candidateReviewRecoveryPolicy;
+      const automation = approval.recoveryPolicy === automationRecoveryPolicy;
       const editorial = approval.recoveryPolicy === editorialRecoveryPolicy;
       const materialReview = approval.recoveryPolicy === materialReviewRecoveryPolicy;
       const candidateMaterials = approval.recoveryPolicy === candidateMaterialsRecoveryPolicy;
       const candidateEnrichment = approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy;
       binding = (
-        editorial
-          ? editorialTargetBinding
-          : materialReview
-            ? materialReviewTargetBinding
-            : candidateMaterials
-              ? candidateMaterialsTargetBinding
-              : candidateEnrichment
-                ? candidateEnrichmentTargetBinding
-                : candidateReview
-                  ? candidateReviewTargetBinding
-                  : progress
-                    ? generationProgressTargetBinding
-                    : taskManagement
-                      ? taskManagementTargetBinding
-                      : generation
-                        ? signalGenerationTargetBinding
-                        : importTasksTargetBinding
+        automation
+          ? automationTargetBinding
+          : editorial
+            ? editorialTargetBinding
+            : materialReview
+              ? materialReviewTargetBinding
+              : candidateMaterials
+                ? candidateMaterialsTargetBinding
+                : candidateEnrichment
+                  ? candidateEnrichmentTargetBinding
+                  : candidateReview
+                    ? candidateReviewTargetBinding
+                    : progress
+                      ? generationProgressTargetBinding
+                      : taskManagement
+                        ? taskManagementTargetBinding
+                        : generation
+                          ? signalGenerationTargetBinding
+                          : importTasksTargetBinding
       )(
         validateConnectionTarget(options),
         await runDatabasePreflight(options),
@@ -1386,23 +1489,25 @@ async function executeOperation(env, { operation, approval }) {
       requireGate(
         binding.targetFingerprint === approval.targetFingerprint &&
           binding.backupIdSha256 === approval.backupIdSha256,
-        editorial
-          ? 'editorial-publication-target-mismatch'
-          : materialReview
-            ? 'material-review-target-mismatch'
-            : candidateMaterials
-              ? 'candidate-materials-target-mismatch'
-              : candidateEnrichment
-                ? 'candidate-enrichment-target-mismatch'
-                : candidateReview
-                  ? 'candidate-review-target-mismatch'
-                  : progress
-                    ? 'generation-progress-target-mismatch'
-                    : taskManagement
-                      ? 'task-management-target-mismatch'
-                      : generation
-                        ? 'signal-generation-target-mismatch'
-                        : 'import-tasks-target-mismatch',
+        automation
+          ? 'automation-storage-target-mismatch'
+          : editorial
+            ? 'editorial-publication-target-mismatch'
+            : materialReview
+              ? 'material-review-target-mismatch'
+              : candidateMaterials
+                ? 'candidate-materials-target-mismatch'
+                : candidateEnrichment
+                  ? 'candidate-enrichment-target-mismatch'
+                  : candidateReview
+                    ? 'candidate-review-target-mismatch'
+                    : progress
+                      ? 'generation-progress-target-mismatch'
+                      : taskManagement
+                        ? 'task-management-target-mismatch'
+                        : generation
+                          ? 'signal-generation-target-mismatch'
+                          : 'import-tasks-target-mismatch',
       );
     }
     const { capturePublicAclEvidence } = await import('./public-acl-evidence.mjs');
@@ -1430,6 +1535,18 @@ async function executeOperation(env, { operation, approval }) {
       await import('../../packages/database/src/migrate.mjs');
     const migrations = await loadMigrations();
     await verifyMigrationManifest(migrations);
+    try {
+      return {
+        ...preflight,
+        ...automationMigrationPlan(
+          preflight.pendingMigrations,
+          migrations,
+          automationTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+        ),
+      };
+    } catch (error) {
+      if (!(error instanceof MaintenanceGateError)) throw error;
+    }
     try {
       return {
         ...preflight,
@@ -1568,95 +1685,107 @@ async function executeOperation(env, { operation, approval }) {
           candidateMaterialsRecoveryPolicy,
           materialReviewRecoveryPolicy,
           editorialRecoveryPolicy,
+          automationRecoveryPolicy,
         ].includes(approval?.recoveryPolicy)
       ) {
         const migrations = await loadMigrations();
         await verifyMigrationManifest(migrations);
         approvedPlan =
-          approval.recoveryPolicy === editorialRecoveryPolicy
-            ? requireEditorialMigrationScope(
+          approval.recoveryPolicy === automationRecoveryPolicy
+            ? requireAutomationMigrationScope(
                 preflight,
                 migrations,
                 approval,
-                editorialTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                automationTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
               )
-            : approval.recoveryPolicy === materialReviewRecoveryPolicy
-              ? requireMaterialReviewMigrationScope(
+            : approval.recoveryPolicy === editorialRecoveryPolicy
+              ? requireEditorialMigrationScope(
                   preflight,
                   migrations,
                   approval,
-                  materialReviewTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                  editorialTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                 )
-              : approval.recoveryPolicy === candidateMaterialsRecoveryPolicy
-                ? requireCandidateMaterialsMigrationScope(
+              : approval.recoveryPolicy === materialReviewRecoveryPolicy
+                ? requireMaterialReviewMigrationScope(
                     preflight,
                     migrations,
                     approval,
-                    candidateMaterialsTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                    materialReviewTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                   )
-                : approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy
-                  ? requireCandidateEnrichmentMigrationScope(
+                : approval.recoveryPolicy === candidateMaterialsRecoveryPolicy
+                  ? requireCandidateMaterialsMigrationScope(
                       preflight,
                       migrations,
                       approval,
-                      candidateEnrichmentTargetBinding(
-                        policy,
-                        preflight,
-                        env.MAINTENANCE_BACKUP_ID,
-                      ),
+                      candidateMaterialsTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                     )
-                  : approval.recoveryPolicy === candidateReviewRecoveryPolicy
-                    ? requireCandidateReviewMigrationScope(
+                  : approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy
+                    ? requireCandidateEnrichmentMigrationScope(
                         preflight,
                         migrations,
                         approval,
-                        candidateReviewTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                        candidateEnrichmentTargetBinding(
+                          policy,
+                          preflight,
+                          env.MAINTENANCE_BACKUP_ID,
+                        ),
                       )
-                    : approval.recoveryPolicy === generationProgressRecoveryPolicy
-                      ? requireGenerationProgressMigrationScope(
+                    : approval.recoveryPolicy === candidateReviewRecoveryPolicy
+                      ? requireCandidateReviewMigrationScope(
                           preflight,
                           migrations,
                           approval,
-                          generationProgressTargetBinding(
+                          candidateReviewTargetBinding(
                             policy,
                             preflight,
                             env.MAINTENANCE_BACKUP_ID,
                           ),
                         )
-                      : approval.recoveryPolicy === taskManagementRecoveryPolicy
-                        ? requireTaskManagementMigrationScope(
+                      : approval.recoveryPolicy === generationProgressRecoveryPolicy
+                        ? requireGenerationProgressMigrationScope(
                             preflight,
                             migrations,
                             approval,
-                            taskManagementTargetBinding(
+                            generationProgressTargetBinding(
                               policy,
                               preflight,
                               env.MAINTENANCE_BACKUP_ID,
                             ),
                           )
-                        : approval.recoveryPolicy === signalGenerationRecoveryPolicy
-                          ? requireSignalGenerationMigrationScope(
+                        : approval.recoveryPolicy === taskManagementRecoveryPolicy
+                          ? requireTaskManagementMigrationScope(
                               preflight,
                               migrations,
                               approval,
-                              signalGenerationTargetBinding(
+                              taskManagementTargetBinding(
                                 policy,
                                 preflight,
                                 env.MAINTENANCE_BACKUP_ID,
                               ),
                             )
-                          : approval.recoveryPolicy === importTasksRecoveryPolicy
-                            ? requireImportTasksMigrationScope(
+                          : approval.recoveryPolicy === signalGenerationRecoveryPolicy
+                            ? requireSignalGenerationMigrationScope(
                                 preflight,
                                 migrations,
                                 approval,
-                                importTasksTargetBinding(
+                                signalGenerationTargetBinding(
                                   policy,
                                   preflight,
                                   env.MAINTENANCE_BACKUP_ID,
                                 ),
                               )
-                            : requireAiConfigMigrationScope(preflight, migrations, approval);
+                            : approval.recoveryPolicy === importTasksRecoveryPolicy
+                              ? requireImportTasksMigrationScope(
+                                  preflight,
+                                  migrations,
+                                  approval,
+                                  importTasksTargetBinding(
+                                    policy,
+                                    preflight,
+                                    env.MAINTENANCE_BACKUP_ID,
+                                  ),
+                                )
+                              : requireAiConfigMigrationScope(preflight, migrations, approval);
       }
     }
     await runMigrations({
@@ -1681,6 +1810,7 @@ async function executeOperation(env, { operation, approval }) {
         candidateMaterialsRecoveryPolicy,
         materialReviewRecoveryPolicy,
         editorialRecoveryPolicy,
+        automationRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
         ? async (pendingMigrations, artifact) => {
             if (
@@ -1695,6 +1825,7 @@ async function executeOperation(env, { operation, approval }) {
                 candidateMaterialsRecoveryPolicy,
                 materialReviewRecoveryPolicy,
                 editorialRecoveryPolicy,
+                automationRecoveryPolicy,
               ].includes(approval?.recoveryPolicy)
             ) {
               // The runner freezes this actual execution snapshot before opening
@@ -1710,6 +1841,7 @@ async function executeOperation(env, { operation, approval }) {
                   candidateMaterialsRecoveryPolicy,
                   materialReviewRecoveryPolicy,
                   editorialRecoveryPolicy,
+                  automationRecoveryPolicy,
                 ].includes(approval.recoveryPolicy)
               ) {
                 // Re-read authenticated identity from the very same connection
@@ -1722,6 +1854,7 @@ async function executeOperation(env, { operation, approval }) {
                 const progress = approval.recoveryPolicy === generationProgressRecoveryPolicy;
                 const taskManagement = approval.recoveryPolicy === taskManagementRecoveryPolicy;
                 const candidateReview = approval.recoveryPolicy === candidateReviewRecoveryPolicy;
+                const automation = approval.recoveryPolicy === automationRecoveryPolicy;
                 const editorial = approval.recoveryPolicy === editorialRecoveryPolicy;
                 const materialReview = approval.recoveryPolicy === materialReviewRecoveryPolicy;
                 const candidateMaterials =
@@ -1729,44 +1862,48 @@ async function executeOperation(env, { operation, approval }) {
                 const candidateEnrichment =
                   approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy;
                 approvedPlan = (
-                  editorial
-                    ? requireEditorialMigrationScope
-                    : materialReview
-                      ? requireMaterialReviewMigrationScope
-                      : candidateMaterials
-                        ? requireCandidateMaterialsMigrationScope
-                        : candidateEnrichment
-                          ? requireCandidateEnrichmentMigrationScope
-                          : candidateReview
-                            ? requireCandidateReviewMigrationScope
-                            : progress
-                              ? requireGenerationProgressMigrationScope
-                              : taskManagement
-                                ? requireTaskManagementMigrationScope
-                                : generation
-                                  ? requireSignalGenerationMigrationScope
-                                  : requireImportTasksMigrationScope
+                  automation
+                    ? requireAutomationMigrationScope
+                    : editorial
+                      ? requireEditorialMigrationScope
+                      : materialReview
+                        ? requireMaterialReviewMigrationScope
+                        : candidateMaterials
+                          ? requireCandidateMaterialsMigrationScope
+                          : candidateEnrichment
+                            ? requireCandidateEnrichmentMigrationScope
+                            : candidateReview
+                              ? requireCandidateReviewMigrationScope
+                              : progress
+                                ? requireGenerationProgressMigrationScope
+                                : taskManagement
+                                  ? requireTaskManagementMigrationScope
+                                  : generation
+                                    ? requireSignalGenerationMigrationScope
+                                    : requireImportTasksMigrationScope
                 )(
                   { ...current, pendingMigrations },
                   artifact?.migrations,
                   approval,
-                  (editorial
-                    ? editorialTargetBinding
-                    : materialReview
-                      ? materialReviewTargetBinding
-                      : candidateMaterials
-                        ? candidateMaterialsTargetBinding
-                        : candidateEnrichment
-                          ? candidateEnrichmentTargetBinding
-                          : candidateReview
-                            ? candidateReviewTargetBinding
-                            : progress
-                              ? generationProgressTargetBinding
-                              : taskManagement
-                                ? taskManagementTargetBinding
-                                : generation
-                                  ? signalGenerationTargetBinding
-                                  : importTasksTargetBinding)(
+                  (automation
+                    ? automationTargetBinding
+                    : editorial
+                      ? editorialTargetBinding
+                      : materialReview
+                        ? materialReviewTargetBinding
+                        : candidateMaterials
+                          ? candidateMaterialsTargetBinding
+                          : candidateEnrichment
+                            ? candidateEnrichmentTargetBinding
+                            : candidateReview
+                              ? candidateReviewTargetBinding
+                              : progress
+                                ? generationProgressTargetBinding
+                                : taskManagement
+                                  ? taskManagementTargetBinding
+                                  : generation
+                                    ? signalGenerationTargetBinding
+                                    : importTasksTargetBinding)(
                     policy,
                     current,
                     env.MAINTENANCE_BACKUP_ID,
