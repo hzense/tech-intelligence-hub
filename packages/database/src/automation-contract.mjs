@@ -80,7 +80,6 @@ export function normalizeAutomationConfig(value) {
     if (
       value.kind !== 'source_collection' ||
       sourceUrls.length ||
-      !topicIds.length ||
       !Array.isArray(d.keywords) ||
       d.keywords.length > 10 ||
       !Number.isInteger(d.lookbackDays) ||

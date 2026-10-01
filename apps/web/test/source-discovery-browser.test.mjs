@@ -7,7 +7,7 @@ import { build } from 'esbuild';
 import { chromium, expect } from '@playwright/test';
 
 test(
-  'discovery UI saves topics without URLs and explicitly converts legacy schedules',
+  'discovery UI saves without topics or URLs and explicitly converts legacy schedules',
   { skip: process.env.HZENSE_AUTOMATION_BROWSER_TEST !== '1' },
   async () => {
     const root = fileURLToPath(new URL('..', import.meta.url));
@@ -24,7 +24,7 @@ test(
             frequency: 'daily',
             enabled: true,
             sourceUrls: ['https://example.com/old'],
-            topicIds: [],
+            topicIds: ['topic-ai'],
             profileId,
             profileRevision: 1,
           },
@@ -105,17 +105,17 @@ test(
         });
       });
       await page.goto(`http://127.0.0.1:${server.address().port}`);
-      await expect(page.getByText('无需填写网址', { exact: false })).toBeVisible();
+      await expect(page.getByText('无需指定领域或填写网址', { exact: false })).toBeVisible();
       await expect(page.locator('textarea')).toHaveCount(0);
+      await expect(page.getByRole('checkbox', { name: '人工智能', exact: true })).toHaveCount(0);
       await page.getByLabel('配置名称', { exact: true }).fill('芯片情报');
       await page.getByLabel('分阶段模型配置', { exact: true }).selectOption(profileId);
-      await page.getByRole('checkbox', { name: '人工智能', exact: true }).check();
       await page.getByLabel('关注关键词', { exact: false }).fill('芯片，英伟达');
       await page.getByRole('button', { name: '保存配置', exact: true }).click();
       await expect(page.getByRole('status')).toContainText('保存配置不会启动任务');
       assert.equal(posts.length, 1);
       assert.deepEqual(posts[0].request.config.sourceUrls, []);
-      assert.deepEqual(posts[0].request.config.topicIds, ['topic-ai']);
+      assert.deepEqual(posts[0].request.config.topicIds, []);
       assert.deepEqual(posts[0].request.config.discovery, {
         keywords: ['芯片', '英伟达'],
         lookbackDays: 2,
@@ -125,7 +125,13 @@ test(
       await page.getByRole('button', { name: '编辑', exact: true }).click();
       await expect(page.getByText('此为旧固定网址配置', { exact: false })).toBeVisible();
       await expect(page.getByRole('checkbox', { name: '允许定时执行' })).not.toBeChecked();
-      await expect(page.getByRole('button', { name: '保存配置', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '保存配置', exact: true })).toBeEnabled();
+      await expect(page.getByText('此旧配置包含领域限制', { exact: false })).toBeVisible();
+      await page.getByRole('button', { name: '保存配置', exact: true }).click();
+      await expect(page.getByRole('status')).toContainText('保存配置不会启动任务');
+      assert.equal(posts.length, 2);
+      assert.deepEqual(posts[1].request.config.topicIds, []);
+      assert.equal(posts[1].request.config.enabled, false);
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

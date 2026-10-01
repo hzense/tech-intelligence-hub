@@ -230,6 +230,7 @@ export function AdminAutomation({
           config: draft.discovery
             ? {
                 ...draft,
+                topicIds: [],
                 discovery: {
                   ...draft.discovery,
                   keywords: draft.discovery.keywords.map((word) => word.trim()).filter(Boolean),
@@ -309,7 +310,7 @@ export function AdminAutomation({
         <h1>{kind === 'source_collection' ? '自动采集配置' : '专题洞察配置'}</h1>
         <p>
           {kind === 'source_collection'
-            ? '选择关注领域和 AI 配置，自动搜索互联网、获取原文、去重并生成私有候选；无需填写网址。候选经人工确认后发布。'
+            ? '选择 AI 配置，自动搜索网站科技范围内的互联网信息、获取原文、去重并生成私有候选；无需指定领域或填写网址。候选经人工确认后发布。'
             : '按专题选择当前公开信号，生成附有引用的私有报告，确认后公开。'}
         </p>
         {loadError ? (
@@ -385,7 +386,7 @@ export function AdminAutomation({
               </p>
               {editing && !editing.config.discovery ? (
                 <p className={styles.full}>
-                  此为旧固定网址配置。保存后将转为联网发现并关闭原计划；请重新选择领域并确认是否启用定时执行。
+                  此为旧固定网址配置。保存后将转为联网发现并关闭原计划；无需指定领域，请确认检索范围及是否启用定时执行。
                 </p>
               ) : null}
               <label className={styles.full}>
@@ -440,31 +441,38 @@ export function AdminAutomation({
               </p>
             </>
           ) : null}
-          <fieldset className={styles.full}>
-            <legend>
-              {kind === 'source_collection' ? '关注领域' : '分析专题'}（至少 1 个，最多 5 个）
-            </legend>
-            <div className={styles.topics}>
-              {topics.map((topic) => (
-                <label key={topic.id}>
-                  <input
-                    type="checkbox"
-                    checked={draft.topicIds.includes(topic.id)}
-                    disabled={!draft.topicIds.includes(topic.id) && draft.topicIds.length >= 5}
-                    onChange={(e) =>
-                      setDraft({
-                        ...draft,
-                        topicIds: e.target.checked
-                          ? [...draft.topicIds, topic.id]
-                          : draft.topicIds.filter((id) => id !== topic.id),
-                      })
-                    }
-                  />
-                  {topic.name}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          {kind === 'source_collection' ? (
+            <p className={styles.full}>
+              AI 自动在网站全部科技领域内发现信息，无需指定领域。
+              {editing?.config.topicIds.length
+                ? '此旧配置包含领域限制，保存后将改为全站科技范围；已有运行记录保持不变。'
+                : ''}
+            </p>
+          ) : (
+            <fieldset className={styles.full}>
+              <legend>分析专题（至少 1 个，最多 5 个）</legend>
+              <div className={styles.topics}>
+                {topics.map((topic) => (
+                  <label key={topic.id}>
+                    <input
+                      type="checkbox"
+                      checked={draft.topicIds.includes(topic.id)}
+                      disabled={!draft.topicIds.includes(topic.id) && draft.topicIds.length >= 5}
+                      onChange={(e) =>
+                        setDraft({
+                          ...draft,
+                          topicIds: e.target.checked
+                            ? [...draft.topicIds, topic.id]
+                            : draft.topicIds.filter((id) => id !== topic.id),
+                        })
+                      }
+                    />
+                    {topic.name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <label className={styles.check}>
             <input
               type="checkbox"
@@ -475,7 +483,12 @@ export function AdminAutomation({
           </label>
           <button
             type="submit"
-            disabled={!configured || busy || !draft.profileId || !draft.topicIds.length}
+            disabled={
+              !configured ||
+              busy ||
+              !draft.profileId ||
+              (kind === 'topic_insight' && !draft.topicIds.length)
+            }
           >
             {busy ? '处理中…' : '保存配置'}
           </button>
