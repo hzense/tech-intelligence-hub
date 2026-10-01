@@ -7,6 +7,7 @@ import { executeImportAdmin, runImportItem } from '../lib/server/import-service'
 import { executeGeneration, queueGeneration } from '../lib/server/signal-generation';
 import { start } from 'workflow/api';
 import { signalGenerationWorkflow } from './signal-generation';
+import { discoverSources } from '../lib/server/source-discovery';
 import {
   startTopicInsightSandbox,
   pollTopicInsightSandbox,
@@ -14,7 +15,7 @@ import {
   type TopicInsightSandboxHandle,
 } from '../lib/server/topic-insight-sandbox';
 
-type SourceItem = { id: string; status: string; kind: string };
+type SourceItem = { id: string; status: string; kind: string; url: string };
 type SourceBatch = { id: string; items: SourceItem[] };
 
 export async function automationWorkflow(owner: string, id: string) {
@@ -41,8 +42,18 @@ export async function automationWorkflow(owner: string, id: string) {
     }
   }
   try {
-    const batch = await createSourceBatch(owner, run.id);
+    const urls = await findSources(owner, run.id);
+    if (!urls.length) {
+      await finishSourceRun(owner, run.id, run.lease_token!, {
+        generationIds: [],
+        queuedSources: [],
+        failed: 0,
+      });
+      return 'no_new_sources';
+    }
+    const batch = await createSourceBatch(owner, run.id, urls);
     const generationIds: string[] = [];
+    const queuedSources: { url: string; generationId: string }[] = [];
     let failed = 0;
     for (const item of batch.items) {
       if (item.kind !== 'url') continue;
@@ -55,18 +66,28 @@ export async function automationWorkflow(owner: string, id: string) {
         continue;
       }
       const generationId = await createPrivateGeneration(owner, run.id, batch.id, item.id);
-      if (generationId) generationIds.push(generationId);
-      else failed++;
+      if (generationId) {
+        generationIds.push(generationId);
+        queuedSources.push({ url: item.url, generationId });
+        await markSourceDispatch(owner, run.id, run.lease_token!, {
+          batchId: batch.id,
+          generationIds,
+          queuedSources,
+          failed,
+        });
+      } else failed++;
     }
     await markSourceDispatch(owner, run.id, run.lease_token!, {
       batchId: batch.id,
       generationIds,
+      queuedSources,
       failed,
     });
     for (const generationId of generationIds) await dispatchGeneration(owner, generationId);
     await finishSourceRun(owner, run.id, run.lease_token!, {
       batchId: batch.id,
       generationIds,
+      queuedSources,
       failed,
     });
     return 'completed';
@@ -87,7 +108,16 @@ async function claim(owner: string, id: string) {
   return run ? { id: run.id, kind: run.snapshot.kind, lease_token: run.lease_token } : null;
 }
 claim.maxRetries = 0;
-async function createSourceBatch(owner: string, runId: string): Promise<SourceBatch> {
+async function findSources(owner: string, id: string) {
+  'use step';
+  return discoverSources(owner, id);
+}
+findSources.maxRetries = 0;
+async function createSourceBatch(
+  owner: string,
+  runId: string,
+  urls: string[],
+): Promise<SourceBatch> {
   'use step';
   const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
   if (run.status !== 'running' || run.snapshot.kind !== 'source_collection')
@@ -97,15 +127,24 @@ async function createSourceBatch(owner: string, runId: string): Promise<SourceBa
     request: {
       id: automationStableId({ runId, kind: 'import' }),
       intent: 'preview',
-      manifest: { files: [], urlLines: run.snapshot.sourceUrls.join('\n') },
+      manifest: { files: [], urlLines: urls.join('\n') },
     },
   })) as SourceBatch;
+  await store.updateAutomationRun({
+    pool: automationPool,
+    owner,
+    id: runId,
+    token: run.lease_token!,
+    phase: 'importing_sources',
+    result: { ...run.result, batchId: batch.id },
+  });
   return {
     id: batch.id,
-    items: batch.items.map((item: { id: string; status: string; kind: string }) => ({
+    items: batch.items.map((item: { id: string; status: string; kind: string }, index) => ({
       id: item.id,
       status: item.status,
       kind: item.kind,
+      url: urls[index]!,
     })),
   };
 }
@@ -153,19 +192,29 @@ async function finishSourceRun(
   owner: string,
   id: string,
   token: string,
-  result: { batchId: string; generationIds: string[]; failed: number },
+  result: {
+    batchId?: string;
+    generationIds: string[];
+    queuedSources: { url: string; generationId: string }[];
+    failed: number;
+  },
 ) {
   'use step';
+  const run = await store.readAutomationRun({ pool: automationPool, owner, id });
   await store.updateAutomationRun({
     pool: automationPool,
     owner,
     id,
     token,
-    phase: 'candidate_tasks_queued',
-    result,
-    status: 'completed',
-    costMicrousd: 0,
-    costSource: 'reserve',
+    phase: result.generationIds.length
+      ? 'candidate_tasks_queued'
+      : result.failed
+        ? 'source_failed'
+        : 'no_new_sources',
+    result: { ...run.result, ...result },
+    status: result.failed && !result.generationIds.length ? 'failed' : 'completed',
+    costMicrousd: Number(run.result?.discoveryCostMicrousd ?? 0),
+    costSource: run.result?.discoveryCostSource === 'provider' ? 'provider' : 'estimate',
   });
 }
 finishSourceRun.maxRetries = 0;
@@ -173,16 +222,22 @@ async function markSourceDispatch(
   owner: string,
   id: string,
   token: string,
-  result: { batchId: string; generationIds: string[]; failed: number },
+  result: {
+    batchId: string;
+    generationIds: string[];
+    queuedSources: { url: string; generationId: string }[];
+    failed: number;
+  },
 ) {
   'use step';
+  const run = await store.readAutomationRun({ pool: automationPool, owner, id });
   await store.updateAutomationRun({
     pool: automationPool,
     owner,
     id,
     token,
     phase: 'dispatching_candidates',
-    result,
+    result: { ...run.result, ...result },
   });
 }
 markSourceDispatch.maxRetries = 0;
@@ -206,8 +261,15 @@ async function failSourceRun(owner: string, id: string, token: string) {
           : {},
       status: 'unknown',
       errorCode: 'outcome_unknown',
-      costMicrousd: 0,
-      costSource: 'reserve',
+      ...(typeof run.result?.discoveryCostMicrousd === 'number'
+        ? {
+            costMicrousd: run.result.discoveryCostMicrousd,
+            costSource:
+              run.result.discoveryCostSource === 'provider'
+                ? ('provider' as const)
+                : ('estimate' as const),
+          }
+        : {}),
     })
     .catch(() => undefined);
 }

@@ -3,19 +3,21 @@ import { requireAdminSession } from '@/lib/server/admin-auth';
 import { automationConfigured, automationDashboard } from '@/lib/server/automation';
 import { getAiDashboard } from '@/lib/server/admin-ai';
 import { AdminAutomation } from '@/components/admin-automation';
+import { getTopicEntries } from '@/lib/content-runtime';
 
 export const metadata: Metadata = { title: '自动采集', robots: { index: false, follow: false } };
 export const dynamic = 'force-dynamic';
 export default async function SourcesPage() {
   const session = await requireAdminSession();
   const configured = automationConfigured();
-  const [stateResult, ai] = await Promise.all([
+  const [stateResult, ai, entries] = await Promise.all([
     configured
       ? automationDashboard(session.user.id)
           .then((state) => ({ state, loadError: false }))
           .catch(() => ({ state: { configs: [], runs: [] }, loadError: true }))
       : { state: { configs: [], runs: [] }, loadError: false },
     getAiDashboard().catch(() => ({ profiles: [] })),
+    getTopicEntries(),
   ]);
   return (
     <AdminAutomation
@@ -29,7 +31,7 @@ export default async function SourcesPage() {
         name,
         ready: readiness.ready,
       }))}
-      topics={[]}
+      topics={entries.map((entry) => ({ id: entry.frontMatter.id, name: entry.frontMatter.title }))}
     />
   );
 }

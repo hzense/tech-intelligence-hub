@@ -15,7 +15,7 @@ test('Turbo restores the private worker required by the Workflow output trace', 
   const next = await readFile(new URL('../next.config.ts', import.meta.url), 'utf8');
   assert.match(
     next,
-    /'\/.well-known\/workflow\/v1\/step': \[\s*'\.\/.generation-worker\/worker.cjs',\s*'\.\/.automation-worker\/worker.cjs',\s*\]/,
+    /'\/.well-known\/workflow\/v1\/step': \[\s*'\.\/.generation-worker\/worker.cjs',\s*'\.\/.automation-worker\/worker.cjs',\s*\.\.\.contentTrace,\s*\]/,
   );
 });
 

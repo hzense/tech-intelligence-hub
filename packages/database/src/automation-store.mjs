@@ -266,7 +266,7 @@ export async function claimAutomationRun({ pool, owner, id, limits }) {
       return null;
     }
     let reserve = 0;
-    if (run.snapshot.kind === 'topic_insight') {
+    if (run.snapshot.kind === 'topic_insight' || run.snapshot.discovery) {
       if (
         !limits ||
         ['batch', 'daily', 'reserve'].some(
@@ -319,6 +319,34 @@ export async function readAutomationRun({ pool, owner, id }) {
     ).rows[0];
     if (!row) fail('not_found');
     return dto(row);
+  });
+}
+/** Atomic one-way paid-call fence, including duplicate workflow starts/replays. */
+export async function beginSourceDiscovery({ pool, owner, id, token }) {
+  automationText(owner);
+  automationUuid(id);
+  automationUuid(token);
+  return transaction(pool, async (client) => {
+    const row = (
+      await client.query(
+        "UPDATE public.automation_runs SET phase='discovering' WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' AND phase='preparing' AND lease_until>clock_timestamp() AND snapshot->>'kind'='source_collection' AND snapshot ? 'discovery' RETURNING id",
+        [id, owner, token],
+      )
+    ).rows[0];
+    if (!row) fail('stale_attempt');
+  });
+}
+/** Compare only URLs already handed to generation, not every discovered/failed fetch. */
+export async function readCollectedSourceUrls({ pool, owner }) {
+  automationText(owner);
+  return transaction(pool, async (client) => {
+    const rows = (
+      await client.query(
+        "SELECT DISTINCT entry->>'url' AS url FROM public.automation_runs CROSS JOIN LATERAL jsonb_array_elements(COALESCE(result->'queuedSources','[]'::jsonb)) AS entry WHERE owner_id=$1 AND snapshot->>'kind'='source_collection' AND entry->>'generationId' IS NOT NULL",
+        [owner],
+      )
+    ).rows;
+    return rows.map((row) => row.url);
   });
 }
 export async function updateAutomationRun({

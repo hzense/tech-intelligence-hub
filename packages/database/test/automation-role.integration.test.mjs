@@ -6,6 +6,15 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { assertAutomationRole } from '../src/automation-role.mjs';
+import {
+  saveAutomationConfig,
+  enqueueAutomation,
+  claimAutomationRun,
+  beginSourceDiscovery,
+  updateAutomationRun,
+  readCollectedSourceUrls,
+  readAutomationRun,
+} from '../src/automation-store.mjs';
 
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
@@ -137,5 +146,73 @@ suite('automation role isolation and publication boundary', () => {
     );
     await owner.query('REVOKE SELECT(id) ON public.automation_runs FROM hzense_insight_reader');
     await assertAutomationRole(readerRole, 'reader');
+  });
+  it('discovery fences paid execution, preserves receipts and keeps source results private', async () => {
+    const pool = {
+      connect: async () => ({ query: (...args) => adminRole.query(...args), release() {} }),
+    };
+    const operator = 'discovery-test-owner';
+    const configId = randomUUID(),
+      id = randomUUID();
+    await saveAutomationConfig({
+      pool,
+      owner: operator,
+      request: {
+        id: configId,
+        expectedRevision: 0,
+        consent: true,
+        config: {
+          name: 'Discovery',
+          kind: 'source_collection',
+          enabled: false,
+          frequency: 'daily',
+          sourceUrls: [],
+          topicIds: ['topic-ai'],
+          profileId: randomUUID(),
+          profileRevision: 1,
+          discovery: { keywords: [], lookbackDays: 2, maxSources: 5 },
+        },
+      },
+    });
+    const request = { configId, expectedRevision: 1, requestId: id, consent: true };
+    expect((await enqueueAutomation({ pool, owner: operator, request })).created).toBe(true);
+    expect((await enqueueAutomation({ pool, owner: operator, request })).created).toBe(false);
+    const run = await claimAutomationRun({
+      pool,
+      owner: operator,
+      id,
+      limits: { batch: 1000000, daily: 5000000, reserve: 500000 },
+    });
+    expect(run.reserved_microusd).toBe(500000);
+    expect(await claimAutomationRun({ pool, owner: operator, id, limits: {} })).toBeNull();
+    const args = { pool, owner: operator, id, token: run.lease_token };
+    await beginSourceDiscovery(args);
+    await expect(beginSourceDiscovery(args)).rejects.toThrow('stale_attempt');
+    await expect(beginSourceDiscovery({ ...args, owner: 'another-owner' })).rejects.toThrow(
+      'stale_attempt',
+    );
+    const result = {
+      discovery: { searchRequests: 1 },
+      queuedSources: [{ url: 'https://example.com/news', generationId: randomUUID() }],
+    };
+    await updateAutomationRun({
+      ...args,
+      phase: 'candidate_tasks_queued',
+      result,
+      status: 'completed',
+      costMicrousd: 27000,
+      costSource: 'provider',
+    });
+    const saved = await readAutomationRun({ pool, owner: operator, id });
+    expect(saved.charged_microusd).toBe(27000);
+    expect(saved.publication_status).toBe('private');
+    expect(await readCollectedSourceUrls({ pool, owner: operator })).toEqual([
+      'https://example.com/news',
+    ]);
+    expect(await readCollectedSourceUrls({ pool, owner: 'another-owner' })).toEqual([]);
+    expect(
+      (await readerRole.query('SELECT id FROM public.published_topic_insights WHERE id=$1', [id]))
+        .rows,
+    ).toEqual([]);
   });
 });

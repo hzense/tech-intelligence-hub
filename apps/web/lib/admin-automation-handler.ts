@@ -20,6 +20,8 @@ const exposed = new Set([
   'budget_exceeded',
   'profile_not_ready',
   'source_url_invalid',
+  'discovery_connection_unsupported',
+  'discovery_topic_invalid',
   'config_limit',
   'insight_stale',
   'dispatch_unknown',
