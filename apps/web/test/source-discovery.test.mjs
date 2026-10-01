@@ -4,6 +4,7 @@ import { normalizeAutomationConfig } from '../../../packages/database/src/automa
 import {
   discoveryWindow,
   discoveryUrl,
+  discoveryTopics,
   parseDiscoveryResponse,
 } from '../lib/source-discovery-core.ts';
 import { createDiscoveryInvoker, discoveryEstimate } from '../lib/source-discovery-provider.ts';
@@ -38,8 +39,9 @@ const envelope = (articles = [article()], annotations = articles.map((a) => a.ur
   ],
   usage: { cost: 0.025, server_tool_use: { web_search_requests: 1 } },
 });
-test('discovery config needs topics, not URLs; legacy schedules retain their meaning', () => {
+test('discovery config permits no topic filter; insight and legacy contracts remain intact', () => {
   assert.deepEqual(normalizeAutomationConfig(config), config);
+  assert.deepEqual(normalizeAutomationConfig({ ...config, topicIds: [] }).topicIds, []);
   const legacy = { ...config };
   delete legacy.discovery;
   assert.equal(
@@ -47,7 +49,7 @@ test('discovery config needs topics, not URLs; legacy schedules retain their mea
     undefined,
   );
   for (const patch of [
-    { topicIds: [] },
+    { topicIds: Array.from({ length: 6 }, (_, i) => `topic-${i}`) },
     { sourceUrls: ['https://example.com'] },
     { profileId: null },
     { kind: 'topic_insight' },
@@ -58,6 +60,25 @@ test('discovery config needs topics, not URLs; legacy schedules retain their mea
     { discovery: { ...config.discovery, arbitraryInstruction: 'publish' } },
   ])
     assert.throws(() => normalizeAutomationConfig({ ...config, ...patch }));
+  assert.throws(() =>
+    normalizeAutomationConfig({ ...legacy, kind: 'topic_insight', topicIds: [] }),
+  );
+});
+test('unspecified topics use every taxonomy root; explicit filters do not silently broaden', () => {
+  const catalog = [
+    { id: 'topic-ai', name: '人工智能', parentId: null },
+    { id: 'topic-agents', name: '智能体', parentId: 'topic-ai' },
+    { id: 'topic-chips', name: '半导体', parentId: null },
+  ];
+  assert.deepEqual(discoveryTopics([], catalog), [
+    { id: 'topic-ai', name: '人工智能' },
+    { id: 'topic-chips', name: '半导体' },
+  ]);
+  assert.deepEqual(discoveryTopics(['topic-agents'], catalog), [
+    { id: 'topic-agents', name: '智能体' },
+  ]);
+  assert.throws(() => discoveryTopics(['unknown'], catalog), /discovery_topic_invalid/);
+  assert.throws(() => discoveryTopics([], []), /discovery_topic_invalid/);
 });
 test('only cited public recent originals survive; tracking variants and existing URLs deduplicate', () => {
   const articles = [

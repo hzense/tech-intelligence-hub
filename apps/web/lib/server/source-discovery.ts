@@ -1,7 +1,9 @@
 import 'server-only';
+import { resolve } from 'node:path';
+import { loadTaxonomy } from '@hzense/content';
 import { aiStageAccess } from './admin-ai';
 import { getSignalEntries } from '../seed-runtime';
-import { getTopicEntries } from '../content-runtime';
+import { discoveryTopics } from '../source-discovery-core';
 import { readAiBackendConfiguration } from '../admin-ai-core';
 import { automationPool } from './automation-store-access';
 import * as store from '../../../../packages/database/src/automation-store.mjs';
@@ -22,17 +24,13 @@ export async function discoverSources(owner: string, id: string): Promise<string
   let admitted = false;
   let receipt: Awaited<ReturnType<typeof invokeSourceDiscovery>> | undefined;
   try {
-    const [access, topics, signals, previousUrls] = await Promise.all([
+    const [access, taxonomy, signals, previousUrls] = await Promise.all([
       aiStageAccess(config.profileId!, config.profileRevision!, 'analyze', true),
-      getTopicEntries(),
+      loadTaxonomy(resolve(process.cwd(), '../../data/taxonomy/taxonomy.yaml')),
       getSignalEntries(),
       store.readCollectedSourceUrls({ pool: automationPool, owner }),
     ]);
-    const selected = config.topicIds.map((id) => {
-      const topic = topics.find((entry) => entry.frontMatter.id === id);
-      if (!topic) throw new Error('discovery_topic_invalid');
-      return { id, name: topic.frontMatter.title };
-    });
+    const selected = discoveryTopics(config.topicIds, taxonomy.topics);
     if (discoveryEstimate(access) > run.reserved_microusd) throw new Error('budget_exceeded');
     const completion = await invokeSourceDiscovery({
       access,
