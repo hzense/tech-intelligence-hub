@@ -145,7 +145,8 @@ function SourceResult({
 }) {
   const discovery = result.discovery as
     | {
-        searchRequests?: number;
+        searchRequests?: number | null;
+        searchEvidence?: 'search_count' | 'provider_url_citations';
         duplicates?: number;
         rejected?: number;
         articles?: { url: string; title: string; publishedAt: string }[];
@@ -153,6 +154,11 @@ function SourceResult({
     | undefined;
   const ids = automationGenerationIds(result);
   const diagnostics = discoveryDiagnosticItems(result.discoveryDiagnostics);
+  const searchRequests = discovery?.searchRequests;
+  const knownSearchCount =
+    typeof searchRequests === 'number' &&
+    Number.isSafeInteger(searchRequests) &&
+    searchRequests >= 0;
   return (
     <div className={styles.report}>
       {diagnostics.length ? (
@@ -169,9 +175,12 @@ function SourceResult({
       {discovery ? (
         <>
           <p>
-            实际检索 {discovery.searchRequests ?? 0} 次 · 选中 {discovery.articles?.length ?? 0}{' '}
-            篇原文 · 已有或重复 {discovery.duplicates ?? 0} 项 · 不符合规则{' '}
-            {discovery.rejected ?? 0} 项
+            {knownSearchCount ? `实际检索 ${searchRequests} 次` : '搜索次数未返回'}
+            {!knownSearchCount && discovery.searchEvidence === 'provider_url_citations'
+              ? ' · 已收到有效来源引用'
+              : ''}{' '}
+            · 选中 {discovery.articles?.length ?? 0} 篇原文 · 已有或重复 {discovery.duplicates ?? 0}{' '}
+            项 · 不符合规则 {discovery.rejected ?? 0} 项
           </p>
           <details>
             <summary>查看发现的来源</summary>
