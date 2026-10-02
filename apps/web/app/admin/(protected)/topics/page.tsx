@@ -3,6 +3,7 @@ import { requireAdminSession } from '@/lib/server/admin-auth';
 import {
   automationStorageConfigured,
   automationExecutionConfigured,
+  automationExecutionReadiness,
   automationDashboard,
 } from '@/lib/server/automation';
 import { getAiDashboard } from '@/lib/server/admin-ai';
@@ -34,6 +35,7 @@ export default async function AdminTopicsPage() {
       kind="topic_insight"
       configured={configured && !stateResult.loadError}
       executionEnabled={automationExecutionConfigured('topic_insight')}
+      executionReadiness={automationExecutionReadiness('topic_insight')}
       loadError={stateResult.loadError}
       initial={stateResult.state}
       profiles={ai.profiles.map(({ id, revision, name, readiness }) => ({

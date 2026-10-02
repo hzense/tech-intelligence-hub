@@ -213,7 +213,7 @@ async function enqueue(client, config, { id, slot, trigger }) {
   ).rows[0];
   return { run: dto(run), created: true };
 }
-export async function enqueueAutomation({ pool, owner, request }) {
+export async function enqueueAutomation({ pool, owner, request, beforeEnqueue }) {
   owner = automationText(owner);
   automationExact(request, ['configId', 'expectedRevision', 'requestId', 'consent']);
   automationUuid(request.configId);
@@ -224,6 +224,7 @@ export async function enqueueAutomation({ pool, owner, request }) {
     request.expectedRevision < 1
   )
     fail();
+  if (beforeEnqueue !== undefined && typeof beforeEnqueue !== 'function') fail();
   return transaction(pool, async (client) => {
     await lock(client, request.configId);
     const shape = await configShape(client);
@@ -251,6 +252,9 @@ export async function enqueueAutomation({ pool, owner, request }) {
       return { run: dto(old), created: false };
     }
     if (config.revision !== request.expectedRevision) fail('revision_conflict');
+    // Server-owned admission only, after an existing request has been replayed.
+    // Configuration/readiness changes must not change old request semantics.
+    if (beforeEnqueue) await beforeEnqueue(normalizeAutomationConfig(config.config));
     return enqueue(client, config, {
       id: request.requestId,
       slot: `manual:${request.requestId}`,
@@ -258,15 +262,28 @@ export async function enqueueAutomation({ pool, owner, request }) {
     });
   });
 }
-export async function enqueueDueAutomations({ pool, limit = 5 }) {
+export async function enqueueDueAutomations({ pool, limit = 5, kinds }) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 5) fail();
+  if (
+    kinds !== undefined &&
+    (!Array.isArray(kinds) ||
+      kinds.length > 2 ||
+      new Set(kinds).size !== kinds.length ||
+      Array.from(kinds).some((kind) => !['source_collection', 'topic_insight'].includes(kind)))
+  )
+    fail();
+  // Missing service dependencies leave due schedules untouched. Filter before
+  // LIMIT as well as under the per-config lock, so one kind cannot starve another.
+  if (kinds?.length === 0) return [];
+  const allowedKinds = kinds === undefined ? undefined : [...kinds];
+  const kindFilter = allowedKinds ? " AND config->>'kind'=ANY($2::text[])" : '';
   return transaction(pool, async (client) => {
     await lock(client, 'scheduler');
     const shape = await configShape(client);
     const configs = (
       await client.query(
-        `SELECT ${shape.columns} FROM public.automation_configs WHERE enabled AND next_run_at<=clock_timestamp()${shape.active} ORDER BY next_run_at,id LIMIT $1`,
-        [limit],
+        `SELECT ${shape.columns} FROM public.automation_configs WHERE enabled AND next_run_at<=clock_timestamp()${shape.active}${kindFilter} ORDER BY next_run_at,id LIMIT $1`,
+        allowedKinds ? [limit, allowedKinds] : [limit],
       )
     ).rows;
     const result = [];
@@ -274,8 +291,8 @@ export async function enqueueDueAutomations({ pool, limit = 5 }) {
       await lock(client, candidate.id);
       const config = (
         await client.query(
-          `SELECT ${shape.columns} FROM public.automation_configs WHERE id=$1 AND enabled AND next_run_at<=clock_timestamp()${shape.active} FOR UPDATE`,
-          [candidate.id],
+          `SELECT ${shape.columns} FROM public.automation_configs WHERE id=$1 AND enabled AND next_run_at<=clock_timestamp()${shape.active}${kindFilter} FOR UPDATE`,
+          allowedKinds ? [candidate.id, allowedKinds] : [candidate.id],
         )
       ).rows[0];
       if (!config) continue;

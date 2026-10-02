@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { assertAutomationRole } from '../src/automation-role.mjs';
 import {
+  AutomationError,
   saveAutomationConfig,
   enqueueAutomation,
   claimAutomationRun,
@@ -593,5 +594,146 @@ suite('automation role isolation and publication boundary', () => {
       reserved_microusd: 0,
       lease_token: null,
     });
+  });
+  it('filters ready scheduler kinds before LIMIT and does not advance an excluded source schedule', async () => {
+    const operator = 'scheduler-readiness-owner';
+    const sourceConfig = await save(operator, { enabled: true, frequency: 'daily' });
+    const insightConfig = await save(operator, {
+      kind: 'topic_insight',
+      enabled: true,
+      frequency: 'daily',
+      topicIds: ['topic-ai'],
+      discovery: undefined,
+    });
+    // The unavailable source is due earlier; LIMIT 1 must still admit the ready
+    // insight rather than selecting/skipping the source and starving the queue.
+    await owner.query(
+      "UPDATE public.automation_configs SET next_run_at=clock_timestamp()-CASE WHEN id=$1 THEN interval '2 days' ELSE interval '1 day' END WHERE id=ANY($2::uuid[])",
+      [sourceConfig.id, [sourceConfig.id, insightConfig.id]],
+    );
+    const before = (
+      await owner.query('SELECT * FROM public.automation_configs WHERE id=$1', [sourceConfig.id])
+    ).rows[0];
+    const runs = await enqueueDueAutomations({ pool, limit: 1, kinds: ['topic_insight'] });
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({
+      created: true,
+      run: { config_id: insightConfig.id, trigger: 'scheduled', status: 'queued' },
+    });
+    expect(
+      (await owner.query('SELECT * FROM public.automation_configs WHERE id=$1', [sourceConfig.id]))
+        .rows[0],
+    ).toEqual(before);
+    expect(
+      (
+        await owner.query('SELECT id FROM public.automation_runs WHERE config_id=$1', [
+          sourceConfig.id,
+        ])
+      ).rows,
+    ).toEqual([]);
+    expect(
+      (
+        await owner.query(
+          'SELECT next_run_at>clock_timestamp() AS advanced FROM public.automation_configs WHERE id=$1',
+          [insightConfig.id],
+        )
+      ).rows[0].advanced,
+    ).toBe(true);
+    expect(await enqueueDueAutomations({ pool, kinds: [] })).toEqual([]);
+    expect(
+      (await owner.query('SELECT * FROM public.automation_configs WHERE id=$1', [sourceConfig.id]))
+        .rows[0],
+    ).toEqual(before);
+  });
+  it('rolls back failed manual admission before inserting a task or mutating its schedule', async () => {
+    const operator = 'manual-admission-failure-owner';
+    const config = await save(operator);
+    const id = randomUUID();
+    const before = (
+      await owner.query('SELECT * FROM public.automation_configs WHERE id=$1', [config.id])
+    ).rows[0];
+    let checks = 0;
+    await expect(
+      enqueueAutomation({
+        pool,
+        owner: operator,
+        request: {
+          configId: config.id,
+          expectedRevision: config.revision,
+          requestId: id,
+          consent: true,
+        },
+        beforeEnqueue: async (current) => {
+          checks++;
+          expect(current).toEqual(config.config);
+          throw new AutomationError('not_configured');
+        },
+      }),
+    ).rejects.toThrow('not_configured');
+    expect(checks).toBe(1);
+    expect(
+      (
+        await owner.query('SELECT id FROM public.automation_runs WHERE id=$1 OR config_id=$2', [
+          id,
+          config.id,
+        ])
+      ).rows,
+    ).toEqual([]);
+    expect(
+      (await owner.query('SELECT * FROM public.automation_configs WHERE id=$1', [config.id]))
+        .rows[0],
+    ).toEqual(before);
+    await assertAutomationRole(adminRole, 'admin');
+  });
+  it('replays a saved request after a profile revision change without rerunning admission', async () => {
+    const operator = 'manual-admission-replay-owner';
+    const config = await save(operator);
+    const request = {
+      configId: config.id,
+      expectedRevision: config.revision,
+      requestId: randomUUID(),
+      consent: true,
+    };
+    let checks = 0;
+    const first = await enqueueAutomation({
+      pool,
+      owner: operator,
+      request,
+      beforeEnqueue: async () => {
+        checks++;
+      },
+    });
+    expect(first.created).toBe(true);
+    expect(checks).toBe(1);
+    const before = (
+      await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [request.requestId])
+    ).rows[0];
+    await saveAutomationConfig({
+      pool,
+      owner: operator,
+      request: {
+        id: config.id,
+        expectedRevision: config.revision,
+        consent: true,
+        config: { ...config.config, profileRevision: config.config.profileRevision + 1 },
+      },
+    });
+    const replay = await enqueueAutomation({
+      pool,
+      owner: operator,
+      request,
+      beforeEnqueue: async () => {
+        checks++;
+        throw new AutomationError('profile_not_ready');
+      },
+    });
+    expect(replay.created).toBe(false);
+    expect(replay.run.id).toBe(request.requestId);
+    expect(checks).toBe(1);
+    expect(
+      (await owner.query('SELECT * FROM public.automation_runs WHERE config_id=$1', [config.id]))
+        .rows,
+    ).toEqual([before]);
+    await assertAutomationRole(adminRole, 'admin');
   });
 });

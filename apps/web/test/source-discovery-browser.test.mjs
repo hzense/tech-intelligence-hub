@@ -5,6 +5,7 @@ import { fileURLToPath, URL } from 'node:url';
 import process from 'node:process';
 import { build } from 'esbuild';
 import { chromium, expect } from '@playwright/test';
+import { summarizeAutomationGenerations } from '../lib/automation-generation-status.ts';
 
 test(
   'discovery UI saves without topics or URLs and explicitly converts legacy schedules',
@@ -46,7 +47,7 @@ test(
     };
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client'; import {AdminAutomation} from './components/admin-automation'; const p=new URLSearchParams(location.search); createRoot(document.getElementById('root')).render(<AdminAutomation kind="source_collection" configured={!p.has('missingStorage')} executionEnabled={p.has('execute')} loadError={false} initial={{...${JSON.stringify(initial)},configDeletionAvailable:!p.has('legacySchema')}} profiles={[{id:'${profileId}',revision:1,name:'验收模型',ready:true}]} topics={[{id:'topic-ai',name:'人工智能'}]}/>);`,
+        contents: `import {createRoot} from 'react-dom/client'; import {AdminAutomation} from './components/admin-automation'; const p=new URLSearchParams(location.search); createRoot(document.getElementById('root')).render(<AdminAutomation kind="source_collection" configured={!p.has('missingStorage')} executionEnabled={p.has('execute')} executionReadiness={{ready:false,checks:[{key:'storage',ready:true},{key:'generation',ready:false}]}} loadError={false} initial={{...${JSON.stringify(initial)},configDeletionAvailable:!p.has('legacySchema')}} profiles={[{id:'${profileId}',revision:1,name:'验收模型',ready:true}]} topics={[{id:'topic-ai',name:'人工智能'}]}/>);`,
         resolveDir: root,
         loader: 'tsx',
       },
@@ -101,11 +102,15 @@ test(
       const errors = [],
         posts = [];
       let deletionError = null;
+      let gets = 0;
+      let getFailure = false;
       let holdRefresh = false,
         releaseRefresh;
       page.on('pageerror', (error) => errors.push(error.message));
       await page.route('**/api/admin/automation', async (route) => {
         if (route.request().method() === 'GET') {
+          gets++;
+          if (getFailure) return route.fulfill({ status: 503, json: { error: 'unavailable' } });
           if (holdRefresh)
             await new Promise((resolve) => {
               releaseRefresh = resolve;
@@ -219,12 +224,77 @@ test(
       await expect(page.getByRole('heading', { name: '新建配置' })).toBeVisible();
       await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue('');
       await expect(page.getByText('历史采集任务', { exact: true })).toBeVisible();
-      await expect(page.getByRole('cell', { name: '$0.1000 provider', exact: true })).toBeVisible();
+      await expect(
+        page.getByRole('cell', { name: '$0.1000 provider', exact: false }),
+      ).toBeVisible();
       assert.deepEqual(posts.at(-1), {
         action: 'delete',
         request: { id: 'legacy', expectedRevision: 1, consent: true },
       });
       assert.equal(posts.length, 6);
+      // A completed parent only dispatched its children. Reads track actual
+      // generation receipts, preserve unsaved form edits, and never call AI.
+      const generationId = '22222222-2222-4222-8222-222222222222';
+      const run = initial.runs[0];
+      run.phase = 'candidate_tasks_queued';
+      run.result = { generationIds: [generationId], failed: 0 };
+      run.generationProgress = summarizeAutomationGenerations(run.result, [
+        { id: generationId, status: 'pending', progress_phase: 'queued', candidate_count: null },
+      ]);
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByRole('cell', { name: '候选生成中', exact: false })).toBeVisible();
+      await page.getByLabel('配置名称', { exact: true }).fill('保留未保存修改');
+      await page.getByText('执行条件（配置检查，不调用 AI）', { exact: true }).click();
+      await expect(page.getByText('信号生成服务：待配置', { exact: true })).toBeVisible();
+      const beforeFailure = gets;
+      getFailure = true;
+      await expect.poll(() => gets, { timeout: 10000 }).toBeGreaterThan(beforeFailure);
+      await expect(page.getByRole('alert')).toContainText('自动刷新失败');
+      await expect(page.getByRole('cell', { name: '候选生成中', exact: false })).toBeVisible();
+      getFailure = false;
+      run.generationProgress = summarizeAutomationGenerations(run.result, [
+        { id: generationId, status: 'completed', progress_phase: 'completed', candidate_count: 3 },
+      ]);
+      await expect(page.getByRole('cell', { name: '私有候选已生成', exact: false })).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(page.getByText('已生成 3 条私有候选', { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole('link', { name: `查看私有候选任务 · ${generationId}` }),
+      ).toHaveAttribute('href', `/admin/signal-generation/${generationId}`);
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue('保留未保存修改');
+      if (process.env.HZENSE_AUTOMATION_SCREENSHOT) {
+        await page.setViewportSize({ width: 1440, height: 1080 });
+        await page.screenshot({ path: process.env.HZENSE_AUTOMATION_SCREENSHOT, fullPage: true });
+        await page.setViewportSize({ width: 390, height: 844 });
+      }
+      const completedGets = gets;
+      await page.waitForTimeout(5500);
+      assert.equal(gets, completedGets, 'finished tasks stop polling');
+      run.generationProgress = summarizeAutomationGenerations(run.result, null);
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByRole('cell', { name: '生成结果待核对', exact: false })).toBeVisible();
+      await expect(page.getByRole('alert')).toContainText('关联候选状态暂时无法读取');
+      await expect(page.getByText('每 5 秒自动读取任务状态', { exact: false })).toBeVisible();
+      // A successful HTTP dashboard with a failed ancillary read is retryable,
+      // unlike a confirmed hidden/missing row. Retry only GET, with a bound.
+      const failedSummaryGets = gets;
+      await expect.poll(() => gets, { timeout: 10000 }).toBe(failedSummaryGets + 1);
+      getFailure = true; // Subsequent HTTP errors must count toward the same bound.
+      await expect.poll(() => gets, { timeout: 20000 }).toBe(failedSummaryGets + 3);
+      await expect(page.getByText('每 5 秒自动读取任务状态', { exact: false })).toHaveCount(0);
+      await page.waitForTimeout(5500);
+      assert.equal(gets, failedSummaryGets + 3);
+      getFailure = false;
+      run.generationProgress = summarizeAutomationGenerations(run.result, []);
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      await expect(
+        page.getByText('记录不可读取或已隐藏，请核对原任务', { exact: true }),
+      ).toBeVisible();
+      await expect(page.getByText('每 5 秒自动读取任务状态', { exact: false })).toHaveCount(0);
+      assert.equal(posts.length, 6, 'polling and reconciliation do not POST or retry');
       assert.equal(
         posts.some((post) => ['trigger', 'publish'].includes(post.action)),
         false,

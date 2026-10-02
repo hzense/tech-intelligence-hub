@@ -3,6 +3,7 @@ import { requireAdminSession } from '@/lib/server/admin-auth';
 import {
   automationStorageConfigured,
   automationExecutionConfigured,
+  automationExecutionReadiness,
   automationDashboard,
 } from '@/lib/server/automation';
 import { getAiDashboard } from '@/lib/server/admin-ai';
@@ -31,6 +32,7 @@ export default async function SourcesPage() {
       kind="source_collection"
       configured={configured && !stateResult.loadError}
       executionEnabled={automationExecutionConfigured('source_collection')}
+      executionReadiness={automationExecutionReadiness('source_collection')}
       loadError={stateResult.loadError}
       initial={stateResult.state}
       profiles={ai.profiles.map(({ id, revision, name, readiness }) => ({

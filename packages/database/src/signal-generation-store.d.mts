@@ -81,6 +81,15 @@ export function getSignalGeneration(
 export function listSignalGenerations(
   args: Owned & { batchId?: string; itemId?: string; readOnly?: boolean; legacyReadOnly?: boolean },
 ): Promise<SignalGenerationRun[]>;
+export interface SignalGenerationSummary {
+  id: string;
+  status: SignalGenerationRun['status'];
+  progress_phase: NonNullable<SignalGenerationRun['progress_phase']> | null;
+  candidate_count: number | null;
+}
+export function readSignalGenerationSummaries(
+  args: Owned & { ids: string[]; legacyReadOnly?: boolean },
+): Promise<SignalGenerationSummary[]>;
 export function claimSignalGeneration(
   args: RunArgs & {
     queuedAt?: string;

@@ -17,6 +17,8 @@ import {
 
 type SourceItem = { id: string; status: string; kind: string; url: string };
 type SourceBatch = { id: string; items: SourceItem[] };
+type GenerationDispatch = { id: string; queuedAt: string };
+type QueuedSource = { url: string; generationId: string; queuedAt: string };
 
 export async function automationWorkflow(owner: string, id: string) {
   'use workflow';
@@ -53,7 +55,8 @@ export async function automationWorkflow(owner: string, id: string) {
     }
     const batch = await createSourceBatch(owner, run.id, urls);
     const generationIds: string[] = [];
-    const queuedSources: { url: string; generationId: string }[] = [];
+    const generationDispatches: GenerationDispatch[] = [];
+    const queuedSources: QueuedSource[] = [];
     let failed = 0;
     for (const item of batch.items) {
       if (item.kind !== 'url') continue;
@@ -65,10 +68,15 @@ export async function automationWorkflow(owner: string, id: string) {
         failed++;
         continue;
       }
-      const generationId = await createPrivateGeneration(owner, run.id, batch.id, item.id);
-      if (generationId) {
-        generationIds.push(generationId);
-        queuedSources.push({ url: item.url, generationId });
+      const generation = await createPrivateGeneration(owner, run.id, batch.id, item.id);
+      if (generation) {
+        generationIds.push(generation.id);
+        generationDispatches.push(generation);
+        queuedSources.push({
+          url: item.url,
+          generationId: generation.id,
+          queuedAt: generation.queuedAt,
+        });
         await markSourceDispatch(owner, run.id, run.lease_token!, {
           batchId: batch.id,
           generationIds,
@@ -83,7 +91,7 @@ export async function automationWorkflow(owner: string, id: string) {
       queuedSources,
       failed,
     });
-    for (const generationId of generationIds) await dispatchGeneration(owner, generationId);
+    for (const generation of generationDispatches) await dispatchGeneration(owner, generation);
     await finishSourceRun(owner, run.id, run.lease_token!, {
       batchId: batch.id,
       generationIds,
@@ -151,8 +159,20 @@ async function createSourceBatch(
 createSourceBatch.maxRetries = 0;
 async function importSourceItem(owner: string, batchId: string, itemId: string) {
   'use step';
-  const result = (await runImportItem(owner, batchId, itemId)) as unknown as { status: string };
-  return result.status;
+  try {
+    const result = (await runImportItem(owner, batchId, itemId)) as unknown as { status: string };
+    if (['completed', 'failed', 'cancelled'].includes(result.status)) return result.status;
+  } catch {
+    // A thrown transport/commit error is not proof that the item failed. Read
+    // back its durable result once; do not retry a fetch, parser or AI call.
+    const batch = (await executeImportAdmin(owner, 'POST', {
+      action: 'detail',
+      batchId,
+    })) as SourceBatch;
+    const item = batch.items.find((row) => row.id === itemId);
+    if (item && ['completed', 'failed', 'cancelled'].includes(item.status)) return item.status;
+  }
+  throw new Error('source_outcome_unknown');
 }
 importSourceItem.maxRetries = 0;
 async function createPrivateGeneration(
@@ -160,19 +180,37 @@ async function createPrivateGeneration(
   runId: string,
   batchId: string,
   itemId: string,
-) {
+): Promise<GenerationDispatch | null> {
   'use step';
+  const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
+  if (
+    run.status !== 'running' ||
+    run.snapshot.kind !== 'source_collection' ||
+    !run.snapshot.profileId ||
+    !run.snapshot.profileRevision
+  )
+    throw new Error('stale_attempt');
+  const id = automationStableId({ runId, itemId, kind: 'generation' });
+  const generationIds = Array.isArray(run.result?.generationIds)
+    ? run.result.generationIds.filter((value): value is string => typeof value === 'string')
+    : [];
+  // Pin the stable request ID before crossing either database commit boundary.
+  // A lost create/queue acknowledgement must remain reconcilable; it must not
+  // disappear into the ordinary per-source failed count or cause a fresh task.
+  await store.updateAutomationRun({
+    pool: automationPool,
+    owner,
+    id: runId,
+    token: run.lease_token!,
+    phase: 'creating_candidates',
+    result: {
+      ...run.result,
+      generationIds: [...new Set([...generationIds, id])],
+    },
+  });
+  let created;
   try {
-    const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
-    if (
-      run.status !== 'running' ||
-      run.snapshot.kind !== 'source_collection' ||
-      !run.snapshot.profileId ||
-      !run.snapshot.profileRevision
-    )
-      throw new Error('stale_attempt');
-    const id = automationStableId({ runId, itemId, kind: 'generation' });
-    await executeGeneration(owner, {
+    created = await executeGeneration(owner, {
       action: 'create',
       id,
       batchId,
@@ -181,11 +219,58 @@ async function createPrivateGeneration(
       profileRevision: run.snapshot.profileRevision,
       consent: true,
     });
-    const queued = await queueGeneration(owner, id);
-    return queued.status === 'pending' ? id : null;
-  } catch {
+  } catch (error) {
+    // Only explicit, pre-commit refusals can be counted as a failed source.
+    // Unrecognized failures (including commit_unknown) retain the request ID
+    // and stop the run for read-only reconciliation, without retrying creation.
+    if (
+      !error ||
+      typeof error !== 'object' ||
+      !('code' in error) ||
+      ![
+        'duplicate_source',
+        'source_unavailable',
+        'cancelled',
+        'profile_not_ready',
+        'revision_conflict',
+        'capability_failed',
+        'invalid_configuration',
+        'invalid_snapshot',
+        'invalid_request',
+        'budget_exceeded',
+        'task_deleted',
+        'request_id_conflict',
+        'not_configured',
+        'database_unavailable',
+      ].includes(String(error.code))
+    )
+      throw new Error('generation_creation_unconfirmed');
+  }
+  if (!created || created.id !== id) {
+    // Semantic deduplication may return a separately created task. Do not
+    // commandeer/requeue that task or claim that our stable ID was persisted.
+    await store.updateAutomationRun({
+      pool: automationPool,
+      owner,
+      id: runId,
+      token: run.lease_token!,
+      phase: 'creating_candidates',
+      result: run.result ?? {},
+    });
     return null;
   }
+  const queued = await queueGeneration(owner, id);
+  const progressAt = queued.progress_at;
+  // The millisecond-precision queue receipt is the worker admission fence.
+  // Never synthesize it or requeue just because dispatch was not acknowledged.
+  if (
+    queued.status !== 'pending' ||
+    queued.progress_phase !== 'queued' ||
+    !(typeof progressAt === 'string' || progressAt instanceof Date) ||
+    !Number.isFinite(new Date(progressAt).getTime())
+  )
+    throw new Error('generation_queue_unconfirmed');
+  return { id, queuedAt: new Date(progressAt).toISOString() };
 }
 createPrivateGeneration.maxRetries = 0;
 async function finishSourceRun(
@@ -195,7 +280,7 @@ async function finishSourceRun(
   result: {
     batchId?: string;
     generationIds: string[];
-    queuedSources: { url: string; generationId: string }[];
+    queuedSources: QueuedSource[];
     failed: number;
   },
 ) {
@@ -225,7 +310,7 @@ async function markSourceDispatch(
   result: {
     batchId: string;
     generationIds: string[];
-    queuedSources: { url: string; generationId: string }[];
+    queuedSources: QueuedSource[];
     failed: number;
   },
 ) {
@@ -274,9 +359,9 @@ async function failSourceRun(owner: string, id: string, token: string) {
     .catch(() => undefined);
 }
 failSourceRun.maxRetries = 0;
-async function dispatchGeneration(owner: string, id: string) {
+async function dispatchGeneration(owner: string, generation: GenerationDispatch) {
   'use step';
-  await start(signalGenerationWorkflow, [owner, id]);
+  await start(signalGenerationWorkflow, [owner, generation.id, generation.queuedAt]);
 }
 dispatchGeneration.maxRetries = 0;
 async function startTopicWorker(owner: string, id: string) {
