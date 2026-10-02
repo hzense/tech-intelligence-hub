@@ -369,19 +369,33 @@ export async function runMigrations({
     application_name: 'hzense-schema-migrations',
     connectionTimeoutMillis,
   });
+  // Approval hooks can await GitHub while this session is otherwise idle.
+  // Capture idle errors without throwing from EventEmitter or retaining the
+  // provider's raw error; fail through the normal bounded cleanup path instead.
+  let connectionFailed = false;
+  client.on('error', () => {
+    connectionFailed = true;
+  });
+  const requireHealthyConnection = () => {
+    if (connectionFailed) throw new Error('Migration connection became unavailable');
+  };
   let locked = false;
 
-  await client.connect();
   try {
+    await client.connect();
+    requireHealthyConnection();
     if (beforeMigrate) {
       await beforeMigrate(client);
+      requireHealthyConnection();
     }
     await client.query('SET search_path TO public');
+    requireHealthyConnection();
     const lockResult = await client.query(
       'SELECT pg_try_advisory_lock($1, $2) AS locked',
       migrationLockKeys,
     );
     locked = lockResult.rows[0]?.locked === true;
+    requireHealthyConnection();
     if (!locked) {
       throw new Error('Another database migration process currently holds the lock');
     }
@@ -393,11 +407,14 @@ export async function runMigrations({
         applied_at timestamptz NOT NULL DEFAULT now()
       )
     `);
+    requireHealthyConnection();
 
     let appliedRows = (
       await client.query('SELECT name, checksum FROM hzense_schema_migrations ORDER BY name')
     ).rows;
+    requireHealthyConnection();
     appliedRows = await adoptFoundationIfNeeded(client, migrations, appliedRows, baselineChecksum);
+    requireHealthyConnection();
 
     const pending = planPendingMigrations(migrations, appliedRows);
     // Revalidate operation scope against the actual plan while holding the lock.
@@ -406,23 +423,36 @@ export async function runMigrations({
         pending.map((migration) => migration.name),
         Object.freeze({ migrations }),
       );
+      requireHealthyConnection();
     }
     for (const migration of pending) {
+      requireHealthyConnection();
       console.log(`[db:migrate] applying ${migration.name}`);
-      await client.query('BEGIN');
       try {
+        await client.query('BEGIN');
+        requireHealthyConnection();
         await client.query("SET LOCAL lock_timeout = '10s'");
+        requireHealthyConnection();
         await client.query("SET LOCAL statement_timeout = '5min'");
+        requireHealthyConnection();
         await client.query("SET LOCAL idle_in_transaction_session_timeout = '5min'");
+        requireHealthyConnection();
         await client.query(migration.sql);
+        requireHealthyConnection();
         await client.query(
           `INSERT INTO hzense_schema_migrations (name, checksum)
            VALUES ($1, $2)`,
           [migration.name, migration.checksum],
         );
+        requireHealthyConnection();
         await client.query('COMMIT');
+        requireHealthyConnection();
       } catch (error) {
-        await client.query('ROLLBACK');
+        await client.query('ROLLBACK').catch((rollbackError) => {
+          requireHealthyConnection();
+          throw rollbackError;
+        });
+        requireHealthyConnection();
         const message = error instanceof Error ? error.message : 'unknown PostgreSQL error';
         throw new Error(`Migration ${migration.name} failed: ${message}`, {
           cause: error,
@@ -434,13 +464,23 @@ export async function runMigrations({
     if (pending.length === 0) {
       console.log('[db:migrate] database is already up to date');
     }
+  } catch (error) {
+    // Do not attach the original idle error as a cause or expose it when a
+    // connection failure also rejects an approval hook or database query.
+    requireHealthyConnection();
+    throw error;
   } finally {
     if (locked) {
       await client
         .query('SELECT pg_advisory_unlock($1, $2)', migrationLockKeys)
         .catch(() => undefined);
     }
-    await client.end();
+    // Keep the nonthrowing listener installed through end() and late events.
+    await client.end().catch((error) => {
+      requireHealthyConnection();
+      throw error;
+    });
+    requireHealthyConnection();
   }
 }
 
