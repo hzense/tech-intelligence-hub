@@ -40,9 +40,11 @@ OpenRouter 服务端搜索工具仍为 Beta，协议或模型支持可能变化�
 
 ## 生产启用前门禁
 
-1. 对照 main 已合并代码与 CI，保留新备份并执行只读 preflight；恢复能力如未演练，要明确接受该风险。
-2. 单独审批 0026 迁移，迁移后运行完整只读结构核验。新角色脚本位于 db/roles/create_automation_roles.sql 和 db/roles/configure_automation_roles.sql，需按其限制分别执行和核对最小 ACL，不借用旧角色授权。
-   - 恢复尚未演练时，仅可在用户明确接受本次风险后使用 `accept-unverified-automation-storage`，风险范围为 `automation-storage-production-launch`。冻结完整 0000–0026 清单，只接受单个待迁移 0026；目标、备份及计划指纹来自新备份和当前 main 的只读预检。迁移审批还须绑定当次运行、过期时间、维护窗口与新 ACL 基线；旧范围及未来迁移不得混用。ACL 归档另需明确公开脱敏证据授权，角色授权和凭据仍在迁移核验后分别处理。
+1. 对照 main 已合并代码与 CI，保留新备份并独立确认预期生产目标；恢复能力如未演练，要明确接受该风险。采用下述组合入口时，实时只读 preflight 在同一次批准后执行，无需先另行申请预检审批。
+2. 审批 0026 迁移并完成独立只读结构核验。2026-10-02 新增的 `migrate-and-verify` 入口在一个受保护 job 内依次执行 runner prepare（preflight → ACL 双采集及安全落盘）→ upload-artifact 远端归档成功 → runner apply（migrate → 独立 verify），只需一次 **Review deployments**，不增加独立 preflight 或阶段审批。任一步失败即停止，附件上传失败不执行 DDL；prepare 仅报告 `status=prepared`，最终 apply 完成才是 `status=succeeded`。本批为本地修改，待 PR／合并／main CI 后才可在线使用。原有独立入口保留，不能复用旧审批。详见[0026 单次审批维护](ONLINE_MAINTENANCE.md#0026-单次审批维护)。
+   - 恢复尚未演练时，仅可在用户明确接受本次风险后使用 `accept-unverified-automation-storage`，风险范围为 `automation-storage-production-launch`。新组合入口只支持这一范围，冻结完整 0000–0026 清单，只接受单个待迁移 0026。批准前可用固定迁移清单、独立确认的预期生产目标与新备份，通过 `automationTargetBinding`／`automationMigrationPlan` 纯计算绑定指纹，不连接生产；同目标／备份／清单的已有脱敏预检仅供辅助复核，不必为了取得同一计划再审批预检。不得从待检连接串反推预期目标；获准组合 run 第一阶段会读取实时连接和待迁移状态，与明确批准的计划一致才继续。审批仍绑定 SHA、run／attempt、过期时间、备份、目标、清单和计划，并确认备份期限、维护冻结、恢复未验证风险及 main／CI 门禁。
+   - 组合审批必须使用 `aclEvidenceMode: "capture-in-run"`，明确 `publicArchiveApproved: true` 和当前归档仓库；不填写 `aclFingerprint`，由同一 run 的真实双采集产生。真实证据安全落盘成功后才设置固定附件就绪 output flag，上传固定脱敏证据文件成功后才允许 apply。apply 读取同一 run／SHA／attempt 及原审批摘要绑定的证据，并在迁移锁内再次比对 ACL。迁移前已完成远端归档，后续迁移或核验失败也保留附件。阶段由工作流固定，不增添操作者审批字段。旧范围及未来迁移不得混用。失败不自动重试或回滚；迁移阶段开始后失败可能已提交，须先只读核验，再为新 run 重新批准。
+   - 新角色脚本位于 db/roles/create_automation_roles.sql 和 db/roles/configure_automation_roles.sql，需在迁移核验后按其限制分别执行和核对最小 ACL，不借用旧角色授权。角色授权、凭据、Vercel 配置／部署、采集开关、定时计划、AI 调用与专题公开读取均不在这次组合维护范围内。
 3. 先在 Production Secret 配置 `HZENSE_AUTOMATION_DATABASE_URL` 并重新部署；执行开关保持关闭，核验配置保存及刷新读回、不生成任务。需要公开专题时再配置 `HZENSE_INSIGHT_READER_DATABASE_URL`。执行前另行设置 HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD、HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD、HZENSE_AUTOMATION_RESERVE_MICROUSD，确认 Cron Secret 配置和模型/导入既有门禁，再单独启用 HZENSE_AUTOMATION_ENABLED。公开专题另需 HZENSE_TOPIC_INSIGHTS_ENABLED。
 4. 先只读检查管理页和公开页，再做一次可追溯的“不选领域、不填网址”手动采集及专题验收：核对默认科技范围、实际检索、原文、去重、候选入库、费用、引用、人工确认、撤回与依赖信号变更后的下架。专题洞察仍需选择分析专题。最后再启用计划频率。
 

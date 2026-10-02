@@ -5,6 +5,7 @@ import {
   assertPublicAclEvidenceSafe,
   capturePublicAclEvidence,
   reviewedBaseline,
+  readPublicAclEvidence,
 } from '../../../.github/scripts/public-acl-evidence.mjs';
 import {
   buildRuntimeAclBaseline,
@@ -282,4 +283,200 @@ describe('public ACL capture with real risk approval validation', () => {
     expect(capture).not.toHaveBeenCalled();
     expect(save).not.toHaveBeenCalled();
   });
+});
+
+describe('ACL evidence in a single approved migration sequence', () => {
+  function sequenceEnvironment(changes = {}) {
+    const request = riskEnvironment({
+      operation: 'migrate-and-verify',
+      recoveryPolicy: 'accept-unverified-automation-storage',
+      riskAcceptance: {
+        scope: 'automation-storage-production-launch',
+        accepted: true,
+        historicalAclGapAccepted: true,
+        acknowledgement: 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
+      },
+      aclEvidenceMode: 'capture-in-run',
+      targetFingerprint: 'b'.repeat(64),
+      manifestFingerprint: 'c'.repeat(64),
+      planFingerprint: 'd'.repeat(64),
+      ...changes,
+    });
+    return {
+      ...request,
+      MAINTENANCE_OPERATION: 'migrate-and-verify',
+      MAINTENANCE_SEQUENCE_PHASE: 'prepare',
+    };
+  }
+  it('keeps the original combined approval digest and only returns a fingerprint after safe saving', async () => {
+    const request = sequenceEnvironment();
+    const capture = vi.fn().mockResolvedValue(baseline());
+    const save = vi.fn();
+    const check = vi.fn(() => validateMaintenanceRequest(request, now));
+    expect(
+      await capturePublicAclEvidence(request, { capture, save, checkApproval: check }),
+    ).toEqual({ fingerprint: baseline().fingerprint });
+    expect(capture).toHaveBeenCalledTimes(2);
+    expect(check).toHaveBeenCalledTimes(3);
+    const evidence = JSON.parse(save.mock.calls[0][1]);
+    expect(evidence).toMatchObject({
+      recoveryPolicy: 'accept-unverified-automation-storage',
+      recoveryVerified: false,
+      riskAcceptanceSha256: createHash('sha256').update(request.MAINTENANCE_APPROVAL).digest('hex'),
+    });
+    expect(save.mock.calls[0][1]).not.toContain(backupId);
+    save.mockRejectedValueOnce(new Error('disk unavailable'));
+    await expect(
+      capturePublicAclEvidence(request, { capture, save, checkApproval: check }),
+    ).rejects.toThrow('disk unavailable');
+  });
+  it.each(['divergence', 'secret', 'expiry'])(
+    'does not return usable evidence when the sequence capture fails: %s',
+    async (failure) => {
+      const request = sequenceEnvironment();
+      const capture = vi
+        .fn()
+        .mockResolvedValueOnce(baseline())
+        .mockResolvedValueOnce(
+          failure === 'divergence' ? baseline({ identity: { database: 'other' } }) : baseline(),
+        );
+      if (failure === 'secret')
+        capture
+          .mockReset()
+          .mockResolvedValue(baseline({ identity: { database: 'testing@password' } }));
+      const save = vi.fn();
+      let checks = 0;
+      await expect(
+        capturePublicAclEvidence(request, {
+          capture,
+          save,
+          checkApproval: () =>
+            validateMaintenanceRequest(
+              request,
+              ++checks > 1 && failure === 'expiry' ? now + 3_600_000 : now,
+            ),
+        }),
+      ).rejects.toThrow();
+      expect(save).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    { aclEvidenceMode: undefined },
+    { publicArchiveApproved: false },
+    { archiveRepository: 'another/repo' },
+    { aclFingerprint: 'e'.repeat(64) },
+    { operation: 'acl-capture' },
+    { recoveryPolicy: 'accept-unverified-editorial-publication' },
+  ])('rejects a different or incomplete approval before capturing: %j', async (changes) => {
+    const request = sequenceEnvironment(changes);
+    const capture = vi.fn();
+    await expect(
+      capturePublicAclEvidence(request, {
+        capture,
+        save: vi.fn(),
+        checkApproval: () => validateMaintenanceRequest(request, now),
+      }),
+    ).rejects.toThrow();
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  async function archivedFixture() {
+    const prepare = sequenceEnvironment();
+    const save = vi.fn();
+    await capturePublicAclEvidence(prepare, {
+      capture: vi.fn().mockResolvedValue(baseline()),
+      save,
+      checkApproval: () => validateMaintenanceRequest(prepare, now),
+    });
+    return {
+      apply: {
+        ...prepare,
+        MAINTENANCE_SEQUENCE_PHASE: 'apply',
+        MAINTENANCE_ACL_ARCHIVE_CONFIRMED: 'success',
+      },
+      evidence: JSON.parse(save.mock.calls[0][1]),
+    };
+  }
+  it('rebuilds the same-run archived evidence before applying with the unchanged approval', async () => {
+    const { apply, evidence } = await archivedFixture();
+    const read = vi.fn().mockResolvedValue(JSON.stringify(evidence));
+    const check = vi.fn(() => validateMaintenanceRequest(apply, now));
+    expect(await readPublicAclEvidence(apply, { read, checkApproval: check })).toEqual({
+      fingerprint: baseline().fingerprint,
+    });
+    expect(read).toHaveBeenCalledWith('/tmp/test-acl-evidence/hzense-acl-evidence.json', 'utf8');
+    expect(check).toHaveBeenCalledTimes(2);
+  });
+  it.each([
+    ['sha', 'f'.repeat(40)],
+    ['runId', '124'],
+    ['runAttempt', '2'],
+    ['repository', 'other/repo'],
+    ['format', 'other'],
+    ['independentCapturesMatch', false],
+    ['restoration', 'verified'],
+    ['recoveryPolicy', 'verified'],
+    ['recoveryVerified', true],
+    ['riskAcceptanceSha256', 'f'.repeat(64)],
+    ['captures', []],
+  ])('rejects archived evidence binding mismatch %s', async (key, value) => {
+    const { apply, evidence } = await archivedFixture();
+    await expect(
+      readPublicAclEvidence(apply, {
+        read: async () => JSON.stringify({ ...evidence, [key]: value }),
+        checkApproval: () => validateMaintenanceRequest(apply, now),
+      }),
+    ).rejects.toThrow();
+  });
+  it.each([
+    'missing',
+    'malformed',
+    'secret',
+    'fingerprint',
+    'divergence',
+    'backup',
+    'approval',
+    'expired',
+  ])('refuses unusable evidence before migration: %s', async (failure) => {
+    const { apply, evidence } = await archivedFixture();
+    if (failure === 'secret') evidence.private = 'testing@password';
+    if (failure === 'fingerprint') evidence.captures[0].fingerprint = 'f'.repeat(64);
+    if (failure === 'divergence')
+      evidence.captures[1] = baseline({ identity: { database: 'other' } });
+    if (failure === 'backup') evidence.captures[0].backup.reference = 'f'.repeat(64);
+    if (failure === 'approval')
+      apply.MAINTENANCE_APPROVAL = JSON.stringify({
+        ...JSON.parse(apply.MAINTENANCE_APPROVAL),
+        expiresAt: '2026-09-08T13:30:00Z',
+      });
+    let checks = 0;
+    await expect(
+      readPublicAclEvidence(apply, {
+        read: async () => {
+          if (failure === 'missing') throw new Error('ENOENT');
+          return failure === 'malformed' ? '{' : JSON.stringify(evidence);
+        },
+        checkApproval: () =>
+          validateMaintenanceRequest(
+            apply,
+            ++checks === 2 && failure === 'expired' ? now + 3600000 : now,
+          ),
+      }),
+    ).rejects.toThrow();
+  });
+  it.each(['failure', 'skipped', undefined])(
+    'requires successful remote upload before reading: %s',
+    async (state) => {
+      const { apply } = await archivedFixture();
+      apply.MAINTENANCE_ACL_ARCHIVE_CONFIRMED = state;
+      const read = vi.fn();
+      await expect(
+        readPublicAclEvidence(apply, {
+          read,
+          checkApproval: () => validateMaintenanceRequest(apply, now),
+        }),
+      ).rejects.toThrow('archive-required');
+      expect(read).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -16,6 +16,7 @@ import {
   candidateEnrichmentTargetBinding,
   validateMaintenanceRequest,
   runMaintenance,
+  publicMaintenanceFailure,
 } from '../../../.github/scripts/production-maintenance.mjs';
 
 const calls = vi.hoisted(() => ({
@@ -25,6 +26,8 @@ const calls = vi.hoisted(() => ({
   migrate: vi.fn(),
   verify: vi.fn(),
   capture: vi.fn(),
+  evidence: vi.fn(),
+  inspectAcl: vi.fn(),
   policy: undefined,
 }));
 vi.mock('../src/connection-policy.mjs', () => ({
@@ -43,6 +46,11 @@ vi.mock('../src/migrate.mjs', () => ({
 vi.mock('../src/verify.mjs', () => ({ verifyDatabaseContract: calls.verify }));
 vi.mock('../../../.github/scripts/public-acl-evidence.mjs', () => ({
   capturePublicAclEvidence: calls.capture,
+  readPublicAclEvidence: calls.evidence,
+}));
+vi.mock('../src/runtime-acl-baseline.mjs', () => ({
+  inspectRuntimeAclBaseline: calls.inspectAcl,
+  runtimeAclBackupReference: (backupId) => ({ backupId }),
 }));
 
 const root = new URL('../../../db/migrations/', import.meta.url);
@@ -112,6 +120,24 @@ const fetchImpl = async (url) => ({
         }
       : { ref: env.GITHUB_REF, object: { type: 'commit', sha: env.GITHUB_SHA } },
 });
+
+function sequenceEnvironment(phase = 'prepare') {
+  const { aclFingerprint, ...base } = approval;
+  void aclFingerprint;
+  return {
+    ...env,
+    MAINTENANCE_OPERATION: 'migrate-and-verify',
+    MAINTENANCE_SEQUENCE_PHASE: phase,
+    ...(phase === 'apply' ? { MAINTENANCE_ACL_ARCHIVE_CONFIRMED: 'success' } : {}),
+    MAINTENANCE_APPROVAL: JSON.stringify({
+      ...base,
+      operation: 'migrate-and-verify',
+      aclEvidenceMode: 'capture-in-run',
+      publicArchiveApproved: true,
+      archiveRepository: env.GITHUB_REPOSITORY,
+    }),
+  };
+}
 
 describe('independent 0026 maintenance authority', () => {
   beforeEach(() => {
@@ -353,4 +379,96 @@ describe('independent 0026 maintenance authority', () => {
     );
     expect(ddl).toHaveBeenCalledTimes(1);
   });
+
+  it('uses the real sequence and checks ACL in a read-only transaction on the locked migration client', async () => {
+    const request = sequenceEnvironment();
+    const client = { query: vi.fn().mockResolvedValue({}) };
+    const ddl = vi.fn();
+    calls.capture.mockImplementation(async (captureEnv, { checkApproval }) => {
+      expect(captureEnv.MAINTENANCE_APPROVAL).toBe(request.MAINTENANCE_APPROVAL);
+      expect(checkApproval().operation).toBe('migrate-and-verify');
+      return { fingerprint: 'b'.repeat(64) };
+    });
+    calls.inspectAcl.mockResolvedValue({ fingerprint: 'b'.repeat(64) });
+    calls.evidence.mockResolvedValue({ fingerprint: 'b'.repeat(64) });
+    calls.verify.mockResolvedValue({ migrationCount: 27 });
+    calls.migrate.mockImplementation(async ({ beforeMigrate, beforeApply }) => {
+      await beforeMigrate(client);
+      await beforeApply(pending, { migrations });
+      ddl();
+    });
+    const prepared = await runMaintenance(request, undefined, { fetchImpl, now: () => now });
+    expect(prepared.status).toBe('prepared');
+    expect(ddl).not.toHaveBeenCalled();
+    expect(calls.verify).not.toHaveBeenCalled();
+    const result = await runMaintenance(sequenceEnvironment('apply'), undefined, {
+      fetchImpl,
+      now: () => now,
+    });
+    expect(ddl).toHaveBeenCalledOnce();
+    expect(calls.inspectAcl).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({
+        expectedDatabase: identity.database,
+        expectedUser: identity.user,
+      }),
+    );
+    expect(client.query.mock.calls.map(([query]) => query)).toEqual([
+      'BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY',
+      'SET LOCAL search_path = pg_catalog, pg_temp',
+      "SET LOCAL statement_timeout = '30s'",
+      "SET LOCAL lock_timeout = '5s'",
+      "SET LOCAL idle_in_transaction_session_timeout = '45s'",
+      'ROLLBACK',
+    ]);
+    expect(calls.verify).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ verificationCompleted: true, pendingMigrationCount: 0 });
+    expect([...prepared.stages, ...result.stages].map(({ operation }) => operation)).toEqual([
+      'preflight',
+      'acl-capture',
+      'acl-evidence',
+      'migrate',
+      'verify',
+    ]);
+  });
+
+  it.each(['acl-drift', 'acl-read', 'rollback', 'expiry', 'main', 'artifact'])(
+    'stops DDL on the locked check failure: %s',
+    async (failure) => {
+      const client = { query: vi.fn().mockResolvedValue({}) };
+      const ddl = vi.fn();
+      let locked = false;
+      calls.capture.mockResolvedValue({ fingerprint: 'b'.repeat(64) });
+      calls.evidence.mockResolvedValue({ fingerprint: 'b'.repeat(64) });
+      calls.inspectAcl.mockResolvedValue({
+        fingerprint: (failure === 'acl-drift' ? 'c' : 'b').repeat(64),
+      });
+      if (failure === 'acl-read') calls.inspectAcl.mockRejectedValue(new Error('private-db-host'));
+      if (failure === 'rollback')
+        client.query.mockImplementation(async (query) => {
+          if (query === 'ROLLBACK') throw new Error('private-db-host');
+          return {};
+        });
+      calls.migrate.mockImplementation(async ({ beforeMigrate, beforeApply }) => {
+        await beforeMigrate(client);
+        locked = true;
+        await beforeApply(pending, {
+          migrations: failure === 'artifact' ? migrations.slice(0, -1) : migrations,
+        });
+        ddl();
+      });
+      const result = await runMaintenance(sequenceEnvironment('apply'), undefined, {
+        fetchImpl: async (url) =>
+          locked && failure === 'main' ? { status: 200, json: async () => ({}) } : fetchImpl(url),
+        now: () => (locked && failure === 'expiry' ? now + 3_600_000 : now),
+      }).catch(publicMaintenanceFailure);
+      expect(ddl).not.toHaveBeenCalled();
+      expect(calls.verify).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ phase: 'migrate', verificationCompleted: false });
+      expect(JSON.stringify(result)).not.toContain('private-db-host');
+      if (['acl-drift', 'acl-read', 'rollback'].includes(failure))
+        expect(client.query).toHaveBeenLastCalledWith('ROLLBACK');
+      else expect(calls.inspectAcl).not.toHaveBeenCalled();
+    },
+  );
 });

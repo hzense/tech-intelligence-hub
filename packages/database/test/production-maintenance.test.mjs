@@ -696,12 +696,32 @@ describe('execution-time GitHub freshness check', () => {
     },
   );
   it.each(maintenanceOperations)('gates %s before calling database code', async (operation) => {
-    const request = ['migrate', 'search-apply', 'acl-capture'].includes(operation)
-      ? writeEnvironment(operation, {
-          publicArchiveApproved: true,
-          archiveRepository: 'hzense/tech-intelligence-hub',
-        })
-      : { ...env, MAINTENANCE_OPERATION: operation };
+    const request =
+      operation === 'migrate-and-verify'
+        ? {
+            ...riskEnvironment(operation, {
+              recoveryPolicy: 'accept-unverified-automation-storage',
+              riskAcceptance: {
+                scope: 'automation-storage-production-launch',
+                accepted: true,
+                historicalAclGapAccepted: true,
+                acknowledgement: 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
+              },
+              aclFingerprint: undefined,
+              aclEvidenceMode: 'capture-in-run',
+              manifestFingerprint: 'f'.repeat(64),
+              targetFingerprint: 'd'.repeat(64),
+              publicArchiveApproved: true,
+              archiveRepository: 'hzense/tech-intelligence-hub',
+            }),
+            MAINTENANCE_SEQUENCE_PHASE: 'prepare',
+          }
+        : ['migrate', 'search-apply', 'acl-capture'].includes(operation)
+          ? writeEnvironment(operation, {
+              publicArchiveApproved: true,
+              archiveRepository: 'hzense/tech-intelligence-hub',
+            })
+          : { ...env, MAINTENANCE_OPERATION: operation };
     const execute = vi.fn();
     const fetchImpl = vi.fn().mockResolvedValue(response(null));
     await expect(runMaintenance(request, execute, { fetchImpl, now: () => now })).rejects.toThrow(
@@ -777,10 +797,18 @@ describe('production maintenance workflow contract', () => {
     (w) => delete w.jobs.maintenance.steps[4].env.GH_TOKEN,
     (w) => (w.jobs.maintenance.steps[4].env.GH_TOKEN = '${{ secrets.PERSONAL_TOKEN }}'),
     (w) => (w.jobs.maintenance.steps[4].run = 'node arbitrary-script.mjs'),
+    (w) => delete w.jobs.maintenance.steps[4].id,
+    (w) => (w.jobs.maintenance.steps[4].env.MAINTENANCE_SEQUENCE_PHASE = 'apply'),
+    (w) => (w.jobs.verification = { ...w.jobs.maintenance }),
     (w) => w.jobs.maintenance.steps.push({ uses: 'actions/upload-artifact@unreviewed' }),
     (w) => (w.jobs.maintenance.steps[5].if = 'always()'),
+    (w) => (w.jobs.maintenance.steps[5].if = "success() && inputs.operation == 'acl-capture'"),
     (w) => (w.jobs.maintenance.steps[5].with.path = '${{ runner.temp }}/**'),
     (w) => (w.jobs.maintenance.steps[5].with['if-no-files-found'] = 'warn'),
+    (w) => (w.jobs.maintenance.steps[5]['continue-on-error'] = true),
+    (w) => (w.jobs.maintenance.steps[6].if = 'always()'),
+    (w) => (w.jobs.maintenance.steps[6].env.MAINTENANCE_ACL_ARCHIVE_CONFIRMED = 'success'),
+    (w) => w.jobs.maintenance.steps.reverse(),
     (w) =>
       (w.jobs.maintenance.steps[5].env = {
         DATABASE_DIRECT_URL: '${{ secrets.DATABASE_DIRECT_URL }}',
