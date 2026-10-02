@@ -10,6 +10,12 @@ import {
 } from '../../packages/database/src/runtime-acl-baseline.mjs';
 
 export const publicAclEvidenceFilename = 'hzense-acl-evidence.json';
+// Sequence evidence is scoped to one of two separately reviewed rollouts, never
+// an arbitrary risk policy. The archived policy must match the current approval.
+const sequenceRecoveryPolicies = Object.freeze([
+  'accept-unverified-automation-storage',
+  'accept-unverified-automation-config-deletion',
+]);
 
 // Reconstruct from the reviewed catalog contract; never serialize the environment,
 // transport, raw errors, or arbitrary top-level executor properties.
@@ -68,7 +74,7 @@ export async function capturePublicAclEvidence(
     const standalone = request?.operation === 'acl-capture';
     const sequence =
       request?.operation === 'migrate-and-verify' &&
-      request.approval?.recoveryPolicy === 'accept-unverified-automation-storage' &&
+      sequenceRecoveryPolicies.includes(request.approval?.recoveryPolicy) &&
       request.approval?.aclEvidenceMode === 'capture-in-run' &&
       request.approval?.publicArchiveApproved === true &&
       request.approval?.archiveRepository === 'hzense/tech-intelligence-hub';
@@ -126,7 +132,7 @@ export async function readPublicAclEvidence(env, { checkApproval, read = readFil
   if (
     request?.operation !== 'migrate-and-verify' ||
     request.approval?.operation !== request.operation ||
-    request.approval?.recoveryPolicy !== 'accept-unverified-automation-storage' ||
+    !sequenceRecoveryPolicies.includes(request.approval?.recoveryPolicy) ||
     request.approval?.aclEvidenceMode !== 'capture-in-run' ||
     request.approval?.publicArchiveApproved !== true ||
     request.approval?.archiveRepository !== 'hzense/tech-intelligence-hub' ||
@@ -146,7 +152,7 @@ export async function readPublicAclEvidence(env, { checkApproval, read = readFil
     evidence.runAttempt !== env.GITHUB_RUN_ATTEMPT ||
     evidence.independentCapturesMatch !== true ||
     evidence.restoration !== 'unverified-risk-accepted' ||
-    evidence.recoveryPolicy !== 'accept-unverified-automation-storage' ||
+    evidence.recoveryPolicy !== request.approval.recoveryPolicy ||
     evidence.recoveryVerified !== false ||
     evidence.riskAcceptanceSha256 !== acceptance.riskAcceptanceSha256 ||
     !Array.isArray(evidence.captures) ||

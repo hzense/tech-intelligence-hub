@@ -285,13 +285,19 @@ describe('public ACL capture with real risk approval validation', () => {
   });
 });
 
-describe('ACL evidence in a single approved migration sequence', () => {
+describe.each([
+  'accept-unverified-automation-storage',
+  'accept-unverified-automation-config-deletion',
+])('ACL evidence in a single approved migration sequence: %s', (recoveryPolicy) => {
   function sequenceEnvironment(changes = {}) {
     const request = riskEnvironment({
       operation: 'migrate-and-verify',
-      recoveryPolicy: 'accept-unverified-automation-storage',
+      recoveryPolicy,
       riskAcceptance: {
-        scope: 'automation-storage-production-launch',
+        scope:
+          recoveryPolicy === 'accept-unverified-automation-storage'
+            ? 'automation-storage-production-launch'
+            : 'automation-config-deletion-production-launch',
         accepted: true,
         historicalAclGapAccepted: true,
         acknowledgement: 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
@@ -300,6 +306,12 @@ describe('ACL evidence in a single approved migration sequence', () => {
       targetFingerprint: 'b'.repeat(64),
       manifestFingerprint: 'c'.repeat(64),
       planFingerprint: 'd'.repeat(64),
+      ...(recoveryPolicy === 'accept-unverified-automation-config-deletion'
+        ? {
+            roleUpgradeApproved: true,
+            roleUpgradeSha256: '3372dcc11b59e8747589cf34f016a030c08f454a961b1d8a96a315e08d01bde2',
+          }
+        : {}),
       ...changes,
     });
     return {
@@ -320,7 +332,7 @@ describe('ACL evidence in a single approved migration sequence', () => {
     expect(check).toHaveBeenCalledTimes(3);
     const evidence = JSON.parse(save.mock.calls[0][1]);
     expect(evidence).toMatchObject({
-      recoveryPolicy: 'accept-unverified-automation-storage',
+      recoveryPolicy,
       recoveryVerified: false,
       riskAcceptanceSha256: createHash('sha256').update(request.MAINTENANCE_APPROVAL).digest('hex'),
     });
@@ -406,6 +418,19 @@ describe('ACL evidence in a single approved migration sequence', () => {
     });
     expect(read).toHaveBeenCalledWith('/tmp/test-acl-evidence/hzense-acl-evidence.json', 'utf8');
     expect(check).toHaveBeenCalledTimes(2);
+  });
+  it('rejects evidence from the other rollout even with a matching approval digest', async () => {
+    const { apply, evidence } = await archivedFixture();
+    evidence.recoveryPolicy =
+      recoveryPolicy === 'accept-unverified-automation-storage'
+        ? 'accept-unverified-automation-config-deletion'
+        : 'accept-unverified-automation-storage';
+    await expect(
+      readPublicAclEvidence(apply, {
+        read: async () => JSON.stringify(evidence),
+        checkApproval: () => validateMaintenanceRequest(apply, now),
+      }),
+    ).rejects.toThrow('binding mismatch');
   });
   it.each([
     ['sha', 'f'.repeat(40)],
