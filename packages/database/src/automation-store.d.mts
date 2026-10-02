@@ -9,6 +9,7 @@ export interface AutomationConfigRecord {
   next_run_at: Date | string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  deleted_at?: Date | string | null;
 }
 export interface AutomationRun {
   id: string;
@@ -52,15 +53,31 @@ export interface TriggerAutomationRequest {
   requestId: string;
   consent: boolean;
 }
+export interface DeleteAutomationRequest {
+  id: string;
+  expectedRevision: number;
+  consent: boolean;
+}
+export interface DeletedAutomationConfig {
+  id: string;
+  revision: number;
+  deleted_at: Date | string;
+}
 export function saveAutomationConfig(input: {
   pool: unknown;
   owner: string;
   request: SaveAutomationRequest;
 }): Promise<AutomationConfigRecord>;
-export function readAutomationDashboard(input: {
+export function deleteAutomationConfig(input: {
   pool: unknown;
   owner: string;
-}): Promise<{ configs: AutomationConfigRecord[]; runs: AutomationRun[] }>;
+  request: DeleteAutomationRequest;
+}): Promise<DeletedAutomationConfig>;
+export function readAutomationDashboard(input: { pool: unknown; owner: string }): Promise<{
+  configs: AutomationConfigRecord[];
+  runs: AutomationRun[];
+  configDeletionAvailable: boolean;
+}>;
 export function enqueueAutomation(input: {
   pool: unknown;
   owner: string;

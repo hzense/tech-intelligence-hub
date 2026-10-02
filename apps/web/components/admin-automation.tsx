@@ -30,7 +30,7 @@ type RunView = Pick<
   | 'cost_source'
   | 'publication_status'
 >;
-type Dashboard = { configs: ConfigView[]; runs: RunView[] };
+type Dashboard = { configs: ConfigView[]; runs: RunView[]; configDeletionAvailable: boolean };
 const blank = (kind: Kind): AutomationConfig => ({
   name: '',
   kind,
@@ -50,6 +50,11 @@ const errors: Record<string, string> = {
   revision_conflict: '配置已由其他会话修改，请刷新后核对。',
   request_id_conflict: '请求编号与已有任务不匹配，请先核对任务。',
   task_active: '该配置已有正在执行的任务，请查看列表。',
+  config_in_use:
+    '该配置还有排队、执行中、结果未知或未释放执行锁的任务，暂不能删除。请先核对原任务和费用。',
+  config_deletion_unavailable: '删除功能尚未完成数据库升级和权限核验；现有配置仍可保存。',
+  not_found: '配置不存在或已被删除，请刷新列表核对。',
+  commit_unknown: '操作提交结果未确认，请刷新列表核对，不要新建替代配置。',
   budget_exceeded: '今日或单次预算不足，任务未启动。',
   profile_not_ready: '所选模型配置未就绪。',
   source_url_invalid: '来源链接格式或地址不符合导入规则。',
@@ -195,10 +200,24 @@ export function AdminAutomation({
   const [busy, setBusy] = useState(false);
   const createId = useRef<string | null>(null);
   const requestIds = useRef<Record<string, string>>({});
+  const refreshSequence = useRef(0);
   async function refresh() {
+    const sequence = ++refreshSequence.current;
     const next = await api<Dashboard>();
-    setState(next);
+    if (sequence === refreshSequence.current) setState(next);
     return next;
+  }
+  async function reload() {
+    if (busy || !configured) return;
+    setBusy(true);
+    try {
+      await refresh();
+      setMessage('列表已更新。');
+    } catch {
+      setMessage('读取失败，请稍后刷新。');
+    } finally {
+      setBusy(false);
+    }
   }
   function edit(row: ConfigView | null) {
     setEditing(row);
@@ -286,6 +305,43 @@ export function AdminAutomation({
       setBusy(false);
     }
   }
+  async function remove(row: ConfigView) {
+    if (
+      busy ||
+      !configured ||
+      !state.configDeletionAvailable ||
+      !window.confirm(
+        `确认删除“${row.config.name}”吗？配置将从列表隐藏并停止后续调度，不能在页面恢复。历史任务、结果和费用仍然保留，不会撤回已公开的专题。若有排队、执行中或结果未知的任务，将拒绝删除。本操作不调用 AI。`,
+      )
+    )
+      return;
+    setBusy(true);
+    setMessage('');
+    try {
+      await api({
+        action: 'delete',
+        request: { id: row.id, expectedRevision: row.revision, consent: true },
+      });
+      // Only remove local state after the server confirms the deletion. Retain
+      // history and other unsaved edits, even if the following refresh fails.
+      setState((current) => ({
+        ...current,
+        configs: current.configs.filter((config) => config.id !== row.id),
+      }));
+      if (editing?.id === row.id) edit(null);
+      delete requestIds.current[row.id];
+      try {
+        await refresh();
+        setMessage('配置已删除，后续调度已停止；历史任务、结果和费用记录保留。');
+      } catch {
+        setMessage('配置已删除，但列表刷新失败；请点击“刷新列表”核对。历史任务和费用记录保留。');
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '删除结果未确认，请刷新列表核对。');
+    } finally {
+      setBusy(false);
+    }
+  }
   async function publish(row: RunView, confirm: boolean) {
     if (
       busy ||
@@ -337,7 +393,7 @@ export function AdminAutomation({
           <h2 id="config-title">
             {editing ? `编辑 ${editing.config.name} · r${editing.revision}` : '新建配置'}
           </h2>
-          <button type="button" onClick={() => edit(null)}>
+          <button type="button" disabled={busy} onClick={() => edit(null)}>
             新建配置
           </button>
         </div>
@@ -509,14 +565,13 @@ export function AdminAutomation({
       <section className={styles.card} aria-labelledby="saved-title">
         <div className={styles.row}>
           <h2 id="saved-title">已保存配置</h2>
-          <button
-            type="button"
-            disabled={!configured || busy}
-            onClick={() => void refresh().catch(() => setMessage('读取失败，请稍后刷新。'))}
-          >
-            刷新
+          <button type="button" disabled={!configured || busy} onClick={() => void reload()}>
+            刷新列表
           </button>
         </div>
+        {configured && !state.configDeletionAvailable ? (
+          <p id="delete-unavailable">删除功能待完成数据库升级与最小授权；现有配置仍可保存。</p>
+        ) : null}
         {configs.length ? (
           <div className={styles.tableWrap}>
             <table>
@@ -551,6 +606,20 @@ export function AdminAutomation({
                         onClick={() => void run(row)}
                       >
                         立即运行
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.danger}
+                        aria-label={`删除配置 ${row.config.name}`}
+                        aria-describedby={
+                          configured && !state.configDeletionAvailable
+                            ? 'delete-unavailable'
+                            : undefined
+                        }
+                        disabled={busy || !configured || !state.configDeletionAvailable}
+                        onClick={() => void remove(row)}
+                      >
+                        删除配置
                       </button>
                     </td>
                   </tr>

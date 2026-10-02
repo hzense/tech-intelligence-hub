@@ -21,6 +21,7 @@ export type {
   AutomationRun,
   SaveAutomationRequest,
   TriggerAutomationRequest,
+  DeleteAutomationRequest,
 } from '../../../../packages/database/src/automation-store.mjs';
 export { freezeAutomationInputs } from './automation-store-access';
 export function automationConfigured() {
@@ -72,6 +73,7 @@ export function automationLimits() {
 export async function automationDashboard(owner: string) {
   const state = await store.readAutomationDashboard({ pool: automationConfigPool, owner });
   return {
+    configDeletionAvailable: state.configDeletionAvailable,
     configs: state.configs.map(
       ({ id, revision, config, enabled, next_run_at, created_at, updated_at }) => ({
         id,
@@ -123,6 +125,10 @@ export async function saveAutomation(owner: string, request: store.SaveAutomatio
     owner,
     request: { ...request, config },
   });
+}
+export async function deleteAutomation(owner: string, request: store.DeleteAutomationRequest) {
+  // Removing a schedule must not depend on paid execution or a ready AI profile.
+  return store.deleteAutomationConfig({ pool: automationConfigPool, owner, request });
 }
 async function validateAutomationProfile(config: AutomationConfig) {
   if (config.kind === 'source_collection') {

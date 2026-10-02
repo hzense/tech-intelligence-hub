@@ -57,8 +57,32 @@ export const automationUpdateColumns = {
     'finished_at',
   ],
 };
+// Frozen 0026 dictionaries above are also used by historical provisioning
+// evidence. Soft deletion adds only these two capabilities, never INSERT.
+export const automationDeletionCapabilities = [
+  'automation_configs|deleted_at|SELECT',
+  'automation_configs|deleted_at|UPDATE',
+];
+
+export async function automationConfigDeletionAvailable(client) {
+  const result = await client.query(`SELECT c.relkind='r'
+    AND a.atttypid='pg_catalog.timestamptz'::regtype
+    AND NOT a.attnotnull AND NOT a.atthasdef
+    AND a.attgenerated='' AND a.attidentity='' AS safe
+    FROM pg_catalog.pg_attribute a
+    JOIN pg_catalog.pg_class c ON c.oid=a.attrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relname='automation_configs'
+      AND a.attname='deleted_at' AND a.attnum>0 AND NOT a.attisdropped`);
+  if (result.rows.length === 0) return false;
+  if (result.rows.length !== 1 || result.rows[0].safe !== true)
+    throw new AutomationError('automation_role_invalid');
+  return true;
+}
+
 export async function assertAutomationRole(client, role = 'admin') {
   if (!['admin', 'reader'].includes(role)) throw new AutomationError('automation_role_invalid');
+  const canDelete = role === 'admin' && (await automationConfigDeletionAvailable(client));
   const capabilities =
     role === 'reader'
       ? ['id', 'result', 'published_at'].map(
@@ -73,6 +97,7 @@ export async function assertAutomationRole(client, role = 'admin') {
               : []),
           ]),
         );
+  if (canDelete) capabilities.push(...automationDeletionCapabilities);
   try {
     await assertRestrictedApplicationRole(
       client,
@@ -82,4 +107,5 @@ export async function assertAutomationRole(client, role = 'admin') {
   } catch {
     throw new AutomationError('automation_role_invalid');
   }
+  return { canDelete };
 }

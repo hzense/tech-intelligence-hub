@@ -1,4 +1,8 @@
+type AutomationRoleClient = {
+  query(sql: string, values?: unknown[]): Promise<{ rows: unknown[] }>;
+};
+export function automationConfigDeletionAvailable(client: AutomationRoleClient): Promise<boolean>;
 export function assertAutomationRole(
-  client: { query(sql: string, values?: unknown[]): Promise<{ rows: unknown[] }> },
+  client: AutomationRoleClient,
   role?: 'admin' | 'reader',
-): Promise<void>;
+): Promise<{ canDelete: boolean }>;

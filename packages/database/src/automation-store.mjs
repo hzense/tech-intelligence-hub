@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { automationConfigDeletionAvailable } from './automation-role.mjs';
 import {
   AutomationError,
   automationFail as fail,
@@ -12,6 +13,14 @@ import {
 } from './automation-contract.mjs';
 export { AutomationError } from './automation-contract.mjs';
 const configColumns = 'id,owner_id,revision,config,enabled,next_run_at,created_at,updated_at';
+async function configShape(client) {
+  const canDelete = await automationConfigDeletionAvailable(client);
+  return {
+    canDelete,
+    columns: canDelete ? `${configColumns},deleted_at` : configColumns,
+    active: canDelete ? ' AND deleted_at IS NULL' : '',
+  };
+}
 const runColumns =
   'id,config_id,owner_id,config_revision,snapshot,slot,trigger,status,phase,result,frozen_inputs,error_code,lease_token,lease_until,budget_day,reserved_microusd,charged_microusd,cost_source,publication_status,published_at,created_at,started_at,finished_at';
 const dto = (row) =>
@@ -63,50 +72,101 @@ export async function saveAutomationConfig({ pool, owner, request }) {
   return transaction(pool, async (client) => {
     await lock(client, `owner:${owner}`);
     await lock(client, id);
+    const shape = await configShape(client);
     const existing = (
-      await client.query(`SELECT ${configColumns} FROM public.automation_configs WHERE id=$1`, [id])
+      await client.query(`SELECT ${shape.columns} FROM public.automation_configs WHERE id=$1`, [id])
     ).rows[0];
-    if (existing && existing.owner_id !== owner) fail('not_found');
+    if (existing && (existing.owner_id !== owner || existing.deleted_at)) fail('not_found');
     if ((existing?.revision ?? 0) !== request.expectedRevision) fail('revision_conflict');
     if (!existing) {
       const count = (
         await client.query(
-          'SELECT count(*)::integer AS count FROM public.automation_configs WHERE owner_id=$1',
+          `SELECT count(*)::integer AS count FROM public.automation_configs WHERE owner_id=$1${shape.active}`,
           [owner],
         )
       ).rows[0].count;
       if (count >= 50) fail('config_limit');
       return (
         await client.query(
-          `INSERT INTO public.automation_configs(id,owner_id,revision,config,enabled,next_run_at) VALUES($1,$2,1,$3::jsonb,$4,$5::timestamptz) RETURNING ${configColumns}`,
+          `INSERT INTO public.automation_configs(id,owner_id,revision,config,enabled,next_run_at) VALUES($1,$2,1,$3::jsonb,$4,$5::timestamptz) RETURNING ${shape.columns}`,
           [id, owner, JSON.stringify(config), config.enabled, nextRun],
         )
       ).rows[0];
     }
     return (
       await client.query(
-        `UPDATE public.automation_configs SET revision=revision+1,config=$3::jsonb,enabled=$4,next_run_at=$5::timestamptz,updated_at=clock_timestamp() WHERE id=$1 AND owner_id=$2 RETURNING ${configColumns}`,
+        `UPDATE public.automation_configs SET revision=revision+1,config=$3::jsonb,enabled=$4,next_run_at=$5::timestamptz,updated_at=clock_timestamp() WHERE id=$1 AND owner_id=$2${shape.active} RETURNING ${shape.columns}`,
         [id, owner, JSON.stringify(config), config.enabled, nextRun],
+      )
+    ).rows[0];
+  });
+}
+export async function deleteAutomationConfig({ pool, owner, request }) {
+  owner = automationText(owner);
+  automationExact(request, ['id', 'expectedRevision', 'consent']);
+  const id = automationUuid(request.id);
+  if (
+    request.consent !== true ||
+    !Number.isSafeInteger(request.expectedRevision) ||
+    request.expectedRevision < 1
+  )
+    fail();
+  return transaction(pool, async (client) => {
+    await lock(client, `owner:${owner}`);
+    await lock(client, id);
+    const shape = await configShape(client);
+    if (!shape.canDelete) fail('config_deletion_unavailable');
+    const existing = (
+      await client.query(
+        `SELECT ${shape.columns} FROM public.automation_configs WHERE id=$1 AND owner_id=$2 FOR UPDATE`,
+        [id, owner],
+      )
+    ).rows[0];
+    if (!existing) fail('not_found');
+    if (existing.deleted_at) {
+      if (existing.revision !== request.expectedRevision + 1) fail('revision_conflict');
+      return { id: existing.id, revision: existing.revision, deleted_at: existing.deleted_at };
+    }
+    if (existing.revision !== request.expectedRevision) fail('revision_conflict');
+    // Keep unknown outcomes and even malformed/stale leases visible for reconciliation.
+    // Enqueue and scheduler use the same config lock, so no new task can race this check.
+    if (
+      (
+        await client.query(
+          "SELECT 1 FROM public.automation_runs WHERE config_id=$1 AND (status IN ('queued','running','unknown') OR lease_token IS NOT NULL OR lease_until IS NOT NULL) LIMIT 1",
+          [id],
+        )
+      ).rows.length
+    )
+      fail('config_in_use');
+    return (
+      await client.query(
+        "UPDATE public.automation_configs SET deleted_at=clock_timestamp(),enabled=false,config=jsonb_set(config,'{enabled}','false'::jsonb),next_run_at=NULL,revision=revision+1,updated_at=clock_timestamp() WHERE id=$1 AND owner_id=$2 AND deleted_at IS NULL RETURNING id,revision,deleted_at",
+        [id, owner],
       )
     ).rows[0];
   });
 }
 export async function readAutomationDashboard({ pool, owner }) {
   owner = automationText(owner);
-  return transaction(pool, async (client) => ({
-    configs: (
-      await client.query(
-        `SELECT ${configColumns} FROM public.automation_configs WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 50`,
-        [owner],
-      )
-    ).rows,
-    runs: (
-      await client.query(
-        `SELECT ${runColumns} FROM public.automation_runs WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100`,
-        [owner],
-      )
-    ).rows.map(dto),
-  }));
+  return transaction(pool, async (client) => {
+    const shape = await configShape(client);
+    return {
+      configDeletionAvailable: shape.canDelete,
+      configs: (
+        await client.query(
+          `SELECT ${shape.columns} FROM public.automation_configs WHERE owner_id=$1${shape.active} ORDER BY created_at DESC LIMIT 50`,
+          [owner],
+        )
+      ).rows,
+      runs: (
+        await client.query(
+          `SELECT ${runColumns} FROM public.automation_runs WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100`,
+          [owner],
+        )
+      ).rows.map(dto),
+    };
+  });
 }
 async function enqueue(client, config, { id, slot, trigger }) {
   const existing = (
@@ -166,9 +226,10 @@ export async function enqueueAutomation({ pool, owner, request }) {
     fail();
   return transaction(pool, async (client) => {
     await lock(client, request.configId);
+    const shape = await configShape(client);
     const config = (
       await client.query(
-        `SELECT ${configColumns} FROM public.automation_configs WHERE id=$1 AND owner_id=$2`,
+        `SELECT ${shape.columns} FROM public.automation_configs WHERE id=$1 AND owner_id=$2${shape.active}`,
         [request.configId, owner],
       )
     ).rows[0];
@@ -201,9 +262,10 @@ export async function enqueueDueAutomations({ pool, limit = 5 }) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 5) fail();
   return transaction(pool, async (client) => {
     await lock(client, 'scheduler');
+    const shape = await configShape(client);
     const configs = (
       await client.query(
-        `SELECT ${configColumns} FROM public.automation_configs WHERE enabled AND next_run_at<=clock_timestamp() ORDER BY next_run_at,id LIMIT $1`,
+        `SELECT ${shape.columns} FROM public.automation_configs WHERE enabled AND next_run_at<=clock_timestamp()${shape.active} ORDER BY next_run_at,id LIMIT $1`,
         [limit],
       )
     ).rows;
@@ -212,7 +274,7 @@ export async function enqueueDueAutomations({ pool, limit = 5 }) {
       await lock(client, candidate.id);
       const config = (
         await client.query(
-          `SELECT ${configColumns} FROM public.automation_configs WHERE id=$1 AND enabled AND next_run_at<=clock_timestamp() FOR UPDATE`,
+          `SELECT ${shape.columns} FROM public.automation_configs WHERE id=$1 AND enabled AND next_run_at<=clock_timestamp()${shape.active} FOR UPDATE`,
           [candidate.id],
         )
       ).rows[0];
@@ -249,9 +311,10 @@ export async function claimAutomationRun({ pool, owner, id, limits }) {
     ).rows[0];
     if (!run) fail('not_found');
     if (run.status !== 'queued') return null;
+    const shape = await configShape(client);
     const config = (
       await client.query(
-        'SELECT revision,enabled FROM public.automation_configs WHERE id=$1 AND owner_id=$2',
+        `SELECT revision,enabled FROM public.automation_configs WHERE id=$1 AND owner_id=$2${shape.active}`,
         [run.config_id, owner],
       )
     ).rows[0];
