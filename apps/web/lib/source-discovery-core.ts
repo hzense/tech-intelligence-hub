@@ -11,7 +11,8 @@ export interface DiscoveryArticle {
 }
 export interface DiscoveryResult {
   articles: DiscoveryArticle[];
-  searchRequests: number;
+  searchRequests: number | null;
+  searchEvidence: 'search_count' | 'provider_url_citations';
   rejected: number;
   duplicates: number;
   windowStart: string;
@@ -83,9 +84,6 @@ export function parseDiscoveryResponse(
     typeof choice.message?.content !== 'string'
   )
     throw new Error('discovery_invalid_output');
-  // Do not accept a plausible answer from model memory as an actual web search.
-  if (diagnostics.searchCountStatus !== 'confirmed' || diagnostics.searchRequests === null)
-    throw new Error('discovery_search_unconfirmed');
   let output;
   try {
     output = JSON.parse(choice.message.content);
@@ -110,6 +108,16 @@ export function parseDiscoveryResponse(
       return url ? [url] : [];
     }),
   );
+  // A missing usage counter is not a zero-search receipt. Only provider-owned
+  // citations with safe URLs can substitute for that absent counter; body URLs
+  // or an annotation count alone cannot. Explicit contradictory receipts still fail.
+  const searchEvidence =
+    diagnostics.searchCountStatus === 'confirmed'
+      ? 'search_count'
+      : diagnostics.searchCountStatus === 'missing' && cited.size > 0
+        ? 'provider_url_citations'
+        : null;
+  if (searchEvidence === null) throw new Error('discovery_search_unconfirmed');
   const seen = new Set(knownUrls.map(discoveryUrl).filter(Boolean));
   const articles: DiscoveryArticle[] = [];
   let rejected = 0,
@@ -143,6 +151,7 @@ export function parseDiscoveryResponse(
   return {
     articles: articles.slice(0, config.discovery.maxSources),
     searchRequests: diagnostics.searchRequests,
+    searchEvidence,
     rejected,
     duplicates,
     ...window,

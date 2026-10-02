@@ -107,6 +107,8 @@ test('discovery server persists safe receipts without replaying a paid search', 
           ],
           rejected: 0,
           duplicates: 0,
+          searchRequests: 1,
+          searchEvidence: 'search_count',
         },
         costMicrousd: 64200,
         costSource: 'provider',
@@ -214,27 +216,35 @@ test('discovery server persists safe receipts without replaying a paid search', 
       assert.deepEqual(f.run.result, { existingReceipt: 'must-stay' });
     });
 
-    for (const costSource of ['provider', 'estimate']) {
-      await t.test(
-        `storage failure after completion preserves the ${costSource} receipt`,
-        async () => {
-          const f = setup();
-          f.receipt.costSource = costSource;
-          f.updateErrors = ['synthetic_storage_failure'];
-          await assert.rejects(discoverSources('owner', f.run.id), /discovery_unavailable/);
-          assert.equal(f.updates.length, 2);
-          assert.equal(f.run.status, 'failed');
-          assert.equal(f.run.charged_microusd, f.receipt.costMicrousd);
-          assert.equal(f.run.cost_source, costSource);
-          assert.deepEqual(f.run.result.discovery, f.receipt.result);
-          assert.deepEqual(f.run.result.discoveryDiagnostics, f.receipt.diagnostics);
-          assert.equal(f.run.result.discoveryCostMicrousd, f.receipt.costMicrousd);
-          assert.equal(f.run.result.discoveryCostSource, costSource);
-          assert.equal(f.paidCalls, 1);
-          await assert.rejects(discoverSources('owner', f.run.id), /stale_attempt/);
-          assert.equal(f.paidCalls, 1);
-        },
-      );
+    for (const searchEvidence of ['search_count', 'provider_url_citations']) {
+      for (const costSource of ['provider', 'estimate']) {
+        await t.test(
+          `storage failure preserves the ${costSource} receipt with ${searchEvidence}`,
+          async () => {
+            const f = setup();
+            f.receipt.costSource = costSource;
+            f.receipt.result.searchEvidence = searchEvidence;
+            if (searchEvidence === 'provider_url_citations') {
+              f.receipt.result.searchRequests = null;
+              f.receipt.diagnostics.searchRequests = null;
+              f.receipt.diagnostics.searchCountStatus = 'missing';
+            }
+            f.updateErrors = ['synthetic_storage_failure'];
+            await assert.rejects(discoverSources('owner', f.run.id), /discovery_unavailable/);
+            assert.equal(f.updates.length, 2);
+            assert.equal(f.run.status, 'failed');
+            assert.equal(f.run.charged_microusd, f.receipt.costMicrousd);
+            assert.equal(f.run.cost_source, costSource);
+            assert.deepEqual(f.run.result.discovery, f.receipt.result);
+            assert.deepEqual(f.run.result.discoveryDiagnostics, f.receipt.diagnostics);
+            assert.equal(f.run.result.discoveryCostMicrousd, f.receipt.costMicrousd);
+            assert.equal(f.run.result.discoveryCostSource, costSource);
+            assert.equal(f.paidCalls, 1);
+            await assert.rejects(discoverSources('owner', f.run.id), /stale_attempt/);
+            assert.equal(f.paidCalls, 1);
+          },
+        );
+      }
     }
 
     await t.test(
@@ -251,6 +261,32 @@ test('discovery server persists safe receipts without replaying a paid search', 
         ]);
         await assert.rejects(discoverSources('owner', f.run.id), /stale_attempt/);
         assert.equal(f.paidCalls, 1);
+      },
+    );
+
+    await t.test(
+      'citation-backed discovery persists an unknown search count without rewriting diagnostics',
+      async () => {
+        const f = setup();
+        f.receipt.result.searchRequests = null;
+        f.receipt.result.searchEvidence = 'provider_url_citations';
+        f.receipt.diagnostics.searchRequests = null;
+        f.receipt.diagnostics.searchCountStatus = 'missing';
+        assert.deepEqual(await discoverSources('owner', f.run.id), ['https://example.com/new']);
+        assert.equal(f.run.phase, 'sources_discovered');
+        assert.equal(f.updates.length, 1);
+        assert.deepEqual(f.run.result.discovery, f.receipt.result);
+        assert.equal(f.run.result.discovery.searchRequests, null);
+        assert.equal(f.run.result.discovery.searchEvidence, 'provider_url_citations');
+        assert.deepEqual(f.run.result.discoveryDiagnostics, f.receipt.diagnostics);
+        assert.equal(f.run.result.discoveryDiagnostics.searchRequests, null);
+        assert.equal(f.run.result.discoveryDiagnostics.searchCountStatus, 'missing');
+        assert.equal(f.run.result.discoveryCostMicrousd, 64200);
+        assert.equal(f.run.result.discoveryCostSource, 'provider');
+        assert.equal(f.paidCalls, 1);
+        assert.equal(f.fenceAttempts, 1);
+        await assert.rejects(discoverSources('owner', f.run.id), /stale_attempt/);
+        assert.equal(f.paidCalls, 1, 'an accepted citation receipt never replays a paid search');
       },
     );
 

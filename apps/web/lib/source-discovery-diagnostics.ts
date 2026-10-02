@@ -21,10 +21,9 @@ export interface DiscoveryDiagnostics {
   providerError: boolean;
   providerErrorCode: number | null;
 }
-const record = (value: unknown): Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+const record = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {});
 const count = (value: unknown): number | null =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 const responseId = (value: unknown): string | null =>
@@ -45,14 +44,19 @@ export function readDiscoveryDiagnostics(body: unknown): DiscoveryDiagnostics {
   const choices = Array.isArray(envelope.choices) ? envelope.choices : null;
   const choice = record(choices?.[0]);
   const message = record(choice.message);
-  const rawCount = record(record(envelope.usage).server_tool_use).web_search_requests;
+  const usage = record(envelope.usage);
+  const malformedUsage =
+    (envelope.usage !== undefined && !isRecord(envelope.usage)) ||
+    (usage.server_tool_use !== undefined && !isRecord(usage.server_tool_use));
+  const rawCount = record(usage.server_tool_use).web_search_requests;
   const searchRequests = count(rawCount);
   return {
     version: 1,
     responseId: responseId(envelope.id),
     searchRequests,
-    searchCountStatus:
-      rawCount === undefined
+    searchCountStatus: malformedUsage
+      ? 'invalid'
+      : rawCount === undefined
         ? 'missing'
         : searchRequests === null
           ? 'invalid'

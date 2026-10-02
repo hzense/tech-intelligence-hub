@@ -299,6 +299,74 @@ test(
         posts.some((post) => ['trigger', 'publish'].includes(post.action)),
         false,
       );
+      // A missing search counter stays unknown even when provider citations
+      // allow discovery to complete. Reading that receipt never calls AI.
+      delete run.generationProgress;
+      run.status = 'completed';
+      run.phase = 'done';
+      run.result = {
+        discovery: {
+          articles: [
+            { url: 'https://example.com/new', title: '新资料', publishedAt: '2026-10-02' },
+          ],
+          rejected: 0,
+          duplicates: 0,
+          searchRequests: null,
+          searchEvidence: 'provider_url_citations',
+        },
+        discoveryDiagnostics: {
+          version: 1,
+          responseId: 'gen-citation-receipt',
+          searchRequests: null,
+          searchCountStatus: 'missing',
+          finishReason: 'stop',
+          choiceCount: 1,
+          annotationCount: 1,
+          providerError: false,
+          providerErrorCode: null,
+        },
+      };
+      const beforeCitationRefresh = gets;
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect.poll(() => gets).toBe(beforeCitationRefresh + 1);
+      await expect(page.getByText('搜索次数未返回', { exact: false })).toBeVisible();
+      await expect(page.getByText('已收到有效来源引用', { exact: false })).toBeVisible();
+      await expect(page.getByText('实际检索 0 次', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('选中 1 篇原文', { exact: false })).toBeVisible();
+      await page.getByText('查看检索诊断（脱敏）', { exact: true }).click();
+      await expect(page.getByText('搜索回执：供应商未返回搜索次数', { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole('cell', { name: '$0.1000 provider', exact: false }),
+      ).toBeVisible();
+      assert.equal(posts.length, 6, 'refreshing citation-backed discovery is read-only');
+
+      // Historical results may omit both new fields. Absence is not zero and
+      // must not be presented as evidence that valid citations were received.
+      delete run.result.discovery.searchRequests;
+      delete run.result.discovery.searchEvidence;
+      delete run.result.discoveryDiagnostics;
+      const beforeLegacyRefresh = gets;
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect.poll(() => gets).toBe(beforeLegacyRefresh + 1);
+      await expect(page.getByText('搜索次数未返回', { exact: false })).toBeVisible();
+      await expect(page.getByText('实际检索 0 次', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('已收到有效来源引用', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('查看检索诊断（脱敏）', { exact: true })).toHaveCount(0);
+
+      for (const searchRequests of [2, 0]) {
+        run.result.discovery.searchRequests = searchRequests;
+        run.result.discovery.searchEvidence = 'search_count';
+        const beforeKnownRefresh = gets;
+        await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+        await expect.poll(() => gets).toBe(beforeKnownRefresh + 1);
+        await expect(
+          page.getByText(`实际检索 ${searchRequests} 次`, { exact: false }),
+        ).toBeVisible();
+        await expect(page.getByText('搜索次数未返回', { exact: false })).toHaveCount(0);
+        await expect(page.getByText('已收到有效来源引用', { exact: false })).toHaveCount(0);
+      }
+      assert.equal(posts.length, 6, 'search receipt refreshes never create or retry a task');
+
       // Failed discovery diagnostics are private structural readbacks, not a retry action.
       delete run.generationProgress;
       run.status = 'failed';

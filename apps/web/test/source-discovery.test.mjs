@@ -103,6 +103,7 @@ test('only cited public recent originals survive; tracking variants and existing
     [],
   );
   assert.deepEqual(result.articles, [article()]);
+  assert.equal(result.searchEvidence, 'search_count');
   assert.equal(result.rejected, 4);
   assert.equal(result.duplicates, 1);
   assert.equal(
@@ -231,9 +232,8 @@ test('unsupported model and duplicate fence never call AI; network failure never
   assert.equal(failed.calls.length, 2);
 });
 
-test('search count diagnostics distinguish missing, malformed, zero and over-limit without bypass', () => {
+test('malformed, zero and over-limit search receipts still fail even with valid citations', () => {
   for (const [value, status, saved] of [
-    [undefined, 'missing', null],
     [null, 'invalid', null],
     ['1', 'invalid', null],
     [{ secret: 'private' }, 'invalid', null],
@@ -257,6 +257,138 @@ test('search count diagnostics distinguish missing, malformed, zero and over-lim
     const body = envelope();
     body.usage.server_tool_use.web_search_requests = value;
     assert.equal(parseDiscoveryResponse(body, config, window, []).searchRequests, value);
+  }
+});
+
+test('only an absent counter with valid provider citations enables the compatibility path', () => {
+  for (const usage of [undefined, {}, { cost: 0.025 }, { server_tool_use: {} }]) {
+    const body = envelope();
+    body.usage = usage;
+    const diagnostics = readDiscoveryDiagnostics(body);
+    assert.equal(diagnostics.searchCountStatus, 'missing');
+    assert.equal(diagnostics.searchRequests, null);
+    const result = parseDiscoveryResponse(body, config, window, []);
+    assert.deepEqual(result.articles, [article()]);
+    assert.equal(result.searchRequests, null);
+    assert.equal(result.searchEvidence, 'provider_url_citations');
+    assert.equal(JSON.parse(JSON.stringify(result)).searchRequests, null);
+  }
+});
+
+test('missing counters do not accept body URLs, arbitrary annotations or unsafe citation URLs', () => {
+  for (const annotations of [
+    undefined,
+    [],
+    Array.from({ length: 8 }, () => ({ type: 'other', url_citation: { url: article().url } })),
+    [null, 'https://example.com/news', { url: article().url }, { type: 'url_citation' }],
+    ...[
+      'http://127.0.0.1/',
+      'http://169.254.169.254/latest/meta-data/',
+      'https://localhost/news',
+      'https://user:password@example.com/news',
+      'file:///etc/passwd',
+      'javascript:alert(1)',
+    ].map((url) => [{ type: 'url_citation', url_citation: { url } }]),
+  ]) {
+    const body = envelope();
+    delete body.usage.server_tool_use;
+    body.choices[0].message.annotations = annotations;
+    assert.throws(() => parseDiscoveryResponse(body, config, window, []), /search_unconfirmed/);
+  }
+});
+
+test('malformed usage containers are not misclassified as missing search counters', () => {
+  for (const value of [null, false, [], 'private usage', 1]) {
+    for (const usage of [value, { server_tool_use: value }]) {
+      const body = envelope();
+      body.usage = usage;
+      assert.equal(readDiscoveryDiagnostics(body).searchCountStatus, 'invalid');
+      assert.throws(() => parseDiscoveryResponse(body, config, window, []), /search_unconfirmed/);
+    }
+  }
+});
+
+test('one valid provider citation suffices among unrelated or invalid annotations', () => {
+  const body = envelope();
+  delete body.usage.server_tool_use;
+  body.choices[0].message.annotations.unshift(
+    null,
+    { type: 'other', url_citation: { url: article().url } },
+    { type: 'url_citation', url_citation: { url: 'http://127.0.0.1/private' } },
+  );
+  const result = parseDiscoveryResponse(body, config, window, []);
+  assert.deepEqual(result.articles, [article()]);
+  assert.equal(result.searchEvidence, 'provider_url_citations');
+  assert.equal(result.searchRequests, null);
+});
+
+test('citation fallback retains URL matching, time window, deduplication and result limits', () => {
+  const articles = [
+    article(),
+    article('https://example.com/news?utm_source=x'),
+    article('https://example.com/uncited'),
+    article('https://example.com/old', '2026-08-01'),
+    article('https://example.com/future', '2026-10-01'),
+    article('https://example.com/known'),
+    article('https://example.com/second'),
+  ];
+  const body = envelope(
+    articles,
+    articles.filter((a) => !a.url.endsWith('uncited')).map((a) => a.url),
+  );
+  delete body.usage.server_tool_use;
+  const result = parseDiscoveryResponse(
+    body,
+    { ...config, discovery: { ...config.discovery, maxSources: 1 } },
+    window,
+    ['https://example.com/known'],
+  );
+  assert.deepEqual(result.articles, [article()]);
+  assert.equal(result.rejected, 3);
+  assert.equal(result.duplicates, 2);
+  assert.equal(result.searchRequests, null);
+  assert.equal(result.searchEvidence, 'provider_url_citations');
+  const empty = envelope([], [article().url]);
+  delete empty.usage.server_tool_use;
+  assert.deepEqual(parseDiscoveryResponse(empty, config, window, []).articles, []);
+});
+
+test('missing counters cannot bypass strict JSON or annotation shape validation', () => {
+  for (const content of [
+    'bad json',
+    '```json\n{"articles":[]}\n```',
+    '{}',
+    '{"articles":[],"other":true}',
+    '{"articles":null}',
+  ]) {
+    const body = envelope();
+    delete body.usage.server_tool_use;
+    body.choices[0].message.content = content;
+    assert.throws(() => parseDiscoveryResponse(body, config, window, []), /invalid_output/);
+  }
+  const body = envelope();
+  delete body.usage.server_tool_use;
+  body.choices[0].message.annotations = { url_citation: { url: article().url } };
+  assert.throws(() => parseDiscoveryResponse(body, config, window, []), /invalid_output/);
+});
+
+test('citation fallback preserves the unknown count, provider cost and single paid request', async () => {
+  const body = envelope();
+  delete body.usage.server_tool_use;
+  for (const cost of [0, 0.0077, undefined]) {
+    body.usage.cost = cost;
+    const h = harness(body);
+    const receipt = await h.run();
+    assert.equal(receipt.result.searchRequests, null);
+    assert.equal(receipt.result.searchEvidence, 'provider_url_citations');
+    assert.equal(receipt.diagnostics.searchCountStatus, 'missing');
+    assert.equal(receipt.diagnostics.searchRequests, null);
+    assert.equal(
+      receipt.costMicrousd,
+      cost === undefined ? discoveryEstimate(access) : Math.round(cost * 1_000_000),
+    );
+    assert.equal(receipt.costSource, cost === undefined ? 'estimate' : 'provider');
+    assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
   }
 });
 
@@ -301,7 +433,7 @@ test('failed receipts persist only allowlisted diagnostics and provider cost, in
     body.usage.cost = cost;
     const h = harness(body);
     await assert.rejects(h.run(), (error) => {
-      assert.equal(error.code, 'discovery_search_unconfirmed');
+      assert.equal(error.code, 'discovery_invalid_output');
       assert.equal(error.costMicrousd, cost === undefined ? null : Math.round(cost * 1_000_000));
       assert.deepEqual(error.diagnostics, {
         version: 1,
