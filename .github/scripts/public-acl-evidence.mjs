@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { URL } from 'node:url';
 import { publicRecoveryAcceptance } from './production-maintenance.mjs';
@@ -65,7 +65,14 @@ export async function capturePublicAclEvidence(
   }
   const requireCaptureApproval = () => {
     const request = checkApproval();
-    if (request?.operation !== 'acl-capture' || request.approval?.operation !== 'acl-capture') {
+    const standalone = request?.operation === 'acl-capture';
+    const sequence =
+      request?.operation === 'migrate-and-verify' &&
+      request.approval?.recoveryPolicy === 'accept-unverified-automation-storage' &&
+      request.approval?.aclEvidenceMode === 'capture-in-run' &&
+      request.approval?.publicArchiveApproved === true &&
+      request.approval?.archiveRepository === 'hzense/tech-intelligence-hub';
+    if ((!standalone && !sequence) || request.approval?.operation !== request.operation) {
       throw new Error('Validated ACL capture approval required');
     }
     return request;
@@ -106,5 +113,52 @@ export async function capturePublicAclEvidence(
     flag: 'wx',
     mode: 0o600,
   });
+  return { fingerprint: first.fingerprint };
+}
+
+// The apply step is reachable only after upload-artifact succeeded in the same
+// protected job. Rebuild the local copy instead of trusting a supplied digest.
+export async function readPublicAclEvidence(env, { checkApproval, read = readFile } = {}) {
+  if (typeof checkApproval !== 'function' || !isAbsolute(env.RUNNER_TEMP ?? '')) {
+    throw new Error('Hosted ACL evidence context required');
+  }
+  const request = checkApproval();
+  if (
+    request?.operation !== 'migrate-and-verify' ||
+    request.approval?.operation !== request.operation ||
+    request.approval?.recoveryPolicy !== 'accept-unverified-automation-storage' ||
+    request.approval?.aclEvidenceMode !== 'capture-in-run' ||
+    request.approval?.publicArchiveApproved !== true ||
+    request.approval?.archiveRepository !== 'hzense/tech-intelligence-hub' ||
+    env.MAINTENANCE_SEQUENCE_PHASE !== 'apply' ||
+    env.MAINTENANCE_ACL_ARCHIVE_CONFIRMED !== 'success'
+  )
+    throw new Error('Archived sequence ACL evidence required');
+  const serialized = await read(join(env.RUNNER_TEMP, publicAclEvidenceFilename), 'utf8');
+  assertPublicAclEvidenceSafe(serialized, env);
+  const evidence = JSON.parse(serialized);
+  const acceptance = publicRecoveryAcceptance(request, env.MAINTENANCE_APPROVAL);
+  if (
+    evidence.format !== 'hzense-public-acl-evidence/v1' ||
+    evidence.repository !== env.GITHUB_REPOSITORY ||
+    evidence.sha !== env.GITHUB_SHA ||
+    evidence.runId !== env.GITHUB_RUN_ID ||
+    evidence.runAttempt !== env.GITHUB_RUN_ATTEMPT ||
+    evidence.independentCapturesMatch !== true ||
+    evidence.restoration !== 'unverified-risk-accepted' ||
+    evidence.recoveryPolicy !== 'accept-unverified-automation-storage' ||
+    evidence.recoveryVerified !== false ||
+    evidence.riskAcceptanceSha256 !== acceptance.riskAcceptanceSha256 ||
+    !Array.isArray(evidence.captures) ||
+    evidence.captures.length !== 2
+  )
+    throw new Error('Archived sequence ACL evidence binding mismatch');
+  const [first, second] = evidence.captures.map((baseline) =>
+    reviewedBaseline(baseline, env.MAINTENANCE_BACKUP_ID),
+  );
+  if (first.fingerprint !== second.fingerprint) {
+    throw new Error('Independent ACL captures differ');
+  }
+  checkApproval();
   return { fingerprint: first.fingerprint };
 }

@@ -1,6 +1,7 @@
 import console from 'node:console';
 import process from 'node:process';
 import { createHash } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -12,8 +13,10 @@ export const maintenanceOperations = Object.freeze([
   'search-apply',
   'runtime-preflight',
   'acl-capture',
+  'migrate-and-verify',
 ]);
-const writes = new Set(['migrate', 'search-apply']);
+const migrationSequence = 'migrate-and-verify';
+const writes = new Set(['migrate', 'search-apply', migrationSequence]);
 const digest = /^[a-f0-9]{64}$/;
 const unverifiedRecoveryPolicy = 'accept-unverified-fts1';
 const aiConfigRecoveryPolicy = 'accept-unverified-ai-config';
@@ -1129,10 +1132,12 @@ function validateRecoveryPolicy(approval, operation) {
     if (policy !== aiConfigRecoveryPolicy)
       requireGate(digest.test(approval.targetFingerprint ?? ''), `${prefix}-target-required`);
     requireGate(
-      operation === 'migrate' || operation === 'acl-capture',
+      operation === 'migrate' ||
+        operation === 'acl-capture' ||
+        (operation === migrationSequence && policy === automationRecoveryPolicy),
       `${prefix}-operation-required`,
     );
-    if (operation === 'migrate') {
+    if (operation === 'migrate' || operation === migrationSequence) {
       requireGate(
         typeof approval.manifestFingerprint === 'string' &&
           digest.test(approval.manifestFingerprint) &&
@@ -1251,13 +1256,33 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
     'approval-expired-or-too-long',
   );
   const recoveryPolicy = validateRecoveryPolicy(approval, operation);
+  // This is a new explicit authorization, not a way to replay historical
+  // approvals. Only the reviewed 0026 rollout may use the combined entry point.
+  if (operation === migrationSequence) {
+    requireGate(
+      recoveryPolicy === automationRecoveryPolicy &&
+        approval.aclEvidenceMode === 'capture-in-run' &&
+        !Object.hasOwn(approval, 'aclFingerprint'),
+      'migration-sequence-approval-required',
+    );
+    requireGate(
+      ['prepare', 'apply'].includes(env.MAINTENANCE_SEQUENCE_PHASE),
+      'migration-sequence-phase-required',
+    );
+    if (env.MAINTENANCE_SEQUENCE_PHASE === 'apply') {
+      requireGate(
+        env.MAINTENANCE_ACL_ARCHIVE_CONFIRMED === 'success',
+        'migration-sequence-archive-required',
+      );
+    }
+  }
   requireGate(
     (recoveryPolicy !== 'verified' || approval.backupVerified === true) &&
       approval.ddlFreezeConfirmed === true &&
       backupCoversApproval(approval, expiry),
     'recovery-evidence-required',
   );
-  if (operation === 'acl-capture') {
+  if (operation === 'acl-capture' || operation === migrationSequence) {
     requireGate(
       approval.publicArchiveApproved === true &&
         approval.archiveRepository === 'hzense/tech-intelligence-hub',
@@ -1354,6 +1379,15 @@ export function publicMaintenanceResult(operation, result = {}) {
 }
 
 export function publicMaintenanceFailure(error) {
+  if (error instanceof MaintenanceSequenceError) {
+    return {
+      ...publicMaintenanceFailure(error.cause),
+      operation: migrationSequence,
+      phase: error.phase,
+      migrationMayHaveCommitted: error.migrationMayHaveCommitted,
+      verificationCompleted: false,
+    };
+  }
   if (error instanceof MaintenanceGateError) return { status: 'blocked', gate: error.gate };
   return {
     status: 'failed',
@@ -1431,7 +1465,11 @@ export async function verifyMaintenanceFreshness(env, { fetchImpl = globalThis.f
   await checkHead();
 }
 
-async function executeOperation(env, { operation, approval }) {
+async function executeOperation(env, { operation, approval }, context = {}) {
+  if (operation === 'acl-evidence') {
+    const { readPublicAclEvidence } = await import('./public-acl-evidence.mjs');
+    return readPublicAclEvidence(env, { checkApproval: context.checkApproval });
+  }
   if (operation === 'acl-capture') {
     let binding;
     if (
@@ -1513,7 +1551,7 @@ async function executeOperation(env, { operation, approval }) {
     const { capturePublicAclEvidence } = await import('./public-acl-evidence.mjs');
     return {
       ...(await capturePublicAclEvidence(env, {
-        checkApproval: () => validateMaintenanceRequest(env),
+        checkApproval: context.checkApproval ?? (() => validateMaintenanceRequest(env)),
       })),
       ...binding,
     };
@@ -1919,6 +1957,44 @@ async function executeOperation(env, { operation, approval }) {
             } else {
               requireFts1MigrationScope({ pendingMigrations });
             }
+            if (approval.operation === migrationSequence) {
+              requireGate(
+                digest.test(context.aclFingerprint ?? '') &&
+                  typeof context.checkFreshness === 'function' &&
+                  typeof context.checkApproval === 'function',
+                'migration-sequence-context-required',
+              );
+              await context.checkFreshness();
+              // The session migration lock is already held; use a separate
+              // read-only transaction on that SAME connection before any DDL.
+              const { inspectRuntimeAclBaseline, runtimeAclBackupReference } =
+                await import('../../packages/database/src/runtime-acl-baseline.mjs');
+              await migrationClient.query(
+                'BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY',
+              );
+              let currentAcl;
+              try {
+                await migrationClient.query('SET LOCAL search_path = pg_catalog, pg_temp');
+                await migrationClient.query("SET LOCAL statement_timeout = '30s'");
+                await migrationClient.query("SET LOCAL lock_timeout = '5s'");
+                await migrationClient.query(
+                  "SET LOCAL idle_in_transaction_session_timeout = '45s'",
+                );
+                currentAcl = await inspectRuntimeAclBaseline(migrationClient, {
+                  expectedDatabase: policy.database,
+                  expectedUser: policy.user,
+                  expectedPostgresMajor: options.expectedPostgresMajor,
+                  backupReference: runtimeAclBackupReference(env.MAINTENANCE_BACKUP_ID),
+                });
+              } finally {
+                await migrationClient.query('ROLLBACK');
+              }
+              requireGate(
+                currentAcl.fingerprint === context.aclFingerprint,
+                'migration-sequence-acl-drift',
+              );
+              context.checkApproval();
+            }
           }
         : undefined,
     });
@@ -1940,10 +2016,83 @@ async function executeOperation(env, { operation, approval }) {
   });
 }
 
+class MaintenanceSequenceError extends Error {
+  constructor(cause, phase, migrationMayHaveCommitted) {
+    super('Maintenance sequence stopped', { cause });
+    this.phase = phase;
+    this.migrationMayHaveCommitted = migrationMayHaveCommitted;
+  }
+}
+
+// Keep one original run-bound approval throughout. Child operations cannot
+// change its operation/run/scope, manufacture recovery evidence, or retry DDL.
+async function executeMigrationSequence(env, request, execute, context, report) {
+  const preparing = env.MAINTENANCE_SEQUENCE_PHASE === 'prepare';
+  let phase = preparing ? 'preflight' : 'acl-evidence';
+  let migrationMayHaveCommitted = false;
+  const stages = [];
+  const run = async (operation, extra = {}) => {
+    phase = operation;
+    await context.checkFreshness();
+    report({ operation: migrationSequence, phase, status: 'started' });
+    if (operation === 'migrate') migrationMayHaveCommitted = true;
+    return execute(env, { operation, approval: request.approval }, { ...context, ...extra });
+  };
+  const completed = (result) => {
+    const summary = publicMaintenanceResult(phase, result);
+    stages.push(summary);
+    report({ ...summary, operation: migrationSequence, phase });
+  };
+  try {
+    if (preparing) {
+      const preflight = await run('preflight');
+      requireGate(
+        preflight?.pendingMigrations?.length === 1 &&
+          preflight.pendingMigrations[0] === '0026_automation_tasks.sql' &&
+          ['manifestFingerprint', 'planFingerprint', 'targetFingerprint', 'backupIdSha256'].every(
+            (key) => digest.test(preflight[key] ?? '') && preflight[key] === request.approval[key],
+          ),
+        'migration-sequence-plan-mismatch',
+      );
+      completed(preflight);
+      const capture = await run('acl-capture');
+      requireGate(digest.test(capture?.fingerprint ?? ''), 'migration-sequence-acl-required');
+      completed(capture);
+      // GitHub must durably archive the file before the next runner invocation.
+      // Both invocations remain in the SAME protected job and original approval.
+      return {
+        ...publicMaintenanceResult(migrationSequence, preflight),
+        status: 'prepared',
+        aclFingerprint: capture.fingerprint,
+        verificationCompleted: false,
+        stages,
+      };
+    }
+    const capture = await run('acl-evidence');
+    requireGate(digest.test(capture?.fingerprint ?? ''), 'migration-sequence-acl-required');
+    completed(capture);
+    const migration = await run('migrate', { aclFingerprint: capture.fingerprint });
+    completed(migration);
+    // verify uses fresh connections after runMigrations has closed its client.
+    const verification = await run('verify');
+    requireGate(verification?.migrationCount === 27, 'migration-sequence-verification-required');
+    completed(verification);
+    return {
+      ...publicMaintenanceResult(migrationSequence, { ...request.approval, ...verification }),
+      pendingMigrationCount: 0,
+      aclFingerprint: capture.fingerprint,
+      verificationCompleted: true,
+      stages,
+    };
+  } catch (error) {
+    throw new MaintenanceSequenceError(error, phase, migrationMayHaveCommitted);
+  }
+}
+
 export async function runMaintenance(
   env,
   execute = executeOperation,
-  { fetchImpl = globalThis.fetch, now = Date.now } = {},
+  { fetchImpl = globalThis.fetch, now = Date.now, report = () => {} } = {},
 ) {
   const snapshot = { ...env };
   validateMaintenanceRequest(snapshot, now());
@@ -1959,10 +2108,22 @@ export async function runMaintenance(
     await verifyMaintenanceFreshness(snapshot, { fetchImpl });
     // A short-lived write approval may expire during the GitHub requests.
     const request = validateMaintenanceRequest(executionEnv, now());
-    const summary = publicMaintenanceResult(
-      request.operation,
-      await execute(executionEnv, request),
-    );
+    const checkApproval = () => validateMaintenanceRequest(executionEnv, now());
+    const checkFreshness = async () => {
+      checkApproval();
+      await verifyMaintenanceFreshness(snapshot, { fetchImpl });
+      checkApproval();
+    };
+    const summary =
+      request.operation === migrationSequence
+        ? await executeMigrationSequence(
+            executionEnv,
+            request,
+            execute,
+            { checkApproval, checkFreshness },
+            report,
+          )
+        : publicMaintenanceResult(request.operation, await execute(executionEnv, request));
     Object.assign(summary, publicRecoveryAcceptance(request, snapshot.MAINTENANCE_APPROVAL));
     return summary;
   } finally {
@@ -1972,7 +2133,18 @@ export async function runMaintenance(
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : undefined;
 if (invokedPath === import.meta.url) {
-  runMaintenance(process.env)
+  const log = console.log.bind(console);
+  runMaintenance(process.env, undefined, {
+    report: (summary) => {
+      if (summary.phase === 'acl-capture' && summary.status === 'succeeded') {
+        requireGate(Boolean(process.env.GITHUB_OUTPUT), 'migration-sequence-output-required');
+        // Fixed non-secret flag only, emitted after both captures are validated
+        // and the exclusive evidence file is safely written, before any DDL.
+        appendFileSync(process.env.GITHUB_OUTPUT, 'acl_captured=true\n', 'utf8');
+      }
+      log(JSON.stringify(summary));
+    },
+  })
     .then((summary) => console.log(JSON.stringify(summary)))
     .catch((error) => {
       console.error(JSON.stringify(publicMaintenanceFailure(error)));

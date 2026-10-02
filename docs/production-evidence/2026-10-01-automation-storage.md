@@ -26,8 +26,12 @@
 - 当前提交的只读 [preflight 36889436427](https://github.com/hzense/tech-intelligence-hub/actions/runs/36889436427) 经审批成功，输出 `pendingMigrationCount=1`，未执行迁移或授权。
 - 新增独立 `accept-unverified-automation-storage` 维护审批范围：固定 27 个迁移文件的名称及校验值，只允许待迁移集合为 `0026_automation_tasks.sql`；绑定数据库目标、新备份引用、提交、运行／attempt、过期时间和 ACL 基线，执行锁内重查真实连接及实际执行文件。旧 0025 和更早范围保持不变。
 - 本地数据库包 2,366 项测试通过、688 项环境相关跳过，工作流合约及修改文件 ESLint 通过。测试使用合成维护依赖，不是生产迁移证据。
-- 用户已确认维护期间无其他生产 DDL、角色授权或发布。Neon 新备份 `pre-automation-storage-0026-2026-10-01`（`br-flat-credit-av3a5rgj`）已从 main 复制数据和结构，控制台确认成功，保留至 `2026-10-08T16:18:26Z`；此记录不是恢复演练证明。
-- 尚待新代码 CI／合并后的预检指纹、当次 ACL 采集／迁移审批、独立 verify、角色与凭据配置、禁用执行状态下的保存验收。不得复用旧维护审批或填写虚构备份／恢复证据。
+- 用户已确认维护期间无其他生产 DDL、角色授权或发布。Neon 新备份已从 main 复制数据和结构，控制台确认成功，保留至 `2026-10-08T16:18:26Z`；公开记录仅保留备份引用的 SHA-256：`62cc5eecaaf3b2f581c1a6c49cab47d52220d1dadb7d850c6f59ca1120c111f6`。此记录不是恢复演练证明。
+- PR #184 已合并至 `c785bd86979cea614d4105ce09b23f873af53eae`，[main CI 36891974435](https://github.com/hzense/tech-intelligence-hub/actions/runs/36891974435) 成功。2026-10-02 核对远端 main 未变化。
+- 用户审批后的 [preflight 36893011427](https://github.com/hzense/tech-intelligence-hub/actions/runs/36893011427) 成功，仅待迁移 `0026_automation_tasks.sql`。返回的清单、计划、目标与备份指纹与本地基于固定迁移文件和环境目标的独立计算一致：清单 `cdecb0b08a98525964e4767349e611a9c1de949c64e2ceddb9e3e82bac0200b6`；计划 `29035ab1e7e01e02cb4e0fa96495d3f698762047a1c51426aa43f3b64ccd80e9`；目标 `20fcbd27026b783fcc1cadf1a39a388925d9c73057baa71c7a5f6ba1c1a644e0`。
+- 只读 [ACL capture 36981656993](https://github.com/hzense/tech-intelligence-hub/actions/runs/36981656993) 已经环境审批成功执行，于 `2026-10-02T08:03:18Z` 完成。回执为 `status=succeeded`，ACL 指纹 `a81b8dbf69eb1803aecfdb3346962eb0848907c73011dc5b6e919a8c97d6fdbb`，目标与备份摘要匹配上述预检，`recoveryVerified=false`。附件 `acl-evidence-36981656993-1` 已成功归档（36,542 字节，回读时未过期）。此处依据运行回执及附件元数据，不声称已独立下载复核附件内容或恢复演练通过；本次未执行迁移、授权或 AI 调用。
+- 按用户后续要求，新增同一受保护 job 的一次审批入口：prepare 预检／双采集 → 远端归档成功 → apply 迁移／独立核验。它必须使用新提交及当次绑定的完整审批，并在同一 run 重新采集 ACL；不复用上述单步运行的批准或基线充当新组合运行的证据。实现与本地验证见[单次审批维护说明](../ONLINE_MAINTENANCE.md#0026-单次审批维护)。
+- 尚待新入口上线后的当次迁移审批、迁移／独立 verify、角色与凭据配置、禁用执行状态下的保存验收。不得复用旧维护审批或填写虚构备份／恢复证据。
 
 1. 保留当前生产备份；重新核对当前 main、CI、待迁移及维护窗口。生产写入使用受保护维护流程与当次绑定的审批，旧审批不得复用。未完成恢复演练时须明确接受该风险。
 2. 经单独授权执行待迁移，完成完整 Schema 只读核验，再按审核脚本创建及配置最小权限角色。新密码由用户在安全界面设置并保管。

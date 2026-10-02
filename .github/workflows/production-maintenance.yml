@@ -15,6 +15,7 @@ on:
           - search-apply
           - runtime-preflight
           - acl-capture
+          - migrate-and-verify
 
 permissions:
   contents: read
@@ -59,14 +60,16 @@ jobs:
           conclusion="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&head_sha=$GITHUB_SHA&per_page=1" --jq '.workflow_runs[0].conclusion')"
           test "$conclusion" = success
       - name: Execute bounded maintenance
+        id: maintenance
         working-directory: apps/web
         env:
           GH_TOKEN: ${{ github.token }}
           MAINTENANCE_OPERATION: ${{ inputs.operation }}
+          MAINTENANCE_SEQUENCE_PHASE: ${{ inputs.operation == 'migrate-and-verify' && 'prepare' || '' }}
           DATABASE_DIRECT_URL: ${{ inputs.operation != 'runtime-preflight' && secrets.DATABASE_DIRECT_URL || '' }}
           HZENSE_RUNTIME_DATABASE_URL: ${{ inputs.operation == 'runtime-preflight' && secrets.HZENSE_RUNTIME_DATABASE_URL || '' }}
-          MAINTENANCE_APPROVAL: ${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture') && secrets.MAINTENANCE_APPROVAL || '' }}
-          MAINTENANCE_BACKUP_ID: ${{ (inputs.operation == 'preflight' || inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture') && secrets.MAINTENANCE_BACKUP_ID || '' }}
+          MAINTENANCE_APPROVAL: ${{ (inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture' || inputs.operation == 'migrate-and-verify') && secrets.MAINTENANCE_APPROVAL || '' }}
+          MAINTENANCE_BACKUP_ID: ${{ (inputs.operation == 'preflight' || inputs.operation == 'migrate' || inputs.operation == 'search-apply' || inputs.operation == 'acl-capture' || inputs.operation == 'migrate-and-verify') && secrets.MAINTENANCE_BACKUP_ID || '' }}
           HZENSE_DATABASE_EXPECTED_HOST: ${{ vars.HZENSE_DATABASE_EXPECTED_HOST }}
           HZENSE_DATABASE_EXPECTED_PORT: ${{ vars.HZENSE_DATABASE_EXPECTED_PORT }}
           HZENSE_DATABASE_EXPECTED_NAME: ${{ vars.HZENSE_DATABASE_EXPECTED_NAME }}
@@ -81,10 +84,29 @@ jobs:
           HZENSE_RUNTIME_EXPECTED_CONNECTION_LIMIT: '20'
         run: node ../../.github/scripts/production-maintenance.mjs
       - name: Archive approved public ACL evidence
-        if: success() && inputs.operation == 'acl-capture'
+        id: archive
+        if: always() && ((success() && inputs.operation == 'acl-capture') || (inputs.operation == 'migrate-and-verify' && steps.maintenance.outputs.acl_captured == 'true'))
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: acl-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/hzense-acl-evidence.json
           if-no-files-found: error
           retention-days: 30
+      - name: Apply and independently verify approved migration
+        if: success() && inputs.operation == 'migrate-and-verify'
+        working-directory: apps/web
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAINTENANCE_OPERATION: ${{ inputs.operation }}
+          MAINTENANCE_SEQUENCE_PHASE: apply
+          MAINTENANCE_ACL_ARCHIVE_CONFIRMED: ${{ steps.archive.outcome }}
+          DATABASE_DIRECT_URL: ${{ secrets.DATABASE_DIRECT_URL }}
+          MAINTENANCE_APPROVAL: ${{ secrets.MAINTENANCE_APPROVAL }}
+          MAINTENANCE_BACKUP_ID: ${{ secrets.MAINTENANCE_BACKUP_ID }}
+          HZENSE_DATABASE_EXPECTED_HOST: ${{ vars.HZENSE_DATABASE_EXPECTED_HOST }}
+          HZENSE_DATABASE_EXPECTED_PORT: ${{ vars.HZENSE_DATABASE_EXPECTED_PORT }}
+          HZENSE_DATABASE_EXPECTED_NAME: ${{ vars.HZENSE_DATABASE_EXPECTED_NAME }}
+          HZENSE_DATABASE_EXPECTED_USER: ${{ vars.HZENSE_DATABASE_EXPECTED_USER }}
+          HZENSE_DATABASE_EXPECTED_PGVECTOR_VERSION: ${{ vars.HZENSE_DATABASE_EXPECTED_PGVECTOR_VERSION }}
+          HZENSE_DATABASE_EXPECTED_POSTGRES_MAJOR: '18'
+        run: node ../../.github/scripts/production-maintenance.mjs

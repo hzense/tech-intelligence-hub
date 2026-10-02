@@ -6,6 +6,11 @@
 
 ## 当前落地状态
 
+- 2026-10-02 新增 `migrate-and-verify` 单次审批流程，本批为本地修改，未提交／未上线。
+  仅面向 `0026` 自动任务配置存储批次，在一个受保护 job 内顺序完成预检、ACL 双采集、
+  迁移和独立结构核验；原有独立入口及其审批隔离保留。详见下方
+  [0026 单次审批维护](#0026-单次审批维护)。这不表示生产配置已可保存。
+
 - 2026-09-10 操作者决定本轮不再验证恢复能力，并同意新增显式风险接受审批路径。
   写操作路径已随 PR #56 合并为 `9220df0`，对应 main CI 与受保护只读 preflight 成功。
   本次补齐前置 ACL 只读采集路径，须经 PR 审核、合并及 main CI 成功才可使用，
@@ -71,20 +76,123 @@
    不输出完整 catalog、文档 ID、URL、角色详情、备份 ID、原始错误或堆栈。
    失败时在 Neon 受控页面继续诊断，不开启原始数据库调试日志。
 
-| operation           | 执行内容                                                 | 写数据库                 |
-| ------------------- | -------------------------------------------------------- | ------------------------ |
-| `preflight`         | direct 目标、TLS、版本和迁移历史检查                     | 否                       |
-| `migrate`           | preflight → 校验清单中的迁移 → schema verify             | 是，需恢复审核           |
-| `verify`            | preflight + 完整 schema 合约检查                         | 否                       |
-| `search-dry-run`    | 检查迁移/schema 后计算回填计划，回滚事务                 | 不提交变更               |
-| `search-apply`      | 加锁后重核投影/计划指纹，回填并验证无残留漂移            | 是，需恢复及计划审核     |
-| `runtime-preflight` | Runtime 自身凭据的 TLS、跨库与最小权限检查               | 否                       |
-| `acl-capture`       | 两个独立只读连接采集 ACL，一致后生成已授权的公开证据附件 | 否，需备份/冻结/公开授权 |
+| operation            | 执行内容                                                  | 写数据库                 |
+| -------------------- | --------------------------------------------------------- | ------------------------ |
+| `preflight`          | direct 目标、TLS、版本和迁移历史检查                      | 否                       |
+| `migrate`            | preflight → 校验清单中的迁移 → schema verify              | 是，需恢复审核           |
+| `verify`             | preflight + 完整 schema 合约检查                          | 否                       |
+| `search-dry-run`     | 检查迁移/schema 后计算回填计划，回滚事务                  | 不提交变更               |
+| `search-apply`       | 加锁后重核投影/计划指纹，回填并验证无残留漂移             | 是，需恢复及计划审核     |
+| `runtime-preflight`  | Runtime 自身凭据的 TLS、跨库与最小权限检查                | 否                       |
+| `acl-capture`        | 两个独立只读连接采集 ACL，一致后生成已授权的公开证据附件  | 否，需备份/冻结/公开授权 |
+| `migrate-and-verify` | 0026 专用：preflight → ACL 双采集 → migrate → 独立 verify | 是，需一次完整范围审批   |
 
 所有维护使用固定 concurrency group，不会自动取消正在执行的维护。
 GitHub concurrency 不是持久 FIFO 队列，不要同时提交多次请求。
 不要在迁移中手动 Cancel；多条迁移可能已部分提交，中断后先只读核验再决定重跑。
 没有任意 SQL、任意 shell、任意 ref、自动 ACL normalization 或自动切换搜索的入口。
+
+## 0026 单次审批维护
+
+本节描述 2026-10-02 新增的本地实现，须经 PR、合并及对应 main CI 成功后才可在线使用。
+`operation=migrate-and-verify` 将本次配置存储维护合并为一个
+`production-maintenance` 受保护 job，只需针对这次运行点击一次 **Review deployments**。
+该批准覆盖下面的完整顺序，不是关闭环境审批或自动批准后续运行：
+
+1. **runner prepare：只读 preflight 与 ACL 双采集**：校验生产目标、TLS、迁移历史，
+   以及已批准的完整清单和待迁移计划；再用两个独立连接采集权限基线，一致才安全保存
+   脱敏证据。禁止预填或借用另一个 run 的 ACL 指纹。此时 `status=prepared`，不是整个
+   维护流程已完成。
+2. **upload-artifact：先完成远端归档**：只有真实证据安全落盘后才上传固定附件。
+   上传必须成功才能进入 apply；上传失败不执行 DDL。
+3. **runner apply：migrate**：读取绑定同一 run／SHA／attempt 和原始审批摘要的证据，
+   沿用原有迁移校验，在迁移锁内重新核对待迁移计划及刚采集的 ACL 基线，不一致立即
+   停止。只有本次批准的 `0026_automation_tasks.sql` 可以进入迁移计划。
+4. **runner apply：独立 verify**：迁移成功后再进行独立的只读完整 Schema 核验，
+   不以迁移步骤返回成功代替完整核验。最终 apply 完成才报告 `status=succeeded`。
+   任一步失败即停止，不执行剩余阶段。
+
+prepare、附件上传与 apply 都在同一个已批准的受保护 job 内，阶段由工作流固定，
+不由操作者填写，也不需要额外 preflight 或阶段审批。
+
+此入口仅支持 `recoveryPolicy: "accept-unverified-automation-storage"` 与
+`riskAcceptance.scope: "automation-storage-production-launch"`，冻结完整 `0000–0026`
+迁移清单；不是通用批量迁移开关，不能借用 FTS-1、AI 配置或其他旧批次的风险授权。
+新备份、真实保留期限、目标和计划复核、维护期间 DDL／授权／发布冻结、main 与最新 CI
+检查、审批有效期，以及恢复尚未演练的明确风险声明都保留。
+
+### 审批绑定与准备
+
+创建新 run 后、批准 Environment 前，更新受保护的 `MAINTENANCE_APPROVAL`。
+它必须绑定此次 `operation`、完整 `sha`、`runId`、`runAttempt`、`expiresAt`，以及
+备份 ID 摘要、备份期限、`targetFingerprint`、`manifestFingerprint` 和 `planFingerprint`。
+这些指纹可以在批准前纯计算生成：使用当前 main 固定的 `0026` 迁移计划与完整清单、
+经操作者独立确认的预期生产目标及新备份，通过 `automationTargetBinding` 和
+`automationMigrationPlan` 计算，不连接生产数据库。已有同目标、同备份、同迁移清单的
+脱敏预检结果可辅助复核，**不必为取得同一计划再单独发起一次 preflight 审批**。
+预期目标不能从待检连接串自动推导，备份存在性与期限仍须人工核对；占位值不能通过门禁。
+获准组合 run 的第一阶段才读取实时连接与 pending 状态，必须与明确批准的计划完全一致
+才能进入后续采集和迁移，纯计算计划不作为实时数据库状态证明。
+
+与独立 `migrate` 入口不同，新入口**不填写 `aclFingerprint`**，而是明确选择
+`aclEvidenceMode: "capture-in-run"`，同意在这个已批准运行内生成真实 ACL 双采集证据。
+`publicArchiveApproved: true` 和 `archiveRepository: "hzense/tech-intelligence-hub"`
+均为必填声明；脱敏附件只包含已授权的权限目录材料，不输出密码、连接串、Token、
+连接主机／端口、原始备份 ID 或业务记录。
+
+只有真实双采集证据安全落盘成功后，prepare 才设置固定的附件就绪 output flag；
+上传步骤只读取固定证据文件，远端归档成功是 apply 执行的前提。未成功落盘时不发布
+就绪标记，也不以其他文件或伪造附件补位。进入迁移前已经完成远端归档，即使后续
+migrate 或独立 verify 失败，真实脱敏附件仍保留用于核查。
+
+审批模板如下；占位符与 `false` 用来提示需要逐项复核，**模板本身不可执行**：
+
+```json
+{
+  "operation": "migrate-and-verify",
+  "sha": "本次main完整SHA",
+  "runId": "本次运行编号",
+  "runAttempt": "本次尝试编号",
+  "expiresAt": "未来最多24小时的UTC时间",
+  "backupExpiresAt": "晚于审批到期的真实备份过期时间",
+  "backupIdSha256": "受保护MAINTENANCE_BACKUP_ID原始文本的SHA256",
+  "targetFingerprint": "本次目标与备份绑定指纹",
+  "manifestFingerprint": "当前完整迁移清单指纹",
+  "planFingerprint": "本次0026待迁移计划指纹",
+  "backupVerified": false,
+  "backupPresenceReviewed": false,
+  "restoreRehearsed": false,
+  "aclRecoveryReviewed": false,
+  "ddlFreezeConfirmed": false,
+  "recoveryPolicy": "accept-unverified-automation-storage",
+  "riskAcceptance": {
+    "scope": "automation-storage-production-launch",
+    "accepted": false,
+    "historicalAclGapAccepted": false,
+    "acknowledgement": "recovery-unverified-data-loss-or-prolonged-outage-accepted"
+  },
+  "aclEvidenceMode": "capture-in-run",
+  "publicArchiveApproved": false,
+  "archiveRepository": "hzense/tech-intelligence-hub"
+}
+```
+
+审核真实备份、冻结状态、风险接受和公开归档范围后，才将相应确认项设为 `true`。
+`backupVerified`、`restoreRehearsed`、`aclRecoveryReviewed` 仍保持 `false`；不能添加
+伪造恢复证据。备份不过期时沿用下方二选一规则，不同时填写期限与不过期声明。
+旧 `preflight`、`acl-capture`、`migrate`、`verify` 入口仍可独立使用，但它们的旧批准
+不能用于新组合操作；改变 SHA、运行、尝试编号或审批过期后，都需要新的完整批准。
+
+### 失败处置与范围
+
+本流程不会自动重试、自动回滚或自动执行恢复 SQL。**迁移阶段开始后的失败，可能已提交
+部分或全部迁移**，包括随后独立 verify 失败的情况；先只读核对迁移记录和实际结构，不能
+把失败结论理解为“数据库未变更”，也不能直接重跑。需要重新执行时，准备新的计划与
+run-bound 审批，再经新的 Environment 人工批准。
+
+一次审批只覆盖这次数据库维护，不包含角色创建／授权、密码设置、Vercel 连接配置或
+重新部署，也不启用采集、定时计划、AI 调用及专题公开读取。迁移核验成功后仍须单独处理
+最小角色与连接，并验收“保存未启用配置、刷新读回、不创建任务”，才可称为配置存储启用。
 
 ## 执行入口复核边界
 
