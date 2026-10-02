@@ -9,6 +9,10 @@ import {
 import { openRouterOptions } from './ai-model-compatibility.ts';
 import { readApiCostMicrousd } from './ai-response-cost.ts';
 import {
+  readDiscoveryDiagnostics,
+  type DiscoveryDiagnostics,
+} from './source-discovery-diagnostics.ts';
+import {
   discoveryOutputTokens,
   discoverySearchLimit,
   discoveryRules,
@@ -20,11 +24,18 @@ export class DiscoveryFailure extends Error {
   readonly code: string;
   readonly called: boolean;
   readonly costMicrousd: number | null;
-  constructor(code: string, called = false, costMicrousd: number | null = null) {
+  readonly diagnostics: DiscoveryDiagnostics | undefined;
+  constructor(
+    code: string,
+    called = false,
+    costMicrousd: number | null = null,
+    diagnostics?: DiscoveryDiagnostics,
+  ) {
     super(code);
     this.code = code;
     this.called = called;
     this.costMicrousd = costMicrousd;
+    this.diagnostics = diagnostics;
   }
 }
 export function assertDiscoveryConnection(access: GenerationAccess) {
@@ -68,6 +79,7 @@ export function createDiscoveryInvoker(
     const timer = setTimeout(() => controller.abort(), 180000);
     let cost: number | null = null,
       called = false;
+    let diagnostics: DiscoveryDiagnostics | undefined;
     try {
       const { connection, profile, apiKey } = input.access;
       const transport = createPinnedAiFetch(
@@ -123,6 +135,9 @@ export function createDiscoveryInvoker(
               },
             ],
             max_tool_calls: discoverySearchLimit,
+            // Supplying a server tool alone allows zero searches. Require its use,
+            // retaining both loop limits (this does not promise exactly one search).
+            tool_choice: 'required',
             max_tokens: discoveryOutputTokens,
             stream: false,
             ...options,
@@ -130,14 +145,12 @@ export function createDiscoveryInvoker(
         },
       );
       cost = await readApiCostMicrousd(response, connection.base_url);
-      const result = parseDiscoveryResponse(
-        await response.json(),
-        input.config,
-        window,
-        input.knownUrls,
-      );
+      const body: unknown = await response.json();
+      diagnostics = readDiscoveryDiagnostics(body);
+      const result = parseDiscoveryResponse(body, input.config, window, input.knownUrls);
       return {
         result,
+        diagnostics,
         costMicrousd: cost ?? discoveryEstimate(input.access),
         costSource: cost === null ? ('estimate' as const) : ('provider' as const),
       };
@@ -147,6 +160,8 @@ export function createDiscoveryInvoker(
         [
           'discovery_search_unconfirmed',
           'discovery_invalid_output',
+          'discovery_provider_error',
+          'discovery_output_truncated',
           'capability_failed',
           'invalid_model',
           'provider_rejected',
@@ -155,7 +170,7 @@ export function createDiscoveryInvoker(
         ].includes(error.message)
           ? error.message
           : 'discovery_unavailable';
-      throw new DiscoveryFailure(code, called, cost);
+      throw new DiscoveryFailure(code, called, cost, diagnostics);
     } finally {
       clearTimeout(timer);
       controller.abort();

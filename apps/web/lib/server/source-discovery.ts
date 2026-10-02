@@ -61,6 +61,7 @@ export async function discoverSources(owner: string, id: string): Promise<string
       phase: 'sources_discovered',
       result: {
         discovery: completion.result,
+        discoveryDiagnostics: completion.diagnostics,
         discoveryCostMicrousd: completion.costMicrousd,
         discoveryCostSource: completion.costSource,
       },
@@ -77,6 +78,8 @@ export async function discoverSources(owner: string, id: string): Promise<string
       [
         'discovery_search_unconfirmed',
         'discovery_invalid_output',
+        'discovery_provider_error',
+        'discovery_output_truncated',
         'discovery_connection_unsupported',
         'capability_failed',
         'invalid_model',
@@ -98,10 +101,13 @@ export async function discoverSources(owner: string, id: string): Promise<string
       result: receipt
         ? {
             discovery: receipt.result,
+            discoveryDiagnostics: receipt.diagnostics,
             discoveryCostMicrousd: receipt.costMicrousd,
             discoveryCostSource: receipt.costSource,
           }
-        : {},
+        : error instanceof DiscoveryFailure && error.diagnostics
+          ? { discoveryDiagnostics: error.diagnostics }
+          : {},
       status: called && cost === null ? 'unknown' : 'failed',
       errorCode: code,
       ...(cost !== null

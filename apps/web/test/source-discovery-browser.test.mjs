@@ -299,6 +299,52 @@ test(
         posts.some((post) => ['trigger', 'publish'].includes(post.action)),
         false,
       );
+      // Failed discovery diagnostics are private structural readbacks, not a retry action.
+      delete run.generationProgress;
+      run.status = 'failed';
+      run.phase = 'discovery_failed';
+      run.error_code = 'discovery_search_unconfirmed';
+      run.charged_microusd = 64200;
+      run.result = {
+        discoveryDiagnostics: {
+          version: 1,
+          responseId: 'gen-1790970223-AbCd01234567',
+          searchRequests: null,
+          searchCountStatus: 'missing',
+          finishReason: 'stop',
+          choiceCount: 1,
+          annotationCount: 0,
+          providerError: false,
+          providerErrorCode: null,
+          rawBody: 'must-not-display-private-body',
+        },
+      };
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByRole('cell', { name: '采集失败', exact: false })).toBeVisible();
+      await expect(page.getByText('资料或候选登记未完成', { exact: false })).toHaveCount(0);
+      await page.getByText('查看检索诊断（脱敏）', { exact: true }).click();
+      await expect(page.getByText('搜索回执：供应商未返回搜索次数', { exact: true })).toBeVisible();
+      await expect(
+        page.getByText('供应商响应 ID：gen-1790970223-AbCd01234567', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('cell', { name: '$0.0642 provider', exact: false }),
+      ).toBeVisible();
+      await expect(page.getByText('must-not-display-private-body', { exact: false })).toHaveCount(
+        0,
+      );
+      run.error_code = 'discovery_output_truncated';
+      run.result.discoveryDiagnostics.finishReason = 'length';
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByText('检索输出达到长度上限', { exact: false })).toBeVisible();
+      await expect(page.getByText('结束原因：length', { exact: true })).toBeVisible();
+      run.error_code = 'discovery_provider_error';
+      run.result.discoveryDiagnostics.providerError = true;
+      run.result.discoveryDiagnostics.providerErrorCode = 429;
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByText('供应商返回错误结果', { exact: false })).toBeVisible();
+      await expect(page.getByText('供应商错误：429', { exact: true })).toBeVisible();
+      assert.equal(posts.length, 6, 'opening failure diagnostics never creates or retries a task');
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();
