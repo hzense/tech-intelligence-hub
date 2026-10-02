@@ -2,8 +2,10 @@ import console from 'node:console';
 import process from 'node:process';
 import { createHash } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, URL } from 'node:url';
 
 export const maintenanceOperations = Object.freeze([
   'preflight',
@@ -30,6 +32,10 @@ const candidateMaterialsRecoveryPolicy = 'accept-unverified-candidate-materials'
 const materialReviewRecoveryPolicy = 'accept-unverified-material-review';
 const editorialRecoveryPolicy = 'accept-unverified-editorial-publication';
 const automationRecoveryPolicy = 'accept-unverified-automation-storage';
+const automationConfigDeletionRecoveryPolicy = 'accept-unverified-automation-config-deletion';
+const automationConfigDeletionGrant = 'automation-config-deletion-grant';
+const automationConfigDeletionRoleUpgradeSha256 =
+  '3372dcc11b59e8747589cf34f016a030c08f454a961b1d8a96a315e08d01bde2';
 
 // A reviewed one-time rollout boundary, NOT the moving repository manifest.
 // Keep historical checksums pinned too, so approval identifies the complete
@@ -1068,6 +1074,134 @@ export function requireAutomationMigrationScope(preflight, migrations, approval,
   return plan;
 }
 
+// Independent 0027-only boundary. Never extend the frozen 0026 approval scope.
+const automationConfigDeletionManifest = Object.freeze([
+  ...automationManifest,
+  Object.freeze([
+    '0027_automation_config_deletion.sql',
+    'd395736de66cc66868dbe5ef1ac5a3ad6f724c2c8c77476c3e6e111682cf1ee5',
+  ]),
+]);
+
+export function automationConfigDeletionTargetBinding(policy, preflight, backupId) {
+  requireGate(
+    ['host', 'port', 'database', 'user'].every(
+      (key) => typeof policy?.[key] === 'string' && policy[key].length > 0,
+    ) &&
+      preflight?.database === policy.database &&
+      preflight?.user === policy.user,
+    'automation-config-deletion-target-required',
+  );
+  requireGate(
+    typeof backupId === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._:/-]{7,255}$/.test(backupId) &&
+      !/(^|[._:/-])(none|null|todo|pending|placeholder|example|changeme)($|[._:/-])/i.test(
+        backupId,
+      ),
+    'reviewed-backup-required',
+  );
+  return {
+    targetFingerprint: createHash('sha256')
+      .update('hzense/automation-config-deletion-target/v1\0')
+      .update(
+        JSON.stringify([
+          policy.host.toLowerCase(),
+          policy.port,
+          preflight.database,
+          preflight.user,
+        ]),
+      )
+      .digest('hex'),
+    backupIdSha256: createHash('sha256').update(backupId).digest('hex'),
+  };
+}
+
+export function automationConfigDeletionMigrationPlan(pendingMigrations, migrations, binding) {
+  requireGate(
+    Array.isArray(migrations) &&
+      migrations.length === automationConfigDeletionManifest.length &&
+      Array.from(migrations).every(
+        (entry, index) =>
+          entry?.name === automationConfigDeletionManifest[index][0] &&
+          entry?.checksum === automationConfigDeletionManifest[index][1] &&
+          typeof entry?.sql === 'string' &&
+          createHash('sha256').update(entry.sql).digest('hex') ===
+            automationConfigDeletionManifest[index][1],
+      ),
+    'automation-config-deletion-migration-manifest-required',
+  );
+  requireGate(
+    Array.isArray(pendingMigrations) &&
+      pendingMigrations.length === 1 &&
+      pendingMigrations[0] === '0027_automation_config_deletion.sql',
+    'automation-config-deletion-migration-scope-required',
+  );
+  requireGate(
+    digest.test(binding?.targetFingerprint ?? '') && digest.test(binding?.backupIdSha256 ?? ''),
+    'automation-config-deletion-target-required',
+  );
+  const manifestFingerprint = createHash('sha256')
+    .update('hzense/automation-config-deletion-migration-manifest/v1\0')
+    .update(JSON.stringify(automationConfigDeletionManifest))
+    .digest('hex');
+  const { targetFingerprint, backupIdSha256 } = binding;
+  const roleUpgradeSha256 = automationConfigDeletionRoleUpgradeSha256;
+  const planFingerprint = createHash('sha256')
+    .update('hzense/automation-config-deletion-migration-plan/v1\0')
+    .update(
+      JSON.stringify({
+        manifestFingerprint,
+        pendingMigrations,
+        targetFingerprint,
+        backupIdSha256,
+        roleUpgradeSha256,
+      }),
+    )
+    .digest('hex');
+  return {
+    manifestFingerprint,
+    planFingerprint,
+    targetFingerprint,
+    backupIdSha256,
+    roleUpgradeSha256,
+  };
+}
+
+export function requireAutomationConfigDeletionMigrationScope(
+  preflight,
+  migrations,
+  approval,
+  binding,
+) {
+  const plan = automationConfigDeletionMigrationPlan(
+    preflight?.pendingMigrations,
+    migrations,
+    binding,
+  );
+  requireGate(
+    [
+      'manifestFingerprint',
+      'planFingerprint',
+      'targetFingerprint',
+      'backupIdSha256',
+      'roleUpgradeSha256',
+    ].every((key) => approval?.[key] === plan[key]) && approval?.roleUpgradeApproved === true,
+    'automation-config-deletion-migration-plan-mismatch',
+  );
+  return plan;
+}
+
+// Validate the very string sent to PostgreSQL, not a path or an earlier hash.
+// There is no configurable script path or arbitrary-SQL maintenance operation.
+export function automationConfigDeletionRoleUpgradeSql(sql) {
+  requireGate(
+    typeof sql === 'string' &&
+      createHash('sha256').update(sql).digest('hex') === automationConfigDeletionRoleUpgradeSha256,
+    'automation-config-deletion-role-script-mismatch',
+  );
+  return sql;
+}
+
 // Explicit exception, not fabricated evidence of a successful restore. The
 // protected Environment review remains the authority; these are declarations.
 function validateRecoveryPolicy(approval, operation) {
@@ -1085,12 +1219,24 @@ function validateRecoveryPolicy(approval, operation) {
       policy === candidateMaterialsRecoveryPolicy ||
       policy === materialReviewRecoveryPolicy ||
       policy === editorialRecoveryPolicy ||
-      policy === automationRecoveryPolicy,
+      policy === automationRecoveryPolicy ||
+      policy === automationConfigDeletionRecoveryPolicy,
     'unsupported-recovery-policy',
   );
   if (policy === 'verified') {
     requireGate(!Object.hasOwn(approval, 'riskAcceptance'), 'conflicting-recovery-approval');
     return policy;
+  }
+  if (policy === automationConfigDeletionRecoveryPolicy) {
+    requireGate(
+      operation === migrationSequence || operation === 'acl-capture',
+      'automation-config-deletion-operation-required',
+    );
+    requireGate(
+      approval.roleUpgradeApproved === true &&
+        approval.roleUpgradeSha256 === automationConfigDeletionRoleUpgradeSha256,
+      'automation-config-deletion-role-upgrade-approval-required',
+    );
   }
   if (
     [
@@ -1105,36 +1251,40 @@ function validateRecoveryPolicy(approval, operation) {
       materialReviewRecoveryPolicy,
       editorialRecoveryPolicy,
       automationRecoveryPolicy,
+      automationConfigDeletionRecoveryPolicy,
     ].includes(policy)
   ) {
     const prefix =
-      policy === automationRecoveryPolicy
-        ? 'automation-storage'
-        : policy === editorialRecoveryPolicy
-          ? 'editorial-publication'
-          : policy === materialReviewRecoveryPolicy
-            ? 'material-review'
-            : policy === candidateMaterialsRecoveryPolicy
-              ? 'candidate-materials'
-              : policy === candidateEnrichmentRecoveryPolicy
-                ? 'candidate-enrichment'
-                : policy === candidateReviewRecoveryPolicy
-                  ? 'candidate-review'
-                  : policy === generationProgressRecoveryPolicy
-                    ? 'generation-progress'
-                    : policy === taskManagementRecoveryPolicy
-                      ? 'task-management'
-                      : policy === signalGenerationRecoveryPolicy
-                        ? 'signal-generation'
-                        : policy === importTasksRecoveryPolicy
-                          ? 'import-tasks'
-                          : 'ai-config';
+      policy === automationConfigDeletionRecoveryPolicy
+        ? 'automation-config-deletion'
+        : policy === automationRecoveryPolicy
+          ? 'automation-storage'
+          : policy === editorialRecoveryPolicy
+            ? 'editorial-publication'
+            : policy === materialReviewRecoveryPolicy
+              ? 'material-review'
+              : policy === candidateMaterialsRecoveryPolicy
+                ? 'candidate-materials'
+                : policy === candidateEnrichmentRecoveryPolicy
+                  ? 'candidate-enrichment'
+                  : policy === candidateReviewRecoveryPolicy
+                    ? 'candidate-review'
+                    : policy === generationProgressRecoveryPolicy
+                      ? 'generation-progress'
+                      : policy === taskManagementRecoveryPolicy
+                        ? 'task-management'
+                        : policy === signalGenerationRecoveryPolicy
+                          ? 'signal-generation'
+                          : policy === importTasksRecoveryPolicy
+                            ? 'import-tasks'
+                            : 'ai-config';
     if (policy !== aiConfigRecoveryPolicy)
       requireGate(digest.test(approval.targetFingerprint ?? ''), `${prefix}-target-required`);
     requireGate(
       operation === 'migrate' ||
         operation === 'acl-capture' ||
-        (operation === migrationSequence && policy === automationRecoveryPolicy),
+        (operation === migrationSequence &&
+          [automationRecoveryPolicy, automationConfigDeletionRecoveryPolicy].includes(policy)),
       `${prefix}-operation-required`,
     );
     if (operation === 'migrate' || operation === migrationSequence) {
@@ -1155,29 +1305,31 @@ function validateRecoveryPolicy(approval, operation) {
       approval.aclRecoveryReviewed === false &&
       !Object.hasOwn(approval, 'restoreEvidenceFingerprint') &&
       acceptance?.scope ===
-        (policy === automationRecoveryPolicy
-          ? 'automation-storage-production-launch'
-          : policy === editorialRecoveryPolicy
-            ? 'editorial-publication-production-launch'
-            : policy === materialReviewRecoveryPolicy
-              ? 'material-review-production-launch'
-              : policy === candidateMaterialsRecoveryPolicy
-                ? 'candidate-materials-production-launch'
-                : policy === candidateEnrichmentRecoveryPolicy
-                  ? 'candidate-enrichment-production-launch'
-                  : policy === candidateReviewRecoveryPolicy
-                    ? 'candidate-review-production-launch'
-                    : policy === generationProgressRecoveryPolicy
-                      ? 'generation-progress-production-launch'
-                      : policy === taskManagementRecoveryPolicy
-                        ? 'task-management-production-launch'
-                        : policy === signalGenerationRecoveryPolicy
-                          ? 'signal-generation-production-launch'
-                          : policy === importTasksRecoveryPolicy
-                            ? 'import-tasks-production-launch'
-                            : policy === aiConfigRecoveryPolicy
-                              ? 'ai-configuration-production-launch'
-                              : 'fts1-production-launch') &&
+        (policy === automationConfigDeletionRecoveryPolicy
+          ? 'automation-config-deletion-production-launch'
+          : policy === automationRecoveryPolicy
+            ? 'automation-storage-production-launch'
+            : policy === editorialRecoveryPolicy
+              ? 'editorial-publication-production-launch'
+              : policy === materialReviewRecoveryPolicy
+                ? 'material-review-production-launch'
+                : policy === candidateMaterialsRecoveryPolicy
+                  ? 'candidate-materials-production-launch'
+                  : policy === candidateEnrichmentRecoveryPolicy
+                    ? 'candidate-enrichment-production-launch'
+                    : policy === candidateReviewRecoveryPolicy
+                      ? 'candidate-review-production-launch'
+                      : policy === generationProgressRecoveryPolicy
+                        ? 'generation-progress-production-launch'
+                        : policy === taskManagementRecoveryPolicy
+                          ? 'task-management-production-launch'
+                          : policy === signalGenerationRecoveryPolicy
+                            ? 'signal-generation-production-launch'
+                            : policy === importTasksRecoveryPolicy
+                              ? 'import-tasks-production-launch'
+                              : policy === aiConfigRecoveryPolicy
+                                ? 'ai-configuration-production-launch'
+                                : 'fts1-production-launch') &&
       acceptance.accepted === true &&
       acceptance.historicalAclGapAccepted === true &&
       acceptance.acknowledgement === 'recovery-unverified-data-loss-or-prolonged-outage-accepted',
@@ -1257,10 +1409,10 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
   );
   const recoveryPolicy = validateRecoveryPolicy(approval, operation);
   // This is a new explicit authorization, not a way to replay historical
-  // approvals. Only the reviewed 0026 rollout may use the combined entry point.
+  // approvals. Only independently frozen rollout policies use this entry point.
   if (operation === migrationSequence) {
     requireGate(
-      recoveryPolicy === automationRecoveryPolicy &&
+      [automationRecoveryPolicy, automationConfigDeletionRecoveryPolicy].includes(recoveryPolicy) &&
         approval.aclEvidenceMode === 'capture-in-run' &&
         !Object.hasOwn(approval, 'aclFingerprint'),
       'migration-sequence-approval-required',
@@ -1337,6 +1489,7 @@ export function publicRecoveryAcceptance(request, rawApproval) {
       materialReviewRecoveryPolicy,
       editorialRecoveryPolicy,
       automationRecoveryPolicy,
+      automationConfigDeletionRecoveryPolicy,
     ].includes(request.approval?.recoveryPolicy)
   ) {
     return {
@@ -1368,10 +1521,13 @@ export function publicMaintenanceResult(operation, result = {}) {
     'manifestFingerprint',
     'targetFingerprint',
     'backupIdSha256',
+    'roleUpgradeSha256',
   ]) {
     if (typeof result[key] === 'string' && digest.test(result[key])) summary[key] = result[key];
   }
   if (typeof result.committed === 'boolean') summary.committed = result.committed;
+  if (typeof result.roleUpgradeCompleted === 'boolean')
+    summary.roleUpgradeCompleted = result.roleUpgradeCompleted;
   if (Array.isArray(result.pendingMigrations)) {
     summary.pendingMigrationCount = result.pendingMigrations.length;
   }
@@ -1386,6 +1542,9 @@ export function publicMaintenanceFailure(error) {
       phase: error.phase,
       migrationMayHaveCommitted: error.migrationMayHaveCommitted,
       verificationCompleted: false,
+      ...(error.phase === automationConfigDeletionGrant
+        ? { roleUpgradeCompleted: false, roleUpgradeMayHaveCommitted: true }
+        : {}),
     };
   }
   if (error instanceof MaintenanceGateError) return { status: 'blocked', gate: error.gate };
@@ -1465,7 +1624,118 @@ export async function verifyMaintenanceFreshness(env, { fetchImpl = globalThis.f
   await checkHead();
 }
 
+// This is callable only as the final internal stage of the reviewed 0027
+// sequence. Both its SQL and its database/role targets are fixed, not inputs.
+async function executeAutomationConfigDeletionGrant(env, approval, context) {
+  requireGate(
+    approval?.operation === migrationSequence &&
+      approval.recoveryPolicy === automationConfigDeletionRecoveryPolicy &&
+      env.MAINTENANCE_SEQUENCE_PHASE === 'apply' &&
+      context.verificationCompleted === true &&
+      typeof context.checkApproval === 'function' &&
+      typeof context.checkFreshness === 'function',
+    'automation-config-deletion-grant-context-required',
+  );
+  context.checkApproval();
+  const sql = automationConfigDeletionRoleUpgradeSql(
+    await readFile(
+      new URL('../../db/roles/upgrade_automation_config_deletion.sql', import.meta.url),
+      'utf8',
+    ),
+  );
+  const { productionDatabaseOptions, validateConnectionTarget } =
+    await import('../../packages/database/src/connection-policy.mjs');
+  const { inspectDatabasePreflight } = await import('../../packages/database/src/preflight.mjs');
+  const { verifyDatabaseContract } = await import('../../packages/database/src/verify.mjs');
+  const { loadMigrations, verifyMigrationManifest, migrationLockKeys } =
+    await import('../../packages/database/src/migrate.mjs');
+  const options = productionDatabaseOptions(env);
+  const policy = validateConnectionTarget(options);
+  const migrations = await loadMigrations();
+  await verifyMigrationManifest(migrations);
+  const require = createRequire(new URL('../../packages/database/package.json', import.meta.url));
+  const { Client } = require('pg');
+  const client = new Client({
+    connectionString: options.connectionString,
+    application_name: 'hzense-automation-config-deletion-grant',
+    connectionTimeoutMillis: 10_000,
+  });
+  // pg may emit an idle connection error while this session holds the lock and
+  // awaits the independent verifier or GitHub. Do not throw from EventEmitter
+  // callbacks or retain/log its raw error; fail through the normal cleanup path.
+  let connectionFailed = false;
+  client.on('error', () => {
+    connectionFailed = true;
+  });
+  const requireHealthyConnection = () =>
+    requireGate(!connectionFailed, 'automation-config-deletion-grant-connection-failed');
+  let locked = false;
+  try {
+    await client.connect();
+    requireHealthyConnection();
+    await client.query("SET statement_timeout = '30s'");
+    requireHealthyConnection();
+    await client.query("SET idle_in_transaction_session_timeout = '45s'");
+    requireHealthyConnection();
+    const lock = await client.query(
+      'SELECT pg_try_advisory_lock($1, $2) AS locked',
+      migrationLockKeys,
+    );
+    locked = lock.rows[0]?.locked === true;
+    requireHealthyConnection();
+    requireGate(locked, 'automation-config-deletion-grant-lock-required');
+    const current = await inspectDatabasePreflight(client, {
+      ...options,
+      expectedHost: policy.host,
+    });
+    requireHealthyConnection();
+    requireGate(
+      Array.isArray(current.pendingMigrations) && current.pendingMigrations.length === 0,
+      'automation-config-deletion-complete-migrations-required',
+    );
+    // Reconstruct the original approved one-migration plan only after proving
+    // all actual migrations are complete; this does not authorize another DDL.
+    const plan = requireAutomationConfigDeletionMigrationScope(
+      { pendingMigrations: ['0027_automation_config_deletion.sql'] },
+      migrations,
+      approval,
+      automationConfigDeletionTargetBinding(policy, current, env.MAINTENANCE_BACKUP_ID),
+    );
+    requireHealthyConnection();
+    const verification = await verifyDatabaseContract(options);
+    requireHealthyConnection();
+    requireGate(
+      verification.migrationCount === 28 && verification.tableCount === 60,
+      'automation-config-deletion-grant-schema-required',
+    );
+    await context.checkFreshness();
+    requireHealthyConnection();
+    context.checkApproval();
+    // The reviewed SQL has its own BEGIN/COMMIT, same-session transaction lock,
+    // owner check and exact effective/direct 82-to-84 column ACL checks.
+    requireHealthyConnection();
+    await client.query(automationConfigDeletionRoleUpgradeSql(sql));
+    requireHealthyConnection();
+    return { ...verification, ...plan, roleUpgradeCompleted: true };
+  } catch (error) {
+    // Multi-statement errors can leave the SQL's transaction aborted. Never
+    // retry the grant and always roll back using this same client before close.
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    if (locked)
+      await client
+        .query('SELECT pg_advisory_unlock($1, $2)', migrationLockKeys)
+        .catch(() => undefined);
+    // Keep the nonthrowing listener installed throughout shutdown, including
+    // errors emitted after a failed query or while end() is settling.
+    await client.end().catch(() => undefined);
+  }
+}
+
 async function executeOperation(env, { operation, approval }, context = {}) {
+  if (operation === automationConfigDeletionGrant)
+    return executeAutomationConfigDeletionGrant(env, approval, context);
   if (operation === 'acl-evidence') {
     const { readPublicAclEvidence } = await import('./public-acl-evidence.mjs');
     return readPublicAclEvidence(env, { checkApproval: context.checkApproval });
@@ -1484,6 +1754,7 @@ async function executeOperation(env, { operation, approval }, context = {}) {
         materialReviewRecoveryPolicy,
         editorialRecoveryPolicy,
         automationRecoveryPolicy,
+        automationConfigDeletionRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
     ) {
       const { productionDatabaseOptions, validateConnectionTarget } =
@@ -1494,31 +1765,35 @@ async function executeOperation(env, { operation, approval }, context = {}) {
       const progress = approval.recoveryPolicy === generationProgressRecoveryPolicy;
       const taskManagement = approval.recoveryPolicy === taskManagementRecoveryPolicy;
       const candidateReview = approval.recoveryPolicy === candidateReviewRecoveryPolicy;
+      const automationConfigDeletion =
+        approval.recoveryPolicy === automationConfigDeletionRecoveryPolicy;
       const automation = approval.recoveryPolicy === automationRecoveryPolicy;
       const editorial = approval.recoveryPolicy === editorialRecoveryPolicy;
       const materialReview = approval.recoveryPolicy === materialReviewRecoveryPolicy;
       const candidateMaterials = approval.recoveryPolicy === candidateMaterialsRecoveryPolicy;
       const candidateEnrichment = approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy;
       binding = (
-        automation
-          ? automationTargetBinding
-          : editorial
-            ? editorialTargetBinding
-            : materialReview
-              ? materialReviewTargetBinding
-              : candidateMaterials
-                ? candidateMaterialsTargetBinding
-                : candidateEnrichment
-                  ? candidateEnrichmentTargetBinding
-                  : candidateReview
-                    ? candidateReviewTargetBinding
-                    : progress
-                      ? generationProgressTargetBinding
-                      : taskManagement
-                        ? taskManagementTargetBinding
-                        : generation
-                          ? signalGenerationTargetBinding
-                          : importTasksTargetBinding
+        automationConfigDeletion
+          ? automationConfigDeletionTargetBinding
+          : automation
+            ? automationTargetBinding
+            : editorial
+              ? editorialTargetBinding
+              : materialReview
+                ? materialReviewTargetBinding
+                : candidateMaterials
+                  ? candidateMaterialsTargetBinding
+                  : candidateEnrichment
+                    ? candidateEnrichmentTargetBinding
+                    : candidateReview
+                      ? candidateReviewTargetBinding
+                      : progress
+                        ? generationProgressTargetBinding
+                        : taskManagement
+                          ? taskManagementTargetBinding
+                          : generation
+                            ? signalGenerationTargetBinding
+                            : importTasksTargetBinding
       )(
         validateConnectionTarget(options),
         await runDatabasePreflight(options),
@@ -1527,25 +1802,27 @@ async function executeOperation(env, { operation, approval }, context = {}) {
       requireGate(
         binding.targetFingerprint === approval.targetFingerprint &&
           binding.backupIdSha256 === approval.backupIdSha256,
-        automation
-          ? 'automation-storage-target-mismatch'
-          : editorial
-            ? 'editorial-publication-target-mismatch'
-            : materialReview
-              ? 'material-review-target-mismatch'
-              : candidateMaterials
-                ? 'candidate-materials-target-mismatch'
-                : candidateEnrichment
-                  ? 'candidate-enrichment-target-mismatch'
-                  : candidateReview
-                    ? 'candidate-review-target-mismatch'
-                    : progress
-                      ? 'generation-progress-target-mismatch'
-                      : taskManagement
-                        ? 'task-management-target-mismatch'
-                        : generation
-                          ? 'signal-generation-target-mismatch'
-                          : 'import-tasks-target-mismatch',
+        automationConfigDeletion
+          ? 'automation-config-deletion-target-mismatch'
+          : automation
+            ? 'automation-storage-target-mismatch'
+            : editorial
+              ? 'editorial-publication-target-mismatch'
+              : materialReview
+                ? 'material-review-target-mismatch'
+                : candidateMaterials
+                  ? 'candidate-materials-target-mismatch'
+                  : candidateEnrichment
+                    ? 'candidate-enrichment-target-mismatch'
+                    : candidateReview
+                      ? 'candidate-review-target-mismatch'
+                      : progress
+                        ? 'generation-progress-target-mismatch'
+                        : taskManagement
+                          ? 'task-management-target-mismatch'
+                          : generation
+                            ? 'signal-generation-target-mismatch'
+                            : 'import-tasks-target-mismatch',
       );
     }
     const { capturePublicAclEvidence } = await import('./public-acl-evidence.mjs');
@@ -1573,6 +1850,24 @@ async function executeOperation(env, { operation, approval }, context = {}) {
       await import('../../packages/database/src/migrate.mjs');
     const migrations = await loadMigrations();
     await verifyMigrationManifest(migrations);
+    try {
+      automationConfigDeletionRoleUpgradeSql(
+        await readFile(
+          new URL('../../db/roles/upgrade_automation_config_deletion.sql', import.meta.url),
+          'utf8',
+        ),
+      );
+      return {
+        ...preflight,
+        ...automationConfigDeletionMigrationPlan(
+          preflight.pendingMigrations,
+          migrations,
+          automationConfigDeletionTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+        ),
+      };
+    } catch (error) {
+      if (!(error instanceof MaintenanceGateError)) throw error;
+    }
     try {
       return {
         ...preflight,
@@ -1724,106 +2019,118 @@ async function executeOperation(env, { operation, approval }, context = {}) {
           materialReviewRecoveryPolicy,
           editorialRecoveryPolicy,
           automationRecoveryPolicy,
+          automationConfigDeletionRecoveryPolicy,
         ].includes(approval?.recoveryPolicy)
       ) {
         const migrations = await loadMigrations();
         await verifyMigrationManifest(migrations);
         approvedPlan =
-          approval.recoveryPolicy === automationRecoveryPolicy
-            ? requireAutomationMigrationScope(
+          approval.recoveryPolicy === automationConfigDeletionRecoveryPolicy
+            ? requireAutomationConfigDeletionMigrationScope(
                 preflight,
                 migrations,
                 approval,
-                automationTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                automationConfigDeletionTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
               )
-            : approval.recoveryPolicy === editorialRecoveryPolicy
-              ? requireEditorialMigrationScope(
+            : approval.recoveryPolicy === automationRecoveryPolicy
+              ? requireAutomationMigrationScope(
                   preflight,
                   migrations,
                   approval,
-                  editorialTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                  automationTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                 )
-              : approval.recoveryPolicy === materialReviewRecoveryPolicy
-                ? requireMaterialReviewMigrationScope(
+              : approval.recoveryPolicy === editorialRecoveryPolicy
+                ? requireEditorialMigrationScope(
                     preflight,
                     migrations,
                     approval,
-                    materialReviewTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                    editorialTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                   )
-                : approval.recoveryPolicy === candidateMaterialsRecoveryPolicy
-                  ? requireCandidateMaterialsMigrationScope(
+                : approval.recoveryPolicy === materialReviewRecoveryPolicy
+                  ? requireMaterialReviewMigrationScope(
                       preflight,
                       migrations,
                       approval,
-                      candidateMaterialsTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+                      materialReviewTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
                     )
-                  : approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy
-                    ? requireCandidateEnrichmentMigrationScope(
+                  : approval.recoveryPolicy === candidateMaterialsRecoveryPolicy
+                    ? requireCandidateMaterialsMigrationScope(
                         preflight,
                         migrations,
                         approval,
-                        candidateEnrichmentTargetBinding(
+                        candidateMaterialsTargetBinding(
                           policy,
                           preflight,
                           env.MAINTENANCE_BACKUP_ID,
                         ),
                       )
-                    : approval.recoveryPolicy === candidateReviewRecoveryPolicy
-                      ? requireCandidateReviewMigrationScope(
+                    : approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy
+                      ? requireCandidateEnrichmentMigrationScope(
                           preflight,
                           migrations,
                           approval,
-                          candidateReviewTargetBinding(
+                          candidateEnrichmentTargetBinding(
                             policy,
                             preflight,
                             env.MAINTENANCE_BACKUP_ID,
                           ),
                         )
-                      : approval.recoveryPolicy === generationProgressRecoveryPolicy
-                        ? requireGenerationProgressMigrationScope(
+                      : approval.recoveryPolicy === candidateReviewRecoveryPolicy
+                        ? requireCandidateReviewMigrationScope(
                             preflight,
                             migrations,
                             approval,
-                            generationProgressTargetBinding(
+                            candidateReviewTargetBinding(
                               policy,
                               preflight,
                               env.MAINTENANCE_BACKUP_ID,
                             ),
                           )
-                        : approval.recoveryPolicy === taskManagementRecoveryPolicy
-                          ? requireTaskManagementMigrationScope(
+                        : approval.recoveryPolicy === generationProgressRecoveryPolicy
+                          ? requireGenerationProgressMigrationScope(
                               preflight,
                               migrations,
                               approval,
-                              taskManagementTargetBinding(
+                              generationProgressTargetBinding(
                                 policy,
                                 preflight,
                                 env.MAINTENANCE_BACKUP_ID,
                               ),
                             )
-                          : approval.recoveryPolicy === signalGenerationRecoveryPolicy
-                            ? requireSignalGenerationMigrationScope(
+                          : approval.recoveryPolicy === taskManagementRecoveryPolicy
+                            ? requireTaskManagementMigrationScope(
                                 preflight,
                                 migrations,
                                 approval,
-                                signalGenerationTargetBinding(
+                                taskManagementTargetBinding(
                                   policy,
                                   preflight,
                                   env.MAINTENANCE_BACKUP_ID,
                                 ),
                               )
-                            : approval.recoveryPolicy === importTasksRecoveryPolicy
-                              ? requireImportTasksMigrationScope(
+                            : approval.recoveryPolicy === signalGenerationRecoveryPolicy
+                              ? requireSignalGenerationMigrationScope(
                                   preflight,
                                   migrations,
                                   approval,
-                                  importTasksTargetBinding(
+                                  signalGenerationTargetBinding(
                                     policy,
                                     preflight,
                                     env.MAINTENANCE_BACKUP_ID,
                                   ),
                                 )
-                              : requireAiConfigMigrationScope(preflight, migrations, approval);
+                              : approval.recoveryPolicy === importTasksRecoveryPolicy
+                                ? requireImportTasksMigrationScope(
+                                    preflight,
+                                    migrations,
+                                    approval,
+                                    importTasksTargetBinding(
+                                      policy,
+                                      preflight,
+                                      env.MAINTENANCE_BACKUP_ID,
+                                    ),
+                                  )
+                                : requireAiConfigMigrationScope(preflight, migrations, approval);
       }
     }
     await runMigrations({
@@ -1849,6 +2156,7 @@ async function executeOperation(env, { operation, approval }, context = {}) {
         materialReviewRecoveryPolicy,
         editorialRecoveryPolicy,
         automationRecoveryPolicy,
+        automationConfigDeletionRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
         ? async (pendingMigrations, artifact) => {
             if (
@@ -1864,6 +2172,7 @@ async function executeOperation(env, { operation, approval }, context = {}) {
                 materialReviewRecoveryPolicy,
                 editorialRecoveryPolicy,
                 automationRecoveryPolicy,
+                automationConfigDeletionRecoveryPolicy,
               ].includes(approval?.recoveryPolicy)
             ) {
               // The runner freezes this actual execution snapshot before opening
@@ -1880,6 +2189,7 @@ async function executeOperation(env, { operation, approval }, context = {}) {
                   materialReviewRecoveryPolicy,
                   editorialRecoveryPolicy,
                   automationRecoveryPolicy,
+                  automationConfigDeletionRecoveryPolicy,
                 ].includes(approval.recoveryPolicy)
               ) {
                 // Re-read authenticated identity from the very same connection
@@ -1892,6 +2202,8 @@ async function executeOperation(env, { operation, approval }, context = {}) {
                 const progress = approval.recoveryPolicy === generationProgressRecoveryPolicy;
                 const taskManagement = approval.recoveryPolicy === taskManagementRecoveryPolicy;
                 const candidateReview = approval.recoveryPolicy === candidateReviewRecoveryPolicy;
+                const automationConfigDeletion =
+                  approval.recoveryPolicy === automationConfigDeletionRecoveryPolicy;
                 const automation = approval.recoveryPolicy === automationRecoveryPolicy;
                 const editorial = approval.recoveryPolicy === editorialRecoveryPolicy;
                 const materialReview = approval.recoveryPolicy === materialReviewRecoveryPolicy;
@@ -1900,48 +2212,52 @@ async function executeOperation(env, { operation, approval }, context = {}) {
                 const candidateEnrichment =
                   approval.recoveryPolicy === candidateEnrichmentRecoveryPolicy;
                 approvedPlan = (
-                  automation
-                    ? requireAutomationMigrationScope
-                    : editorial
-                      ? requireEditorialMigrationScope
-                      : materialReview
-                        ? requireMaterialReviewMigrationScope
-                        : candidateMaterials
-                          ? requireCandidateMaterialsMigrationScope
-                          : candidateEnrichment
-                            ? requireCandidateEnrichmentMigrationScope
-                            : candidateReview
-                              ? requireCandidateReviewMigrationScope
-                              : progress
-                                ? requireGenerationProgressMigrationScope
-                                : taskManagement
-                                  ? requireTaskManagementMigrationScope
-                                  : generation
-                                    ? requireSignalGenerationMigrationScope
-                                    : requireImportTasksMigrationScope
+                  automationConfigDeletion
+                    ? requireAutomationConfigDeletionMigrationScope
+                    : automation
+                      ? requireAutomationMigrationScope
+                      : editorial
+                        ? requireEditorialMigrationScope
+                        : materialReview
+                          ? requireMaterialReviewMigrationScope
+                          : candidateMaterials
+                            ? requireCandidateMaterialsMigrationScope
+                            : candidateEnrichment
+                              ? requireCandidateEnrichmentMigrationScope
+                              : candidateReview
+                                ? requireCandidateReviewMigrationScope
+                                : progress
+                                  ? requireGenerationProgressMigrationScope
+                                  : taskManagement
+                                    ? requireTaskManagementMigrationScope
+                                    : generation
+                                      ? requireSignalGenerationMigrationScope
+                                      : requireImportTasksMigrationScope
                 )(
                   { ...current, pendingMigrations },
                   artifact?.migrations,
                   approval,
-                  (automation
-                    ? automationTargetBinding
-                    : editorial
-                      ? editorialTargetBinding
-                      : materialReview
-                        ? materialReviewTargetBinding
-                        : candidateMaterials
-                          ? candidateMaterialsTargetBinding
-                          : candidateEnrichment
-                            ? candidateEnrichmentTargetBinding
-                            : candidateReview
-                              ? candidateReviewTargetBinding
-                              : progress
-                                ? generationProgressTargetBinding
-                                : taskManagement
-                                  ? taskManagementTargetBinding
-                                  : generation
-                                    ? signalGenerationTargetBinding
-                                    : importTasksTargetBinding)(
+                  (automationConfigDeletion
+                    ? automationConfigDeletionTargetBinding
+                    : automation
+                      ? automationTargetBinding
+                      : editorial
+                        ? editorialTargetBinding
+                        : materialReview
+                          ? materialReviewTargetBinding
+                          : candidateMaterials
+                            ? candidateMaterialsTargetBinding
+                            : candidateEnrichment
+                              ? candidateEnrichmentTargetBinding
+                              : candidateReview
+                                ? candidateReviewTargetBinding
+                                : progress
+                                  ? generationProgressTargetBinding
+                                  : taskManagement
+                                    ? taskManagementTargetBinding
+                                    : generation
+                                      ? signalGenerationTargetBinding
+                                      : importTasksTargetBinding)(
                     policy,
                     current,
                     env.MAINTENANCE_BACKUP_ID,
@@ -1965,6 +2281,17 @@ async function executeOperation(env, { operation, approval }, context = {}) {
                 'migration-sequence-context-required',
               );
               await context.checkFreshness();
+              if (approval.recoveryPolicy === automationConfigDeletionRecoveryPolicy) {
+                automationConfigDeletionRoleUpgradeSql(
+                  await readFile(
+                    new URL(
+                      '../../db/roles/upgrade_automation_config_deletion.sql',
+                      import.meta.url,
+                    ),
+                    'utf8',
+                  ),
+                );
+              }
               // The session migration lock is already held; use a separate
               // read-only transaction on that SAME connection before any DDL.
               const { inspectRuntimeAclBaseline, runtimeAclBackupReference } =
@@ -2028,6 +2355,7 @@ class MaintenanceSequenceError extends Error {
 // change its operation/run/scope, manufacture recovery evidence, or retry DDL.
 async function executeMigrationSequence(env, request, execute, context, report) {
   const preparing = env.MAINTENANCE_SEQUENCE_PHASE === 'prepare';
+  const deletion = request.approval.recoveryPolicy === automationConfigDeletionRecoveryPolicy;
   let phase = preparing ? 'preflight' : 'acl-evidence';
   let migrationMayHaveCommitted = false;
   const stages = [];
@@ -2048,8 +2376,15 @@ async function executeMigrationSequence(env, request, execute, context, report) 
       const preflight = await run('preflight');
       requireGate(
         preflight?.pendingMigrations?.length === 1 &&
-          preflight.pendingMigrations[0] === '0026_automation_tasks.sql' &&
-          ['manifestFingerprint', 'planFingerprint', 'targetFingerprint', 'backupIdSha256'].every(
+          preflight.pendingMigrations[0] ===
+            (deletion ? '0027_automation_config_deletion.sql' : '0026_automation_tasks.sql') &&
+          [
+            'manifestFingerprint',
+            'planFingerprint',
+            'targetFingerprint',
+            'backupIdSha256',
+            ...(deletion ? ['roleUpgradeSha256'] : []),
+          ].every(
             (key) => digest.test(preflight[key] ?? '') && preflight[key] === request.approval[key],
           ),
         'migration-sequence-plan-mismatch',
@@ -2065,6 +2400,7 @@ async function executeMigrationSequence(env, request, execute, context, report) 
         status: 'prepared',
         aclFingerprint: capture.fingerprint,
         verificationCompleted: false,
+        ...(deletion ? { roleUpgradeCompleted: false } : {}),
         stages,
       };
     }
@@ -2075,13 +2411,27 @@ async function executeMigrationSequence(env, request, execute, context, report) 
     completed(migration);
     // verify uses fresh connections after runMigrations has closed its client.
     const verification = await run('verify');
-    requireGate(verification?.migrationCount === 27, 'migration-sequence-verification-required');
+    requireGate(
+      verification?.migrationCount === (deletion ? 28 : 27) &&
+        (!deletion || verification.tableCount === 60),
+      'migration-sequence-verification-required',
+    );
     completed(verification);
+    if (deletion) {
+      const grant = await run(automationConfigDeletionGrant, { verificationCompleted: true });
+      requireGate(
+        grant?.roleUpgradeCompleted === true &&
+          grant.roleUpgradeSha256 === automationConfigDeletionRoleUpgradeSha256,
+        'automation-config-deletion-role-upgrade-required',
+      );
+      completed(grant);
+    }
     return {
       ...publicMaintenanceResult(migrationSequence, { ...request.approval, ...verification }),
       pendingMigrationCount: 0,
       aclFingerprint: capture.fingerprint,
       verificationCompleted: true,
+      ...(deletion ? { roleUpgradeCompleted: true } : {}),
       stages,
     };
   } catch (error) {

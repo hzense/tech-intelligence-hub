@@ -296,6 +296,54 @@ suite('automation role isolation and publication boundary', () => {
       ),
     ).rejects.toMatchObject({ code: '42501' });
   });
+  it('repeats the exact 0027 grant idempotently without changing configurations or widening authority', async () => {
+    const before = await owner.query(
+      'SELECT id,revision,enabled,deleted_at FROM public.automation_configs ORDER BY id',
+    );
+    const upgrade = await sql('roles/upgrade_automation_config_deletion.sql');
+    await owner.query(upgrade);
+    await owner.query(upgrade);
+    await assertAutomationRole(adminRole, 'admin');
+    await assertAutomationRole(readerRole, 'reader');
+    expect(
+      (
+        await owner.query(
+          'SELECT id,revision,enabled,deleted_at FROM public.automation_configs ORDER BY id',
+        )
+      ).rows,
+    ).toEqual(before.rows);
+    expect(
+      (
+        await owner.query(
+          "SELECT has_column_privilege('hzense_automation_admin','public.automation_configs','deleted_at','SELECT') AS read, has_column_privilege('hzense_automation_admin','public.automation_configs','deleted_at','UPDATE') AS update, has_column_privilege('hzense_automation_admin','public.automation_configs','deleted_at','INSERT') AS insert, has_table_privilege('hzense_automation_admin','public.automation_configs','DELETE') AS delete",
+        )
+      ).rows[0],
+    ).toEqual({ read: true, update: true, insert: false, delete: false });
+  });
+  it('rejects a partial deletion grant rather than silently repairing an unreviewed ACL', async () => {
+    await owner.query(
+      'REVOKE UPDATE(deleted_at) ON public.automation_configs FROM hzense_automation_admin',
+    );
+    try {
+      await expect(
+        owner.query(await sql('roles/upgrade_automation_config_deletion.sql')),
+      ).rejects.toThrow('Automation admin effective column ACL mismatch');
+      await owner.query('ROLLBACK');
+      expect(
+        (
+          await owner.query(
+            "SELECT has_column_privilege('hzense_automation_admin','public.automation_configs','deleted_at','UPDATE') AS update",
+          )
+        ).rows[0].update,
+      ).toBe(false);
+    } finally {
+      await owner.query('ROLLBACK');
+      await owner.query(
+        'GRANT UPDATE(deleted_at) ON public.automation_configs TO hzense_automation_admin',
+      );
+    }
+    await assertAutomationRole(adminRole, 'admin');
+  });
   it('soft deletes once, stops scheduling, hides the configuration, and cannot be revived by stale edits', async () => {
     const operator = 'delete-owner';
     const config = await save(operator, { enabled: true, frequency: 'daily' });
