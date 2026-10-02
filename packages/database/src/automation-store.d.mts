@@ -82,10 +82,12 @@ export function enqueueAutomation(input: {
   pool: unknown;
   owner: string;
   request: TriggerAutomationRequest;
+  beforeEnqueue?: (config: AutomationConfig) => void | Promise<void>;
 }): Promise<{ run: AutomationRun; created: boolean }>;
 export function enqueueDueAutomations(input: {
   pool: unknown;
   limit?: number;
+  kinds?: AutomationConfig['kind'][];
 }): Promise<{ run: AutomationRun; created: boolean }[]>;
 export function claimAutomationRun(input: {
   pool: unknown;

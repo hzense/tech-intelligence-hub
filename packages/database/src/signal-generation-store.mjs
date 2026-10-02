@@ -601,6 +601,50 @@ export async function listSignalGenerations({
     readOnly,
   );
 }
+
+/** Read linked task receipts without expiring leases or exposing private candidate content. */
+export async function readSignalGenerationSummaries({ pool, owner, ids, legacyReadOnly = false }) {
+  ownerId(owner);
+  if (!Array.isArray(ids) || ids.length > 800) fail();
+  const requestedIds = [...new Set(Array.from(ids, uuid))];
+  if (!requestedIds.length) return [];
+  return transaction(
+    pool,
+    async (client) => {
+      const rows = (
+        await client.query(
+          `SELECT id,status,${legacyReadOnly ? 'NULL::text AS progress_phase' : 'progress_phase'},lease_until,
+      CASE WHEN status='completed' AND jsonb_typeof(result->'candidates')='array'
+        THEN jsonb_array_length(result->'candidates') ELSE NULL END AS candidate_count
+      FROM public.signal_generation_runs
+      WHERE owner_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL`,
+          [owner, requestedIds],
+        )
+      ).rows;
+      const now = Date.now();
+      return rows.map((row) => {
+        const leaseUntil =
+          row.lease_until === null ? Number.NaN : new Date(row.lease_until).getTime();
+        const status =
+          row.status === 'running' && (!Number.isFinite(leaseUntil) || leaseUntil <= now)
+            ? 'unknown'
+            : row.status;
+        return {
+          id: row.id,
+          status,
+          progress_phase: row.progress_phase ?? null,
+          candidate_count:
+            status === 'completed' &&
+            Number.isSafeInteger(row.candidate_count) &&
+            row.candidate_count >= 0
+              ? row.candidate_count
+              : null,
+        };
+      });
+    },
+    true,
+  );
+}
 export async function claimSignalGeneration({ pool, owner, id, currentLimits, queuedAt }) {
   object(currentLimits, ['batchLimitMicrousd', 'dailyLimitMicrousd'], 'invalid_configuration');
   integer(currentLimits.batchLimitMicrousd);

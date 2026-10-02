@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import type { AutomationConfig } from '../../../packages/database/src/automation-contract.mjs';
 import type {
@@ -8,6 +8,12 @@ import type {
   AutomationRun,
 } from '../../../packages/database/src/automation-store.mjs';
 import styles from './admin-automation.module.css';
+import {
+  automationGenerationIds,
+  generationSummaryLabel,
+  sourceAutomationLabel,
+  type AutomationGenerationProgress,
+} from '../lib/automation-generation-status';
 
 type Kind = AutomationConfig['kind'];
 type Profile = { id: string; revision: number; name: string; ready: boolean };
@@ -29,7 +35,7 @@ type RunView = Pick<
   | 'charged_microusd'
   | 'cost_source'
   | 'publication_status'
->;
+> & { generationProgress?: AutomationGenerationProgress };
 type Dashboard = { configs: ConfigView[]; runs: RunView[]; configDeletionAvailable: boolean };
 const blank = (kind: Kind): AutomationConfig => ({
   name: '',
@@ -127,7 +133,13 @@ function TopicReport({ result }: { result: Record<string, unknown> }) {
     </div>
   );
 }
-function SourceResult({ result }: { result: Record<string, unknown> }) {
+function SourceResult({
+  result,
+  progress,
+}: {
+  result: Record<string, unknown>;
+  progress?: AutomationGenerationProgress;
+}) {
   const discovery = result.discovery as
     | {
         searchRequests?: number;
@@ -136,9 +148,7 @@ function SourceResult({ result }: { result: Record<string, unknown> }) {
         articles?: { url: string; title: string; publishedAt: string }[];
       }
     | undefined;
-  const ids = Array.isArray(result.generationIds)
-    ? result.generationIds.filter((id): id is string => typeof id === 'string')
-    : [];
+  const ids = automationGenerationIds(result);
   return (
     <div className={styles.report}>
       {discovery ? (
@@ -166,11 +176,30 @@ function SourceResult({ result }: { result: Record<string, unknown> }) {
       {typeof result.batchId === 'string' ? (
         <Link href="/admin/imports">查看导入批次 · {result.batchId}</Link>
       ) : null}
-      {ids.map((id) => (
-        <Link key={id} href={`/admin/signal-generation/${id}`}>
-          查看私有候选任务 · {id}
-        </Link>
-      ))}
+      {progress?.total ? (
+        <p>
+          候选任务 {progress.total} 项 · 已完成 {progress.completed} 项 · 排队 {progress.pending} 项
+          · 生成中 {progress.running} 项 · 失败 {progress.failed} 项 · 取消 {progress.cancelled} 项
+          · 待核对 {progress.unknown + progress.unavailable} 项。
+          <br />
+          {progress.knownCandidates > 0 || progress.candidateCountComplete
+            ? `已确认生成 ${progress.knownCandidates} 条私有候选`
+            : '候选数量尚未确认'}
+          {progress.candidateCountComplete ? '。' : '（仅统计已读取的完成结果，其余结果待核对）。'}
+          候选仍需人工确认发布。
+        </p>
+      ) : null}
+      <ul>
+        {ids.map((id) => {
+          const task = progress?.tasks.find((row) => row.id === id);
+          return (
+            <li key={id}>
+              <Link href={`/admin/signal-generation/${id}`}>查看私有候选任务 · {id}</Link>
+              <span>{task ? generationSummaryLabel(task) : '已登记，结果待核对'}</span>
+            </li>
+          );
+        })}
+      </ul>
       <p>资料或候选登记未完成：{Number(result.failed) || 0} 项。候选任务仍需各自完成生成与审核。</p>
     </div>
   );
@@ -180,6 +209,7 @@ export function AdminAutomation({
   kind,
   configured,
   executionEnabled,
+  executionReadiness,
   loadError,
   initial,
   profiles,
@@ -188,6 +218,7 @@ export function AdminAutomation({
   kind: Kind;
   configured: boolean;
   executionEnabled: boolean;
+  executionReadiness?: { ready: boolean; checks: { key: string; ready: boolean }[] };
   loadError: boolean;
   initial: Dashboard;
   profiles: Profile[];
@@ -198,13 +229,19 @@ export function AdminAutomation({
   const [draft, setDraft] = useState<AutomationConfig>(() => blank(kind));
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const [summaryReadFailures, setSummaryReadFailures] = useState(0);
   const createId = useRef<string | null>(null);
   const requestIds = useRef<Record<string, string>>({});
   const refreshSequence = useRef(0);
   async function refresh() {
     const sequence = ++refreshSequence.current;
     const next = await api<Dashboard>();
-    if (sequence === refreshSequence.current) setState(next);
+    if (sequence === refreshSequence.current) {
+      setState(next);
+      setRefreshFailed(false);
+      setSummaryReadFailures(0);
+    }
     return next;
   }
   async function reload() {
@@ -364,6 +401,57 @@ export function AdminAutomation({
   }
   const configs = state.configs.filter((row) => row.config.kind === kind);
   const runs = state.runs.filter((row) => row.snapshot.kind === kind);
+  const summaryReadFailed = runs.some((row) => row.generationProgress?.readFailed);
+  const shouldRefresh =
+    configured &&
+    !busy &&
+    (runs.some(
+      (row) =>
+        row.status === 'queued' || row.status === 'running' || row.generationProgress?.active,
+    ) ||
+      (summaryReadFailed && summaryReadFailures < 3));
+  useEffect(() => {
+    if (!shouldRefresh) return;
+    let stopped = false;
+    let inFlight = false;
+    const timer = window.setInterval(async () => {
+      if (stopped || inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      const sequence = ++refreshSequence.current;
+      try {
+        const next = await api<Dashboard>();
+        if (!stopped && sequence === refreshSequence.current) {
+          setState(next);
+          setRefreshFailed(false);
+          setSummaryReadFailures((count) =>
+            next.runs.some(
+              (row) => row.snapshot.kind === kind && row.generationProgress?.readFailed,
+            )
+              ? count + 1
+              : 0,
+          );
+        }
+      } catch {
+        if (!stopped && sequence === refreshSequence.current) {
+          setRefreshFailed(true);
+          setSummaryReadFailures((count) => count + 1);
+        }
+      } finally {
+        inFlight = false;
+      }
+    }, 5000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [shouldRefresh, kind]);
+  const checkLabels: Record<string, string> = {
+    storage: '配置存储',
+    execution: '自动执行开关',
+    budget: '采集预算',
+    import: '资料导入服务',
+    generation: '信号生成服务',
+  };
   return (
     <main className={`section-shell ${styles.main}`}>
       <header className={styles.header}>
@@ -386,6 +474,19 @@ export function AdminAutomation({
           <p>
             配置存储已就绪：可以保存配置。执行开关、预算或依赖服务尚未就绪，不能启动任务或开启定时执行。
           </p>
+        ) : null}
+        {executionReadiness ? (
+          <details>
+            <summary>执行条件（配置检查，不调用 AI）</summary>
+            <ul>
+              {executionReadiness.checks.map((check) => (
+                <li key={check.key}>
+                  {checkLabels[check.key] ?? check.key}：{check.ready ? '已配置' : '待配置'}
+                </li>
+              ))}
+            </ul>
+            <p>这里只检查服务器配置是否齐备；数据库连通性、权限和模型能力仍需实际核验。</p>
+          </details>
         ) : null}
       </header>
       <section className={styles.card} aria-labelledby="config-title">
@@ -633,6 +734,18 @@ export function AdminAutomation({
       </section>
       <section className={styles.card} aria-labelledby="runs-title">
         <h2 id="runs-title">运行记录</h2>
+        {shouldRefresh ? (
+          <p>每 5 秒自动读取任务状态，不调用 AI；切换到后台标签页后暂停刷新。</p>
+        ) : null}
+        {refreshFailed ? (
+          <p role="alert">自动刷新失败，当前显示上次读取的状态；请点击“刷新列表”核对。</p>
+        ) : null}
+        {summaryReadFailed ? (
+          <p role="alert">
+            关联候选状态暂时无法读取，不代表生成失败。仅剩不可读记录时，系统最多自动重查 3
+            次；仍不可读时请点击“刷新列表”或打开原任务核对，不要重复启动。
+          </p>
+        ) : null}
         {runs.length ? (
           <div className={styles.tableWrap}>
             <table>
@@ -654,7 +767,10 @@ export function AdminAutomation({
                     </td>
                     <td>{row.snapshot.name}</td>
                     <td>
-                      {row.status} · {row.phase}
+                      {kind === 'source_collection'
+                        ? sourceAutomationLabel(row)
+                        : `${row.status} · ${row.phase}`}
+                      {kind === 'source_collection' ? <small>采集阶段：{row.phase}</small> : null}
                       {row.error_code ? (
                         <small>{errors[row.error_code] ?? row.error_code}</small>
                       ) : null}
@@ -662,6 +778,9 @@ export function AdminAutomation({
                     <td>
                       {money(row.charged_microusd)}
                       <small>{row.cost_source ?? '未结算'}</small>
+                      {kind === 'source_collection' ? (
+                        <small>检索记账，不含导入和生成费用</small>
+                      ) : null}
                     </td>
                     <td>
                       {row.snapshot.kind === 'topic_insight' &&
@@ -690,7 +809,10 @@ export function AdminAutomation({
                           ) : null}
                         </>
                       ) : row.snapshot.kind === 'source_collection' && row.result ? (
-                        <SourceResult result={row.result} />
+                        <SourceResult
+                          result={row.result}
+                          {...(row.generationProgress ? { progress: row.generationProgress } : {})}
+                        />
                       ) : (
                         '—'
                       )}

@@ -164,6 +164,10 @@ export async function generationRecord(owner: string, id: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
   return store.getSignalGeneration({ ...historyOptions(), owner, id });
 }
+export async function generationSummaries(owner: string, ids: string[]) {
+  if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
+  return store.readSignalGenerationSummaries({ ...historyOptions(), owner, ids });
+}
 export async function candidateReviewDetail(owner: string, id: string, index: number) {
   return buildCandidateReview(await generationRecord(owner, id), index);
 }
