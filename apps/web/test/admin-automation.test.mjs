@@ -30,6 +30,7 @@ const deps = () => ({
     ],
   }),
   save: async () => ({ id: 'config' }),
+  remove: async () => ({ id: 'config', revision: 2, deleted_at: '2026-10-02T10:00:00Z' }),
   trigger: async () => ({ run: { id: 'run', owner_id: 'operator', lease_token: 'secret-token' } }),
   publish: async () => ({ id: 'run', owner_id: 'operator', lease_token: 'secret-token' }),
 });
@@ -86,4 +87,76 @@ test('automation admin API hides worker leases and rejects extra action fields',
     await handler(request('POST', { action: 'trigger', request: {} }))
   ).json();
   assert.equal(triggered.run.lease_token, undefined);
+});
+
+test('delete is owner-scoped, same-origin and separate from execution', async () => {
+  const calls = [];
+  const dependencies = {
+    ...deps(),
+    remove: async (owner, value) => {
+      calls.push({ owner, value });
+      return { id: value.id, revision: 3, deleted_at: '2026-10-02T10:00:00Z', owner_id: owner };
+    },
+    trigger: async () => assert.fail('Deletion must not trigger AI'),
+    publish: async () => assert.fail('Deletion must not change publication'),
+    save: async () => assert.fail('Deletion must not revalidate or save the AI profile'),
+  };
+  const body = { action: 'delete', request: { id: 'config', expectedRevision: 2, consent: true } };
+  assert.equal(
+    (
+      await createAutomationHandler({ ...dependencies, session: async () => null })(
+        request('POST', body),
+      )
+    ).status,
+    401,
+  );
+  const handler = createAutomationHandler(dependencies);
+  for (const headers of [
+    { origin: 'https://other.test' },
+    { host: 'other.test' },
+    { 'sec-fetch-site': 'cross-site' },
+  ])
+    assert.equal((await handler(request('POST', body, headers))).status, 403);
+  assert.equal((await handler(request('POST', { ...body, owner: 'another-user' }))).status, 400);
+  assert.equal((await handler(request('DELETE'))).status, 405);
+  assert.equal(calls.length, 0);
+  const response = await handler(request('POST', body));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    config: { id: 'config', revision: 3, deleted_at: '2026-10-02T10:00:00Z' },
+  });
+  assert.deepEqual(calls, [{ owner: 'operator', value: body.request }]);
+});
+
+test('delete reports safe conflict reasons without database details', async () => {
+  for (const code of [
+    'config_in_use',
+    'config_deletion_unavailable',
+    'revision_conflict',
+    'not_found',
+    'commit_unknown',
+    'invalid_request',
+    'database_unavailable',
+    'automation_role_invalid',
+  ]) {
+    const handler = createAutomationHandler({
+      ...deps(),
+      remove: async () => {
+        throw new AutomationError(code);
+      },
+    });
+    const response = await handler(request('POST', { action: 'delete', request: {} }));
+    const safeCode = code === 'automation_role_invalid' ? 'unavailable' : code;
+    assert.deepEqual(await response.json(), { error: safeCode });
+    assert.equal(
+      response.status,
+      safeCode === 'invalid_request'
+        ? 400
+        : safeCode === 'not_found'
+          ? 404
+          : ['unavailable', 'database_unavailable'].includes(safeCode)
+            ? 503
+            : 409,
+    );
+  }
 });

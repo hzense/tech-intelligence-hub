@@ -84,6 +84,7 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     generation: false,
     profile: true,
     writes: [],
+    deletions: [],
     enqueued: 0,
     due: 0,
     starts: 0,
@@ -93,7 +94,8 @@ test('inactive configuration saves without execution budgets, while enable/trigg
       'server-only': '',
       '../../../../packages/database/src/automation-store.mjs': `${errorClass}
         export async function saveAutomationConfig(x){if(x.pool.kind!=='config')throw Error('wrong_pool');globalThis.__automationService.writes.push(x);return x.request}
-        export async function readAutomationDashboard(x){if(x.pool.kind!=='config')throw Error('wrong_pool');return {configs:[],runs:[]}}
+        export async function deleteAutomationConfig(x){if(x.pool.kind!=='config')throw Error('wrong_pool');globalThis.__automationService.deletions.push(x);return {id:x.request.id,revision:2,deleted_at:'2026-10-02T10:00:00Z'}}
+        export async function readAutomationDashboard(x){if(x.pool.kind!=='config')throw Error('wrong_pool');return {configs:[],runs:[],configDeletionAvailable:true}}
         export async function enqueueAutomation(){globalThis.__automationService.enqueued++;return {created:false,run:{id:'existing'}}}
         export async function enqueueDueAutomations(){globalThis.__automationService.due++;return []}
         export async function readAutomationRun(){} export async function failAutomationDispatch(){} export async function publishAutomationInsight(){}`,
@@ -129,7 +131,7 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     const request = { id: 'config', config, expectedRevision: 0, consent: true };
     assert.equal(mod.automationStorageConfigured(), true);
     assert.equal(mod.automationExecutionConfigured('source_collection'), false);
-    await mod.automationDashboard('owner');
+    assert.equal((await mod.automationDashboard('owner')).configDeletionAvailable, true);
     await mod.saveAutomation('owner', request);
     assert.equal(f.writes.length, 1);
     assert.equal(f.starts, 0);
@@ -165,6 +167,15 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     assert.equal(f.starts, 0); // Replayed request never dispatches twice.
     f.profile = false;
     await assert.rejects(mod.saveAutomation('owner', request), /profile_not_ready/);
+    f.enabled = f.imports = f.generation = false;
+    for (const key of ['BATCH_LIMIT', 'DAILY_LIMIT', 'RESERVE'])
+      delete process.env[`HZENSE_AUTOMATION_${key}_MICROUSD`];
+    const deletion = { id: 'config', expectedRevision: 1, consent: true };
+    await mod.deleteAutomation('owner', deletion);
+    assert.deepEqual(f.deletions, [
+      { pool: { kind: 'config' }, owner: 'owner', request: deletion },
+    ]);
+    assert.equal(f.starts, 0);
     f.storage = false;
     assert.equal(mod.automationStorageConfigured(), false);
     assert.equal(mod.automationExecutionConfigured('source_collection'), false);

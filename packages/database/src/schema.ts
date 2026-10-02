@@ -1812,6 +1812,7 @@ export const automationConfigs = pgTable(
     nextRunAt: timestamp('next_run_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => [
     uniqueIndex('automation_configs_id_owner_id_key').on(t.id, t.ownerId),
@@ -1819,6 +1820,10 @@ export const automationConfigs = pgTable(
     check('automation_configs_owner_id_check', sql`length(${t.ownerId}) BETWEEN 1 AND 200`),
     check('automation_configs_revision_check', sql`${t.revision} > 0`),
     check('automation_configs_config_check', sql`jsonb_typeof(${t.config}) = 'object'`),
+    check(
+      'automation_configs_deleted_state_check',
+      sql`${t.deletedAt} IS NULL OR (NOT ${t.enabled} AND ${t.nextRunAt} IS NULL AND (${t.config} -> 'enabled') IS NOT DISTINCT FROM 'false'::jsonb)`,
+    ),
   ],
 );
 

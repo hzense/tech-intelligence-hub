@@ -54,9 +54,11 @@ vi.mock('../src/runtime-acl-baseline.mjs', () => ({
 }));
 
 const root = new URL('../../../db/migrations/', import.meta.url);
-const migrations = Object.entries(JSON.parse(readFileSync(new URL('checksums.json', root), 'utf8')))
-  .filter(([name]) => name < '0027_')
-  .map(([name, checksum]) => ({ name, checksum, sql: readFileSync(new URL(name, root), 'utf8') }));
+const currentMigrations = Object.entries(
+  JSON.parse(readFileSync(new URL('checksums.json', root), 'utf8')),
+).map(([name, checksum]) => ({ name, checksum, sql: readFileSync(new URL(name, root), 'utf8') }));
+// This approval is historical authority for 0000–0026, never for later migrations.
+const migrations = currentMigrations.filter(({ name }) => name < '0027_');
 const pending = ['0026_automation_tasks.sql'];
 const identity = { database: 'hzense', user: 'migrator' };
 const policy = { host: 'fixture.invalid', port: '5432', ...identity };
@@ -244,6 +246,23 @@ describe('independent 0026 maintenance authority', () => {
         automationTargetBinding(policy, identity, `${backup}-new`),
       ).planFingerprint,
     ).not.toBe(plan.planFingerprint);
+  });
+
+  it('does not extend the frozen 0026 approval to the real configuration-deletion migration', () => {
+    expect(currentMigrations.map(({ name }) => name)).toContain(
+      '0027_automation_config_deletion.sql',
+    );
+    expect(() => automationMigrationPlan(pending, currentMigrations, binding)).toThrow(
+      'automation-storage-migration-manifest-required',
+    );
+    expect(() =>
+      requireAutomationMigrationScope(
+        { pendingMigrations: ['0027_automation_config_deletion.sql'] },
+        currentMigrations,
+        plan,
+        binding,
+      ),
+    ).toThrow('automation-storage-migration-manifest-required');
   });
 
   it('emits fingerprints only for the exact read-only preflight with a reviewed backup', async () => {

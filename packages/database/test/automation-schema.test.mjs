@@ -30,7 +30,10 @@ describe('automation migration and role contract', () => {
     expect(Object.keys(automationColumns)).toEqual(['automation_configs', 'automation_runs']);
     for (const [table, columns] of Object.entries(automationColumns)) {
       expect(sql).toContain(`CREATE TABLE public.${table}`);
-      expect(Object.keys(columns)).toEqual(automationRoleColumns[table]);
+      expect(Object.keys(columns)).toEqual([
+        ...automationRoleColumns[table],
+        ...(table === 'automation_configs' ? ['deleted_at'] : []),
+      ]);
     }
     expect(automationForeignKeys).toEqual([
       'automation_runs|config_id,owner_id|automation_configs|id,owner_id|a|a|false',

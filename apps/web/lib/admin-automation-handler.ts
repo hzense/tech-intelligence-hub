@@ -7,6 +7,7 @@ type Dependencies = {
   origin(): string | undefined;
   dashboard(owner: string): Promise<unknown>;
   save(owner: string, request: unknown): Promise<unknown>;
+  remove(owner: string, request: unknown): Promise<unknown>;
   trigger(owner: string, request: unknown): Promise<unknown>;
   publish(owner: string, id: string, confirm: boolean): Promise<unknown>;
 };
@@ -24,6 +25,8 @@ const exposed = new Set([
   'discovery_connection_unsupported',
   'discovery_topic_invalid',
   'config_limit',
+  'config_in_use',
+  'config_deletion_unavailable',
   'insight_stale',
   'dispatch_unknown',
   'database_unavailable',
@@ -86,6 +89,12 @@ export function createAutomationHandler(deps: Dependencies) {
       if (action === 'trigger') {
         const row = exact(value, ['action', 'request']);
         return importResponse(safeResult(await deps.trigger(session.user.id, row.request)), 202);
+      }
+      if (action === 'delete') {
+        const row = exact(value, ['action', 'request']);
+        return importResponse({
+          config: safeResult(await deps.remove(session.user.id, row.request)),
+        });
       }
       if (action === 'publish') {
         const row = exact(value, ['action', 'id', 'confirm']);

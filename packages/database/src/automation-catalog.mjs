@@ -18,6 +18,7 @@ export const automationColumns = {
     next_run_at: optional('timestamp with time zone'),
     created_at: required('timestamp with time zone'),
     updated_at: required('timestamp with time zone'),
+    deleted_at: optional('timestamp with time zone'),
   },
   automation_runs: {
     id: required('uuid'),
@@ -76,6 +77,11 @@ export const automationChecks = {
     ),
     forms('revision > 0'),
     forms("jsonb_typeof(config) = 'object'", "jsonb_typeof(config) = 'object'::text"),
+    forms(
+      "deleted_at IS NULL OR (NOT enabled AND next_run_at IS NULL AND (config -> 'enabled') IS NOT DISTINCT FROM 'false'::jsonb)",
+      "((deleted_at IS NULL) OR ((NOT enabled) AND (next_run_at IS NULL) AND ((config -> 'enabled'::text) IS NOT DISTINCT FROM 'false'::jsonb)))",
+      "((deleted_at IS NULL) OR ((NOT enabled) AND (next_run_at IS NULL) AND (NOT ((config -> 'enabled'::text) IS DISTINCT FROM 'false'::jsonb))))",
+    ),
   ],
   automation_runs: [
     forms(

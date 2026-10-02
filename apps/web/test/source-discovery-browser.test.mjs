@@ -13,6 +13,7 @@ test(
     const root = fileURLToPath(new URL('..', import.meta.url));
     const profileId = '11111111-1111-4111-8111-111111111111';
     const initial = {
+      configDeletionAvailable: true,
       configs: [
         {
           id: 'legacy',
@@ -30,11 +31,22 @@ test(
           },
         },
       ],
-      runs: [],
+      runs: [
+        {
+          id: 'history',
+          snapshot: { name: '历史采集任务', kind: 'source_collection' },
+          status: 'completed',
+          phase: 'done',
+          charged_microusd: 100000,
+          cost_source: 'provider',
+          created_at: '2026-10-02T00:00:00Z',
+          result: null,
+        },
+      ],
     };
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client'; import {AdminAutomation} from './components/admin-automation'; const p=new URLSearchParams(location.search); createRoot(document.getElementById('root')).render(<AdminAutomation kind="source_collection" configured={!p.has('missingStorage')} executionEnabled={p.has('execute')} loadError={false} initial={${JSON.stringify(initial)}} profiles={[{id:'${profileId}',revision:1,name:'验收模型',ready:true}]} topics={[{id:'topic-ai',name:'人工智能'}]}/>);`,
+        contents: `import {createRoot} from 'react-dom/client'; import {AdminAutomation} from './components/admin-automation'; const p=new URLSearchParams(location.search); createRoot(document.getElementById('root')).render(<AdminAutomation kind="source_collection" configured={!p.has('missingStorage')} executionEnabled={p.has('execute')} loadError={false} initial={{...${JSON.stringify(initial)},configDeletionAvailable:!p.has('legacySchema')}} profiles={[{id:'${profileId}',revision:1,name:'验收模型',ready:true}]} topics={[{id:'topic-ai',name:'人工智能'}]}/>);`,
         resolveDir: root,
         loader: 'tsx',
       },
@@ -88,11 +100,29 @@ test(
       const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
       const errors = [],
         posts = [];
+      let deletionError = null;
+      let holdRefresh = false,
+        releaseRefresh;
       page.on('pageerror', (error) => errors.push(error.message));
       await page.route('**/api/admin/automation', async (route) => {
-        if (route.request().method() === 'GET') return route.fulfill({ json: initial });
+        if (route.request().method() === 'GET') {
+          if (holdRefresh)
+            await new Promise((resolve) => {
+              releaseRefresh = resolve;
+            });
+          return route.fulfill({ json: initial });
+        }
         const body = route.request().postDataJSON();
         posts.push(body);
+        if (body.action === 'delete') {
+          if (deletionError) return route.fulfill({ status: 409, json: { error: deletionError } });
+          initial.configs = initial.configs.filter((config) => config.id !== body.request.id);
+          return route.fulfill({
+            json: {
+              config: { id: body.request.id, revision: 2, deleted_at: '2026-10-02T10:00:00Z' },
+            },
+          });
+        }
         return route.fulfill({
           json: {
             config: {
@@ -151,6 +181,54 @@ test(
       await expect(page.getByRole('button', { name: '保存配置', exact: true })).toBeDisabled();
       await expect(page.getByText('配置存储尚未就绪', { exact: false })).toBeVisible();
       assert.equal(posts.length, 3);
+      await page.goto(`http://127.0.0.1:${server.address().port}/?legacySchema=1`);
+      await expect(page.getByRole('button', { name: '删除配置 旧网址任务' })).toBeDisabled();
+      await expect(page.getByText('删除功能待完成数据库升级', { exact: false })).toBeVisible();
+      await page.goto(`http://127.0.0.1:${server.address().port}`);
+      const remove = page.getByRole('button', { name: '删除配置 旧网址任务' });
+      await expect(remove).toBeEnabled(); // Execution is disabled, but safe deletion is independent.
+      holdRefresh = true;
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(remove).toBeDisabled();
+      await expect.poll(() => typeof releaseRefresh).toBe('function');
+      holdRefresh = false;
+      releaseRefresh();
+      await expect(remove).toBeEnabled();
+      page.once('dialog', (dialog) => dialog.dismiss());
+      await remove.click();
+      assert.equal(posts.length, 3);
+      for (const error of ['config_in_use', 'commit_unknown']) {
+        deletionError = error;
+        page.once('dialog', (dialog) => {
+          assert.match(dialog.message(), /历史任务、结果和费用仍然保留/);
+          return dialog.accept();
+        });
+        await remove.click();
+        await expect(page.getByRole('status')).toContainText(
+          error === 'config_in_use' ? '暂不能删除' : '提交结果未确认',
+        );
+        await expect(remove).toBeEnabled();
+      }
+      assert.equal(posts.length, 5); // Unknown results never automatically replay a deletion.
+      deletionError = null;
+      await page.getByRole('button', { name: '编辑', exact: true }).click();
+      page.once('dialog', (dialog) => dialog.accept());
+      await remove.click();
+      await expect(page.getByRole('status')).toContainText('配置已删除');
+      await expect(remove).toHaveCount(0);
+      await expect(page.getByRole('heading', { name: '新建配置' })).toBeVisible();
+      await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue('');
+      await expect(page.getByText('历史采集任务', { exact: true })).toBeVisible();
+      await expect(page.getByRole('cell', { name: '$0.1000 provider', exact: true })).toBeVisible();
+      assert.deepEqual(posts.at(-1), {
+        action: 'delete',
+        request: { id: 'legacy', expectedRevision: 1, consent: true },
+      });
+      assert.equal(posts.length, 6);
+      assert.equal(
+        posts.some((post) => ['trigger', 'publish'].includes(post.action)),
+        false,
+      );
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

@@ -18,8 +18,11 @@ export default async function SourcesPage() {
     configured
       ? automationDashboard(session.user.id)
           .then((state) => ({ state, loadError: false }))
-          .catch(() => ({ state: { configs: [], runs: [] }, loadError: true }))
-      : { state: { configs: [], runs: [] }, loadError: false },
+          .catch(() => ({
+            state: { configs: [], runs: [], configDeletionAvailable: false },
+            loadError: true,
+          }))
+      : { state: { configs: [], runs: [], configDeletionAvailable: false }, loadError: false },
     getAiDashboard().catch(() => ({ profiles: [] })),
     getTopicEntries(),
   ]);

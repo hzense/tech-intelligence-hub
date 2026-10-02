@@ -112,6 +112,13 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+.main button.danger {
+  color: #a11b28;
+  border-color: #bc7b82;
+}
+.main button.danger:hover:not(:disabled) {
+  background: #fff0f1;
+}
 .message {
   padding: 1rem;
   background: #eff6ff;
