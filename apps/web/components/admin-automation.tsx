@@ -8,6 +8,7 @@ import type {
   AutomationRun,
 } from '../../../packages/database/src/automation-store.mjs';
 import styles from './admin-automation.module.css';
+import { discoveryDiagnosticItems } from '../lib/source-discovery-diagnostics';
 import {
   automationGenerationIds,
   generationSummaryLabel,
@@ -70,6 +71,8 @@ const errors: Record<string, string> = {
   discovery_search_unconfirmed:
     '供应商未确认实际联网检索，已停止后续生成；请核对原任务，不要重复调用。',
   discovery_invalid_output: '检索结果格式不符合要求，未用于生成；费用仍保留。',
+  discovery_provider_error: '供应商返回错误结果，已停止后续生成；请核对诊断信息与费用。',
+  discovery_output_truncated: '检索输出达到长度上限，结果不完整，未用于生成；费用仍保留。',
   discovery_unavailable: '联网发现未完成，请核对模型权限、连接与原任务。',
   capability_failed: '分析模型不支持所需工具或上下文容量，请选择兼容模型。',
   provider_rejected: '供应商拒绝请求，请核对搜索权限、模型与账户额度。',
@@ -149,8 +152,20 @@ function SourceResult({
       }
     | undefined;
   const ids = automationGenerationIds(result);
+  const diagnostics = discoveryDiagnosticItems(result.discoveryDiagnostics);
   return (
     <div className={styles.report}>
+      {diagnostics.length ? (
+        <details>
+          <summary>查看检索诊断（脱敏）</summary>
+          <ul>
+            {diagnostics.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <p>仅显示结构回执，不保存原始回答、思考过程或密钥；查看不会重新调用 AI。</p>
+        </details>
+      ) : null}
       {discovery ? (
         <>
           <p>
@@ -200,7 +215,9 @@ function SourceResult({
           );
         })}
       </ul>
-      <p>资料或候选登记未完成：{Number(result.failed) || 0} 项。候选任务仍需各自完成生成与审核。</p>
+      {typeof result.failed === 'number' ? (
+        <p>资料或候选登记未完成：{result.failed} 项。候选任务仍需各自完成生成与审核。</p>
+      ) : null}
     </div>
   );
 }

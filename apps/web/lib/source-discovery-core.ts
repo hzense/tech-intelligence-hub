@@ -1,7 +1,8 @@
 import { validateImportManifest } from '../../../packages/ingestion/src/import-manifest.mjs';
 import type { AutomationConfig } from '../../../packages/database/src/automation-contract.mjs';
+import { readDiscoveryDiagnostics } from './source-discovery-diagnostics.ts';
 
-export const discoverySearchLimit = 3;
+export { discoverySearchLimit } from './source-discovery-diagnostics.ts';
 export const discoveryOutputTokens = 2048;
 export interface DiscoveryArticle {
   url: string;
@@ -62,31 +63,29 @@ export function parseDiscoveryResponse(
   window: { windowStart: string; windowEnd: string },
   knownUrls: string[],
 ): DiscoveryResult {
-  if (!config.discovery || !body || typeof body !== 'object')
+  if (!config.discovery || !body || typeof body !== 'object' || Array.isArray(body))
     throw new Error('discovery_invalid_output');
+  const diagnostics = readDiscoveryDiagnostics(body);
+  // An explicit provider error or truncated response must not be misreported as no search.
+  if (diagnostics.providerError) throw new Error('discovery_provider_error');
+  if (diagnostics.finishReason === 'length') throw new Error('discovery_output_truncated');
   const envelope = body as {
     choices?: {
       finish_reason?: string;
       message?: { content?: unknown; annotations?: unknown[] };
     }[];
-    usage?: { server_tool_use?: { web_search_requests?: unknown } };
   };
-  const count = envelope.usage?.server_tool_use?.web_search_requests;
-  // Do not accept a plausible answer from model memory as an actual web search.
-  if (
-    typeof count !== 'number' ||
-    !Number.isSafeInteger(count) ||
-    count < 1 ||
-    count > discoverySearchLimit
-  )
-    throw new Error('discovery_search_unconfirmed');
   const choice = envelope.choices?.[0];
   if (
-    envelope.choices?.length !== 1 ||
+    !Array.isArray(envelope.choices) ||
+    envelope.choices.length !== 1 ||
     choice?.finish_reason !== 'stop' ||
     typeof choice.message?.content !== 'string'
   )
     throw new Error('discovery_invalid_output');
+  // Do not accept a plausible answer from model memory as an actual web search.
+  if (diagnostics.searchCountStatus !== 'confirmed' || diagnostics.searchRequests === null)
+    throw new Error('discovery_search_unconfirmed');
   let output;
   try {
     output = JSON.parse(choice.message.content);
@@ -143,7 +142,7 @@ export function parseDiscoveryResponse(
   }
   return {
     articles: articles.slice(0, config.discovery.maxSources),
-    searchRequests: count,
+    searchRequests: diagnostics.searchRequests,
     rejected,
     duplicates,
     ...window,

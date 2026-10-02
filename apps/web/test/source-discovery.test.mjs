@@ -8,6 +8,10 @@ import {
   parseDiscoveryResponse,
 } from '../lib/source-discovery-core.ts';
 import { createDiscoveryInvoker, discoveryEstimate } from '../lib/source-discovery-provider.ts';
+import {
+  readDiscoveryDiagnostics,
+  discoveryDiagnosticItems,
+} from '../lib/source-discovery-diagnostics.ts';
 
 const id = '11111111-1111-4111-8111-111111111111';
 const config = {
@@ -121,7 +125,7 @@ test('no actual search, missing citations, malformed JSON and truncated outputs 
   assert.throws(() => parseDiscoveryResponse(malformed, config, window, []), /invalid_output/);
   const truncated = envelope();
   truncated.choices[0].finish_reason = 'length';
-  assert.throws(() => parseDiscoveryResponse(truncated, config, window, []), /invalid_output/);
+  assert.throws(() => parseDiscoveryResponse(truncated, config, window, []), /output_truncated/);
   assert.deepEqual(parseDiscoveryResponse(envelope([]), config, window, []).articles, []);
 });
 
@@ -183,6 +187,9 @@ test('provider uses one bounded server-tool request with no credential or reason
   assert.equal(body.tools[0].parameters.engine, 'exa');
   assert.equal(body.tools[0].parameters.max_uses, 3);
   assert.equal(body.max_tool_calls, 3);
+  assert.equal(body.tool_choice, 'required');
+  assert.equal(body.max_tokens, 2048);
+  assert.equal(body.tools.length, 1);
   assert.equal(body.reasoning.exclude, true);
   assert.equal(
     body.messages.some((m) => m.content.includes('人工智能')),
@@ -222,4 +229,118 @@ test('unsupported model and duplicate fence never call AI; network failure never
   const failed = harness(new Error('network_error'));
   await assert.rejects(failed.run(), (error) => error.called && error.costMicrousd === null);
   assert.equal(failed.calls.length, 2);
+});
+
+test('search count diagnostics distinguish missing, malformed, zero and over-limit without bypass', () => {
+  for (const [value, status, saved] of [
+    [undefined, 'missing', null],
+    [null, 'invalid', null],
+    ['1', 'invalid', null],
+    [{ secret: 'private' }, 'invalid', null],
+    [true, 'invalid', null],
+    [-1, 'invalid', null],
+    [1.5, 'invalid', null],
+    [NaN, 'invalid', null],
+    [Infinity, 'invalid', null],
+    [Number.MAX_SAFE_INTEGER + 1, 'invalid', null],
+    [0, 'zero', 0],
+    [4, 'exceeded', 4],
+  ]) {
+    const body = envelope();
+    body.usage.server_tool_use.web_search_requests = value;
+    const diagnostics = readDiscoveryDiagnostics(body);
+    assert.equal(diagnostics.searchCountStatus, status);
+    assert.equal(diagnostics.searchRequests, saved);
+    assert.throws(() => parseDiscoveryResponse(body, config, window, []), /search_unconfirmed/);
+  }
+  for (const value of [1, 2, 3]) {
+    const body = envelope();
+    body.usage.server_tool_use.web_search_requests = value;
+    assert.equal(parseDiscoveryResponse(body, config, window, []).searchRequests, value);
+  }
+});
+
+test('explicit provider errors and truncation are not masked by missing search counts', async () => {
+  const truncated = envelope();
+  delete truncated.usage.server_tool_use;
+  truncated.choices[0].finish_reason = 'length';
+  for (const [body, code] of [
+    [truncated, 'discovery_output_truncated'],
+    [
+      { error: { code: 429, message: 'private provider message' }, usage: { cost: 0.01 } },
+      'discovery_provider_error',
+    ],
+    [
+      { choices: [{ finish_reason: 'error', error: { code: 502, message: 'private' } }] },
+      'discovery_provider_error',
+    ],
+    [{ choices: {} }, 'discovery_invalid_output'],
+    [{ choices: [null] }, 'discovery_invalid_output'],
+    [[], 'discovery_invalid_output'],
+  ]) {
+    const h = harness(body);
+    await assert.rejects(h.run(), (error) => {
+      assert.equal(error.code, code);
+      assert.equal(error.called, true);
+      assert.equal(error.diagnostics.searchCountStatus, 'missing');
+      assert.equal(JSON.stringify(error).includes('private'), false);
+      return true;
+    });
+    assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
+  }
+});
+
+test('failed receipts persist only allowlisted diagnostics and provider cost, including zero', async () => {
+  const body = envelope();
+  body.id = 'gen-1790970223-AbCd01234567';
+  delete body.usage.server_tool_use;
+  body.choices[0].message.content = `private answer ${access.apiKey}`;
+  body.choices[0].message.reasoning = 'private thinking';
+  body.choices[0].message.annotations[0].url_citation.url = 'https://private.invalid/source';
+  for (const cost of [0, 0.0642, undefined]) {
+    body.usage.cost = cost;
+    const h = harness(body);
+    await assert.rejects(h.run(), (error) => {
+      assert.equal(error.code, 'discovery_search_unconfirmed');
+      assert.equal(error.costMicrousd, cost === undefined ? null : Math.round(cost * 1_000_000));
+      assert.deepEqual(error.diagnostics, {
+        version: 1,
+        responseId: body.id,
+        searchRequests: null,
+        searchCountStatus: 'missing',
+        finishReason: 'stop',
+        choiceCount: 1,
+        annotationCount: 1,
+        providerError: false,
+        providerErrorCode: null,
+      });
+      const saved = JSON.stringify(error);
+      for (const secret of [access.apiKey, 'private answer', 'private thinking', 'private.invalid'])
+        assert.equal(saved.includes(secret), false);
+      return true;
+    });
+    assert.equal(h.calls.length, 2, 'one catalog check and one paid attempt; no auto retry');
+  }
+});
+
+test('diagnostic readback omits untrusted fields and handles legacy or malformed records', () => {
+  assert.deepEqual(discoveryDiagnosticItems(undefined), []);
+  assert.deepEqual(discoveryDiagnosticItems({ version: 2 }), []);
+  const diagnostics = readDiscoveryDiagnostics({
+    id: 'secret-value',
+    choices: [{ finish_reason: 'private reason', message: { annotations: 'private' } }],
+    error: { code: 'private code', message: 'private error' },
+  });
+  assert.equal(diagnostics.responseId, null);
+  assert.equal(diagnostics.finishReason, 'other');
+  assert.equal(diagnostics.providerErrorCode, null);
+  assert.equal(diagnostics.annotationCount, null);
+  assert.equal(JSON.stringify(diagnostics).includes('private'), false);
+  const items = discoveryDiagnosticItems({
+    ...diagnostics,
+    searchCountStatus: { toString: null },
+    rawBody: 'private',
+  });
+  assert.ok(items.includes('搜索回执：搜索回执不可读'));
+  assert.equal(items.join('').includes('private'), false);
 });
