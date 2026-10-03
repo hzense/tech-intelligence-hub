@@ -16,6 +16,7 @@ export function GenerationLiveDetail({
   const [run, setRun] = useState(initialRun);
   const [error, setError] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [queueConfirmation, setQueueConfirmation] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const active = generationIsActive(run);
   useEffect(() => {
@@ -46,13 +47,7 @@ export function GenerationLiveDetail({
     };
   }, [active, initialRun.id, resolving]);
   async function resolveQueue() {
-    if (!run.progress_at || resolving) return;
-    if (
-      !window.confirm(
-        '将这次尚未开始的排队任务标记为失败？原记录和费用保留，不会调用 AI 或重新生成。',
-      )
-    )
-      return;
+    if (!run.progress_at || resolving || !queueConfirmation) return;
     setResolving(true);
     try {
       const response = await fetch('/api/admin/signal-generation', {
@@ -61,7 +56,7 @@ export function GenerationLiveDetail({
         body: JSON.stringify({
           action: 'resolve_queue',
           id: run.id,
-          queuedAt: new Date(run.progress_at).toISOString(),
+          queuedAt: queueConfirmation,
         }),
       });
       const data = await response.json();
@@ -93,14 +88,37 @@ export function GenerationLiveDetail({
         !run.started_at && (
           <div>
             <p>排队长期没有开始时，可结束这次排队并标记失败。已开始执行的任务不会被此操作中断。</p>
-            <button
-              className={controls.button}
-              type="button"
-              disabled={resolving}
-              onClick={() => void resolveQueue()}
-            >
-              {resolving ? '正在结束排队…' : '结束排队并标记失败'}
-            </button>
+            {queueConfirmation ? (
+              <div role="group" aria-label="确认结束排队">
+                <p>
+                  确认将这次尚未开始的排队任务标记为失败？原记录和费用保留，不会调用 AI 或重新生成。
+                </p>
+                <button
+                  className={controls.button}
+                  type="button"
+                  disabled={resolving}
+                  onClick={() => void resolveQueue()}
+                >
+                  {resolving ? '正在结束排队…' : '确认标记失败'}
+                </button>
+                <button
+                  className={controls.button}
+                  type="button"
+                  disabled={resolving}
+                  onClick={() => setQueueConfirmation(null)}
+                >
+                  返回
+                </button>
+              </div>
+            ) : (
+              <button
+                className={controls.button}
+                type="button"
+                onClick={() => setQueueConfirmation(new Date(run.progress_at!).toISOString())}
+              >
+                结束排队并标记失败
+              </button>
+            )}
           </div>
         )}
       {notice && <p role="status">{notice}</p>}
