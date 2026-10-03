@@ -200,7 +200,7 @@ test('resolved IDs consistently drive detail links, resource reverse signals and
 });
 
 test('actual public list, detail and entity lookup share catalog matching in both read modes and observe withdrawals', async () => {
-  const state = { editorial: [manual()], qualified: [qualified()], seed: [] };
+  const state = { editorial: [manual()], qualified: [qualified()], seed: [], reads: 0 };
   globalThis.__editorialEntityRuntime = state;
   const originalMode = process.env.HZENSE_SIGNAL_READ_MODE;
   const originalEnabled = process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED;
@@ -216,9 +216,9 @@ test('actual public list, detail and entity lookup share catalog matching in bot
           name: 'public-entity-runtime-providers',
           setup(plugin) {
             const modules = {
-              '@hzense/content': `export async function loadSeedCatalog() { return { entities: globalThis.__editorialEntityRuntime.seed, signals: [], sources: [], topics: [] }; }`,
-              './server/public-signals.ts': `export async function getPublicSignals() { const s = globalThis.__editorialEntityRuntime; return [...s.qualified, ...s.editorial]; }`,
-              './server/editorial-signals.ts': `export async function getEditorialSignals() { return globalThis.__editorialEntityRuntime.editorial; }`,
+              '@hzense/content': `export async function loadSeedCatalog() { const s = globalThis.__editorialEntityRuntime; s.reads++; return { entities: s.seed, signals: [], sources: [], topics: [] }; }`,
+              './server/public-signals.ts': `export async function getPublicSignals() { const s = globalThis.__editorialEntityRuntime; s.reads++; return [...s.qualified, ...s.editorial]; }`,
+              './server/editorial-signals.ts': `export async function getEditorialSignals() { const s = globalThis.__editorialEntityRuntime; s.reads++; return s.editorial; }`,
             };
             plugin.onResolve(
               { filter: /^(@hzense\/content|\.\/server\/(public-signals|editorial-signals)\.ts)$/ },
@@ -235,6 +235,21 @@ test('actual public list, detail and entity lookup share catalog matching in bot
     const api = await import(
       `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`
     );
+    for (const enabled of ['0', '1']) {
+      process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED = enabled;
+      for (const mode of ['legacy', 'database']) {
+        process.env.HZENSE_SIGNAL_READ_MODE = mode;
+        for (const invalid of [
+          'editorial-invalid',
+          `editorial-${'a'.repeat(31)}`,
+          `editorial-${'a'.repeat(33)}`,
+          `editorial-${'G'.repeat(32)}`,
+          `editorial-${'a'.repeat(32)}?extra`,
+        ])
+          assert.equal(await api.getSignalEntryById(invalid), undefined);
+      }
+    }
+    assert.equal(state.reads, 0, 'malformed IDs must return before any database or catalog read');
     process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED = '1';
     process.env.HZENSE_SIGNAL_READ_MODE = 'database';
     const id = state.editorial[0].id;

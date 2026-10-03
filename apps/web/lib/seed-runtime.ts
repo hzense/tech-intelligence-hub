@@ -4,6 +4,7 @@ import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy
 import { readSignalReadMode, type SignalEntry } from './public-signal-reader-core.ts';
 import { projectLegacySignalEntries } from './legacy-signal-projection.ts';
 import { projectEditorialEntityLinks } from './editorial-entity-links.ts';
+import { editorialSignalIdPattern } from './editorial-signal-reader-core.ts';
 import {
   loadSeedCatalog,
   type SeedEntity,
@@ -42,6 +43,7 @@ export async function getSignalEntries(): Promise<SignalEntry[]> {
 
 export async function getSignalEntryById(id: string): Promise<SignalEntry | undefined> {
   if (id.startsWith('editorial-')) {
+    if (!editorialSignalIdPattern.test(id)) return undefined;
     if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED !== '1') return undefined;
     // Use the same current catalog as lists, filters and resource reverse links.
     return (await getSignalEntries()).find((signal) => signal.id === id);
