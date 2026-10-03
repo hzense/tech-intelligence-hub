@@ -1,3 +1,5 @@
+import type { GenerationValidationDetail } from './signal-generation-validation-diagnostics.mjs';
+
 export const GENERATION_LIMITS: Readonly<{
   inputTokens: 100000;
   sourceBytes: 1000000;
@@ -13,6 +15,7 @@ export const REJECTED_CANDIDATES_REASON: string;
 export function estimateGenerationTokens(text: string): number;
 export class SignalGenerationError extends Error {
   code: string;
+  diagnostic?: GenerationValidationDetail;
   constructor(code: string);
 }
 export interface GenerationSource {
@@ -54,7 +57,9 @@ export interface GeneratedCandidates {
     index: number;
     classification: 'private';
     status: 'rejected';
-    errors: { field: string; code: string }[];
+    errors: ({ field: string; code: string } & (
+      GenerationValidationDetail | { path?: never; reason?: never }
+    ))[];
   }[];
 }
 export function assessGeneratedCandidates(

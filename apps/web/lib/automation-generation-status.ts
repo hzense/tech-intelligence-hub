@@ -124,7 +124,10 @@ export function sourceAutomationLabel(run: {
   if (run.phase === 'no_new_sources') return '采集完成，无新来源';
   const progress = run.generationProgress;
   if (!progress?.total) return '采集结束，未确认生成候选';
-  if (progress.active) return '候选生成中';
+  const failureNote = progress.failed ? '（部分失败）' : '';
+  if (progress.running) return `候选生成中${failureNote}`;
+  if (progress.tasks.some((task) => task.status === 'pending' && task.progress_phase === 'queued'))
+    return `候选排队中${failureNote}`;
   if (progress.unknown || progress.unavailable || progress.pending) return '生成结果待核对';
   if (progress.failed || progress.cancelled)
     return progress.completed ? '部分生成完成' : '生成未完成';

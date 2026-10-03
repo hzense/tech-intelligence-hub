@@ -6,6 +6,7 @@ import {
   normalizeGeneratedCandidates,
   REJECTED_CANDIDATES_REASON,
 } from '../../ingestion/src/signal-generation-contract.mjs';
+import { isGenerationValidationDetail } from '../../ingestion/src/signal-generation-validation-diagnostics.mjs';
 
 // Private, preview-only generation receipts. This role cannot access imports,
 // provider keys, Signal tables, verification attestations or publication state.
@@ -174,13 +175,15 @@ function validateAssessedResult(result, outcome) {
       invalid();
     const fields = new Set();
     for (const error of rejected.errors) {
-      shape(error, ['field', 'code']);
+      const detailed = error && (Object.hasOwn(error, 'path') || Object.hasOwn(error, 'reason'));
+      shape(error, detailed ? ['field', 'code', 'path', 'reason'] : ['field', 'code']);
       if (
         typeof error.field !== 'string' ||
         typeof error.code !== 'string' ||
         !Object.hasOwn(codes, error.field) ||
         !codes[error.field].includes(error.code) ||
-        fields.has(error.field)
+        fields.has(error.field) ||
+        (detailed && !isGenerationValidationDetail(error.field, error.path, error.reason))
       )
         invalid();
       fields.add(error.field);

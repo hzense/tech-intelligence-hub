@@ -2,6 +2,7 @@ import 'server-only';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Sandbox } from '@vercel/sandbox';
+import { observeSandboxCommandExit } from './sandbox-command';
 import { generationConfigured, generationDetail } from './signal-generation';
 import { candidateEnrichmentConfigured, candidateEnrichmentDetail } from './candidate-enrichment';
 import { readGenerationConfiguration } from '../signal-generation-config';
@@ -126,8 +127,8 @@ export async function startCandidateEnrichmentSandbox(
 export async function pollGenerationSandbox(handle: GenerationSandboxHandle) {
   const signal = AbortSignal.timeout(15000);
   const sandbox = await Sandbox.get({ name: handle.sandboxName, resume: false, signal });
-  const command = await sandbox.getCommand(handle.commandId, { signal });
-  return command.exitCode === null ? 'running' : command.exitCode === 75 ? 'busy' : 'finished';
+  const exitCode = await observeSandboxCommandExit(sandbox, handle.commandId, signal);
+  return exitCode === null ? 'running' : exitCode === 75 ? 'busy' : 'finished';
 }
 export async function stopGenerationSandbox(handle: GenerationSandboxHandle) {
   const signal = AbortSignal.timeout(15000);

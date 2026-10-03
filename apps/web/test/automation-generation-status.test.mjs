@@ -36,6 +36,58 @@ test('parent dispatch completion does not claim model completion', () => {
   );
   assert.equal(generationSummaryLabel(progress.tasks[1]), '校验结果');
 });
+test('queued generations keep refreshing without claiming the model is running', () => {
+  const progress = summarizeAutomationGenerations(result, [
+    { id: id(1), status: 'pending', progress_phase: 'queued', candidate_count: null },
+    { id: id(2), status: 'pending', progress_phase: 'queued', candidate_count: null },
+    { id: id(3), status: 'completed', progress_phase: 'completed', candidate_count: 2 },
+  ]);
+  assert.equal(progress.active, true);
+  assert.equal(progress.running, 0);
+  assert.equal(
+    sourceAutomationLabel({
+      status: 'completed',
+      phase: 'candidate_tasks_queued',
+      generationProgress: progress,
+    }),
+    '候选排队中',
+  );
+});
+test('one rejected output and queued siblings expose both the queue and partial failure', () => {
+  for (const [status, phase, expected] of [
+    ['pending', 'queued', '候选排队中（部分失败）'],
+    ['running', 'generating', '候选生成中（部分失败）'],
+  ]) {
+    const progress = summarizeAutomationGenerations(result, [
+      { id: id(1), status: 'failed', progress_phase: 'saving', candidate_count: null },
+      { id: id(2), status, progress_phase: phase, candidate_count: null },
+      { id: id(3), status: 'pending', progress_phase: 'queued', candidate_count: null },
+    ]);
+    assert.equal(progress.active, true);
+    assert.equal(
+      sourceAutomationLabel({
+        status: 'completed',
+        phase: 'candidate_tasks_queued',
+        generationProgress: progress,
+      }),
+      expected,
+    );
+  }
+});
+test('undispatched tasks need verification instead of appearing queued or running', () => {
+  const progress = summarizeAutomationGenerations({ generationIds: [id(1)] }, [
+    { id: id(1), status: 'pending', progress_phase: null, candidate_count: null },
+  ]);
+  assert.equal(progress.active, false);
+  assert.equal(
+    sourceAutomationLabel({
+      status: 'completed',
+      phase: 'candidate_tasks_queued',
+      generationProgress: progress,
+    }),
+    '生成结果待核对',
+  );
+});
 test('unreadable, unknown, malformed and hidden receipts are not zero success', () => {
   const missing = summarizeAutomationGenerations(result, null);
   assert.equal(missing.unavailable, 3);

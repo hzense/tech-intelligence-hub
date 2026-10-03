@@ -26,7 +26,13 @@ export async function signalGenerationWorkflow(owner: string, id: string, queued
       }
       if (status !== 'running') break;
     }
-    if (status === 'running') return 'observation_unconfirmed';
+    if (status === 'running') {
+      // This conditional, fenced update only fails a never-claimed pending task.
+      // It cannot overwrite a paid result or a newer dispatch. Do not relaunch
+      // or stop an unobserved process; the Sandbox has its own bounded lifetime.
+      await failQueuedStep(owner, id, queuedAt);
+      return 'observation_unconfirmed';
+    }
     // Stop only after the command has positively reported an exit code.
     await stopGenerationStep(handle);
     // Only a worker's explicit pre-claim capacity rejection permits another launch.

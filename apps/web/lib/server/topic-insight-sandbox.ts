@@ -2,6 +2,7 @@ import 'server-only';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Sandbox } from '@vercel/sandbox';
+import { observeSandboxCommandExit } from './sandbox-command';
 import { automationPool } from './automation-store-access';
 import { readAutomationRun } from '../../../../packages/database/src/automation-store.mjs';
 import { readAiBackendConfiguration } from '../admin-ai-core';
@@ -79,8 +80,8 @@ export async function startTopicInsightSandbox(
 export async function pollTopicInsightSandbox(handle: TopicInsightSandboxHandle) {
   const signal = AbortSignal.timeout(15000);
   const sandbox = await Sandbox.get({ name: handle.sandboxName, resume: false, signal });
-  const command = await sandbox.getCommand(handle.commandId, { signal });
-  return command.exitCode === null ? 'running' : 'finished';
+  const exitCode = await observeSandboxCommandExit(sandbox, handle.commandId, signal);
+  return exitCode === null ? 'running' : 'finished';
 }
 export async function stopTopicInsightSandbox(handle: TopicInsightSandboxHandle) {
   const signal = AbortSignal.timeout(15000);

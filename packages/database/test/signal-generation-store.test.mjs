@@ -201,6 +201,49 @@ describe('private generation input boundaries', () => {
       { rejected: [{ ...rejected, errors: [{ field: 'title', code: 'raw reason' }] }] },
       { rejected: [{ ...rejected, errors: [{ field: 'title', code: 'invalid_event_date' }] }] },
       { rejected: [{ ...rejected, errors: [{ field: 'toString', code: 'invalid_field' }] }] },
+      ...[
+        { path: 'title' },
+        { reason: 'text_too_long' },
+        { path: 'raw private path', reason: 'text_too_long' },
+        { path: 'title', reason: 'raw private reason' },
+        { path: 'persons[0].name', reason: 'text_too_long' },
+        { path: 'title', reason: 'text_too_long', raw: 'private value' },
+      ].map((detail) => ({
+        rejected: [
+          { ...rejected, errors: [{ field: 'title', code: 'title_too_long', ...detail }] },
+        ],
+      })),
+      {
+        rejected: [
+          {
+            ...rejected,
+            errors: [
+              {
+                field: 'persons',
+                code: 'invalid_field',
+                path: 'persons[12].name',
+                reason: 'missing_value',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        rejected: [
+          {
+            ...rejected,
+            errors: [
+              {
+                field: 'claims',
+                code: 'invalid_field',
+                path: 'claims[0].evidence[8].quote',
+                reason: 'quote_mismatch',
+              },
+            ],
+          },
+        ],
+      },
+      { rejected: [{ ...rejected, errors: [null] }] },
       { rejected: [{ ...rejected, errors: [] }] },
       { rejected: [{ ...rejected, errors: [...rejected.errors, ...rejected.errors] }] },
       { rejected: [{ ...rejected, index: -1 }] },
@@ -242,67 +285,76 @@ describe('private generation input boundaries', () => {
       }),
     ).rejects.toMatchObject({ code: 'invalid_result' });
   });
-  it('atomically retains failed validation diagnostics without reducing the reservation', async () => {
-    const token = randomUUID();
-    const id = randomUUID();
-    const result = {
-      classification: 'private',
-      validation_version: 1,
-      candidates: [],
-      rejected: [
-        {
-          index: 0,
-          classification: 'private',
-          status: 'rejected',
-          errors: [{ field: 'title', code: 'title_too_long' }],
+  it.each([false, true])(
+    'atomically retains legacy or detailed (%s) failed validation diagnostics without reducing the reservation',
+    async (detailed) => {
+      const token = randomUUID();
+      const id = randomUUID();
+      const result = {
+        classification: 'private',
+        validation_version: 1,
+        candidates: [],
+        rejected: [
+          {
+            index: 0,
+            classification: 'private',
+            status: 'rejected',
+            errors: [
+              {
+                field: 'title',
+                code: 'title_too_long',
+                ...(detailed ? { path: 'title', reason: 'text_too_long' } : {}),
+              },
+            ],
+          },
+        ],
+        reason: REJECTED_CANDIDATES_REASON,
+        usage: { input_tokens: 200, output_tokens: 100 },
+      };
+      const writes = [];
+      const row = {
+        id,
+        status: 'running',
+        lease_token: token,
+        reserved_microusd: '1000',
+        snapshot: { source },
+        lease_until: new Date(Date.now() + 60000),
+      };
+      const client = {
+        release() {},
+        async query(sql, values) {
+          if (sql.includes('SELECT $1::timestamptz')) return { rows: [{ live: true }] };
+          if (sql.includes('FROM public.signal_generation_runs')) return { rows: [row] };
+          if (sql.startsWith('UPDATE public.signal_generation_runs SET status=$2,result=')) {
+            writes.push(values);
+            Object.assign(row, {
+              status: values[1],
+              result: JSON.parse(values[2]),
+              error_code: values[3],
+              charged_microusd: values[4],
+            });
+            return { rows: [row] };
+          }
+          return { rows: [] };
         },
-      ],
-      reason: REJECTED_CANDIDATES_REASON,
-      usage: { input_tokens: 200, output_tokens: 100 },
-    };
-    const writes = [];
-    const row = {
-      id,
-      status: 'running',
-      lease_token: token,
-      reserved_microusd: '1000',
-      snapshot: { source },
-      lease_until: new Date(Date.now() + 60000),
-    };
-    const client = {
-      release() {},
-      async query(sql, values) {
-        if (sql.includes('SELECT $1::timestamptz')) return { rows: [{ live: true }] };
-        if (sql.includes('FROM public.signal_generation_runs')) return { rows: [row] };
-        if (sql.startsWith('UPDATE public.signal_generation_runs SET status=$2,result=')) {
-          writes.push(values);
-          Object.assign(row, {
-            status: values[1],
-            result: JSON.parse(values[2]),
-            error_code: values[3],
-            charged_microusd: values[4],
-          });
-          return { rows: [row] };
-        }
-        return { rows: [] };
-      },
-    };
-    const args = {
-      pool: { connect: async () => client },
-      owner: 'owner',
-      id,
-      token,
-      outcome: 'failed',
-      errorCode: 'generation_invalid_output',
-      chargedMicrousd: 400,
-      result,
-    };
-    const saved = await finishSignalGeneration(args);
-    expect(saved.result).toEqual(result);
-    expect(saved.charged_microusd).toBe('1000');
-    await finishSignalGeneration(args);
-    expect(writes).toHaveLength(1);
-  });
+      };
+      const args = {
+        pool: { connect: async () => client },
+        owner: 'owner',
+        id,
+        token,
+        outcome: 'failed',
+        errorCode: 'generation_invalid_output',
+        chargedMicrousd: 400,
+        result,
+      };
+      const saved = await finishSignalGeneration(args);
+      expect(saved.result).toEqual(result);
+      expect(saved.charged_microusd).toBe('1000');
+      await finishSignalGeneration(args);
+      expect(writes).toHaveLength(1);
+    },
+  );
   it('rejects invalid or credential-bearing failed validation records before the DB', async () => {
     for (const result of [
       { classification: 'public' },

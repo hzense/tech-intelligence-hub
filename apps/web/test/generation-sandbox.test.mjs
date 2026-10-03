@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { readFile } from 'node:fs/promises';
-import { URL } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import { Buffer } from 'node:buffer';
 import process from 'node:process';
 
@@ -21,6 +21,9 @@ test('Sandbox dispatch confines secrets, never waits for AI, and polling cannot 
       {
         name: 'sandbox-fixture',
         setup(b) {
+          b.onResolve({ filter: /^\.\/sandbox-command$/ }, () => ({
+            path: fileURLToPath(new URL('../lib/server/sandbox-command.ts', import.meta.url)),
+          }));
           b.onResolve(
             { filter: /^(server-only|node:fs\/promises|@vercel\/sandbox|\.\/|\.\.\/)/ },
             ({ path }) => ({ path, namespace: 'fixture' }),
@@ -32,7 +35,7 @@ test('Sandbox dispatch confines secrets, never waits for AI, and polling cannot 
                 : path === 'node:fs/promises'
                   ? "export async function readFile(){return Buffer.from('trusted-code');}"
                   : path === '@vercel/sandbox'
-                    ? `const f=globalThis.__sandboxTest; const sandbox={name:'test-sandbox',async writeFiles(files){f.files=files;}, async runCommand(args){f.commands.push(args); if(f.fail)throw new Error('SECRET');return {cmdId:'cmd'};},async getCommand(id){f.polled.push(id);return {exitCode:f.exit};},async stop(){f.stops++;}}; export const Sandbox={async create(args){f.created.push(args);return sandbox;},async get(args){f.gets.push(args);return sandbox;}};`
+                    ? `const f=globalThis.__sandboxTest; const sandbox={name:'test-sandbox',async writeFiles(files){f.files=files;}, async runCommand(args){f.commands.push(args); if(f.fail)throw new Error('SECRET');return {cmdId:'cmd'};},async getCommand(id){f.polled.push(id);return {exitCode:null,async wait({signal}){f.observations++;if(f.exit===null){await new Promise(resolve=>setTimeout(resolve,1100));signal.throwIfAborted();}return {exitCode:f.exit};}};},async stop(){f.stops++;}}; export const Sandbox={async create(args){f.created.push(args);return sandbox;},async get(args){f.gets.push(args);return sandbox;}};`
                     : path.endsWith('/signal-generation')
                       ? "export const generationConfigured=()=>true;export async function generationDetail(){return {status:globalThis.__sandboxTest.status,progress_phase:'queued',progress_at:'2026-09-28T00:00:00.000Z'};}"
                       : path.endsWith('/candidate-enrichment')
@@ -55,6 +58,7 @@ test('Sandbox dispatch confines secrets, never waits for AI, and polling cannot 
     created: [],
     gets: [],
     polled: [],
+    observations: 0,
     stops: 0,
     exit: null,
   });
@@ -97,6 +101,7 @@ test('Sandbox dispatch confines secrets, never waits for AI, and polling cannot 
     assert.equal(await worker.pollGenerationSandbox(handle), 'finished');
     assert.ok(f.gets.every((get) => get.resume === false));
     assert.equal(f.commands.length, 1);
+    assert.equal(f.observations, 3);
     await worker.stopGenerationSandbox(handle);
     assert.equal(f.stops, 1);
     f.status = 'completed';

@@ -2,6 +2,7 @@ import { TextEncoder } from 'node:util';
 import { countTokens } from 'gpt-tokenizer/encoding/o200k_base';
 import { parseImportOutput } from './import-task-contract.mjs';
 import { isExcludedPublicPerson } from './person-resource-policy.mjs';
+import { isGenerationValidationDetail } from './signal-generation-validation-diagnostics.mjs';
 
 export const GENERATION_LIMITS = Object.freeze({
   inputTokens: 100000,
@@ -128,11 +129,13 @@ export class SignalGenerationError extends Error {
   }
 }
 
-function fail(code = 'invalid_generation_output') {
-  throw new SignalGenerationError(code);
+function fail(code = 'invalid_generation_output', path, reason) {
+  const error = new SignalGenerationError(code);
+  if (path) error.diagnostic = { path, reason };
+  throw error;
 }
 
-function record(value, keys, code) {
+function record(value, keys, code, path) {
   if (
     !value ||
     typeof value !== 'object' ||
@@ -144,23 +147,25 @@ function record(value, keys, code) {
       (key) => !keys.includes(key) || !('value' in Object.getOwnPropertyDescriptor(value, key)),
     )
   )
-    fail(code);
+    fail(code, path, 'invalid_shape');
   return value;
 }
 
-function list(value, max, min = 0, code) {
-  if (!Array.isArray(value) || value.length < min || value.length > max) fail(code);
+function list(value, max, min = 0, code, path, missingReason = 'missing_items') {
+  if (!Array.isArray(value)) fail(code, path, 'invalid_type');
+  if (value.length < min) fail(code, path, missingReason);
+  if (value.length > max) fail(code, path, 'too_many_items');
   for (let index = 0; index < value.length; index += 1) {
-    if (!Object.hasOwn(value, index)) fail(code);
+    if (!Object.hasOwn(value, index)) fail(code, path, 'invalid_shape');
   }
   return value;
 }
 
-function string(value, max, code) {
+function string(value, max, code, path) {
+  if (typeof value !== 'string') fail(code, path, 'invalid_type');
+  if (!value.trim()) fail(code, path, 'missing_value');
+  if ([...value].length > max) fail(code, path, 'text_too_long');
   if (
-    typeof value !== 'string' ||
-    !value.trim() ||
-    [...value].length > max ||
     [...value].some((char) => {
       const point = char.codePointAt(0);
       return (
@@ -170,7 +175,7 @@ function string(value, max, code) {
       );
     })
   )
-    fail(code);
+    fail(code, path, 'invalid_characters');
   return value;
 }
 
@@ -240,26 +245,38 @@ export function validateGenerationSource(source) {
   return normalized;
 }
 
-function references(value, fragments, min = 1) {
+function references(value, fragments, min = 1, path) {
   const seen = new Set();
-  return list(value, GENERATION_LIMITS.references, min).map((reference) => {
-    record(reference, ['fragment_id', 'quote']);
-    const id = string(reference.fragment_id, 30);
-    const quote = string(reference.quote, GENERATION_LIMITS.quoteCharacters);
-    const fragment = fragments.get(id);
-    if (!fragment || !fragment.text.includes(quote)) fail();
-    const key = JSON.stringify([id, quote]);
-    if (seen.has(key)) fail();
-    seen.add(key);
-    return { fragment_id: id, quote };
-  });
+  return list(value, GENERATION_LIMITS.references, min, undefined, path, 'missing_evidence').map(
+    (reference, index) => {
+      const referencePath = `${path}[${index}]`;
+      record(reference, ['fragment_id', 'quote'], undefined, referencePath);
+      const id = string(reference.fragment_id, 30, undefined, `${referencePath}.fragment_id`);
+      const quote = string(
+        reference.quote,
+        GENERATION_LIMITS.quoteCharacters,
+        undefined,
+        `${referencePath}.quote`,
+      );
+      const fragment = fragments.get(id);
+      if (!fragment) fail(undefined, `${referencePath}.fragment_id`, 'unknown_fragment');
+      if (!fragment.text.includes(quote))
+        fail(undefined, `${referencePath}.quote`, 'quote_mismatch');
+      const key = JSON.stringify([id, quote]);
+      if (seen.has(key)) fail(undefined, referencePath, 'duplicate_reference');
+      seen.add(key);
+      return { fragment_id: id, quote };
+    },
+  );
 }
 
 function eventDate(value) {
   if (value === null) return null;
-  if (typeof value !== 'string' || !/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(value)) fail();
+  if (typeof value !== 'string' || !/^(?!0000)\d{4}-\d{2}-\d{2}$/.test(value))
+    fail(undefined, 'event_date', 'invalid_date');
   const date = new Date(`${value}T00:00:00.000Z`);
-  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) fail();
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value)
+    fail(undefined, 'event_date', 'invalid_date');
   return value;
 }
 
@@ -279,7 +296,14 @@ function normalizeCandidates(value, source, partial = false) {
           return work();
         } catch (error) {
           if (!partial || !(error instanceof SignalGenerationError)) throw error;
-          errors.push({ field, code });
+          const diagnostic = error.diagnostic;
+          errors.push({
+            field,
+            code,
+            ...(isGenerationValidationDetail(field, diagnostic?.path, diagnostic?.reason)
+              ? diagnostic
+              : {}),
+          });
           return undefined;
         }
       };
@@ -290,21 +314,26 @@ function normalizeCandidates(value, source, partial = false) {
       const shape = check(
         'candidate',
         () =>
-          record(candidate, [
-            'title',
-            'summary',
-            'event_date',
-            'event_date_evidence',
-            'persons',
-            'organizations',
-            'claims',
-          ]),
+          record(
+            candidate,
+            [
+              'title',
+              'summary',
+              'event_date',
+              'event_date_evidence',
+              'persons',
+              'organizations',
+              'claims',
+            ],
+            undefined,
+            'candidate',
+          ),
         'invalid_candidate_shape',
       );
       if (!shape) return reject();
       const title = check(
         'title',
-        () => string(candidate.title, GENERATION_LIMITS.titleCharacters),
+        () => string(candidate.title, GENERATION_LIMITS.titleCharacters, undefined, 'title'),
         typeof candidate.title === 'string' &&
           [...candidate.title].length > GENERATION_LIMITS.titleCharacters
           ? 'title_too_long'
@@ -312,7 +341,7 @@ function normalizeCandidates(value, source, partial = false) {
       );
       const summary = check(
         'summary',
-        () => string(candidate.summary, GENERATION_LIMITS.summaryCharacters),
+        () => string(candidate.summary, GENERATION_LIMITS.summaryCharacters, undefined, 'summary'),
         typeof candidate.summary === 'string' &&
           [...candidate.summary].length > GENERATION_LIMITS.summaryCharacters
           ? 'summary_too_long'
@@ -331,8 +360,13 @@ function normalizeCandidates(value, source, partial = false) {
             Array.isArray(candidate.event_date_evidence) &&
             candidate.event_date_evidence.length
           )
-            fail();
-          return references(candidate.event_date_evidence, fragments, event_date === null ? 0 : 1);
+            fail(undefined, 'event_date_evidence', 'unknown_date_has_evidence');
+          return references(
+            candidate.event_date_evidence,
+            fragments,
+            event_date === null ? 0 : 1,
+            'event_date_evidence',
+          );
         },
         candidate.event_date === null &&
           Array.isArray(candidate.event_date_evidence) &&
@@ -341,29 +375,38 @@ function normalizeCandidates(value, source, partial = false) {
           : 'invalid_evidence',
       );
       const persons = check('persons', () =>
-        list(candidate.persons, 12)
-          .map((person) => {
-            record(person, ['name', 'role', 'organization', 'evidence']);
+        list(candidate.persons, 12, 0, undefined, 'persons')
+          .map((person, index) => {
+            const path = `persons[${index}]`;
+            record(person, ['name', 'role', 'organization', 'evidence'], undefined, path);
             return {
-              name: string(person.name, 150),
-              role: string(person.role, 200),
-              organization: person.organization === null ? null : string(person.organization, 200),
-              evidence: references(person.evidence, fragments),
+              name: string(person.name, 150, undefined, `${path}.name`),
+              role: string(person.role, 200, undefined, `${path}.role`),
+              organization:
+                person.organization === null
+                  ? null
+                  : string(person.organization, 200, undefined, `${path}.organization`),
+              evidence: references(person.evidence, fragments, 1, `${path}.evidence`),
             };
           })
           .filter((person) => !isExcludedPublicPerson(person)),
       );
       const organizations = check('organizations', () => {
-        const names = list(candidate.organizations, 12).map((name) => string(name, 200));
-        if (new Set(names).size !== names.length) fail();
+        const names = list(candidate.organizations, 12, 0, undefined, 'organizations').map(
+          (name, index) => string(name, 200, undefined, `organizations[${index}]`),
+        );
+        const duplicateIndex = names.findIndex((name, index) => names.indexOf(name) !== index);
+        if (duplicateIndex !== -1)
+          fail(undefined, `organizations[${duplicateIndex}]`, 'duplicate_item');
         return names;
       });
       const claims = check('claims', () =>
-        list(candidate.claims, 12, 1).map((claim) => {
-          record(claim, ['text', 'evidence']);
+        list(candidate.claims, 12, 1, undefined, 'claims').map((claim, index) => {
+          const path = `claims[${index}]`;
+          record(claim, ['text', 'evidence'], undefined, path);
           return {
-            text: string(claim.text, 1200),
-            evidence: references(claim.evidence, fragments),
+            text: string(claim.text, 1200, undefined, `${path}.text`),
+            evidence: references(claim.evidence, fragments, 1, `${path}.evidence`),
           };
         }),
       );
