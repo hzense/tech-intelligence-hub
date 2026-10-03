@@ -190,6 +190,7 @@ export function candidateReviewMaterialHash(run, index) {
     const assessed = assessGeneratedCandidates(
       { candidates: [input], reason: '审核前只读检查' },
       source,
+      run.snapshot.topics,
     );
     if (assessed.candidates.length !== 1) fail();
     const candidate = { ...assessed.candidates[0], index };

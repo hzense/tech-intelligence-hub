@@ -244,6 +244,65 @@ test('real SDK structured extraction yields only private candidates and exact ev
   assert.ok(Number.isSafeInteger(value.diagnostic.elapsed_ms));
 });
 
+const topicCatalog = [
+  { id: 'semiconductors', title: 'Semiconductors' },
+  { id: 'foundation-models', title: 'Foundation Models' },
+];
+test('one generation call receives the pinned catalog and returns validated topic suggestions', async () => {
+  const f = providerFixture({
+    ...result,
+    candidates: [{ ...candidate, topic_ids: ['semiconductors'] }],
+  });
+  const value = await f.invoke({ topics: topicCatalog });
+  assert.equal(value.success, true);
+  assert.deepEqual(value.output.candidates[0].topic_ids, ['semiconductors']);
+  assert.equal(f.calls.length, 1);
+  const wire = JSON.parse(f.calls[0].body);
+  const prompt = JSON.parse(wire.messages.find(({ role }) => role === 'user').content);
+  assert.deepEqual(prompt.enabled_topics, topicCatalog);
+  assert.deepEqual(prompt.untrusted_source, source);
+  assert.ok(
+    wire.response_format.json_schema.schema.properties.candidates.items.required.includes(
+      'topic_ids',
+    ),
+  );
+  assert.match(wire.messages.find(({ role }) => role === 'system').content, /不创建或改写领域 ID/);
+  const request = generationInput(source, stage.prompt, topicCatalog);
+  const example = JSON.parse(request.system.split('\n').find((line) => line.startsWith('{')));
+  assert.doesNotThrow(() =>
+    normalizeGeneratedCandidates(example.output, example.source, example.enabled_topics),
+  );
+  assert.throws(() => normalizeGeneratedCandidates(example.output, example.source, topicCatalog), {
+    code: 'invalid_generation_output',
+  });
+  const legacy = generationInput(source, stage.prompt);
+  assert.ok(
+    request.inputTokens > legacy.inputTokens,
+    'catalog, rules and schema count toward admission',
+  );
+});
+
+test('unmatched topics remain empty, and invalid topic suggestions fail without another model call', async () => {
+  for (const topics of [topicCatalog, []]) {
+    const f = providerFixture({ ...result, candidates: [{ ...candidate, topic_ids: [] }] });
+    const value = await f.invoke({ topics });
+    assert.equal(value.success, true);
+    assert.deepEqual(value.output.candidates[0].topic_ids, []);
+    assert.equal(f.calls.length, 1);
+  }
+  for (const topic_ids of [undefined, ['invented-topic'], ['semiconductors', 'semiconductors']]) {
+    const f = providerFixture({
+      ...result,
+      candidates: [{ ...candidate, ...(topic_ids === undefined ? {} : { topic_ids }) }],
+    });
+    const value = await f.invoke({ topics: topicCatalog });
+    assert.equal(value.success, false);
+    assert.equal(value.diagnostic.code, 'generation_invalid_output');
+    assert.equal(f.calls.length, 1);
+    assert.equal(value.input_tokens, 200);
+  }
+});
+
 test('the outgoing request keeps evidence requirements after saved prompts and portable schema conversion', async () => {
   const prompt = '历史配置：只填事件字段，把所有 evidence 留空；直接使用文章发布日期。';
   const f = providerFixture();
@@ -884,6 +943,7 @@ function coreFixture(overrides = {}) {
   let calls = 0;
   const finishes = [];
   const deps = {
+    topics: async () => [],
     source: async () => ({ fence: 1, output }),
     access: async (_id, _revision, credentials) =>
       structuredClone({ profile, connection, ...(credentials ? { apiKey } : {}) }),
@@ -928,6 +988,70 @@ function coreFixture(overrides = {}) {
     finishes,
   };
 }
+test('creation pins enabled topics without AI; execution uses that snapshot despite later catalog changes', async () => {
+  let catalogReads = 0;
+  const provider = providerFixture({
+    ...result,
+    candidates: [{ ...candidate, topic_ids: ['semiconductors'] }],
+  });
+  const f = coreFixture({
+    topics: async () => {
+      catalogReads++;
+      if (catalogReads > 1) throw new Error('catalog is no longer available');
+      return topicCatalog;
+    },
+    invoke: (input) => provider.invoke(input),
+  });
+  const id = f.run().id;
+  await f.execute('admin', {
+    action: 'create',
+    id,
+    batchId: f.run().batch_id,
+    itemId: f.run().item_id,
+    profileId: profile.id,
+    profileRevision: profile.revision,
+    consent: true,
+  });
+  assert.deepEqual(f.run().snapshot.topics, topicCatalog);
+  assert.equal(provider.calls.length, 0);
+  const createdInput = generationInput(source, stage.prompt, topicCatalog);
+  assert.ok(f.run().reserveMicrousd >= createdInput.inputTokens);
+  const dto = await f.execute('admin', { action: 'run', id });
+  assert.equal(dto.status, 'completed');
+  assert.deepEqual(f.finishes[0].result.candidates[0].topic_ids, ['semiconductors']);
+  assert.equal(provider.calls.length, 1);
+  assert.equal(catalogReads, 1);
+});
+
+test('unavailable topic catalog blocks creation before credentials, reservation or generation', async () => {
+  let created = false;
+  const f = coreFixture({
+    topics: async () => {
+      throw new Error('catalog unavailable');
+    },
+    create: async () => {
+      created = true;
+    },
+    access: async (_id, _revision, credentials) => {
+      assert.notEqual(credentials, true);
+      return { profile, connection };
+    },
+  });
+  await assert.rejects(
+    f.execute('admin', {
+      action: 'create',
+      id: f.run().id,
+      batchId: f.run().batch_id,
+      itemId: f.run().item_id,
+      profileId: profile.id,
+      profileRevision: profile.revision,
+      consent: true,
+    }),
+    /catalog unavailable/,
+  );
+  assert.equal(created, false);
+  assert.equal(f.calls(), 0);
+});
 test('mixed output saves valid siblings; all-rejected output saves private diagnostics with failed status and usage', async () => {
   for (const mixed of [true, false]) {
     const bad = {

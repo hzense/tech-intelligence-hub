@@ -87,6 +87,36 @@ test('service binds owner and immutable material while allowing manual four-fiel
   assert.equal(dashboard.revision, 0);
   assert.equal(dashboard.configured, true);
 });
+test('generation preselection uses the current enabled catalog and never overwrites saved selections', async () => {
+  const topicOptions = [{ id: 'ai', title: '当前领域名称' }];
+  let saved = null;
+  const service = createEditorialReviewService({
+    enabled: () => true,
+    material: async () => ({
+      materialHash,
+      content: { ...content, topics: [] },
+      warnings: [],
+      generatedTopicIds: ['ai', 'disabled-topic'],
+    }),
+    topics: async () => topicOptions,
+    read: async () => saved,
+    save: async () => {
+      throw new Error('read-only preparation must not save');
+    },
+  });
+  const prepared = await service.read('owner', runId, 0);
+  assert.deepEqual(prepared.content.topics, topicOptions);
+  assert.equal(prepared.action, null);
+  for (const topics of [[], [{ id: 'manual-topic', title: '人工选择' }]]) {
+    saved = {
+      request_id: requestId,
+      revision: 1,
+      action: 'draft',
+      content: { ...content, topics },
+    };
+    assert.deepEqual((await service.read('owner', runId, 0)).content.topics, topics);
+  }
+});
 test('service rejects immutable text changes, missing confirmation, missing fields and unknown payload', async () => {
   const { service, calls } = setup();
   for (const modify of [

@@ -62,6 +62,7 @@ export function PrivateResult({
     text_too_long: '文本超过该字段的长度限制',
     invalid_characters: '文本含不允许的控制字符或无效 Unicode 字符',
     unknown_fragment: '引用的原文片段编号不存在',
+    unknown_topic: '领域不在本次生成提供的已启用目录中',
     quote_mismatch: '引文未逐字匹配所引用的原文片段',
     duplicate_reference: '同一字段重复引用了相同的片段和引文',
     duplicate_item: '列表包含重复项目',

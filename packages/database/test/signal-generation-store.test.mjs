@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import console from 'node:console';
 import { describe, expect, it, vi } from 'vitest';
-import { REJECTED_CANDIDATES_REASON } from '../../ingestion/src/signal-generation-contract.mjs';
+import {
+  assessGeneratedCandidates,
+  REJECTED_CANDIDATES_REASON,
+} from '../../ingestion/src/signal-generation-contract.mjs';
 import {
   createSignalGeneration,
   getSignalGeneration,
@@ -121,6 +124,228 @@ function input() {
   };
 }
 describe('private generation input boundaries', () => {
+  it('rejects invalid topic snapshots before contacting the database', async () => {
+    const topic = { id: 'topic-ai', title: 'Artificial Intelligence' };
+    for (const topics of [
+      undefined,
+      null,
+      {},
+      [topic, topic],
+      [{ ...topic, title: '' }],
+      Array.from({ length: 1001 }, (_, index) => ({ id: `topic-${index}`, title: 'Topic' })),
+    ]) {
+      const value = input();
+      value.snapshot.topics = topics;
+      await expect(createSignalGeneration(value)).rejects.toMatchObject({
+        code: 'invalid_snapshot',
+      });
+    }
+  });
+
+  it('persists the complete validated catalog with a new generation snapshot', async () => {
+    const value = input();
+    value.snapshot.topics = [{ id: 'topic-ai', title: 'Artificial Intelligence' }];
+    let savedSnapshot;
+    value.pool = {
+      connect: async () => ({
+        release() {},
+        query: async (sql, params) => {
+          if (sql.startsWith('INSERT INTO public.signal_generation_runs')) {
+            savedSnapshot = JSON.parse(params[10]);
+            return { rows: [{ id: value.request.id, snapshot: savedSnapshot }] };
+          }
+          return { rows: [] };
+        },
+      }),
+    };
+    const result = await createSignalGeneration(value);
+    expect(result.snapshot.topics).toEqual(value.snapshot.topics);
+    expect(savedSnapshot).toEqual(value.snapshot);
+  });
+
+  it.each([true, false])(
+    'first admission pins catalog on same-ID (%s) or semantic replay, including legacy tasks',
+    async (sameId) => {
+      for (const [savedTopics, incomingTopics] of [
+        [undefined, [{ id: 'topic-new', title: 'New topic' }]],
+        [[{ id: 'topic-old', title: 'Old topic' }], [{ id: 'topic-new', title: 'New topic' }]],
+        [[{ id: 'topic-old', title: 'Old topic' }], []],
+      ]) {
+        const value = input();
+        const savedSnapshot = {
+          ...value.snapshot,
+          ...(savedTopics === undefined ? {} : { topics: savedTopics }),
+        };
+        const savedConfig = { ...value.configuration };
+        const { id: requestId, ...requestIdentity } = value.request;
+        const row = {
+          id: sameId ? requestId : randomUUID(),
+          owner_id: value.owner,
+          batch_id: value.request.batchId,
+          item_id: value.request.itemId,
+          source_fence: value.request.sourceFence,
+          source_hash: value.request.sourceHash,
+          profile_id: value.request.profileId,
+          profile_revision: value.request.profileRevision,
+          snapshot: savedSnapshot,
+          configuration: savedConfig,
+          fingerprint: signalGenerationSourceHash({
+            owner: value.owner,
+            ...requestIdentity,
+            snapshot: savedSnapshot,
+            configuration: savedConfig,
+          }),
+        };
+        const writes = [];
+        value.pool = {
+          connect: async () => ({
+            query: async (sql) => {
+              if (sql.startsWith('INSERT') || sql.startsWith('UPDATE')) writes.push(sql);
+              if (sql.includes('FROM public.signal_generation_runs WHERE id='))
+                return { rows: sameId ? [row] : [] };
+              if (sql.includes('WHERE owner_id=$1 AND item_id=$2')) return { rows: [row] };
+              return { rows: [] };
+            },
+            release() {},
+          }),
+        };
+        value.snapshot.topics = incomingTopics;
+        value.configuration.reserveMicrousd = 20;
+        expect(await createSignalGeneration(value)).toEqual(row);
+        expect(writes).toHaveLength(0);
+        row.deleted_at = new Date();
+        await expect(createSignalGeneration(value)).rejects.toMatchObject({
+          code: 'task_deleted',
+          previousId: row.id,
+        });
+        delete row.deleted_at;
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+          value.configuration.dailyLimitMicrousd = 101;
+          await expect(createSignalGeneration(value)).rejects.toMatchObject({
+            code: 'request_id_conflict',
+          });
+          value.configuration.dailyLimitMicrousd = 100;
+          row.fingerprint = '0'.repeat(64);
+          await expect(createSignalGeneration(value)).rejects.toMatchObject({
+            code: 'request_id_conflict',
+          });
+        } finally {
+          warn.mockRestore();
+        }
+      }
+    },
+  );
+
+  it('validates saved topic suggestions against the immutable catalog before writing', async () => {
+    const topics = [{ id: 'topic-ai', title: 'Artificial Intelligence' }];
+    const generationSource = {
+      classification: 'private',
+      fragments: [{ id: 'fragment-1', text: 'safe source', locator: { paragraph: 1 } }],
+    };
+    const raw = {
+      title: 'Synthetic',
+      summary: 'Synthetic evidence',
+      event_date: null,
+      event_date_evidence: [],
+      persons: [],
+      organizations: [],
+      claims: [
+        { text: 'safe source', evidence: [{ fragment_id: 'fragment-1', quote: 'safe source' }] },
+      ],
+      topic_ids: ['topic-ai'],
+    };
+    const result = {
+      ...assessGeneratedCandidates(
+        { candidates: [raw], reason: 'Private candidate' },
+        generationSource,
+        topics,
+      ),
+      usage: { input_tokens: 5, output_tokens: 5 },
+    };
+    const token = randomUUID();
+    const row = {
+      id: randomUUID(),
+      status: 'running',
+      lease_token: token,
+      reserved_microusd: '10',
+      lease_until: new Date(Date.now() + 60000),
+      snapshot: { source: generationSource, topics },
+    };
+    const writes = [];
+    const pool = {
+      connect: async () => ({
+        release() {},
+        query: async (sql, params) => {
+          if (sql.includes('FROM public.signal_generation_runs')) return { rows: [row] };
+          if (sql.includes(' AS live')) return { rows: [{ live: true }] };
+          if (sql.startsWith('UPDATE public.signal_generation_runs')) {
+            writes.push(params);
+            return { rows: [{ ...row, result: JSON.parse(params[2]) }] };
+          }
+          return { rows: [] };
+        },
+      }),
+    };
+    const args = { pool, owner: 'owner', id: row.id, token, outcome: 'completed', result };
+    expect((await finishSignalGeneration(args)).result).toEqual(result);
+    expect(writes).toHaveLength(1);
+    const legacyCandidates = result.candidates.map((candidate) => {
+      const legacy = { ...candidate };
+      delete legacy.topic_ids;
+      return legacy;
+    });
+    const unversioned = { ...result };
+    delete unversioned.validation_version;
+    delete unversioned.rejected;
+    const invalidResults = [
+      { ...result, candidates: [{ ...result.candidates[0], topic_ids: ['unknown'] }] },
+      { ...result, candidates: [{ ...result.candidates[0], topic_ids: ['topic-ai', 'topic-ai'] }] },
+      {
+        ...result,
+        candidates: [{ ...result.candidates[0], topic_ids: Array(6).fill('topic-ai') }],
+      },
+      { ...result, candidates: legacyCandidates },
+      unversioned,
+    ];
+    for (const invalid of invalidResults)
+      await expect(finishSignalGeneration({ ...args, result: invalid })).rejects.toMatchObject({
+        code: 'invalid_result',
+      });
+    delete row.snapshot.topics;
+    await expect(finishSignalGeneration(args)).rejects.toMatchObject({ code: 'invalid_result' });
+    const legacyResult = {
+      ...result,
+      candidates: legacyCandidates,
+    };
+    expect((await finishSignalGeneration({ ...args, result: legacyResult })).result).toEqual(
+      legacyResult,
+    );
+    expect(writes).toHaveLength(2);
+    const rejectedResult = {
+      ...assessGeneratedCandidates(
+        { candidates: [{ ...raw, topic_ids: ['unknown'] }], reason: 'Private raw text' },
+        generationSource,
+        topics,
+      ),
+      usage: result.usage,
+    };
+    const failedArgs = {
+      ...args,
+      outcome: 'failed',
+      errorCode: 'generation_invalid_output',
+      result: rejectedResult,
+    };
+    await expect(finishSignalGeneration(failedArgs)).rejects.toMatchObject({
+      code: 'invalid_result',
+    });
+    row.snapshot.topics = topics;
+    expect((await finishSignalGeneration(failedArgs)).result.rejected[0].errors).toEqual([
+      { field: 'topic_ids', code: 'invalid_field', path: 'topic_ids[0]', reason: 'unknown_topic' },
+    ]);
+    expect(writes).toHaveLength(3);
+  });
+
   it('reports only fixed conflict field names and booleans, never private values', async () => {
     const value = input();
     const { id, ...identityRequest } = value.request;

@@ -157,6 +157,33 @@ export const generationCandidateJsonSchema = Object.freeze({
   },
 });
 
+// Legacy tasks keep their original schema and candidate material. New tasks pin
+// the selectable catalog in their snapshot and require an explicit selection.
+const legacyCandidateSchema = generationCandidateJsonSchema.properties.candidates.items;
+export const generationCandidateWithTopicsJsonSchema = Object.freeze({
+  ...generationCandidateJsonSchema,
+  properties: {
+    ...generationCandidateJsonSchema.properties,
+    candidates: {
+      ...generationCandidateJsonSchema.properties.candidates,
+      items: {
+        ...legacyCandidateSchema,
+        required: [...legacyCandidateSchema.required, 'topic_ids'],
+        properties: {
+          ...legacyCandidateSchema.properties,
+          topic_ids: {
+            type: 'array',
+            description:
+              '从本次已启用领域目录中选择最相关的领域 ID，最多 5 项且不得重复；无合适领域时返回 []。不得自行创造领域或填写领域名称。',
+            maxItems: 5,
+            items: { type: 'string', minLength: 1, maxLength: 100 },
+          },
+        },
+      },
+    },
+  },
+});
+
 export class SignalGenerationError extends Error {
   constructor(code) {
     super(code);
@@ -216,6 +243,20 @@ function string(value, max, code, path) {
 
 function boundedBytes(value, maximum, code) {
   if (new TextEncoder().encode(JSON.stringify(value)).length > maximum) fail(code);
+}
+
+/** A server-owned catalog, pinned with the request; never silently truncate it. */
+export function normalizeGenerationTopics(value) {
+  const code = 'invalid_generation_topics';
+  const seen = new Set();
+  return list(value, 1000, 0, code).map((topic) => {
+    record(topic, ['id', 'title'], code);
+    const id = string(topic.id, 100, code);
+    const title = string(topic.title, 200, code);
+    if (id !== id.trim() || title !== title.trim() || seen.has(id)) fail(code);
+    seen.add(id);
+    return { id, title };
+  });
 }
 
 /** Source IDs and classification are server-owned; no filenames or URLs are added. */
@@ -316,7 +357,11 @@ function eventDate(value) {
 }
 
 /** Structural/quotation validation only: this does not establish factual or public eligibility. */
-function normalizeCandidates(value, source, partial = false) {
+function normalizeCandidates(value, source, partial = false, topics) {
+  const topicIds =
+    topics === undefined
+      ? undefined
+      : new Set(normalizeGenerationTopics(topics).map(({ id }) => id));
   const validatedSource = validateGenerationSource(source);
   const fragments = new Map(validatedSource.fragments.map((fragment) => [fragment.id, fragment]));
   record(value, ['candidates', 'reason']);
@@ -359,6 +404,9 @@ function normalizeCandidates(value, source, partial = false) {
               'persons',
               'organizations',
               'claims',
+              ...(topicIds !== undefined || (candidate && Object.hasOwn(candidate, 'topic_ids'))
+                ? ['topic_ids']
+                : []),
             ],
             undefined,
             'candidate',
@@ -445,6 +493,23 @@ function normalizeCandidates(value, source, partial = false) {
           };
         }),
       );
+      const hasTopics = Object.hasOwn(candidate, 'topic_ids');
+      const topic_ids = hasTopics
+        ? check('topic_ids', () => {
+            const ids = list(candidate.topic_ids, 5, 0, undefined, 'topic_ids').map((id, index) => {
+              const path = `topic_ids[${index}]`;
+              const normalized = string(id, 100, undefined, path);
+              if (normalized !== normalized.trim()) fail(undefined, path, 'invalid_characters');
+              if (topicIds !== undefined && !topicIds.has(normalized))
+                fail(undefined, path, 'unknown_topic');
+              return normalized;
+            });
+            const duplicateIndex = ids.findIndex((id, index) => ids.indexOf(id) !== index);
+            if (duplicateIndex !== -1)
+              fail(undefined, `topic_ids[${duplicateIndex}]`, 'duplicate_item');
+            return ids;
+          })
+        : undefined;
       if (errors.length) return reject();
       const issues = ['needs_public_evidence'];
       if (!persons.length) issues.push('needs_person_evidence');
@@ -458,6 +523,7 @@ function normalizeCandidates(value, source, partial = false) {
         persons,
         organizations,
         claims,
+        ...(hasTopics ? { topic_ids } : {}),
         classification: 'private',
         status: 'needs_review',
         issues,
@@ -474,13 +540,13 @@ function normalizeCandidates(value, source, partial = false) {
   return result;
 }
 
-export function normalizeGeneratedCandidates(value, source) {
-  return normalizeCandidates(value, source);
+export function normalizeGeneratedCandidates(value, source, topics) {
+  return normalizeCandidates(value, source, false, topics);
 }
 
 /** Reject candidates independently; diagnostics contain only server-owned codes, never raw output. */
-export function assessGeneratedCandidates(value, source) {
-  return normalizeCandidates(value, source, true);
+export function assessGeneratedCandidates(value, source, topics) {
+  return normalizeCandidates(value, source, true, topics);
 }
 
 /** Validate only the bounded envelope in the SDK; business validation runs after usage is captured. */

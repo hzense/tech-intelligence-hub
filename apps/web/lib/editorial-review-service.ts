@@ -9,7 +9,12 @@ type Row = {
   action: 'draft' | 'publish' | 'withdraw';
   content: EditorialContent;
 };
-type Material = { materialHash: string; content: EditorialContent; warnings: string[] };
+type Material = {
+  materialHash: string;
+  content: EditorialContent;
+  warnings: string[];
+  generatedTopicIds?: string[];
+};
 const fail = (code: string): never => {
   throw Object.assign(new Error(code), { code });
 };
@@ -45,12 +50,25 @@ export function createEditorialReviewService(deps: {
         configured ? deps.read(owner, runId, index) : null,
         deps.topics(),
       ]);
+      const currentTopics = new Map(topicOptions.map((topic) => [topic.id, topic]));
+      const content = saved?.content ?? {
+        ...material.content,
+        topics:
+          material.generatedTopicIds === undefined
+            ? material.content.topics
+            : [...new Set(material.generatedTopicIds)]
+                .flatMap((id) => {
+                  const current = currentTopics.get(id);
+                  return current ? [current] : [];
+                })
+                .slice(0, 5),
+      };
       return {
         configured,
         materialHash: material.materialHash,
         revision: saved?.revision ?? 0,
         action: saved?.action ?? null,
-        content: saved?.content ?? material.content,
+        content,
         topicOptions,
         warnings: saved ? [] : material.warnings,
         requestId: saved?.request_id ?? null,

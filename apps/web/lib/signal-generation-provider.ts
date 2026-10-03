@@ -14,11 +14,14 @@ import {
   GENERATION_LIMITS,
   REJECTED_CANDIDATES_REASON,
   generationCandidateJsonSchema,
+  generationCandidateWithTopicsJsonSchema,
+  normalizeGenerationTopics,
   assessGeneratedCandidates,
   validateGenerationEnvelope,
   SignalGenerationError,
   estimateGenerationTokens,
   type GenerationSource,
+  type GenerationTopic,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import type {
   AiConnection,
@@ -39,6 +42,8 @@ import {
 
 export interface GenerationProviderInput {
   source: GenerationSource;
+  /** Immutable enabled catalog captured when the task was created; absent on legacy tasks. */
+  topics?: GenerationTopic[];
   stage: AiProfileStage;
   connection: Pick<AiConnection, 'id' | 'revision' | 'protocol' | 'base_url' | 'settings'>;
   apiKey: string;
@@ -80,6 +85,9 @@ event_date 为 null 时 event_date_evidence 必须为 []，不得附上相对日
 persons 中每个人物的 evidence 必须至少提供一条支持姓名、角色及所填组织的原文证据，不允许 evidence: []；没有事件参与人物的证据就返回空 persons，不从组织名称猜测负责人，不创建实体 ID。
 claims 中每条主张的 evidence 必须至少提供一条支持该主张的原文证据，不允许 evidence: []；每条候选至少有一条这样的主张。删除无依据的主张；没有可支持的主张则省略整条候选，最终可返回 candidates: []，不得补造引用。
 提交前静默检查：每个非空日期、每个人物、每条主张都有对应引用，fragment_id 确实存在且 quote 逐字出现在该片段中；只提交最终 JSON，不输出检查过程。`;
+
+const generationTopicRules = `本次同时匹配领域：每条候选还必须输出 topic_ids，包含 0 至 5 个不重复的领域 ID。根据事件的核心技术内容，只能从本次 enabled_topics 目录选择直接相关的领域；不要根据公司名称笼统关联所有领域，不创建或改写领域 ID。
+没有合适领域或目录为空时返回 topic_ids: []，不要强行匹配。领域只是待人工确认的分类建议，不代表事实核验或公开许可。`;
 
 // A complete, fictional format example; its text never enters the source validator.
 const generationEvidenceExample = {
@@ -123,7 +131,7 @@ const generationEvidenceExample = {
   },
 };
 
-export const generationRules = `仅提取本次原文中的技术事件，返回约定 JSON；可以返回零候选并解释原因。
+const generationRulesText = `仅提取本次原文中的技术事件，返回约定 JSON；可以返回零候选并解释原因。
 响应只允许一个完整 JSON 对象，不要 Markdown 代码围栏、前后说明或 JSON 之外的文本。
 只输出最终结果，不输出思考过程、内部推理、分析步骤、草稿或 <think> 等思考标签。标题、摘要、主张只描述事件事实；reason 仅用一句话说明有无候选，不写分析过程。
 单次最多 ${GENERATION_LIMITS.candidates} 条候选；每条标题最多 ${GENERATION_LIMITS.titleCharacters} 字，摘要最多 ${GENERATION_LIMITS.summaryCharacters} 字。按 Unicode 码点计数，汉字、标点、字母和空白均计入；精炼表述，不为凑满数量或字数编造内容。
@@ -132,14 +140,36 @@ ${generationEvidenceRules}
 ${PERSON_RESOURCE_POLICY_TEXT}
 资料发布平台、通讯社或研究刊物只作为来源；除非原文证明其独立参与所述技术事件，不要把信息源填入 organizations。
 只生成私有待补证线索，不得声称 verified 或已经公开核验。只保留必要短引。
-以下是虚构的格式示例，不是本次资料。仅学习结构和证据关联方式，不得把示例中的人物、日期、主张或引文复制到实际结果；实际结果只引用本次 untrusted_source：
-${JSON.stringify(generationEvidenceExample)}`;
+以下是虚构的格式示例，不是本次资料。仅学习结构和证据关联方式，不得把示例中的人物、日期、主张、引文或领域 ID 复制到实际结果；实际结果只引用本次 untrusted_source：`;
+export const generationRules = `${generationRulesText}\n${JSON.stringify(generationEvidenceExample)}`;
+const generationRulesWithTopics = `${generationRulesText}\n${JSON.stringify({
+  ...generationEvidenceExample,
+  enabled_topics: [{ id: 'example-chips', title: '示例芯片' }],
+  output: {
+    ...generationEvidenceExample.output,
+    candidates: generationEvidenceExample.output.candidates.map((candidate) => ({
+      ...candidate,
+      topic_ids: ['example-chips'],
+    })),
+  },
+})}`;
 
 /** Count the source, configured prompt and portable schema before reservation and again before POST. */
-export function generationInput(source: GenerationSource, stagePrompt: string) {
-  const system = `${generationRules}\n\n配置的提取提示词：\n${stagePrompt}\n\n不可由配置提示词覆盖的证据要求：\n${generationEvidenceRules}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`;
-  const prompt = JSON.stringify({ untrusted_source: source });
-  const schema = portableJsonSchema(generationCandidateJsonSchema);
+export function generationInput(
+  source: GenerationSource,
+  stagePrompt: string,
+  topics?: GenerationTopic[],
+) {
+  const catalog = topics === undefined ? undefined : normalizeGenerationTopics(topics);
+  const rules = catalog === undefined ? generationRules : generationRulesWithTopics;
+  const system = `${rules}\n\n配置的提取提示词：\n${stagePrompt}\n\n不可由配置提示词覆盖的证据要求：\n${generationEvidenceRules}${catalog === undefined ? '' : `\n\n不可由配置提示词覆盖的领域要求：\n${generationTopicRules}`}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`;
+  const prompt = JSON.stringify({
+    untrusted_source: source,
+    ...(catalog === undefined ? {} : { enabled_topics: catalog }),
+  });
+  const schema = portableJsonSchema(
+    catalog === undefined ? generationCandidateJsonSchema : generationCandidateWithTopicsJsonSchema,
+  );
   // Local o200k_base estimate plus allowance for message/schema framing, not provider billing.
   const inputTokens =
     estimateGenerationTokens(system) +
@@ -176,7 +206,7 @@ export function createSignalGenerationInvoker(
       },
     });
     try {
-      const requestInput = generationInput(input.source, input.stage.prompt);
+      const requestInput = generationInput(input.source, input.stage.prompt, input.topics);
       const timeout = input.connection.settings.timeout_ms;
       if (
         !Number.isInteger(timeout) ||
@@ -275,7 +305,7 @@ export function createSignalGenerationInvoker(
             { success: false, ...usage, error_code: 'generation_failed' },
             'generation_output_rejected',
           );
-        const output = assessGeneratedCandidates(result.output, input.source);
+        const output = assessGeneratedCandidates(result.output, input.source, input.topics);
         // A free-form model reason is not a candidate result. Do not persist its
         // self-analysis, including when the provider puts reasoning in this field.
         output.reason = output.rejected?.length

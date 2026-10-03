@@ -105,6 +105,7 @@ function fixture() {
     return row;
   };
   const deps = {
+    topics: async () => [],
     source: async (requestOwner, requestedBatch, requestedItem, options) => {
       f.sourceReads.push({
         owner: requestOwner,

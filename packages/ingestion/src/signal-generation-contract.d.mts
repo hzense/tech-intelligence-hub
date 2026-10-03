@@ -11,6 +11,7 @@ export const GENERATION_LIMITS: Readonly<{
   quoteCharacters: 500;
 }>;
 export const generationCandidateJsonSchema: Readonly<Record<string, unknown>>;
+export const generationCandidateWithTopicsJsonSchema: Readonly<Record<string, unknown>>;
 export const REJECTED_CANDIDATES_REASON: string;
 export function estimateGenerationTokens(text: string): number;
 export class SignalGenerationError extends Error {
@@ -26,6 +27,11 @@ export interface GenerationReference {
   fragment_id: string;
   quote: string;
 }
+export interface GenerationTopic {
+  id: string;
+  title: string;
+}
+export function normalizeGenerationTopics(value: unknown): GenerationTopic[];
 export interface GeneratedCandidateInput {
   title: string;
   summary: string;
@@ -39,6 +45,7 @@ export interface GeneratedCandidateInput {
   }[];
   organizations: string[];
   claims: { text: string; evidence: GenerationReference[] }[];
+  topic_ids?: string[];
 }
 export type GenerationIssue =
   'needs_public_evidence' | 'needs_person_evidence' | 'needs_event_time';
@@ -65,6 +72,7 @@ export interface GeneratedCandidates {
 export function assessGeneratedCandidates(
   value: unknown,
   source: GenerationSource,
+  topics?: GenerationTopic[],
 ): GeneratedCandidates;
 export function validateGenerationEnvelope(value: unknown): unknown;
 export function buildGenerationSource(importOutput: unknown): GenerationSource;
@@ -85,4 +93,5 @@ export function normalizePrivateSource(source: unknown): GenerationSource;
 export function normalizeGeneratedCandidates(
   value: unknown,
   source: GenerationSource,
+  topics?: GenerationTopic[],
 ): GeneratedCandidates;

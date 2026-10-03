@@ -4,6 +4,8 @@ import { parseImportOutput } from '../src/import-task-contract.mjs';
 import {
   buildGenerationSource,
   generationCandidateJsonSchema,
+  generationCandidateWithTopicsJsonSchema,
+  normalizeGenerationTopics,
   normalizeGeneratedCandidates,
   assessGeneratedCandidates,
   REJECTED_CANDIDATES_REASON,
@@ -31,6 +33,84 @@ const candidate = () => ({
 });
 const output = () => ({ candidates: [candidate()], reason: '从合成资料提取，仍待独立核验。' });
 const normalize = (value) => normalizeGeneratedCandidates(value, buildGenerationSource(input()));
+
+test('new generation schema requires topic IDs without changing the legacy schema', () => {
+  const legacy = generationCandidateJsonSchema.properties.candidates.items;
+  const current = generationCandidateWithTopicsJsonSchema.properties.candidates.items;
+  assert.equal(legacy.required.includes('topic_ids'), false);
+  assert.equal(Object.hasOwn(legacy.properties, 'topic_ids'), false);
+  assert.equal(current.required.includes('topic_ids'), true);
+  assert.equal(current.properties.topic_ids.maxItems, 5);
+});
+
+test('catalog snapshots are bounded, unique and copied without silent truncation', () => {
+  const topics = [{ id: 'topic-ai', title: 'Artificial Intelligence' }];
+  assert.deepEqual(normalizeGenerationTopics(topics), topics);
+  assert.notEqual(normalizeGenerationTopics(topics)[0], topics[0]);
+  assert.deepEqual(normalizeGenerationTopics([]), []);
+  for (const value of [
+    undefined,
+    null,
+    {},
+    [topics[0], topics[0]],
+    [{ ...topics[0], id: ' topic-ai' }],
+    [{ ...topics[0], title: ' ' }],
+    [{ ...topics[0], enabled: true }],
+    Array.from({ length: 1001 }, (_, index) => ({ id: `topic-${index}`, title: 'Topic' })),
+  ])
+    assert.throws(() => normalizeGenerationTopics(value), { code: 'invalid_generation_topics' });
+});
+
+test('legacy candidates retain their exact material shape while topic candidates use the pinned catalog', () => {
+  const source = buildGenerationSource(input());
+  const legacy = normalizeGeneratedCandidates(output(), source);
+  assert.equal(Object.hasOwn(legacy.candidates[0], 'topic_ids'), false);
+  const topics = [{ id: 'topic-ai', title: 'Artificial Intelligence' }];
+  const value = output();
+  value.candidates[0].topic_ids = ['topic-ai'];
+  assert.deepEqual(normalizeGeneratedCandidates(value, source, topics).candidates[0].topic_ids, [
+    'topic-ai',
+  ]);
+  // Downstream enrichment can validate structure without reloading a changing catalog.
+  assert.deepEqual(normalizeGeneratedCandidates(value, source).candidates[0].topic_ids, [
+    'topic-ai',
+  ]);
+  value.candidates[0].topic_ids = [];
+  assert.deepEqual(normalizeGeneratedCandidates(value, source, []).candidates[0].topic_ids, []);
+  assert.throws(() => normalizeGeneratedCandidates(output(), source, topics));
+});
+
+test('invalid generated topic selections reject only their candidate with bounded diagnostics', () => {
+  const source = buildGenerationSource(input());
+  const topics = [{ id: 'topic-ai', title: 'Artificial Intelligence' }];
+  for (const [topic_ids, path, reason] of [
+    [['private-unknown-id'], 'topic_ids[0]', 'unknown_topic'],
+    [['topic-ai', 'topic-ai'], 'topic_ids[1]', 'duplicate_item'],
+    [Array(6).fill('topic-ai'), 'topic_ids', 'too_many_items'],
+    ['topic-ai', 'topic_ids', 'invalid_type'],
+    [[null], 'topic_ids[0]', 'invalid_type'],
+  ]) {
+    const result = assessGeneratedCandidates(
+      {
+        candidates: [
+          { ...candidate(), topic_ids },
+          { ...candidate(), topic_ids: ['topic-ai'] },
+        ],
+        reason: 'Private model output',
+      },
+      source,
+      topics,
+    );
+    assert.deepEqual(
+      result.candidates.map(({ index }) => index),
+      [1],
+    );
+    assert.deepEqual(result.rejected[0].errors, [
+      { field: 'topic_ids', code: 'invalid_field', path, reason },
+    ]);
+    assert.equal(JSON.stringify(result).includes('private-unknown-id'), false);
+  }
+});
 
 test('national leaders are removed from derived people without deleting candidates or source evidence', () => {
   const value = output();

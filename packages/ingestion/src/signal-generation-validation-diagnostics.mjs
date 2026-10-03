@@ -11,6 +11,7 @@ const paths = {
     `^persons(?:\\[${item}\\](?:\\.(?:name|role|organization|evidence${reference}))?)?$`,
   ),
   organizations: new RegExp(`^organizations(?:\\[${item}\\])?$`),
+  topic_ids: /^topic_ids(?:\[[0-4]\])?$/,
   claims: new RegExp(`^claims(?:\\[${item}\\](?:\\.(?:text|evidence${reference}))?)?$`),
 };
 const reasons = new Set([
@@ -28,6 +29,7 @@ const reasons = new Set([
   'duplicate_item',
   'invalid_date',
   'unknown_date_has_evidence',
+  'unknown_topic',
 ]);
 
 export function isGenerationValidationDetail(field, path, reason) {

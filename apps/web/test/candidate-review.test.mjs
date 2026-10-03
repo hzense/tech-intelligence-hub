@@ -66,8 +66,25 @@ test('review packet binds immutable source and candidate without leaking interna
   ])
     assert.equal(JSON.stringify(packet).includes(secret), false);
   assert.equal(buildCandidateReview(run, 0).materialHash, packet.materialHash);
+  assert.equal(Object.hasOwn(packet.candidate, 'topic_ids'), false);
+  assert.equal(packet.materialHash, candidateReviewMaterialHash(run, 0));
   run.result.candidates[0].summary = '另一份摘要';
   assert.notEqual(buildCandidateReview(run, 0).materialHash, packet.materialHash);
+});
+test('review preserves generated topic IDs and rejects IDs outside the immutable task catalog', () => {
+  const run = fixture();
+  run.snapshot.topics = [{ id: 'topic-language-models', title: '语言模型' }];
+  run.result.candidates[0].topic_ids = ['topic-language-models'];
+  const packet = buildCandidateReview(run, 0);
+  assert.deepEqual(packet.candidate.topic_ids, ['topic-language-models']);
+  assert.equal(packet.materialHash, candidateReviewMaterialHash(run, 0));
+  run.result.candidates[0].topic_ids = [];
+  assert.deepEqual(buildCandidateReview(run, 0).candidate.topic_ids, []);
+  assert.notEqual(buildCandidateReview(run, 0).materialHash, packet.materialHash);
+  run.result.candidates[0].topic_ids = ['topic-not-in-task'];
+  assert.throws(() => buildCandidateReview(run, 0), /candidate_review_unavailable/);
+  delete run.result.candidates[0].topic_ids;
+  assert.throws(() => buildCandidateReview(run, 0), /candidate_review_unavailable/);
 });
 test('original candidate index survives partial acceptance; array offset is not identity', () => {
   const run = fixture();

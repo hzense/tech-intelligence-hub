@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   normalizeCandidateReviewRequest,
   candidateReviewMaterialHash,
@@ -65,6 +65,25 @@ export function fixture() {
   return { run, request };
 }
 describe('private review contract', () => {
+  it('binds new candidate topic suggestions to their catalog while preserving legacy material hashes', () => {
+    const { run } = fixture();
+    const candidate = run.result.candidates[0];
+    const legacyHash = createHash('sha256')
+      .update(JSON.stringify({ runId: run.id, sourceHash: run.source_hash, candidate }))
+      .digest('hex');
+    expect(candidateReviewMaterialHash(run, 0)).toBe(legacyHash);
+    run.snapshot.topics = [{ id: 'topic-ai', title: 'Artificial Intelligence' }];
+    expect(() => candidateReviewMaterialHash(run, 0)).toThrow('material_changed');
+    candidate.topic_ids = ['topic-ai'];
+    expect(candidateReviewMaterialHash(run, 0)).not.toBe(legacyHash);
+    candidate.topic_ids = ['topic-unknown'];
+    expect(() => candidateReviewMaterialHash(run, 0)).toThrow('material_changed');
+    candidate.topic_ids = [];
+    expect(candidateReviewMaterialHash(run, 0)).toMatch(/^[a-f0-9]{64}$/);
+    delete candidate.topic_ids;
+    delete run.snapshot.topics;
+    expect(candidateReviewMaterialHash(run, 0)).toBe(legacyHash);
+  });
   it('counts Chinese and astral Unicode code points at exact 80/500 boundaries', () => {
     const { request } = fixture();
     const draft = { ...request.draft, title: '😀'.repeat(80), summary: '汉'.repeat(500) };

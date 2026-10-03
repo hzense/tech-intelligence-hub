@@ -9,9 +9,12 @@ import {
   type SignalGenerationSnapshot,
 } from '../../../packages/database/src/signal-generation-store.mjs';
 import type { AiProfile, AiConnection } from '../../../packages/database/src/ai-config-store.mjs';
-import { buildGenerationSource } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import {
-  generationRules,
+  buildGenerationSource,
+  normalizeGenerationTopics,
+  type GenerationTopic,
+} from '../../../packages/ingestion/src/signal-generation-contract.mjs';
+import {
   generationInput,
   type GenerationProviderInput,
   type GenerationProviderResult,
@@ -38,6 +41,7 @@ export type GenerationAccess = {
   apiKey?: string;
 };
 export interface GenerationDependencies {
+  topics(): Promise<GenerationTopic[]>;
   source(
     owner: string,
     batchId: string,
@@ -187,12 +191,13 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       const source = buildGenerationSource(output);
       const access = await deps.access(profileId, Number(body.profileRevision));
       const stage = access.profile.stages.extract;
-      generationInput(source, stage.prompt);
+      const topics = normalizeGenerationTopics(await deps.topics());
+      const requestInput = generationInput(source, stage.prompt, topics);
       // One UTF-8 byte per input token plus framing/schema allowance: conservative, not a provider bill.
       const inputBound =
-        Buffer.byteLength(JSON.stringify(source)) +
-        Buffer.byteLength(stage.prompt) +
-        Buffer.byteLength(generationRules) +
+        Buffer.byteLength(requestInput.prompt) +
+        Buffer.byteLength(requestInput.system) +
+        Buffer.byteLength(JSON.stringify(requestInput.schema)) +
         16000;
       const reserveMicrousd = Math.max(
         1,
@@ -209,7 +214,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
             profileId,
             profileRevision: access.profile.revision,
           },
-          snapshot: { source, profile: access.profile, connection: access.connection },
+          snapshot: { source, profile: access.profile, connection: access.connection, topics },
           reserveMicrousd,
           ...(retryOf ? { retryOf } : {}),
         }),
@@ -275,6 +280,8 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       phaseStarted = performance.now();
       const result = await deps.invoke({
         source,
+        // The worker uses the saved catalog, without extra credentials or a live catalog read.
+        ...(run.snapshot.topics === undefined ? {} : { topics: run.snapshot.topics }),
         stage: access.profile.stages.extract,
         connection: access.connection,
         apiKey: access.apiKey,

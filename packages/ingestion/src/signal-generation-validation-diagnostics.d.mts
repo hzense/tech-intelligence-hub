@@ -12,6 +12,7 @@ export type GenerationValidationReason =
   | 'duplicate_reference'
   | 'duplicate_item'
   | 'invalid_date'
+  | 'unknown_topic'
   | 'unknown_date_has_evidence';
 export interface GenerationValidationDetail {
   path: string;

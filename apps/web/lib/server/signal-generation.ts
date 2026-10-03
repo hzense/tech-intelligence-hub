@@ -26,6 +26,7 @@ import {
 import { invokeSignalGeneration } from '../signal-generation-provider';
 import { createGenerationSourceInspector } from '../signal-generation-source-inspection';
 import { buildCandidateReview } from '../candidate-review';
+import { editorialTopicOptions } from './editorial-topics';
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
@@ -176,6 +177,7 @@ export async function executeGeneration(owner: string, body: unknown, queuedAt?:
   const config = readGenerationConfiguration(process.env);
   const ai = readAiBackendConfiguration(process.env);
   const execute = createGenerationExecutor({
+    topics: editorialTopicOptions,
     source,
     access: generationAiAccess,
     invoke: invokeSignalGeneration,
