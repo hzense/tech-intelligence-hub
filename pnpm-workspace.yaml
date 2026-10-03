@@ -5,6 +5,9 @@ packages:
 # Workflow currently pins older transitive clients/IDs; retain their major API
 # while applying the upstream security patches required by the production audit.
 overrides:
+  # This Next.js app does not import workflow/nest. Omit its unused Nest adapter
+  # and SWC CLI downloader chain (GHSA-ch52-4w7c-c8xp); keep the audit enabled.
+  'workflow@4.8.9>@workflow/nest': '-'
   '@workflow/world-local>undici': '7.29.1'
   '@workflow/world-vercel>undici': '7.29.1'
   '@workflow/core>nanoid': '5.1.16'
