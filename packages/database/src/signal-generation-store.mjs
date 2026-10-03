@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   normalizeGeneratedCandidates,
   normalizeGenerationTopics,
+  GENERATION_METADATA_CONTRACT,
   REJECTED_CANDIDATES_REASON,
 } from '../../ingestion/src/signal-generation-contract.mjs';
 import { isGenerationValidationDetail } from '../../ingestion/src/signal-generation-validation-diagnostics.mjs';
@@ -150,6 +151,7 @@ function validateAssessedResult(result, outcome) {
       'organizations',
       'claims',
       ...(Object.hasOwn(candidate, 'topic_ids') ? ['topic_ids'] : []),
+      ...(Object.hasOwn(candidate, 'signal_type') ? ['signal_type'] : []),
     ]);
     index(candidate.index);
     if (candidate.classification !== 'private' || candidate.status !== 'needs_review') invalid();
@@ -164,6 +166,7 @@ function validateAssessedResult(result, outcome) {
     organizations: ['invalid_field'],
     claims: ['invalid_field'],
     topic_ids: ['invalid_field'],
+    signal_type: ['invalid_field'],
   };
   for (const rejected of result.rejected) {
     shape(rejected, ['index', 'classification', 'status', 'errors']);
@@ -173,7 +176,7 @@ function validateAssessedResult(result, outcome) {
       rejected.status !== 'rejected' ||
       !Array.isArray(rejected.errors) ||
       !rejected.errors.length ||
-      rejected.errors.length > 8
+      rejected.errors.length > Object.keys(codes).length
     )
       invalid();
     const fields = new Set();
@@ -205,6 +208,14 @@ function validateSavedCandidates(result, snapshot) {
     const topics = Object.hasOwn(snapshot, 'topics')
       ? normalizeGenerationTopics(snapshot.topics)
       : undefined;
+    const outputContract = snapshot.output_contract;
+    if (outputContract !== undefined && outputContract !== GENERATION_METADATA_CONTRACT)
+      fail('invalid_result');
+    if (
+      outputContract === undefined &&
+      result.rejected?.some(({ errors }) => errors.some(({ field }) => field === 'signal_type'))
+    )
+      fail('invalid_result');
     if (
       topics === undefined &&
       result.rejected?.some(({ errors }) => errors.some(({ field }) => field === 'topic_ids'))
@@ -217,6 +228,7 @@ function validateSavedCandidates(result, snapshot) {
         { candidates: [input], reason: result.reason },
         snapshot.source,
         topics,
+        outputContract,
       ).candidates[0];
       if (
         !isDeepStrictEqual(
@@ -268,18 +280,20 @@ function matchesGenerationIdentity(row, parsed) {
     configuration: row.configuration,
   };
   const normalized = generationFingerprint(identity);
-  // The first admission pins the catalog and its token estimate. Replaying the
-  // same task after a catalog sync (including pre-catalog tasks) must return that
-  // receipt, not mutate its inputs or accidentally authorize another AI call.
-  const catalogChanged = !isDeepStrictEqual(
-    identity.snapshot.topics,
-    parsed.identity.snapshot.topics,
-  );
+  // The first admission pins the output contract, catalog and token estimate.
+  // Replays after an upgrade or catalog sync must reuse the original receipt,
+  // without changing its inputs or authorizing another AI call.
+  const generatedInputsChanged =
+    !isDeepStrictEqual(identity.snapshot.topics, parsed.identity.snapshot.topics) ||
+    identity.snapshot.output_contract !== parsed.identity.snapshot.output_contract;
   let replayIdentity = parsed.identity;
-  if (catalogChanged) {
+  if (generatedInputsChanged) {
     const snapshot = { ...parsed.identity.snapshot };
     if (Object.hasOwn(identity.snapshot, 'topics')) snapshot.topics = identity.snapshot.topics;
     else delete snapshot.topics;
+    if (Object.hasOwn(identity.snapshot, 'output_contract'))
+      snapshot.output_contract = identity.snapshot.output_contract;
+    else delete snapshot.output_contract;
     replayIdentity = {
       ...parsed.identity,
       snapshot,
@@ -304,7 +318,7 @@ function matchesGenerationIdentity(row, parsed) {
       if (key === 'snapshot' || key === 'configuration') return false;
       return !isDeepStrictEqual(identity[key], parsed.identity[key]);
     });
-    for (const key of ['source', 'profile', 'connection', 'topics']) {
+    for (const key of ['source', 'profile', 'connection', 'topics', 'output_contract']) {
       const normalize = key === 'profile' ? signalGenerationProfileIdentity : (value) => value;
       if (
         !isDeepStrictEqual(
@@ -355,10 +369,16 @@ function inputs(owner, request, snapshot, configuration) {
       'profile',
       'connection',
       ...(snapshot && Object.hasOwn(snapshot, 'topics') ? ['topics'] : []),
+      ...(snapshot && Object.hasOwn(snapshot, 'output_contract') ? ['output_contract'] : []),
     ],
     'invalid_snapshot',
   );
   const safe = bounded(snapshot, 1200000, 'invalid_snapshot');
+  if (
+    Object.hasOwn(safe, 'output_contract') &&
+    (safe.output_contract !== GENERATION_METADATA_CONTRACT || !Object.hasOwn(safe, 'topics'))
+  )
+    fail('invalid_snapshot');
   if (Object.hasOwn(safe, 'topics')) {
     try {
       safe.topics = normalizeGenerationTopics(safe.topics);
@@ -820,9 +840,12 @@ export async function finishSignalGeneration({
     if (
       safeResult &&
       (Object.hasOwn(row.snapshot ?? {}, 'topics') ||
+        Object.hasOwn(row.snapshot ?? {}, 'output_contract') ||
         (Array.isArray(safeResult.candidates) &&
           safeResult.candidates.some(
-            (candidate) => candidate && Object.hasOwn(candidate, 'topic_ids'),
+            (candidate) =>
+              candidate &&
+              (Object.hasOwn(candidate, 'topic_ids') || Object.hasOwn(candidate, 'signal_type')),
           ))) &&
       safeResult.validation_version !== 1
     )

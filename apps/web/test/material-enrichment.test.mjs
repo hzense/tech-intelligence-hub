@@ -135,6 +135,17 @@ test('material enrichment drops only excluded old people without changing the hi
   );
 });
 
+test('material enrichment preserves event type and original topic suggestions without mutating input', () => {
+  const original = { ...candidate, signal_type: 'product', topic_ids: ['topic-ai'] };
+  const b = bundle();
+  const input = materialEnrichmentInput(b, original);
+  const before = JSON.stringify(input);
+  const result = assessMaterialEnrichment(output(), input.candidate, input.source, context);
+  assert.equal(result.candidate.signal_type, 'product');
+  assert.deepEqual(result.candidate.topic_ids, ['topic-ai']);
+  assert.equal(JSON.stringify(input), before);
+});
+
 test('supplement publication preview shows validated people, organizations and topics without formal matches', () => {
   const b = bundle(),
     input = materialEnrichmentInput(b, candidate);

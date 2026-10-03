@@ -11,7 +11,7 @@ const columns =
   'request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,created_at';
 export async function saveEditorialSignal({ pool, owner, request, material }) {
   owner = editorialText(owner, 200);
-  const r = normalizeEditorialRequest(request, material);
+  const r = normalizeEditorialRequest(request, material, { checkPublication: false });
   const requestHash = createHash('sha256')
     .update(JSON.stringify({ owner, ...r }))
     .digest('hex');
@@ -54,6 +54,18 @@ export async function saveEditorialSignal({ pool, owner, request, material }) {
     if ((latest?.revision ?? 0) !== r.expectedRevision) fail('revision_conflict');
     if (r.action === 'draft' && latest?.action === 'publish') fail('published_draft_forbidden');
     if (r.action === 'withdraw' && latest?.action !== 'publish') fail('not_published');
+    normalizeEditorialRequest(r, {
+      ...material,
+      // Only the committed latest revision may retain a previously selected
+      // source after its import becomes unavailable. Read it under this lock,
+      // never trust a stale service read or the caller's source selection.
+      sourceOptions: [
+        ...new Set([
+          ...(material.sourceOptions ?? material.sourceUrls),
+          ...(latest?.content.sourceUrls ?? []),
+        ]),
+      ],
+    });
     const content = r.action === 'withdraw' ? latest.content : r.content;
     if (r.action !== 'withdraw') {
       const topics = (

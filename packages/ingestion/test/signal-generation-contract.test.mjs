@@ -5,6 +5,9 @@ import {
   buildGenerationSource,
   generationCandidateJsonSchema,
   generationCandidateWithTopicsJsonSchema,
+  generationCandidateWithMetadataJsonSchema,
+  GENERATION_METADATA_CONTRACT,
+  SIGNAL_TYPES,
   normalizeGenerationTopics,
   normalizeGeneratedCandidates,
   assessGeneratedCandidates,
@@ -41,6 +44,61 @@ test('new generation schema requires topic IDs without changing the legacy schem
   assert.equal(Object.hasOwn(legacy.properties, 'topic_ids'), false);
   assert.equal(current.required.includes('topic_ids'), true);
   assert.equal(current.properties.topic_ids.maxItems, 5);
+});
+
+test('event types are required only by the metadata contract, preserving legacy candidate bytes', () => {
+  const source = buildGenerationSource(input());
+  const legacy = normalizeGeneratedCandidates(output(), source);
+  const oldTopics = { ...candidate(), topic_ids: [] };
+  const old = normalizeGeneratedCandidates({ candidates: [oldTopics], reason: 'old' }, source, []);
+  const schema = generationCandidateWithMetadataJsonSchema.properties.candidates.items;
+  assert.ok(schema.required.includes('signal_type'));
+  assert.deepEqual(schema.properties.signal_type.enum, SIGNAL_TYPES);
+  assert.equal(
+    generationCandidateWithTopicsJsonSchema.properties.candidates.items.required.includes(
+      'signal_type',
+    ),
+    false,
+  );
+  for (const signal_type of SIGNAL_TYPES) {
+    const result = normalizeGeneratedCandidates(
+      { candidates: [{ ...oldTopics, signal_type }], reason: 'new' },
+      source,
+      [],
+      GENERATION_METADATA_CONTRACT,
+    );
+    assert.equal(result.candidates[0].signal_type, signal_type);
+  }
+  for (const invalid of [undefined, null, 'editorial', 'private', 'topic-ai', ' research']) {
+    const candidate = { ...oldTopics, ...(invalid === undefined ? {} : { signal_type: invalid }) };
+    const checked = assessGeneratedCandidates(
+      { candidates: [candidate], reason: 'new' },
+      source,
+      [],
+      GENERATION_METADATA_CONTRACT,
+    );
+    assert.equal(checked.candidates.length, 0);
+    assert.equal(checked.rejected.length, 1);
+  }
+  assert.throws(() =>
+    normalizeGeneratedCandidates(
+      { candidates: [{ ...oldTopics, signal_type: 'research' }], reason: 'old' },
+      source,
+      [],
+    ),
+  );
+  assert.equal(
+    JSON.stringify(normalizeGeneratedCandidates(output(), source)),
+    JSON.stringify(legacy),
+  );
+  assert.equal(
+    JSON.stringify(
+      normalizeGeneratedCandidates({ candidates: [oldTopics], reason: 'old' }, source, []),
+    ),
+    JSON.stringify(old),
+  );
+  assert.equal(Object.hasOwn(legacy.candidates[0], 'signal_type'), false);
+  assert.equal(Object.hasOwn(old.candidates[0], 'signal_type'), false);
 });
 
 test('catalog snapshots are bounded, unique and copied without silent truncation', () => {

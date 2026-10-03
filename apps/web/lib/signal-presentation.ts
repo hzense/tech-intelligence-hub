@@ -1,6 +1,6 @@
 import type { SeedSignal, SeedSource } from '@hzense/content';
 
-const signalTypeLabels = {
+export const signalTypeLabels = {
   research: '研究',
   product: '产品',
   funding: '融资',

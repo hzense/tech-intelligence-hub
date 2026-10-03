@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { EditorialContent, EditorialDashboard } from './editorial-review';
 import { normalizeEditorialRequest } from '../../../packages/database/src/editorial-signal-contract.mjs';
-import type { EditorialRequest } from '../../../packages/database/src/editorial-signal-contract.mjs';
+import type {
+  EditorialRequest,
+  EditorialMaterial,
+} from '../../../packages/database/src/editorial-signal-contract.mjs';
 
 type Row = {
   request_id: string;
@@ -14,6 +17,7 @@ type Material = {
   content: EditorialContent;
   warnings: string[];
   generatedTopicIds?: string[];
+  sourceOptions?: string[];
 };
 const fail = (code: string): never => {
   throw Object.assign(new Error(code), { code });
@@ -35,11 +39,7 @@ export function createEditorialReviewService(deps: {
   material(owner: string, runId: string, index: number): Promise<Material>;
   topics(): Promise<EditorialContent['topics']>;
   read(owner: string, runId: string, index: number): Promise<Row | null>;
-  save(
-    owner: string,
-    request: EditorialRequest,
-    material: { materialHash: string; title: string; summary: string; sourceUrls: string[] },
-  ): Promise<Row>;
+  save(owner: string, request: EditorialRequest, material: EditorialMaterial): Promise<Row>;
 }) {
   return {
     async read(owner: string, runId: string, index: number): Promise<EditorialDashboard> {
@@ -70,6 +70,7 @@ export function createEditorialReviewService(deps: {
         action: saved?.action ?? null,
         content,
         topicOptions,
+        sourceOptions: [...new Set([...(material.sourceOptions ?? []), ...content.sourceUrls])],
         warnings: saved ? [] : material.warnings,
         requestId: saved?.request_id ?? null,
         publicId: saved?.action === 'publish' ? editorialPublicId(runId, index) : null,
@@ -100,8 +101,15 @@ export function createEditorialReviewService(deps: {
         title: material.content.title,
         summary: material.content.summary,
         sourceUrls: material.content.sourceUrls,
+        sourceOptions: material.sourceOptions ?? material.content.sourceUrls,
       };
-      const record = await deps.save(owner, normalizeEditorialRequest(request, bound), bound);
+      // Publication checks depend on current state. The store must return an
+      // existing matching request receipt before applying those checks to new writes.
+      const record = await deps.save(
+        owner,
+        normalizeEditorialRequest(request, bound, { checkPublication: false }),
+        bound,
+      );
       return {
         revision: record.revision,
         action: record.action,

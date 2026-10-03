@@ -5,6 +5,7 @@ const paths = {
   candidate: /^candidate$/,
   title: /^title$/,
   summary: /^summary$/,
+  signal_type: /^signal_type$/,
   event_date: /^event_date$/,
   event_date_evidence: new RegExp(`^event_date_evidence${reference}$`),
   persons: new RegExp(

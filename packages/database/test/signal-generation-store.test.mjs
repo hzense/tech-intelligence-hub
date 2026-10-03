@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   assessGeneratedCandidates,
   REJECTED_CANDIDATES_REASON,
+  GENERATION_METADATA_CONTRACT,
 } from '../../ingestion/src/signal-generation-contract.mjs';
 import {
   createSignalGeneration,
@@ -142,9 +143,24 @@ describe('private generation input boundaries', () => {
     }
   });
 
+  it('rejects invalid metadata contracts before database access', async () => {
+    for (const marker of [null, '', 'unknown', 1]) {
+      const value = input();
+      value.snapshot.topics = [];
+      value.snapshot.output_contract = marker;
+      await expect(createSignalGeneration(value)).rejects.toMatchObject({
+        code: 'invalid_snapshot',
+      });
+    }
+    const value = input();
+    value.snapshot.output_contract = GENERATION_METADATA_CONTRACT;
+    await expect(createSignalGeneration(value)).rejects.toMatchObject({ code: 'invalid_snapshot' });
+  });
+
   it('persists the complete validated catalog with a new generation snapshot', async () => {
     const value = input();
     value.snapshot.topics = [{ id: 'topic-ai', title: 'Artificial Intelligence' }];
+    value.snapshot.output_contract = GENERATION_METADATA_CONTRACT;
     let savedSnapshot;
     value.pool = {
       connect: async () => ({
@@ -170,6 +186,7 @@ describe('private generation input boundaries', () => {
         [undefined, [{ id: 'topic-new', title: 'New topic' }]],
         [[{ id: 'topic-old', title: 'Old topic' }], [{ id: 'topic-new', title: 'New topic' }]],
         [[{ id: 'topic-old', title: 'Old topic' }], []],
+        [[{ id: 'topic-old', title: 'Old topic' }], [{ id: 'topic-old', title: 'Old topic' }]],
       ]) {
         const value = input();
         const savedSnapshot = {
@@ -210,6 +227,7 @@ describe('private generation input boundaries', () => {
           }),
         };
         value.snapshot.topics = incomingTopics;
+        value.snapshot.output_contract = GENERATION_METADATA_CONTRACT;
         value.configuration.reserveMicrousd = 20;
         expect(await createSignalGeneration(value)).toEqual(row);
         expect(writes).toHaveLength(0);
@@ -344,6 +362,151 @@ describe('private generation input boundaries', () => {
       { field: 'topic_ids', code: 'invalid_field', path: 'topic_ids[0]', reason: 'unknown_topic' },
     ]);
     expect(writes).toHaveLength(3);
+    const metadataResult = {
+      ...assessGeneratedCandidates(
+        { candidates: [{ ...raw, signal_type: 'research' }], reason: 'Private candidate' },
+        generationSource,
+        topics,
+        GENERATION_METADATA_CONTRACT,
+      ),
+      usage: result.usage,
+    };
+    await expect(finishSignalGeneration({ ...args, result: metadataResult })).rejects.toMatchObject(
+      { code: 'invalid_result' },
+    );
+    row.snapshot.output_contract = GENERATION_METADATA_CONTRACT;
+    expect(
+      (await finishSignalGeneration({ ...args, result: metadataResult })).result.candidates[0]
+        .signal_type,
+    ).toBe('research');
+    for (const invalid of [
+      result,
+      {
+        ...metadataResult,
+        candidates: [{ ...metadataResult.candidates[0], signal_type: 'editorial' }],
+      },
+    ])
+      await expect(finishSignalGeneration({ ...args, result: invalid })).rejects.toMatchObject({
+        code: 'invalid_result',
+      });
+    const invalidType = {
+      ...assessGeneratedCandidates(
+        { candidates: [{ ...raw, signal_type: 'private' }], reason: 'Private candidate' },
+        generationSource,
+        topics,
+        GENERATION_METADATA_CONTRACT,
+      ),
+      usage: result.usage,
+    };
+    expect(
+      (await finishSignalGeneration({ ...failedArgs, result: invalidType })).result.rejected[0]
+        .errors,
+    ).toEqual([
+      { field: 'signal_type', code: 'invalid_field', path: 'signal_type', reason: 'invalid_type' },
+    ]);
+    delete row.snapshot.output_contract;
+    await expect(
+      finishSignalGeneration({ ...failedArgs, result: invalidType }),
+    ).rejects.toMatchObject({ code: 'invalid_result' });
+    expect(writes).toHaveLength(5);
+  });
+
+  it('persists all nine metadata field failures with usage, provider charge and terminal status', async () => {
+    const source = {
+      classification: 'private',
+      fragments: [{ id: 'fragment-1', text: 'safe source', locator: { paragraph: 1 } }],
+    };
+    const result = {
+      ...assessGeneratedCandidates(
+        {
+          candidates: [
+            {
+              title: '',
+              summary: '',
+              event_date: '2026-02-30',
+              event_date_evidence: [],
+              persons: {},
+              organizations: {},
+              claims: [],
+              topic_ids: ['unknown-topic'],
+              signal_type: 'unknown-type',
+            },
+          ],
+          reason: 'raw provider explanation must not persist',
+        },
+        source,
+        [],
+        GENERATION_METADATA_CONTRACT,
+      ),
+      usage: { input_tokens: 120, output_tokens: 30 },
+    };
+    expect(result.candidates).toHaveLength(0);
+    expect(result.rejected[0].errors.map(({ field }) => field)).toEqual([
+      'title',
+      'summary',
+      'event_date',
+      'event_date_evidence',
+      'persons',
+      'organizations',
+      'claims',
+      'signal_type',
+      'topic_ids',
+    ]);
+    const row = {
+      id: randomUUID(),
+      status: 'running',
+      lease_token: randomUUID(),
+      lease_until: new Date(Date.now() + 60000),
+      reserved_microusd: '500',
+      snapshot: { source, topics: [], output_contract: GENERATION_METADATA_CONTRACT },
+    };
+    const writes = [];
+    const pool = {
+      connect: async () => ({
+        release() {},
+        query: async (sql, params) => {
+          if (sql.includes('FROM public.signal_generation_runs')) return { rows: [row] };
+          if (sql.includes(' AS live')) return { rows: [{ live: true }] };
+          if (sql.startsWith('UPDATE public.signal_generation_runs')) {
+            writes.push(params);
+            return {
+              rows: [
+                {
+                  ...row,
+                  status: params[1],
+                  result: JSON.parse(params[2]),
+                  error_code: params[3],
+                  charged_microusd: params[4],
+                },
+              ],
+            };
+          }
+          return { rows: [] };
+        },
+      }),
+    };
+    const args = {
+      pool,
+      owner: 'owner',
+      id: row.id,
+      token: row.lease_token,
+      outcome: 'failed',
+      errorCode: 'generation_invalid_output',
+      providerCostMicrousd: 23,
+      result,
+    };
+    const saved = await finishSignalGeneration(args);
+    expect(saved.status).toBe('failed');
+    expect(saved.error_code).toBe('generation_invalid_output');
+    expect(saved.charged_microusd).toBe('23');
+    expect(saved.result).toEqual(result);
+    expect(writes).toHaveLength(1);
+    const invalid = globalThis.structuredClone(result);
+    invalid.rejected[0].errors.push(invalid.rejected[0].errors[0]);
+    await expect(finishSignalGeneration({ ...args, result: invalid })).rejects.toMatchObject({
+      code: 'invalid_result',
+    });
+    expect(writes).toHaveLength(1);
   });
 
   it('reports only fixed conflict field names and booleans, never private values', async () => {

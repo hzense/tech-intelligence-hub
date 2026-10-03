@@ -78,6 +78,7 @@ export function buildCandidateReview(run: SignalGenerationRun, index: number) {
       { candidates: [input], reason: '审核前只读检查' },
       source,
       run.snapshot.topics,
+      run.snapshot.output_contract,
     );
     const normalized = assessed.candidates[0];
     if (assessed.candidates.length !== 1 || !normalized) return unavailable();

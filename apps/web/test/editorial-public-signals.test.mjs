@@ -14,6 +14,7 @@ import {
   searchSignalEntries,
 } from '../lib/editorial-signal-reader-core.ts';
 import { mergeCurrentSignalSearch } from '../lib/public-signal-reader-core.ts';
+import { toUnifiedSignal } from '../lib/unified-signal-core.ts';
 
 const signalId = `editorial-${'a'.repeat(32)}`;
 function readerEnvironment() {
@@ -61,6 +62,23 @@ test('manual public DTO has no fabricated scores or URLs, and allowlists its fie
   assert.deepEqual(entry.public_topics, [{ id: 'topic-ai', title: '人工智能' }]);
   assert.equal(entry.occurred_at, '2026-09-24T00:00:00.000Z');
   assert.equal(JSON.stringify(entry).includes('DO NOT LEAK'), false);
+});
+test('confirmed classification and sources reach the public DTO without inventing old classifications', () => {
+  const legacy = mapEditorialSignalRows([row()])[0];
+  assert.equal(toUnifiedSignal(legacy).type, null);
+  const current = row();
+  current.content.signalType = 'product';
+  current.content.sourceUrls = ['https://example.com/article?id=42'];
+  const unified = toUnifiedSignal(mapEditorialSignalRows([current])[0]);
+  assert.equal(unified.type, 'product');
+  assert.equal(unified.assessment, null);
+  assert.equal(unified.publication.basis, 'manual_confirmation');
+  assert.deepEqual(unified.sources, [
+    { id: 'source-0', name: 'example.com', url: 'https://example.com/article?id=42' },
+  ]);
+  assert.throws(() =>
+    mapEditorialSignalRows([row({ content: { ...row().content, signalType: 'made_up' } })]),
+  );
 });
 test('manual reader hides leader names after validation while keeping organizations and factual text', () => {
   const original = row();

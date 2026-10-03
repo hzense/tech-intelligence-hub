@@ -1,12 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { URL } from 'node:url';
 import process from 'node:process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 import pg from 'pg';
 import { beforeAll, afterAll, it, describe, expect } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { saveEditorialSignal, readEditorialSignal } from '../src/editorial-signal-store.mjs';
+import { normalizeEditorialRequest } from '../src/editorial-signal-contract.mjs';
 import { assertEditorialRole } from '../src/editorial-signal-role.mjs';
 import { editorialVectorQuery } from '../src/editorial-vector-query.mjs';
 import { editorialFixture } from './editorial-signal.test.mjs';
@@ -667,6 +668,101 @@ suite('editorial publication persistence and isolated capabilities', () => {
         request: { ...request, requestId: randomUUID(), expectedRevision: 3 },
       }),
     ).rejects.toThrow('not_found');
+  });
+  it('replays legacy publication after a later revision removes its unavailable source, but requires classification for new writes', async () => {
+    const { request, material } = editorialFixture();
+    request.runId = randomUUID();
+    request.requestId = randomUUID();
+    delete request.content.signalType;
+    const legacy = normalizeEditorialRequest(request, material, { checkPublication: false });
+    const requestHash = createHash('sha256')
+      .update(JSON.stringify({ owner: 'owner', ...legacy }))
+      .digest('hex');
+    await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+      request.runId,
+    ]);
+    // This is a receipt from the version before signalType was introduced.
+    await pool.query(
+      "INSERT INTO editorial_signal_revisions(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash) VALUES($1,$2,'owner',0,1,$3,'publish',$4::jsonb,$5)",
+      [
+        request.requestId,
+        request.runId,
+        request.materialHash,
+        JSON.stringify(legacy.content),
+        requestHash,
+      ],
+    );
+    const args = {
+      pool: writer,
+      owner: 'owner',
+      material: { ...material, sourceUrls: [], sourceOptions: [] },
+    };
+    const update = {
+      ...request,
+      requestId: randomUUID(),
+      expectedRevision: 1,
+      content: { ...request.content, signalType: 'product', sourceUrls: [] },
+    };
+    await saveEditorialSignal({ ...args, request: update });
+    const replay = await saveEditorialSignal({ ...args, request });
+    expect(replay.revision).toBe(1);
+    expect(replay.content).toEqual(legacy.content);
+    expect(Object.hasOwn(replay.content, 'signalType')).toBe(false);
+    expect(
+      (
+        await readEditorialSignal({
+          pool: writer,
+          owner: 'owner',
+          runId: request.runId,
+          candidateIndex: 0,
+        })
+      ).revision,
+    ).toBe(2);
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        request: { ...request, content: { ...request.content, persons: ['Changed'] } },
+      }),
+    ).rejects.toThrow('request_id_conflict');
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        request: {
+          ...request,
+          requestId: randomUUID(),
+          expectedRevision: 2,
+          content: { ...request.content, sourceUrls: [] },
+        },
+      }),
+    ).rejects.toThrow('confirmation_required');
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        request: {
+          ...update,
+          requestId: randomUUID(),
+          expectedRevision: 2,
+          content: { ...update.content, sourceUrls: material.sourceUrls },
+        },
+      }),
+    ).rejects.toThrow('material_changed');
+    await saveEditorialSignal({
+      ...args,
+      request: {
+        ...update,
+        requestId: randomUUID(),
+        expectedRevision: 2,
+        action: 'withdraw',
+        content: request.content,
+      },
+    });
+    expect(
+      (
+        await reader.query('SELECT * FROM editorial_public_signals WHERE signal_id=$1', [
+          `editorial-${createHash('md5').update(`${request.runId}:0`).digest('hex')}`,
+        ])
+      ).rows,
+    ).toEqual([]);
   });
   it('serializes soft deletion and publication in both commit orders', async () => {
     const { request, material } = editorialFixture();

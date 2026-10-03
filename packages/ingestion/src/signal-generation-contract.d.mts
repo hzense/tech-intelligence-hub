@@ -1,4 +1,6 @@
 import type { GenerationValidationDetail } from './signal-generation-validation-diagnostics.mjs';
+import type { GenerationSignalType } from './signal-types.mjs';
+export { SIGNAL_TYPES, type GenerationSignalType } from './signal-types.mjs';
 
 export const GENERATION_LIMITS: Readonly<{
   inputTokens: 100000;
@@ -12,6 +14,8 @@ export const GENERATION_LIMITS: Readonly<{
 }>;
 export const generationCandidateJsonSchema: Readonly<Record<string, unknown>>;
 export const generationCandidateWithTopicsJsonSchema: Readonly<Record<string, unknown>>;
+export const generationCandidateWithMetadataJsonSchema: Readonly<Record<string, unknown>>;
+export const GENERATION_METADATA_CONTRACT: 'signal-metadata-v1';
 export const REJECTED_CANDIDATES_REASON: string;
 export function estimateGenerationTokens(text: string): number;
 export class SignalGenerationError extends Error {
@@ -46,6 +50,7 @@ export interface GeneratedCandidateInput {
   organizations: string[];
   claims: { text: string; evidence: GenerationReference[] }[];
   topic_ids?: string[];
+  signal_type?: GenerationSignalType;
 }
 export type GenerationIssue =
   'needs_public_evidence' | 'needs_person_evidence' | 'needs_event_time';
@@ -73,6 +78,7 @@ export function assessGeneratedCandidates(
   value: unknown,
   source: GenerationSource,
   topics?: GenerationTopic[],
+  outputContract?: typeof GENERATION_METADATA_CONTRACT,
 ): GeneratedCandidates;
 export function validateGenerationEnvelope(value: unknown): unknown;
 export function buildGenerationSource(importOutput: unknown): GenerationSource;
@@ -94,4 +100,5 @@ export function normalizeGeneratedCandidates(
   value: unknown,
   source: GenerationSource,
   topics?: GenerationTopic[],
+  outputContract?: typeof GENERATION_METADATA_CONTRACT,
 ): GeneratedCandidates;

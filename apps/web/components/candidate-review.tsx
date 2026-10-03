@@ -14,7 +14,7 @@ export function CandidateReview({ packet }: { packet: ReturnType<typeof buildCan
       />
       <details>
         <summary>辅助资料与原始 AI 候选</summary>
-        <p>以下保留生成时的原始结果。原始缺项提示不会阻止已补齐四项信息后的人工确认发布。</p>
+        <p>以下保留生成时的原始结果。原始缺项提示不会阻止补齐发布信息后的人工确认发布。</p>
         <PrivateResult
           snapshotOnly
           result={{ classification: 'private', candidates: [packet.candidate] }}

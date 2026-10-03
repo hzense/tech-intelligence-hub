@@ -359,25 +359,31 @@ export function buildPublicEntityDirectory(
       entity.latestAt ??= signal.occurred_at;
       const time = new Date(signal.occurred_at).getTime();
       if (time >= cutoff && time <= now.getTime()) entity.recentCount += 1;
-      for (const person of signal.publication_basis === 'manual_confirmation'
-        ? []
-        : (signal.public_people ?? [])) {
+      for (const person of toUnifiedSignal(signal).people) {
         if (
+          person.id !== null &&
           !isExcludedPublicPerson(person) &&
           !excludedPersonIds.has(person.id) &&
           person.id !== id &&
           !entity.relatedPeople.some((item) => item.id === person.id)
         )
-          entity.relatedPeople.push(person);
+          entity.relatedPeople.push({
+            id: person.id,
+            name: person.name,
+            event_role: person.eventRole,
+          });
       }
-      for (const organization of signal.publication_basis === 'manual_confirmation'
-        ? []
-        : (signal.public_organizations ?? [])) {
+      for (const organization of toUnifiedSignal(signal).organizations) {
         if (
+          organization.id !== null &&
           organization.id !== id &&
           !entity.relatedOrganizations.some((item) => item.id === organization.id)
         )
-          entity.relatedOrganizations.push(organization);
+          entity.relatedOrganizations.push({
+            id: organization.id,
+            name: organization.name,
+            event_role: organization.eventRole,
+          });
       }
     }
   }

@@ -1,5 +1,6 @@
 import { URL } from 'node:url';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
+import { SIGNAL_TYPES } from '../../ingestion/src/signal-types.mjs';
 
 export class EditorialSignalError extends Error {
   constructor(code = 'invalid_request') {
@@ -54,7 +55,14 @@ export function normalizeEditorialContent(value) {
     'persons',
     'topics',
     'sourceUrls',
+    ...(Object.hasOwn(value ?? {}, 'signalType') ? ['signalType'] : []),
   ]);
+  if (
+    value.signalType !== undefined &&
+    value.signalType !== null &&
+    !SIGNAL_TYPES.includes(value.signalType)
+  )
+    editorialFail();
   const eventDate = value.eventDate;
   if (
     eventDate !== null &&
@@ -90,15 +98,17 @@ export function normalizeEditorialContent(value) {
       if (url.protocol !== 'https:' || url.username || url.password || url.hash) editorialFail();
       return value;
     }),
+    ...(Object.hasOwn(value, 'signalType') ? { signalType: value.signalType } : {}),
   };
 }
 export function contentReadiness(content) {
   const missing = ['eventDate', 'organizations', 'persons', 'topics'].filter((key) =>
     key === 'eventDate' ? !content.eventDate : !content[key]?.length,
   );
+  if (!content.signalType) missing.push('signalType');
   return { ready: missing.length === 0, missing };
 }
-export function normalizeEditorialRequest(request, material) {
+export function normalizeEditorialRequest(request, material, { checkPublication = true } = {}) {
   editorialObject(request, [
     'requestId',
     'runId',
@@ -124,20 +134,30 @@ export function normalizeEditorialRequest(request, material) {
   )
     editorialFail();
   const content = normalizeEditorialContent(request.content);
-  // Historical records stay readable/withdrawable; only new editorial writes are restricted.
-  if (request.action !== 'withdraw' && content.persons.some(isExcludedPublicPerson))
-    editorialFail('excluded_person');
   if (
     request.materialHash !== material?.materialHash ||
     content.title !== editorialText(material.title, 80) ||
-    content.summary !== editorialText(material.summary, 500) ||
-    JSON.stringify(content.sourceUrls) !==
-      JSON.stringify(material.sourceUrls.map((url) => editorialText(url, 2048)))
+    content.summary !== editorialText(material.summary, 500)
   )
     editorialFail('material_changed');
-  if (request.action !== 'draft' && !request.consent) editorialFail('confirmation_required');
-  if (request.action === 'publish' && !contentReadiness(content).ready)
-    editorialFail('confirmation_required');
+  // Publication policy can change after a successful write. Keep normalization
+  // and the historical request hash stable, then check current policy only when
+  // the store has established that this is a new request, not a committed replay.
+  if (checkPublication) {
+    if (request.action !== 'withdraw' && content.persons.some(isExcludedPublicPerson))
+      editorialFail('excluded_person');
+    if (
+      request.action !== 'withdraw' &&
+      (material.sourceOptions
+        ? content.sourceUrls.some((url) => !material.sourceOptions.includes(url))
+        : JSON.stringify(content.sourceUrls) !==
+          JSON.stringify(material.sourceUrls.map((url) => editorialText(url, 2048))))
+    )
+      editorialFail('material_changed');
+    if (request.action !== 'draft' && !request.consent) editorialFail('confirmation_required');
+    if (request.action === 'publish' && !contentReadiness(content).ready)
+      editorialFail('confirmation_required');
+  }
   return {
     requestId: request.requestId,
     runId: request.runId,

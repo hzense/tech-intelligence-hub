@@ -92,6 +92,27 @@ test('original candidate index survives partial acceptance; array offset is not 
   assert.throws(() => buildCandidateReview(run, 0));
   assert.equal(buildCandidateReview(run, 3).candidateIndex, 3);
 });
+
+test('metadata candidates retain their event type in matching review hashes', () => {
+  const run = fixture();
+  const legacyHash = buildCandidateReview(run, 0).materialHash;
+  run.snapshot.topics = [];
+  run.result.candidates[0].topic_ids = [];
+  const topicHash = buildCandidateReview(run, 0).materialHash;
+  run.snapshot.output_contract = 'signal-metadata-v1';
+  run.result.candidates[0].signal_type = 'product';
+  const packet = buildCandidateReview(run, 0);
+  assert.equal(packet.candidate.signal_type, 'product');
+  assert.equal(packet.materialHash, candidateReviewMaterialHash(run, 0));
+  assert.notEqual(packet.materialHash, topicHash);
+  delete run.snapshot.output_contract;
+  assert.throws(() => buildCandidateReview(run, 0));
+  delete run.result.candidates[0].signal_type;
+  assert.equal(buildCandidateReview(run, 0).materialHash, topicHash);
+  delete run.snapshot.topics;
+  delete run.result.candidates[0].topic_ids;
+  assert.equal(buildCandidateReview(run, 0).materialHash, legacyHash);
+});
 test('reject nonterminal, failed, deleted, malformed and duplicate identities', () => {
   for (const status of ['pending', 'running', 'unknown', 'failed', 'cancelled']) {
     const run = fixture();

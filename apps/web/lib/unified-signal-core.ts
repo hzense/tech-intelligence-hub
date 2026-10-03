@@ -54,9 +54,9 @@ export function toUnifiedSignal(entry: SignalEntry): UnifiedSignal {
         };
   const participants = (rows: NonNullable<SignalEntry['public_people']>) =>
     rows.map((row) => ({
-      // Editorial names are not verified entity identities. Never turn their
-      // display-only positional IDs into links to person/resource pages.
-      id: manual ? null : row.id,
+      // Positional editorial IDs are display-only. Only an explicit catalog
+      // match may turn a published name into a link to an existing identity.
+      id: manual ? (row.canonical_entity_id ?? null) : row.id,
       name: row.name,
       eventRole: row.event_role,
     }));

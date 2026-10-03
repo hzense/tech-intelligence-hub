@@ -20,6 +20,8 @@ export interface PublicSignalPerson {
   id: string;
   name: string;
   event_role: string;
+  /** Set only by a unique, typed match against the current public entity catalog. */
+  canonical_entity_id?: string;
 }
 export interface PublicSignalSource {
   id: string;
@@ -30,7 +32,7 @@ export type SignalEntry = (
   | (SeedSignal & { publication_basis?: 'source_evidence' })
   | (Omit<SeedSignal, 'type' | 'importance' | 'confidence' | 'novelty'> & {
       publication_basis: 'manual_confirmation';
-      type: 'editorial';
+      type: SeedSignal['type'] | 'editorial';
       importance?: never;
       confidence?: never;
       novelty?: never;

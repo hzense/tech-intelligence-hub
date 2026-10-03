@@ -1,3 +1,4 @@
+import type { GenerationSignalType } from '../../ingestion/src/signal-types.mjs';
 export interface EditorialContent {
   title: string;
   summary: string;
@@ -6,6 +7,7 @@ export interface EditorialContent {
   persons: string[];
   topics: { id: string; title: string }[];
   sourceUrls: string[];
+  signalType?: GenerationSignalType | null;
 }
 export interface EditorialRequest {
   requestId: string;
@@ -22,6 +24,7 @@ export interface EditorialMaterial {
   title: string;
   summary: string;
   sourceUrls: string[];
+  sourceOptions?: string[];
 }
 export class EditorialSignalError extends Error {
   code: string;
@@ -32,4 +35,5 @@ export function contentReadiness(content: EditorialContent): { ready: boolean; m
 export function normalizeEditorialRequest(
   request: unknown,
   material: EditorialMaterial,
+  options?: { checkPublication?: boolean },
 ): EditorialRequest;

@@ -1,3 +1,4 @@
+import type { GenerationSignalType } from '../../../packages/ingestion/src/signal-types.mjs';
 export type EditorialContent = {
   title: string;
   summary: string;
@@ -6,6 +7,7 @@ export type EditorialContent = {
   persons: string[];
   topics: Array<{ id: string; title: string }>;
   sourceUrls: string[];
+  signalType?: GenerationSignalType | null;
 };
 export type EditorialDashboard = {
   configured: boolean;
@@ -14,6 +16,7 @@ export type EditorialDashboard = {
   action: 'draft' | 'publish' | 'withdraw' | null;
   content: EditorialContent;
   topicOptions: Array<{ id: string; title: string }>;
+  sourceOptions?: string[];
   warnings: string[];
   requestId: string | null;
   publicId: string | null;
@@ -21,6 +24,7 @@ export type EditorialDashboard = {
 
 export function editorialMissing(content: EditorialContent): string[] {
   const missing: string[] = [];
+  if (!content.signalType) missing.push('事件类型');
   const date = content.eventDate;
   if (
     !date ||
