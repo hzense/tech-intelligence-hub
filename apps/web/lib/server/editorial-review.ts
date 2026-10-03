@@ -2,6 +2,7 @@ import 'server-only';
 import {
   saveEditorialSignal,
   readEditorialSignal,
+  previewEditorialResources,
 } from '../../../../packages/database/src/editorial-signal-store.mjs';
 import { createEditorialReviewService } from '../editorial-review-service';
 import { generationRecord } from './signal-generation';
@@ -14,6 +15,7 @@ import { editorialTopicOptions } from './editorial-topics';
 import { importPool } from './generation-import-reader';
 import { readMaterialSupplement } from '../material-source-reader';
 import { readEditorialSourceOptions } from '../editorial-source-options';
+import { getResourceEntries } from '../seed-runtime';
 
 async function material(owner: string, runId: string, index: number) {
   const run = await generationRecord(owner, runId);
@@ -63,13 +65,46 @@ async function material(owner: string, runId: string, index: number) {
     // Private import URLs are offered separately and require explicit public selection.
     sourceUrls: [],
   };
+  const resources = prefill?.resources ?? candidate.resources ?? original.candidate.resources;
+  if (resources !== undefined) {
+    content.resources = resources.map((resource) => ({ ...resource, entity_id: null }));
+    content.organizations = resources
+      .filter((resource) => resource.type !== 'person')
+      .map((resource) => resource.name);
+    content.persons = resources
+      .filter((resource) => resource.type === 'person')
+      .map((resource) => resource.name);
+  }
+  const originalSourceOptions = await readEditorialSourceOptions(owner, run, (o, b, i) =>
+    readMaterialSupplement(importPool, o, b, i),
+  );
+  const resourceSourceOptions =
+    resources === undefined
+      ? undefined
+      : prefill?.resources !== undefined
+        ? (prefill.resourceSourceOptions ?? [])
+        : resources.map((resource) => ({
+            name: resource.name,
+            type: resource.type,
+            sourceUrls: originalSourceOptions,
+          }));
   return {
     materialHash: original.materialHash,
     content,
     warnings,
-    sourceOptions: await readEditorialSourceOptions(owner, run, (o, b, i) =>
-      readMaterialSupplement(importPool, o, b, i),
-    ),
+    sourceOptions: [...new Set([...originalSourceOptions, ...(prefill?.sourceOptions ?? [])])],
+    ...(resources === undefined
+      ? {}
+      : {
+          resources,
+          resourceSourceOptions: resourceSourceOptions ?? [],
+          resourceCatalog: (await getResourceEntries()).filter(
+            (resource) =>
+              resource.type === 'person' ||
+              resource.type === 'company' ||
+              resource.type === 'institution',
+          ),
+        }),
     // Supplemental selections (including an intentional empty list) take precedence.
     ...(prefill?.topics === undefined && original.candidate.topic_ids !== undefined
       ? { generatedTopicIds: original.candidate.topic_ids }
@@ -84,6 +119,8 @@ const service = createEditorialReviewService({
     readEditorialSignal({ pool: editorialPool, owner, runId, candidateIndex }),
   save: (owner, request, bound) =>
     saveEditorialSignal({ pool: editorialPool, owner, request, material: bound }),
+  resources: (resources, catalog) =>
+    previewEditorialResources({ pool: editorialPool, resources, catalog }),
 });
 export const editorialDashboard = service.read;
 export const writeEditorialReview = service.write;

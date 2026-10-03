@@ -8,9 +8,14 @@ import {
   validateGenerationSource,
   normalizeGeneratedCandidates,
   GENERATION_METADATA_CONTRACT,
+  GENERATION_RESOURCES_CONTRACT,
+  generatedResourceJsonSchema,
   type GeneratedCandidate,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
-import { candidateEnrichmentJsonSchema } from '../../../packages/ingestion/src/candidate-enrichment-contract.mjs';
+import {
+  candidateEnrichmentJsonSchema,
+  mergeEnrichmentResources,
+} from '../../../packages/ingestion/src/candidate-enrichment-contract.mjs';
 import { supportsOrganizationType, type OrganizationType } from './organization-type-evidence.ts';
 
 type Reference = { fragment_id: string; quote: string };
@@ -100,6 +105,14 @@ export const materialEnrichmentJsonSchema = {
     topic_ids: { type: 'array', maxItems: 5, items: { type: 'string' } },
   },
 };
+export const materialEnrichmentWithResourcesJsonSchema = {
+  ...materialEnrichmentJsonSchema,
+  required: [...materialEnrichmentJsonSchema.required, 'resources'],
+  properties: {
+    ...materialEnrichmentJsonSchema.properties,
+    resources: { type: 'array', maxItems: 36, items: generatedResourceJsonSchema },
+  },
+};
 export const materialEnrichmentRules = `这是补证资料包补全。标题、摘要、主张文本和已有日期、人物关系不得改写。按原主张顺序输出 claim_evidence，每个主张仅选择一条足以支持该主张的原文引文，与单一证据登记格式一致，不拼接多个片段。可补充不同语言的原文，但不得把仅仅相关当作支持。已有日期可重新引用补充原文。人物必须与本事件直接相关且完整姓名、角色、组织由同一条引文的同一语句明确关联；不得借用更长词的子串。organization_identities 仅在同一句原文直接说明目标组织类型时提供证据：company 包含明确的公司、企业、投资银行、商业银行、company/corporation/firm/investment bank/commercial bank；institution 包含明确的机构、研究所、大学、非营利组织。允许领先、全球、金融服务、研究等修饰词和同位语，不从名称、合作对象、否定、推测或历史身份推断。规则无法识别时留空，交由有原文依据的人工确认，不编造固定句式。topic_ids 只能选给定已启用目录中的 ID，没有相关领域则留空。所有输出是待人工核对的私有提案，不代表事实验证或公开许可。`;
 
 function remap(candidate: GeneratedCandidate, ids: Map<string, string>): GeneratedCandidate {
@@ -113,6 +126,14 @@ function remap(candidate: GeneratedCandidate, ids: Map<string, string>): Generat
     event_date_evidence: map(candidate.event_date_evidence),
     persons: candidate.persons.map((p) => ({ ...p, evidence: map(p.evidence) })),
     claims: candidate.claims.map((c) => ({ ...c, evidence: map(c.evidence) })),
+    ...(candidate.resources === undefined
+      ? {}
+      : {
+          resources: candidate.resources.map((resource) => ({
+            ...resource,
+            evidence: map(resource.evidence),
+          })),
+        }),
   };
 }
 
@@ -128,6 +149,7 @@ export function materialEnrichmentInput(
       ...original.event_date_evidence,
       ...original.persons.flatMap((p) => p.evidence),
       ...original.claims.flatMap((c) => c.evidence),
+      ...(original.resources ?? []).flatMap((resource) => resource.evidence),
     ].map((ref) => ref.fragment_id),
   );
   const fragments = checked.source.fragments.filter(
@@ -151,7 +173,15 @@ export function assessMaterialEnrichment(
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail();
   const v = value as Record<string, unknown>;
   if (
-    Object.keys(v).sort().join(',') !== [...materialEnrichmentJsonSchema.required].sort().join(',')
+    Object.keys(v).sort().join(',') !==
+    [
+      ...(original.resources === undefined
+        ? materialEnrichmentJsonSchema
+        : materialEnrichmentWithResourcesJsonSchema
+      ).required,
+    ]
+      .sort()
+      .join(',')
   )
     fail();
   const checked = validateEnrichmentSource(source);
@@ -177,12 +207,19 @@ export function assessMaterialEnrichment(
           })),
           ...(original.signal_type === undefined ? {} : { signal_type: original.signal_type }),
           ...(original.topic_ids === undefined ? {} : { topic_ids: original.topic_ids }),
+          ...(original.resources === undefined
+            ? {}
+            : { resources: mergeEnrichmentResources(original.resources, v.resources) }),
         },
       ],
     },
     checked,
     undefined,
-    original.signal_type === undefined ? undefined : GENERATION_METADATA_CONTRACT,
+    original.resources !== undefined
+      ? GENERATION_RESOURCES_CONTRACT
+      : original.signal_type === undefined
+        ? undefined
+        : GENERATION_METADATA_CONTRACT,
   ).candidates[0]!;
   // Apply the current person-resource scope only to this derived proposal.
   // The stored candidate/source remain unchanged; eligible original people stay locked.
@@ -299,6 +336,7 @@ export function restoreMaterialEnrichment(
       claim_evidence: saved.claims.map((c) => c.evidence),
       organization_identities: hints.organizations,
       topic_ids: hints.topicIds,
+      ...(original.resources === undefined ? {} : { resources: saved.resources }),
     },
     input.candidate,
     input.source,

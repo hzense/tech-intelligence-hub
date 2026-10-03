@@ -1,6 +1,11 @@
+import { buildCandidateSourceBundle } from '../../../packages/ingestion/src/candidate-source-bundle.mjs';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { editorialSourceUrl, readEditorialSourceOptions } from '../lib/editorial-source-options.ts';
+import {
+  editorialSourceUrl,
+  readEditorialSourceOptions,
+  readEditorialResourceSourceOptions,
+} from '../lib/editorial-source-options.ts';
 import { readMaterialSupplement } from '../lib/material-source-reader.ts';
 import { buildGenerationSource } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
@@ -178,4 +183,107 @@ test('composes with the real read-only import reader and never exposes file impo
     queries.some(({ sql }) => /^(?:INSERT|UPDATE|DELETE)/.test(sql)),
     false,
   );
+});
+
+test('resource source options follow bound fragment provenance and never label supplementary evidence with the original URL', async () => {
+  const source = buildGenerationSource(content);
+  const supplemental = {
+    classification: 'private',
+    fragments: [{ id: 'fragment-1', text: 'Ada works at Example.', locator: { paragraph: 1 } }],
+  };
+  const extraReceipt = {
+    batchId: '33333333-3333-4333-8333-333333333333',
+    itemId: '44444444-4444-4444-8444-444444444444',
+    fence: 2,
+    contentHash: signalGenerationSourceHash(supplemental),
+    sourceUrl: 'https://example.com/supplement',
+  };
+  const bundle = buildCandidateSourceBundle({
+    baseMaterialHash: 'a'.repeat(64),
+    source,
+    supplements: [{ ...extraReceipt, source: supplemental }],
+  });
+  const resources = [
+    {
+      type: 'company',
+      name: 'Original',
+      introduction: null,
+      event_role: null,
+      evidence: [{ fragment_id: 'fragment-1', quote: 'Original article evidence.' }],
+    },
+    {
+      type: 'person',
+      name: 'Ada',
+      introduction: null,
+      event_role: null,
+      evidence: [{ fragment_id: 'fragment-2', quote: 'Ada works at Example.' }],
+    },
+  ];
+  const calls = [];
+  const read = async (...args) => {
+    calls.push(args);
+    return args[1] === batchId ? receipt : extraReceipt;
+  };
+  assert.deepEqual(await readEditorialResourceSourceOptions(owner, run, bundle, resources, read), [
+    { name: 'Original', type: 'company', sourceUrls: [receipt.sourceUrl] },
+    { name: 'Ada', type: 'person', sourceUrls: [extraReceipt.sourceUrl] },
+  ]);
+  assert.deepEqual(calls, [
+    [owner, batchId, itemId],
+    [owner, extraReceipt.batchId, extraReceipt.itemId],
+  ]);
+  for (const patch of [
+    { fence: 3 },
+    { contentHash: 'c'.repeat(64) },
+    { sourceUrl: 'https://example.com/changed' },
+    { batchId },
+    { itemId },
+  ]) {
+    const value = await readEditorialResourceSourceOptions(
+      owner,
+      run,
+      bundle,
+      resources,
+      async (_o, b) => (b === batchId ? receipt : { ...extraReceipt, ...patch }),
+    );
+    assert.deepEqual(value[1].sourceUrls, []);
+    assert.deepEqual(value[0].sourceUrls, [receipt.sourceUrl]);
+  }
+  const missing = await readEditorialResourceSourceOptions(
+    owner,
+    run,
+    bundle,
+    resources,
+    async (_o, b) => {
+      if (b === batchId) return receipt;
+      throw new Error('deleted source');
+    },
+  );
+  assert.deepEqual(missing[1].sourceUrls, []);
+  assert.deepEqual(
+    (await readEditorialResourceSourceOptions('someone-else', run, bundle, resources, read)).map(
+      (row) => row.sourceUrls,
+    ),
+    [[], []],
+  );
+  for (const unsafe of [
+    'https://example.com/supplement?token=private',
+    'https://example.com/private/report',
+    'https://bucket.blob.vercel-storage.com/report',
+  ]) {
+    const privateReceipt = { ...extraReceipt, sourceUrl: unsafe };
+    const privateBundle = buildCandidateSourceBundle({
+      baseMaterialHash: 'a'.repeat(64),
+      source,
+      supplements: [{ ...privateReceipt, source: supplemental }],
+    });
+    const value = await readEditorialResourceSourceOptions(
+      owner,
+      run,
+      privateBundle,
+      resources,
+      async (_o, b) => (b === batchId ? receipt : privateReceipt),
+    );
+    assert.deepEqual(value[1].sourceUrls, []);
+  }
 });

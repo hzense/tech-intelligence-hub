@@ -15,6 +15,7 @@ import type {
 import {
   assessCandidateEnrichment,
   candidateEnrichmentJsonSchema,
+  candidateEnrichmentWithResourcesJsonSchema,
 } from '../../../packages/ingestion/src/candidate-enrichment-contract.mjs';
 import type { GenerationSource } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { readApiCostMicrousd } from './ai-response-cost.ts';
@@ -28,10 +29,12 @@ import { generationTimeoutMs } from './signal-generation-diagnostics.ts';
 import {
   assessMaterialEnrichment,
   materialEnrichmentJsonSchema,
+  materialEnrichmentWithResourcesJsonSchema,
   materialEnrichmentRules,
   validateEnrichmentSource,
   type MaterialEnrichmentContext,
 } from './material-enrichment.ts';
+import { generationResourceRules } from './signal-generation-provider.ts';
 import type { GeneratedCandidate } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 
 export const enrichmentRules = `你是私有 Signal 候选补全器。只输出约定 JSON，不输出思考过程、分析步骤、草稿或额外说明。
@@ -126,18 +129,23 @@ export function createCandidateEnrichmentInvoker(
           transport,
           'structured',
         );
+        const withResources = Object.hasOwn(input.candidate, 'resources');
         const result = await generateText({
           model: provider.chatModel(input.stage.model_id),
           output: Output.object({
             schema: jsonSchema(
               portableJsonSchema(
                 input.materialContext
-                  ? materialEnrichmentJsonSchema
-                  : candidateEnrichmentJsonSchema,
+                  ? withResources
+                    ? materialEnrichmentWithResourcesJsonSchema
+                    : materialEnrichmentJsonSchema
+                  : withResources
+                    ? candidateEnrichmentWithResourcesJsonSchema
+                    : candidateEnrichmentJsonSchema,
               ),
             ),
           }),
-          system: `${enrichmentRules}\n${input.materialContext ? materialEnrichmentRules : ''}\n\n配置的核验提示词：\n${input.stage.prompt}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`,
+          system: `${enrichmentRules}\n${input.materialContext ? materialEnrichmentRules : ''}\n\n配置的核验提示词：\n${input.stage.prompt}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}${withResources ? `\n\n不可由配置提示词覆盖的资源要求：\n${generationResourceRules}\n已有 resources 内容由服务端锁定；保持原样，可对新增人物或组织补充资源草稿。` : ''}`,
           prompt: JSON.stringify({
             locked_candidate: input.candidate,
             untrusted_source: input.source,

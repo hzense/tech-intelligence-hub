@@ -63,6 +63,8 @@ export function PrivateResult({
     invalid_characters: '文本含不允许的控制字符或无效 Unicode 字符',
     unknown_fragment: '引用的原文片段编号不存在',
     unknown_topic: '领域不在本次生成提供的已启用目录中',
+    missing_resource: '缺少人物或组织的资源草稿',
+    unexpected_resource: '资源未关联到本候选的人物或组织',
     quote_mismatch: '引文未逐字匹配所引用的原文片段',
     duplicate_reference: '同一字段重复引用了相同的片段和引文',
     duplicate_item: '列表包含重复项目',
@@ -246,7 +248,11 @@ export function PrivateResult({
                       {detailed ? (
                         <code>{String(error.path)}</code>
                       ) : typeof error.field === 'string' ? (
-                        error.field
+                        error.field === 'resources' ? (
+                          '资源资料'
+                        ) : (
+                          error.field
+                        )
                       ) : (
                         '候选'
                       )}

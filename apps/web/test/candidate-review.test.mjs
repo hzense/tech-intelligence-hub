@@ -197,3 +197,43 @@ test('enriched review keeps the database material identity and the original resu
     }),
   );
 });
+
+test('resource-aware review includes resource-only source fragments and binds drafts in its material hash', () => {
+  const run = fixture();
+  const original = run.result.candidates[0];
+  const person = {
+    type: 'person',
+    name: '张三',
+    introduction: null,
+    event_role: null,
+    evidence: [{ fragment_id: 'fragment-2', quote: '张三是一位工程师。' }],
+  };
+  run.snapshot.source.fragments[1].text = '张三是一位工程师。';
+  run.source_hash = signalGenerationSourceHash(run.snapshot.source);
+  run.snapshot.topics = [];
+  run.snapshot.output_contract = 'signal-resources-v1';
+  run.result.candidates[0] = {
+    ...original,
+    persons: original.persons.map((p) => ({ ...p, role: '宣布' })),
+    signal_type: 'product',
+    topic_ids: [],
+    resources: [person],
+  };
+  const packet = buildCandidateReview(run, 0);
+  assert.deepEqual(packet.candidate.resources, [person]);
+  assert.deepEqual(
+    packet.fragments.map(({ id }) => id),
+    ['fragment-1', 'fragment-2'],
+  );
+  run.result.candidates[0].resources[0] = { ...person, introduction: '工程师。' };
+  const changed = buildCandidateReview(run, 0);
+  assert.notEqual(changed.materialHash, packet.materialHash);
+  const restored = buildEnrichedCandidateReview(run, 0, {
+    event_date: original.event_date,
+    event_date_evidence: original.event_date_evidence,
+    persons: [],
+    organizations: [],
+    resources: [],
+  });
+  assert.deepEqual(restored.candidate.resources, changed.candidate.resources);
+});

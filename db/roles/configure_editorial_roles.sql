@@ -22,5 +22,7 @@ GRANT SELECT(request_id,run_id,owner_id,candidate_index,revision,material_hash,a
   ON public.editorial_signal_revisions TO hzense_editorial_writer;
 GRANT SELECT(id,owner_id,status,deleted_at) ON public.signal_generation_runs TO hzense_editorial_writer;
 GRANT SELECT(id,title,runtime_enabled,status) ON public.topics TO hzense_editorial_writer;
+GRANT SELECT(id,name,type,status,aliases), INSERT(id,name,type,status,aliases) ON public.entities TO hzense_editorial_writer;
+GRANT SELECT(entity_id,entity_type), INSERT(entity_id,entity_type) ON public.person_profiles, public.organization_profiles TO hzense_editorial_writer;
 GRANT SELECT ON public.editorial_public_signals TO hzense_editorial_reader;
 COMMIT;

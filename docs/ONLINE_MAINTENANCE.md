@@ -6,6 +6,10 @@
 
 ## 当前落地状态
 
+- 2026-10-04，生成信号附带资源资料的能力升级新增独立 `editorial-resource-grant`
+  维护操作，**本批尚未执行生产授权**。资料仍存于既有不可变发布修订 JSON，实体及人物／组织
+  类型档案使用已有表；没有新增结构迁移。新增权限及其批准流程见下方说明。
+
 - 2026-10-02，**配置删除已启用**。应用 [PR #186](https://github.com/hzense/tech-intelligence-hub/pull/186)
   与独立维护入口 [PR #187](https://github.com/hzense/tech-intelligence-hub/pull/187) 已评审合并，
   main `d460a3c` 的 CI 通过。新审批的
@@ -621,3 +625,40 @@ pending 清单均重新核对；整个迁移工件、运行、提交、备份、
 顺序：核对备份父分支与保留期限、冻结 DDL/发布 → preflight 取得目标/备份/工件/计划摘要 → 新 run 审批并双采集 ACL → migrate → 独立 verify → 数据库 owner 执行 `db/roles/upgrade_task_management_visibility.sql` → 服务角色自身只读核验 → 应用发布另行验收。逐文件事务若部分完成，必须新预检、重新绑定剩余后缀，禁止复用原计划。
 
 列权限升级为独立事务，共用迁移锁：先校验 owner、0016–0018 ledger/列结构及两个旧角色的完整权限矩阵，只新增各自 `deleted_at` 的 SELECT/UPDATE，再验证两个新矩阵后提交。已有权限漂移、PUBLIC 暴露、grant option、已升级状态均拒绝，不重建角色、不改密码、不自动修复 ACL。通用初始角色配置脚本要求空角色，不用于升级现有角色。
+
+## 生成资源发布的独立权限升级
+
+`editorial-resource-grant` 仅执行固定的
+[`upgrade_editorial_resources.sql`](../db/roles/upgrade_editorial_resources.sql)。
+新增 `hzense_editorial_writer` 对 `entities(id,name,type,status,aliases)` 与
+`person_profiles/organization_profiles(entity_id,entity_type)` 的列级 SELECT、INSERT。
+不授予实体 metadata、UPDATE、DELETE 或表级权限；公开读取仍通过既有已发布修订视图，
+草稿不会创建正式实体。此操作不会发布内容、调用 AI 或修改旧档案。
+
+按以下顺序发布，避免旧部署与新增权限不兼容：
+
+1. 先部署兼容旧／新两套精确 writer ACL 的应用，核验旧任务读取和旧发布操作仍可用。
+   部分权限、额外权限和授予选项仍被拒绝；新资源发布在尚无授权时失败关闭。
+2. 当前 main CI 成功后，运行受保护 `Production maintenance` 的 `preflight`。
+   待迁移必须为 0，完整结构保持 28 项迁移／60 表。提供真实且在维护窗口内有效的备份引用时，
+   预检返回本批 `manifestFingerprint`、`planFingerprint`、`targetFingerprint`、
+   `backupIdSha256`、`roleUpgradeSha256`，其中计划固定全部已应用迁移及本批授权 SQL 字节。
+3. 为即将执行的 `editorial-resource-grant` 运行配置新的 `MAINTENANCE_APPROVAL`。
+   `operation`、`sha`、`runId`、`runAttempt`、有效期、备份及目标指纹必须匹配本次执行；
+   同时要求 `roleUpgradeApproved:true` 和预检返回的全部五项指纹。
+   本入口只接受现有 `verified` 恢复政策，必须有 `backupVerified:true`、
+   `restoreRehearsed:true`、`aclRecoveryReviewed:true`、`ddlFreezeConfirmed:true`、
+   真实 `aclFingerprint`、`restoreEvidenceFingerprint` 及覆盖窗口的备份保留声明。
+   旧 0025/0027 的风险接受与旧运行批准不会自动授权本批；未满足这些条件时停在预检，
+   不能把未演练恢复声明成已通过。
+4. 经保护环境批准后执行 `editorial-resource-grant`。工具持有迁移会话锁，重新核对目标、
+   完整迁移和结构、已批准 PUBLIC ACL 指纹、当前 main/CI 与审批有效期，才执行固定授权。
+   SQL 在同一事务内检查旧或升级后精确有效／直接列权限，完成后独立核验结构。
+   成功报告 `roleUpgradeCompleted:true`。提交结果未知或提交后核验失败时报告失败及
+   `roleUpgradeMayHaveCommitted:true`，不自动重试；先只读核对角色权限，再决定新的批准动作。
+5. 保留维护窗口，核验线上 writer 精确角色检查及一条明确授权的生成／审核／发布流程。
+   新资源应在确认发布后同时出现在目录、详情和信号关联中；每份资料只引用其实际证据来源。
+   完成这些检查后才宣告功能已启用。
+
+`configure_editorial_roles.sql` 用于全新空角色初始化，现有生产角色只使用上述固定升级入口。
+回滚代码时应保留兼容两套 ACL 的版本；不能把新增权限的角色切回只接受旧权限的旧部署。

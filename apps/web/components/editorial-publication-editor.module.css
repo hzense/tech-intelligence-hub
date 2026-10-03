@@ -45,6 +45,29 @@
 .topics {
   min-width: 0;
 }
+.resources {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.resource {
+  margin-block: 1rem;
+  padding: 1rem;
+  border: 1px solid #ccd3df;
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.resource h4 {
+  margin-top: 0;
+}
+.resource blockquote {
+  margin-inline: 0;
+  padding-inline-start: 1rem;
+  border-inline-start: 3px solid #ccd3df;
+}
+.resource cite {
+  font-style: normal;
+  font-size: 0.875rem;
+}
 @media (max-width: 640px) {
   .fields {
     grid-template-columns: 1fr;

@@ -6,7 +6,13 @@ import { build } from 'esbuild';
 
 const runId = '11111111-1111-4111-8111-111111111111';
 test('editorial material auto-selects generated topics unless supplemental selections already exist', async () => {
-  const state = { prefill: undefined, saved: null };
+  const state = {
+    prefill: undefined,
+    saved: null,
+    resources: undefined,
+    enriched: undefined,
+    writes: [],
+  };
   globalThis.__editorialGenerationTopicsTest = state;
   try {
     const modules = {
@@ -16,21 +22,24 @@ test('editorial material auto-selects generated topics unless supplemental selec
       './editorial-topics':
         "export const editorialTopicOptions = async () => [{ id: 'topic-ai', title: '当前名称' }];",
       './generation-import-reader': 'export const importPool = {};',
-      '../material-source-reader':
-        'export const readMaterialSupplement = () => { throw new Error("unavailable fixture source"); };',
-      '../../../../packages/database/src/editorial-signal-store.mjs':
-        'export const saveEditorialSignal = () => { throw new Error("unexpected save"); }; export const readEditorialSignal = async () => globalThis.__editorialGenerationTopicsTest.saved;',
-      './signal-generation': 'export const generationRecord = async () => ({});',
+      '../material-source-reader': `export const readMaterialSupplement = async () => ({batchId:'${runId}',itemId:'${runId}',fence:1,contentHash:'b'.repeat(64),sourceUrl:'https://example.com/original'});`,
+      '../seed-runtime':
+        "export const getResourceEntries = async () => [{id:'company-example',type:'company',name:'示例公司',status:'active'}];",
+      '../../../../packages/database/src/editorial-signal-store.mjs': `export const saveEditorialSignal = async ({owner,request,material}) => { globalThis.__editorialGenerationTopicsTest.writes.push({owner,request,material}); return {request_id:request.requestId,revision:1,action:request.action,content:request.content}; };
+         export const readEditorialSignal = async () => globalThis.__editorialGenerationTopicsTest.saved;
+         export const previewEditorialResources = async ({resources,catalog}) => resources.map(r => ({name:r.name,type:r.type,matches:catalog.filter(c=>c.name===r.name),status:catalog.some(c=>c.name===r.name)?'reuse':'new'}));`,
+      './signal-generation': `export const generationRecord = async () => ({owner_id:'owner',batch_id:'${runId}',item_id:'${runId}',source_fence:1,source_hash:'b'.repeat(64)});`,
       '../candidate-review': `
         export const buildCandidateReview = () => ({
           materialHash: 'a'.repeat(64),
           candidate: {
             title: '合成标题', summary: '测试摘要', event_date: '2026-10-03',
             organizations: [], persons: [], topic_ids: ['topic-ai', 'topic-disabled'],
+            ...(globalThis.__editorialGenerationTopicsTest.resources === undefined ? {} : { resources: globalThis.__editorialGenerationTopicsTest.resources }),
           },
         });
-        export const buildEnrichedCandidateReview = () => { throw new Error('unexpected enrichment'); };`,
-      './candidate-enrichment': 'export const listCandidateEnrichmentDtos = async () => [];',
+        export const buildEnrichedCandidateReview = () => ({candidate:globalThis.__editorialGenerationTopicsTest.enriched});`,
+      './candidate-enrichment': `export const listCandidateEnrichmentDtos = async () => globalThis.__editorialGenerationTopicsTest.enriched ? [{status:'completed',material_hash:'a'.repeat(64),result:{candidate:globalThis.__editorialGenerationTopicsTest.enriched}}] : [];`,
       './material-registration':
         'export const materialPublicationPreview = async () => ({editorialPrefill: globalThis.__editorialGenerationTopicsTest.prefill});',
     };
@@ -57,7 +66,7 @@ test('editorial material auto-selects generated topics unless supplemental selec
         },
       ],
     });
-    const { editorialDashboard } = await import(
+    const { editorialDashboard, writeEditorialReview } = await import(
       `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`
     );
     const read = () => editorialDashboard('owner', runId, 0);
@@ -81,6 +90,117 @@ test('editorial material auto-selects generated topics unless supplemental selec
       },
     };
     assert.deepEqual((await read()).content.topics, []);
+    state.saved = null;
+    state.prefill = { organizations: ['旧补证组织'], persons: ['旧补证姓名'] };
+    state.resources = [
+      {
+        type: 'company',
+        name: '示例公司',
+        introduction: '示例公司提供云产品。',
+        event_role: '发布产品',
+        evidence: [{ fragment_id: 'f1', quote: '示例公司提供云产品。' }],
+      },
+      {
+        type: 'person',
+        name: '示例人物',
+        introduction: null,
+        event_role: '介绍产品',
+        evidence: [{ fragment_id: 'f2', quote: '示例人物介绍产品。' }],
+      },
+    ];
+    const resources = await read();
+    assert.deepEqual(resources.content.organizations, ['示例公司']);
+    assert.deepEqual(resources.content.persons, ['示例人物']);
+    assert.deepEqual(
+      resources.content.resources,
+      state.resources.map((resource) => ({
+        ...resource,
+        entity_id: resource.type === 'company' ? 'company-example' : null,
+      })),
+    );
+    assert.deepEqual(resources.content.sourceUrls, []);
+    const enrichmentResource = {
+      type: 'person',
+      name: '普通补全人物',
+      introduction: null,
+      event_role: '说明产品',
+      evidence: [{ fragment_id: 'fragment-1', quote: '普通补全人物说明产品。' }],
+    };
+    state.prefill = undefined;
+    state.enriched = {
+      event_date: '2026-10-03',
+      organizations: ['示例公司'],
+      persons: [{ name: enrichmentResource.name, organization: '示例公司' }],
+      resources: [...state.resources, enrichmentResource],
+    };
+    const enriched = await read();
+    assert.deepEqual(
+      enriched.content.resources.map(({ name }) => name),
+      ['示例公司', '示例人物', '普通补全人物'],
+    );
+    assert.deepEqual(enriched.content.persons, ['示例人物', '普通补全人物']);
+    await writeEditorialReview('owner', {
+      action: 'draft',
+      candidateIndex: 0,
+      consent: false,
+      content: enriched.content,
+      expectedRevision: 0,
+      materialHash: enriched.materialHash,
+      requestId: runId,
+      runId,
+    });
+    assert.deepEqual(state.writes.at(-1).material.resources, state.enriched.resources);
+    assert.deepEqual(
+      state.writes.at(-1).material.resourceSourceOptions,
+      state.enriched.resources.map(({ name, type }) => ({
+        name,
+        type,
+        sourceUrls: ['https://example.com/original'],
+      })),
+    );
+
+    const supplementalResource = {
+      ...enrichmentResource,
+      name: '补证人物',
+      evidence: [{ fragment_id: 'fragment-2', quote: '补证人物说明产品。' }],
+    };
+    const supplementaryResources = [...state.resources, supplementalResource];
+    const resourceSourceOptions = supplementaryResources.map(({ name, type }) => ({
+      name,
+      type,
+      sourceUrls: [
+        name === '补证人物' ? 'https://example.com/supplement' : 'https://example.com/original',
+      ],
+    }));
+    state.prefill = {
+      resources: supplementaryResources,
+      resourceSourceOptions,
+      sourceOptions: ['https://example.com/supplement'],
+      topics: [],
+    };
+    const supplemented = await read();
+    assert.deepEqual(
+      supplemented.content.resources.map(({ name }) => name),
+      ['示例公司', '示例人物', '补证人物'],
+    );
+    assert.deepEqual(supplemented.content.persons, ['示例人物', '补证人物']);
+    assert.deepEqual(supplemented.sourceOptions, [
+      'https://example.com/original',
+      'https://example.com/supplement',
+    ]);
+    await writeEditorialReview('owner', {
+      action: 'draft',
+      candidateIndex: 0,
+      consent: false,
+      content: supplemented.content,
+      expectedRevision: 0,
+      materialHash: supplemented.materialHash,
+      requestId: runId,
+      runId,
+    });
+    assert.deepEqual(state.writes.at(-1).material.resources, supplementaryResources);
+    assert.deepEqual(state.writes.at(-1).material.resourceSourceOptions, resourceSourceOptions);
+    assert.equal(state.writes.at(-1).material.materialHash, 'a'.repeat(64));
   } finally {
     delete globalThis.__editorialGenerationTopicsTest;
   }

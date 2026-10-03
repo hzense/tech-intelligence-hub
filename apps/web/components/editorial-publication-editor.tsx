@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { editorialMissing, editorialNames, type EditorialDashboard } from '@/lib/editorial-review';
+import {
+  editorialMissing,
+  editorialNames,
+  editorialResourceSameKind,
+  type EditorialDashboard,
+} from '@/lib/editorial-review';
 import { signalTypeLabels } from '@/lib/signal-presentation';
 import controls from './admin-controls.module.css';
 import styles from './editorial-publication-editor.module.css';
@@ -23,6 +28,9 @@ const messages: Record<string, string> = {
   review_incomplete: '请补齐事件类型、日期、组织、人物和领域。',
   confirmation_required: '请补齐事件类型、日期、组织、人物和领域，并点击确认发布。',
   topic_reference_invalid: '领域已停用或名称有变化，请重新读取并选择。',
+  entity_reference_invalid: '所选资源已不可用或类型不一致，请重新读取并核对身份。',
+  resource_identity_ambiguous: '存在同名资源，请核对并选择正确身份。',
+  resource_source_required: '请为每项资源勾选至少一条对应的公开来源，作为资料依据。',
   not_configured: '人工发布尚未配置完成。',
   invalid_request: '字段格式不正确，请检查日期和名称长度。',
   excluded_person: '人物不收录国家元首或政府首脑，请移除该人物；不要用无事件依据的人物替代。',
@@ -137,8 +145,12 @@ export function EditorialPublicationEditor({
       content: {
         ...data.content,
         signalType: data.content.signalType ?? null,
-        organizations: editorialNames(organizationText),
-        persons: editorialNames(personText),
+        organizations:
+          data.content.resources === undefined
+            ? editorialNames(organizationText)
+            : data.content.organizations,
+        persons:
+          data.content.resources === undefined ? editorialNames(personText) : data.content.persons,
       },
       consent: action !== 'draft',
     };
@@ -201,11 +213,17 @@ export function EditorialPublicationEditor({
   const content = data
     ? {
         ...data.content,
-        organizations: editorialNames(organizationText),
-        persons: editorialNames(personText),
+        organizations:
+          data.content.resources === undefined
+            ? editorialNames(organizationText)
+            : data.content.organizations,
+        persons:
+          data.content.resources === undefined ? editorialNames(personText) : data.content.persons,
       }
     : null;
-  const missing = content ? editorialMissing(content) : [];
+  const missing = content
+    ? editorialMissing(content, data?.resourceOptions, data?.resourceSourceOptions)
+    : [];
   const invalidTopics =
     data?.content.topics.filter(
       (selected) =>
@@ -218,7 +236,7 @@ export function EditorialPublicationEditor({
     <section className={styles.panel} aria-labelledby="editorial-heading">
       <h2 id="editorial-heading">确认发布</h2>
       <p>
-        核对事件类型、日期、组织、人物、领域和来源；缺失时可直接补充。点击确认后按“管理员确认”公开。
+        核对事件类型、日期、组织、人物、领域和来源。生成的资源草稿将在确认发布时一并保存并建立关联。
       </p>
       {notice ? <p role="status">{notice}</p> : null}
       {!data ? (
@@ -301,6 +319,7 @@ export function EditorialPublicationEditor({
                 rows={3}
                 maxLength={4800}
                 value={organizationText}
+                readOnly={data.content.resources !== undefined}
                 onChange={(event) => setOrganizationText(event.target.value)}
                 placeholder="填写组织名称，多项用换行或逗号分隔"
               />
@@ -312,11 +331,165 @@ export function EditorialPublicationEditor({
                 rows={3}
                 maxLength={2400}
                 value={personText}
+                readOnly={data.content.resources !== undefined}
                 onChange={(event) => setPersonText(event.target.value)}
                 placeholder="填写人物姓名，多项用换行或逗号分隔"
               />
+              {data.content.resources !== undefined && data.content.persons.length === 0 ? (
+                <span>原文未提取到可支持的人物</span>
+              ) : null}
             </label>
-            <p>人物和组织名称唯一匹配已有公开资源时会建立关联；未建档或存在同名歧义时保留名称。</p>
+            {data.content.resources === undefined ? (
+              <p>
+                人物和组织名称唯一匹配已有公开资源时会建立关联；未建档或存在同名歧义时保留名称。
+              </p>
+            ) : (
+              <div className={styles.resources}>
+                <h3>关联资源</h3>
+                <p>
+                  以下资料与原文绑定。已存在的身份复用，缺失的身份在确认发布时创建；此处不会再次调用
+                  AI。
+                </p>
+                {data.content.resources.map((resource, index) => {
+                  const option = data.resourceOptions?.find(
+                    (entry) =>
+                      entry.name === resource.name && editorialResourceSameKind(entry, resource),
+                  );
+                  const sources =
+                    data.resourceSourceOptions?.find(
+                      (entry) =>
+                        entry.name === resource.name && editorialResourceSameKind(entry, resource),
+                    )?.sourceUrls ?? [];
+                  const hasSelectedSource = sources.some((url) =>
+                    data.content.sourceUrls.includes(url),
+                  );
+                  const typeLabel =
+                    resource.type === 'person'
+                      ? '人物'
+                      : resource.type === 'company'
+                        ? '公司'
+                        : '机构';
+                  const selected = option?.matches.find(
+                    (match) =>
+                      match.id === resource.entity_id && editorialResourceSameKind(match, resource),
+                  );
+                  return (
+                    <article className={styles.resource} key={`${resource.type}:${resource.name}`}>
+                      <h4>
+                        {resource.name} · {typeLabel}
+                      </h4>
+                      <p>
+                        {resource.entity_id === '__new__'
+                          ? '发布时新建独立身份'
+                          : resource.entity_id
+                            ? `复用资源：${selected?.name ?? resource.name}`
+                            : option?.status === 'ambiguous'
+                              ? '存在同名资源，待核对身份'
+                              : '发布时新建资源'}
+                      </p>
+                      {option && option.matches.length > 0 ? (
+                        <label>
+                          {resource.name} 的资源身份
+                          <select
+                            aria-label={`${resource.name} 的资源身份`}
+                            value={resource.entity_id ?? ''}
+                            onChange={(event) =>
+                              setData({
+                                ...data,
+                                content: {
+                                  ...data.content,
+                                  resources: (data.content.resources ?? []).map(
+                                    (entry, resourceIndex) =>
+                                      index === resourceIndex
+                                        ? { ...entry, entity_id: event.target.value || null }
+                                        : entry,
+                                  ),
+                                },
+                              })
+                            }
+                          >
+                            <option value="">请选择已核实的身份</option>
+                            {option.matches.map((match) => (
+                              <option
+                                key={match.id}
+                                value={match.id}
+                                disabled={!editorialResourceSameKind(match, resource)}
+                              >
+                                {match.name}（{match.id}） ·
+                                {match.type === 'person'
+                                  ? '人物'
+                                  : match.type === 'company'
+                                    ? '公司'
+                                    : '机构'}
+                              </option>
+                            ))}
+                            <option value="__new__">不是以上身份，新建独立资源</option>
+                          </select>
+                        </label>
+                      ) : null}
+                      {selected ? (
+                        <p>
+                          请核对是否为同一{resource.type === 'person' ? '人物' : '组织'}。
+                          <Link
+                            href={
+                              selected.type === 'person'
+                                ? `/persons/${selected.id}`
+                                : `/resources/${selected.id}`
+                            }
+                            target="_blank"
+                          >
+                            查看已有资源
+                          </Link>
+                        </p>
+                      ) : null}
+                      {option?.status === 'ambiguous' &&
+                      !option.matches.some((match) =>
+                        editorialResourceSameKind(match, resource),
+                      ) ? (
+                        <p>已有同名资源的类型与生成资料不一致，需核对原文后重新生成。</p>
+                      ) : null}
+                      <p>简介：{resource.introduction ?? '原文未提供足够资料'}</p>
+                      <p>本次事件角色：{resource.event_role ?? '原文未明确'}</p>
+                      <div>
+                        <p>{resource.name} 的资料对应来源：</p>
+                        {sources.length ? (
+                          <>
+                            <ul>
+                              {sources.map((url) => (
+                                <li key={url}>
+                                  <a href={url} target="_blank" rel="noreferrer">
+                                    {url}
+                                  </a>
+                                  {data.content.sourceUrls.includes(url)
+                                    ? ' · 已勾选'
+                                    : ' · 未勾选'}
+                                </li>
+                              ))}
+                            </ul>
+                            <p>
+                              {hasSelectedSource
+                                ? '已选择此资源的公开来源。'
+                                : '请在下方公开来源中勾选至少一条对应链接。'}
+                            </p>
+                          </>
+                        ) : (
+                          <p>没有可供公开的对应来源，请补充资料或核对来源状态后重新读取。</p>
+                        )}
+                      </div>
+                      <details>
+                        <summary>查看原文证据（{resource.evidence.length} 条）</summary>
+                        {resource.evidence.map((evidence, evidenceIndex) => (
+                          <blockquote key={`${evidence.fragment_id}:${evidenceIndex}`}>
+                            <p>{evidence.quote}</p>
+                            <cite>原文片段 {evidence.fragment_id}</cite>
+                          </blockquote>
+                        ))}
+                      </details>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
             <div className={styles.topics}>
               <label>
                 领域
@@ -384,7 +557,12 @@ export function EditorialPublicationEditor({
             </div>
             <div className={styles.topics}>
               <h3>公开来源</h3>
-              <p>核对导入来源链接后，勾选允许随信号公开的链接。</p>
+              <p>
+                核对导入来源链接后，勾选允许随信号公开的链接。
+                {data.content.resources?.length
+                  ? '每项关联资源须至少勾选一条与其资料对应的来源，请核对上方资源卡片。'
+                  : ''}
+              </p>
               {(data.sourceOptions ?? []).length ? (
                 (data.sourceOptions ?? []).map((url) => (
                   <label key={url} className={styles.option}>
@@ -412,7 +590,9 @@ export function EditorialPublicationEditor({
             </div>
           </fieldset>
           <p>
-            确认发布会公开上方标题、摘要、发布信息及勾选的来源链接。原始文件和未勾选的来源不会公开。
+            确认发布会公开上方标题、摘要、发布信息及勾选的来源链接。
+            {data.content.resources?.length ? '同时保存资源档案并建立信号关联。' : ''}
+            原始文件和未勾选的来源不会公开。
           </p>
           <div className={controls.group}>
             <button

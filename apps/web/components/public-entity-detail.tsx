@@ -31,7 +31,7 @@ export function PublicEntityDetail({
   const observation = resourceTrendObservation(entity, new Date());
   const latest = entity.signals[0];
   const media = resourceMedia(entity.id);
-  const profile = resourceProfile(entity.id);
+  const profile = resourceProfile(entity);
   const roles = [
     ...new Set(
       entity.signals
@@ -70,9 +70,14 @@ export function PublicEntityDetail({
           {profile && (
             <p className={styles.attribution}>
               简介来源：
-              <a href={profile.sourceUrl} target="_blank" rel="noopener noreferrer">
-                查看人物或组织资料
-              </a>
+              {(profile.sourceUrls ?? [profile.sourceUrl]).map((url, index) => (
+                <span key={url}>
+                  {index > 0 ? '、' : ''}
+                  <a href={url} target="_blank" rel="noopener noreferrer">
+                    {index === 0 ? '查看人物或组织资料' : `资料来源 ${index + 1}`}
+                  </a>
+                </span>
+              ))}
               。简介描述资源本身；下方关联数量仅反映本站公开信号。
             </p>
           )}

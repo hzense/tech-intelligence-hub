@@ -16,10 +16,13 @@ export const maintenanceOperations = Object.freeze([
   'runtime-preflight',
   'acl-capture',
   'migrate-and-verify',
+  'editorial-resource-grant',
 ]);
 const migrationSequence = 'migrate-and-verify';
-const writes = new Set(['migrate', 'search-apply', migrationSequence]);
+const writes = new Set(['migrate', 'search-apply', migrationSequence, 'editorial-resource-grant']);
 const digest = /^[a-f0-9]{64}$/;
+export const editorialResourceRoleUpgradeSha256 =
+  '8db30d928fbb30383b1dd8d3ad68e51ce68f644172a0e6aee1cd550db5d58b2d';
 const unverifiedRecoveryPolicy = 'accept-unverified-fts1';
 const aiConfigRecoveryPolicy = 'accept-unverified-ai-config';
 const importTasksRecoveryPolicy = 'accept-unverified-import-tasks';
@@ -1202,6 +1205,53 @@ export function automationConfigDeletionRoleUpgradeSql(sql) {
   return sql;
 }
 
+export function editorialResourceRoleUpgradeSql(sql) {
+  requireGate(
+    typeof sql === 'string' &&
+      createHash('sha256').update(sql).digest('hex') === editorialResourceRoleUpgradeSha256,
+    'editorial-resource-role-script-mismatch',
+  );
+  return sql;
+}
+export function editorialResourceGrantPlan(preflight, migrations, binding) {
+  requireGate(
+    Array.isArray(preflight?.pendingMigrations) && preflight.pendingMigrations.length === 0,
+    'editorial-resource-complete-migrations-required',
+  );
+  requireGate(
+    Array.isArray(migrations) &&
+      migrations.length === automationConfigDeletionManifest.length &&
+      migrations.every(
+        (entry, index) =>
+          entry.name === automationConfigDeletionManifest[index][0] &&
+          entry.checksum === automationConfigDeletionManifest[index][1] &&
+          typeof entry.sql === 'string' &&
+          createHash('sha256').update(entry.sql).digest('hex') === entry.checksum,
+      ),
+    'editorial-resource-migration-manifest-required',
+  );
+  requireGate(
+    digest.test(binding?.targetFingerprint ?? '') && digest.test(binding?.backupIdSha256 ?? ''),
+    'editorial-resource-target-required',
+  );
+  const manifestFingerprint = createHash('sha256')
+    .update('hzense/editorial-resource-manifest/v1\0')
+    .update(JSON.stringify(automationConfigDeletionManifest))
+    .digest('hex');
+  const plan = {
+    manifestFingerprint,
+    ...binding,
+    roleUpgradeSha256: editorialResourceRoleUpgradeSha256,
+  };
+  return {
+    ...plan,
+    planFingerprint: createHash('sha256')
+      .update('hzense/editorial-resource-grant/v1\0')
+      .update(JSON.stringify(plan))
+      .digest('hex'),
+  };
+}
+
 // Explicit exception, not fabricated evidence of a successful restore. The
 // protected Environment review remains the authority; these are declarations.
 function validateRecoveryPolicy(approval, operation) {
@@ -1408,6 +1458,18 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
     'approval-expired-or-too-long',
   );
   const recoveryPolicy = validateRecoveryPolicy(approval, operation);
+  if (operation === 'editorial-resource-grant') {
+    requireGate(
+      recoveryPolicy === 'verified' &&
+        approval.roleUpgradeApproved === true &&
+        approval.roleUpgradeSha256 === editorialResourceRoleUpgradeSha256 &&
+        ['manifestFingerprint', 'planFingerprint', 'targetFingerprint'].every((key) =>
+          digest.test(approval[key] ?? ''),
+        ),
+      'editorial-resource-grant-approval-required',
+    );
+  }
+
   // This is a new explicit authorization, not a way to replay historical
   // approvals. Only independently frozen rollout policies use this entry point.
   if (operation === migrationSequence) {
@@ -1535,6 +1597,13 @@ export function publicMaintenanceResult(operation, result = {}) {
 }
 
 export function publicMaintenanceFailure(error) {
+  if (error instanceof EditorialResourceGrantError)
+    return {
+      ...publicMaintenanceFailure(error.cause),
+      operation: 'editorial-resource-grant',
+      roleUpgradeCompleted: false,
+      roleUpgradeMayHaveCommitted: error.mayHaveCommitted,
+    };
   if (error instanceof MaintenanceSequenceError) {
     return {
       ...publicMaintenanceFailure(error.cause),
@@ -1733,7 +1802,132 @@ async function executeAutomationConfigDeletionGrant(env, approval, context) {
   }
 }
 
+class EditorialResourceGrantError extends Error {
+  constructor(cause, mayHaveCommitted) {
+    super('Editorial resource grant stopped', { cause });
+    this.mayHaveCommitted = mayHaveCommitted;
+  }
+}
+async function executeEditorialResourceGrant(env, approval, context) {
+  requireGate(
+    approval?.operation === 'editorial-resource-grant' &&
+      typeof context.checkApproval === 'function' &&
+      typeof context.checkFreshness === 'function',
+    'editorial-resource-grant-context-required',
+  );
+  context.checkApproval();
+  const sql = editorialResourceRoleUpgradeSql(
+    await readFile(
+      new URL('../../db/roles/upgrade_editorial_resources.sql', import.meta.url),
+      'utf8',
+    ),
+  );
+  const { productionDatabaseOptions, validateConnectionTarget } =
+    await import('../../packages/database/src/connection-policy.mjs');
+  const { inspectDatabasePreflight } = await import('../../packages/database/src/preflight.mjs');
+  const { verifyDatabaseContract } = await import('../../packages/database/src/verify.mjs');
+  const { loadMigrations, verifyMigrationManifest, migrationLockKeys } =
+    await import('../../packages/database/src/migrate.mjs');
+  const { inspectRuntimeAclBaseline, runtimeAclBackupReference } =
+    await import('../../packages/database/src/runtime-acl-baseline.mjs');
+  const options = productionDatabaseOptions(env);
+  const policy = validateConnectionTarget(options);
+  const migrations = await loadMigrations();
+  await verifyMigrationManifest(migrations);
+  const require = createRequire(new URL('../../packages/database/package.json', import.meta.url));
+  const { Client } = require('pg');
+  const client = new Client({
+    connectionString: options.connectionString,
+    application_name: 'hzense-editorial-resource-grant',
+    connectionTimeoutMillis: 10_000,
+  });
+  let connectionFailed = false,
+    locked = false,
+    mayHaveCommitted = false;
+  client.on('error', () => {
+    connectionFailed = true;
+  });
+  const healthy = () =>
+    requireGate(!connectionFailed, 'editorial-resource-grant-connection-failed');
+  try {
+    await client.connect();
+    healthy();
+    await client.query("SET statement_timeout = '30s'");
+    await client.query("SET idle_in_transaction_session_timeout = '45s'");
+    healthy();
+    locked =
+      (await client.query('SELECT pg_try_advisory_lock($1, $2) AS locked', migrationLockKeys))
+        .rows[0]?.locked === true;
+    healthy();
+    requireGate(locked, 'editorial-resource-grant-lock-required');
+    const preflight = await inspectDatabasePreflight(client, {
+      ...options,
+      expectedHost: policy.host,
+    });
+    healthy();
+    const plan = editorialResourceGrantPlan(
+      preflight,
+      migrations,
+      editorialTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+    );
+    requireGate(
+      Object.entries(plan).every(([key, value]) => approval[key] === value),
+      'editorial-resource-grant-plan-mismatch',
+    );
+    const verification = await verifyDatabaseContract(options);
+    healthy();
+    requireGate(
+      verification.migrationCount === 28 && verification.tableCount === 60,
+      'editorial-resource-grant-schema-required',
+    );
+    await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    let baseline;
+    try {
+      await client.query('SET LOCAL search_path=pg_catalog,pg_temp');
+      baseline = await inspectRuntimeAclBaseline(client, {
+        expectedDatabase: policy.database,
+        expectedUser: policy.user,
+        expectedPostgresMajor: options.expectedPostgresMajor,
+        backupReference: runtimeAclBackupReference(env.MAINTENANCE_BACKUP_ID),
+      });
+    } finally {
+      await client.query('ROLLBACK');
+    }
+    healthy();
+    requireGate(
+      baseline.fingerprint === approval.aclFingerprint,
+      'editorial-resource-grant-acl-mismatch',
+    );
+    await context.checkFreshness();
+    healthy();
+    context.checkApproval();
+    // The SQL checks exact legacy/upgraded effective AND direct role permissions
+    // before and after the single grant transaction. Never retry unknown commits.
+    mayHaveCommitted = true;
+    await client.query(editorialResourceRoleUpgradeSql(sql));
+    healthy();
+    const verified = await verifyDatabaseContract(options);
+    healthy();
+    requireGate(
+      verified.migrationCount === 28 && verified.tableCount === 60,
+      'editorial-resource-grant-schema-required',
+    );
+    return { ...verified, ...plan, roleUpgradeCompleted: true };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw new EditorialResourceGrantError(error, mayHaveCommitted);
+  } finally {
+    if (locked)
+      await client
+        .query('SELECT pg_advisory_unlock($1, $2)', migrationLockKeys)
+        .catch(() => undefined);
+    await client.end().catch(() => undefined);
+  }
+}
+
 async function executeOperation(env, { operation, approval }, context = {}) {
+  if (operation === 'editorial-resource-grant')
+    return executeEditorialResourceGrant(env, approval, context);
   if (operation === automationConfigDeletionGrant)
     return executeAutomationConfigDeletionGrant(env, approval, context);
   if (operation === 'acl-evidence') {
@@ -1850,6 +2044,26 @@ async function executeOperation(env, { operation, approval }, context = {}) {
       await import('../../packages/database/src/migrate.mjs');
     const migrations = await loadMigrations();
     await verifyMigrationManifest(migrations);
+    if (preflight.pendingMigrations?.length === 0) {
+      try {
+        editorialResourceRoleUpgradeSql(
+          await readFile(
+            new URL('../../db/roles/upgrade_editorial_resources.sql', import.meta.url),
+            'utf8',
+          ),
+        );
+        return {
+          ...preflight,
+          ...editorialResourceGrantPlan(
+            preflight,
+            migrations,
+            editorialTargetBinding(policy, preflight, env.MAINTENANCE_BACKUP_ID),
+          ),
+        };
+      } catch (error) {
+        if (!(error instanceof MaintenanceGateError)) throw error;
+      }
+    }
     try {
       automationConfigDeletionRoleUpgradeSql(
         await readFile(
@@ -2473,7 +2687,16 @@ export async function runMaintenance(
             { checkApproval, checkFreshness },
             report,
           )
-        : publicMaintenanceResult(request.operation, await execute(executionEnv, request));
+        : publicMaintenanceResult(
+            request.operation,
+            await execute(
+              executionEnv,
+              request,
+              ...(request.operation === 'editorial-resource-grant'
+                ? [{ checkApproval, checkFreshness }]
+                : []),
+            ),
+          );
     Object.assign(summary, publicRecoveryAcceptance(request, snapshot.MAINTENANCE_APPROVAL));
     return summary;
   } finally {

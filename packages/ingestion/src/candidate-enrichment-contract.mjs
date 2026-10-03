@@ -3,6 +3,8 @@ import { isExcludedPublicPerson } from './person-resource-policy.mjs';
 import {
   GENERATION_LIMITS,
   GENERATION_METADATA_CONTRACT,
+  GENERATION_RESOURCES_CONTRACT,
+  generatedResourceJsonSchema,
   normalizeGeneratedCandidates,
   validateGenerationSource,
 } from './signal-generation-contract.mjs';
@@ -52,6 +54,27 @@ export const candidateEnrichmentJsonSchema = Object.freeze({
   },
 });
 
+export const candidateEnrichmentWithResourcesJsonSchema = Object.freeze({
+  ...candidateEnrichmentJsonSchema,
+  required: [...candidateEnrichmentJsonSchema.required, 'resources'],
+  properties: {
+    ...candidateEnrichmentJsonSchema.properties,
+    resources: { type: 'array', maxItems: 36, items: generatedResourceJsonSchema },
+  },
+});
+
+/** Existing resource content stays locked; only previously absent identities may be added. */
+export function mergeEnrichmentResources(original, proposed) {
+  if (!Array.isArray(original) || !Array.isArray(proposed) || proposed.length > 36)
+    throw new CandidateEnrichmentError();
+  const key = (resource) =>
+    typeof resource?.name === 'string'
+      ? resource.name.normalize('NFKC').trim().toLocaleLowerCase('en-US')
+      : null;
+  const keys = new Set(original.map(key));
+  return [...original, ...proposed.filter((resource) => !keys.has(key(resource)))];
+}
+
 export class CandidateEnrichmentError extends Error {
   constructor(code = 'invalid_enrichment_output') {
     super(code);
@@ -87,7 +110,14 @@ function plainRecord(value, keys) {
  */
 export function assessCandidateEnrichment(value, candidate, source) {
   try {
-    plainRecord(value, ['event_date', 'event_date_evidence', 'persons', 'organizations']);
+    const withResources = Object.hasOwn(candidate ?? {}, 'resources');
+    plainRecord(value, [
+      'event_date',
+      'event_date_evidence',
+      'persons',
+      'organizations',
+      ...(withResources ? ['resources'] : []),
+    ]);
     const validatedSource = validateGenerationSource(source);
     const original = plainRecord(candidate, [
       'index',
@@ -103,6 +133,7 @@ export function assessCandidateEnrichment(value, candidate, source) {
       'issues',
       ...(candidate && Object.hasOwn(candidate, 'topic_ids') ? ['topic_ids'] : []),
       ...(candidate && Object.hasOwn(candidate, 'signal_type') ? ['signal_type'] : []),
+      ...(withResources ? ['resources'] : []),
     ]);
     if (
       original.classification !== 'private' ||
@@ -126,12 +157,19 @@ export function assessCandidateEnrichment(value, candidate, source) {
       claims: original.claims,
       ...(Object.hasOwn(original, 'topic_ids') ? { topic_ids: original.topic_ids } : {}),
       ...(Object.hasOwn(original, 'signal_type') ? { signal_type: original.signal_type } : {}),
+      ...(withResources
+        ? { resources: mergeEnrichmentResources(original.resources, value.resources) }
+        : {}),
     };
     const normalized = normalizeGeneratedCandidates(
       { candidates: [merged], reason: '私有补全提案，待管理员审核。' },
       validatedSource,
       undefined,
-      Object.hasOwn(original, 'signal_type') ? GENERATION_METADATA_CONTRACT : undefined,
+      withResources
+        ? GENERATION_RESOURCES_CONTRACT
+        : Object.hasOwn(original, 'signal_type')
+          ? GENERATION_METADATA_CONTRACT
+          : undefined,
     ).candidates[0];
     if (!normalized) fail('invalid_enrichment_output');
     const sourceText = validatedSource.fragments.map((fragment) => fragment.text).join('\n');

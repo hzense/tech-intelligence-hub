@@ -210,6 +210,52 @@ export const generationCandidateWithMetadataJsonSchema = Object.freeze({
   },
 });
 
+export const GENERATION_RESOURCES_CONTRACT = 'signal-resources-v1';
+export const generatedResourceJsonSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  required: ['type', 'name', 'introduction', 'event_role', 'evidence'],
+  properties: {
+    type: { type: 'string', enum: ['person', 'company', 'institution'] },
+    name: { type: 'string', minLength: 1, maxLength: 200 },
+    introduction: {
+      description:
+        '只根据本次原文概括资源身份或业务；无法支持则为 null。不得把单次事件角色写成长期任职。',
+      anyOf: [{ type: 'string', minLength: 1, maxLength: 500 }, { type: 'null' }],
+    },
+    event_role: {
+      description: '本资源在当前事件中的角色；无原文依据则为 null，不猜测负责人或作者。',
+      anyOf: [{ type: 'string', minLength: 1, maxLength: 200 }, { type: 'null' }],
+    },
+    evidence: { ...referencesSchema, minItems: 1 },
+  },
+});
+const metadataCandidateSchema =
+  generationCandidateWithMetadataJsonSchema.properties.candidates.items;
+export const generationCandidateWithResourcesJsonSchema = Object.freeze({
+  ...generationCandidateWithMetadataJsonSchema,
+  properties: {
+    ...generationCandidateWithMetadataJsonSchema.properties,
+    candidates: {
+      ...generationCandidateWithMetadataJsonSchema.properties.candidates,
+      items: {
+        ...metadataCandidateSchema,
+        required: [...metadataCandidateSchema.required, 'resources'],
+        properties: {
+          ...metadataCandidateSchema.properties,
+          resources: {
+            type: 'array',
+            description:
+              '与信号同一次生成的资源草稿；覆盖 persons、organizations 以及人物所属组织。按身份去重，不填实体 ID 或来源 URL。',
+            maxItems: 36,
+            items: generatedResourceJsonSchema,
+          },
+        },
+      },
+    },
+  },
+});
+
 export class SignalGenerationError extends Error {
   constructor(code) {
     super(code);
@@ -382,9 +428,88 @@ function eventDate(value) {
   return value;
 }
 
+const resourceNameKey = (name) => name.normalize('NFKC').trim().toLocaleLowerCase('en-US');
+
+function normalizeResources(value, persons, organizations, fragments) {
+  const seen = new Set();
+  const resources = list(value, 36, 0, undefined, 'resources')
+    .map((resource, index) => {
+      const path = `resources[${index}]`;
+      record(resource, ['type', 'name', 'introduction', 'event_role', 'evidence'], undefined, path);
+      if (!['person', 'company', 'institution'].includes(resource.type))
+        fail(undefined, `${path}.type`, 'invalid_type');
+      const name = string(
+        resource.name,
+        resource.type === 'person' ? 150 : 200,
+        undefined,
+        `${path}.name`,
+      );
+      if (name !== name.trim()) fail(undefined, `${path}.name`, 'invalid_characters');
+      const evidence = references(resource.evidence, fragments, 1, `${path}.evidence`);
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const left = /^[\p{Script=Latin}\p{N}]/u.test(name) ? '(?<![\\p{Script=Latin}\\p{N}_])' : '';
+      const right = /[\p{Script=Latin}\p{N}]$/u.test(name) ? '(?![\\p{Script=Latin}\\p{N}_])' : '';
+      const mention = new RegExp(`${left}${escaped}${right}`, 'iu');
+      if (!evidence.some(({ quote }) => mention.test(quote)))
+        fail(undefined, `${path}.name`, 'missing_evidence');
+      return {
+        type: resource.type,
+        name,
+        introduction:
+          resource.introduction === null
+            ? null
+            : string(resource.introduction, 500, undefined, `${path}.introduction`),
+        event_role:
+          resource.event_role === null
+            ? null
+            : string(resource.event_role, 200, undefined, `${path}.event_role`),
+        evidence,
+      };
+    })
+    .filter((resource) => resource.type !== 'person' || !isExcludedPublicPerson(resource));
+  for (const [index, resource] of resources.entries()) {
+    const key = resourceNameKey(resource.name);
+    if (seen.has(key)) fail(undefined, `resources[${index}].name`, 'duplicate_item');
+    seen.add(key);
+  }
+  // If another candidate field failed, do not manufacture a secondary coverage error.
+  if (!persons || !organizations) return resources;
+  const people = new Set(persons.map(({ name }) => resourceNameKey(name)));
+  const orgs = new Set(
+    [
+      ...organizations,
+      ...persons.flatMap(({ organization }) => (organization === null ? [] : [organization])),
+    ].map(resourceNameKey),
+  );
+  for (const [index, resource] of resources.entries()) {
+    const expected = resource.type === 'person' ? people : orgs;
+    if (!expected.has(resourceNameKey(resource.name)))
+      fail(undefined, `resources[${index}].name`, 'unexpected_resource');
+  }
+  if (
+    [...people].some(
+      (name) =>
+        !resources.some(
+          (resource) => resource.type === 'person' && resourceNameKey(resource.name) === name,
+        ),
+    ) ||
+    [...orgs].some(
+      (name) =>
+        !resources.some(
+          (resource) => resource.type !== 'person' && resourceNameKey(resource.name) === name,
+        ),
+    )
+  )
+    fail(undefined, 'resources', 'missing_resource');
+  return resources;
+}
+
 /** Structural/quotation validation only: this does not establish factual or public eligibility. */
 function normalizeCandidates(value, source, partial = false, topics, outputContract) {
-  if (outputContract !== undefined && outputContract !== GENERATION_METADATA_CONTRACT)
+  if (
+    outputContract !== undefined &&
+    ![GENERATION_METADATA_CONTRACT, GENERATION_RESOURCES_CONTRACT].includes(outputContract)
+  )
     fail('invalid_generation_output');
   const topicIds =
     topics === undefined
@@ -432,7 +557,8 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
               'persons',
               'organizations',
               'claims',
-              ...(outputContract === GENERATION_METADATA_CONTRACT ? ['signal_type'] : []),
+              ...(outputContract !== undefined ? ['signal_type'] : []),
+              ...(outputContract === GENERATION_RESOURCES_CONTRACT ? ['resources'] : []),
               ...(topicIds !== undefined || (candidate && Object.hasOwn(candidate, 'topic_ids'))
                 ? ['topic_ids']
                 : []),
@@ -523,7 +649,7 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
         }),
       );
       const signal_type =
-        outputContract === GENERATION_METADATA_CONTRACT
+        outputContract !== undefined
           ? check('signal_type', () => {
               if (!SIGNAL_TYPES.includes(candidate.signal_type))
                 fail(undefined, 'signal_type', 'invalid_type');
@@ -547,6 +673,12 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
             return ids;
           })
         : undefined;
+      const resources =
+        outputContract === GENERATION_RESOURCES_CONTRACT
+          ? check('resources', () =>
+              normalizeResources(candidate.resources, persons, organizations, fragments),
+            )
+          : undefined;
       if (errors.length) return reject();
       const issues = ['needs_public_evidence'];
       if (!persons.length) issues.push('needs_person_evidence');
@@ -560,7 +692,8 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
         persons,
         organizations,
         claims,
-        ...(outputContract === GENERATION_METADATA_CONTRACT ? { signal_type } : {}),
+        ...(outputContract !== undefined ? { signal_type } : {}),
+        ...(outputContract === GENERATION_RESOURCES_CONTRACT ? { resources } : {}),
         ...(hasTopics ? { topic_ids } : {}),
         classification: 'private',
         status: 'needs_review',

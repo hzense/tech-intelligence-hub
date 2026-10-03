@@ -716,10 +716,19 @@ describe('execution-time GitHub freshness check', () => {
             }),
             MAINTENANCE_SEQUENCE_PHASE: 'prepare',
           }
-        : ['migrate', 'search-apply', 'acl-capture'].includes(operation)
+        : ['migrate', 'search-apply', 'acl-capture', 'editorial-resource-grant'].includes(operation)
           ? writeEnvironment(operation, {
               publicArchiveApproved: true,
               archiveRepository: 'hzense/tech-intelligence-hub',
+              ...(operation === 'editorial-resource-grant'
+                ? {
+                    roleUpgradeApproved: true,
+                    roleUpgradeSha256:
+                      '8db30d928fbb30383b1dd8d3ad68e51ce68f644172a0e6aee1cd550db5d58b2d',
+                    targetFingerprint: 'd'.repeat(64),
+                    manifestFingerprint: 'f'.repeat(64),
+                  }
+                : {}),
             })
           : { ...env, MAINTENANCE_OPERATION: operation };
     const execute = vi.fn();

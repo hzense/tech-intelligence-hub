@@ -210,3 +210,48 @@ test('enrichment rejects accessor-backed output without executing it', () => {
   });
   assert.equal(accessed, false);
 });
+
+test('resource-aware enrichment retains original drafts and creates evidence-backed drafts for added identities', () => {
+  const organization = {
+    type: 'institution',
+    name: '示例研究所',
+    introduction: null,
+    event_role: null,
+    evidence: [reference('示例研究所')],
+  };
+  const saved = {
+    ...candidate,
+    signal_type: 'research',
+    topic_ids: [],
+    organizations: ['示例研究所'],
+    resources: [organization],
+  };
+  const person = {
+    name: '李明',
+    role: '研究作者',
+    organization: '示例研究所',
+    evidence: [reference('研究作者李明在示例研究所')],
+  };
+  const resource = {
+    type: 'person',
+    name: '李明',
+    introduction: null,
+    event_role: '研究作者',
+    evidence: person.evidence,
+  };
+  const proposal = {
+    event_date: null,
+    event_date_evidence: [],
+    persons: [person],
+    organizations: ['示例研究所'],
+    resources: [resource, { ...organization, introduction: 'Attempted rewrite' }],
+  };
+  const before = JSON.stringify(saved);
+  const result = assessCandidateEnrichment(proposal, saved, source);
+  assert.deepEqual(result.candidate.resources, [organization, resource]);
+  assert.equal(JSON.stringify(saved), before);
+  assert.throws(() => assessCandidateEnrichment({ ...proposal, resources: [] }, saved, source));
+  const missingResources = { ...proposal };
+  delete missingResources.resources;
+  assert.throws(() => assessCandidateEnrichment(missingResources, saved, source));
+});
