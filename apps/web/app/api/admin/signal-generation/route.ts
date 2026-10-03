@@ -8,8 +8,10 @@ import {
   generationDetail,
   deleteGeneration,
   executeGeneration,
+  failQueuedGeneration,
   inspectGenerationInput,
   queueGeneration,
+  resolveQueuedGeneration,
 } from '@/lib/server/signal-generation';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,14 +25,20 @@ export const GET = createGenerationHandler({
   delete: deleteGeneration,
   execute: executeGeneration,
   inspectSource: inspectGenerationInput,
+  resolveQueue: resolveQueuedGeneration,
   enqueue: async (owner, id) => {
     const run = await queueGeneration(owner, id);
     if (run.status === 'pending') {
-      const workflow = await start(signalGenerationWorkflow, [
-        owner,
-        id,
-        new Date(run.progress_at!).toISOString(),
-      ]);
+      const queuedAt = new Date(run.progress_at!).toISOString();
+      let workflow;
+      try {
+        workflow = await start(signalGenerationWorkflow, [owner, id, queuedAt]);
+      } catch (error) {
+        // If start was accepted but its acknowledgement was lost, the exact
+        // queue fence protects any worker that has already claimed this task.
+        await failQueuedGeneration(owner, id, queuedAt).catch(() => undefined);
+        throw error;
+      }
       console.info(
         JSON.stringify({
           event: 'signal_generation_dispatched',

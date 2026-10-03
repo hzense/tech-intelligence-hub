@@ -19,6 +19,8 @@ import {
   getSignalGeneration,
   listSignalGenerations,
   cancelSignalGeneration,
+  queueSignalGeneration,
+  resolveQueuedSignalGeneration,
   signalGenerationSourceHash,
 } from '../src/signal-generation-store.mjs';
 import {
@@ -571,6 +573,32 @@ suite('generation production role provisioning', () => {
         (await listSignalGenerations({ pool: reader, owner: 'synthetic' }))[0],
       ).not.toHaveProperty('future_secret');
       await cancelSignalGeneration(args);
+      const neverClaimed = await createSignalGeneration({
+        pool: reader,
+        owner: 'synthetic',
+        request: {
+          id: randomUUID(),
+          batchId: run.batch_id,
+          itemId: randomUUID(),
+          sourceFence: run.source_fence,
+          sourceHash: run.source_hash,
+          profileId: run.profile_id,
+          profileRevision: run.profile_revision,
+        },
+        snapshot: run.snapshot,
+        configuration: run.configuration,
+      });
+      const queued = await queueSignalGeneration({ ...args, id: neverClaimed.id });
+      const resolution = {
+        ...args,
+        id: neverClaimed.id,
+        queuedAt: queued.progress_at.toISOString(),
+      };
+      const resolved = await resolveQueuedSignalGeneration(resolution);
+      expect(resolved.status).toBe('failed');
+      expect(resolved.charged_microusd).toBe('0');
+      expect(resolved).not.toHaveProperty('future_secret');
+      expect(await resolveQueuedSignalGeneration(resolution)).toEqual(resolved);
       for (const sql of [
         'SELECT future_secret FROM public.signal_generation_runs',
         'DELETE FROM public.signal_generation_runs',

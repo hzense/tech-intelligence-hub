@@ -24,6 +24,17 @@ const pendingItemId = '44444444-4444-4444-8444-444444444444';
 const smallItemId = '66666666-6666-4666-8666-666666666666';
 const otherBatchId = '88888888-8888-4888-8888-888888888888';
 const otherItemId = '99999999-9999-4999-8999-999999999999';
+const liveDetailId = '77777777-7777-4777-8777-777777777777';
+const liveDetailQueuedAt = '2026-10-03T11:49:00.123+02:00';
+const queuedLiveDetail = () => ({
+  id: liveDetailId,
+  status: 'pending',
+  progress_phase: 'queued',
+  progress_at: liveDetailQueuedAt,
+  started_at: null,
+  reserved_microusd: '0',
+  charged_microusd: '0',
+});
 
 // The actual client component uses synthetic loopback API responses only. These
 // tests do not send documents to providers or prove production authorization.
@@ -35,7 +46,7 @@ test(
     assert.equal(automationGenerationId, '127973fb-4efd-679b-d66f-87bbba11e214');
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {AdminSignalGeneration} from './components/admin-signal-generation';import {GenerationLiveDetail} from './components/generation-live-detail';createRoot(document.getElementById('root')).render(location.search.includes('live-detail') ? <GenerationLiveDetail initialRun={{id:'77777777-7777-4777-8777-777777777777',status:'running',progress_phase:'generating'}}/> : <AdminSignalGeneration configured={!location.search.includes('off')} historyConfigured={!location.search.includes('nohistory')}/>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {AdminSignalGeneration} from './components/admin-signal-generation';import {GenerationLiveDetail} from './components/generation-live-detail';createRoot(document.getElementById('root')).render(location.search.includes('live-detail') ? <GenerationLiveDetail initialRun={location.search.includes('queued') ? ${JSON.stringify(queuedLiveDetail())} : {id:'${liveDetailId}',status:'running',progress_phase:'generating'}}/> : <AdminSignalGeneration configured={!location.search.includes('off')} historyConfigured={!location.search.includes('nohistory')}/>);`,
         resolveDir: fileURLToPath(new URL('..', import.meta.url)),
         loader: 'tsx',
       },
@@ -280,6 +291,11 @@ test(
           run.status = 'cancelled';
           run.can_delete = true;
         }
+        if (command.action === 'resolve_queue') {
+          run.status = 'failed';
+          run.error_code = 'generation_dispatch_failed';
+          run.finished_at = '2026-10-03T12:00:00.000Z';
+        }
         if (droppedAction === command.action) {
           droppedAction = null;
           // Simulate a proxy failure after the server accepted the command.
@@ -496,6 +512,84 @@ test(
         await page.close();
       },
     );
+    await t.test(
+      'fixed-link queued detail requires confirmation and resolves only its displayed dispatch without AI',
+      async () => {
+        const page = await newPage();
+        runs = [queuedLiveDetail()];
+        await page.clock.install();
+        await page.goto(`${origin}/?live-detail&queued`);
+        const resolveButton = page.getByRole('button', { name: '结束排队并标记失败', exact: true });
+        await expect(page.getByText('排队中', { exact: true })).toBeVisible();
+        await expect(resolveButton).toBeEnabled();
+
+        page.once('dialog', (dialog) => dialog.dismiss());
+        await resolveButton.click();
+        assert.equal(commands.length, 0);
+        await expect(page.getByText('排队中', { exact: true })).toBeVisible();
+        await expect(resolveButton).toBeEnabled();
+
+        page.once('dialog', async (dialog) => {
+          assert.equal(dialog.type(), 'confirm');
+          assert.match(dialog.message(), /原记录和费用保留，不会调用 AI 或重新生成/);
+          await dialog.accept();
+        });
+        await resolveButton.click();
+        await expect(page.getByText('失败，需核对原任务', { exact: true })).toBeVisible();
+        await expect(
+          page
+            .getByRole('status')
+            .filter({ hasText: '已结束排队并标记为失败。原记录和费用保留，未调用 AI。' }),
+        ).toBeVisible();
+        await expect(resolveButton).toHaveCount(0);
+        assert.deepEqual(commands, [
+          {
+            action: 'resolve_queue',
+            id: liveDetailId,
+            queuedAt: '2026-10-03T09:49:00.123Z',
+          },
+        ]);
+        assert.equal(runs.length, 1);
+        assert.equal(runs[0].reserved_microusd, '0');
+        assert.equal(runs[0].charged_microusd, '0');
+        await page.clock.fastForward(15000);
+        assert.equal(commands.length, 1);
+        await page.close();
+      },
+    );
+    for (const conflict of ['task_active', 'stale_attempt']) {
+      await t.test(
+        `fixed-link queued detail keeps its state after ${conflict} conflict`,
+        async () => {
+          const page = await newPage();
+          runs = [queuedLiveDetail()];
+          rejectedError = conflict;
+          await page.clock.install();
+          await page.goto(`${origin}/?live-detail&queued`);
+          page.once('dialog', (dialog) => dialog.accept());
+          const resolveButton = page.getByRole('button', {
+            name: '结束排队并标记失败',
+            exact: true,
+          });
+          await resolveButton.click();
+          await expect(
+            page
+              .getByRole('status')
+              .filter({ hasText: '任务已开始执行或排队状态已变化，未标记失败。请刷新核对。' }),
+          ).toBeVisible();
+          await expect(page.getByText('排队中', { exact: true })).toBeVisible();
+          await expect(resolveButton).toBeEnabled();
+          await expect(page.getByText('失败，需核对原任务', { exact: true })).toHaveCount(0);
+          await expect(page.getByText('SYNTHETIC_RAW_PROVIDER_DIAGNOSTIC')).toHaveCount(0);
+          assert.deepEqual(
+            commands.map((command) => command.action),
+            ['resolve_queue'],
+          );
+          assert.equal(runs[0].status, 'pending');
+          await page.close();
+        },
+      );
+    }
     await t.test(
       'name-first selection and confirmed task deletion clear the pending request without calling AI',
       async () => {

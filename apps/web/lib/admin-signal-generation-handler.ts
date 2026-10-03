@@ -39,6 +39,7 @@ export function createGenerationHandler(deps: {
   detail?(owner: string, id: string): Promise<unknown>;
   inspectSource?(owner: string, body: unknown): Promise<unknown>;
   enqueue?(owner: string, id: string): Promise<unknown>;
+  resolveQueue?(owner: string, id: string, queuedAt: string): Promise<unknown>;
 }) {
   return async (request: Request) => {
     try {
@@ -67,6 +68,22 @@ export function createGenerationHandler(deps: {
       if (request.method === 'GET') return importResponse(await deps.dashboard(session.user.id));
       if (request.method !== 'POST') return importResponse({ error: 'method_not_allowed' }, 405);
       const body = await readImportJSON(request, 4096);
+      if (body && typeof body === 'object' && 'action' in body && body.action === 'resolve_queue') {
+        if (
+          Array.isArray(body) ||
+          Object.keys(body).sort().join(',') !== 'action,id,queuedAt' ||
+          !('id' in body) ||
+          !('queuedAt' in body) ||
+          typeof body.queuedAt !== 'string' ||
+          !Number.isFinite(Date.parse(body.queuedAt)) ||
+          new Date(body.queuedAt).toISOString() !== body.queuedAt
+        )
+          throw new GenerationError('invalid_request');
+        if (!deps.resolveQueue) throw new GenerationError('not_configured');
+        return importResponse({
+          run: await deps.resolveQueue(session.user.id, generationRecordId(body.id), body.queuedAt),
+        });
+      }
       if (body && typeof body === 'object' && 'action' in body && body.action === 'run') {
         if (
           Array.isArray(body) ||

@@ -897,3 +897,57 @@ export async function failQueuedSignalGeneration({ pool, owner, id, queuedAt }) 
     );
   });
 }
+
+/** Explicitly end one never-claimed dispatch without changing any execution or accounting data. */
+export async function resolveQueuedSignalGeneration({ pool, owner, id, queuedAt }) {
+  uuid(id);
+  ownerId(owner);
+  if (
+    typeof queuedAt !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(queuedAt) ||
+    !Number.isFinite(Date.parse(queuedAt)) ||
+    new Date(queuedAt).toISOString() !== queuedAt
+  )
+    fail();
+  return transaction(pool, async (client) => {
+    // Compare the dispatch fence in PostgreSQL, without losing timestamp precision
+    // when pg decodes progress_at as a JavaScript Date. The row lock serializes
+    // this decision with claims, requeues, cancellation and completion.
+    const locked = (
+      await client.query(
+        `SELECT ${columns},progress_at=$3::timestamptz AS queued_matches
+      FROM public.signal_generation_runs WHERE id=$1 AND owner_id=$2 FOR UPDATE`,
+        [id, owner, queuedAt],
+      )
+    ).rows[0];
+    if (!locked || locked.deleted_at) fail('not_found');
+    const { queued_matches: matches, ...row } = locked;
+    if (!matches) fail('stale_attempt');
+    if (
+      row.status === 'running' ||
+      row.started_at !== null ||
+      row.lease_token !== null ||
+      row.lease_until !== null ||
+      row.budget_day !== null ||
+      row.reserved_microusd !== '0' ||
+      row.charged_microusd !== '0'
+    )
+      fail('task_active');
+    if (row.progress_phase !== 'queued') fail('stale_attempt');
+    if (row.status === 'failed' && row.error_code === 'generation_dispatch_failed') return row;
+    if (row.status !== 'pending') fail('stale_attempt');
+    const resolved = (
+      await client.query(
+        `UPDATE public.signal_generation_runs
+      SET status='failed',error_code='generation_dispatch_failed',finished_at=clock_timestamp()
+      WHERE id=$1 AND owner_id=$2 AND status='pending' AND deleted_at IS NULL
+        AND progress_phase='queued' AND progress_at=$3::timestamptz
+        AND started_at IS NULL AND lease_token IS NULL AND lease_until IS NULL AND budget_day IS NULL
+        AND reserved_microusd=0 AND charged_microusd=0 RETURNING ${columns}`,
+        [id, owner, queuedAt],
+      )
+    ).rows[0];
+    if (!resolved) fail('stale_attempt');
+    return resolved;
+  });
+}
