@@ -191,6 +191,7 @@ export function candidateReviewMaterialHash(run, index) {
       { candidates: [input], reason: '审核前只读检查' },
       source,
       run.snapshot.topics,
+      run.snapshot.output_contract,
     );
     if (assessed.candidates.length !== 1) fail();
     const candidate = { ...assessed.candidates[0], index };

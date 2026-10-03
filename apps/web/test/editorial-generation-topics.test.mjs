@@ -15,6 +15,9 @@ test('editorial material auto-selects generated topics unless supplemental selec
         'export const editorialPool = {}; export const editorialPublicationEnabled = () => true;',
       './editorial-topics':
         "export const editorialTopicOptions = async () => [{ id: 'topic-ai', title: '当前名称' }];",
+      './generation-import-reader': 'export const importPool = {};',
+      '../material-source-reader':
+        'export const readMaterialSupplement = () => { throw new Error("unavailable fixture source"); };',
       '../../../../packages/database/src/editorial-signal-store.mjs':
         'export const saveEditorialSignal = () => { throw new Error("unexpected save"); }; export const readEditorialSignal = async () => globalThis.__editorialGenerationTopicsTest.saved;',
       './signal-generation': 'export const generationRecord = async () => ({});',

@@ -6,6 +6,7 @@ const { Request, structuredClone } = globalThis;
 import { createEditorialReviewService } from '../lib/editorial-review-service.ts';
 import { createEditorialHandler } from '../lib/admin-editorial-handler.ts';
 import { editorialMissing, editorialNames } from '../lib/editorial-review.ts';
+import { normalizeEditorialRequest } from '../../../packages/database/src/editorial-signal-contract.mjs';
 
 const runId = '11111111-1111-4111-8111-111111111111';
 const requestId = '22222222-2222-4222-8222-222222222222';
@@ -13,6 +14,7 @@ const content = {
   title: '合成标题',
   summary: '测试摘要',
   eventDate: '2026-09-25',
+  signalType: 'product',
   organizations: ['合成组织'],
   persons: ['测试人物'],
   topics: [{ id: 'ai', title: 'AI' }],
@@ -30,6 +32,7 @@ function setup() {
     topics: async () => content.topics,
     read: async () => null,
     save: async (owner, request, material) => {
+      normalizeEditorialRequest(request, material);
       calls.push(['save', owner, request, material]);
       return {
         request_id: request.requestId,
@@ -51,17 +54,18 @@ const request = () => ({
   content: structuredClone(content),
   consent: true,
 });
-test('four fields determine readiness; names normalize without invented entities', () => {
+test('publication metadata determines readiness; names normalize without invented entities', () => {
   assert.deepEqual(editorialMissing(content), []);
   assert.deepEqual(
     editorialMissing({
       ...content,
       eventDate: '2026-02-30',
+      signalType: null,
       persons: [],
       organizations: [],
       topics: [],
     }),
-    ['事件日期', '组织', '人物', '领域'],
+    ['事件类型', '事件日期', '组织', '人物', '领域'],
   );
   assert.deepEqual(editorialNames('甲、乙\n甲，丙；丁'), ['甲', '乙', '丙', '丁']);
 });
@@ -116,6 +120,51 @@ test('generation preselection uses the current enabled catalog and never overwri
     };
     assert.deepEqual((await service.read('owner', runId, 0)).content.topics, topics);
   }
+});
+test('source choices are private until selected; saved links survive source removal and withdrawal', async () => {
+  let saved = null;
+  let sourceOptions = ['https://example.com/article'];
+  const service = createEditorialReviewService({
+    enabled: () => true,
+    material: async () => ({ materialHash, content, warnings: [], sourceOptions }),
+    topics: async () => content.topics,
+    read: async () => saved,
+    save: async (_owner, request, bound) => {
+      normalizeEditorialRequest(request, {
+        ...bound,
+        sourceOptions: [...bound.sourceOptions, ...(saved?.content.sourceUrls ?? [])],
+      });
+      return (saved = {
+        request_id: request.requestId,
+        revision: (saved?.revision ?? 0) + 1,
+        action: request.action,
+        content: request.content,
+      });
+    },
+  });
+  const dashboard = await service.read('owner', runId, 0);
+  assert.deepEqual(dashboard.sourceOptions, sourceOptions);
+  assert.deepEqual(dashboard.content.sourceUrls, []);
+  const selected = { ...request(), content: { ...content, sourceUrls: sourceOptions } };
+  assert.deepEqual((await service.write('owner', selected)).content.sourceUrls, sourceOptions);
+  sourceOptions = [];
+  assert.deepEqual((await service.read('owner', runId, 0)).sourceOptions, [
+    'https://example.com/article',
+  ]);
+  assert.deepEqual((await service.write('owner', selected)).content.sourceUrls, [
+    'https://example.com/article',
+  ]);
+  await assert.rejects(
+    service.write('owner', {
+      ...selected,
+      content: { ...content, sourceUrls: ['https://forged.example'] },
+    }),
+    { code: 'material_changed' },
+  );
+  assert.equal(
+    (await service.write('owner', { ...selected, action: 'withdraw' })).action,
+    'withdraw',
+  );
 });
 test('service rejects immutable text changes, missing confirmation, missing fields and unknown payload', async () => {
   const { service, calls } = setup();

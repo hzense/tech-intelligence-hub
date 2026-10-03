@@ -45,6 +45,22 @@ test('enrichment preserves pinned topic suggestions and leaves historical materi
   );
 });
 
+test('enrichment preserves the generated event type and cannot propose a different type', () => {
+  const proposal = { event_date: null, event_date_evidence: [], persons: [], organizations: [] };
+  const saved = { ...candidate, signal_type: 'research', topic_ids: ['topic-ai'] };
+  const before = JSON.stringify(saved);
+  const result = assessCandidateEnrichment(proposal, saved, source);
+  assert.equal(result.candidate.signal_type, 'research');
+  assert.deepEqual(result.candidate.topic_ids, saved.topic_ids);
+  assert.equal(JSON.stringify(saved), before);
+  assert.throws(() =>
+    assessCandidateEnrichment({ ...proposal, signal_type: 'product' }, saved, source),
+  );
+  assert.throws(() =>
+    assessCandidateEnrichment(proposal, { ...saved, signal_type: 'private' }, source),
+  );
+});
+
 test('enrichment applies person scope to the proposal without rewriting an old candidate', () => {
   const leader = {
     name: '习近平',

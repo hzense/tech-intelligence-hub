@@ -3,6 +3,8 @@ import process from 'node:process';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import { readSignalReadMode, type SignalEntry } from './public-signal-reader-core.ts';
 import { projectLegacySignalEntries } from './legacy-signal-projection.ts';
+import { projectEditorialEntityLinks } from './editorial-entity-links.ts';
+import { editorialSignalIdPattern } from './editorial-signal-reader-core.ts';
 import {
   loadSeedCatalog,
   type SeedEntity,
@@ -23,22 +25,28 @@ function getSeedCatalog() {
 
 export async function getSignalEntries(): Promise<SignalEntry[]> {
   if (readSignalReadMode(process.env) === 'database') {
-    return (await import('./server/public-signals.ts')).getPublicSignals();
+    const signals = await (await import('./server/public-signals.ts')).getPublicSignals();
+    return projectEditorialEntityLinks(signals, await getResourceEntries());
   }
   const editorial =
     process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED === '1'
       ? await (await import('./server/editorial-signals.ts')).getEditorialSignals()
       : [];
   const normalizedLegacy = projectLegacySignalEntries(await getSeedCatalog());
-  return [...normalizedLegacy, ...editorial].sort((left, right) =>
-    right.occurred_at.localeCompare(left.occurred_at),
+  return projectEditorialEntityLinks(
+    [...normalizedLegacy, ...editorial].sort((left, right) =>
+      right.occurred_at.localeCompare(left.occurred_at),
+    ),
+    await getResourceEntries(),
   );
 }
 
 export async function getSignalEntryById(id: string): Promise<SignalEntry | undefined> {
   if (id.startsWith('editorial-')) {
+    if (!editorialSignalIdPattern.test(id)) return undefined;
     if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED !== '1') return undefined;
-    return (await import('./server/editorial-signals.ts')).getEditorialSignalById(id);
+    // Use the same current catalog as lists, filters and resource reverse links.
+    return (await getSignalEntries()).find((signal) => signal.id === id);
   }
   if (readSignalReadMode(process.env) === 'database') {
     return (await import('./server/public-signals.ts')).getPublicSignalById(id);

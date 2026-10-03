@@ -8,7 +8,7 @@ import { chromium, expect } from '@playwright/test';
 /* global document */
 
 test(
-  'four-field publication UI: manual completion, one-click publication, reread, withdrawal and same-key recovery',
+  'publication metadata UI: manual completion, one-click publication, reread, withdrawal and same-key recovery',
   { skip: process.env.HZENSE_CANDIDATE_REVIEW_BROWSER_TEST !== '1' },
   async () => {
     const compiled = await build({
@@ -73,12 +73,14 @@ test(
           title: '测试信号标题',
           summary: '合成资料，不涉及生产发布或 AI 调用。',
           eventDate: null,
+          signalType: null,
           organizations: [],
           persons: [],
           topics: [{ id: 'ai', title: '人工智能' }],
           sourceUrls: [],
         },
         topicOptions: [{ id: 'ai', title: '人工智能' }],
+        sourceOptions: ['https://example.com/article?id=42'],
         warnings: [],
         requestId: null,
         publicId: null,
@@ -159,6 +161,12 @@ test(
       await page.getByRole('checkbox', { name: '人工智能' }).uncheck();
       await expect(page.getByRole('checkbox', { name: '人工智能' })).not.toBeChecked();
       await page.getByLabel('事件日期', { exact: true }).fill('2026-09-25');
+      await page.getByLabel('事件类型', { exact: true }).selectOption('product');
+      const sourceChoice = page.getByRole('checkbox', {
+        name: '公开来源：https://example.com/article?id=42',
+      });
+      await expect(sourceChoice).not.toBeChecked();
+      await sourceChoice.check();
       await page.getByLabel('组织', { exact: true }).fill('测试组织');
       await page.getByLabel('人物', { exact: true }).fill('测试人物');
       await page.getByLabel('领域', { exact: true }).fill('人工');
@@ -169,6 +177,8 @@ test(
       assert.equal(posts.length, 1);
       assert.equal(posts[0].consent, true);
       assert.equal(posts[0].action, 'publish');
+      assert.equal(posts[0].content.signalType, 'product');
+      assert.deepEqual(posts[0].content.sourceUrls, ['https://example.com/article?id=42']);
       assert.deepEqual(posts[0].content.persons, ['测试人物']);
       await page.reload();
       await expect(page.getByRole('button', { name: '确认更新发布' })).toBeVisible();

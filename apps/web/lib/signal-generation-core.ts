@@ -12,6 +12,7 @@ import type { AiProfile, AiConnection } from '../../../packages/database/src/ai-
 import {
   buildGenerationSource,
   normalizeGenerationTopics,
+  GENERATION_METADATA_CONTRACT,
   type GenerationTopic,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import {
@@ -192,7 +193,12 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       const access = await deps.access(profileId, Number(body.profileRevision));
       const stage = access.profile.stages.extract;
       const topics = normalizeGenerationTopics(await deps.topics());
-      const requestInput = generationInput(source, stage.prompt, topics);
+      const requestInput = generationInput(
+        source,
+        stage.prompt,
+        topics,
+        GENERATION_METADATA_CONTRACT,
+      );
       // One UTF-8 byte per input token plus framing/schema allowance: conservative, not a provider bill.
       const inputBound =
         Buffer.byteLength(requestInput.prompt) +
@@ -214,7 +220,13 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
             profileId,
             profileRevision: access.profile.revision,
           },
-          snapshot: { source, profile: access.profile, connection: access.connection, topics },
+          snapshot: {
+            source,
+            profile: access.profile,
+            connection: access.connection,
+            topics,
+            output_contract: GENERATION_METADATA_CONTRACT,
+          },
           reserveMicrousd,
           ...(retryOf ? { retryOf } : {}),
         }),
@@ -282,6 +294,9 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
         source,
         // The worker uses the saved catalog, without extra credentials or a live catalog read.
         ...(run.snapshot.topics === undefined ? {} : { topics: run.snapshot.topics }),
+        ...(run.snapshot.output_contract === undefined
+          ? {}
+          : { outputContract: run.snapshot.output_contract }),
         stage: access.profile.stages.extract,
         connection: access.connection,
         apiKey: access.apiKey,

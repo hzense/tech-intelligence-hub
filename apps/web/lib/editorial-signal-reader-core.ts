@@ -1,5 +1,9 @@
 import { rankSearchDocuments } from '@hzense/search/ranking';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
+import {
+  SIGNAL_TYPES,
+  type GenerationSignalType,
+} from '../../../packages/ingestion/src/signal-types.mjs';
 import { readCandidateRoleConfiguration } from './candidate-review-config.ts';
 import {
   PublicSignalReaderError,
@@ -64,6 +68,9 @@ export function mapEditorialSignalRows(rows: unknown[]): SignalEntry[] {
     )
       return fail();
     const content = object(row.content);
+    const signalType = content.signalType ?? 'editorial';
+    if (signalType !== 'editorial' && !SIGNAL_TYPES.includes(signalType as GenerationSignalType))
+      return fail();
     const eventDate = text(content.eventDate);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) return fail();
     const occurred = new Date(`${eventDate}T00:00:00.000Z`);
@@ -105,7 +112,7 @@ export function mapEditorialSignalRows(rows: unknown[]): SignalEntry[] {
       id: signalId,
       title: text(content.title),
       summary: text(content.summary),
-      type: 'editorial',
+      type: signalType as GenerationSignalType | 'editorial',
       publication_basis: 'manual_confirmation',
       status: 'accepted',
       occurred_at: occurred.toISOString(),

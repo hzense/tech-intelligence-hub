@@ -7,6 +7,7 @@ import {
 import {
   validateGenerationSource,
   normalizeGeneratedCandidates,
+  GENERATION_METADATA_CONTRACT,
   type GeneratedCandidate,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { candidateEnrichmentJsonSchema } from '../../../packages/ingestion/src/candidate-enrichment-contract.mjs';
@@ -174,10 +175,14 @@ export function assessMaterialEnrichment(
             text: claim.text,
             evidence: (v.claim_evidence as unknown[])[index],
           })),
+          ...(original.signal_type === undefined ? {} : { signal_type: original.signal_type }),
+          ...(original.topic_ids === undefined ? {} : { topic_ids: original.topic_ids }),
         },
       ],
     },
     checked,
+    undefined,
+    original.signal_type === undefined ? undefined : GENERATION_METADATA_CONTRACT,
   ).candidates[0]!;
   // Apply the current person-resource scope only to this derived proposal.
   // The stored candidate/source remain unchanged; eligible original people stay locked.

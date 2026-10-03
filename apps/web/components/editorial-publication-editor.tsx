@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { editorialMissing, editorialNames, type EditorialDashboard } from '@/lib/editorial-review';
+import { signalTypeLabels } from '@/lib/signal-presentation';
 import controls from './admin-controls.module.css';
 import styles from './editorial-publication-editor.module.css';
 
@@ -19,8 +20,8 @@ type Submission = {
 const messages: Record<string, string> = {
   revision_conflict: '记录已被另一页面修改，请重新读取后核对。',
   material_changed: '原候选材料发生变化，请重新读取。',
-  review_incomplete: '请补齐事件日期、组织、人物和领域。',
-  confirmation_required: '请补齐事件日期、组织、人物和领域，并点击确认发布。',
+  review_incomplete: '请补齐事件类型、日期、组织、人物和领域。',
+  confirmation_required: '请补齐事件类型、日期、组织、人物和领域，并点击确认发布。',
   topic_reference_invalid: '领域已停用或名称有变化，请重新读取并选择。',
   not_configured: '人工发布尚未配置完成。',
   invalid_request: '字段格式不正确，请检查日期和名称长度。',
@@ -135,6 +136,7 @@ export function EditorialPublicationEditor({
       action,
       content: {
         ...data.content,
+        signalType: data.content.signalType ?? null,
         organizations: editorialNames(organizationText),
         persons: editorialNames(personText),
       },
@@ -216,7 +218,7 @@ export function EditorialPublicationEditor({
     <section className={styles.panel} aria-labelledby="editorial-heading">
       <h2 id="editorial-heading">确认发布</h2>
       <p>
-        核对事件日期、组织、人物和领域；缺失时可直接补充。点击确认后按“管理员确认”公开，无需独立签名核验。
+        核对事件类型、日期、组织、人物、领域和来源；缺失时可直接补充。点击确认后按“管理员确认”公开。
       </p>
       {notice ? <p role="status">{notice}</p> : null}
       {!data ? (
@@ -252,7 +254,33 @@ export function EditorialPublicationEditor({
                   : '待确认发布'}
           </p>
           <fieldset disabled={disabled} className={styles.fields}>
-            <legend>四项发布信息</legend>
+            <legend>发布信息</legend>
+            <label>
+              事件类型
+              <select
+                aria-label="事件类型"
+                value={data.content.signalType ?? ''}
+                onChange={(event) =>
+                  setData({
+                    ...data,
+                    content: {
+                      ...data.content,
+                      signalType:
+                        (event.target.value as NonNullable<
+                          EditorialDashboard['content']['signalType']
+                        >) || null,
+                    },
+                  })
+                }
+              >
+                <option value="">请选择事件类型</option>
+                {Object.entries(signalTypeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label>
               事件日期
               <input
@@ -288,6 +316,7 @@ export function EditorialPublicationEditor({
                 placeholder="填写人物姓名，多项用换行或逗号分隔"
               />
             </label>
+            <p>人物和组织名称唯一匹配已有公开资源时会建立关联；未建档或存在同名歧义时保留名称。</p>
             <div className={styles.topics}>
               <label>
                 领域
@@ -353,9 +382,37 @@ export function EditorialPublicationEditor({
                   );
                 })}
             </div>
+            <div className={styles.topics}>
+              <h3>公开来源</h3>
+              <p>核对导入来源链接后，勾选允许随信号公开的链接。</p>
+              {(data.sourceOptions ?? []).length ? (
+                (data.sourceOptions ?? []).map((url) => (
+                  <label key={url} className={styles.option}>
+                    <input
+                      type="checkbox"
+                      checked={data.content.sourceUrls.includes(url)}
+                      onChange={(event) =>
+                        setData({
+                          ...data,
+                          content: {
+                            ...data.content,
+                            sourceUrls: event.target.checked
+                              ? [...data.content.sourceUrls, url]
+                              : data.content.sourceUrls.filter((source) => source !== url),
+                          },
+                        })
+                      }
+                    />
+                    公开来源：{url}
+                  </label>
+                ))
+              ) : (
+                <p>没有可供公开的导入来源链接。文件与受保护链接不会自动公开。</p>
+              )}
+            </div>
           </fieldset>
           <p>
-            确认发布会公开上方标题、摘要及四项信息。原始资料和证据仅用于下方辅助核对，不会自动公开。
+            确认发布会公开上方标题、摘要、发布信息及勾选的来源链接。原始文件和未勾选的来源不会公开。
           </p>
           <div className={controls.group}>
             <button

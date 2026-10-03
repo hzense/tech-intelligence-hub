@@ -2,6 +2,7 @@ import { TextEncoder } from 'node:util';
 import { isExcludedPublicPerson } from './person-resource-policy.mjs';
 import {
   GENERATION_LIMITS,
+  GENERATION_METADATA_CONTRACT,
   normalizeGeneratedCandidates,
   validateGenerationSource,
 } from './signal-generation-contract.mjs';
@@ -101,6 +102,7 @@ export function assessCandidateEnrichment(value, candidate, source) {
       'status',
       'issues',
       ...(candidate && Object.hasOwn(candidate, 'topic_ids') ? ['topic_ids'] : []),
+      ...(candidate && Object.hasOwn(candidate, 'signal_type') ? ['signal_type'] : []),
     ]);
     if (
       original.classification !== 'private' ||
@@ -123,10 +125,13 @@ export function assessCandidateEnrichment(value, candidate, source) {
       organizations: [...new Set([...original.organizations, ...value.organizations])],
       claims: original.claims,
       ...(Object.hasOwn(original, 'topic_ids') ? { topic_ids: original.topic_ids } : {}),
+      ...(Object.hasOwn(original, 'signal_type') ? { signal_type: original.signal_type } : {}),
     };
     const normalized = normalizeGeneratedCandidates(
       { candidates: [merged], reason: '私有补全提案，待管理员审核。' },
       validatedSource,
+      undefined,
+      Object.hasOwn(original, 'signal_type') ? GENERATION_METADATA_CONTRACT : undefined,
     ).candidates[0];
     if (!normalized) fail('invalid_enrichment_output');
     const sourceText = validatedSource.fragments.map((fragment) => fragment.text).join('\n');

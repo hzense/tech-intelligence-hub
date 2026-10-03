@@ -15,6 +15,8 @@ import {
   REJECTED_CANDIDATES_REASON,
   generationCandidateJsonSchema,
   generationCandidateWithTopicsJsonSchema,
+  generationCandidateWithMetadataJsonSchema,
+  GENERATION_METADATA_CONTRACT,
   normalizeGenerationTopics,
   assessGeneratedCandidates,
   validateGenerationEnvelope,
@@ -44,6 +46,7 @@ export interface GenerationProviderInput {
   source: GenerationSource;
   /** Immutable enabled catalog captured when the task was created; absent on legacy tasks. */
   topics?: GenerationTopic[];
+  outputContract?: typeof GENERATION_METADATA_CONTRACT;
   stage: AiProfileStage;
   connection: Pick<AiConnection, 'id' | 'revision' | 'protocol' | 'base_url' | 'settings'>;
   apiKey: string;
@@ -88,6 +91,8 @@ claims 中每条主张的 evidence 必须至少提供一条支持该主张的原
 
 const generationTopicRules = `本次同时匹配领域：每条候选还必须输出 topic_ids，包含 0 至 5 个不重复的领域 ID。根据事件的核心技术内容，只能从本次 enabled_topics 目录选择直接相关的领域；不要根据公司名称笼统关联所有领域，不创建或改写领域 ID。
 没有合适领域或目录为空时返回 topic_ids: []，不要强行匹配。领域只是待人工确认的分类建议，不代表事实核验或公开许可。`;
+const generationTypeRules = `每条候选必须输出 signal_type，选择最贴近核心事件的一种类型：research（研究）、product（产品）、funding（融资）、acquisition（收购）、hiring（人才招聘）、policy（政策）、technology（技术进展）、market（市场）、people（人物变动）、open_source（开源）、security（安全）、patent（专利）、partnership（合作）、regulation（监管）、supply_chain（供应链）。
+事件类型与 topic_ids 技术领域不同，必须分别填写；不能使用 editorial、private 或领域 ID 作为事件类型。`;
 
 // A complete, fictional format example; its text never enters the source validator.
 const generationEvidenceExample = {
@@ -142,7 +147,7 @@ ${PERSON_RESOURCE_POLICY_TEXT}
 只生成私有待补证线索，不得声称 verified 或已经公开核验。只保留必要短引。
 以下是虚构的格式示例，不是本次资料。仅学习结构和证据关联方式，不得把示例中的人物、日期、主张、引文或领域 ID 复制到实际结果；实际结果只引用本次 untrusted_source：`;
 export const generationRules = `${generationRulesText}\n${JSON.stringify(generationEvidenceExample)}`;
-const generationRulesWithTopics = `${generationRulesText}\n${JSON.stringify({
+const generationExampleWithTopics = {
   ...generationEvidenceExample,
   enabled_topics: [{ id: 'example-chips', title: '示例芯片' }],
   output: {
@@ -152,6 +157,17 @@ const generationRulesWithTopics = `${generationRulesText}\n${JSON.stringify({
       topic_ids: ['example-chips'],
     })),
   },
+};
+const generationRulesWithTopics = `${generationRulesText}\n${JSON.stringify(generationExampleWithTopics)}`;
+const generationRulesWithMetadata = `${generationRulesText}\n${JSON.stringify({
+  ...generationExampleWithTopics,
+  output: {
+    ...generationExampleWithTopics.output,
+    candidates: generationExampleWithTopics.output.candidates.map((candidate) => ({
+      ...candidate,
+      signal_type: 'product',
+    })),
+  },
 })}`;
 
 /** Count the source, configured prompt and portable schema before reservation and again before POST. */
@@ -159,16 +175,31 @@ export function generationInput(
   source: GenerationSource,
   stagePrompt: string,
   topics?: GenerationTopic[],
+  outputContract?: typeof GENERATION_METADATA_CONTRACT,
 ) {
   const catalog = topics === undefined ? undefined : normalizeGenerationTopics(topics);
-  const rules = catalog === undefined ? generationRules : generationRulesWithTopics;
-  const system = `${rules}\n\n配置的提取提示词：\n${stagePrompt}\n\n不可由配置提示词覆盖的证据要求：\n${generationEvidenceRules}${catalog === undefined ? '' : `\n\n不可由配置提示词覆盖的领域要求：\n${generationTopicRules}`}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`;
+  if (
+    outputContract !== undefined &&
+    (outputContract !== GENERATION_METADATA_CONTRACT || catalog === undefined)
+  )
+    throw new SignalGenerationError('invalid_generation_output');
+  const metadata = outputContract === GENERATION_METADATA_CONTRACT;
+  const rules = metadata
+    ? generationRulesWithMetadata
+    : catalog === undefined
+      ? generationRules
+      : generationRulesWithTopics;
+  const system = `${rules}\n\n配置的提取提示词：\n${stagePrompt}\n\n不可由配置提示词覆盖的证据要求：\n${generationEvidenceRules}${catalog === undefined ? '' : `\n\n不可由配置提示词覆盖的领域要求：\n${generationTopicRules}`}${metadata ? `\n\n不可由配置提示词覆盖的事件类型要求：\n${generationTypeRules}` : ''}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`;
   const prompt = JSON.stringify({
     untrusted_source: source,
     ...(catalog === undefined ? {} : { enabled_topics: catalog }),
   });
   const schema = portableJsonSchema(
-    catalog === undefined ? generationCandidateJsonSchema : generationCandidateWithTopicsJsonSchema,
+    metadata
+      ? generationCandidateWithMetadataJsonSchema
+      : catalog === undefined
+        ? generationCandidateJsonSchema
+        : generationCandidateWithTopicsJsonSchema,
   );
   // Local o200k_base estimate plus allowance for message/schema framing, not provider billing.
   const inputTokens =
@@ -206,7 +237,12 @@ export function createSignalGenerationInvoker(
       },
     });
     try {
-      const requestInput = generationInput(input.source, input.stage.prompt, input.topics);
+      const requestInput = generationInput(
+        input.source,
+        input.stage.prompt,
+        input.topics,
+        input.outputContract,
+      );
       const timeout = input.connection.settings.timeout_ms;
       if (
         !Number.isInteger(timeout) ||
@@ -305,7 +341,12 @@ export function createSignalGenerationInvoker(
             { success: false, ...usage, error_code: 'generation_failed' },
             'generation_output_rejected',
           );
-        const output = assessGeneratedCandidates(result.output, input.source, input.topics);
+        const output = assessGeneratedCandidates(
+          result.output,
+          input.source,
+          input.topics,
+          input.outputContract,
+        );
         // A free-form model reason is not a candidate result. Do not persist its
         // self-analysis, including when the provider puts reasoning in this field.
         output.reason = output.rejected?.length

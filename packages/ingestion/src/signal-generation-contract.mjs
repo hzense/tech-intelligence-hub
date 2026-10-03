@@ -3,6 +3,8 @@ import { countTokens } from 'gpt-tokenizer/encoding/o200k_base';
 import { parseImportOutput } from './import-task-contract.mjs';
 import { isExcludedPublicPerson } from './person-resource-policy.mjs';
 import { isGenerationValidationDetail } from './signal-generation-validation-diagnostics.mjs';
+import { SIGNAL_TYPES } from './signal-types.mjs';
+export { SIGNAL_TYPES } from './signal-types.mjs';
 
 export const GENERATION_LIMITS = Object.freeze({
   inputTokens: 100000,
@@ -184,6 +186,30 @@ export const generationCandidateWithTopicsJsonSchema = Object.freeze({
   },
 });
 
+export const GENERATION_METADATA_CONTRACT = 'signal-metadata-v1';
+const topicCandidateSchema = generationCandidateWithTopicsJsonSchema.properties.candidates.items;
+export const generationCandidateWithMetadataJsonSchema = Object.freeze({
+  ...generationCandidateWithTopicsJsonSchema,
+  properties: {
+    ...generationCandidateWithTopicsJsonSchema.properties,
+    candidates: {
+      ...generationCandidateWithTopicsJsonSchema.properties.candidates,
+      items: {
+        ...topicCandidateSchema,
+        required: [...topicCandidateSchema.required, 'signal_type'],
+        properties: {
+          ...topicCandidateSchema.properties,
+          signal_type: {
+            type: 'string',
+            enum: SIGNAL_TYPES,
+            description: '选择最能描述事件本身的一种事件类型；与 topic_ids 技术领域分别填写。',
+          },
+        },
+      },
+    },
+  },
+});
+
 export class SignalGenerationError extends Error {
   constructor(code) {
     super(code);
@@ -357,7 +383,9 @@ function eventDate(value) {
 }
 
 /** Structural/quotation validation only: this does not establish factual or public eligibility. */
-function normalizeCandidates(value, source, partial = false, topics) {
+function normalizeCandidates(value, source, partial = false, topics, outputContract) {
+  if (outputContract !== undefined && outputContract !== GENERATION_METADATA_CONTRACT)
+    fail('invalid_generation_output');
   const topicIds =
     topics === undefined
       ? undefined
@@ -404,6 +432,7 @@ function normalizeCandidates(value, source, partial = false, topics) {
               'persons',
               'organizations',
               'claims',
+              ...(outputContract === GENERATION_METADATA_CONTRACT ? ['signal_type'] : []),
               ...(topicIds !== undefined || (candidate && Object.hasOwn(candidate, 'topic_ids'))
                 ? ['topic_ids']
                 : []),
@@ -493,6 +522,14 @@ function normalizeCandidates(value, source, partial = false, topics) {
           };
         }),
       );
+      const signal_type =
+        outputContract === GENERATION_METADATA_CONTRACT
+          ? check('signal_type', () => {
+              if (!SIGNAL_TYPES.includes(candidate.signal_type))
+                fail(undefined, 'signal_type', 'invalid_type');
+              return candidate.signal_type;
+            })
+          : undefined;
       const hasTopics = Object.hasOwn(candidate, 'topic_ids');
       const topic_ids = hasTopics
         ? check('topic_ids', () => {
@@ -523,6 +560,7 @@ function normalizeCandidates(value, source, partial = false, topics) {
         persons,
         organizations,
         claims,
+        ...(outputContract === GENERATION_METADATA_CONTRACT ? { signal_type } : {}),
         ...(hasTopics ? { topic_ids } : {}),
         classification: 'private',
         status: 'needs_review',
@@ -540,13 +578,13 @@ function normalizeCandidates(value, source, partial = false, topics) {
   return result;
 }
 
-export function normalizeGeneratedCandidates(value, source, topics) {
-  return normalizeCandidates(value, source, false, topics);
+export function normalizeGeneratedCandidates(value, source, topics, outputContract) {
+  return normalizeCandidates(value, source, false, topics, outputContract);
 }
 
 /** Reject candidates independently; diagnostics contain only server-owned codes, never raw output. */
-export function assessGeneratedCandidates(value, source, topics) {
-  return normalizeCandidates(value, source, true, topics);
+export function assessGeneratedCandidates(value, source, topics, outputContract) {
+  return normalizeCandidates(value, source, true, topics, outputContract);
 }
 
 /** Validate only the bounded envelope in the SDK; business validation runs after usage is captured. */

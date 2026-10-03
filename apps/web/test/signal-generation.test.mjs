@@ -24,6 +24,7 @@ import {
   buildGenerationSource,
   estimateGenerationTokens,
   normalizeGeneratedCandidates,
+  GENERATION_METADATA_CONTRACT,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
@@ -279,6 +280,47 @@ test('one generation call receives the pinned catalog and returns validated topi
   assert.ok(
     request.inputTokens > legacy.inputTokens,
     'catalog, rules and schema count toward admission',
+  );
+});
+
+test('metadata contract selects an event type in the same provider call and validates it', async () => {
+  for (const signal_type of ['product', 'editorial', undefined]) {
+    const f = providerFixture({
+      ...result,
+      candidates: [
+        {
+          ...candidate,
+          topic_ids: ['semiconductors'],
+          ...(signal_type === undefined ? {} : { signal_type }),
+        },
+      ],
+    });
+    const value = await f.invoke({
+      topics: topicCatalog,
+      outputContract: GENERATION_METADATA_CONTRACT,
+    });
+    assert.equal(value.success, signal_type === 'product');
+    assert.equal(f.calls.length, 1);
+    const wire = JSON.parse(f.calls[0].body);
+    assert.ok(
+      wire.response_format.json_schema.schema.properties.candidates.items.required.includes(
+        'signal_type',
+      ),
+    );
+    assert.match(wire.messages[0].content, /事件类型与 topic_ids 技术领域不同/);
+    if (value.success) assert.equal(value.output.candidates[0].signal_type, 'product');
+  }
+  const input = generationInput(source, stage.prompt, topicCatalog, GENERATION_METADATA_CONTRACT);
+  const example = JSON.parse(
+    input.system.split('\n').find((line) => line.startsWith('{"source":')),
+  );
+  assert.doesNotThrow(() =>
+    normalizeGeneratedCandidates(
+      example.output,
+      example.source,
+      example.enabled_topics,
+      GENERATION_METADATA_CONTRACT,
+    ),
   );
 });
 
@@ -992,7 +1034,7 @@ test('creation pins enabled topics without AI; execution uses that snapshot desp
   let catalogReads = 0;
   const provider = providerFixture({
     ...result,
-    candidates: [{ ...candidate, topic_ids: ['semiconductors'] }],
+    candidates: [{ ...candidate, topic_ids: ['semiconductors'], signal_type: 'product' }],
   });
   const f = coreFixture({
     topics: async () => {
@@ -1013,12 +1055,19 @@ test('creation pins enabled topics without AI; execution uses that snapshot desp
     consent: true,
   });
   assert.deepEqual(f.run().snapshot.topics, topicCatalog);
+  assert.equal(f.run().snapshot.output_contract, GENERATION_METADATA_CONTRACT);
   assert.equal(provider.calls.length, 0);
-  const createdInput = generationInput(source, stage.prompt, topicCatalog);
+  const createdInput = generationInput(
+    source,
+    stage.prompt,
+    topicCatalog,
+    GENERATION_METADATA_CONTRACT,
+  );
   assert.ok(f.run().reserveMicrousd >= createdInput.inputTokens);
   const dto = await f.execute('admin', { action: 'run', id });
   assert.equal(dto.status, 'completed');
   assert.deepEqual(f.finishes[0].result.candidates[0].topic_ids, ['semiconductors']);
+  assert.equal(f.finishes[0].result.candidates[0].signal_type, 'product');
   assert.equal(provider.calls.length, 1);
   assert.equal(catalogReads, 1);
 });

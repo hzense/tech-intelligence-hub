@@ -11,6 +11,9 @@ import { materialPublicationPreview } from './material-registration';
 import type { EditorialContent } from '../editorial-review';
 import { editorialPool, editorialPublicationEnabled } from './editorial-database';
 import { editorialTopicOptions } from './editorial-topics';
+import { importPool } from './generation-import-reader';
+import { readMaterialSupplement } from '../material-source-reader';
+import { readEditorialSourceOptions } from '../editorial-source-options';
 
 async function material(owner: string, runId: string, index: number) {
   const run = await generationRecord(owner, runId);
@@ -40,12 +43,13 @@ async function material(owner: string, runId: string, index: number) {
   try {
     prefill = (await materialPublicationPreview(owner, runId, index, original))?.editorialPrefill;
   } catch {
-    warnings.push('历史补证提案暂不可读取；不影响手动填写四项信息。');
+    warnings.push('历史补证提案暂不可读取；不影响手动补充发布信息。');
   }
   const content: EditorialContent = {
     title: original.candidate.title,
     summary: original.candidate.summary,
     eventDate: prefill?.eventDate ?? candidate.event_date,
+    signalType: original.candidate.signal_type ?? null,
     organizations: prefill?.organizations ?? [
       ...new Set([
         ...candidate.organizations,
@@ -56,14 +60,16 @@ async function material(owner: string, runId: string, index: number) {
     ],
     persons: prefill?.persons ?? candidate.persons.map((person) => person.name),
     topics: prefill?.topics ?? [],
-    // Imported private documents and arbitrary input URLs are not made public
-    // merely by entering four fields. Original evidence remains in the admin UI.
+    // Private import URLs are offered separately and require explicit public selection.
     sourceUrls: [],
   };
   return {
     materialHash: original.materialHash,
     content,
     warnings,
+    sourceOptions: await readEditorialSourceOptions(owner, run, (o, b, i) =>
+      readMaterialSupplement(importPool, o, b, i),
+    ),
     // Supplemental selections (including an intentional empty list) take precedence.
     ...(prefill?.topics === undefined && original.candidate.topic_ids !== undefined
       ? { generatedTopicIds: original.candidate.topic_ids }
