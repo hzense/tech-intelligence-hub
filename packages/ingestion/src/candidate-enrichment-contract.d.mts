@@ -1,6 +1,11 @@
-import type { GeneratedCandidate } from './signal-generation-contract.mjs';
+import type { GeneratedCandidate, GeneratedResourceDraft } from './signal-generation-contract.mjs';
 
 export const candidateEnrichmentJsonSchema: Readonly<Record<string, unknown>>;
+export const candidateEnrichmentWithResourcesJsonSchema: Readonly<Record<string, unknown>>;
+export function mergeEnrichmentResources(
+  original: GeneratedResourceDraft[],
+  proposed: unknown,
+): GeneratedResourceDraft[];
 export class CandidateEnrichmentError extends Error {
   readonly code: string;
 }

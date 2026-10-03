@@ -61,7 +61,7 @@ export function ResourceCard({
 }) {
   const topics = resourceTopics(entity, topicNames).slice(0, 2);
   const media = resourceMedia(entity.id);
-  const profile = resourceProfile(entity.id);
+  const profile = resourceProfile(entity);
   return (
     <article className={styles.card}>
       <Link className={styles.cardLink} href={resourceHref(entity)}>

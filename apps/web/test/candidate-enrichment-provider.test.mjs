@@ -326,3 +326,60 @@ test('OpenRouter enrichment sends routing and reasoning controls and retains API
   assert.deepEqual(posts[0].reasoning, { exclude: true, effort: 'low' });
   assert.equal(posts[0].temperature, undefined);
 });
+
+test('resource-aware enrichment asks for missing resource drafts in its single existing provider call', async () => {
+  const refs = [{ fragment_id: 'fragment-1', quote: '研究作者李明在示例研究所' }];
+  const resources = [
+    { type: 'person', name: '李明', introduction: null, event_role: '研究作者', evidence: refs },
+    {
+      type: 'institution',
+      name: '示例研究所',
+      introduction: null,
+      event_role: null,
+      evidence: refs,
+    },
+  ];
+  const calls = [];
+  const invoke = createCandidateEnrichmentInvoker({
+    resolve: async () => [{ address: '93.184.216.34', family: 4 }],
+    request: async (args) => {
+      calls.push(args);
+      return Response.json({
+        id: 'fixture',
+        model: stage.model_id,
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: JSON.stringify({
+                event_date: null,
+                event_date_evidence: [],
+                persons: [
+                  { name: '李明', role: '研究作者', organization: '示例研究所', evidence: refs },
+                ],
+                organizations: ['示例研究所'],
+                resources,
+              }),
+            },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 100, completion_tokens: 50 },
+      });
+    },
+  });
+  const result = await invoke({
+    source,
+    candidate: { ...candidate, signal_type: 'research', topic_ids: [], resources: [] },
+    stage,
+    connection,
+    apiKey: 'synthetic-private-key',
+    allowedHosts: ['api.provider.example.com'],
+  });
+  assert.equal(result.success, true);
+  assert.deepEqual(result.output.candidate.resources, resources);
+  assert.equal(calls.length, 1);
+  const wire = JSON.parse(calls[0].body);
+  assert.ok(wire.response_format.json_schema.schema.required.includes('resources'));
+  assert.match(wire.messages[0].content, /已有 resources 内容由服务端锁定/);
+});

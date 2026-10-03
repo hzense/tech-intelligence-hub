@@ -479,3 +479,52 @@ test('projection preserves cited originals and complete supplements within the u
     { code: 'generation_source_too_large' },
   );
 });
+
+test('resource evidence survives compacting the material bundle and restoring original fragment IDs', () => {
+  const originalSource = source(['unused', 'Lab announced X on 2026-09-24.', 'Lab is a company.']);
+  const organization = {
+    type: 'company',
+    name: 'Lab',
+    introduction: 'A company.',
+    event_role: null,
+    evidence: [ref(3, 'Lab is a company.')],
+  };
+  const saved = {
+    ...candidate,
+    signal_type: 'product',
+    topic_ids: ['topic-ai'],
+    resources: [organization],
+  };
+  const b = bundle(quote, originalSource);
+  const selected = materialEnrichmentInput(b, saved);
+  assert.deepEqual(selected.fragmentIds, ['fragment-2', 'fragment-3', 'fragment-4']);
+  assert.deepEqual(selected.candidate.resources[0].evidence, [ref(2, 'Lab is a company.')]);
+  const proposed = output();
+  proposed.event_date_evidence = [ref(3, '2026-09-24')];
+  proposed.persons[0].evidence = [ref(3, 'Ada, researcher at Lab')];
+  proposed.claim_evidence = [[ref(3, quote)]];
+  proposed.organization_identities[0].evidence = [ref(3, 'Lab is a company.')];
+  proposed.resources = [
+    {
+      type: 'person',
+      name: 'Ada',
+      introduction: null,
+      event_role: 'researcher',
+      evidence: proposed.persons[0].evidence,
+    },
+  ];
+  const result = assessMaterialEnrichment(proposed, selected.candidate, selected.source, context);
+  assert.deepEqual(result.candidate.resources[0], selected.candidate.resources[0]);
+  const restored = restoreMaterialEnrichment(b, saved, result, context);
+  assert.deepEqual(restored.candidate.resources[0], organization);
+  assert.deepEqual(restored.candidate.resources[1].evidence, [ref(4, 'Ada, researcher at Lab')]);
+  assert.deepEqual(saved.resources, [organization]);
+  assert.throws(() =>
+    assessMaterialEnrichment(
+      { ...proposed, resources: [] },
+      selected.candidate,
+      selected.source,
+      context,
+    ),
+  );
+});

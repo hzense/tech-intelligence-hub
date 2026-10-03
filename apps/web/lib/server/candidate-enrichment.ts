@@ -10,6 +10,7 @@ import { aiUuid } from '../../../../packages/database/src/ai-config-contract.mjs
 import { generationRecordId } from '../signal-generation-id';
 import { buildCandidateReview } from '../candidate-review';
 import { enrichmentRules, invokeCandidateEnrichment } from '../candidate-enrichment-provider';
+import { generationResourceRules } from '../signal-generation-provider';
 import { generationCost, GenerationError } from '../signal-generation-core';
 import {
   readGenerationConfiguration,
@@ -161,6 +162,7 @@ export async function createCandidateEnrichment(
     ) +
     Buffer.byteLength(stage.prompt) +
     Buffer.byteLength(enrichmentRules) +
+    (selected.candidate.resources === undefined ? 0 : Buffer.byteLength(generationResourceRules)) +
     (material ? Buffer.byteLength(materialEnrichmentRules) : 0) +
     12000;
   const reserveMicrousd = Math.max(

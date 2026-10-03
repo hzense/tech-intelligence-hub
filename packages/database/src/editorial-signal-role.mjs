@@ -10,6 +10,11 @@ export const editorialRoleColumns = {
   },
   reader: { editorial_public_signals: editorialPublicColumns.map(([column]) => column) },
 };
+export const editorialResourceRoleColumns = {
+  entities: ['id', 'name', 'type', 'status', 'aliases'],
+  person_profiles: ['entity_id', 'entity_type'],
+  organization_profiles: ['entity_id', 'entity_type'],
+};
 export async function assertEditorialRole(client, role) {
   if (!['writer', 'reader'].includes(role))
     throw new EditorialSignalError('editorial_role_invalid');
@@ -21,6 +26,19 @@ export async function assertEditorialRole(client, role) {
         : []),
     ]),
   );
+  if (role === 'writer') {
+    const resources = (
+      await client.query(
+        "SELECT has_column_privilege(c.oid,a.attnum,'SELECT') AS available FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname='public' AND c.relname='entities' AND a.attname='name' AND NOT a.attisdropped",
+      )
+    ).rows[0]?.available;
+    // A rollout accepts exactly the old role OR exactly the fully upgraded
+    // role. Partial and ambient grants still fail the full capability audit.
+    if (resources)
+      for (const [table, names] of Object.entries(editorialResourceRoleColumns))
+        for (const name of names)
+          capabilities.push(`${table}|${name}|SELECT`, `${table}|${name}|INSERT`);
+  }
   return assertRestrictedApplicationRole(client, `hzense_editorial_${role}`, capabilities);
 }
 // Shared fail-closed ambient authority check; callers supply a static capability list.

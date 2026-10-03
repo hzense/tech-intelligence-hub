@@ -6,11 +6,16 @@ import { setTimeout } from 'node:timers/promises';
 import pg from 'pg';
 import { beforeAll, afterAll, it, describe, expect } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
-import { saveEditorialSignal, readEditorialSignal } from '../src/editorial-signal-store.mjs';
+import {
+  saveEditorialSignal,
+  readEditorialSignal,
+  previewEditorialResources,
+} from '../src/editorial-signal-store.mjs';
 import { normalizeEditorialRequest } from '../src/editorial-signal-contract.mjs';
 import { assertEditorialRole } from '../src/editorial-signal-role.mjs';
 import { editorialVectorQuery } from '../src/editorial-vector-query.mjs';
 import { editorialFixture } from './editorial-signal.test.mjs';
+import { resourceFixture } from './editorial-resources.test.mjs';
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
 const suite = adminUrl ? describe.sequential : describe.skip;
@@ -57,11 +62,14 @@ suite('editorial publication persistence and isolated capabilities', () => {
     url.pathname = `/${db}`;
     pool = new pg.Pool({ connectionString: url.toString(), max: 2 });
     await pool.query(
-      'CREATE TABLE public.signal_generation_runs(id uuid PRIMARY KEY,owner_id text NOT NULL,status text,deleted_at timestamptz); CREATE TABLE public.topics(id text PRIMARY KEY,title text,runtime_enabled boolean,status text); CREATE TABLE public.hzense_schema_migrations(name text PRIMARY KEY);',
+      'CREATE TABLE public.signal_generation_runs(id uuid PRIMARY KEY,owner_id text NOT NULL,status text,deleted_at timestamptz); CREATE TABLE public.topics(id text PRIMARY KEY,title text,runtime_enabled boolean,status text); CREATE TABLE public.hzense_schema_migrations(name text PRIMARY KEY,checksum text);',
     );
+    await pool.query(`CREATE TABLE public.entities(id text PRIMARY KEY,name text NOT NULL,type text NOT NULL,status text NOT NULL,aliases text[] NOT NULL DEFAULT '{}',metadata jsonb NOT NULL DEFAULT '{}',UNIQUE(id,type));
+      CREATE TABLE public.person_profiles(entity_id text PRIMARY KEY,entity_type text NOT NULL DEFAULT 'person' CHECK(entity_type='person'),FOREIGN KEY(entity_id,entity_type) REFERENCES public.entities(id,type));
+      CREATE TABLE public.organization_profiles(entity_id text PRIMARY KEY,entity_type text NOT NULL CHECK(entity_type IN ('company','institution')),FOREIGN KEY(entity_id,entity_type) REFERENCES public.entities(id,type));`);
     await pool.query(await sql('migrations/0025_editorial_signal_publication.sql'));
     await pool.query(
-      "INSERT INTO hzense_schema_migrations VALUES('0025_editorial_signal_publication.sql'); INSERT INTO topics VALUES('ai','AI',true,'watching');",
+      "INSERT INTO hzense_schema_migrations VALUES('0025_editorial_signal_publication.sql','d4ce2249d08f675cf0ea4a614790aa5c1cc2e793998a545a76a60f898a97e2ae'); INSERT INTO topics VALUES('ai','AI',true,'watching');",
     );
     await pool.query(`REVOKE CREATE,TEMPORARY ON DATABASE "${db}" FROM PUBLIC`);
     await pool.query('REVOKE USAGE ON SCHEMA public FROM PUBLIC');
@@ -823,5 +831,387 @@ suite('editorial publication persistence and isolated capabilities', () => {
         await racing;
       }
     }
+  });
+  it('atomically registers resources, requires consent before reusing concurrent identities and preserves history on withdrawal', async () => {
+    const make = async () => {
+      const fixture = resourceFixture('-atomic');
+      fixture.request.runId = randomUUID();
+      fixture.request.requestId = randomUUID();
+      await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+        fixture.request.runId,
+      ]);
+      return { pool: writer, owner: 'owner', ...fixture };
+    };
+    const first = await make();
+    const second = await make();
+    await saveEditorialSignal({
+      ...first,
+      request: { ...first.request, action: 'draft', consent: false },
+    });
+    expect(
+      (await pool.query("SELECT id FROM entities WHERE name LIKE '%-atomic'")).rows,
+    ).toHaveLength(0);
+    first.request = { ...first.request, requestId: randomUUID(), expectedRevision: 1 };
+    const race = await Promise.allSettled([
+      saveEditorialSignal(first),
+      saveEditorialSignal(second),
+    ]);
+    expect(race.filter((row) => row.status === 'fulfilled')).toHaveLength(1);
+    expect(race.find((row) => row.status === 'rejected').reason.code).toBe(
+      'resource_identity_ambiguous',
+    );
+    const committed = race.find((row) => row.status === 'fulfilled').value;
+    const loser = race[0].status === 'rejected' ? first : second;
+    loser.request.content = {
+      ...loser.request.content,
+      resources: loser.request.content.resources.map((row, i) => ({
+        ...row,
+        entity_id: committed.content.resources[i].entity_id,
+      })),
+    };
+    await saveEditorialSignal(loser);
+    const a = await saveEditorialSignal(first);
+    expect(a.content.resources.map((row) => row.entity_id)).toEqual(
+      committed.content.resources.map((row) => row.entity_id),
+    );
+    expect(a.content.resources.every((row) => row.entity_id)).toBe(true);
+    expect(
+      (await pool.query("SELECT id FROM entities WHERE name LIKE '%-atomic'")).rows,
+    ).toHaveLength(2);
+    expect(await saveEditorialSignal(first)).toEqual(a);
+    await expect(
+      saveEditorialSignal({
+        ...first,
+        request: {
+          ...first.request,
+          content: { ...first.request.content, resources: a.content.resources },
+        },
+      }),
+    ).rejects.toThrow('request_id_conflict');
+    await saveEditorialSignal({
+      ...first,
+      request: {
+        ...first.request,
+        requestId: randomUUID(),
+        expectedRevision: 2,
+        action: 'withdraw',
+      },
+    });
+    expect(
+      (await pool.query("SELECT id FROM entities WHERE name LIKE '%-atomic'")).rows,
+    ).toHaveLength(2);
+    expect(
+      (
+        await reader.query(
+          "SELECT content FROM editorial_public_signals WHERE content->>'title'=$1",
+          [first.content.title],
+        )
+      ).rows.some(
+        (row) => row.content.resources?.[0]?.entity_id === a.content.resources[0].entity_id,
+      ),
+    ).toBe(true);
+  });
+  it('rolls back all new resources on ambiguity, explicitly corrects organization type and never rewrites canonical metadata', async () => {
+    const fixture = resourceFixture('-ambiguous');
+    fixture.request.runId = randomUUID();
+    fixture.request.requestId = randomUUID();
+    await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+      fixture.request.runId,
+    ]);
+    await pool.query(
+      "INSERT INTO entities(id,type,name,status,aliases,metadata) VALUES('person-ambiguity-one','person','Person-ambiguous','active','{}','{\"keep\":true}'),('person-ambiguity-two','person','Other','active',ARRAY['Person-ambiguous'],'{}')",
+    );
+    const args = { pool: writer, owner: 'owner', ...fixture };
+    await expect(saveEditorialSignal(args)).rejects.toThrow('resource_identity_ambiguous');
+    expect(
+      (await pool.query("SELECT id FROM entities WHERE name='Organization-ambiguous'")).rows,
+    ).toHaveLength(0);
+    expect(
+      (
+        await pool.query('SELECT request_id FROM editorial_signal_revisions WHERE run_id=$1', [
+          fixture.request.runId,
+        ])
+      ).rows,
+    ).toHaveLength(0);
+    fixture.content.resources[1].entity_id = 'person-ambiguity-one';
+    args.material.resourceCatalog = [
+      {
+        id: 'institution-ambiguous',
+        name: 'Organization-ambiguous',
+        type: 'institution',
+        status: 'active',
+      },
+    ];
+    const preview = await previewEditorialResources({
+      pool: writer,
+      resources: fixture.material.resources,
+      catalog: args.material.resourceCatalog,
+    });
+    expect(preview[0].status).toBe('ambiguous');
+    await expect(saveEditorialSignal(args)).rejects.toThrow('resource_identity_ambiguous');
+    fixture.content.resources[0].entity_id = 'institution-ambiguous';
+    const published = await saveEditorialSignal(args);
+    expect(published.content.resources[0]).toMatchObject({
+      entity_id: 'institution-ambiguous',
+      type: 'institution',
+    });
+    const changed = await saveEditorialSignal({
+      ...args,
+      request: {
+        ...fixture.request,
+        requestId: randomUUID(),
+        expectedRevision: 1,
+        content: published.content,
+      },
+    });
+    expect(changed.revision).toBe(2);
+    expect(
+      (await pool.query("SELECT metadata FROM entities WHERE id='person-ambiguity-one'")).rows[0]
+        .metadata,
+    ).toEqual({ keep: true });
+    await expect(
+      writer.query("UPDATE entities SET name='Changed' WHERE id='person-ambiguity-one'"),
+    ).rejects.toMatchObject({ code: '42501' });
+    await expect(writer.query('SELECT metadata FROM entities')).rejects.toMatchObject({
+      code: '42501',
+    });
+    await expect(writer.query('DELETE FROM entities')).rejects.toMatchObject({ code: '42501' });
+  });
+  it('upgrades exactly the legacy editorial ACL idempotently and rejects partial grants', async () => {
+    const upgrade = await sql('roles/upgrade_editorial_resources.sql');
+    await pool.query(upgrade);
+    await pool.query(upgrade);
+    await pool.query(
+      'REVOKE SELECT(id,name,type,status,aliases), INSERT(id,name,type,status,aliases) ON entities FROM hzense_editorial_writer; REVOKE SELECT(entity_id,entity_type), INSERT(entity_id,entity_type) ON person_profiles,organization_profiles FROM hzense_editorial_writer',
+    );
+    const client = await writer.connect();
+    try {
+      await assertEditorialRole(client, 'writer');
+    } finally {
+      client.release();
+    }
+    await pool.query('GRANT SELECT(name) ON entities TO hzense_editorial_writer');
+    await expect(pool.query(upgrade)).rejects.toThrow('ACL mismatch');
+    // SQL errors leave its transaction aborted; restore the admin connection.
+    await pool.query('ROLLBACK');
+    await pool.query('REVOKE SELECT(name) ON entities FROM hzense_editorial_writer');
+    await pool.query(upgrade);
+    const upgraded = await writer.connect();
+    try {
+      await assertEditorialRole(upgraded, 'writer');
+    } finally {
+      upgraded.release();
+    }
+  });
+
+  it('publishes resource-version company-only events without inventing a person', async () => {
+    const fixture = resourceFixture('-no-person');
+    fixture.request.runId = randomUUID();
+    fixture.request.requestId = randomUUID();
+    fixture.content.persons = [];
+    fixture.content.resources = fixture.content.resources.filter((row) => row.type !== 'person');
+    fixture.material.resources = fixture.material.resources.filter((row) => row.type !== 'person');
+    await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+      fixture.request.runId,
+    ]);
+    const saved = await saveEditorialSignal({ pool: writer, owner: 'owner', ...fixture });
+    expect(saved.action).toBe('publish');
+    expect(saved.content.persons).toEqual([]);
+    expect(saved.content.resources).toHaveLength(1);
+    expect(saved.content.resources[0].entity_id).toMatch(/^company-generated-/);
+    const old = editorialFixture();
+    old.content.persons = [];
+    expect(() => normalizeEditorialRequest(old.request, old.material)).toThrow(
+      'confirmation_required',
+    );
+  });
+
+  it('keeps independent same-name identities and binds each profile only to its own selected provenance', async () => {
+    const fixture = resourceFixture('-evidence');
+    fixture.request.runId = randomUUID();
+    fixture.request.requestId = randomUUID();
+    const urls = ['https://example.com/company-evidence', 'https://example.com/person-evidence'];
+    fixture.content.sourceUrls = urls;
+    fixture.material.sourceOptions = urls;
+    fixture.material.resourceSourceOptions.forEach((row, i) => {
+      row.sourceUrls = [urls[i]];
+    });
+    await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+      fixture.request.runId,
+    ]);
+    const args = { pool: writer, owner: 'owner', ...fixture };
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        material: { ...fixture.material, resourceSourceOptions: undefined },
+      }),
+    ).rejects.toThrow('resource_source_required');
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        request: { ...fixture.request, content: { ...fixture.content, sourceUrls: [urls[0]] } },
+      }),
+    ).rejects.toThrow('resource_source_required');
+    expect(
+      (await pool.query("SELECT id FROM entities WHERE name LIKE '%-evidence'")).rows,
+    ).toHaveLength(0);
+    fixture.content.resources.forEach((row) => {
+      row.source_urls = ['https://forged.example/source'];
+    });
+    const original = await saveEditorialSignal(args);
+    expect(original.content.resources.map((row) => row.source_urls)).toEqual([
+      [urls[0]],
+      [urls[1]],
+    ]);
+    const other = {
+      ...fixture.request,
+      runId: randomUUID(),
+      requestId: randomUUID(),
+      content: {
+        ...fixture.content,
+        resources: fixture.content.resources.map((row) => ({ ...row, entity_id: '__new__' })),
+      },
+    };
+    await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+      other.runId,
+    ]);
+    const separate = await saveEditorialSignal({ ...args, request: other });
+    expect(
+      separate.content.resources.every(
+        (row, index) => row.entity_id !== original.content.resources[index].entity_id,
+      ),
+    ).toBe(true);
+    expect(await saveEditorialSignal({ ...args, request: other })).toEqual(separate);
+    expect(
+      (await pool.query("SELECT id FROM entities WHERE name LIKE '%-evidence'")).rows,
+    ).toHaveLength(4);
+  });
+  it('retains locked published resource provenance after imports disappear without trusting client or changed profiles', async () => {
+    const fixture = resourceFixture('-retained-provenance');
+    fixture.request.runId = randomUUID();
+    fixture.request.requestId = randomUUID();
+    const urls = ['https://example.com/company-retained', 'https://example.com/person-retained'];
+    fixture.content.sourceUrls = urls;
+    fixture.material.sourceOptions = urls;
+    fixture.material.resourceSourceOptions.forEach((row, index) => {
+      row.sourceUrls = [urls[index]];
+    });
+    await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+      fixture.request.runId,
+    ]);
+    const args = { pool: writer, owner: 'owner', ...fixture };
+    const original = await saveEditorialSignal(args);
+    const unavailable = {
+      ...fixture.material,
+      sourceUrls: [],
+      sourceOptions: [],
+      resourceSourceOptions: [],
+    };
+    const update = {
+      ...fixture.request,
+      requestId: randomUUID(),
+      expectedRevision: 1,
+      content: {
+        ...original.content,
+        resources: original.content.resources.map((row, index) => ({
+          ...row,
+          source_urls: [urls[1 - index], 'https://forged.example/source'],
+        })),
+      },
+    };
+    const retained = await saveEditorialSignal({ ...args, material: unavailable, request: update });
+    expect(retained.content.resources.map((row) => row.source_urls)).toEqual([
+      [urls[0]],
+      [urls[1]],
+    ]);
+    expect(
+      await saveEditorialSignal({ ...args, material: unavailable, request: fixture.request }),
+    ).toEqual(original);
+    const next = {
+      ...update,
+      requestId: randomUUID(),
+      expectedRevision: 2,
+      content: retained.content,
+    };
+    for (const patch of [
+      { introduction: 'Changed profile' },
+      { event_role: 'Changed role' },
+      { evidence: [{ fragment_id: 'fragment-2', quote: 'Changed evidence' }] },
+    ]) {
+      const resources = retained.content.resources.map((row, index) =>
+        index ? row : { ...row, ...patch },
+      );
+      const materialResources = unavailable.resources.map((row, index) =>
+        index ? row : { ...row, ...patch },
+      );
+      await expect(
+        saveEditorialSignal({
+          ...args,
+          material: { ...unavailable, resources: materialResources },
+          request: { ...next, content: { ...next.content, resources } },
+        }),
+      ).rejects.toThrow('resource_source_required');
+    }
+    await pool.query(
+      "INSERT INTO entities(id,type,name,status) VALUES('company-other-retained','company','Organization-retained-provenance','active')",
+    );
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        material: unavailable,
+        request: {
+          ...next,
+          content: {
+            ...next.content,
+            resources: next.content.resources.map((row, index) =>
+              index ? row : { ...row, entity_id: 'company-other-retained' },
+            ),
+          },
+        },
+      }),
+    ).rejects.toThrow('resource_source_required');
+    expect(
+      (
+        await readEditorialSignal({
+          pool: writer,
+          owner: 'owner',
+          runId: fixture.request.runId,
+          candidateIndex: 0,
+        })
+      ).revision,
+    ).toBe(2);
+    const withdrawn = await saveEditorialSignal({
+      ...args,
+      material: unavailable,
+      request: { ...next, action: 'withdraw' },
+    });
+    expect(withdrawn.content.resources).toEqual(retained.content.resources);
+    const republished = await saveEditorialSignal({
+      ...args,
+      material: unavailable,
+      request: { ...next, requestId: randomUUID(), expectedRevision: 3 },
+    });
+    expect(republished.content.resources).toEqual(retained.content.resources);
+    const draftFixture = resourceFixture('-untrusted-draft');
+    draftFixture.request.runId = randomUUID();
+    draftFixture.request.requestId = randomUUID();
+    draftFixture.material.resourceSourceOptions = [];
+    draftFixture.content.resources.forEach((row) => {
+      row.source_urls = draftFixture.content.sourceUrls;
+    });
+    await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+      draftFixture.request.runId,
+    ]);
+    const draftArgs = { pool: writer, owner: 'owner', ...draftFixture };
+    await saveEditorialSignal({
+      ...draftArgs,
+      request: { ...draftFixture.request, action: 'draft', consent: false },
+    });
+    await expect(
+      saveEditorialSignal({
+        ...draftArgs,
+        request: { ...draftFixture.request, requestId: randomUUID(), expectedRevision: 1 },
+      }),
+    ).rejects.toThrow('resource_source_required');
   });
 });

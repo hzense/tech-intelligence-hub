@@ -241,6 +241,156 @@ test(
       data.configured = false;
       await page.reload();
       await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+      // New generation carries resource drafts through the same one-click publication.
+      const generatedResources = [
+        {
+          type: 'company',
+          name: 'Example, Inc.',
+          introduction: '开发云工具的公司。',
+          event_role: '发布新工具',
+          evidence: [{ fragment_id: 'f1', quote: 'Example, Inc. 发布新工具。' }],
+          entity_id: null,
+        },
+        {
+          type: 'person',
+          name: 'Alex Example',
+          introduction: null,
+          event_role: '介绍新工具',
+          evidence: [{ fragment_id: 'f2', quote: 'Alex Example 介绍新工具。' }],
+          entity_id: null,
+        },
+        {
+          type: 'institution',
+          name: '示例研究所',
+          introduction: null,
+          event_role: null,
+          evidence: [{ fragment_id: 'f3', quote: '示例研究所参与测试。' }],
+          entity_id: 'institution-existing',
+        },
+      ];
+      data = {
+        ...data,
+        configured: true,
+        revision: 0,
+        action: null,
+        requestId: null,
+        publicId: null,
+        content: {
+          ...data.content,
+          organizations: ['Example, Inc.', '示例研究所'],
+          persons: ['Alex Example'],
+          topics: data.topicOptions,
+          sourceUrls: [],
+          resources: generatedResources,
+        },
+        sourceOptions: ['https://example.com/article?id=42', 'https://example.com/person-evidence'],
+        resourceSourceOptions: generatedResources.map((resource) => ({
+          name: resource.name,
+          type: resource.type,
+          sourceUrls: [
+            resource.type === 'person'
+              ? 'https://example.com/person-evidence'
+              : 'https://example.com/article?id=42',
+          ],
+        })),
+        resourceOptions: [
+          { type: 'company', name: 'Example, Inc.', matches: [], status: 'new' },
+          {
+            type: 'person',
+            name: 'Alex Example',
+            matches: [
+              { id: 'person-alex-one', type: 'person', name: 'Alex Example' },
+              { id: 'person-alex-two', type: 'person', name: 'Alex Example' },
+            ],
+            status: 'ambiguous',
+          },
+          {
+            type: 'institution',
+            name: '示例研究所',
+            matches: [{ id: 'institution-existing', type: 'institution', name: '示例研究所' }],
+            status: 'reuse',
+          },
+        ],
+      };
+      const previousPosts = posts.length;
+      await page.reload();
+      await expect(page.getByLabel('组织', { exact: true })).toHaveAttribute('readonly', '');
+      await expect(page.getByLabel('人物', { exact: true })).toHaveAttribute('readonly', '');
+      await expect(page.getByText('发布时新建资源', { exact: true })).toBeVisible();
+      await expect(page.getByText('复用资源：示例研究所', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+      await page
+        .getByRole('checkbox', { name: '公开来源：https://example.com/article?id=42' })
+        .check();
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+      await page.getByLabel('Alex Example 的资源身份').selectOption('person-alex-two');
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+      await expect(page.getByText(/待补充：.*Alex Example 的公开来源/)).toBeVisible();
+      const personCard = page
+        .locator('article')
+        .filter({ has: page.getByRole('heading', { name: 'Alex Example · 人物' }) });
+      await expect(
+        personCard.getByRole('link', { name: 'https://example.com/person-evidence', exact: true }),
+      ).toBeVisible();
+      await expect(
+        personCard.getByRole('link', { name: 'https://example.com/article?id=42', exact: true }),
+      ).toHaveCount(0);
+      await page
+        .getByRole('checkbox', { name: '公开来源：https://example.com/person-evidence' })
+        .check();
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
+      await expect(personCard.getByText('已选择此资源的公开来源。', { exact: true })).toBeVisible();
+      // Even a single name match needs an explicit selection if cleared. The
+      // administrator can choose a separate identity instead of forcing a merge.
+      await page.getByLabel('示例研究所 的资源身份').selectOption('');
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+      await expect(page.getByText(/待补充：.*示例研究所 的资源身份/)).toBeVisible();
+      await page.getByLabel('示例研究所 的资源身份').selectOption('__new__');
+      await expect(page.getByText('发布时新建独立身份', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
+      await page.locator('details').first().locator('summary').click();
+      await expect(page.getByText('Example, Inc. 发布新工具。', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
+      await page.getByRole('button', { name: '确认发布', exact: true }).click();
+      await expect(page.getByText('已确认发布。', { exact: true })).toBeVisible();
+      assert.equal(posts.length, previousPosts + 1);
+      const generatedPost = posts.at(-1);
+      assert.equal(generatedPost.action, 'publish');
+      assert.equal(generatedPost.consent, true);
+      assert.deepEqual(generatedPost.content.organizations, ['Example, Inc.', '示例研究所']);
+      assert.deepEqual(
+        generatedPost.content.resources,
+        generatedResources.map((resource) => ({
+          ...resource,
+          entity_id:
+            resource.type === 'person'
+              ? 'person-alex-two'
+              : resource.type === 'institution'
+                ? '__new__'
+                : resource.entity_id,
+        })),
+      );
+      assert.deepEqual(generatedPost.content.sourceUrls, [
+        'https://example.com/article?id=42',
+        'https://example.com/person-evidence',
+      ]);
+      data.content = {
+        ...data.content,
+        persons: [],
+        resources: data.content.resources.filter((resource) => resource.type !== 'person'),
+      };
+      data.resourceOptions = data.resourceOptions.filter((option) => option.type !== 'person');
+      await page.reload();
+      await expect(page.getByText('原文未提取到可支持的人物', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '确认更新发布', exact: true })).toBeEnabled();
+      await page.setViewportSize({ width: 390, height: 844 });
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= 390), true);
+      data.resourceSourceOptions = [];
+      await page.reload();
+      await expect(page.getByRole('button', { name: '确认更新发布', exact: true })).toBeDisabled();
+      await expect(
+        page.getByText('没有可供公开的对应来源，请补充资料或核对来源状态后重新读取。').first(),
+      ).toBeVisible();
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

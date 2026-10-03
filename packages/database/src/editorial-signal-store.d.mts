@@ -2,8 +2,21 @@ import type {
   EditorialContent,
   EditorialRequest,
   EditorialMaterial,
+  EditorialResourceDraft,
+  EditorialResourceCatalogEntry,
 } from './editorial-signal-contract.mjs';
 export { EditorialSignalError } from './editorial-signal-contract.mjs';
+export interface EditorialResourcePreview {
+  name: string;
+  type: EditorialResourceDraft['type'];
+  matches: { id: string; name: string; type: EditorialResourceDraft['type'] }[];
+  status: 'new' | 'reuse' | 'ambiguous';
+}
+export function previewEditorialResources(input: {
+  pool: unknown;
+  resources: EditorialResourceDraft[];
+  catalog?: EditorialResourceCatalogEntry[];
+}): Promise<EditorialResourcePreview[]>;
 export interface EditorialSignalRecord {
   request_id: string;
   run_id: string;

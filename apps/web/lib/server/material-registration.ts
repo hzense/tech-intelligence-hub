@@ -29,6 +29,7 @@ import {
 import { restoreMaterialEnrichment } from '../material-enrichment';
 import { buildMaterialPublicationPreview } from '../material-publication-preview';
 import { readMaterialSupplement } from '../material-source-reader';
+import { readEditorialResourceSourceOptions } from '../editorial-source-options';
 import {
   materialDatabaseConfiguration,
   materialKeyring,
@@ -566,6 +567,16 @@ export async function materialPublicationPreview(
       latest.task.result,
       { topics },
     );
+    const resourceSourceOptions =
+      editorial.candidate.resources === undefined
+        ? undefined
+        : await readEditorialResourceSourceOptions(
+            owner,
+            await generationRecord(owner, runId),
+            latest.request.bundle,
+            editorial.candidate.resources,
+            (o, b, i) => readMaterialSupplement(importPool, o, b, i),
+          );
     return {
       requestId: latest.request.id,
       taskId: latest.task.id,
@@ -583,6 +594,17 @@ export async function materialPublicationPreview(
           ]),
         ],
         topics: topics.filter((topic) => editorial.hints.topicIds.includes(topic.id)),
+        ...(editorial.candidate.resources === undefined
+          ? {}
+          : {
+              resources: editorial.candidate.resources,
+              resourceSourceOptions: resourceSourceOptions ?? [],
+              sourceOptions: [
+                ...new Set(
+                  (resourceSourceOptions ?? []).flatMap((resource) => resource.sourceUrls),
+                ),
+              ],
+            }),
       },
       materials: buildMaterialPublicationPreview(
         latest.request.bundle,

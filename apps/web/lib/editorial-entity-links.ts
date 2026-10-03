@@ -49,6 +49,12 @@ export function projectEditorialEntityLinks(
   // Current, source-evidence publications already carry canonical identities.
   // Never promote another name-only editorial row, even if it has an old marker.
   for (const signal of signals) {
+    // These identities were atomically committed with a reviewed publication.
+    // They can resolve older name-only Signals without publishing private drafts.
+    for (const resource of signal.public_resources ?? []) {
+      if (!excludedIds.has(resource.id))
+        add(resource.type === 'person' ? 'person' : 'organization', resource.id, [resource.name]);
+    }
     if (signal.publication_basis === 'manual_confirmation' || signal.public_version === undefined)
       continue;
     for (const person of signal.public_people ?? []) {
@@ -60,6 +66,10 @@ export function projectEditorialEntityLinks(
   }
   return signals.map((signal) => {
     if (signal.publication_basis !== 'manual_confirmation') return signal;
+    // Explicit reviewed identity choices must survive an ambiguous name catalog.
+    // Only the public reader can attach public_resources; name-only rows still
+    // take the unique-match path below and cannot smuggle a canonical marker.
+    if (signal.public_resources !== undefined) return signal;
     const resolve = (rows: readonly PublicSignalPerson[], kind: EntityKind): PublicSignalPerson[] =>
       rows.map((row) => {
         // Re-evaluate each read; catalog changes must not retain a stale match.

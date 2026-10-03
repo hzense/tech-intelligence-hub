@@ -5,6 +5,7 @@ import {
   type GenerationSignalType,
 } from '../../../packages/ingestion/src/signal-types.mjs';
 import { readCandidateRoleConfiguration } from './candidate-review-config.ts';
+import { normalizeEditorialContent } from '../../../packages/database/src/editorial-signal-contract.mjs';
 import {
   PublicSignalReaderError,
   publicSignalMaximumEntries,
@@ -85,9 +86,45 @@ export function mapEditorialSignalRows(rows: unknown[]): SignalEntry[] {
         name: text(name),
         event_role: '',
       }));
-    const recordedPersons = names(content.persons, 'person');
-    const organizations = names(content.organizations, 'organization');
-    if (!recordedPersons.length || !organizations.length) return fail();
+    // Older revisions contain names only. New revisions carry identities committed
+    // in the same transaction as the public Signal, with their reviewed profiles.
+    const resources =
+      content.resources === undefined
+        ? undefined
+        : (() => {
+            try {
+              const parsed = normalizeEditorialContent(content);
+              if (!parsed.resources?.length || !parsed.sourceUrls.length) return fail();
+              if (
+                parsed.resources.some(
+                  (resource) =>
+                    !resource.entity_id ||
+                    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(resource.entity_id) ||
+                    !resource.source_urls?.length ||
+                    resource.source_urls.some((url) => !parsed.sourceUrls.includes(url)),
+                )
+              )
+                return fail();
+              return parsed.resources;
+            } catch {
+              return fail();
+            }
+          })();
+    const participants = (kind: 'person' | 'organization') =>
+      resources
+        ?.filter((resource) =>
+          kind === 'person' ? resource.type === 'person' : resource.type !== 'person',
+        )
+        .map((resource) => ({
+          id: resource.entity_id!,
+          canonical_entity_id: resource.entity_id!,
+          name: resource.name,
+          event_role: resource.event_role ?? '',
+        }));
+    const recordedPersons = participants('person') ?? names(content.persons, 'person');
+    const organizations =
+      participants('organization') ?? names(content.organizations, 'organization');
+    if ((!resources && !recordedPersons.length) || !organizations.length) return fail();
     const persons = recordedPersons.filter((person) => !isExcludedPublicPerson(person));
     const topics = array(content.topics).map((value) => {
       const topic = object(value);
@@ -120,12 +157,35 @@ export function mapEditorialSignalRows(rows: unknown[]): SignalEntry[] {
       source_id: sources[0]?.id ?? '',
       source_url: sources[0]?.url ?? '',
       topics: topics.map((topic) => topic.id),
-      entities: [],
+      entities: resources
+        ? [...new Set([...persons, ...organizations].map((entry) => entry.id))]
+        : [],
       publication_revision: row.revision as number,
       public_people: persons,
       public_organizations: organizations,
       public_sources: sources,
       public_topics: topics,
+      ...(resources
+        ? {
+            public_resources: resources
+              .filter(
+                (resource) =>
+                  resource.type !== 'person' ||
+                  !isExcludedPublicPerson({
+                    id: resource.entity_id!,
+                    name: resource.name,
+                    event_role: resource.event_role ?? '',
+                  }),
+              )
+              .map((resource) => ({
+                id: resource.entity_id!,
+                name: resource.name,
+                type: resource.type,
+                introduction: resource.introduction,
+                source_urls: resource.source_urls!,
+              })),
+          }
+        : {}),
     };
   });
 }

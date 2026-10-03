@@ -6,6 +6,8 @@ import {
   editorialUuid,
   normalizeEditorialRequest,
 } from './editorial-signal-contract.mjs';
+import { registerEditorialResources } from './editorial-resource-store.mjs';
+export { previewEditorialResources } from './editorial-resource-store.mjs';
 export { EditorialSignalError } from './editorial-signal-contract.mjs';
 const columns =
   'request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,created_at';
@@ -66,7 +68,7 @@ export async function saveEditorialSignal({ pool, owner, request, material }) {
         ]),
       ],
     });
-    const content = r.action === 'withdraw' ? latest.content : r.content;
+    let content = r.action === 'withdraw' ? latest.content : r.content;
     if (r.action !== 'withdraw') {
       const topics = (
         await client.query(
@@ -81,6 +83,23 @@ export async function saveEditorialSignal({ pool, owner, request, material }) {
         )
       )
         fail('topic_reference_invalid');
+      if (r.action === 'publish' && content.resources)
+        content = {
+          ...content,
+          resources: await registerEditorialResources({
+            client,
+            resources: content.resources,
+            catalog: material.resourceCatalog,
+            sourceOptions: material.resourceSourceOptions,
+            sourceUrls: content.sourceUrls,
+            priorResources:
+              latest?.action === 'publish' || latest?.action === 'withdraw'
+                ? latest.content.resources
+                : undefined,
+            runId: r.runId,
+            candidateIndex: r.candidateIndex,
+          }),
+        };
     }
     const row = (
       await client.query(

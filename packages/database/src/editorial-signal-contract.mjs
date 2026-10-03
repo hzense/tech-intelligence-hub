@@ -46,6 +46,81 @@ function list(value, max, normalize, key = (item) => item) {
   if (new Set(result.map(key)).size !== result.length) editorialFail();
   return result;
 }
+export const editorialResourceName = (name) =>
+  name.normalize('NFKC').trim().toLocaleLowerCase('en-US');
+export function normalizeEditorialResources(value, { generated = false } = {}) {
+  return list(
+    value,
+    36,
+    (item) => {
+      editorialObject(item, [
+        'type',
+        'name',
+        'introduction',
+        'event_role',
+        'evidence',
+        ...(generated
+          ? []
+          : ['entity_id', ...(Object.hasOwn(item ?? {}, 'source_urls') ? ['source_urls'] : [])]),
+      ]);
+      if (!['person', 'company', 'institution'].includes(item.type)) editorialFail();
+      const evidence = list(
+        item.evidence,
+        8,
+        (entry) => {
+          editorialObject(entry, ['fragment_id', 'quote']);
+          return {
+            fragment_id: editorialText(entry.fragment_id, 30),
+            quote: editorialText(entry.quote, 500),
+          };
+        },
+        (entry) => `${entry.fragment_id}\0${entry.quote}`,
+      );
+      if (!evidence.length) editorialFail();
+      const entityId = generated ? undefined : item.entity_id;
+      if (
+        !generated &&
+        entityId !== null &&
+        entityId !== '__new__' &&
+        (typeof entityId !== 'string' ||
+          entityId.length > 200 ||
+          !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entityId))
+      )
+        editorialFail();
+      return {
+        type: item.type,
+        name: editorialText(item.name, item.type === 'person' ? 150 : 200),
+        introduction: item.introduction === null ? null : editorialText(item.introduction, 500),
+        event_role: item.event_role === null ? null : editorialText(item.event_role, 200),
+        evidence,
+        ...(generated ? {} : { entity_id: entityId }),
+        ...(!generated && Object.hasOwn(item, 'source_urls')
+          ? {
+              source_urls: list(item.source_urls, 8, (url) => {
+                const value = editorialText(url, 2048);
+                let parsed;
+                try {
+                  parsed = new URL(value);
+                } catch {
+                  editorialFail();
+                }
+                if (
+                  parsed.protocol !== 'https:' ||
+                  parsed.username ||
+                  parsed.password ||
+                  parsed.hash
+                )
+                  editorialFail();
+                return value;
+              }),
+            }
+          : {}),
+      };
+    },
+    (item) =>
+      `${item.type === 'person' ? 'person' : 'organization'}:${editorialResourceName(item.name)}`,
+  );
+}
 export function normalizeEditorialContent(value) {
   editorialObject(value, [
     'title',
@@ -56,6 +131,7 @@ export function normalizeEditorialContent(value) {
     'topics',
     'sourceUrls',
     ...(Object.hasOwn(value ?? {}, 'signalType') ? ['signalType'] : []),
+    ...(Object.hasOwn(value ?? {}, 'resources') ? ['resources'] : []),
   ]);
   if (
     value.signalType !== undefined &&
@@ -72,7 +148,7 @@ export function normalizeEditorialContent(value) {
       new Date(eventDate).toISOString().slice(0, 10) !== eventDate)
   )
     editorialFail();
-  return {
+  const content = {
     title: editorialText(value.title, 80),
     summary: editorialText(value.summary, 500),
     eventDate,
@@ -99,11 +175,36 @@ export function normalizeEditorialContent(value) {
       return value;
     }),
     ...(Object.hasOwn(value, 'signalType') ? { signalType: value.signalType } : {}),
+    ...(Object.hasOwn(value, 'resources')
+      ? { resources: normalizeEditorialResources(value.resources) }
+      : {}),
   };
+  if (content.resources) {
+    const names = (items) => items.map(editorialResourceName).sort();
+    for (const [type, declared] of [
+      ['person', content.persons],
+      ['organization', content.organizations],
+    ]) {
+      const covered = content.resources
+        .filter((resource) => (resource.type === 'person' ? 'person' : 'organization') === type)
+        .map((resource) => resource.name);
+      if (JSON.stringify(names(covered)) !== JSON.stringify(names(declared)))
+        editorialFail('material_changed');
+    }
+    const ids = content.resources
+      .map((resource) => resource.entity_id)
+      .filter((id) => id && id !== '__new__');
+    if (new Set(ids).size !== ids.length) editorialFail('entity_reference_invalid');
+  }
+  return content;
 }
 export function contentReadiness(content) {
   const missing = ['eventDate', 'organizations', 'persons', 'topics'].filter((key) =>
-    key === 'eventDate' ? !content.eventDate : !content[key]?.length,
+    key === 'eventDate'
+      ? !content.eventDate
+      : key === 'persons' && content.resources !== undefined
+        ? false
+        : !content[key]?.length,
   );
   if (!content.signalType) missing.push('signalType');
   return { ready: missing.length === 0, missing };
@@ -146,6 +247,29 @@ export function normalizeEditorialRequest(request, material, { checkPublication 
   if (checkPublication) {
     if (request.action !== 'withdraw' && content.persons.some(isExcludedPublicPerson))
       editorialFail('excluded_person');
+    if (request.action !== 'withdraw') {
+      const expected =
+        material.resources === undefined
+          ? undefined
+          : normalizeEditorialResources(material.resources, { generated: true });
+      const actual = content.resources?.map(({ entity_id: entityId, ...resource }, index) => {
+        delete resource.source_urls;
+        const original = expected?.[index];
+        // An explicit canonical organization selection can correct company vs
+        // institution. The store verifies that ID and its type under the lock.
+        return entityId &&
+          entityId !== '__new__' &&
+          ['company', 'institution'].includes(resource.type) &&
+          ['company', 'institution'].includes(original?.type)
+          ? { ...resource, type: original.type }
+          : resource;
+      });
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) editorialFail('material_changed');
+      if (content.resources) {
+        if (request.action === 'publish' && content.resources.length && !content.sourceUrls.length)
+          editorialFail('resource_source_required');
+      }
+    }
     if (
       request.action !== 'withdraw' &&
       (material.sourceOptions

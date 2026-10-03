@@ -85,10 +85,20 @@ export function resourceMedia(id: string): ResourceMedia | undefined {
 export interface ResourceProfile {
   introduction: string;
   sourceUrl: string;
+  sourceUrls?: string[];
 }
 
-export function resourceProfile(id: string): ResourceProfile | undefined {
-  return personProfiles[id] ?? organizationProfiles[id];
+export function resourceProfile(
+  entity: string | Pick<PublicEntitySummary, 'id' | 'profile'>,
+): ResourceProfile | undefined {
+  const id = typeof entity === 'string' ? entity : entity.id;
+  // Existing independently curated introductions are not overwritten by an
+  // event-derived generated profile. New identities use their published data.
+  return (
+    personProfiles[id] ??
+    organizationProfiles[id] ??
+    (typeof entity === 'string' ? undefined : entity.profile)
+  );
 }
 
 export function resourceInitials(name: string): string {
@@ -108,7 +118,7 @@ export function resourceHref(entity: Pick<PublicEntitySummary, 'id' | 'type'>): 
 
 export function resourceIntroduction(entity: PublicEntitySummary): string {
   return (
-    resourceProfile(entity.id)?.introduction ??
+    resourceProfile(entity)?.introduction ??
     `${entity.name}的${entity.type === 'person' ? '身份与履历' : '背景与业务'}简介尚待来源核实。`
   );
 }

@@ -5,6 +5,7 @@ import {
   assessGeneratedCandidates,
   REJECTED_CANDIDATES_REASON,
   GENERATION_METADATA_CONTRACT,
+  GENERATION_RESOURCES_CONTRACT,
 } from '../../ingestion/src/signal-generation-contract.mjs';
 import {
   createSignalGeneration,
@@ -157,33 +158,38 @@ describe('private generation input boundaries', () => {
     await expect(createSignalGeneration(value)).rejects.toMatchObject({ code: 'invalid_snapshot' });
   });
 
-  it('persists the complete validated catalog with a new generation snapshot', async () => {
-    const value = input();
-    value.snapshot.topics = [{ id: 'topic-ai', title: 'Artificial Intelligence' }];
-    value.snapshot.output_contract = GENERATION_METADATA_CONTRACT;
-    let savedSnapshot;
-    value.pool = {
-      connect: async () => ({
-        release() {},
-        query: async (sql, params) => {
-          if (sql.startsWith('INSERT INTO public.signal_generation_runs')) {
-            savedSnapshot = JSON.parse(params[10]);
-            return { rows: [{ id: value.request.id, snapshot: savedSnapshot }] };
-          }
-          return { rows: [] };
-        },
-      }),
-    };
-    const result = await createSignalGeneration(value);
-    expect(result.snapshot.topics).toEqual(value.snapshot.topics);
-    expect(savedSnapshot).toEqual(value.snapshot);
-  });
+  it.each([GENERATION_METADATA_CONTRACT, GENERATION_RESOURCES_CONTRACT])(
+    'persists the complete catalog and %s contract in a new generation snapshot',
+    async (contract) => {
+      const value = input();
+      value.snapshot.topics = [{ id: 'topic-ai', title: 'Artificial Intelligence' }];
+      value.snapshot.output_contract = contract;
+      let savedSnapshot;
+      value.pool = {
+        connect: async () => ({
+          release() {},
+          query: async (sql, params) => {
+            if (sql.startsWith('INSERT INTO public.signal_generation_runs')) {
+              savedSnapshot = JSON.parse(params[10]);
+              return { rows: [{ id: value.request.id, snapshot: savedSnapshot }] };
+            }
+            return { rows: [] };
+          },
+        }),
+      };
+      const result = await createSignalGeneration(value);
+      expect(result.snapshot.topics).toEqual(value.snapshot.topics);
+      expect(savedSnapshot).toEqual(value.snapshot);
+    },
+  );
 
   it.each([true, false])(
     'first admission pins catalog on same-ID (%s) or semantic replay, including legacy tasks',
     async (sameId) => {
-      for (const [savedTopics, incomingTopics] of [
+      for (const [savedTopics, incomingTopics, savedContract] of [
         [undefined, [{ id: 'topic-new', title: 'New topic' }]],
+        [[{ id: 'topic-old', title: 'Old topic' }], [], GENERATION_METADATA_CONTRACT],
+        [[{ id: 'topic-old', title: 'Old topic' }], [], GENERATION_RESOURCES_CONTRACT],
         [[{ id: 'topic-old', title: 'Old topic' }], [{ id: 'topic-new', title: 'New topic' }]],
         [[{ id: 'topic-old', title: 'Old topic' }], []],
         [[{ id: 'topic-old', title: 'Old topic' }], [{ id: 'topic-old', title: 'Old topic' }]],
@@ -192,6 +198,7 @@ describe('private generation input boundaries', () => {
         const savedSnapshot = {
           ...value.snapshot,
           ...(savedTopics === undefined ? {} : { topics: savedTopics }),
+          ...(savedContract === undefined ? {} : { output_contract: savedContract }),
         };
         const savedConfig = { ...value.configuration };
         const { id: requestId, ...requestIdentity } = value.request;
@@ -227,7 +234,7 @@ describe('private generation input boundaries', () => {
           }),
         };
         value.snapshot.topics = incomingTopics;
-        value.snapshot.output_contract = GENERATION_METADATA_CONTRACT;
+        value.snapshot.output_contract = GENERATION_RESOURCES_CONTRACT;
         value.configuration.reserveMicrousd = 20;
         expect(await createSignalGeneration(value)).toEqual(row);
         expect(writes).toHaveLength(0);
@@ -409,6 +416,51 @@ describe('private generation input boundaries', () => {
       finishSignalGeneration({ ...failedArgs, result: invalidType }),
     ).rejects.toMatchObject({ code: 'invalid_result' });
     expect(writes).toHaveLength(5);
+    const resourceResult = {
+      ...assessGeneratedCandidates(
+        {
+          candidates: [{ ...raw, signal_type: 'research', resources: [] }],
+          reason: 'Private candidate',
+        },
+        generationSource,
+        topics,
+        GENERATION_RESOURCES_CONTRACT,
+      ),
+      usage: result.usage,
+    };
+    await expect(finishSignalGeneration({ ...args, result: resourceResult })).rejects.toMatchObject(
+      { code: 'invalid_result' },
+    );
+    row.snapshot.output_contract = GENERATION_RESOURCES_CONTRACT;
+    expect(
+      (await finishSignalGeneration({ ...args, result: resourceResult })).result.candidates[0]
+        .resources,
+    ).toEqual([]);
+    await expect(finishSignalGeneration({ ...args, result: metadataResult })).rejects.toMatchObject(
+      { code: 'invalid_result' },
+    );
+    const resourceRejection = {
+      ...assessGeneratedCandidates(
+        {
+          candidates: [{ ...raw, signal_type: 'research', organizations: ['safe'], resources: [] }],
+          reason: 'Private candidate',
+        },
+        generationSource,
+        topics,
+        GENERATION_RESOURCES_CONTRACT,
+      ),
+      usage: result.usage,
+    };
+    expect(
+      (await finishSignalGeneration({ ...failedArgs, result: resourceRejection })).result
+        .rejected[0].errors,
+    ).toEqual([
+      { field: 'resources', code: 'invalid_field', path: 'resources', reason: 'missing_resource' },
+    ]);
+    row.snapshot.output_contract = GENERATION_METADATA_CONTRACT;
+    await expect(
+      finishSignalGeneration({ ...failedArgs, result: resourceRejection }),
+    ).rejects.toMatchObject({ code: 'invalid_result' });
   });
 
   it('persists all nine metadata field failures with usage, provider charge and terminal status', async () => {

@@ -7,6 +7,8 @@ import {
   generationCandidateWithTopicsJsonSchema,
   generationCandidateWithMetadataJsonSchema,
   GENERATION_METADATA_CONTRACT,
+  GENERATION_RESOURCES_CONTRACT,
+  generationCandidateWithResourcesJsonSchema,
   SIGNAL_TYPES,
   normalizeGenerationTopics,
   normalizeGeneratedCandidates,
@@ -741,4 +743,226 @@ test('prompt instructions remain private untrusted source text and cannot grant 
   assert.equal(normalizeGeneratedCandidates(value, source).candidates[0].status, 'needs_review');
   value.candidates[0].verified = true;
   assert.throws(() => normalizeGeneratedCandidates(value, source));
+});
+
+test('resource contract covers all identities in one output and keeps metadata/legacy material unchanged', () => {
+  const source = buildGenerationSource(input());
+  const raw = {
+    ...candidate(),
+    signal_type: 'research',
+    topic_ids: [],
+    resources: [
+      {
+        type: 'person',
+        name: '李明',
+        introduction: null,
+        event_role: '公布合成研究结果',
+        evidence: [ref('研究作者李明在示例研究所公布合成研究结果')],
+      },
+      {
+        type: 'institution',
+        name: '示例研究所',
+        introduction: null,
+        event_role: null,
+        evidence: [ref('示例研究所')],
+      },
+    ],
+  };
+  const normalizeResources = (row) =>
+    normalizeGeneratedCandidates(
+      { candidates: [row], reason: 'resources' },
+      source,
+      [],
+      GENERATION_RESOURCES_CONTRACT,
+    );
+  const before = JSON.stringify(raw);
+  assert.deepEqual(normalizeResources(raw).candidates[0].resources, raw.resources);
+  // A person's organization is covered even if omitted from the top-level list.
+  assert.deepEqual(
+    normalizeResources({ ...raw, organizations: [] }).candidates[0].resources,
+    raw.resources,
+  );
+  assert.equal(JSON.stringify(raw), before);
+  const schema = generationCandidateWithResourcesJsonSchema.properties.candidates.items;
+  assert.ok(schema.required.includes('resources'));
+  assert.ok(schema.required.includes('signal_type'));
+  assert.equal(
+    generationCandidateWithMetadataJsonSchema.properties.candidates.items.required.includes(
+      'resources',
+    ),
+    false,
+  );
+  const metadata = { ...raw };
+  delete metadata.resources;
+  assert.equal(
+    Object.hasOwn(
+      normalizeGeneratedCandidates(
+        { candidates: [metadata], reason: 'resources' },
+        source,
+        [],
+        GENERATION_METADATA_CONTRACT,
+      ).candidates[0],
+      'resources',
+    ),
+    false,
+  );
+  assert.throws(() => normalizeResources(metadata));
+  assert.throws(() =>
+    normalizeGeneratedCandidates(
+      { candidates: [raw], reason: 'resources' },
+      source,
+      [],
+      GENERATION_METADATA_CONTRACT,
+    ),
+  );
+});
+
+test('resource validation rejects missing, duplicate, unbound and forged evidence without exposing model text', () => {
+  const source = buildGenerationSource(input());
+  const resources = [
+    {
+      type: 'person',
+      name: '李明',
+      introduction: null,
+      event_role: null,
+      evidence: [ref('研究作者李明')],
+    },
+    {
+      type: 'institution',
+      name: '示例研究所',
+      introduction: null,
+      event_role: null,
+      evidence: [ref('示例研究所')],
+    },
+  ];
+  for (const [value, path, reason] of [
+    [resources.slice(0, 1), 'resources', 'missing_resource'],
+    [[...resources, resources[0]], 'resources[2].name', 'duplicate_item'],
+    [
+      [resources[0], { ...resources[1], name: '合成研究结果' }],
+      'resources[1].name',
+      'missing_evidence',
+    ],
+    [
+      [resources[0], { ...resources[1], name: '合成研究结果', evidence: [ref()] }],
+      'resources[1].name',
+      'unexpected_resource',
+    ],
+    [
+      [resources[0], { ...resources[1], evidence: [ref('forged private resource quote')] }],
+      'resources[1].evidence[0].quote',
+      'quote_mismatch',
+    ],
+    [[resources[0], { ...resources[1], id: 'company-invented' }], 'resources[1]', 'invalid_shape'],
+    [[resources[0], { ...resources[1], type: 'source' }], 'resources[1].type', 'invalid_type'],
+    [
+      [resources[0], { ...resources[1], introduction: '' }],
+      'resources[1].introduction',
+      'missing_value',
+    ],
+  ]) {
+    const checked = assessGeneratedCandidates(
+      {
+        candidates: [{ ...candidate(), topic_ids: [], signal_type: 'research', resources: value }],
+        reason: 'private model text',
+      },
+      source,
+      [],
+      GENERATION_RESOURCES_CONTRACT,
+    );
+    assert.equal(checked.candidates.length, 0);
+    assert.deepEqual(checked.rejected[0].errors, [
+      { field: 'resources', code: 'invalid_field', path, reason },
+    ]);
+    assert.equal(JSON.stringify(checked).includes('forged private resource quote'), false);
+  }
+});
+
+test('resource names cannot borrow a substring identity and excluded people are removed consistently', () => {
+  const source = {
+    classification: 'private',
+    fragments: [
+      { id: 'fragment-1', text: 'Anna announced X. 习近平发表讲话。', locator: { paragraph: 1 } },
+    ],
+  };
+  const row = {
+    ...candidate(),
+    organizations: [],
+    persons: [{ name: 'Ann', role: 'presenter', organization: null, evidence: [ref('Anna')] }],
+    event_date: null,
+    event_date_evidence: [],
+    claims: [{ text: 'X', evidence: [ref('X')] }],
+    topic_ids: [],
+    signal_type: 'product',
+    resources: [
+      {
+        type: 'person',
+        name: 'Ann',
+        introduction: null,
+        event_role: null,
+        evidence: [ref('Anna')],
+      },
+    ],
+  };
+  assert.throws(() =>
+    normalizeGeneratedCandidates(
+      { candidates: [row], reason: 'test' },
+      source,
+      [],
+      GENERATION_RESOURCES_CONTRACT,
+    ),
+  );
+  row.persons = [
+    { name: '习近平', role: '国家主席', organization: null, evidence: [ref('习近平发表讲话')] },
+  ];
+  row.resources = [
+    {
+      type: 'person',
+      name: '习近平',
+      introduction: null,
+      event_role: '国家主席',
+      evidence: [ref('习近平发表讲话')],
+    },
+  ];
+  const normalized = normalizeGeneratedCandidates(
+    { candidates: [row], reason: 'test' },
+    source,
+    [],
+    GENERATION_RESOURCES_CONTRACT,
+  ).candidates[0];
+  assert.deepEqual(normalized.persons, []);
+  assert.deepEqual(normalized.resources, []);
+});
+
+test('Latin resource names remain supported in Chinese source sentences', () => {
+  const text = 'Example公司由Ada演示产品。';
+  const source = {
+    classification: 'private',
+    fragments: [{ id: 'fragment-1', text, locator: { paragraph: 1 } }],
+  };
+  const evidence = [ref(text)];
+  const row = {
+    title: '产品演示',
+    summary: 'Example公司演示产品。',
+    event_date: null,
+    event_date_evidence: [],
+    persons: [{ name: 'Ada', role: '演示', organization: 'Example', evidence }],
+    organizations: ['Example'],
+    claims: [{ text: '演示产品', evidence }],
+    topic_ids: [],
+    signal_type: 'product',
+    resources: [
+      { type: 'person', name: 'Ada', introduction: null, event_role: '演示', evidence },
+      { type: 'company', name: 'Example', introduction: null, event_role: null, evidence },
+    ],
+  };
+  assert.deepEqual(
+    normalizeGeneratedCandidates(
+      { candidates: [row], reason: 'synthetic example' },
+      source,
+      [],
+      GENERATION_RESOURCES_CONTRACT,
+    ).candidates[0].resources,
+    row.resources,
+  );
 });

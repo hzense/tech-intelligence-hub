@@ -303,3 +303,375 @@ test('API returns the actionable person-policy rejection without leaking raw err
   assert.equal(response.status, 409);
   assert.deepEqual(await response.json(), { error: 'excluded_person' });
 });
+
+test('resource preparation reuses unique identities, preserves saved IDs and binds resource evidence on save', async () => {
+  const resources = [
+    {
+      type: 'company',
+      name: '合成组织',
+      introduction: '合成组织研究工具。',
+      event_role: '发布工具',
+      evidence: [{ fragment_id: 'f1', quote: '合成组织研究工具。' }],
+    },
+    {
+      type: 'person',
+      name: '测试人物',
+      introduction: null,
+      event_role: '介绍工具',
+      evidence: [{ fragment_id: 'f2', quote: '测试人物介绍工具。' }],
+    },
+  ];
+  const resourceCatalog = [
+    { id: 'company-example', type: 'company', name: '合成组织', status: 'active' },
+  ];
+  const choices = [
+    { type: 'company', name: '合成组织', status: 'reuse', matches: resourceCatalog },
+    { type: 'person', name: '测试人物', status: 'new', matches: [] },
+  ];
+  const resourceSourceOptions = resources.map(({ name, type }) => ({
+    name,
+    type,
+    sourceUrls: ['https://example.com/article'],
+  }));
+  let saved = null;
+  const saves = [];
+  const resourceContent = {
+    ...content,
+    resources: resources.map((resource) => ({ ...resource, entity_id: null })),
+  };
+  const service = createEditorialReviewService({
+    enabled: () => true,
+    material: async () => ({
+      materialHash,
+      content: resourceContent,
+      warnings: [],
+      resources,
+      resourceCatalog,
+      resourceSourceOptions,
+      sourceOptions: ['https://example.com/article'],
+    }),
+    topics: async () => content.topics,
+    resources: async (drafts, catalog) => {
+      assert.deepEqual(drafts, resources);
+      assert.deepEqual(catalog, resourceCatalog);
+      return choices;
+    },
+    read: async () => saved,
+    save: async (_owner, request, material) => {
+      normalizeEditorialRequest(request, material);
+      saves.push({ request, material });
+      return {
+        request_id: request.requestId,
+        revision: 1,
+        action: request.action,
+        content: request.content,
+      };
+    },
+  });
+  const prepared = await service.read('owner', runId, 0);
+  assert.equal(prepared.content.resources[0].entity_id, 'company-example');
+  assert.equal(prepared.content.resources[1].entity_id, null);
+  assert.deepEqual(prepared.resourceOptions, choices);
+  assert.deepEqual(editorialMissing(prepared.content, choices, prepared.resourceSourceOptions), [
+    '公开来源',
+    '合成组织 的公开来源',
+    '测试人物 的公开来源',
+  ]);
+  const selected = { ...prepared.content, sourceUrls: ['https://example.com/article'] };
+  await service.write('owner', { ...request(), content: selected });
+  assert.deepEqual(saves[0].material.resources, resources);
+  assert.deepEqual(saves[0].material.resourceCatalog, resourceCatalog);
+  assert.deepEqual(saves[0].material.resourceSourceOptions, resourceSourceOptions);
+  assert.deepEqual(saves[0].request.content.resources, selected.resources);
+  await assert.rejects(
+    service.write('owner', {
+      ...request(),
+      content: {
+        ...selected,
+        resources: selected.resources.map((resource) => ({
+          ...resource,
+          introduction: '伪造的简介',
+        })),
+      },
+    }),
+    { code: 'material_changed' },
+  );
+  saved = {
+    request_id: requestId,
+    revision: 1,
+    action: 'publish',
+    content: {
+      ...selected,
+      resources: selected.resources.map((resource, i) => ({
+        ...resource,
+        entity_id: i ? 'person-saved' : 'company-saved',
+      })),
+    },
+  };
+  assert.deepEqual(
+    (await service.read('owner', runId, 0)).content.resources.map((resource) => resource.entity_id),
+    ['company-saved', 'person-saved'],
+  );
+});
+
+test('ambiguous resources need an explicit identity of a compatible kind', () => {
+  const resources = [
+    {
+      type: 'person',
+      name: '测试人物',
+      introduction: null,
+      event_role: null,
+      evidence: [{ fragment_id: 'f1', quote: '测试人物' }],
+      entity_id: null,
+    },
+  ];
+  const options = [
+    {
+      type: 'person',
+      name: '测试人物',
+      status: 'ambiguous',
+      matches: [
+        { id: 'person-a', name: '测试人物', type: 'person' },
+        { id: 'person-b', name: '测试人物', type: 'person' },
+      ],
+    },
+  ];
+  const value = { ...content, resources, sourceUrls: ['https://example.com/article'] };
+  const sources = [{ type: 'person', name: '测试人物', sourceUrls: value.sourceUrls }];
+  assert.deepEqual(editorialMissing(value, options, sources), ['测试人物 的资源身份']);
+  assert.deepEqual(
+    editorialMissing(
+      { ...value, resources: [{ ...resources[0], entity_id: 'person-b' }] },
+      options,
+      sources,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    editorialMissing(
+      { ...value, resources: [{ ...resources[0], entity_id: 'person-absent' }] },
+      options,
+      sources,
+    ),
+    ['测试人物 的资源身份'],
+  );
+  assert.deepEqual(
+    editorialMissing(
+      {
+        ...value,
+        resources: [{ ...resources[0], type: 'company', entity_id: 'institution-verified' }],
+      },
+      [
+        {
+          ...options[0],
+          type: 'company',
+          matches: [{ id: 'institution-verified', name: '测试人物', type: 'institution' }],
+        },
+      ],
+      [{ ...sources[0], type: 'company' }],
+    ),
+    [],
+  );
+});
+
+test('saved resource drafts refresh after enrichment without losing manual selections or identities', async () => {
+  const company = {
+    type: 'company',
+    name: '合成组织',
+    introduction: null,
+    event_role: '发布工具',
+    evidence: [{ fragment_id: 'f1', quote: '合成组织发布工具。' }],
+  };
+  const person = {
+    type: 'person',
+    name: '新增人物',
+    introduction: null,
+    event_role: '介绍工具',
+    evidence: [{ fragment_id: 'f2', quote: '新增人物介绍工具。' }],
+  };
+  const selectedSource = 'https://example.com/original';
+  const extraSource = 'https://example.com/supplement';
+  const resources = [company, person];
+  const resourceSourceOptions = [
+    { name: company.name, type: company.type, sourceUrls: [selectedSource] },
+    { name: person.name, type: person.type, sourceUrls: [extraSource] },
+  ];
+  let warnings = [];
+  let saved = {
+    request_id: requestId,
+    revision: 1,
+    action: 'draft',
+    content: {
+      ...content,
+      eventDate: '2026-09-26',
+      signalType: 'research',
+      persons: [],
+      sourceUrls: [selectedSource],
+      topics: [{ id: 'manual', title: '人工领域' }],
+      resources: [{ ...company, entity_id: 'company-selected' }],
+    },
+  };
+  const service = createEditorialReviewService({
+    enabled: () => true,
+    material: async () => ({
+      materialHash,
+      content: { ...content, resources: resources.map((r) => ({ ...r, entity_id: null })) },
+      warnings,
+      resources,
+      resourceSourceOptions,
+      sourceOptions: [selectedSource, extraSource],
+    }),
+    topics: async () => saved.content.topics,
+    resources: async () => resources.map((r) => ({ ...r, status: 'new', matches: [] })),
+    read: async () => saved,
+    save: async (_owner, input, material) => {
+      normalizeEditorialRequest(input, material);
+      assert.deepEqual(material.resourceSourceOptions, resourceSourceOptions);
+      return { ...saved, revision: 2, action: input.action, content: input.content };
+    },
+  });
+  const updated = await service.read('owner', runId, 0);
+  assert.deepEqual(
+    updated.content.resources.map((r) => r.entity_id),
+    ['company-selected', null],
+  );
+  assert.deepEqual(updated.content.persons, ['新增人物']);
+  assert.equal(updated.content.eventDate, saved.content.eventDate);
+  assert.equal(updated.content.signalType, saved.content.signalType);
+  assert.deepEqual(updated.content.topics, saved.content.topics);
+  assert.deepEqual(updated.content.sourceUrls, [selectedSource]);
+  assert.deepEqual(updated.resourceSourceOptions, resourceSourceOptions);
+  assert.match(updated.warnings.join(' '), /补全资料已更新/);
+  const published = await service.write('owner', {
+    ...request(),
+    expectedRevision: 1,
+    content: { ...updated.content, sourceUrls: [selectedSource, extraSource] },
+  });
+  assert.equal(published.action, 'publish');
+  assert.equal(published.content.resources.length, 2);
+  saved = { ...saved, action: 'publish' };
+  assert.match((await service.read('owner', runId, 0)).warnings.join(' '), /再次确认发布/);
+  warnings = ['补证材料当前不可用'];
+  const unavailable = await service.read('owner', runId, 0);
+  assert.deepEqual(unavailable.content.resources, saved.content.resources);
+  assert.deepEqual(unavailable.warnings, warnings);
+});
+
+test('resource-backed signals without source-supported people do not require invented people', () => {
+  assert.deepEqual(editorialMissing({ ...content, persons: [] }), ['人物']);
+  const organization = {
+    type: 'company',
+    name: '合成组织',
+    introduction: null,
+    event_role: null,
+    evidence: [{ fragment_id: 'f1', quote: '合成组织' }],
+    entity_id: null,
+  };
+  assert.deepEqual(
+    editorialMissing(
+      {
+        ...content,
+        persons: [],
+        resources: [organization],
+        sourceUrls: ['https://example.com/article'],
+      },
+      [],
+      [
+        {
+          name: organization.name,
+          type: organization.type,
+          sourceUrls: ['https://example.com/article'],
+        },
+      ],
+    ),
+    [],
+  );
+});
+
+test('resource source choices retain only an unchanged committed public identity, never draft claims', async () => {
+  const sourceUrl = 'https://example.com/article';
+  const resource = {
+    type: 'company',
+    name: '合成组织',
+    introduction: '有原文支持的简介',
+    event_role: null,
+    evidence: [{ fragment_id: 'f1', quote: '合成组织' }],
+  };
+  const saved = {
+    request_id: requestId,
+    revision: 1,
+    action: 'publish',
+    content: {
+      ...content,
+      persons: [],
+      sourceUrls: [sourceUrl],
+      resources: [
+        {
+          ...resource,
+          entity_id: 'company-example',
+          source_urls: [sourceUrl],
+          evidence: [{ quote: '合成组织', fragment_id: 'f1' }],
+        },
+      ],
+    },
+  };
+  const service = createEditorialReviewService({
+    enabled: () => true,
+    material: async () => ({
+      materialHash,
+      content,
+      warnings: [],
+      resources: [resource],
+      sourceOptions: [],
+      resourceSourceOptions: [{ name: resource.name, type: resource.type, sourceUrls: [] }],
+    }),
+    topics: async () => content.topics,
+    resources: async () => [],
+    read: async () => saved,
+    save: async () => {
+      throw new Error('read only');
+    },
+  });
+  assert.deepEqual((await service.read('owner', runId, 0)).resourceSourceOptions[0].sourceUrls, [
+    sourceUrl,
+  ]);
+  saved.action = 'withdraw';
+  assert.deepEqual((await service.read('owner', runId, 0)).resourceSourceOptions[0].sourceUrls, [
+    sourceUrl,
+  ]);
+  saved.action = 'draft';
+  assert.deepEqual((await service.read('owner', runId, 0)).resourceSourceOptions[0].sourceUrls, []);
+  saved.action = 'publish';
+  resource.introduction = '补全后的另一份简介';
+  assert.deepEqual((await service.read('owner', runId, 0)).resourceSourceOptions[0].sourceUrls, []);
+});
+
+test('API returns bounded, actionable resource errors', async () => {
+  for (const code of [
+    'entity_reference_invalid',
+    'resource_identity_ambiguous',
+    'resource_source_required',
+  ]) {
+    const handler = createEditorialHandler({
+      session: async () => ({ user: { id: 'owner' } }),
+      origin: () => 'https://hzense.test',
+      read: async () => null,
+      write: async () => {
+        throw Object.assign(new Error('private error'), { code });
+      },
+    });
+    const response = await handler(
+      new Request('https://hzense.test/api/admin/editorial-signals', {
+        method: 'POST',
+        headers: {
+          host: 'hzense.test',
+          origin: 'https://hzense.test',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(request()),
+      }),
+    );
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { error: code });
+  }
+});

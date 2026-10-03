@@ -281,6 +281,7 @@ export interface PublicEntitySummary {
   latestAt?: string;
   relatedPeople: PublicSignalPerson[];
   relatedOrganizations: PublicSignalPerson[];
+  profile?: { introduction: string; sourceUrl: string; sourceUrls: string[] };
 }
 
 /** Shared event references are co-occurrence, not evidence of employment. */
@@ -318,6 +319,23 @@ export function buildPublicEntityDirectory(
   const sorted = [...signals].sort(
     (a, b) => b.occurred_at.localeCompare(a.occurred_at) || a.id.localeCompare(b.id),
   );
+  // Profile versions come only from current published revisions. Prefer the most
+  // recently published supplied introduction; withdrawing it reveals the prior
+  // still-public version and never exposes an unpublished draft.
+  for (const signal of [...signals]
+    .filter(isCurrentSignal)
+    .sort((a, b) => b.captured_at.localeCompare(a.captured_at) || a.id.localeCompare(b.id))) {
+    for (const resource of signal.public_resources ?? []) {
+      const entity = add(resource.id, resource.name, resource.type);
+      if (entity && !entity.profile && resource.introduction && resource.source_urls[0]) {
+        entity.profile = {
+          introduction: resource.introduction,
+          sourceUrl: resource.source_urls[0],
+          sourceUrls: resource.source_urls,
+        };
+      }
+    }
+  }
   for (const signal of sorted) {
     const unified = toUnifiedSignal(signal);
     for (const person of unified.people)

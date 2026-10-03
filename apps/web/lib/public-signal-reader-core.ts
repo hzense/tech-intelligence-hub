@@ -28,6 +28,14 @@ export interface PublicSignalSource {
   name: string;
   url: string;
 }
+/** A resource identity and profile committed with the current public revision. */
+export interface PublicSignalResource {
+  id: string;
+  name: string;
+  type: 'person' | 'company' | 'institution';
+  introduction: string | null;
+  source_urls: string[];
+}
 export type SignalEntry = (
   | (SeedSignal & { publication_basis?: 'source_evidence' })
   | (Omit<SeedSignal, 'type' | 'importance' | 'confidence' | 'novelty'> & {
@@ -45,6 +53,7 @@ export type SignalEntry = (
   public_organizations?: PublicSignalPerson[];
   public_sources?: PublicSignalSource[];
   public_topics?: { id: string; title: string }[];
+  public_resources?: PublicSignalResource[];
   /** Historical Seed links to models, papers, products and other non-participant entities. */
   legacy_related_entities?: { id: string; name: string; type: string }[];
 };

@@ -11,6 +11,9 @@ const safeErrors = new Set([
   'excluded_person',
   'review_incomplete',
   'topic_reference_invalid',
+  'entity_reference_invalid',
+  'resource_identity_ambiguous',
+  'resource_source_required',
   'published_draft_forbidden',
   'already_published',
   'not_published',
@@ -51,7 +54,9 @@ export function createEditorialHandler(deps: {
       }
       if (request.method !== 'POST') return importResponse({ error: 'method_not_allowed' }, 405);
       if (url.search || url.hash) return importResponse({ error: 'invalid_request' }, 400);
-      const body = await readImportJSON(request, 32768);
+      // Resource evidence is bounded by the content contract (36 resources,
+      // at most 8 excerpts each). Keep room for maximum-length UTF-8 text.
+      const body = await readImportJSON(request, 1048576);
       return importResponse(await deps.write(session.user.id, body));
     } catch (error) {
       const raw = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';

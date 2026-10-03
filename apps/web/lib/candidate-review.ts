@@ -28,6 +28,7 @@ export function buildEnrichedCandidateReview(
       event_date_evidence: proposed.event_date_evidence,
       persons: proposed.persons,
       organizations: proposed.organizations,
+      ...(original.candidate.resources === undefined ? {} : { resources: proposed.resources }),
     },
     original.candidate,
     run.snapshot.source,
@@ -88,6 +89,7 @@ export function buildCandidateReview(run: SignalGenerationRun, index: number) {
         ...candidate.event_date_evidence,
         ...candidate.claims.flatMap((claim) => claim.evidence),
         ...candidate.persons.flatMap((person) => person.evidence),
+        ...(candidate.resources ?? []).flatMap((resource) => resource.evidence),
       ].map((reference) => reference.fragment_id),
     );
     const checks = [
@@ -106,7 +108,9 @@ export function buildCandidateReview(run: SignalGenerationRun, index: number) {
         label: '关键人物与组织绑定',
         detail: candidate.persons.length
           ? '已有人物建议；需消歧、绑定正式实体，并核实人物的事件角色与任职时间。'
-          : '缺少关键人物；至少补齐一位有事件证据支持的人物。',
+          : candidate.resources !== undefined
+            ? '原文未提取到有依据的人物；可保留空人物列表，不推测负责人，组织资源仍需核对身份。'
+            : '缺少关键人物；至少补齐一位有事件证据支持的人物。',
       },
       {
         code: 'event_identity',

@@ -25,6 +25,7 @@ import {
   estimateGenerationTokens,
   normalizeGeneratedCandidates,
   GENERATION_METADATA_CONTRACT,
+  GENERATION_RESOURCES_CONTRACT,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
@@ -1034,7 +1035,22 @@ test('creation pins enabled topics without AI; execution uses that snapshot desp
   let catalogReads = 0;
   const provider = providerFixture({
     ...result,
-    candidates: [{ ...candidate, topic_ids: ['semiconductors'], signal_type: 'product' }],
+    candidates: [
+      {
+        ...candidate,
+        topic_ids: ['semiconductors'],
+        signal_type: 'product',
+        resources: [
+          {
+            type: 'person',
+            name: 'Alice',
+            introduction: null,
+            event_role: 'presenter',
+            evidence: candidate.persons[0].evidence,
+          },
+        ],
+      },
+    ],
   });
   const f = coreFixture({
     topics: async () => {
@@ -1055,19 +1071,28 @@ test('creation pins enabled topics without AI; execution uses that snapshot desp
     consent: true,
   });
   assert.deepEqual(f.run().snapshot.topics, topicCatalog);
-  assert.equal(f.run().snapshot.output_contract, GENERATION_METADATA_CONTRACT);
+  assert.equal(f.run().snapshot.output_contract, GENERATION_RESOURCES_CONTRACT);
   assert.equal(provider.calls.length, 0);
   const createdInput = generationInput(
     source,
     stage.prompt,
     topicCatalog,
-    GENERATION_METADATA_CONTRACT,
+    GENERATION_RESOURCES_CONTRACT,
   );
   assert.ok(f.run().reserveMicrousd >= createdInput.inputTokens);
   const dto = await f.execute('admin', { action: 'run', id });
   assert.equal(dto.status, 'completed');
   assert.deepEqual(f.finishes[0].result.candidates[0].topic_ids, ['semiconductors']);
   assert.equal(f.finishes[0].result.candidates[0].signal_type, 'product');
+  assert.deepEqual(f.finishes[0].result.candidates[0].resources, [
+    {
+      type: 'person',
+      name: 'Alice',
+      introduction: null,
+      event_role: 'presenter',
+      evidence: candidate.persons[0].evidence,
+    },
+  ]);
   assert.equal(provider.calls.length, 1);
   assert.equal(catalogReads, 1);
 });
@@ -1698,4 +1723,60 @@ test('source contract failures have bounded actionable 400 responses', async () 
     assert.equal(result.status, 400);
     assert.deepEqual(await result.json(), { error: expected });
   }
+});
+
+test('resource contract generates evidence-backed resource drafts in the same single provider call', async () => {
+  const resources = [
+    {
+      type: 'person',
+      name: 'Alice',
+      introduction: null,
+      event_role: 'presenter',
+      evidence: candidate.persons[0].evidence,
+    },
+  ];
+  const f = providerFixture({
+    ...result,
+    candidates: [{ ...candidate, topic_ids: [], signal_type: 'product', resources }],
+  });
+  const value = await f.invoke({
+    topics: topicCatalog,
+    outputContract: GENERATION_RESOURCES_CONTRACT,
+  });
+  assert.equal(value.success, true);
+  assert.deepEqual(value.output.candidates[0].resources, resources);
+  assert.equal(f.calls.length, 1);
+  const wire = JSON.parse(f.calls[0].body);
+  assert.ok(
+    wire.response_format.json_schema.schema.properties.candidates.items.required.includes(
+      'resources',
+    ),
+  );
+  assert.match(wire.messages[0].content, /与信号同一次调用生成/);
+  const request = generationInput(
+    source,
+    stage.prompt,
+    topicCatalog,
+    GENERATION_RESOURCES_CONTRACT,
+  );
+  const example = JSON.parse(request.system.split('\n').find((line) => line.startsWith('{')));
+  assert.doesNotThrow(() =>
+    normalizeGeneratedCandidates(
+      example.output,
+      example.source,
+      example.enabled_topics,
+      GENERATION_RESOURCES_CONTRACT,
+    ),
+  );
+  const invalid = providerFixture({
+    ...result,
+    candidates: [{ ...candidate, topic_ids: [], signal_type: 'product', resources: [] }],
+  });
+  const failed = await invalid.invoke({
+    topics: topicCatalog,
+    outputContract: GENERATION_RESOURCES_CONTRACT,
+  });
+  assert.equal(failed.success, false);
+  assert.equal(failed.output.rejected[0].errors[0].reason, 'missing_resource');
+  assert.equal(invalid.calls.length, 1);
 });

@@ -6,6 +6,7 @@ import {
   normalizeGeneratedCandidates,
   normalizeGenerationTopics,
   GENERATION_METADATA_CONTRACT,
+  GENERATION_RESOURCES_CONTRACT,
   REJECTED_CANDIDATES_REASON,
 } from '../../ingestion/src/signal-generation-contract.mjs';
 import { isGenerationValidationDetail } from '../../ingestion/src/signal-generation-validation-diagnostics.mjs';
@@ -152,6 +153,7 @@ function validateAssessedResult(result, outcome) {
       'claims',
       ...(Object.hasOwn(candidate, 'topic_ids') ? ['topic_ids'] : []),
       ...(Object.hasOwn(candidate, 'signal_type') ? ['signal_type'] : []),
+      ...(Object.hasOwn(candidate, 'resources') ? ['resources'] : []),
     ]);
     index(candidate.index);
     if (candidate.classification !== 'private' || candidate.status !== 'needs_review') invalid();
@@ -167,6 +169,7 @@ function validateAssessedResult(result, outcome) {
     claims: ['invalid_field'],
     topic_ids: ['invalid_field'],
     signal_type: ['invalid_field'],
+    resources: ['invalid_field'],
   };
   for (const rejected of result.rejected) {
     shape(rejected, ['index', 'classification', 'status', 'errors']);
@@ -209,11 +212,19 @@ function validateSavedCandidates(result, snapshot) {
       ? normalizeGenerationTopics(snapshot.topics)
       : undefined;
     const outputContract = snapshot.output_contract;
-    if (outputContract !== undefined && outputContract !== GENERATION_METADATA_CONTRACT)
+    if (
+      outputContract !== undefined &&
+      ![GENERATION_METADATA_CONTRACT, GENERATION_RESOURCES_CONTRACT].includes(outputContract)
+    )
       fail('invalid_result');
     if (
       outputContract === undefined &&
       result.rejected?.some(({ errors }) => errors.some(({ field }) => field === 'signal_type'))
+    )
+      fail('invalid_result');
+    if (
+      outputContract !== GENERATION_RESOURCES_CONTRACT &&
+      result.rejected?.some(({ errors }) => errors.some(({ field }) => field === 'resources'))
     )
       fail('invalid_result');
     if (
@@ -376,7 +387,10 @@ function inputs(owner, request, snapshot, configuration) {
   const safe = bounded(snapshot, 1200000, 'invalid_snapshot');
   if (
     Object.hasOwn(safe, 'output_contract') &&
-    (safe.output_contract !== GENERATION_METADATA_CONTRACT || !Object.hasOwn(safe, 'topics'))
+    (![GENERATION_METADATA_CONTRACT, GENERATION_RESOURCES_CONTRACT].includes(
+      safe.output_contract,
+    ) ||
+      !Object.hasOwn(safe, 'topics'))
   )
     fail('invalid_snapshot');
   if (Object.hasOwn(safe, 'topics')) {
@@ -845,7 +859,9 @@ export async function finishSignalGeneration({
           safeResult.candidates.some(
             (candidate) =>
               candidate &&
-              (Object.hasOwn(candidate, 'topic_ids') || Object.hasOwn(candidate, 'signal_type')),
+              (Object.hasOwn(candidate, 'topic_ids') ||
+                Object.hasOwn(candidate, 'signal_type') ||
+                Object.hasOwn(candidate, 'resources')),
           ))) &&
       safeResult.validation_version !== 1
     )

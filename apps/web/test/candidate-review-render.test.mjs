@@ -66,7 +66,7 @@ test('review renders private evidence safely with confirmation-only publication 
     }),
   );
   assert.match(html, /确认发布/);
-  assert.match(html, /缺失时可直接补充/);
+  assert.match(html, /生成的资源草稿将在确认发布时一并保存并建立关联/);
   assert.match(html, /候选 3/);
   assert.match(html, /辅助资料与原始 AI 候选/);
   assert.doesNotMatch(html, /正式发布前待办|审核确认与正式发布/);
