@@ -9,6 +9,11 @@ import { start } from 'workflow/api';
 import { signalGenerationWorkflow } from './signal-generation';
 import { discoverSources } from '../lib/server/source-discovery';
 import {
+  appendAutomationSourceFailure,
+  automationSourceFailureCode,
+  type AutomationSourceFailureCode,
+} from '../lib/automation-source-failures';
+import {
   startTopicInsightSandbox,
   pollTopicInsightSandbox,
   stopTopicInsightSandbox,
@@ -209,6 +214,7 @@ async function createPrivateGeneration(
     },
   });
   let created;
+  let refusalCode: AutomationSourceFailureCode | null = null;
   try {
     created = await executeGeneration(owner, {
       action: 'create',
@@ -223,28 +229,10 @@ async function createPrivateGeneration(
     // Only explicit, pre-commit refusals can be counted as a failed source.
     // Unrecognized failures (including commit_unknown) retain the request ID
     // and stop the run for read-only reconciliation, without retrying creation.
-    if (
-      !error ||
-      typeof error !== 'object' ||
-      !('code' in error) ||
-      ![
-        'duplicate_source',
-        'source_unavailable',
-        'cancelled',
-        'profile_not_ready',
-        'revision_conflict',
-        'capability_failed',
-        'invalid_configuration',
-        'invalid_snapshot',
-        'invalid_request',
-        'budget_exceeded',
-        'task_deleted',
-        'request_id_conflict',
-        'not_configured',
-        'database_unavailable',
-      ].includes(String(error.code))
-    )
-      throw new Error('generation_creation_unconfirmed');
+    refusalCode = automationSourceFailureCode(
+      error && typeof error === 'object' && 'code' in error ? error.code : null,
+    );
+    if (!refusalCode) throw new Error('generation_creation_unconfirmed');
   }
   if (!created || created.id !== id) {
     // Semantic deduplication may return a separately created task. Do not
@@ -255,7 +243,18 @@ async function createPrivateGeneration(
       id: runId,
       token: run.lease_token!,
       phase: 'creating_candidates',
-      result: run.result ?? {},
+      result: {
+        ...run.result,
+        ...(refusalCode || created
+          ? {
+              sourceFailures: appendAutomationSourceFailure(
+                run.result?.sourceFailures,
+                itemId,
+                refusalCode ?? 'duplicate_source',
+              ),
+            }
+          : {}),
+      },
     });
     return null;
   }

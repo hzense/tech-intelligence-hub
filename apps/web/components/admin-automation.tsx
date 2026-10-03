@@ -9,6 +9,7 @@ import type {
 } from '../../../packages/database/src/automation-store.mjs';
 import styles from './admin-automation.module.css';
 import { discoveryDiagnosticItems } from '../lib/source-discovery-diagnostics';
+import { automationSourceFailureItems } from '../lib/automation-source-failures';
 import {
   automationGenerationIds,
   generationSummaryLabel,
@@ -154,6 +155,7 @@ function SourceResult({
     | undefined;
   const ids = automationGenerationIds(result);
   const diagnostics = discoveryDiagnosticItems(result.discoveryDiagnostics);
+  const sourceFailures = automationSourceFailureItems(result.sourceFailures);
   const searchRequests = discovery?.searchRequests;
   const knownSearchCount =
     typeof searchRequests === 'number' &&
@@ -199,6 +201,17 @@ function SourceResult({
       ) : null}
       {typeof result.batchId === 'string' ? (
         <Link href="/admin/imports">查看导入批次 · {result.batchId}</Link>
+      ) : null}
+      {sourceFailures.length ? (
+        <details>
+          <summary>查看来源处理失败原因（脱敏）</summary>
+          <ul>
+            {sourceFailures.map((failure) => (
+              <li key={failure}>{failure}</li>
+            ))}
+          </ul>
+          <p>仅显示已确认的创建拒绝原因；查看不会重新导入或调用 AI。</p>
+        </details>
       ) : null}
       {progress?.total ? (
         <p>

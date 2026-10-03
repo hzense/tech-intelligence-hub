@@ -367,6 +367,53 @@ test(
       }
       assert.equal(posts.length, 6, 'search receipt refreshes never create or retry a task');
 
+      run.status = 'failed';
+      run.phase = 'source_failed';
+      run.result.sourceFailures = [
+        {
+          itemId: '11111111-1111-4111-8111-111111111111',
+          phase: 'create_candidate',
+          code: 'invalid_request',
+          message: 'must-not-display-private-source-error',
+          stack: 'must-not-display-private-stack',
+        },
+        {
+          itemId: '22222222-2222-4222-8222-222222222222',
+          phase: 'create_candidate',
+          code: 'commit_unknown',
+        },
+        {
+          itemId: 'must-not-display-private-id',
+          phase: 'create_candidate',
+          code: 'invalid_request',
+        },
+      ];
+      const beforeSourceFailureRefresh = gets;
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect.poll(() => gets).toBe(beforeSourceFailureRefresh + 1);
+      await page.getByText('查看来源处理失败原因（脱敏）', { exact: true }).click();
+      await expect(
+        page.getByText(
+          '资料 11111111-1111-4111-8111-111111111111 · 创建候选任务：候选任务参数无效（invalid_request）',
+          { exact: true },
+        ),
+      ).toBeVisible();
+      for (const secret of [
+        'must-not-display-private',
+        'commit_unknown',
+        '22222222-2222-4222-8222-222222222222',
+      ]) {
+        await expect(page.getByText(secret, { exact: false })).toHaveCount(0);
+      }
+      await expect(
+        page.getByRole('cell', { name: '$0.1000 provider', exact: false }),
+      ).toBeVisible();
+      assert.equal(posts.length, 6, 'reading source refusals never creates or retries a task');
+
+      delete run.result.sourceFailures;
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByText('查看来源处理失败原因（脱敏）', { exact: true })).toHaveCount(0);
+
       // Failed discovery diagnostics are private structural readbacks, not a retry action.
       delete run.generationProgress;
       run.status = 'failed';
