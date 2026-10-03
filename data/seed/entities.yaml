@@ -2,6 +2,7 @@
 - { id: company-anthropic, type: company, name: Anthropic, status: active }
 - { id: company-meta, type: company, name: Meta, status: active }
 - { id: company-google, type: company, name: Google, status: active }
+- { id: company-wiz, type: company, name: Wiz, status: active }
 - { id: company-nvidia, type: company, name: NVIDIA, status: active }
 - { id: company-apple, type: company, name: Apple, status: active }
 - { id: company-figure-ai, type: company, name: Figure AI, status: active }
@@ -162,6 +163,7 @@
 - { id: person-ellie-holbrook, type: person, name: Ellie Holbrook, status: active }
 - { id: person-mark-zuckerberg, type: person, name: Mark Zuckerberg, status: active }
 - { id: person-sundar-pichai, type: person, name: Sundar Pichai, status: active }
+- { id: person-tulsee-doshi, type: person, name: Tulsee Doshi, status: active }
 - { id: person-tom-brown, type: person, name: Tom Brown, status: active }
 - { id: person-chey-tae-won, type: person, name: Chey Tae-won, status: active }
 - { id: person-sid-sheth, type: person, name: Sid Sheth, status: active }

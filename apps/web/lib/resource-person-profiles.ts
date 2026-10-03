@@ -7,6 +7,12 @@
  */
 export const personProfiles: Readonly<Record<string, { introduction: string; sourceUrl: string }>> =
   {
+    // Identity and role verified against Google's official biography on 2026-10-03.
+    'person-tulsee-doshi': {
+      introduction:
+        'Tulsee Doshi 是 Google DeepMind 产品管理高级总监及 Gemini 模型产品负责人，负责模型的产品路线图与战略。',
+      sourceUrl: 'https://blog.google/authors/tulsee-doshi/',
+    },
     'person-asher-genoot': {
       introduction:
         'Asher Genoot 是 Hut 8 首席执行官兼董事，领导公司的能源与数据中心基础设施业务。',

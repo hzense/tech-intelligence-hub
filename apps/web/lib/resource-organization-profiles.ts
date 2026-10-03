@@ -25,6 +25,12 @@ export const organizationProfiles: Readonly<
     introduction: 'Google 提供搜索、Android、云计算与人工智能等互联网产品和技术服务。',
     sourceUrl: 'https://about.google/products/',
   },
+  // Identity and introduction verified against Wiz's official company page on 2026-10-03.
+  'company-wiz': {
+    introduction:
+      'Wiz 是 Google Cloud 旗下的云与人工智能安全公司，提供跨云环境的风险识别、评估与防护平台。',
+    sourceUrl: 'https://www.wiz.io/about',
+  },
   'company-nvidia': {
     introduction:
       'NVIDIA 开发 GPU、网络设备与软件平台，为图形计算、数据中心和人工智能提供加速计算技术。',
