@@ -232,3 +232,14 @@ export async function failQueuedGeneration(owner: string, id: string, queuedAt?:
     ...(queuedAt === undefined ? {} : { queuedAt }),
   });
 }
+
+export async function resolveQueuedGeneration(owner: string, id: string, queuedAt: string) {
+  // Administrative queue closure never loads AI credentials, reserves budget,
+  // starts a Workflow or retries a model call. The store atomically excludes a
+  // worker that has already claimed the task or a newer dispatch.
+  if (!generationHistoryConfigured() || process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1')
+    throw new GenerationError('not_configured');
+  return generationDto(
+    await store.resolveQueuedSignalGeneration({ pool: generationPool, owner, id, queuedAt }),
+  );
+}

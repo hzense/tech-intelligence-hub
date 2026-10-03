@@ -547,10 +547,8 @@ test('short admission route dispatches a long worker with bookkeeping and lease 
   assert.match(sandbox, /generationSandboxTimeoutMs = 30 \* 60 \* 1000/);
   assert.ok(30 * 60 * 1000 > generationTimeoutMs);
   assert.ok(leaseMinutes > 30);
-  assert.match(
-    route,
-    /await start\(signalGenerationWorkflow, \[\s*owner,\s*id,\s*new Date\(run.progress_at!\).toISOString\(\),?\s*\]\)/,
-  );
+  assert.match(route, /const queuedAt = new Date\(run.progress_at!\).toISOString\(\)/);
+  assert.match(route, /await start\(signalGenerationWorkflow, \[owner, id, queuedAt\]\)/);
 });
 
 test('business deadline aborts exactly once, retains unknown usage and never retries a late response', async (t) => {

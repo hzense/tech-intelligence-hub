@@ -20,6 +20,7 @@ import {
   queueSignalGeneration,
   updateSignalGenerationProgress,
   failQueuedSignalGeneration,
+  resolveQueuedSignalGeneration,
   signalGenerationSourceHash,
 } from '../src/signal-generation-store.mjs';
 import {
@@ -217,6 +218,104 @@ suite('private AI generation PostgreSQL ledger', () => {
     const queued = await queueSignalGeneration(args(task));
     await failQueuedSignalGeneration({ ...args(task), queuedAt: queued.progress_at.toISOString() });
     expect((await getSignalGeneration({ ...args(task), readOnly: true })).status).toBe('failed');
+  });
+  it('resolves a never-claimed dispatch idempotently, retains its ledger, and fences late workers', async () => {
+    const task = await createSignalGeneration(input());
+    const queued = await queueSignalGeneration(args(task));
+    const request = { ...args(task), queuedAt: queued.progress_at.toISOString() };
+    const resolved = await resolveQueuedSignalGeneration(request);
+    expect(resolved).toEqual({
+      ...queued,
+      status: 'failed',
+      error_code: 'generation_dispatch_failed',
+      finished_at: expect.any(Date),
+    });
+    expect(await resolveQueuedSignalGeneration(request)).toEqual(resolved);
+    expect((await claimSignalGeneration(request)).claimed).toBe(false);
+    expect(await getSignalGeneration({ ...args(task), readOnly: true })).toEqual(resolved);
+  });
+  it('does not resolve another owner, a superseded dispatch, or a hidden task', async () => {
+    const task = await createSignalGeneration(input());
+    const first = await queueSignalGeneration(args(task));
+    const request = { ...args(task), queuedAt: first.progress_at.toISOString() };
+    await expect(
+      resolveQueuedSignalGeneration({ ...request, owner: 'another-owner' }),
+    ).rejects.toThrow('not_found');
+    const second = await queueSignalGeneration(args(task));
+    await expect(resolveQueuedSignalGeneration(request)).rejects.toThrow('stale_attempt');
+    expect(await getSignalGeneration({ ...args(task), readOnly: true })).toEqual(second);
+    await deleteSignalGeneration(args(task));
+    await expect(
+      resolveQueuedSignalGeneration({ ...request, queuedAt: second.progress_at.toISOString() }),
+    ).rejects.toThrow('not_found');
+  });
+  it('compares the full database dispatch timestamp instead of rounding to JavaScript milliseconds', async () => {
+    const task = await createSignalGeneration(input());
+    const queued = await queueSignalGeneration(args(task));
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET progress_at=progress_at+interval '1 microsecond' WHERE id=$1",
+      [task.id],
+    );
+    await expect(
+      resolveQueuedSignalGeneration({ ...args(task), queuedAt: queued.progress_at.toISOString() }),
+    ).rejects.toThrow('stale_attempt');
+    expect((await getSignalGeneration({ ...args(task), readOnly: true })).status).toBe('pending');
+  });
+  it.each([
+    ['started_at=clock_timestamp()', 'task_active'],
+    ["lease_token='00000000-0000-0000-0000-000000000001'", 'task_active'],
+    ["lease_until=clock_timestamp()-interval '1 hour'", 'task_active'],
+    ['budget_day=current_date', 'task_active'],
+    ['reserved_microusd=1', 'task_active'],
+    ['charged_microusd=1', 'task_active'],
+    ["status='running'", 'task_active'],
+    ["status='completed'", 'stale_attempt'],
+    ["status='unknown'", 'stale_attempt'],
+    ["status='cancelled'", 'stale_attempt'],
+    ["status='failed',error_code='generation_invalid_output'", 'stale_attempt'],
+  ])('preserves an ineligible database receipt (%s)', async (assignment, code) => {
+    const task = await createSignalGeneration(input());
+    const queued = await queueSignalGeneration(args(task));
+    await pool.query(`UPDATE public.signal_generation_runs SET ${assignment} WHERE id=$1`, [
+      task.id,
+    ]);
+    const before = await getSignalGeneration({ ...args(task), readOnly: true });
+    await expect(
+      resolveQueuedSignalGeneration({ ...args(task), queuedAt: queued.progress_at.toISOString() }),
+    ).rejects.toThrow(code);
+    expect(await getSignalGeneration({ ...args(task), readOnly: true })).toEqual(before);
+  });
+  it('serializes resolution and a concurrent worker claim without erasing a reservation', async () => {
+    const task = await createSignalGeneration(input());
+    const queued = await queueSignalGeneration(args(task));
+    const request = { ...args(task), queuedAt: queued.progress_at.toISOString() };
+    const [resolution, claim] = await Promise.allSettled([
+      resolveQueuedSignalGeneration(request),
+      claimSignalGeneration(request),
+    ]);
+    expect(claim.status).toBe('fulfilled');
+    const saved = await getSignalGeneration({ ...args(task), readOnly: true });
+    if (resolution.status === 'fulfilled') {
+      expect(claim.value.claimed).toBe(false);
+      expect(saved).toEqual(resolution.value);
+      expect(saved.reserved_microusd).toBe('0');
+    } else {
+      expect(claim.value.claimed).toBe(true);
+      expect(['stale_attempt', 'task_active']).toContain(resolution.reason.code);
+      expect(saved).toEqual(claim.value.run);
+      expect(saved.reserved_microusd).toBe('10');
+    }
+  });
+  it('permits an idempotent read after a committed resolution loses its acknowledgment', async () => {
+    const task = await createSignalGeneration(input());
+    const queued = await queueSignalGeneration(args(task));
+    const request = { ...args(task), queuedAt: queued.progress_at.toISOString() };
+    await expect(
+      resolveQueuedSignalGeneration({ ...request, pool: uncertainCommit(pool) }),
+    ).rejects.toThrow('commit_unknown');
+    const stored = await getSignalGeneration({ ...args(task), readOnly: true });
+    expect(stored.status).toBe('failed');
+    expect(await resolveQueuedSignalGeneration(request)).toEqual(stored);
   });
   it('retries an expired running task without requiring deletion or changing its ledger', async () => {
     const value = input();

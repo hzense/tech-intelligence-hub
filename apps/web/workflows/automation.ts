@@ -4,7 +4,11 @@ import { automationPool } from '../lib/server/automation-store-access';
 import * as store from '../../../packages/database/src/automation-store.mjs';
 import { automationStableId } from '../../../packages/database/src/automation-contract.mjs';
 import { executeImportAdmin, runImportItem } from '../lib/server/import-service';
-import { executeGeneration, queueGeneration } from '../lib/server/signal-generation';
+import {
+  executeGeneration,
+  failQueuedGeneration,
+  queueGeneration,
+} from '../lib/server/signal-generation';
 import { start } from 'workflow/api';
 import { signalGenerationWorkflow } from './signal-generation';
 import { discoverSources } from '../lib/server/source-discovery';
@@ -96,7 +100,26 @@ export async function automationWorkflow(owner: string, id: string) {
       queuedSources,
       failed,
     });
-    for (const generation of generationDispatches) await dispatchGeneration(owner, generation);
+    let dispatchUnconfirmed = false;
+    let dispatchError: unknown;
+    for (const generation of generationDispatches) {
+      try {
+        if (!(await dispatchGeneration(owner, generation))) failed++;
+      } catch (error) {
+        // A failed cleanup must remain visible, but it must not strand the
+        // other queue receipts that this run has already persisted.
+        failed++;
+        if (!dispatchUnconfirmed) dispatchError = error;
+        dispatchUnconfirmed = true;
+      }
+    }
+    await markSourceDispatch(owner, run.id, run.lease_token!, {
+      batchId: batch.id,
+      generationIds,
+      queuedSources,
+      failed,
+    });
+    if (dispatchUnconfirmed) throw dispatchError;
     await finishSourceRun(owner, run.id, run.lease_token!, {
       batchId: batch.id,
       generationIds,
@@ -360,7 +383,18 @@ async function failSourceRun(owner: string, id: string, token: string) {
 failSourceRun.maxRetries = 0;
 async function dispatchGeneration(owner: string, generation: GenerationDispatch) {
   'use step';
-  await start(signalGenerationWorkflow, [owner, generation.id, generation.queuedAt]);
+  try {
+    await start(signalGenerationWorkflow, [owner, generation.id, generation.queuedAt]);
+    return true;
+  } catch (error) {
+    // A lost acknowledgement may hide an accepted workflow. Only fail this
+    // exact pending queue receipt; a claimed worker or newer queue is untouched.
+    // Never retry start(), including when the fenced cleanup itself fails.
+    await failQueuedGeneration(owner, generation.id, generation.queuedAt).catch(() => {
+      throw error;
+    });
+    return false;
+  }
 }
 dispatchGeneration.maxRetries = 0;
 async function startTopicWorker(owner: string, id: string) {

@@ -412,6 +412,7 @@ test('real automation workflow carries its unchanged hash IDs through the real g
     '../lib/server/signal-generation': `
       export async function executeGeneration(owner,body){return globalThis.__identityWorkflow.execute(owner,body)}
       export async function queueGeneration(owner,id){return globalThis.__identityWorkflow.queue(owner,id)}
+      export async function failQueuedGeneration(){throw Error('unexpected dispatch failure')}
     `,
     './signal-generation':
       'export async function signalGenerationWorkflow(){throw Error("scheduler must not execute a worker")}',

@@ -117,3 +117,6 @@ export function updateSignalGenerationProgress(
   },
 ): Promise<void>;
 export function failQueuedSignalGeneration(args: RunArgs & { queuedAt?: string }): Promise<void>;
+export function resolveQueuedSignalGeneration(
+  args: RunArgs & { queuedAt: string },
+): Promise<SignalGenerationRun>;
