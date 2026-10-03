@@ -11,7 +11,7 @@ test('source discovery orchestrates originals and private candidates without dro
   const mocks = {
     workflow: 'export async function sleep(){}',
     'workflow/api':
-      'export async function start(_workflow,args){const f=globalThis.__sourceFlow;f.dispatched.push(args[1]);f.dispatchedArgs.push(args);if(f.dispatchError)throw Error("unknown");}',
+      'export async function start(_workflow,args){const f=globalThis.__sourceFlow;f.dispatched.push(args[1]);f.dispatchedArgs.push(args);if(f.dispatchErrors.includes(args[1]))throw Error("unknown");}',
     '../lib/server/automation':
       'export function automationLimits(){return {batch:1000000,daily:5000000,reserve:500000}}',
     '../lib/server/automation-store-access': 'export const automationPool={};',
@@ -29,7 +29,9 @@ test('source discovery orchestrates originals and private candidates without dro
     `,
     '../lib/server/signal-generation': `
       export async function executeGeneration(_owner,request){const f=globalThis.__sourceFlow;if(!f.run.result.generationIds.includes(request.id))throw Error('request id not pinned');f.generated.push(request);if(f.createErrors[request.id])throw Object.assign(Error('private creation rejection'),{code:f.createErrors[request.id],raw:'private-secret'});return {id:f.createdIds[request.id]??request.id,status:'pending'}}
-      export async function queueGeneration(_owner,id){const f=globalThis.__sourceFlow;f.queued.push(id);if(f.queueErrors[id])throw Object.assign(Error('queue failed'),{code:f.queueErrors[id]});return f.queueReceipts[id]??{status:'pending',progress_phase:'queued',progress_at:new Date('2026-10-02T12:00:00.123Z')}}`,
+      export async function queueGeneration(_owner,id){const f=globalThis.__sourceFlow;f.queued.push(id);if(f.queueErrors[id])throw Object.assign(Error('queue failed'),{code:f.queueErrors[id]});return f.queueReceipts[id]??{status:'pending',progress_phase:'queued',progress_at:new Date('2026-10-02T12:00:00.123Z')}}
+      export async function failQueuedGeneration(owner,id,queuedAt){const f=globalThis.__sourceFlow;f.closedQueues.push([owner,id,queuedAt]);if(f.cleanupError)throw Error('cleanup unavailable')}
+    `,
     './signal-generation': 'export async function signalGenerationWorkflow(){}',
     '../lib/server/topic-insight-sandbox':
       'export async function startTopicInsightSandbox(){} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
@@ -69,6 +71,8 @@ test('source discovery orchestrates originals and private candidates without dro
       queued: [],
       dispatched: [],
       dispatchedArgs: [],
+      dispatchErrors: [],
+      closedQueues: [],
       discoveries: 0,
       updates: [],
       failedItems: [],
@@ -109,12 +113,26 @@ test('source discovery orchestrates originals and private candidates without dro
     assert.equal(f.generated[0].action, 'create');
     assert.equal(await automationWorkflow('owner', 'run'), 'already_started_or_finished');
     assert.equal(f.discoveries, 1);
-    f = setup(['https://example.com/a']);
-    f.dispatchError = true;
-    await automationWorkflow('owner', 'run');
-    assert.equal(f.run.status, 'unknown');
+    f = setup(['https://example.com/a', 'https://example.com/b']);
+    f.dispatchErrors = ['item-0'];
+    assert.equal(await automationWorkflow('owner', 'run'), 'completed');
+    assert.equal(f.run.status, 'completed');
+    assert.equal(f.run.result.failed, 1);
     assert.equal(f.run.result.batchId, 'batch-id');
-    assert.deepEqual(f.run.result.generationIds, ['item-0']);
+    assert.deepEqual(f.run.result.generationIds, ['item-0', 'item-1']);
+    assert.deepEqual(f.dispatched, ['item-0', 'item-1']);
+    assert.deepEqual(f.closedQueues, [['owner', 'item-0', '2026-10-02T12:00:00.123Z']]);
+    assert.equal(f.run.charged_microusd, 25000);
+    assert.equal(await automationWorkflow('owner', 'run'), 'already_started_or_finished');
+    assert.deepEqual(f.dispatched, ['item-0', 'item-1'], 'failed dispatch is never replayed');
+    f = setup(['https://example.com/a', 'https://example.com/b']);
+    f.dispatchErrors = ['item-0'];
+    f.cleanupError = true;
+    assert.equal(await automationWorkflow('owner', 'run'), 'failed');
+    assert.equal(f.run.status, 'unknown');
+    assert.equal(f.run.result.failed, 1);
+    assert.deepEqual(f.dispatched, ['item-0', 'item-1']);
+    assert.deepEqual(f.run.result.generationIds, ['item-0', 'item-1']);
     assert.equal(f.run.charged_microusd, 25000);
     f = setup(['https://example.com/a']);
     f.failedItems = ['item-0'];
