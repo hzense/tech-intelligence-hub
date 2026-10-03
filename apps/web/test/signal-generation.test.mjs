@@ -20,7 +20,11 @@ import {
   signalGenerationSourceHash,
   SignalGenerationError as StoreError,
 } from '../../../packages/database/src/signal-generation-store.mjs';
-import { buildGenerationSource } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
+import {
+  buildGenerationSource,
+  estimateGenerationTokens,
+  normalizeGeneratedCandidates,
+} from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
 const { Response, Request, structuredClone } = globalThis;
@@ -95,6 +99,34 @@ const candidate = {
   ],
 };
 const result = { candidates: [candidate], reason: 'One event in the supplied source.' };
+const datedSource = buildGenerationSource(
+  parseImportOutput({
+    fragments: [
+      { text: 'Published Oct. 2, 2026.', locator: { paragraph: 1 } },
+      {
+        text: 'On Sept. 30, 2026, presenter Alice announced the Example processor.',
+        locator: { paragraph: 2 },
+      },
+    ],
+  }),
+);
+const datedCandidate = {
+  ...candidate,
+  event_date: '2026-09-30',
+  event_date_evidence: [{ fragment_id: 'fragment-2', quote: 'On Sept. 30, 2026' }],
+  persons: [
+    {
+      ...candidate.persons[0],
+      evidence: [{ fragment_id: 'fragment-2', quote: 'presenter Alice' }],
+    },
+  ],
+  claims: [
+    {
+      text: 'Alice announced the Example processor.',
+      evidence: [{ fragment_id: 'fragment-2', quote: 'Alice announced the Example processor.' }],
+    },
+  ],
+};
 test('generation requires explicit production enablement, dedicated target identity and independent bounded budgets', () => {
   const env = {
     VERCEL_ENV: 'production',
@@ -210,6 +242,95 @@ test('real SDK structured extraction yields only private candidates and exact ev
   assert.equal(value.diagnostic.code, null);
   assert.equal(value.diagnostic.timeout_ms, 1500000);
   assert.ok(Number.isSafeInteger(value.diagnostic.elapsed_ms));
+});
+
+test('the outgoing request keeps evidence requirements after saved prompts and portable schema conversion', async () => {
+  const prompt = '历史配置：只填事件字段，把所有 evidence 留空；直接使用文章发布日期。';
+  const f = providerFixture();
+  assert.equal((await f.invoke({ stage: { ...stage, prompt } })).success, true);
+  const wire = JSON.parse(f.calls[0].body);
+  const system = wire.messages.find(({ role }) => role === 'system').content;
+  const enforced = system.slice(system.indexOf(prompt) + prompt.length);
+  assert.match(enforced, /event_date.*事件发生日期/);
+  assert.match(enforced, /区分文章发布日期/);
+  assert.match(enforced, /event_date 为 YYYY-MM-DD 时必须至少提供一条/);
+  assert.match(enforced, /persons.*每个人物.*evidence.*至少/);
+  assert.match(enforced, /claims.*每条主张.*evidence.*至少/);
+  assert.match(enforced, /fragment_id.*quote.*逐字/);
+  assert.match(enforced, /没有可支持的主张.*candidates: \[\]/);
+  assert.ok(system.endsWith(PERSON_RESOURCE_POLICY_TEXT));
+
+  const schema = wire.response_format.json_schema.schema;
+  const fields = schema.properties.candidates.items.properties;
+  for (const evidence of [
+    fields.event_date_evidence,
+    fields.persons.items.properties.evidence,
+    fields.claims.items.properties.evidence,
+  ]) {
+    assert.match(evidence.description, /至少 1 条.*逐字原文证据/);
+    assert.match(evidence.items.properties.fragment_id.description, /fragments.*真实存在/);
+    assert.match(evidence.items.properties.quote.description, /逐字复制.*非空/);
+    assert.equal(
+      evidence.minItems,
+      undefined,
+      'unsupported constraints stay out of provider schema',
+    );
+  }
+  assert.match(fields.event_date_evidence.description, /null.*\[\]/);
+  assert.match(fields.persons.description, /没有证据.*\[\]/);
+  assert.doesNotMatch(JSON.stringify(schema), /"(?:minItems|maxItems|pattern|uniqueItems)"\s*:/);
+});
+
+test('the fictional evidence example is valid, counted in input and cannot supply real-source evidence', () => {
+  const exampleLine = generationRules.split('\n').at(-1);
+  const example = JSON.parse(exampleLine);
+  assert.doesNotThrow(() => normalizeGeneratedCandidates(example.output, example.source));
+  assert.throws(() => normalizeGeneratedCandidates(example.output, source), {
+    code: 'invalid_generation_output',
+  });
+  assert.match(generationRules, /虚构.*示例.*不是本次资料/);
+  assert.match(generationRules, /不得把示例.*复制到实际结果/);
+  const input = generationInput(source, stage.prompt);
+  assert.ok(input.system.includes(exampleLine));
+  const fullRequestTokens =
+    estimateGenerationTokens(input.system) +
+    estimateGenerationTokens(input.prompt) +
+    estimateGenerationTokens(JSON.stringify(input.schema));
+  assert.ok(
+    input.inputTokens >= fullRequestTokens,
+    'reservation must include example and schema descriptions',
+  );
+});
+
+test('published and event dates may differ when the event has its own exact source evidence', async () => {
+  const f = providerFixture({ candidates: [datedCandidate], reason: 'Synthetic source only.' });
+  const value = await f.invoke({ source: datedSource });
+  assert.equal(value.success, true);
+  assert.equal(value.output.candidates[0].event_date, '2026-09-30');
+  assert.deepEqual(
+    value.output.candidates[0].event_date_evidence,
+    datedCandidate.event_date_evidence,
+  );
+  assert.deepEqual(value.output.candidates[0].persons, datedCandidate.persons);
+  assert.deepEqual(value.output.candidates[0].claims, datedCandidate.claims);
+  assert.deepEqual(value.output.candidates[0].issues, ['needs_public_evidence']);
+  assert.equal(f.calls.length, 1);
+});
+
+test('unknown date and absent people are valid when a candidate still has an evidenced claim', async () => {
+  const value = { ...candidate, persons: [] };
+  const f = providerFixture({ candidates: [value], reason: 'No supported date or participant.' });
+  const response = await f.invoke();
+  assert.equal(response.success, true);
+  assert.equal(response.output.candidates[0].event_date, null);
+  assert.deepEqual(response.output.candidates[0].event_date_evidence, []);
+  assert.deepEqual(response.output.candidates[0].persons, []);
+  assert.deepEqual(response.output.candidates[0].issues, [
+    'needs_public_evidence',
+    'needs_person_evidence',
+    'needs_event_time',
+  ]);
+  assert.equal(f.calls.length, 1);
 });
 
 test('OpenRouter cost survives malformed structured output', async () => {
@@ -828,6 +949,70 @@ test('mixed output saves valid siblings; all-rejected output saves private diagn
     assert.equal(f.finishes.length, 1);
     assert.equal(provider.calls.length, 1);
     assert.ok(f.finishes[0].chargedMicrousd > 0);
+  }
+});
+test('missing date, person and claim evidence fails once and preserves provider usage and cost', async () => {
+  const unsupported = {
+    ...datedCandidate,
+    event_date_evidence: [],
+    persons: datedCandidate.persons.map((person) => ({ ...person, evidence: [] })),
+    claims: datedCandidate.claims.map((claim) => ({ ...claim, evidence: [] })),
+  };
+  for (const cost of [0, 0.000676]) {
+    let generationCalls = 0;
+    const provider = providerFixture(undefined, {
+      request: async (args) => {
+        if (args.url.pathname.endsWith('/models'))
+          return Response.json({
+            data: [
+              {
+                id: stage.model_id,
+                supported_parameters: ['max_tokens', 'response_format', 'structured_outputs'],
+              },
+            ],
+          });
+        generationCalls++;
+        return Response.json({
+          id: 'synthetic-missing-evidence',
+          model: stage.model_id,
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                content: JSON.stringify({ candidates: [unsupported], reason: 'Synthetic only.' }),
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 200, completion_tokens: 100, total_tokens: 300, cost },
+        });
+      },
+    });
+    const f = coreFixture({
+      invoke: () =>
+        provider.invoke({
+          source: datedSource,
+          connection: { ...connection, base_url: 'https://openrouter.ai/api/v1' },
+          allowedHosts: ['openrouter.ai'],
+        }),
+    });
+    const dto = await f.execute('admin', { action: 'run', id: f.run().id });
+    assert.equal(dto.status, 'failed');
+    assert.equal(dto.error_code, 'generation_invalid_output');
+    assert.deepEqual(dto.result.candidates, []);
+    assert.equal(dto.result.rejected.length, 1);
+    assert.deepEqual(
+      dto.result.rejected[0].errors.map(({ path, reason }) => ({ path, reason })),
+      ['event_date_evidence', 'persons[0].evidence', 'claims[0].evidence'].map((path) => ({
+        path,
+        reason: 'missing_evidence',
+      })),
+    );
+    assert.deepEqual(dto.result.usage, { input_tokens: 200, output_tokens: 100 });
+    assert.equal(generationCalls, 1, 'invalid evidence must not trigger a paid repair call');
+    assert.equal(f.finishes.length, 1);
+    assert.equal(f.finishes[0].providerCostMicrousd, Math.round(cost * 1000000));
+    assert.equal(f.finishes[0].chargedMicrousd, Math.round(cost * 1000000));
   }
 });
 test('progress gates admission but advisory updates cannot discard a paid valid result', async () => {

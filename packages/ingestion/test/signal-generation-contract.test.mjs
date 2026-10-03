@@ -317,6 +317,39 @@ test('missing people or event date stay explicit instead of being synthesized', 
   assert.deepEqual(normalize({ candidates: [], reason: '未发现有据事件。' }).candidates, []);
 });
 
+test('published dates do not replace a separately evidenced event date', () => {
+  const source = buildGenerationSource(
+    parseImportOutput({
+      fragments: [
+        { text: '文章发表于 2026-10-02。', locator: { paragraph: 1 } },
+        {
+          text: '2026-09-30，研究作者李明在示例研究所公布合成研究结果。',
+          locator: { paragraph: 2 },
+        },
+      ],
+    }),
+  );
+  const quote = (text) => ({ fragment_id: 'fragment-2', quote: text });
+  const event = {
+    ...candidate(),
+    event_date: '2026-09-30',
+    event_date_evidence: [quote('2026-09-30')],
+    persons: [{ ...candidate().persons[0], evidence: [quote('研究作者李明')] }],
+    claims: [{ text: '公布合成研究结果', evidence: [quote('公布合成研究结果')] }],
+  };
+  const value = { candidates: [event], reason: '合成测试资料。' };
+  const result = normalizeGeneratedCandidates(value, source);
+  assert.equal(result.candidates[0].event_date, '2026-09-30');
+  assert.deepEqual(result.candidates[0].event_date_evidence, event.event_date_evidence);
+  assert.deepEqual(result.candidates[0].issues, ['needs_public_evidence']);
+  // Existing source dates must never be used to fabricate missing model references.
+  event.event_date_evidence = [];
+  const rejected = assessGeneratedCandidates(value, source);
+  assert.deepEqual(rejected.candidates, []);
+  assert.equal(rejected.rejected[0].errors[0].path, 'event_date_evidence');
+  assert.equal(rejected.rejected[0].errors[0].reason, 'missing_evidence');
+});
+
 test('every reference must resolve to an exact bounded substring, not a fabricated quotation', () => {
   for (const evidence of [
     [],
@@ -461,6 +494,7 @@ test('complete provider schema stays within the supported structured-output subs
     'minLength',
     'maxLength',
     'pattern',
+    'description',
   ]);
   function visit(schema) {
     for (const key of Object.keys(schema))

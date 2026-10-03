@@ -38,11 +38,24 @@ export const REJECTED_CANDIDATES_REASON = '候选校验未全部通过；请查�
 
 const referenceSchema = {
   type: 'object',
+  description: '一条来自本次 untrusted_source 的逐字原文证据，必须同时填写片段编号和引文。',
   additionalProperties: false,
   required: ['fragment_id', 'quote'],
   properties: {
-    fragment_id: { type: 'string', minLength: 1, maxLength: 30 },
-    quote: { type: 'string', minLength: 1, maxLength: GENERATION_LIMITS.quoteCharacters },
+    fragment_id: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 30,
+      description:
+        '使用本次输入 fragments 中真实存在的 id，例如 fragment-1；不要填写网址或自编编号。',
+    },
+    quote: {
+      type: 'string',
+      minLength: 1,
+      maxLength: GENERATION_LIMITS.quoteCharacters,
+      description:
+        '从对应片段 text 连续逐字复制的非空短引，保留原语言、大小写和标点；不要翻译、改写或加省略号。',
+    },
   },
 };
 const referencesSchema = { type: 'array', maxItems: 8, items: referenceSchema };
@@ -53,6 +66,8 @@ export const generationCandidateJsonSchema = Object.freeze({
   properties: {
     candidates: {
       type: 'array',
+      description:
+        '仅保留有原文主张证据的技术事件；没有可支持的主张时返回 []，不要生成无证据候选。',
       maxItems: GENERATION_LIMITS.candidates,
       items: {
         type: 'object',
@@ -70,6 +85,8 @@ export const generationCandidateJsonSchema = Object.freeze({
           title: { type: 'string', minLength: 1, maxLength: GENERATION_LIMITS.titleCharacters },
           summary: { type: 'string', minLength: 1, maxLength: GENERATION_LIMITS.summaryCharacters },
           event_date: {
+            description:
+              '事件实际发生的 YYYY-MM-DD 日期，不是默认采用文章发布日期。需由原文及上下文支持完整年月日；无法确定则为 null。',
             anyOf: [
               // Provider regex engines reject lookaround. Calendar validity and
               // year zero remain enforced by eventDate() after generation.
@@ -77,9 +94,15 @@ export const generationCandidateJsonSchema = Object.freeze({
               { type: 'null' },
             ],
           },
-          event_date_evidence: referencesSchema,
+          event_date_evidence: {
+            ...referencesSchema,
+            description:
+              'event_date 非 null 时必须至少 1 条逐字原文证据，支持事件日期的年月日；若年份来自另一处上下文，一并引用。只有 event_date 为 null 时才允许 []。',
+          },
           persons: {
             type: 'array',
+            description:
+              '只列有原文证据的事件参与人物。没有证据则返回 []；不得保留 evidence 为空的人物。',
             maxItems: 12,
             items: {
               type: 'object',
@@ -91,7 +114,12 @@ export const generationCandidateJsonSchema = Object.freeze({
                 organization: {
                   anyOf: [{ type: 'string', minLength: 1, maxLength: 200 }, { type: 'null' }],
                 },
-                evidence: { ...referencesSchema, minItems: 1 },
+                evidence: {
+                  ...referencesSchema,
+                  minItems: 1,
+                  description:
+                    '每个人物必须至少 1 条逐字原文证据，支持姓名、角色以及填写的所属组织；不得返回 []。无依据时从 persons 中省略该人物。',
+                },
               },
             },
           },
@@ -103,6 +131,8 @@ export const generationCandidateJsonSchema = Object.freeze({
           },
           claims: {
             type: 'array',
+            description:
+              '每条候选必须至少 1 条有原文证据的核心事实主张；没有可支持主张时省略整条候选。',
             minItems: 1,
             maxItems: 12,
             items: {
@@ -111,7 +141,12 @@ export const generationCandidateJsonSchema = Object.freeze({
               required: ['text', 'evidence'],
               properties: {
                 text: { type: 'string', minLength: 1, maxLength: 1200 },
-                evidence: { ...referencesSchema, minItems: 1 },
+                evidence: {
+                  ...referencesSchema,
+                  minItems: 1,
+                  description:
+                    '每条主张必须至少 1 条支持该主张的逐字原文证据；不得返回 []。无依据时省略该主张，全部主张无依据时省略整条候选。',
+                },
               },
             },
           },
