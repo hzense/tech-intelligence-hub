@@ -6,12 +6,19 @@ import { fileURLToPath, URL } from 'node:url';
 import process from 'node:process';
 import { build } from 'esbuild';
 import { chromium, expect } from '@playwright/test';
+import { automationStableId } from '../../../packages/database/src/automation-contract.mjs';
 
 const enabled = process.env.HZENSE_SIGNAL_GENERATION_BROWSER_TEST === '1';
 const storageKey = 'hzense.signal-generation.pending.v1';
 const recoveryKey = 'hzense.signal-generation.rejection.v1';
-const batchId = '11111111-1111-4111-8111-111111111111';
+const automationRunId = '07cdf704-3632-4a41-821c-e79445ca0374';
+const batchId = automationStableId({ runId: automationRunId, kind: 'import' });
 const itemId = '22222222-2222-4222-8222-222222222222';
+const automationGenerationId = automationStableId({
+  runId: automationRunId,
+  itemId,
+  kind: 'generation',
+});
 const profileId = '33333333-3333-4333-8333-333333333333';
 const pendingItemId = '44444444-4444-4444-8444-444444444444';
 const smallItemId = '66666666-6666-4666-8666-666666666666';
@@ -24,6 +31,8 @@ test(
   'private generation UI: explicit consent, safe output and persistent request recovery',
   { skip: !enabled },
   async (t) => {
+    assert.equal(batchId, 'bcab3ce0-72b6-bc06-5db3-c001841601de');
+    assert.equal(automationGenerationId, '127973fb-4efd-679b-d66f-87bbba11e214');
     const compiled = await build({
       stdin: {
         contents: `import {createRoot} from 'react-dom/client';import {AdminSignalGeneration} from './components/admin-signal-generation';import {GenerationLiveDetail} from './components/generation-live-detail';createRoot(document.getElementById('root')).render(location.search.includes('live-detail') ? <GenerationLiveDetail initialRun={{id:'77777777-7777-4777-8777-777777777777',status:'running',progress_phase:'generating'}}/> : <AdminSignalGeneration configured={!location.search.includes('off')} historyConfigured={!location.search.includes('nohistory')}/>);`,
@@ -1086,21 +1095,36 @@ test(
     );
 
     await t.test(
-      'corrupt session state or failed persistence closes creation without POST',
+      'corrupt state, non-RFC profile IDs or failed persistence close creation without POST',
       async () => {
-        const page = await newPage();
-        await page.addInitScript(
-          (key) => globalThis.sessionStorage.setItem(key, '{invalid'),
-          storageKey,
-        );
-        await page.goto(origin);
-        await selectInput(page);
-        await page.getByRole('checkbox').check();
-        await expect(
-          page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }),
-        ).toBeDisabled();
-        assert.equal(commands.length, 0);
-        await page.close();
+        for (const raw of [
+          '{invalid',
+          JSON.stringify({
+            id: automationGenerationId,
+            batchId,
+            itemId,
+            profileId: automationGenerationId,
+            profileRevision: 2,
+          }),
+        ]) {
+          const page = await newPage();
+          await page.addInitScript(
+            ({ key, value }) => globalThis.sessionStorage.setItem(key, value),
+            { key: storageKey, value: raw },
+          );
+          await page.goto(origin);
+          await selectInput(page);
+          await page.getByRole('checkbox').check();
+          await expect(
+            page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }),
+          ).toBeDisabled();
+          assert.equal(commands.length, 0);
+          assert.equal(
+            await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+            raw,
+          );
+          await page.close();
+        }
         const blocked = await newPage();
         await blocked.addInitScript(() => {
           globalThis.Storage.prototype.setItem = () => {
@@ -1169,10 +1193,10 @@ test(
     );
 
     await t.test(
-      'an existing task must be selected and consent renewed for its recipient',
+      'automation task IDs survive pending selection, session recovery and detail without paid calls',
       async () => {
         const page = await newPage();
-        const id = '55555555-5555-4555-8555-555555555555';
+        const id = automationGenerationId;
         runs = [
           {
             id,
@@ -1195,12 +1219,46 @@ test(
         await expect(page.getByRole('checkbox')).not.toBeChecked();
         await expect(page.getByText('资料发送至：synthetic-provider.example')).toBeVisible();
         assert.equal(commands.length, 0);
+        const expectedRequest = { id, batchId, itemId, profileId, profileRevision: 2 };
+        assert.deepEqual(
+          await page.evaluate(
+            (key) => JSON.parse(globalThis.sessionStorage.getItem(key)),
+            storageKey,
+          ),
+          expectedRequest,
+        );
+        await page.reload();
+        await expect(page.getByText('已恢复原请求 ID。', { exact: false })).toBeVisible();
+        await expect(page.getByLabel('导入已解析资料')).toBeDisabled();
+        await expect(page.getByRole('checkbox')).not.toBeChecked();
+        await expect(
+          page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }),
+        ).toBeDisabled();
+        assert.equal(commands.length, 0);
+        assert.deepEqual(
+          await page.evaluate(
+            (key) => JSON.parse(globalThis.sessionStorage.getItem(key)),
+            storageKey,
+          ),
+          expectedRequest,
+        );
+        await expect(page.getByRole('link', { name: '任务详情', exact: true })).toHaveAttribute(
+          'href',
+          `/admin/signal-generation/${id}`,
+        );
+        await page.getByText('更多操作', { exact: true }).click();
+        await page.getByRole('button', { name: '查看任务与私有候选' }).click();
+        await expect(page.getByText('已查询原任务，不触发 AI 调用。')).toBeVisible();
+        assert.deepEqual(commands, [{ action: 'detail', id }]);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
         await expect(
           page.getByRole('table').getByText('生成完成（私有候选）', { exact: true }),
         ).toBeVisible();
-        assert.deepEqual(commands, [{ action: 'run', id }]);
+        assert.deepEqual(commands, [
+          { action: 'detail', id },
+          { action: 'run', id },
+        ]);
         await page.close();
       },
     );
@@ -1209,7 +1267,7 @@ test(
       'semantic duplicates adopt the canonical task without generating or getting stuck',
       async () => {
         const page = await newPage();
-        const canonicalId = '77777777-7777-4777-8777-777777777777';
+        const canonicalId = automationGenerationId;
         runs = [
           {
             id: canonicalId,
@@ -1359,11 +1417,11 @@ test(
       );
     }
     await t.test(
-      'visible published task can prepare and create a retry without deleting or executing',
+      'visible automation task retains its non-RFC retryOf through creation and reload without AI',
       async () => {
         const page = await newPage();
         const parent = {
-          id: pendingItemId,
+          id: automationGenerationId,
           status: 'completed',
           can_delete: false,
           can_retry: true,
@@ -1396,8 +1454,32 @@ test(
         assert.equal(commands[0].action, 'create');
         assert.equal(commands[0].retryOf, parent.id);
         assert.notEqual(commands[0].id, parent.id);
+        const expectedRequest = {
+          id: commands[0].id,
+          batchId,
+          itemId,
+          profileId,
+          profileRevision: 2,
+          retryOf: parent.id,
+        };
+        assert.deepEqual(
+          await page.evaluate(
+            (key) => JSON.parse(globalThis.sessionStorage.getItem(key)),
+            storageKey,
+          ),
+          expectedRequest,
+        );
         assert.deepEqual(parent, before);
         await page.reload();
+        await expect(page.getByText('已恢复原请求 ID。', { exact: false })).toBeVisible();
+        assert.deepEqual(
+          await page.evaluate(
+            (key) => JSON.parse(globalThis.sessionStorage.getItem(key)),
+            storageKey,
+          ),
+          expectedRequest,
+        );
+        assert.equal(commands.length, 1);
         assert.equal(
           commands.filter((command) => ['run', 'delete'].includes(command.action)).length,
           0,

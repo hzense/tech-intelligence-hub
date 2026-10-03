@@ -7,6 +7,7 @@ import * as store from '../../../../packages/database/src/candidate-enrichment-s
 import { assertCandidateEnrichmentRole } from '../../../../packages/database/src/signal-generation-role.mjs';
 import { signalGenerationProfileIdentity } from '../../../../packages/database/src/signal-generation-store.mjs';
 import { aiUuid } from '../../../../packages/database/src/ai-config-contract.mjs';
+import { generationRecordId } from '../signal-generation-id';
 import { buildCandidateReview } from '../candidate-review';
 import { enrichmentRules, invokeCandidateEnrichment } from '../candidate-enrichment-provider';
 import { generationCost, GenerationError } from '../signal-generation-core';
@@ -108,7 +109,7 @@ function request(value: unknown) {
     throw new GenerationError('invalid_request');
   return {
     id: aiUuid(body.id),
-    runId: aiUuid(body.runId),
+    runId: generationRecordId(body.runId),
     candidateIndex: Number(body.candidateIndex),
     materialHash: body.materialHash,
   };

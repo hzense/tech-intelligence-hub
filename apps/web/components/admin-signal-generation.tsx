@@ -11,6 +11,7 @@ import controls from './admin-controls.module.css';
 import { AdminGenerationPreflight } from './admin-generation-preflight';
 import { PrivateResult } from './private-generation-result';
 import { GenerationProgress, generationIsActive } from './generation-progress';
+import { isGenerationRecordId } from '../lib/signal-generation-id';
 
 type Profile = {
   id: string;
@@ -76,7 +77,7 @@ type CreateRejection = {
   code: (typeof rejectionCodes)[number];
   previousId?: string;
 };
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const profileUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const statuses: Record<GenerationRun['status'], string> = {
   pending: '待执行',
   running: '生成中',
@@ -162,10 +163,10 @@ function pendingRequest(value: unknown): PendingRequest | null {
     Object.keys(row).sort().join(',') !==
       `batchId,id,itemId,profileId,profileRevision${Object.hasOwn(row, 'retryOf') ? ',retryOf' : ''}` ||
     (Object.hasOwn(row, 'retryOf') &&
-      (typeof row.retryOf !== 'string' || !uuid.test(row.retryOf) || row.retryOf === row.id)) ||
-    !['id', 'batchId', 'itemId', 'profileId'].every(
-      (key) => typeof row[key] === 'string' && uuid.test(row[key]),
-    ) ||
+      (!isGenerationRecordId(row.retryOf) || row.retryOf === row.id)) ||
+    !['id', 'batchId', 'itemId'].every((key) => isGenerationRecordId(row[key])) ||
+    typeof row.profileId !== 'string' ||
+    !profileUuid.test(row.profileId) ||
     typeof row.profileRevision !== 'number' ||
     !Number.isSafeInteger(row.profileRevision) ||
     row.profileRevision < 1
@@ -202,9 +203,7 @@ function readRejection(request: PendingRequest): CreateRejection | null {
       !pendingRequest(value.request) ||
       JSON.stringify(value.request) !== JSON.stringify(request) ||
       (Object.hasOwn(value, 'previousId') &&
-        (value.code !== 'task_deleted' ||
-          typeof value.previousId !== 'string' ||
-          !uuid.test(value.previousId)))
+        (value.code !== 'task_deleted' || !isGenerationRecordId(value.previousId)))
     )
       return null;
     return value;
@@ -264,9 +263,7 @@ async function requestApi(body?: unknown, signal?: AbortSignal) {
     throw new SafeRequestError(
       knownErrorMessage(result?.error) ? result.error : 'request_failed',
       response.status,
-      result?.error === 'task_deleted' &&
-        typeof result.previous_id === 'string' &&
-        uuid.test(result.previous_id)
+      result?.error === 'task_deleted' && isGenerationRecordId(result.previous_id)
         ? result.previous_id
         : undefined,
     );
@@ -567,8 +564,7 @@ export function AdminSignalGeneration({
       }
       if (
         !run ||
-        typeof run.id !== 'string' ||
-        !uuid.test(run.id) ||
+        !isGenerationRecordId(run.id) ||
         run.batch_id !== request.batchId ||
         run.item_id !== request.itemId ||
         run.profile_id !== request.profileId ||

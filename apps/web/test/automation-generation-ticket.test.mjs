@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 import { readFile } from 'node:fs/promises';
-import { URL } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import { Buffer } from 'node:buffer';
 
 // Compose the real automation workflow, child workflow and Sandbox admission.
@@ -90,7 +90,11 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
     'server-only': 'empty',
   };
   const bundled = await build({
-    stdin: { contents: sources.automation, loader: 'ts' },
+    stdin: {
+      contents: sources.automation,
+      loader: 'ts',
+      resolveDir: fileURLToPath(new URL('../workflows', import.meta.url)),
+    },
     bundle: true,
     write: false,
     format: 'esm',

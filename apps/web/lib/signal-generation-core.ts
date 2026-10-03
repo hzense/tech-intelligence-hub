@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { isDeepStrictEqual } from 'node:util';
 import { aiUuid } from '../../../packages/database/src/ai-config-contract.mjs';
+import { generationRecordId } from './signal-generation-id.ts';
 import {
   signalGenerationSourceHash,
   signalGenerationProfileIdentity,
@@ -168,7 +169,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       fields.some((key) => !(key in body))
     )
       return fail();
-    const id = aiUuid(body.id);
+    const id = generationRecordId(body.id);
     if (body.action === 'create') {
       if (
         body.consent !== true ||
@@ -176,10 +177,10 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
         Number(body.profileRevision) < 1
       )
         return fail();
-      const batchId = aiUuid(body.batchId),
-        itemId = aiUuid(body.itemId),
+      const batchId = generationRecordId(body.batchId),
+        itemId = generationRecordId(body.itemId),
         profileId = aiUuid(body.profileId);
-      const retryOf = Object.hasOwn(body, 'retryOf') ? aiUuid(body.retryOf) : undefined;
+      const retryOf = Object.hasOwn(body, 'retryOf') ? generationRecordId(body.retryOf) : undefined;
       const { fence, output } = await deps.source(owner, batchId, itemId, {
         requireCanonical: true,
       });

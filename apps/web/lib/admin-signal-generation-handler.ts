@@ -1,6 +1,7 @@
 import { GenerationError } from './signal-generation-core.ts';
 import { SignalGenerationError } from '../../../packages/database/src/signal-generation-store.mjs';
-import { AiConfigError, aiUuid } from '../../../packages/database/src/ai-config-contract.mjs';
+import { AiConfigError } from '../../../packages/database/src/ai-config-contract.mjs';
+import { generationRecordId, GenerationRecordIdError } from './signal-generation-id.ts';
 import { ImportTaskError } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { SignalGenerationError as GenerationContractError } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { importResponse, readImportJSON, ImportIOError } from './import-io.ts';
@@ -59,7 +60,7 @@ export function createGenerationHandler(deps: {
         if ([...url.searchParams.keys()].join(',') !== 'id' || !deps.detail)
           throw new GenerationError('invalid_request');
         return importResponse({
-          run: await deps.detail(session.user.id, aiUuid(url.searchParams.get('id'))),
+          run: await deps.detail(session.user.id, generationRecordId(url.searchParams.get('id'))),
         });
       }
       if (url.search || url.hash) return importResponse({ error: 'invalid_request' }, 400);
@@ -74,7 +75,10 @@ export function createGenerationHandler(deps: {
         )
           throw new GenerationError('invalid_request');
         if (!deps.enqueue) throw new GenerationError('not_configured');
-        return importResponse({ run: await deps.enqueue(session.user.id, aiUuid(body.id)) }, 202);
+        return importResponse(
+          { run: await deps.enqueue(session.user.id, generationRecordId(body.id)) },
+          202,
+        );
       }
       if (body && typeof body === 'object' && 'action' in body && body.action === 'detail') {
         if (
@@ -83,7 +87,7 @@ export function createGenerationHandler(deps: {
           !('id' in body)
         )
           throw new GenerationError('invalid_request');
-        const id = aiUuid(body.id);
+        const id = generationRecordId(body.id);
         if (!deps.detail) throw new GenerationError('not_configured');
         return importResponse({ run: await deps.detail(session.user.id, id) });
       }
@@ -95,7 +99,7 @@ export function createGenerationHandler(deps: {
         )
           throw new GenerationError('invalid_request');
         if (!deps.delete) throw new GenerationError('not_configured');
-        return importResponse(await deps.delete(session.user.id, aiUuid(body.id)));
+        return importResponse(await deps.delete(session.user.id, generationRecordId(body.id)));
       }
       if (
         body &&
@@ -110,6 +114,7 @@ export function createGenerationHandler(deps: {
     } catch (error) {
       const trusted =
         error instanceof GenerationError ||
+        error instanceof GenerationRecordIdError ||
         error instanceof SignalGenerationError ||
         error instanceof GenerationContractError ||
         error instanceof AiConfigError ||

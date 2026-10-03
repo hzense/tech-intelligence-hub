@@ -1,4 +1,4 @@
-import { aiUuid } from '../../../packages/database/src/ai-config-contract.mjs';
+import { generationRecordId } from './signal-generation-id.ts';
 import { inspectGenerationSource } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { GenerationError, type GenerationDependencies } from './signal-generation-core.ts';
 
@@ -12,8 +12,8 @@ export function createGenerationSourceInspector(read: GenerationDependencies['so
       body.action !== 'inspect_source'
     )
       throw new GenerationError('invalid_request');
-    const batchId = aiUuid(body.batchId),
-      itemId = aiUuid(body.itemId);
+    const batchId = generationRecordId(body.batchId),
+      itemId = generationRecordId(body.itemId);
     const { fence, output } = await read(owner, batchId, itemId);
     return { batchId, itemId, fence, ...inspectGenerationSource(output) };
   };

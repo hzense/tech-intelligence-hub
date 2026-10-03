@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { URL } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import { Buffer } from 'node:buffer';
 import { build } from 'esbuild';
 
@@ -24,18 +24,22 @@ test('source discovery orchestrates originals and private candidates without dro
     `,
     '../lib/server/source-discovery': `export async function discoverSources(){const f=globalThis.__sourceFlow;f.discoveries++;f.run.result={discovery:{articles:f.urls.map(url=>({url,title:'原文',publishedAt:'2026-09-30'}))},discoveryCostMicrousd:25000,discoveryCostSource:'provider'};return f.urls;}`,
     '../lib/server/import-service': `
-      export async function executeImportAdmin(_owner,_method,body){const f=globalThis.__sourceFlow;f.imports.push(body);return {id:'batch-id',items:f.urls.map((_url,i)=>({id:'item-'+i,status:body.action==='detail'?(f.readbackStates['item-'+i]??'unknown'):'pending',kind:'url'}))}}
+      export async function executeImportAdmin(_owner,_method,body){const f=globalThis.__sourceFlow;f.imports.push(body);return {id:'batch-id',items:f.urls.map((_url,i)=>({id:f.itemIds?.[i]??'item-'+i,status:body.action==='detail'?(f.readbackStates[f.itemIds?.[i]??'item-'+i]??'unknown'):'pending',kind:'url'}))}}
       export async function runImportItem(_owner,_batch,id){const f=globalThis.__sourceFlow;f.importAttempts.push(id);if(f.thrownItems.includes(id))throw Error('unconfirmed');return {status:f.returnedStates[id]??(f.failedItems.includes(id)?'failed':'completed')}}
     `,
     '../lib/server/signal-generation': `
-      export async function executeGeneration(_owner,request){const f=globalThis.__sourceFlow;if(!f.run.result.generationIds.includes(request.id))throw Error('request id not pinned');f.generated.push(request);if(f.createErrors[request.id])throw Object.assign(Error('creation rejected'),{code:f.createErrors[request.id]});return {id:f.createdIds[request.id]??request.id,status:'pending'}}
+      export async function executeGeneration(_owner,request){const f=globalThis.__sourceFlow;if(!f.run.result.generationIds.includes(request.id))throw Error('request id not pinned');f.generated.push(request);if(f.createErrors[request.id])throw Object.assign(Error('private creation rejection'),{code:f.createErrors[request.id],raw:'private-secret'});return {id:f.createdIds[request.id]??request.id,status:'pending'}}
       export async function queueGeneration(_owner,id){const f=globalThis.__sourceFlow;f.queued.push(id);if(f.queueErrors[id])throw Object.assign(Error('queue failed'),{code:f.queueErrors[id]});return f.queueReceipts[id]??{status:'pending',progress_phase:'queued',progress_at:new Date('2026-10-02T12:00:00.123Z')}}`,
     './signal-generation': 'export async function signalGenerationWorkflow(){}',
     '../lib/server/topic-insight-sandbox':
       'export async function startTopicInsightSandbox(){} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
   };
   const fixture = await build({
-    stdin: { contents: source, loader: 'ts' },
+    stdin: {
+      contents: source,
+      loader: 'ts',
+      resolveDir: fileURLToPath(new URL('../workflows', import.meta.url)),
+    },
     bundle: true,
     write: false,
     format: 'esm',
@@ -198,6 +202,57 @@ test('source discovery orchestrates originals and private candidates without dro
     assert.deepEqual(f.run.result.generationIds, ['item-1']);
     assert.deepEqual(f.queued, ['item-1'], 'do not commandeer a semantically deduplicated task');
     assert.deepEqual(f.dispatched, ['item-1']);
+
+    const itemIds = [
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      '33333333-3333-4333-8333-333333333333',
+    ];
+    f = setup(itemIds.map((_, index) => `https://example.com/${index}`));
+    f.itemIds = itemIds;
+    for (const itemId of itemIds) f.createErrors[itemId] = 'invalid_request';
+    await automationWorkflow('owner', 'run');
+    assert.equal(f.run.status, 'failed');
+    assert.equal(f.run.phase, 'source_failed');
+    assert.equal(f.run.result.failed, 3);
+    assert.deepEqual(
+      f.run.result.sourceFailures,
+      itemIds.map((itemId) => ({
+        itemId,
+        phase: 'create_candidate',
+        code: 'invalid_request',
+      })),
+    );
+    assert.deepEqual(f.run.result.generationIds, []);
+    assert.deepEqual(f.queued, []);
+    assert.deepEqual(f.dispatched, []);
+    assert.equal(f.run.charged_microusd, 25000);
+    assert.equal(f.generated.length, 3, 'each confirmed refusal is attempted only once');
+    assert.equal(JSON.stringify(f.run.result).includes('private'), false);
+
+    // A later ambiguous create retains earlier confirmed receipts without
+    // presenting that unknown outcome as another confirmed source failure.
+    for (const unknownCode of ['commit_unknown', 'private-code', { toString: null }]) {
+      f = setup(['https://example.com/a', 'https://example.com/b']);
+      f.itemIds = itemIds.slice(0, 2);
+      f.createErrors[itemIds[0]] = 'profile_not_ready';
+      f.createErrors[itemIds[1]] = unknownCode;
+      await automationWorkflow('owner', 'run');
+      assert.equal(f.run.status, 'unknown');
+      assert.deepEqual(f.run.result.sourceFailures, [
+        {
+          itemId: itemIds[0],
+          phase: 'create_candidate',
+          code: 'profile_not_ready',
+        },
+      ]);
+      assert.deepEqual(f.run.result.generationIds, [itemIds[1]]);
+      assert.equal(f.generated.length, 2);
+      assert.deepEqual(f.queued, []);
+      assert.deepEqual(f.dispatched, []);
+      assert.equal(f.run.charged_microusd, 25000);
+      assert.equal(JSON.stringify(f.run.result).includes('private'), false);
+    }
   } finally {
     delete globalThis.__sourceFlow;
   }
