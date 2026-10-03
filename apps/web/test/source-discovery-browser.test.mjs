@@ -242,7 +242,7 @@ test(
         { id: generationId, status: 'pending', progress_phase: 'queued', candidate_count: null },
       ]);
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
-      await expect(page.getByRole('cell', { name: '候选生成中', exact: false })).toBeVisible();
+      await expect(page.getByRole('cell', { name: '候选排队中', exact: false })).toBeVisible();
       await page.getByLabel('配置名称', { exact: true }).fill('保留未保存修改');
       await page.getByText('执行条件（配置检查，不调用 AI）', { exact: true }).click();
       await expect(page.getByText('信号生成服务：待配置', { exact: true })).toBeVisible();
@@ -250,7 +250,7 @@ test(
       getFailure = true;
       await expect.poll(() => gets, { timeout: 10000 }).toBeGreaterThan(beforeFailure);
       await expect(page.getByRole('alert')).toContainText('自动刷新失败');
-      await expect(page.getByRole('cell', { name: '候选生成中', exact: false })).toBeVisible();
+      await expect(page.getByRole('cell', { name: '候选排队中', exact: false })).toBeVisible();
       getFailure = false;
       run.generationProgress = summarizeAutomationGenerations(run.result, [
         { id: generationId, status: 'completed', progress_phase: 'completed', candidate_count: 3 },

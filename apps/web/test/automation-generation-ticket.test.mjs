@@ -13,6 +13,7 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
     automation: '../workflows/automation.ts',
     generation: '../workflows/signal-generation.ts',
     sandbox: '../lib/server/generation-sandbox.ts',
+    observation: '../lib/server/sandbox-command.ts',
   };
   const sources = Object.fromEntries(
     await Promise.all(
@@ -65,7 +66,7 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
     infrastructure: `
       const sandbox={name:'synthetic',async writeFiles(files){globalThis.__automationTicket.files=files},
         async runCommand(){globalThis.__automationTicket.commands++;return {cmdId:'command'}},
-        async getCommand(){return {exitCode:0}},async stop(){}};
+        async getCommand(){return {exitCode:null,async wait(){return {exitCode:0}}}},async stop(){}};
       export const Sandbox={async create(){globalThis.__automationTicket.allocations++;return sandbox},async get(){return sandbox}};
     `,
     empty: '',
@@ -108,6 +109,8 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
               return args.importer === 'sandbox'
                 ? { path: 'generationStore', namespace: 'fixture' }
                 : { path: 'generation', namespace: 'real' };
+            if (args.path === './sandbox-command')
+              return { path: 'observation', namespace: 'real' };
             if (args.path === '../lib/server/generation-sandbox')
               return { path: 'sandbox', namespace: 'real' };
             const path = mappings[args.path];

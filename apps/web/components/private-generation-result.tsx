@@ -2,6 +2,7 @@ import styles from './admin-signal-generation.module.css';
 import preview from './private-generation-result.module.css';
 import Link from 'next/link';
 import controls from './admin-controls.module.css';
+import { isGenerationValidationDetail } from '../../../packages/ingestion/src/signal-generation-validation-diagnostics.mjs';
 
 function objectRows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
@@ -50,6 +51,22 @@ export function PrivateResult({
     invalid_evidence: '证据缺失、重复或引用未逐字匹配原文片段',
     invalid_candidate_shape: '候选字段缺失、类型错误或包含不允许的字段',
     invalid_field: '字段结构、长度或原文引用不符合约定',
+  };
+  const detailLabels: Record<string, string> = {
+    invalid_type: '字段类型不符合约定',
+    invalid_shape: '字段缺失、对象结构错误或包含不允许的字段',
+    missing_items: '列表缺少必需项目',
+    too_many_items: '列表项目超过数量限制',
+    missing_evidence: '未提供必需的原文证据',
+    missing_value: '文本为空或仅含空白',
+    text_too_long: '文本超过该字段的长度限制',
+    invalid_characters: '文本含不允许的控制字符或无效 Unicode 字符',
+    unknown_fragment: '引用的原文片段编号不存在',
+    quote_mismatch: '引文未逐字匹配所引用的原文片段',
+    duplicate_reference: '同一字段重复引用了相同的片段和引文',
+    duplicate_item: '列表包含重复项目',
+    invalid_date: '日期格式或日历日期无效',
+    unknown_date_has_evidence: '日期未知时，日期证据必须为空数组',
   };
   return (
     <section aria-label="私有候选结果" className={styles.result}>
@@ -217,14 +234,30 @@ export function PrivateResult({
             <div key={index}>
               <h5>原始候选 {typeof entry.index === 'number' ? entry.index + 1 : index + 1}</h5>
               <ul>
-                {objectRows(entry.errors).map((error, errorIndex) => (
-                  <li key={errorIndex}>
-                    {typeof error.field === 'string' ? error.field : '候选'}：
-                    {typeof error.code === 'string' && errorLabels[error.code]
-                      ? errorLabels[error.code]
-                      : '校验未通过'}
-                  </li>
-                ))}
+                {objectRows(entry.errors).map((error, errorIndex) => {
+                  const detailed = isGenerationValidationDetail(
+                    error.field,
+                    error.path,
+                    error.reason,
+                  );
+                  return (
+                    <li key={errorIndex}>
+                      {detailed ? (
+                        <code>{String(error.path)}</code>
+                      ) : typeof error.field === 'string' ? (
+                        error.field
+                      ) : (
+                        '候选'
+                      )}
+                      ：
+                      {detailed
+                        ? detailLabels[String(error.reason)]
+                        : typeof error.code === 'string' && errorLabels[error.code]
+                          ? errorLabels[error.code]
+                          : '校验未通过'}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ))}

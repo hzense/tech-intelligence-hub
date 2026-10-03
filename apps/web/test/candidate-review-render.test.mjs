@@ -113,4 +113,36 @@ test('review renders private evidence safely with confirmation-only publication 
     );
   assert.doesNotMatch(render(undefined), /aria-label="审核候选/);
   assert.doesNotMatch(render({ id: '../invalid', status: 'completed' }), /aria-label="审核候选/);
+
+  const diagnosticHtml = render(undefined, {
+    classification: 'private',
+    validation_version: 1,
+    candidates: [],
+    rejected: [
+      {
+        index: 0,
+        classification: 'private',
+        status: 'rejected',
+        errors: [
+          {
+            field: 'persons',
+            code: 'invalid_field',
+            path: 'persons[1].evidence[0].quote',
+            reason: 'quote_mismatch',
+          },
+          { field: 'title', code: 'title_too_long' },
+          {
+            field: 'claims',
+            code: 'invalid_field',
+            path: 'private-raw-path',
+            reason: 'private-raw-reason',
+          },
+        ],
+      },
+    ],
+  });
+  assert.match(diagnosticHtml, /persons\[1\]\.evidence\[0\]\.quote/);
+  assert.match(diagnosticHtml, /引文未逐字匹配所引用的原文片段/);
+  assert.match(diagnosticHtml, /标题超过 80 个字符/);
+  assert.doesNotMatch(diagnosticHtml, /private-raw/);
 });

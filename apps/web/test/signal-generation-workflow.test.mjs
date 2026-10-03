@@ -46,7 +46,7 @@ test('short steps poll detached work and never replay an uncertain invocation', 
               args.path === 'workflow'
                 ? 'export async function sleep(value){globalThis.__workflowTest.waits.push(value);}'
                 : args.path.endsWith('/signal-generation')
-                  ? 'export async function failQueuedGeneration(owner,id){globalThis.__workflowTest.failed.push([owner,id]);}'
+                  ? "export async function failQueuedGeneration(owner,id,queuedAt){const f=globalThis.__workflowTest;f.failed.push([owner,id,queuedAt]);if(f.row?.status==='pending'&&f.row.queuedAt===queuedAt)f.row.status='failed';}"
                   : "export async function startGenerationSandbox(owner,id,queuedAt){const f=globalThis.__workflowTest;f.calls.push([owner,id,queuedAt]);if(f.startError)throw new Error('secret');return f.noStart?null:{sandboxName:'sandbox',commandId:'command'};} export async function pollGenerationSandbox(handle){const f=globalThis.__workflowTest;f.polls.push(handle);const n=f.next.shift();if(n instanceof Error)throw n;if(f.pollError)throw new Error('query unavailable');return n??f.fallback??'finished';} export async function stopGenerationSandbox(handle){globalThis.__workflowTest.stops.push(handle);}",
           }));
         },
@@ -81,13 +81,14 @@ test('short steps poll detached work and never replay an uncertain invocation', 
     assert.equal(f.polls.length, 2);
     assert.equal(f.calls.length, 1);
     assert.equal(f.stops.length, 1);
-    f = setup({ pollError: true });
+    f = setup({ pollError: true, row: { status: 'pending', queuedAt: 'dispatch' } });
     assert.equal(
       await signalGenerationWorkflow('owner', 'task', 'dispatch'),
       'observation_unconfirmed',
     );
     assert.equal(f.stops.length, 0);
-    assert.equal(f.failed.length, 0);
+    assert.deepEqual(f.failed, [['owner', 'task', 'dispatch']]);
+    assert.equal(f.row.status, 'failed');
     assert.deepEqual(f.calls, [['owner', 'task', 'dispatch']]);
     f = setup({ startError: true });
     await assert.rejects(signalGenerationWorkflow('owner', 'task'), /generation_dispatch_failed/);
@@ -102,6 +103,26 @@ test('short steps poll detached work and never replay an uncertain invocation', 
     assert.equal(f.calls.length, 1);
     assert.equal(f.polls.length, 64);
     assert.equal(f.stops.length, 0);
+    assert.equal(f.failed.length, 1);
+    // Unconfirmed observation cannot overwrite a claim, saved result, cancellation,
+    // or a later dispatch even when the original workflow reaches its deadline.
+    for (const row of [
+      { status: 'running', queuedAt: 'dispatch' },
+      { status: 'completed', queuedAt: 'dispatch' },
+      { status: 'failed', queuedAt: 'dispatch' },
+      { status: 'cancelled', queuedAt: 'dispatch' },
+      { status: 'pending', queuedAt: 'new-dispatch' },
+    ]) {
+      const before = globalThis.structuredClone(row);
+      f = setup({ fallback: 'running', row });
+      assert.equal(
+        await signalGenerationWorkflow('owner', 'task', 'dispatch'),
+        'observation_unconfirmed',
+      );
+      assert.deepEqual(f.row, before);
+      assert.equal(f.calls.length, 1);
+      assert.equal(f.stops.length, 0);
+    }
     f = setup({ noStart: true });
     assert.equal(await signalGenerationWorkflow('owner', 'task'), 'already_started_or_finished');
     assert.equal(f.polls.length, 0);

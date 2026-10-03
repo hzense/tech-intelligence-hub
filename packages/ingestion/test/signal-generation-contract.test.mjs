@@ -12,6 +12,7 @@ import {
   estimateGenerationTokens,
   GENERATION_LIMITS,
 } from '../src/signal-generation-contract.mjs';
+import { isGenerationValidationDetail } from '../src/signal-generation-validation-diagnostics.mjs';
 
 const original = '2026-09-16，研究作者李明在示例研究所公布合成研究结果。尚不能证明实际效果。';
 const input = () =>
@@ -91,13 +92,111 @@ test('partial assessment preserves good siblings and original indexes with multi
       classification: 'private',
       status: 'rejected',
       errors: [
-        { field: 'title', code: 'title_too_long' },
-        { field: 'event_date_evidence', code: 'unknown_date_has_evidence' },
+        { field: 'title', code: 'title_too_long', path: 'title', reason: 'text_too_long' },
+        {
+          field: 'event_date_evidence',
+          code: 'unknown_date_has_evidence',
+          path: 'event_date_evidence',
+          reason: 'unknown_date_has_evidence',
+        },
       ],
     },
   ]);
   assert.equal(JSON.stringify(result.rejected).includes(bad.title), false);
   assert.throws(() => normalize(value));
+});
+
+test('rejected evidence records the exact nested failing position without raw model content', () => {
+  const bad = candidate();
+  bad.event_date_evidence = [{ fragment_id: 'private-bad-fragment', quote: 'private-date' }];
+  bad.persons.push({ ...bad.persons[0], evidence: [ref('private-person-quote')] });
+  bad.claims.push({ text: 'private-claim', evidence: [] });
+  const result = assessGeneratedCandidates(
+    { candidates: [bad], reason: 'private-reason' },
+    buildGenerationSource(input()),
+  );
+  assert.deepEqual(result.rejected[0].errors, [
+    {
+      field: 'event_date_evidence',
+      code: 'invalid_evidence',
+      path: 'event_date_evidence[0].fragment_id',
+      reason: 'unknown_fragment',
+    },
+    {
+      field: 'persons',
+      code: 'invalid_field',
+      path: 'persons[1].evidence[0].quote',
+      reason: 'quote_mismatch',
+    },
+    {
+      field: 'claims',
+      code: 'invalid_field',
+      path: 'claims[1].evidence',
+      reason: 'missing_evidence',
+    },
+  ]);
+  assert.doesNotMatch(JSON.stringify(result), /private-(bad|date|person|claim|reason)/);
+});
+
+test('diagnostics distinguish shape, type, cardinality, text and duplicate failures', () => {
+  const cases = [
+    [{ persons: 'private-text' }, 'persons', 'invalid_type'],
+    [
+      { persons: [{ ...candidate().persons[0], private_key: 'private-value' }] },
+      'persons[0]',
+      'invalid_shape',
+    ],
+    [{ persons: [{ ...candidate().persons[0], role: 1 }] }, 'persons[0].role', 'invalid_type'],
+    [{ persons: [{ ...candidate().persons[0], name: ' ' }] }, 'persons[0].name', 'missing_value'],
+    [{ summary: '\u0000' }, 'summary', 'invalid_characters'],
+    [{ claims: [] }, 'claims', 'missing_items'],
+    [{ claims: Array(13).fill(candidate().claims[0]) }, 'claims', 'too_many_items'],
+    [
+      { claims: [{ text: 'private-text', evidence: [ref(), ref()] }] },
+      'claims[0].evidence[1]',
+      'duplicate_reference',
+    ],
+    [
+      { claims: [{ text: 'private-text', evidence: [{ ...ref(), quote: 'a'.repeat(501) }] }] },
+      'claims[0].evidence[0].quote',
+      'text_too_long',
+    ],
+    [
+      { claims: [{ text: 'private-text', evidence: [{ ...ref(), extra: 'private-value' }] }] },
+      'claims[0].evidence[0]',
+      'invalid_shape',
+    ],
+    [{ organizations: ['private-org', 'private-org'] }, 'organizations[1]', 'duplicate_item'],
+    [{ event_date: '2026-02-30' }, 'event_date', 'invalid_date'],
+    [{ extra: 'private-value' }, 'candidate', 'invalid_shape'],
+  ];
+  for (const [change, path, reason] of cases) {
+    const result = assessGeneratedCandidates(
+      { candidates: [{ ...candidate(), ...change }], reason: 'test' },
+      buildGenerationSource(input()),
+    );
+    assert.equal(result.candidates.length, 0);
+    assert.equal(result.rejected[0].errors[0].path, path);
+    assert.equal(result.rejected[0].errors[0].reason, reason);
+    assert.doesNotMatch(JSON.stringify(result.rejected), /private-(text|value|org)/);
+  }
+});
+
+test('diagnostic metadata admits only fixed fields, bounded indexes and known reasons', () => {
+  for (const path of ['persons', 'persons[0]', 'persons[11].evidence[7].quote'])
+    assert.equal(isGenerationValidationDetail('persons', path, 'invalid_shape'), true);
+  for (const [field, path, reason] of [
+    ['persons', 'persons[12].name', 'invalid_shape'],
+    ['persons', 'persons[0].evidence[8].quote', 'quote_mismatch'],
+    ['persons', 'persons[0].private_model_field', 'invalid_shape'],
+    ['persons', 'claims[0].text', 'invalid_shape'],
+    ['persons', 'persons[00]', 'invalid_shape'],
+    ['persons', 'persons[0]\n', 'invalid_shape'],
+    ['persons', 'persons[0]', 'private raw reason'],
+    ['toString', 'toString', 'invalid_shape'],
+    ['persons', null, 'invalid_shape'],
+  ])
+    assert.equal(isGenerationValidationDetail(field, path, reason), false);
 });
 
 test('partial assessment does not accept invented quotes, authority fields or invalid dates', () => {
