@@ -22,6 +22,29 @@ const candidate = {
   issues: ['needs_public_evidence', 'needs_person_evidence', 'needs_event_time'],
 };
 
+test('enrichment preserves pinned topic suggestions and leaves historical material unchanged', () => {
+  const proposal = { event_date: null, event_date_evidence: [], persons: [], organizations: [] };
+  const saved = { ...candidate, topic_ids: ['topic-foundation-models'] };
+  const before = JSON.stringify(saved);
+  assert.deepEqual(
+    assessCandidateEnrichment(proposal, saved, source).candidate.topic_ids,
+    saved.topic_ids,
+  );
+  assert.equal(JSON.stringify(saved), before);
+  assert.equal(
+    Object.hasOwn(assessCandidateEnrichment(proposal, candidate, source).candidate, 'topic_ids'),
+    false,
+  );
+  assert.throws(() => assessCandidateEnrichment({ ...proposal, topic_ids: [] }, saved, source));
+  assert.throws(() =>
+    assessCandidateEnrichment(
+      proposal,
+      { ...saved, topic_ids: ['duplicate', 'duplicate'] },
+      source,
+    ),
+  );
+});
+
 test('enrichment applies person scope to the proposal without rewriting an old candidate', () => {
   const leader = {
     name: '习近平',

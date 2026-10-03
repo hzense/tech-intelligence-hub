@@ -298,7 +298,7 @@ export function EditorialPublicationEditor({
                   placeholder="输入名称查找领域"
                 />
               </label>
-              <p>从现有领域中选择，最多 5 项。</p>
+              <p>新生成候选会自动匹配领域，可手动调整，最多 5 项；未匹配时请手动选择。</p>
               {invalidTopics.map((topic) => (
                 <p key={topic.id}>
                   已选领域已停用或更名：{topic.title}{' '}

@@ -100,6 +100,7 @@ export function assessCandidateEnrichment(value, candidate, source) {
       'classification',
       'status',
       'issues',
+      ...(candidate && Object.hasOwn(candidate, 'topic_ids') ? ['topic_ids'] : []),
     ]);
     if (
       original.classification !== 'private' ||
@@ -121,6 +122,7 @@ export function assessCandidateEnrichment(value, candidate, source) {
       persons: originalPeople.length ? originalPeople : value.persons,
       organizations: [...new Set([...original.organizations, ...value.organizations])],
       claims: original.claims,
+      ...(Object.hasOwn(original, 'topic_ids') ? { topic_ids: original.topic_ids } : {}),
     };
     const normalized = normalizeGeneratedCandidates(
       { candidates: [merged], reason: '私有补全提案，待管理员审核。' },

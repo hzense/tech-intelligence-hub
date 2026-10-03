@@ -1,4 +1,5 @@
 import type { ImportPool } from './import-store.mjs';
+import type { GenerationTopic } from '../../ingestion/src/signal-generation-contract.mjs';
 export class SignalGenerationError extends Error {
   code: string;
   previousId?: string;
@@ -23,6 +24,7 @@ export interface SignalGenerationSnapshot {
   source: unknown;
   profile: unknown;
   connection: unknown;
+  topics?: GenerationTopic[];
 }
 export interface SignalGenerationRun {
   id: string;

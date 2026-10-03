@@ -1,71 +1,17 @@
 import 'server-only';
-import pg from 'pg';
 import {
   saveEditorialSignal,
   readEditorialSignal,
 } from '../../../../packages/database/src/editorial-signal-store.mjs';
-import { assertEditorialRole } from '../../../../packages/database/src/editorial-signal-role.mjs';
 import { createEditorialReviewService } from '../editorial-review-service';
-import { readCandidateRoleConfiguration } from '../candidate-review-config';
 import { generationRecord } from './signal-generation';
 import { buildCandidateReview, buildEnrichedCandidateReview } from '../candidate-review';
 import { listCandidateEnrichmentDtos } from './candidate-enrichment';
 import { materialPublicationPreview } from './material-registration';
-import { getTopicTitleMap } from '../content-runtime';
 import type { EditorialContent } from '../editorial-review';
+import { editorialPool, editorialPublicationEnabled } from './editorial-database';
+import { editorialTopicOptions } from './editorial-topics';
 
-let pool: pg.Pool | undefined;
-let poolUrl: string | undefined;
-function writerUrl() {
-  return readCandidateRoleConfiguration(
-    process.env,
-    'HZENSE_EDITORIAL_DATABASE_URL',
-    'hzense_editorial_writer',
-  );
-}
-function enabled() {
-  if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED !== '1') return false;
-  try {
-    writerUrl();
-    readCandidateRoleConfiguration(
-      process.env,
-      'HZENSE_EDITORIAL_READER_DATABASE_URL',
-      'hzense_editorial_reader',
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-const editorialPool = {
-  async connect() {
-    const url = writerUrl();
-    if (poolUrl && poolUrl !== url)
-      throw Object.assign(new Error('not_configured'), { code: 'not_configured' });
-    if (!pool) {
-      poolUrl = url;
-      pool = new pg.Pool({
-        connectionString: url,
-        max: 2,
-        idleTimeoutMillis: 10000,
-        connectionTimeoutMillis: 3500,
-        query_timeout: 20000,
-        allowExitOnIdle: true,
-        enableChannelBinding: true,
-        application_name: 'hzense-editorial-writer',
-      });
-      pool.on('error', () => console.error('editorial_database_unavailable'));
-    }
-    const client = await pool.connect();
-    try {
-      await assertEditorialRole(client, 'writer');
-      return client;
-    } catch (error) {
-      client.release(true);
-      throw error;
-    }
-  },
-};
 async function material(owner: string, runId: string, index: number) {
   const run = await generationRecord(owner, runId);
   const original = buildCandidateReview(run, index);
@@ -114,28 +60,20 @@ async function material(owner: string, runId: string, index: number) {
     // merely by entering four fields. Original evidence remains in the admin UI.
     sourceUrls: [],
   };
-  return { materialHash: original.materialHash, content, warnings };
+  return {
+    materialHash: original.materialHash,
+    content,
+    warnings,
+    // Supplemental selections (including an intentional empty list) take precedence.
+    ...(prefill?.topics === undefined && original.candidate.topic_ids !== undefined
+      ? { generatedTopicIds: original.candidate.topic_ids }
+      : {}),
+  };
 }
 const service = createEditorialReviewService({
-  enabled,
+  enabled: editorialPublicationEnabled,
   material,
-  topics: async () => {
-    if (!enabled()) return [...(await getTopicTitleMap())].map(([id, title]) => ({ id, title }));
-    const client = await editorialPool.connect();
-    let queryComplete = false;
-    try {
-      const rows = (
-        await client.query(
-          "SELECT id,title FROM public.topics WHERE runtime_enabled IS TRUE AND status<>'archived' ORDER BY title,id LIMIT 1001",
-        )
-      ).rows;
-      queryComplete = true;
-      if (rows.length > 1000) throw new Error('editorial_catalog_unavailable');
-      return rows;
-    } finally {
-      client.release(!queryComplete);
-    }
-  },
+  topics: editorialTopicOptions,
   read: (owner, runId, candidateIndex) =>
     readEditorialSignal({ pool: editorialPool, owner, runId, candidateIndex }),
   save: (owner, request, bound) =>

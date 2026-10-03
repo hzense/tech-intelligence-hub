@@ -4,6 +4,7 @@ import { Buffer } from 'node:buffer';
 import { isDeepStrictEqual } from 'node:util';
 import {
   normalizeGeneratedCandidates,
+  normalizeGenerationTopics,
   REJECTED_CANDIDATES_REASON,
 } from '../../ingestion/src/signal-generation-contract.mjs';
 import { isGenerationValidationDetail } from '../../ingestion/src/signal-generation-validation-diagnostics.mjs';
@@ -148,6 +149,7 @@ function validateAssessedResult(result, outcome) {
       'persons',
       'organizations',
       'claims',
+      ...(Object.hasOwn(candidate, 'topic_ids') ? ['topic_ids'] : []),
     ]);
     index(candidate.index);
     if (candidate.classification !== 'private' || candidate.status !== 'needs_review') invalid();
@@ -161,6 +163,7 @@ function validateAssessedResult(result, outcome) {
     persons: ['invalid_field'],
     organizations: ['invalid_field'],
     claims: ['invalid_field'],
+    topic_ids: ['invalid_field'],
   };
   for (const rejected of result.rejected) {
     shape(rejected, ['index', 'classification', 'status', 'errors']);
@@ -170,7 +173,7 @@ function validateAssessedResult(result, outcome) {
       rejected.status !== 'rejected' ||
       !Array.isArray(rejected.errors) ||
       !rejected.errors.length ||
-      rejected.errors.length > 7
+      rejected.errors.length > 8
     )
       invalid();
     const fields = new Set();
@@ -195,15 +198,25 @@ function validateAssessedResult(result, outcome) {
   if ((outcome === 'failed') !== allRejected) invalid();
   if (result.rejected.length && result.reason !== REJECTED_CANDIDATES_REASON) invalid();
 }
-function validateSavedCandidates(result, source) {
+function validateSavedCandidates(result, snapshot) {
   // Reuse the same full structural, Unicode, date and exact-quotation contract,
   // binding accepted candidates to the immutable, owner-checked task snapshot.
   try {
+    const topics = Object.hasOwn(snapshot, 'topics')
+      ? normalizeGenerationTopics(snapshot.topics)
+      : undefined;
+    if (
+      topics === undefined &&
+      result.rejected?.some(({ errors }) => errors.some(({ field }) => field === 'topic_ids'))
+    )
+      fail('invalid_result');
     for (const candidate of result.candidates) {
       const { index, classification, status, issues, ...input } = candidate;
+      if (Object.hasOwn(input, 'topic_ids') && topics === undefined) fail('invalid_result');
       const normalized = normalizeGeneratedCandidates(
         { candidates: [input], reason: result.reason },
-        source,
+        snapshot.source,
+        topics,
       ).candidates[0];
       if (
         !isDeepStrictEqual(
@@ -255,21 +268,43 @@ function matchesGenerationIdentity(row, parsed) {
     configuration: row.configuration,
   };
   const normalized = generationFingerprint(identity);
+  // The first admission pins the catalog and its token estimate. Replaying the
+  // same task after a catalog sync (including pre-catalog tasks) must return that
+  // receipt, not mutate its inputs or accidentally authorize another AI call.
+  const catalogChanged = !isDeepStrictEqual(
+    identity.snapshot.topics,
+    parsed.identity.snapshot.topics,
+  );
+  let replayIdentity = parsed.identity;
+  if (catalogChanged) {
+    const snapshot = { ...parsed.identity.snapshot };
+    if (Object.hasOwn(identity.snapshot, 'topics')) snapshot.topics = identity.snapshot.topics;
+    else delete snapshot.topics;
+    replayIdentity = {
+      ...parsed.identity,
+      snapshot,
+      configuration: {
+        ...parsed.identity.configuration,
+        reserveMicrousd: identity.configuration.reserveMicrousd,
+      },
+    };
+  }
   // Accept old hashes only when they still authenticate the complete saved
   // snapshot. Compare normalized identities without rewriting historical rows.
   const matches =
     (row.fingerprint === normalized || row.fingerprint === digest(identity)) &&
-    (normalized === parsed.fingerprint ||
+    (normalized === generationFingerprint(replayIdentity) ||
       // A deleted receipt is never reused or executed here: it only returns
       // task_deleted. Server-derived estimates may change with framing rules;
       // require every other input and both budget ceilings to match exactly.
-      (row.deleted_at && generationFingerprint(identity, true) === parsed.recoveryFingerprint));
+      (row.deleted_at &&
+        generationFingerprint(identity, true) === generationFingerprint(replayIdentity, true)));
   if (!matches) {
     const fields = Object.keys(identity).filter((key) => {
       if (key === 'snapshot' || key === 'configuration') return false;
       return !isDeepStrictEqual(identity[key], parsed.identity[key]);
     });
-    for (const key of ['source', 'profile', 'connection']) {
+    for (const key of ['source', 'profile', 'connection', 'topics']) {
       const normalize = key === 'profile' ? signalGenerationProfileIdentity : (value) => value;
       if (
         !isDeepStrictEqual(
@@ -313,8 +348,24 @@ function inputs(owner, request, snapshot, configuration) {
   integer(request.sourceFence, 1);
   integer(request.profileRevision, 1);
   if (typeof request.sourceHash !== 'string' || !/^[a-f0-9]{64}$/.test(request.sourceHash)) fail();
-  object(snapshot, ['source', 'profile', 'connection'], 'invalid_snapshot');
+  object(
+    snapshot,
+    [
+      'source',
+      'profile',
+      'connection',
+      ...(snapshot && Object.hasOwn(snapshot, 'topics') ? ['topics'] : []),
+    ],
+    'invalid_snapshot',
+  );
   const safe = bounded(snapshot, 1200000, 'invalid_snapshot');
+  if (Object.hasOwn(safe, 'topics')) {
+    try {
+      safe.topics = normalizeGenerationTopics(safe.topics);
+    } catch {
+      fail('invalid_snapshot');
+    }
+  }
   if (
     safe.source?.classification !== 'private' ||
     digest(safe.source) !== request.sourceHash ||
@@ -354,7 +405,6 @@ function inputs(owner, request, snapshot, configuration) {
     snapshot: safe,
     configuration: config,
     fingerprint: generationFingerprint(identity),
-    recoveryFingerprint: generationFingerprint(identity, true),
   };
 }
 async function transaction(pool, work, readOnly = false) {
@@ -767,8 +817,17 @@ export async function finishSignalGeneration({
   return transaction(pool, async (client) => {
     const row = await run(client, owner, id, true);
     if (row.lease_token !== token) fail('stale_attempt');
-    if (safeResult?.validation_version === 1)
-      validateSavedCandidates(safeResult, row.snapshot.source);
+    if (
+      safeResult &&
+      (Object.hasOwn(row.snapshot ?? {}, 'topics') ||
+        (Array.isArray(safeResult.candidates) &&
+          safeResult.candidates.some(
+            (candidate) => candidate && Object.hasOwn(candidate, 'topic_ids'),
+          ))) &&
+      safeResult.validation_version !== 1
+    )
+      fail('invalid_result');
+    if (safeResult?.validation_version === 1) validateSavedCandidates(safeResult, row.snapshot);
     if (row.status !== 'running') {
       if (
         row.status === outcome &&

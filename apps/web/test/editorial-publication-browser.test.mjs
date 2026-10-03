@@ -75,7 +75,7 @@ test(
           eventDate: null,
           organizations: [],
           persons: [],
-          topics: [],
+          topics: [{ id: 'ai', title: '人工智能' }],
           sourceUrls: [],
         },
         topicOptions: [{ id: 'ai', title: '人工智能' }],
@@ -155,6 +155,9 @@ test(
             `${error.message}\n${errors.join('\n')}\n${await page.locator('body').innerText()}`,
           );
         });
+      await expect(page.getByRole('checkbox', { name: '人工智能' })).toBeChecked();
+      await page.getByRole('checkbox', { name: '人工智能' }).uncheck();
+      await expect(page.getByRole('checkbox', { name: '人工智能' })).not.toBeChecked();
       await page.getByLabel('事件日期', { exact: true }).fill('2026-09-25');
       await page.getByLabel('组织', { exact: true }).fill('测试组织');
       await page.getByLabel('人物', { exact: true }).fill('测试人物');
