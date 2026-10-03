@@ -292,6 +292,11 @@ test(
           run.can_delete = true;
         }
         if (command.action === 'resolve_queue') {
+          if (command.queuedAt !== new Date(run.progress_at).toISOString()) {
+            res.statusCode = 409;
+            res.end('{"error":"stale_attempt"}');
+            return;
+          }
           run.status = 'failed';
           run.error_code = 'generation_dispatch_failed';
           run.finished_at = '2026-10-03T12:00:00.000Z';
@@ -523,18 +528,19 @@ test(
         await expect(page.getByText('排队中', { exact: true })).toBeVisible();
         await expect(resolveButton).toBeEnabled();
 
-        page.once('dialog', (dialog) => dialog.dismiss());
         await resolveButton.click();
+        const confirmation = page.getByRole('group', { name: '确认结束排队', exact: true });
+        await expect(confirmation).toBeVisible();
+        await expect(confirmation).toContainText('原记录和费用保留，不会调用 AI 或重新生成。');
         assert.equal(commands.length, 0);
+        await confirmation.getByRole('button', { name: '返回', exact: true }).click();
+        assert.equal(commands.length, 0);
+        await expect(confirmation).toHaveCount(0);
         await expect(page.getByText('排队中', { exact: true })).toBeVisible();
         await expect(resolveButton).toBeEnabled();
 
-        page.once('dialog', async (dialog) => {
-          assert.equal(dialog.type(), 'confirm');
-          assert.match(dialog.message(), /原记录和费用保留，不会调用 AI 或重新生成/);
-          await dialog.accept();
-        });
         await resolveButton.click();
+        await confirmation.getByRole('button', { name: '确认标记失败', exact: true }).click();
         await expect(page.getByText('失败，需核对原任务', { exact: true })).toBeVisible();
         await expect(
           page
@@ -542,6 +548,7 @@ test(
             .filter({ hasText: '已结束排队并标记为失败。原记录和费用保留，未调用 AI。' }),
         ).toBeVisible();
         await expect(resolveButton).toHaveCount(0);
+        await expect(confirmation).toHaveCount(0);
         assert.deepEqual(commands, [
           {
             action: 'resolve_queue',
@@ -566,19 +573,20 @@ test(
           rejectedError = conflict;
           await page.clock.install();
           await page.goto(`${origin}/?live-detail&queued`);
-          page.once('dialog', (dialog) => dialog.accept());
           const resolveButton = page.getByRole('button', {
             name: '结束排队并标记失败',
             exact: true,
           });
           await resolveButton.click();
+          const confirmButton = page.getByRole('button', { name: '确认标记失败', exact: true });
+          await confirmButton.click();
           await expect(
             page
               .getByRole('status')
               .filter({ hasText: '任务已开始执行或排队状态已变化，未标记失败。请刷新核对。' }),
           ).toBeVisible();
           await expect(page.getByText('排队中', { exact: true })).toBeVisible();
-          await expect(resolveButton).toBeEnabled();
+          await expect(confirmButton).toBeEnabled();
           await expect(page.getByText('失败，需核对原任务', { exact: true })).toHaveCount(0);
           await expect(page.getByText('SYNTHETIC_RAW_PROVIDER_DIAGNOSTIC')).toHaveCount(0);
           assert.deepEqual(
@@ -590,6 +598,42 @@ test(
         },
       );
     }
+    await t.test(
+      'fixed-link inline confirmation preserves the original queued timestamp across read-only refreshes',
+      async () => {
+        const page = await newPage();
+        runs = [queuedLiveDetail()];
+        await page.clock.install();
+        await page.goto(`${origin}/?live-detail&queued`);
+        await page.getByRole('button', { name: '结束排队并标记失败', exact: true }).click();
+        const confirmation = page.getByRole('group', { name: '确认结束排队', exact: true });
+        await expect(confirmation).toBeVisible();
+        assert.equal(commands.length, 0);
+
+        const newerQueuedAt = '2026-10-03T10:00:00.456Z';
+        runs[0] = { ...runs[0], progress_at: newerQueuedAt };
+        await page.clock.fastForward(5100);
+        await expect(page.locator('pre')).toContainText(newerQueuedAt);
+        await expect(confirmation).toBeVisible();
+        assert.ok(commands.length > 0 && commands.every((command) => command.action === 'detail'));
+
+        await confirmation.getByRole('button', { name: '确认标记失败', exact: true }).click();
+        await expect(
+          page
+            .getByRole('status')
+            .filter({ hasText: '任务已开始执行或排队状态已变化，未标记失败。请刷新核对。' }),
+        ).toBeVisible();
+        assert.deepEqual(
+          commands.filter((command) => command.action !== 'detail'),
+          [{ action: 'resolve_queue', id: liveDetailId, queuedAt: '2026-10-03T09:49:00.123Z' }],
+        );
+        await expect(page.getByText('排队中', { exact: true })).toBeVisible();
+        await expect(page.getByText('失败，需核对原任务', { exact: true })).toHaveCount(0);
+        assert.equal(runs[0].status, 'pending');
+        assert.equal(runs[0].progress_at, newerQueuedAt);
+        await page.close();
+      },
+    );
     await t.test(
       'name-first selection and confirmed task deletion clear the pending request without calling AI',
       async () => {
