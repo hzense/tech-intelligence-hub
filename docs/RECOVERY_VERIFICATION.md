@@ -1,9 +1,12 @@
 # 隔离恢复的线上只读验证
 
-状态：[PR #55](https://github.com/hzense/tech-intelligence-hub/pull/55) 已合并为 `main@22a4201`，
+最新恢复记录：[2026-10-04 手动 Neon 隔离数据库恢复演练](./production-evidence/2026-10-04-isolated-recovery-drill.md)
+已通过，覆盖该次冻结快照的数据、应用结构及约定 ACL 范围；未验证服务角色独立登录、业务切流或新增资源权限的前向授权与回退。
+
+本文所述 **FTS 专用托管流程仍未线上实跑**：[PR #55](https://github.com/hzense/tech-intelligence-hub/pull/55) 已合并为 `main@22a4201`，
 对应 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/34493959540) 成功，
-**尚未线上实跑**。2026-09-10 操作者决定本轮不再验证恢复能力，此入口保留但不安排运行；
-恢复能力仍为未验证。这不是恢复演练完成记录。FTS-1 替代审批方式见
+2026-09-10 操作者决定当轮不再验证恢复能力，此入口保留。10 月 4 日的手动演练没有运行下文的 R0–R3 或 `verify-restored`，
+也不关闭旧 FTS 流程及历史 ACL 的证据缺口。本文是该托管入口说明，不是其执行完成记录。FTS-1 替代审批方式见
 [显式风险接受路径](./ONLINE_MAINTENANCE.md#fts-1-显式接受恢复未验证风险)。
 操作入口为 `.github/workflows/recovery-verification.yml`，不增加本地维护 CLI 或 `.env`，
 不改变 `production-maintenance.yml` 和既有生产写审批规则。
