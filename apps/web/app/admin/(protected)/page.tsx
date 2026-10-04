@@ -3,8 +3,6 @@ import Link from 'next/link';
 import { AdminSignOutButton } from '@/components/admin-auth-buttons';
 import styles from '@/components/admin-auth.module.css';
 import { requireAdminSession } from '@/lib/server/admin-auth';
-import { isPublisherConfigured } from '@/lib/server/signal-publication';
-import { AdminPublicationForm } from '@/components/admin-publication-form';
 
 export const metadata: Metadata = {
   title: '管理后台',
@@ -22,11 +20,7 @@ export default async function AdminHomePage() {
         <h1 className={styles.title} id="admin-home-title">
           管理员身份已验证
         </h1>
-        <p className={styles.copy}>
-          已接通管理员认证、AI
-          连接与模型配置及受限信号发布入口。文档与链接批量导入须完成独立生产配置后启用；AI
-          服务须另行配置后方可使用。
-        </p>
+        <p className={styles.copy}>管理文档导入、信号候选审核、自动采集、专题洞察和 AI 配置。</p>
         <dl className={styles.account}>
           <dt>当前登录账号</dt>
           <dd>{session.user.email}</dd>
@@ -59,10 +53,6 @@ export default async function AdminHomePage() {
           </Link>
         </div>
       </section>
-      <AdminPublicationForm
-        configured={isPublisherConfigured()}
-        databaseMode={process.env.HZENSE_SIGNAL_READ_MODE === 'database'}
-      />
     </main>
   );
 }

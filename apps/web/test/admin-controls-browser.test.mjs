@@ -32,7 +32,6 @@ test(
           '/signal-detail',
           '/ai',
           '/auth',
-          '/publication',
         ]) {
           await page.goto(`${fixture.origin}${path}?theme=${theme}`);
           if (path === '/generation')
