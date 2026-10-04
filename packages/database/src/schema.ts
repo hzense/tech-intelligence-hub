@@ -1801,6 +1801,46 @@ export const editorialPublicSignals = pgView('editorial_public_signals', {
   publishedAt: timestamp('published_at', { withTimezone: true }),
 }).existing();
 
+export const legacySignalArchive = pgTable(
+  'legacy_signal_archive',
+  {
+    signalId: text('signal_id').primaryKey(),
+    signal: jsonb('signal').notNull(),
+    references: jsonb('references').notNull(),
+    projection: jsonb('projection').notNull(),
+    contentHash: text('content_hash').notNull(),
+    recordHash: text('record_hash').notNull(),
+    importedAt: timestamp('imported_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'legacy_signal_archive_id_ck',
+      sql`${t.signalId} COLLATE "C" ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`,
+    ),
+    check('legacy_signal_archive_signal_ck', sql`jsonb_typeof(${t.signal}) = 'object'`),
+    check(
+      'legacy_signal_archive_signal_id_ck',
+      sql`(${t.signal}->>'id') IS NOT DISTINCT FROM ${t.signalId}`,
+    ),
+    check('legacy_signal_archive_references_ck', sql`jsonb_typeof(${t.references}) = 'object'`),
+    check(
+      'legacy_signal_archive_projection_ck',
+      sql`${t.projection} = 'null'::jsonb OR (jsonb_typeof(${t.projection}) = 'object' AND (${t.projection}->>'id') IS NOT DISTINCT FROM ${t.signalId})`,
+    ),
+    check('legacy_signal_archive_hash_ck', sql`${t.contentHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`),
+    check(
+      'legacy_signal_archive_record_hash_ck',
+      sql`${t.recordHash} COLLATE "C" ~ '^[a-f0-9]{64}$'`,
+    ),
+    check('legacy_signal_archive_imported_at_ck', sql`isfinite(${t.importedAt})`),
+  ],
+);
+export const legacyPublicSignals = pgView('legacy_public_signals', {
+  signalId: text('signal_id'),
+  content: jsonb('content'),
+  contentHash: text('content_hash'),
+}).existing();
+
 export const automationConfigs = pgTable(
   'automation_configs',
   {

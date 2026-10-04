@@ -26,5 +26,6 @@
   "0024_material_review_proposals.sql": "bb4591a510721690216753a97759f255da0472553f4d3ab56b92b01ab9d80f57",
   "0025_editorial_signal_publication.sql": "d4ce2249d08f675cf0ea4a614790aa5c1cc2e793998a545a76a60f898a97e2ae",
   "0026_automation_tasks.sql": "e2a884c37b523a7d4aad19ec3155cd662c89228bf7fc006db93044eb73d23c21",
-  "0027_automation_config_deletion.sql": "d395736de66cc66868dbe5ef1ac5a3ad6f724c2c8c77476c3e6e111682cf1ee5"
+  "0027_automation_config_deletion.sql": "d395736de66cc66868dbe5ef1ac5a3ad6f724c2c8c77476c3e6e111682cf1ee5",
+  "0028_legacy_signal_archive.sql": "9f2b64e199d4c7cb8cd47d6cff39d5f17c12c0350122944b5a9092bf6c7e9781"
 }

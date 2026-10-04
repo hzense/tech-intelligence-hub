@@ -15,6 +15,7 @@ export const editorialResourceRoleColumns = {
   person_profiles: ['entity_id', 'entity_type'],
   organization_profiles: ['entity_id', 'entity_type'],
 };
+export const editorialArchiveReaderColumns = ['signal_id', 'content', 'content_hash'];
 export async function assertEditorialRole(client, role) {
   if (!['writer', 'reader'].includes(role))
     throw new EditorialSignalError('editorial_role_invalid');
@@ -38,6 +39,18 @@ export async function assertEditorialRole(client, role) {
       for (const [table, names] of Object.entries(editorialResourceRoleColumns))
         for (const name of names)
           capabilities.push(`${table}|${name}|SELECT`, `${table}|${name}|INSERT`);
+  }
+  if (role === 'reader') {
+    const archiveAvailable = (
+      await client.query(
+        "SELECT has_column_privilege(c.oid,a.attnum,'SELECT') AS available FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname='public' AND c.relname='legacy_public_signals' AND a.attname='signal_id' AND NOT a.attisdropped",
+      )
+    ).rows[0]?.available;
+    // Deploy before the protected migration grant. Exactly the original role or
+    // exactly the upgraded public-view reader is accepted; partial grants fail.
+    if (archiveAvailable)
+      for (const column of editorialArchiveReaderColumns)
+        capabilities.push(`legacy_public_signals|${column}|SELECT`);
   }
   return assertRestrictedApplicationRole(client, `hzense_editorial_${role}`, capabilities);
 }

@@ -1,3 +1,7 @@
+import {
+  legacyPublicSignalColumns,
+  legacyPublicSignalViewHashes,
+} from './legacy-signal-archive-catalog.mjs';
 import { createHash } from 'node:crypto';
 import { editorialPublicColumns, editorialPublicViewHashes } from './editorial-signal-catalog.mjs';
 import {
@@ -14,9 +18,12 @@ import {
 // Legacy Runtime and Topic sync must recognize the schema but retain their old ACLs.
 export function isExactCurrentPublicSignalRelation(relation, expectedOwner) {
   return (
-    ['current_public_signals', 'editorial_public_signals', 'published_topic_insights'].includes(
-      relation.name,
-    ) &&
+    [
+      'current_public_signals',
+      'editorial_public_signals',
+      'legacy_public_signals',
+      'published_topic_insights',
+    ].includes(relation.name) &&
     relation.relkind === 'v' &&
     relation.relpersistence === 'p' &&
     relation.owner === expectedOwner &&
@@ -44,6 +51,10 @@ export async function collectCurrentPublicSignalViewProblems(client, expectedOwn
     editorial_public_signals: {
       columns: editorialPublicColumns,
       hashes: editorialPublicViewHashes,
+    },
+    legacy_public_signals: {
+      columns: legacyPublicSignalColumns,
+      hashes: legacyPublicSignalViewHashes,
     },
     published_topic_insights: {
       columns: publishedTopicInsightColumns,

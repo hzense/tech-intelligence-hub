@@ -17,6 +17,7 @@ const migration = [
   '0023_candidate_materials.sql',
   '0024_material_review_proposals.sql',
   '0025_editorial_signal_publication.sql',
+  '0028_legacy_signal_archive.sql',
 ]
   .map((name) => readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), 'utf8'))
   .join('\n');
@@ -115,6 +116,24 @@ export function editorialPublicSignalViewFixture(owner = 'hzense_migrator') {
   };
 }
 
+export function legacyPublicSignalViewFixture(owner = 'hzense_migrator') {
+  return {
+    name: 'legacy_public_signals',
+    owner,
+    options: ['security_barrier=true'],
+    columns: [
+      ['signal_id', 'text'],
+      ['content', 'jsonb'],
+      ['content_hash', 'text'],
+    ],
+    definition: ` SELECT signal_id,
+    projection AS content,
+    content_hash
+   FROM legacy_signal_archive
+  WHERE ((signal ->> 'status'::text) = ANY (ARRAY['accepted'::text, 'reviewed'::text])) AND signal_id !~~ 'editorial-%'::text AND jsonb_typeof(projection) = 'object'::text;`,
+  };
+}
+
 export function publishedTopicInsightViewFixture(owner = 'hzense_migrator') {
   return {
     name: 'published_topic_insights',
@@ -138,6 +157,7 @@ export function signalImmutabilityFixture(owner = 'hzense_migrator') {
     views: [
       currentPublicSignalViewFixture(owner),
       editorialPublicSignalViewFixture(owner),
+      legacyPublicSignalViewFixture(owner),
       publishedTopicInsightViewFixture(owner),
     ],
     triggers: sealedSignalTriggers.map((contract) => ({

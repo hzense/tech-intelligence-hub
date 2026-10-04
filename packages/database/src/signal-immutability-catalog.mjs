@@ -1,3 +1,7 @@
+import {
+  legacyArchiveFunctionHashes,
+  legacyArchiveTriggers,
+} from './legacy-signal-archive-catalog.mjs';
 import { createHash } from 'node:crypto';
 import { editorialFunctionHashes, editorialTriggers } from './editorial-signal-catalog.mjs';
 import {
@@ -63,6 +67,7 @@ export const sealedSignalTables = Object.freeze([
 // Updated only after reviewing the function source as part of a migration.
 export const sealedSignalFunctionHashes = Object.freeze({
   ...editorialFunctionHashes,
+  ...legacyArchiveFunctionHashes,
   ...materialProposalFunctionHashes,
   ...candidateMaterialFunctionHashes,
   ...candidateReviewFunctionHashes,
@@ -105,6 +110,7 @@ export const sealedSignalTriggers = Object.freeze([
   ...candidateVerificationTriggers,
   ...currentPublicationTriggers,
   ...editorialTriggers,
+  ...legacyArchiveTriggers,
 ]);
 
 export function signalGuardSourceHash(source) {

@@ -7,6 +7,7 @@ import {
 import {
   currentPublicSignalViewFixture,
   editorialPublicSignalViewFixture,
+  legacyPublicSignalViewFixture,
   publishedTopicInsightViewFixture,
   signalImmutabilityQueryFixture,
 } from './signal-immutability-fixtures.mjs';
@@ -25,6 +26,7 @@ describe('database catalog expression canonicalization', () => {
     expect(signalImmutabilityQueryFixture('/* hzense:current-publication:views */').rows).toEqual([
       view,
       editorialPublicSignalViewFixture(),
+      legacyPublicSignalViewFixture(),
       publishedTopicInsightViewFixture(),
     ]);
     for (const changed of [

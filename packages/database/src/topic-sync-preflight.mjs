@@ -304,6 +304,7 @@ export async function inspectTopicSyncPreflight(
     ...expectedTableNames,
     'current_public_signals',
     'editorial_public_signals',
+    'legacy_public_signals',
     'published_topic_insights',
   ]);
   const actualRelations = new Set(relations.rows.map((row) => row.name));
@@ -316,9 +317,12 @@ export async function inspectTopicSyncPreflight(
   }
   for (const relation of relations.rows) {
     if (
-      ['current_public_signals', 'editorial_public_signals', 'published_topic_insights'].includes(
-        relation.name,
-      )
+      [
+        'current_public_signals',
+        'editorial_public_signals',
+        'legacy_public_signals',
+        'published_topic_insights',
+      ].includes(relation.name)
     ) {
       if (!isExactCurrentPublicSignalRelation(relation, target.database_owner)) {
         throw new Error('Topic sync current public Signal view relation contract mismatch');

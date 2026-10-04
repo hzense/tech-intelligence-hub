@@ -12,7 +12,7 @@ import { PublicSignalReaderError, type SignalEntry } from '../public-signal-read
 
 let pool: pg.Pool | undefined;
 let poolConnectionString: string | undefined;
-function reader() {
+function readerPool() {
   const connectionString = editorialReaderConnectionString(process.env);
   if (pool && poolConnectionString !== connectionString) throw new PublicSignalReaderError();
   if (!pool) {
@@ -29,23 +29,27 @@ function reader() {
     pool.on('error', () => console.error('Editorial public reader is unavailable'));
     poolConnectionString = connectionString;
   }
-  const readerPool = pool;
-  return createEditorialSignalReader({
-    async query(sql, parameters) {
-      const client = await readerPool.connect();
-      let discard = false;
-      try {
-        await assertEditorialRole(client, 'reader');
-        return await client.query(sql, parameters);
-      } catch (error) {
-        // query_timeout can reject before PostgreSQL is ready for another query.
-        discard = true;
-        throw error;
-      } finally {
-        client.release(discard);
-      }
-    },
-  });
+  return pool;
+}
+
+/** Share the bounded public-reader pool between current and archived Signals. */
+export async function queryEditorialPublicData(sql: string, parameters: unknown[]) {
+  const client = await readerPool().connect();
+  let discard = false;
+  try {
+    await assertEditorialRole(client, 'reader');
+    return await client.query(sql, parameters);
+  } catch (error) {
+    // query_timeout can reject before PostgreSQL is ready for another query.
+    discard = true;
+    throw error;
+  } finally {
+    client.release(discard);
+  }
+}
+
+function reader() {
+  return createEditorialSignalReader({ query: queryEditorialPublicData });
 }
 
 // Only the connection pool is reused. Never cache published content or failures.

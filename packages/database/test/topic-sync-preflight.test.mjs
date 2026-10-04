@@ -86,6 +86,7 @@ async function preflightClient({
         ...expectedTableNames,
         ...(omitPublicView ? [] : ['current_public_signals']),
         'editorial_public_signals',
+        'legacy_public_signals',
         'published_topic_insights',
         ...extraRelations,
       ].map((name) => ({
@@ -93,6 +94,7 @@ async function preflightClient({
         relkind: [
           'current_public_signals',
           'editorial_public_signals',
+          'legacy_public_signals',
           'published_topic_insights',
         ].includes(name)
           ? 'v'
@@ -106,6 +108,7 @@ async function preflightClient({
         rewrite_rule_count: [
           'current_public_signals',
           'editorial_public_signals',
+          'legacy_public_signals',
           'published_topic_insights',
         ].includes(name)
           ? 1

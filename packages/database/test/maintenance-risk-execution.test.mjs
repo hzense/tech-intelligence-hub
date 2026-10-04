@@ -148,7 +148,7 @@ describe('real hosted executor FTS-1 risk boundary (database adapters mocked)', 
     );
     expect(mocks.apply).not.toHaveBeenCalled();
   });
-  it('keeps the default verified path compatible without the FTS-only hook', async () => {
+  it('keeps the default verified path compatible while reserving atomic legacy migration', async () => {
     await runMaintenance(
       environment({
         recoveryPolicy: undefined,
@@ -161,7 +161,11 @@ describe('real hosted executor FTS-1 risk boundary (database adapters mocked)', 
       undefined,
       options(),
     );
-    expect(mocks.migrate.mock.calls[0][0].beforeApply).toBeUndefined();
+    const hook = mocks.migrate.mock.calls[0][0].beforeApply;
+    expect(typeof hook).toBe('function');
+    await expect(hook(['0028_legacy_signal_archive.sql'])).rejects.toThrow(
+      'legacy-signal-atomic-operation-required',
+    );
   });
   it.each(['success', 'expired-between-captures'])(
     'routes the real hosted capture through risk validation and evidence serialization: %s',
