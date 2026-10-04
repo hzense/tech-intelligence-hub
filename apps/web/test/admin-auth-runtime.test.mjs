@@ -438,14 +438,15 @@ test(
       },
     );
     await t.test(
-      'authenticated administrator sees disabled publication and cannot use absent Publisher credential',
+      'administrator home shows current workflows while the Publisher API still requires its credential',
       async () => {
         const cookie = await encryptedCookie(token);
         const page = await request('/admin', { headers: { cookie } });
+        assert.equal(page.status, 200);
         const html = await page.text();
-        assert.match(html, /受限信号发布/);
-        assert.match(html, /<form\b[^>]*method="post"/);
-        assert.match(html, /发布服务尚未配置/);
+        assert.match(html, /href="\/admin\/signal-generation"/);
+        assert.match(html, /href="\/admin\/sources"/);
+        assert.doesNotMatch(html, /受限信号发布|发布服务尚未配置|publication-title/);
         const response = await request('/api/admin/signals/withdraw', {
           method: 'POST',
           headers: { origin, cookie, 'content-type': 'application/json' },

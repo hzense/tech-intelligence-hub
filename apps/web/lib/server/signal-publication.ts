@@ -69,15 +69,6 @@ const restrictedPool = {
   },
 };
 
-export function isPublisherConfigured() {
-  try {
-    readPublisherConfiguration(process.env);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export async function executeSignalPublication(
   operation: PublicationOperation,
   request: Record<string, unknown>,
