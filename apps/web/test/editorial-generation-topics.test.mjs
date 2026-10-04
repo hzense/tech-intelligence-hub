@@ -3,6 +3,7 @@ import test from 'node:test';
 import { Buffer } from 'node:buffer';
 import { URL } from 'node:url';
 import { build } from 'esbuild';
+import { previewEditorialResources } from '../../../packages/database/src/editorial-resource-store.mjs';
 
 const runId = '11111111-1111-4111-8111-111111111111';
 test('editorial material auto-selects generated topics unless supplemental selections already exist', async () => {
@@ -12,22 +13,59 @@ test('editorial material auto-selects generated topics unless supplemental selec
     resources: undefined,
     enriched: undefined,
     writes: [],
+    resourceQueries: [],
+    resourceReleases: [],
+    resourceError: null,
+    resourcePublicationReady: false,
+    readinessChecks: 0,
+    previewEditorialResources,
+    reviewerPool: {
+      async connect() {
+        return {
+          async query(sql) {
+            state.resourceQueries.push(sql);
+            assert.equal(
+              sql,
+              'SELECT id,name,type,status,aliases FROM public.entities ORDER BY id LIMIT 10001',
+            );
+            if (state.resourceError) throw state.resourceError;
+            return {
+              rows: [
+                {
+                  id: 'company-example',
+                  type: 'company',
+                  name: '示例公司',
+                  status: 'active',
+                  aliases: [],
+                },
+              ],
+            };
+          },
+          release(discard) {
+            state.resourceReleases.push(discard);
+          },
+        };
+      },
+    },
   };
   globalThis.__editorialGenerationTopicsTest = state;
   try {
     const modules = {
       'server-only': 'export {};',
-      './editorial-database':
-        'export const editorialPool = {}; export const editorialPublicationEnabled = () => true;',
+      './editorial-database': `export const editorialPool = { role: 'writer', connect: async () => { throw new Error('legacy writer cannot preview entities'); } };
+         export const editorialPublicationEnabled = () => true;
+         export const editorialResourcePublicationReady = async () => { const state = globalThis.__editorialGenerationTopicsTest; state.readinessChecks++; return state.resourcePublicationReady; };`,
+      './candidate-review-database':
+        'export const candidateReviewPool = globalThis.__editorialGenerationTopicsTest.reviewerPool;',
       './editorial-topics':
         "export const editorialTopicOptions = async () => [{ id: 'topic-ai', title: '当前名称' }];",
       './generation-import-reader': 'export const importPool = {};',
       '../material-source-reader': `export const readMaterialSupplement = async () => ({batchId:'${runId}',itemId:'${runId}',fence:1,contentHash:'b'.repeat(64),sourceUrl:'https://example.com/original'});`,
       '../seed-runtime':
         "export const getResourceEntries = async () => [{id:'company-example',type:'company',name:'示例公司',status:'active'}];",
-      '../../../../packages/database/src/editorial-signal-store.mjs': `export const saveEditorialSignal = async ({owner,request,material}) => { globalThis.__editorialGenerationTopicsTest.writes.push({owner,request,material}); return {request_id:request.requestId,revision:1,action:request.action,content:request.content}; };
-         export const readEditorialSignal = async () => globalThis.__editorialGenerationTopicsTest.saved;
-         export const previewEditorialResources = async ({resources,catalog}) => resources.map(r => ({name:r.name,type:r.type,matches:catalog.filter(c=>c.name===r.name),status:catalog.some(c=>c.name===r.name)?'reuse':'new'}));`,
+      '../../../../packages/database/src/editorial-signal-store.mjs': `export const saveEditorialSignal = async ({pool,owner,request,material}) => { if(pool.role !== 'writer') throw new Error('publication must use writer'); globalThis.__editorialGenerationTopicsTest.writes.push({owner,request,material}); return {request_id:request.requestId,revision:1,action:request.action,content:request.content}; };
+         export const readEditorialSignal = async ({pool}) => { if(pool.role !== 'writer') throw new Error('revision reads must use writer'); return globalThis.__editorialGenerationTopicsTest.saved; };
+         export const previewEditorialResources = args => globalThis.__editorialGenerationTopicsTest.previewEditorialResources(args);`,
       './signal-generation': `export const generationRecord = async () => ({owner_id:'owner',batch_id:'${runId}',item_id:'${runId}',source_fence:1,source_hash:'b'.repeat(64)});`,
       '../candidate-review': `
         export const buildCandidateReview = () => ({
@@ -71,6 +109,8 @@ test('editorial material auto-selects generated topics unless supplemental selec
     );
     const read = () => editorialDashboard('owner', runId, 0);
     assert.deepEqual((await read()).content.topics, [{ id: 'topic-ai', title: '当前名称' }]);
+    assert.deepEqual(state.resourceQueries, []);
+    assert.equal(state.readinessChecks, 0);
     for (const topics of [[], [{ id: 'topic-supplemental', title: '补证选择' }]]) {
       state.prefill = { topics };
       assert.deepEqual((await read()).content.topics, topics);
@@ -109,6 +149,9 @@ test('editorial material auto-selects generated topics unless supplemental selec
       },
     ];
     const resources = await read();
+    assert.equal(resources.resourcePublicationReady, false);
+    assert.equal(state.resourceQueries.length, 1);
+    assert.equal(state.readinessChecks, 1);
     assert.deepEqual(resources.content.organizations, ['示例公司']);
     assert.deepEqual(resources.content.persons, ['示例人物']);
     assert.deepEqual(
@@ -201,6 +244,13 @@ test('editorial material auto-selects generated topics unless supplemental selec
     assert.deepEqual(state.writes.at(-1).material.resources, supplementaryResources);
     assert.deepEqual(state.writes.at(-1).material.resourceSourceOptions, resourceSourceOptions);
     assert.equal(state.writes.at(-1).material.materialHash, 'a'.repeat(64));
+    state.resourcePublicationReady = true;
+    assert.equal((await read()).resourcePublicationReady, true);
+    state.resourceError = Object.assign(new Error('synthetic preview permission failure'), {
+      code: '42501',
+    });
+    await assert.rejects(read(), { code: 'database_unavailable' });
+    assert.equal(state.resourceReleases.at(-1), true);
   } finally {
     delete globalThis.__editorialGenerationTopicsTest;
   }

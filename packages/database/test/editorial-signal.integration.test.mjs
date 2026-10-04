@@ -13,6 +13,7 @@ import {
 } from '../src/editorial-signal-store.mjs';
 import { normalizeEditorialRequest } from '../src/editorial-signal-contract.mjs';
 import { assertEditorialRole } from '../src/editorial-signal-role.mjs';
+import { assertCandidateReviewRole } from '../src/candidate-review-role.mjs';
 import { editorialVectorQuery } from '../src/editorial-vector-query.mjs';
 import { editorialFixture } from './editorial-signal.test.mjs';
 import { resourceFixture } from './editorial-resources.test.mjs';
@@ -24,8 +25,10 @@ suite('editorial publication persistence and isolated capabilities', () => {
     pool,
     writer,
     reader,
+    reviewer,
     created = false,
-    rolesCreated = false;
+    rolesCreated = false,
+    reviewerCreated = false;
   const db = `hzense_editorial_${process.pid}_${Date.now()}`;
   const roles = ['hzense_editorial_writer', 'hzense_editorial_reader'];
   const ambient = [];
@@ -85,11 +88,13 @@ suite('editorial publication persistence and isolated capabilities', () => {
     reader = new pg.Pool({ connectionString: url.toString(), max: 2 });
   });
   afterAll(async () => {
+    await reviewer?.end();
     await writer?.end();
     await reader?.end();
     await pool?.end();
     if (created) await admin.query(`DROP DATABASE "${db}"`);
     if (rolesCreated) for (const role of roles) await admin.query(`DROP ROLE ${role}`);
+    if (reviewerCreated) await admin.query('DROP ROLE hzense_candidate_reviewer');
     for (const { name, privileges } of ambient) {
       if (privileges.length)
         await admin.query(`GRANT ${privileges.join(',')} ON DATABASE "${name}" TO PUBLIC`);
@@ -1213,5 +1218,166 @@ suite('editorial publication persistence and isolated capabilities', () => {
         request: { ...draftFixture.request, requestId: randomUUID(), expectedRevision: 1 },
       }),
     ).rejects.toThrow('resource_source_required');
+  });
+  it('previews resources through the reviewer while legacy writer publication stays fail-closed until upgrade', async () => {
+    // This is the existing limited editorial fixture, extended only with the
+    // reviewer grant contract. It exercises real role SQL and direct logins;
+    // it does not claim to replace the full migration/vector integration suite.
+    if (
+      (await admin.query("SELECT 1 FROM pg_roles WHERE rolname='hzense_candidate_reviewer'"))
+        .rowCount
+    )
+      throw new Error('Refusing to modify existing reviewer');
+    await pool.query(`
+      ALTER TABLE public.signal_generation_runs ADD COLUMN snapshot jsonb, ADD COLUMN source_hash text, ADD COLUMN result jsonb;
+      ALTER TABLE public.topics ADD COLUMN parent_id text, ADD COLUMN metadata jsonb;
+      ALTER TABLE public.entities ADD COLUMN created_at timestamptz, ADD COLUMN updated_at timestamptz;
+      CREATE TABLE public.signals(id text PRIMARY KEY);
+      CREATE TABLE public.candidate_reviews(id uuid,request_id uuid,owner_id text,run_id uuid,candidate_index integer,revision integer,material_hash text,fingerprint text,decision text,note text,draft jsonb,created_at timestamptz);
+      CREATE TABLE public.sources(id text,name text,type text,url text,trust_score double precision,active boolean,allowed_hosts text[]);
+      CREATE TABLE public.public_source_evidence(id uuid,source_id text,source_url text,locator text,excerpt text,content_hash text,captured_at timestamptz,source_published_at timestamptz,verification_status text,created_xid xid8);
+      INSERT INTO public.hzense_schema_migrations(name) VALUES('0020_candidate_reviews.sql'),('0021_candidate_review_attestations.sql');
+    `);
+    await admin.query(
+      "CREATE ROLE hzense_candidate_reviewer LOGIN NOINHERIT CONNECTION LIMIT 2 PASSWORD 'reviewer-test-only'",
+    );
+    reviewerCreated = true;
+    await pool.query(await sql('roles/configure_candidate_reviewer.sql'));
+    const reviewerUrl = new URL(adminUrl);
+    reviewerUrl.pathname = `/${db}`;
+    reviewerUrl.username = 'hzense_candidate_reviewer';
+    reviewerUrl.password = 'reviewer-test-only';
+    reviewer = new pg.Pool({ connectionString: reviewerUrl.toString(), max: 1 });
+    await expect(assertCandidateReviewRole(reviewer)).resolves.toBeUndefined();
+    expect((await reviewer.query('SELECT session_user,current_user')).rows).toEqual([
+      { session_user: 'hzense_candidate_reviewer', current_user: 'hzense_candidate_reviewer' },
+    ]);
+    await pool.query(
+      'REVOKE SELECT(id,name,type,status,aliases), INSERT(id,name,type,status,aliases) ON entities FROM hzense_editorial_writer; REVOKE SELECT(entity_id,entity_type), INSERT(entity_id,entity_type) ON person_profiles,organization_profiles FROM hzense_editorial_writer',
+    );
+    await expect(assertEditorialRole(writer, 'writer')).resolves.toBeUndefined();
+    const fixture = resourceFixture('-legacy-writer-preview');
+    fixture.request.runId = randomUUID();
+    fixture.request.requestId = randomUUID();
+    fixture.content.resources[0].entity_id = 'company-preview-role-fixture';
+    await pool.query(
+      "INSERT INTO public.signal_generation_runs(id,owner_id,status,deleted_at) VALUES($1,'owner','completed',NULL)",
+      [fixture.request.runId],
+    );
+    await pool.query(
+      "INSERT INTO public.entities(id,name,type,status,aliases,metadata) VALUES('company-preview-role-fixture','Canonical preview company','company','active',$1,'{\"keep\":true}');",
+      [[fixture.material.resources[0].name]],
+    );
+    await pool.query(
+      "INSERT INTO public.organization_profiles(entity_id,entity_type) VALUES('company-preview-role-fixture','company')",
+    );
+    const before = (
+      await pool.query(`SELECT
+        (SELECT count(*)::integer FROM public.entities) AS entities,
+        (SELECT count(*)::integer FROM public.person_profiles) AS people,
+        (SELECT count(*)::integer FROM public.organization_profiles) AS organizations,
+        (SELECT count(*)::integer FROM public.editorial_signal_revisions) AS revisions`)
+    ).rows[0];
+    // Observe real PostgreSQL SQLSTATE before the store deliberately translates
+    // database errors to its public database_unavailable contract.
+    const deniedStates = [];
+    const observedWriter = {
+      async connect() {
+        const client = await writer.connect();
+        return {
+          async query(...args) {
+            try {
+              return await client.query(...args);
+            } catch (error) {
+              deniedStates.push(error.code);
+              throw error;
+            }
+          },
+          release: (discard) => client.release(discard),
+        };
+      },
+    };
+    const previewArgs = { resources: fixture.material.resources, catalog: [] };
+    await expect(
+      previewEditorialResources({ pool: observedWriter, ...previewArgs }),
+    ).rejects.toThrow('database_unavailable');
+    expect(deniedStates).toEqual(['42501']);
+    const expectedPreview = [
+      {
+        name: fixture.material.resources[0].name,
+        type: 'company',
+        status: 'reuse',
+        matches: [
+          {
+            id: 'company-preview-role-fixture',
+            name: 'Canonical preview company',
+            type: 'company',
+          },
+        ],
+      },
+      { name: fixture.material.resources[1].name, type: 'person', status: 'new', matches: [] },
+    ];
+    await expect(previewEditorialResources({ pool: reviewer, ...previewArgs })).resolves.toEqual(
+      expectedPreview,
+    );
+    await expect(
+      reviewer.query(
+        "INSERT INTO public.entities(id,name,type,status,aliases) VALUES('person-forbidden-preview','Forbidden','person','active','{}')",
+      ),
+    ).rejects.toMatchObject({ code: '42501' });
+    await expect(
+      saveEditorialSignal({ pool: observedWriter, owner: 'owner', ...fixture }),
+    ).rejects.toThrow('database_unavailable');
+    expect(deniedStates).toEqual(['42501', '42501']);
+    expect(
+      (
+        await pool.query(`SELECT
+          (SELECT count(*)::integer FROM public.entities) AS entities,
+          (SELECT count(*)::integer FROM public.person_profiles) AS people,
+          (SELECT count(*)::integer FROM public.organization_profiles) AS organizations,
+          (SELECT count(*)::integer FROM public.editorial_signal_revisions) AS revisions`)
+      ).rows[0],
+    ).toEqual(before);
+    await expect(
+      readEditorialSignal({
+        pool: writer,
+        owner: 'owner',
+        runId: fixture.request.runId,
+        candidateIndex: 0,
+      }),
+    ).resolves.toBeNull();
+    await pool.query(await sql('roles/upgrade_editorial_resources.sql'));
+    await expect(assertEditorialRole(writer, 'writer')).resolves.toBeUndefined();
+    await expect(previewEditorialResources({ pool: writer, ...previewArgs })).resolves.toEqual(
+      expectedPreview,
+    );
+    const publishArgs = { pool: writer, owner: 'owner', ...fixture };
+    const published = await saveEditorialSignal(publishArgs);
+    expect(published).toMatchObject({ action: 'publish', revision: 1 });
+    expect(published.content.resources[0].entity_id).toBe('company-preview-role-fixture');
+    expect(published.content.resources[1].entity_id).toMatch(/^person-generated-/);
+    expect(
+      (
+        await pool.query('SELECT entity_id FROM public.person_profiles WHERE entity_id=$1', [
+          published.content.resources[1].entity_id,
+        ])
+      ).rowCount,
+    ).toBe(1);
+    await expect(saveEditorialSignal(publishArgs)).resolves.toEqual(published);
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::integer AS revisions FROM public.editorial_signal_revisions WHERE run_id=$1',
+          [fixture.request.runId],
+        )
+      ).rows,
+    ).toEqual([{ revisions: 1 }]);
+    expect(
+      (
+        await pool.query(
+          "SELECT metadata FROM public.entities WHERE id='company-preview-role-fixture'",
+        )
+      ).rows,
+    ).toEqual([{ metadata: { keep: true } }]);
   });
 });

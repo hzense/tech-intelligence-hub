@@ -44,6 +44,7 @@ export type EditorialDashboard = {
   sourceOptions?: string[];
   resourceOptions?: EditorialResourceOption[];
   resourceSourceOptions?: EditorialResourceSourceOption[];
+  resourcePublicationReady?: boolean;
   warnings: string[];
   requestId: string | null;
   publicId: string | null;
