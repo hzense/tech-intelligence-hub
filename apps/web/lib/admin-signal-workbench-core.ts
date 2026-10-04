@@ -30,7 +30,7 @@ function integer(value: string, maximum: number): number {
   return parsed;
 }
 
-/** Shared by the protected SSR pages and GET API. No silent unknown/duplicate parameters. */
+/** Parse protected GET API queries. No silent unknown/duplicate parameters. */
 export function parseSignalWorkbenchQuery(
   params: URLSearchParams,
   operation: SignalWorkbenchOperation,
@@ -58,18 +58,6 @@ export function parseSignalWorkbenchQuery(
     ...(after ? { after: slug(after) } : {}),
     limit: params.has('limit') ? integer(params.get('limit')!, 50) : 25,
   };
-}
-
-/** Preserve duplicate parameters from Next's async searchParams for rejection. */
-export function signalWorkbenchSearchParams(
-  values: Record<string, string | string[] | undefined>,
-): URLSearchParams {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(values)) {
-    if (typeof value === 'string') params.append(key, value);
-    else if (Array.isArray(value)) for (const item of value) params.append(key, item);
-  }
-  return params;
 }
 
 /** Validation only; the Runtime credential is never used for private Signal data. */

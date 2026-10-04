@@ -280,16 +280,13 @@ test(
       },
     );
     await t.test(
-      'Signal workbench pages and GET APIs require a real session and a separate backend',
+      'retired Signal workbench pages return 404 while GET APIs retain authentication and backend checks',
       async () => {
         const cookie = await encryptedCookie(token);
         for (const path of ['/admin/signals', '/admin/signals/synthetic-signal']) {
-          const anonymous = await request(path);
-          assert.equal(anonymous.status, 307);
-          assert.equal(new URL(anonymous.headers.get('location'), origin).pathname, '/admin/login');
+          assert.equal((await request(path)).status, 404);
           const page = await request(path, { headers: { cookie } });
-          assert.equal(page.status, 200);
-          assert.match(page.headers.get('cache-control'), /no-store/);
+          assert.equal(page.status, 404);
         }
         for (const path of ['/api/admin/signals', '/api/admin/signals/synthetic-signal']) {
           for (const suffix of ['', '?unexpected=private-marker']) {
@@ -447,6 +444,7 @@ test(
         assert.match(html, /href="\/admin\/signal-generation"/);
         assert.match(html, /href="\/admin\/sources"/);
         assert.doesNotMatch(html, /受限信号发布|发布服务尚未配置|publication-title/);
+        assert.doesNotMatch(html, /信号只读工作台|href="\/admin\/signals(?:["/?])/);
         const response = await request('/api/admin/signals/withdraw', {
           method: 'POST',
           headers: { origin, cookie, 'content-type': 'application/json' },
@@ -513,7 +511,7 @@ test(
       },
     );
     await t.test(
-      'Preview disables Signal workbench authentication even for the valid synthetic cookie',
+      'Preview keeps retired workbench pages unavailable and denies Signal GET APIs even with a valid synthetic cookie',
       async () => {
         // Reuse the same canonical local origin, key and otherwise-valid claims;
         // only VERCEL_ENV changes. A different port would invalidate the origin
@@ -553,8 +551,7 @@ test(
           const cookie = await encryptedCookie(token);
           for (const path of ['/admin/signals', '/admin/signals/synthetic-signal']) {
             const page = await request(path, { headers: { cookie } });
-            assert.equal(page.status, 307);
-            assert.equal(new URL(page.headers.get('location'), origin).pathname, '/admin/login');
+            assert.equal(page.status, 404);
           }
           for (const path of ['/api/admin/signals', '/api/admin/signals/synthetic-signal']) {
             const response = await request(path, { headers: { cookie } });

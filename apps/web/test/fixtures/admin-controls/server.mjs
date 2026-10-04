@@ -13,7 +13,6 @@ export async function startAdminControlsFixture() {
         import {AdminImports} from './components/admin-imports';
         import {AdminSignalGeneration} from './components/admin-signal-generation';
         import {AdminGenerationPreflight} from './components/admin-generation-preflight';
-        import {AdminSignalWorkbenchList, AdminSignalWorkbenchDetail} from './components/admin-signal-workbench';
         import {AiNavigation} from './components/admin-ai-shared';
         import {GoogleSignInButton, AdminSignOutButton} from './components/admin-auth-buttons';
         import auth from './components/admin-auth.module.css';
@@ -21,8 +20,6 @@ export async function startAdminControlsFixture() {
           '/imports': <AdminImports configured={false}/>,
           '/generation': <AdminSignalGeneration configured={false}/>,
           '/preflight': <AdminGenerationPreflight/>,
-          '/signals': <AdminSignalWorkbenchList state={{status:'ready', data:{items:[], next_after:'next'}}} query="test" after="previous" publicReadEnabled={false}/>,
-          '/signal-detail': <AdminSignalWorkbenchDetail state={{status:'not_found'}} publicReadEnabled={false}/>,
           '/ai': <AiNavigation/>,
           '/auth': <div className={auth.actions}><GoogleSignInButton disabled/><AdminSignOutButton/><a className={auth.backLink} href="/">返回网站</a><a className={auth.backLink} href="/admin/imports">文档与链接批量导入</a></div>
         };
