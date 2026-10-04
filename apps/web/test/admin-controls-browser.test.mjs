@@ -24,15 +24,7 @@ test(
     for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
       for (const theme of ['light', 'dark']) {
-        for (const path of [
-          '/imports',
-          '/generation',
-          '/preflight',
-          '/signals',
-          '/signal-detail',
-          '/ai',
-          '/auth',
-        ]) {
+        for (const path of ['/imports', '/generation', '/preflight', '/ai', '/auth']) {
           await page.goto(`${fixture.origin}${path}?theme=${theme}`);
           if (path === '/generation')
             await page.getByText('诊断与使用说明', { exact: true }).click();

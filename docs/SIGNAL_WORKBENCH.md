@@ -4,6 +4,18 @@
 [Signal-first 设计](SIGNAL_FIRST_REDESIGN.md)和[自动信号流水线](AUTONOMOUS_SIGNAL_PIPELINE.md)，
 不新增另一套数据权威。每阶段分别记录实现、测试、PR／合并、生产配置与线上验收；不能把数据库函数或页面壳计为端到端交付。
 
+## 2026-10-04 页面移除
+
+代码已移除管理员首页的“信号只读工作台”入口，以及 `/admin/signals` 列表和
+`/admin/signals/[id]` 详情页面；这些页面地址返回 `404`。日常信号生成和审核发布继续使用
+`/admin/signal-generation`，见 [AI 信号候选生成](AI_SIGNAL_GENERATION.md)。
+
+此次仅移除页面及其专用展示代码。`GET /api/admin/signals`、
+`GET /api/admin/signals/[id]`、独立鉴权和只读数据库契约继续保留；没有删除信号数据、
+撤销数据库角色或修改生成／审核／发布流程。页面移除的生产生效时间以对应部署记录为准。
+
+下文第一阶段页面、浏览器测试和生产验收描述保留为 2026-09-15 的历史记录，不代表当前页面仍存在。
+
 ## 顺序与完成标准
 
 | 顺序 | 交付                 | 完成标准                                                                                                                                   |
@@ -19,7 +31,7 @@
 
 ## 第一阶段：只读范围
 
-入口 `/admin` → **信号只读工作台**：
+原入口 `/admin` → **信号只读工作台**（页面已于上述代码变更中移除）：
 
 - `/admin/signals`：按信号 ID 稳定游标分页，标题／ID 关键词筛选；默认每页 25 条，API 上限 50 条。列表展示的是**最新快照**，不是自动认定为“待审核候选”。
 - `/admin/signals/[id]?version=N`：固定版本详情，版本历史、时间依据、摘要／研判、领域、证据主张与来源、人物／组织事件关联、核验概要。
@@ -52,8 +64,8 @@ URL 只允许无凭证、无查询串、无片段的 HTTPS 链接；不安全链
 
 | 层                     | 文件                                                  |
 | ---------------------- | ----------------------------------------------------- |
-| 页面                   | `apps/web/app/admin/(protected)/signals/`             |
-| 展示组件               | `apps/web/components/admin-signal-workbench.tsx`      |
+| 页面（已移除）         | `apps/web/app/admin/(protected)/signals/`             |
+| 展示组件（已移除）     | `apps/web/components/admin-signal-workbench.tsx`      |
 | HTTP／参数／配置边界   | `apps/web/lib/admin-signal-workbench-core.ts`         |
 | 生产只读连接           | `apps/web/lib/server/admin-signal-workbench.ts`       |
 | SQL 查询和最小返回字段 | `packages/database/src/signal-workbench-store.mjs`    |

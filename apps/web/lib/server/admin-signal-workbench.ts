@@ -5,21 +5,14 @@ import {
   getSignalWorkbenchDetail,
 } from '../../../../packages/database/src/signal-workbench-store.mjs';
 import {
-  SignalWorkbenchError,
   parseSignalWorkbenchListRequest,
   parseSignalWorkbenchDetailRequest,
 } from '../../../../packages/database/src/signal-workbench-contract.mjs';
 import {
   SignalWorkbenchConfigurationError,
-  SignalWorkbenchQueryError,
-  parseSignalWorkbenchQuery,
   readSignalWorkbenchConfiguration,
   type SignalWorkbenchOperation,
 } from '../admin-signal-workbench-core';
-import type {
-  SignalWorkbenchListState,
-  SignalWorkbenchDetailState,
-} from '../../components/admin-signal-workbench';
 
 let pool: pg.Pool | undefined;
 let configuredUrl: string | undefined;
@@ -51,7 +44,7 @@ const restrictedPool = {
   },
 };
 
-/** Call only after page/session authorization. No Seed fallback or side effects. */
+/** Call only after administrator API authorization. No Seed fallback or side effects. */
 export async function executeSignalWorkbench(
   operation: SignalWorkbenchOperation,
   command: Record<string, unknown>,
@@ -66,48 +59,4 @@ export async function executeSignalWorkbench(
     pool: restrictedPool,
     request: parseSignalWorkbenchDetailRequest(command),
   });
-}
-
-function failureState(
-  error: unknown,
-): 'invalid_request' | 'not_configured' | 'unavailable' | 'not_found' | 'incompatible_data' {
-  if (error instanceof SignalWorkbenchConfigurationError) return 'not_configured';
-  if (error instanceof SignalWorkbenchQueryError) return 'invalid_request';
-  if (error instanceof SignalWorkbenchError) {
-    if (error.code === 'not_found') return 'not_found';
-    if (error.code === 'invalid_request') return 'invalid_request';
-    if (error.code === 'incompatible_data') return 'incompatible_data';
-  }
-  return 'unavailable';
-}
-
-export async function getSignalWorkbenchList(
-  params: URLSearchParams,
-): Promise<SignalWorkbenchListState> {
-  try {
-    const request = parseSignalWorkbenchListRequest(parseSignalWorkbenchQuery(params, 'list'));
-    readSignalWorkbenchConfiguration(process.env);
-    return { status: 'ready', data: await listSignalWorkbench({ pool: restrictedPool, request }) };
-  } catch (error) {
-    const status = failureState(error);
-    return { status: status === 'not_found' ? 'unavailable' : status };
-  }
-}
-
-export async function getSignalWorkbenchDetailState(
-  id: string,
-  params: URLSearchParams,
-): Promise<SignalWorkbenchDetailState> {
-  try {
-    const request = parseSignalWorkbenchDetailRequest(
-      parseSignalWorkbenchQuery(params, 'detail', id),
-    );
-    readSignalWorkbenchConfiguration(process.env);
-    return {
-      status: 'ready',
-      data: await getSignalWorkbenchDetail({ pool: restrictedPool, request }),
-    };
-  } catch (error) {
-    return { status: failureState(error) };
-  }
 }

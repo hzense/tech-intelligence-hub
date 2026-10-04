@@ -29,9 +29,6 @@ export default async function AdminHomePage() {
           <Link className={styles.backLink} href="/admin/imports">
             文档与链接批量导入
           </Link>
-          <Link className={styles.backLink} href="/admin/signals">
-            信号只读工作台
-          </Link>
           <Link className={styles.backLink} href="/admin/signal-generation">
             AI 信号候选生成
           </Link>

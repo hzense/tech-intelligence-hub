@@ -6,7 +6,6 @@ import {
   createSignalWorkbenchHandler,
   parseSignalWorkbenchQuery,
   readSignalWorkbenchConfiguration,
-  signalWorkbenchSearchParams,
   SignalWorkbenchConfigurationError,
 } from '../lib/admin-signal-workbench-core.ts';
 
@@ -27,7 +26,7 @@ const environment = () => ({
   HZENSE_RUNTIME_EXPECTED_USER: 'hzense_runtime',
 });
 
-test('workbench parses bounded GET queries and preserves SSR duplicates', () => {
+test('workbench parses bounded GET queries', () => {
   assert.deepEqual(parseSignalWorkbenchQuery(new URLSearchParams(), 'list'), { limit: 25 });
   assert.deepEqual(
     parseSignalWorkbenchQuery(new URLSearchParams('q=+AI+&after=signal-a&limit=50'), 'list'),
@@ -40,9 +39,6 @@ test('workbench parses bounded GET queries and preserves SSR duplicates', () => 
   assert.deepEqual(parseSignalWorkbenchQuery(new URLSearchParams(), 'detail', 'signal-a'), {
     signal_id: 'signal-a',
   });
-  const duplicates = signalWorkbenchSearchParams({ q: ['one', 'two'], ignored: undefined });
-  assert.deepEqual(duplicates.getAll('q'), ['one', 'two']);
-  assert.throws(() => parseSignalWorkbenchQuery(duplicates, 'list'));
 });
 
 for (const query of [

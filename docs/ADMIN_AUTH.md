@@ -21,6 +21,8 @@
 
 **2026-09-15 工作台增量：** 新增受保护的 `/admin/signals`、`/admin/signals/[id]` 和两条独立鉴权的 GET API。只读版本／证据摘要，不提供生成、审核或发布动作；生产还需要独立 `hzense_signal_admin_reader` 与 Production-only Secret。实现及验收状态见[后台信号工作台](SIGNAL_WORKBENCH.md)。以上早期 AI 状态保留为当时记录，后续生产结果以 [AI 配置记录](production-evidence/2026-09-14-ai-configuration.md)为准。
 
+**2026-10-04 工作台页面移除：** 代码已删除管理员首页的“信号只读工作台”入口及 `/admin/signals`、`/admin/signals/[id]` 页面，页面地址返回 `404`。两条 GET API 继续独立校验管理员会话，匿名及 Preview 请求仍被拒绝；只读数据库连接、角色和数据不变。当前 AI 候选生成、审核和发布入口保留。上面的页面描述及原上线记录属于历史证据，本次页面移除何时在生产生效以部署记录为准。
+
 ## 身份和会话规则
 
 - `HZENSE_ADMIN_EMAIL` 只接受一个 Gmail 邮箱，不支持邮箱列表、通配符、Workspace 域名、`googlemail.com` 或 `+` 别名。
