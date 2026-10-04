@@ -5,6 +5,7 @@ import { fileURLToPath, URL } from 'node:url';
 import process from 'node:process';
 import { build } from 'esbuild';
 import { chromium, expect } from '@playwright/test';
+const { structuredClone } = globalThis;
 /* global document */
 
 test(
@@ -271,6 +272,7 @@ test(
       data = {
         ...data,
         configured: true,
+        resourcePublicationReady: true,
         revision: 0,
         action: null,
         requestId: null,
@@ -312,6 +314,34 @@ test(
           },
         ],
       };
+      const resourceScenario = structuredClone(data);
+      data.resourcePublicationReady = false;
+      data.content.sourceUrls = [...data.sourceOptions];
+      data.content.resources = data.content.resources.map((resource) => ({
+        ...resource,
+        entity_id: resource.type === 'person' ? 'person-alex-two' : resource.entity_id,
+      }));
+      await page.reload();
+      await expect(
+        page.getByRole('heading', { name: data.content.title, exact: true }),
+      ).toBeVisible();
+      await expect(page.getByText(/资源发布尚未启用。候选资料可正常核对并保存补充/)).toBeVisible();
+      await expect(page.getByText('资料已就绪，等待启用资源发布', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('Alex Example 的资源身份')).toHaveValue('person-alex-two');
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '保存补充', exact: true })).toBeEnabled();
+      const blockedPosts = posts.length;
+      await page.getByRole('button', { name: '保存补充', exact: true }).click();
+      await expect(page.getByText('补充信息已保存，尚未发布。', { exact: true })).toBeVisible();
+      assert.equal(posts.length, blockedPosts + 1);
+      assert.equal(posts.at(-1).action, 'draft');
+      assert.equal(posts.at(-1).consent, false);
+      // Missing capability evidence is not permission to publish either.
+      delete data.resourcePublicationReady;
+      await page.reload();
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '保存补充', exact: true })).toBeEnabled();
+      data = resourceScenario;
       const previousPosts = posts.length;
       await page.reload();
       await expect(page.getByLabel('组织', { exact: true })).toHaveAttribute('readonly', '');

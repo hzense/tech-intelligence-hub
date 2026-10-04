@@ -55,3 +55,26 @@ export const editorialPool = {
     }
   },
 };
+
+export async function editorialResourcePublicationReady() {
+  // connect() accepts only the exact legacy or upgraded writer ACL. This
+  // discriminates those audited states; it never grants access or substitutes
+  // for the store's checks when a later publication transaction actually runs.
+  const client = await editorialPool.connect();
+  let discard = false;
+  try {
+    const row = (
+      await client.query(
+        "SELECT pg_catalog.has_column_privilege('public.entities','name','SELECT') AS available",
+      )
+    ).rows[0];
+    if (typeof row?.available !== 'boolean')
+      throw Object.assign(new Error('database_unavailable'), { code: 'database_unavailable' });
+    return row.available;
+  } catch (error) {
+    discard = true;
+    throw error;
+  } finally {
+    client.release(discard);
+  }
+}

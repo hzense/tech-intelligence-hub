@@ -10,7 +10,12 @@ import { buildCandidateReview, buildEnrichedCandidateReview } from '../candidate
 import { listCandidateEnrichmentDtos } from './candidate-enrichment';
 import { materialPublicationPreview } from './material-registration';
 import type { EditorialContent } from '../editorial-review';
-import { editorialPool, editorialPublicationEnabled } from './editorial-database';
+import {
+  editorialPool,
+  editorialPublicationEnabled,
+  editorialResourcePublicationReady,
+} from './editorial-database';
+import { candidateReviewPool } from './candidate-review-database';
 import { editorialTopicOptions } from './editorial-topics';
 import { importPool } from './generation-import-reader';
 import { readMaterialSupplement } from '../material-source-reader';
@@ -120,7 +125,8 @@ const service = createEditorialReviewService({
   save: (owner, request, bound) =>
     saveEditorialSignal({ pool: editorialPool, owner, request, material: bound }),
   resources: (resources, catalog) =>
-    previewEditorialResources({ pool: editorialPool, resources, catalog }),
+    previewEditorialResources({ pool: candidateReviewPool, resources, catalog }),
+  resourcePublicationReady: editorialResourcePublicationReady,
 });
 export const editorialDashboard = service.read;
 export const writeEditorialReview = service.write;

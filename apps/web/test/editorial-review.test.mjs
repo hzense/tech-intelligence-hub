@@ -414,6 +414,122 @@ test('resource preparation reuses unique identities, preserves saved IDs and bin
   );
 });
 
+test('resource publication readiness is separate from material reading and defaults closed', async () => {
+  const resource = {
+    type: 'company',
+    name: '合成组织',
+    introduction: null,
+    event_role: null,
+    evidence: [{ fragment_id: 'f1', quote: '合成组织' }],
+  };
+  const choice = {
+    type: 'company',
+    name: resource.name,
+    status: 'reuse',
+    matches: [{ id: 'company-existing', type: 'company', name: resource.name }],
+  };
+  let configured = true;
+  let withResources = true;
+  let ready = false;
+  let checks = 0;
+  let reads = 0;
+  let previews = 0;
+  const deps = {
+    enabled: () => configured,
+    material: async () => ({
+      materialHash,
+      warnings: [],
+      content: {
+        ...content,
+        ...(withResources ? { resources: [{ ...resource, entity_id: null }] } : {}),
+      },
+      ...(withResources ? { resources: [resource] } : {}),
+    }),
+    topics: async () => content.topics,
+    read: async () => {
+      reads++;
+      return null;
+    },
+    resources: async () => {
+      previews++;
+      return [choice];
+    },
+    resourcePublicationReady: async () => {
+      checks++;
+      return ready;
+    },
+    save: async () => {
+      throw new Error('read must not write');
+    },
+  };
+  const service = createEditorialReviewService(deps);
+  const prepared = await service.read('owner', runId, 0);
+  assert.equal(prepared.content.resources[0].entity_id, 'company-existing');
+  assert.deepEqual(prepared.resourceOptions, [choice]);
+  assert.equal(prepared.resourcePublicationReady, false);
+  ready = true;
+  assert.equal((await service.read('owner', runId, 0)).resourcePublicationReady, true);
+  assert.equal(checks, 2);
+  const noReadiness = createEditorialReviewService({
+    ...deps,
+    resourcePublicationReady: undefined,
+  });
+  assert.equal((await noReadiness.read('owner', runId, 0)).resourcePublicationReady, false);
+  const counts = [checks, reads, previews];
+  configured = false;
+  assert.equal((await service.read('owner', runId, 0)).resourcePublicationReady, false);
+  assert.deepEqual([checks, reads, previews], counts);
+  configured = true;
+  withResources = false;
+  const legacy = await service.read('owner', runId, 0);
+  assert.equal(Object.hasOwn(legacy, 'resourcePublicationReady'), false);
+  assert.equal(checks, counts[0]);
+  assert.equal(previews, counts[2]);
+});
+
+test('resource preview and capability failures do not masquerade as an empty catalog', async () => {
+  const resources = [
+    {
+      type: 'company',
+      name: '合成组织',
+      introduction: null,
+      event_role: null,
+      evidence: [{ fragment_id: 'f1', quote: '合成组织' }],
+    },
+  ];
+  const deps = {
+    enabled: () => true,
+    material: async () => ({
+      materialHash,
+      warnings: [],
+      resources,
+      content: {
+        ...content,
+        resources: resources.map((resource) => ({ ...resource, entity_id: null })),
+      },
+    }),
+    topics: async () => content.topics,
+    read: async () => null,
+    resources: async () => [],
+    resourcePublicationReady: async () => false,
+    save: async () => {
+      throw new Error('read must not write');
+    },
+  };
+  const failure = Object.assign(new Error('synthetic read failure'), {
+    code: 'database_unavailable',
+  });
+  for (const dependency of ['resources', 'resourcePublicationReady']) {
+    const service = createEditorialReviewService({
+      ...deps,
+      [dependency]: async () => {
+        throw failure;
+      },
+    });
+    await assert.rejects(service.read('owner', runId, 0), (error) => error === failure);
+  }
+});
+
 test('ambiguous resources need an explicit identity of a compatible kind', () => {
   const resources = [
     {

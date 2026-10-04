@@ -27,6 +27,7 @@ test('actual editorial catalog discards query failures but releases local valida
       '../../../../packages/database/src/editorial-signal-store.mjs':
         'export const saveEditorialSignal = () => {}; export const readEditorialSignal = () => {}; export const previewEditorialResources = () => {};',
       '../seed-runtime': 'export const getResourceEntries = async () => [];',
+      './candidate-review-database': 'export const candidateReviewPool = {};',
       '../../../../packages/database/src/editorial-signal-role.mjs':
         'export async function assertEditorialRole() {}',
       '../editorial-review-service':

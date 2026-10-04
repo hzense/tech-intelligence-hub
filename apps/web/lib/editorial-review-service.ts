@@ -65,18 +65,22 @@ export function createEditorialReviewService(deps: {
     resources: NonNullable<EditorialMaterial['resources']>,
     catalog: NonNullable<EditorialMaterial['resourceCatalog']>,
   ): Promise<EditorialResourceOption[]>;
+  resourcePublicationReady?(): Promise<boolean>;
 }) {
   return {
     async read(owner: string, runId: string, index: number): Promise<EditorialDashboard> {
       identity(runId, index);
       const material = await deps.material(owner, runId, index);
       const configured = deps.enabled();
-      const [saved, topicOptions, resourceOptions] = await Promise.all([
+      const [saved, topicOptions, resourceOptions, resourcePublicationReady] = await Promise.all([
         configured ? deps.read(owner, runId, index) : null,
         deps.topics(),
         configured && material.resources && deps.resources
           ? deps.resources(material.resources, material.resourceCatalog ?? [])
           : [],
+        configured && material.resources !== undefined && deps.resourcePublicationReady
+          ? deps.resourcePublicationReady()
+          : false,
       ]);
       const currentTopics = new Map(topicOptions.map((topic) => [topic.id, topic]));
       let selected = saved?.content ?? {
@@ -184,7 +188,11 @@ export function createEditorialReviewService(deps: {
         sourceOptions: [...new Set([...(material.sourceOptions ?? []), ...content.sourceUrls])],
         ...(material.resources === undefined
           ? {}
-          : { resourceOptions, resourceSourceOptions: resourceSourceOptions ?? [] }),
+          : {
+              resourceOptions,
+              resourceSourceOptions: resourceSourceOptions ?? [],
+              resourcePublicationReady,
+            }),
         warnings,
         requestId: saved?.request_id ?? null,
         publicId: saved?.action === 'publish' ? editorialPublicId(runId, index) : null,

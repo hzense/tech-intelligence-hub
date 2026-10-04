@@ -232,6 +232,8 @@ export function EditorialPublicationEditor({
         ),
     ) ?? [];
   const disabled = busy || !!pending || needsRefresh || !data?.configured;
+  const resourcePublicationBlocked =
+    !!content?.resources?.length && data?.resourcePublicationReady !== true;
   return (
     <section className={styles.panel} aria-labelledby="editorial-heading">
       <h2 id="editorial-heading">确认发布</h2>
@@ -259,6 +261,11 @@ export function EditorialPublicationEditor({
               人工发布尚未启用：需完成数据库迁移、专用权限及环境配置。目前不会发布。
             </p>
           ) : null}
+          {data.configured && resourcePublicationBlocked ? (
+            <p role="alert">
+              资源发布尚未启用。候选资料可正常核对并保存补充，启用后才能连同人物、组织资源一起发布。
+            </p>
+          ) : null}
           {data.warnings.map((warning) => (
             <p key={warning}>{warning}</p>
           ))}
@@ -269,7 +276,9 @@ export function EditorialPublicationEditor({
                 ? '已发布 · 管理员确认'
                 : missing.length
                   ? `待补充：${missing.join('、')}`
-                  : '待确认发布'}
+                  : resourcePublicationBlocked
+                    ? '资料已就绪，等待启用资源发布'
+                    : '待确认发布'}
           </p>
           <fieldset disabled={disabled} className={styles.fields}>
             <legend>发布信息</legend>
@@ -598,7 +607,12 @@ export function EditorialPublicationEditor({
             <button
               type="button"
               className={controls.button}
-              disabled={disabled || missing.length > 0 || invalidTopics.length > 0}
+              disabled={
+                disabled ||
+                resourcePublicationBlocked ||
+                missing.length > 0 ||
+                invalidTopics.length > 0
+              }
               onClick={() => void submit('publish')}
             >
               {data.action === 'publish' ? '确认更新发布' : '确认发布'}
