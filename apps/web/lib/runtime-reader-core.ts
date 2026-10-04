@@ -437,6 +437,7 @@ export function createRuntimeReaderHealthHandler({
   probeSearch,
   signalReadMode = () => 'legacy',
   probePublicSignals,
+  probeLegacySignals,
 }: {
   clock?: () => number;
   log: (record: RuntimeReaderHealthLog) => void;
@@ -446,6 +447,7 @@ export function createRuntimeReaderHealthHandler({
   probeSearch?: () => Promise<void>;
   signalReadMode?: () => 'legacy' | 'database';
   probePublicSignals?: () => Promise<void>;
+  probeLegacySignals?: () => Promise<void>;
 }): (request?: Pick<Request, 'headers'>) => Promise<Response> {
   return async (request) => {
     const startedAt = clock();
@@ -466,6 +468,7 @@ export function createRuntimeReaderHealthHandler({
         if (!probePublicSignals) fail('invalid_configuration');
         await probePublicSignals();
       }
+      await probeLegacySignals?.();
     } catch (error) {
       outcome = 'unavailable';
       errorCode = classifyRuntimeReaderError(error);

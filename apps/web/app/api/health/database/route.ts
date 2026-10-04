@@ -5,6 +5,7 @@ import {
 import process from 'node:process';
 import { readSearchMode } from '@/lib/search-mode';
 import { readSignalReadMode } from '@/lib/public-signal-reader-core';
+import { probeLegacySignalArchive } from '@/lib/server/legacy-signal-archive';
 import {
   readRuntimeTopics,
   runtimeReaderPoolStats,
@@ -33,6 +34,7 @@ const handleHealthRequest = createRuntimeReaderHealthHandler({
   probeSearch: probeRuntimeSearch,
   signalReadMode: () => readSignalReadMode(process.env),
   probePublicSignals: probeRuntimePublicSignals,
+  probeLegacySignals: probeLegacySignalArchive,
 });
 
 export async function GET(request: Request): Promise<Response> {

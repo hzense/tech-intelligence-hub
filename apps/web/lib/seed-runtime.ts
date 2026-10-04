@@ -3,6 +3,7 @@ import process from 'node:process';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import { readSignalReadMode, type SignalEntry } from './public-signal-reader-core.ts';
 import { projectLegacySignalEntries } from './legacy-signal-projection.ts';
+import { readLegacySignalArchiveMode } from './legacy-signal-archive-reader-core.ts';
 import { projectEditorialEntityLinks } from './editorial-entity-links.ts';
 import { editorialSignalIdPattern } from './editorial-signal-reader-core.ts';
 import {
@@ -24,6 +25,7 @@ function getSeedCatalog() {
 }
 
 export async function getSignalEntries(): Promise<SignalEntry[]> {
+  const archiveMode = readLegacySignalArchiveMode(process.env);
   if (readSignalReadMode(process.env) === 'database') {
     const signals = await (await import('./server/public-signals.ts')).getPublicSignals();
     return projectEditorialEntityLinks(signals, await getResourceEntries());
@@ -32,7 +34,10 @@ export async function getSignalEntries(): Promise<SignalEntry[]> {
     process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED === '1'
       ? await (await import('./server/editorial-signals.ts')).getEditorialSignals()
       : [];
-  const normalizedLegacy = projectLegacySignalEntries(await getSeedCatalog());
+  const normalizedLegacy =
+    archiveMode === 'database'
+      ? await (await import('./server/legacy-signal-archive.ts')).getLegacyArchivedSignals()
+      : projectLegacySignalEntries(await getSeedCatalog());
   return projectEditorialEntityLinks(
     [...normalizedLegacy, ...editorial].sort((left, right) =>
       right.occurred_at.localeCompare(left.occurred_at),

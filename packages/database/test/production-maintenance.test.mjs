@@ -716,10 +716,24 @@ describe('execution-time GitHub freshness check', () => {
             }),
             MAINTENANCE_SEQUENCE_PHASE: 'prepare',
           }
-        : ['migrate', 'search-apply', 'acl-capture', 'editorial-resource-grant'].includes(operation)
+        : [
+              'migrate',
+              'search-apply',
+              'acl-capture',
+              'editorial-resource-grant',
+              'legacy-signal-apply',
+            ].includes(operation)
           ? writeEnvironment(operation, {
               publicArchiveApproved: true,
               archiveRepository: 'hzense/tech-intelligence-hub',
+              ...(operation === 'legacy-signal-apply'
+                ? {
+                    roleUpgradeApproved: true,
+                    targetFingerprint: 'd'.repeat(64),
+                    manifestFingerprint: 'f'.repeat(64),
+                    contentFingerprint: 'c'.repeat(64),
+                  }
+                : {}),
               ...(operation === 'editorial-resource-grant'
                 ? {
                     roleUpgradeApproved: true,

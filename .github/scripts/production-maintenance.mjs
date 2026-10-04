@@ -1,3 +1,4 @@
+import { LegacySignalMaintenanceError, legacyMigrationName } from './legacy-signal-maintenance.mjs';
 import console from 'node:console';
 import process from 'node:process';
 import { createHash } from 'node:crypto';
@@ -17,9 +18,18 @@ export const maintenanceOperations = Object.freeze([
   'acl-capture',
   'migrate-and-verify',
   'editorial-resource-grant',
+  'legacy-signal-dry-run',
+  'legacy-signal-apply',
+  'legacy-signal-verify',
 ]);
 const migrationSequence = 'migrate-and-verify';
-const writes = new Set(['migrate', 'search-apply', migrationSequence, 'editorial-resource-grant']);
+const writes = new Set([
+  'migrate',
+  'search-apply',
+  migrationSequence,
+  'editorial-resource-grant',
+  'legacy-signal-apply',
+]);
 const digest = /^[a-f0-9]{64}$/;
 export const editorialResourceRoleUpgradeSha256 =
   '8db30d928fbb30383b1dd8d3ad68e51ce68f644172a0e6aee1cd550db5d58b2d';
@@ -1458,6 +1468,16 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
     'approval-expired-or-too-long',
   );
   const recoveryPolicy = validateRecoveryPolicy(approval, operation);
+  if (operation === 'legacy-signal-apply') {
+    requireGate(
+      recoveryPolicy === 'verified' &&
+        approval.roleUpgradeApproved === true &&
+        ['manifestFingerprint', 'planFingerprint', 'targetFingerprint', 'contentFingerprint'].every(
+          (key) => digest.test(approval[key] ?? ''),
+        ),
+      'legacy-signal-approval-required',
+    );
+  }
   if (operation === 'editorial-resource-grant') {
     requireGate(
       recoveryPolicy === 'verified' &&
@@ -1584,10 +1604,14 @@ export function publicMaintenanceResult(operation, result = {}) {
     'targetFingerprint',
     'backupIdSha256',
     'roleUpgradeSha256',
+    'contentFingerprint',
+    'aclFingerprint',
   ]) {
     if (typeof result[key] === 'string' && digest.test(result[key])) summary[key] = result[key];
   }
   if (typeof result.committed === 'boolean') summary.committed = result.committed;
+  if (typeof result.verificationCompleted === 'boolean')
+    summary.verificationCompleted = result.verificationCompleted;
   if (typeof result.roleUpgradeCompleted === 'boolean')
     summary.roleUpgradeCompleted = result.roleUpgradeCompleted;
   if (Array.isArray(result.pendingMigrations)) {
@@ -1597,6 +1621,13 @@ export function publicMaintenanceResult(operation, result = {}) {
 }
 
 export function publicMaintenanceFailure(error) {
+  if (error instanceof LegacySignalMaintenanceError)
+    return {
+      ...publicMaintenanceFailure(error.cause),
+      operation: error.operation,
+      migrationMayHaveCommitted: error.mayHaveCommitted,
+      verificationCompleted: false,
+    };
   if (error instanceof EditorialResourceGrantError)
     return {
       ...publicMaintenanceFailure(error.cause),
@@ -1926,6 +1957,10 @@ async function executeEditorialResourceGrant(env, approval, context) {
 }
 
 async function executeOperation(env, { operation, approval }, context = {}) {
+  if (operation.startsWith('legacy-signal-')) {
+    const { executeLegacySignalMaintenance } = await import('./legacy-signal-maintenance.mjs');
+    return executeLegacySignalMaintenance(env, { operation, approval }, context);
+  }
   if (operation === 'editorial-resource-grant')
     return executeEditorialResourceGrant(env, approval, context);
   if (operation === automationConfigDeletionGrant)
@@ -2218,6 +2253,10 @@ async function executeOperation(env, { operation, approval }, context = {}) {
     let approvedPlan;
     let migrationClient;
     async function checkScope(preflight) {
+      requireGate(
+        !preflight?.pendingMigrations?.includes(legacyMigrationName),
+        'legacy-signal-atomic-operation-required',
+      );
       if (approval?.recoveryPolicy === unverifiedRecoveryPolicy)
         requireFts1MigrationScope(preflight);
       if (
@@ -2373,6 +2412,10 @@ async function executeOperation(env, { operation, approval }, context = {}) {
         automationConfigDeletionRecoveryPolicy,
       ].includes(approval?.recoveryPolicy)
         ? async (pendingMigrations, artifact) => {
+            requireGate(
+              !pendingMigrations.includes(legacyMigrationName),
+              'legacy-signal-atomic-operation-required',
+            );
             if (
               [
                 aiConfigRecoveryPolicy,
@@ -2537,7 +2580,12 @@ async function executeOperation(env, { operation, approval }, context = {}) {
               context.checkApproval();
             }
           }
-        : undefined,
+        : async (pendingMigrations) => {
+            requireGate(
+              !pendingMigrations.includes(legacyMigrationName),
+              'legacy-signal-atomic-operation-required',
+            );
+          },
     });
     return { ...(await verifyDatabaseContract(options)), ...approvedPlan };
   }
@@ -2692,7 +2740,8 @@ export async function runMaintenance(
             await execute(
               executionEnv,
               request,
-              ...(request.operation === 'editorial-resource-grant'
+              ...(request.operation === 'editorial-resource-grant' ||
+              request.operation.startsWith('legacy-signal-')
                 ? [{ checkApproval, checkFreshness }]
                 : []),
             ),

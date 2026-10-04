@@ -50,9 +50,9 @@ vi.mock('../src/runtime-acl-baseline.mjs', () => ({
 }));
 
 const root = new URL('../../../db/migrations/', import.meta.url);
-const migrations = Object.entries(
-  JSON.parse(readFileSync(new URL('checksums.json', root), 'utf8')),
-).map(([name, checksum]) => ({ name, checksum, sql: readFileSync(new URL(name, root), 'utf8') }));
+const migrations = Object.entries(JSON.parse(readFileSync(new URL('checksums.json', root), 'utf8')))
+  .slice(0, 28)
+  .map(([name, checksum]) => ({ name, checksum, sql: readFileSync(new URL(name, root), 'utf8') }));
 const identity = { database: 'fixture', user: 'fixture_owner', pendingMigrations: [] };
 const policy = {
   host: 'fixture.invalid',

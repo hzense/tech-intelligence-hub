@@ -101,6 +101,44 @@ suite('editorial publication persistence and isolated capabilities', () => {
     }
     await admin?.end();
   });
+  it('accepts only the complete historical public-view grant alongside the existing reader', async () => {
+    await pool.query(await sql('migrations/0028_legacy_signal_archive.sql'));
+    const client = await reader.connect();
+    try {
+      await assertEditorialRole(client, 'reader');
+      await pool.query(
+        'GRANT SELECT(signal_id) ON public.legacy_public_signals TO hzense_editorial_reader',
+      );
+      await expect(assertEditorialRole(client, 'reader')).rejects.toThrow('editorial_role_invalid');
+      await pool.query(
+        'GRANT SELECT(content,content_hash) ON public.legacy_public_signals TO hzense_editorial_reader',
+      );
+      await assertEditorialRole(client, 'reader');
+      await pool.query(
+        'GRANT SELECT(signal) ON public.legacy_signal_archive TO hzense_editorial_reader',
+      );
+      await expect(assertEditorialRole(client, 'reader')).rejects.toThrow('editorial_role_invalid');
+      await pool.query(
+        'REVOKE SELECT(signal) ON public.legacy_signal_archive FROM hzense_editorial_reader',
+      );
+      await assertEditorialRole(client, 'reader');
+      await pool.query(
+        'REVOKE SELECT(signal_id) ON public.legacy_public_signals FROM hzense_editorial_reader',
+      );
+      await expect(assertEditorialRole(client, 'reader')).rejects.toThrow('editorial_role_invalid');
+    } finally {
+      client.release();
+      await pool.query(
+        'DROP VIEW public.legacy_public_signals; DROP TABLE public.legacy_signal_archive; DROP FUNCTION public.hzense_guard_legacy_signal_archive()',
+      );
+    }
+    const oldReader = await reader.connect();
+    try {
+      await assertEditorialRole(oldReader, 'reader');
+    } finally {
+      oldReader.release();
+    }
+  });
   it('rejects cross-database PUBLIC, direct and dormant object privileges for both roles', async () => {
     const sentinel = `${db}_other`;
     let other;

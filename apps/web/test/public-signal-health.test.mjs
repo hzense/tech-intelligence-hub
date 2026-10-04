@@ -40,3 +40,19 @@ test('legacy signal mode never connects to the new view; an empty valid view is 
   }
   assert.equal(probes, 1);
 });
+
+test('health includes the activated historical archive and does not expose its failure details', async () => {
+  const handle = createRuntimeReaderHealthHandler({
+    log: () => {},
+    poolStats: () => ({ idle: 0, total: 0, waiting: 0 }),
+    readTopics: async () => [
+      { id: 'topic-test', title: 'Test', status: 'active', runtimeEnabled: true, parentId: null },
+    ],
+    probeLegacySignals: async () => {
+      throw new Error('sensitive archive failure');
+    },
+  });
+  const result = await handle();
+  assert.equal(result.status, 503);
+  assert.deepEqual(await result.json(), { status: 'unavailable' });
+});

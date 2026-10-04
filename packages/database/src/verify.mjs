@@ -1,3 +1,11 @@
+import {
+  legacyArchiveColumns,
+  legacyArchivePrimaryKeys,
+  legacyArchiveChecks,
+  legacyArchiveDefaults,
+  legacyPublicSignalColumns,
+  legacyPublicSignalViewHashes,
+} from './legacy-signal-archive-catalog.mjs';
 import console from 'node:console';
 import {
   editorialColumns,
@@ -301,6 +309,7 @@ const expectedColumns = {
   ...materialProposalColumns,
   ...candidateReviewColumns,
   ...editorialColumns,
+  ...legacyArchiveColumns,
   ...automationColumns,
 };
 for (const tableName of allStampedSignalTables) {
@@ -378,6 +387,7 @@ const expectedPrimaryKeys = new Set([
   ...materialProposalPrimaryKeys,
   ...candidateReviewPrimaryKeys,
   ...editorialPrimaryKeys,
+  ...legacyArchivePrimaryKeys,
   ...automationPrimaryKeys,
   'topics|id',
   'entities|id',
@@ -443,6 +453,7 @@ const expectedCheckExpressions = {
   ...materialProposalChecks,
   ...candidateReviewChecks,
   ...editorialChecks,
+  ...legacyArchiveChecks,
   ...automationChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
@@ -515,6 +526,7 @@ const expectedDefaults = new Map([
   ...materialProposalDefaults,
   ...candidateReviewDefaults,
   ...editorialDefaults,
+  ...legacyArchiveDefaults,
   ...automationDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
@@ -705,6 +717,10 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
     editorial_public_signals: {
       columns: editorialPublicColumns,
       hashes: editorialPublicViewHashes,
+    },
+    legacy_public_signals: {
+      columns: legacyPublicSignalColumns,
+      hashes: legacyPublicSignalViewHashes,
     },
     published_topic_insights: {
       columns: publishedTopicInsightColumns,
@@ -927,7 +943,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
                 'candidate_material_requests','candidate_material_reports','candidate_material_receipts',
                 'candidate_material_proposals','candidate_material_approvals',
                 'candidate_reviews','candidate_review_conversions','candidate_review_attestations',
-                'editorial_signal_revisions','automation_configs','automation_runs'
+                'editorial_signal_revisions','automation_configs','automation_runs','legacy_signal_archive'
               ))::text
               ORDER BY constraint_info.oid
             ) AS definitions
@@ -974,6 +990,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
       Object.hasOwn(materialProposalChecks, tableName) ||
       Object.hasOwn(candidateReviewChecks, tableName) ||
       Object.hasOwn(editorialChecks, tableName) ||
+      Object.hasOwn(legacyArchiveChecks, tableName) ||
       Object.hasOwn(automationChecks, tableName)
         ? canonicalPublicationControlCheck
         : [

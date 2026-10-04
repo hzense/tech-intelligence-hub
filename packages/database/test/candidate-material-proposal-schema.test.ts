@@ -32,7 +32,7 @@ describe('private material proposal schema', () => {
     }
   });
   it('matches columns, generated timestamps and all bounded checks for two private tables', () => {
-    expect(expectedTableNames.size).toBe(60);
+    expect(expectedTableNames.size).toBe(61);
     const dialect = new PgDialect();
     const defaults = new Map(materialProposalDefaults);
     for (const table of tables) {

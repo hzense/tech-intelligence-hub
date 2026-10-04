@@ -25,11 +25,13 @@ const policy = { host: 'fixture.invalid', port: '5432', ...identity };
 const migrationRoot = new URL('../../../db/migrations/', import.meta.url);
 const migrations = Object.entries(
   JSON.parse(readFileSync(new URL('checksums.json', migrationRoot), 'utf8')),
-).map(([name, checksum]) => ({
-  name,
-  checksum,
-  sql: readFileSync(new URL(name, migrationRoot), 'utf8'),
-}));
+)
+  .slice(0, 28)
+  .map(([name, checksum]) => ({
+    name,
+    checksum,
+    sql: readFileSync(new URL(name, migrationRoot), 'utf8'),
+  }));
 const pending = ['0027_automation_config_deletion.sql'];
 const plan = automationConfigDeletionMigrationPlan(
   pending,
