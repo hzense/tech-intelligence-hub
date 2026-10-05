@@ -212,6 +212,9 @@ describe('private Signal workbench read transactions', () => {
     });
     expect(f.pool.connect).toHaveBeenCalledTimes(1);
     expect(f.calls[0].sql).toBe('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    expect(f.calls.find((row) => row.sql.includes('workbench:list')).sql).toContain(
+      'WHERE title IS NOT NULL',
+    );
     expect(f.calls.map((row) => row.sql).join('\n')).toContain("statement_timeout='5s'");
     expect(f.calls.at(-1).sql).toBe('COMMIT');
     expect(f.client.release).toHaveBeenCalledTimes(1);
@@ -299,6 +302,11 @@ describe('private Signal workbench read transactions', () => {
       claims_supported: true,
       people_disambiguated: null,
     });
+    for (const kind of ['overview', 'snapshot', 'versions']) {
+      expect(f.calls.find((row) => row.sql.includes(`workbench:${kind}`)).sql).toContain(
+        'title IS NOT NULL',
+      );
+    }
     expect(JSON.stringify(result)).not.toMatch(/PRIVATE_CHECKS|PRIVATE_REPORT/);
     expect(f.calls.at(-1).sql).toBe('COMMIT');
   });

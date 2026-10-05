@@ -133,7 +133,7 @@ export async function listSignalWorkbench({ pool, request }) {
         `/* workbench:list */
       WITH latest AS (
         SELECT DISTINCT ON (signal_id COLLATE "C") signal_id,version,title,type,occurred_at
-        FROM public.signal_versions ORDER BY signal_id COLLATE "C",version DESC
+        FROM public.signal_versions WHERE title IS NOT NULL ORDER BY signal_id COLLATE "C",version DESC
       ), page AS (
         SELECT signal_id,version,title,type,occurred_at FROM latest
         WHERE ($1::text='' OR strpos(lower(signal_id),lower($1::text))>0 OR strpos(lower(title),lower($1::text))>0)
@@ -171,7 +171,7 @@ export async function getSignalWorkbenchDetail({ pool, request }) {
       await client.query(
         `/* workbench:overview */
       SELECT latest.signal_id,latest.version AS latest_snapshot_version,${headSelect}
-      FROM (SELECT signal_id,version FROM public.signal_versions WHERE signal_id=$1 ORDER BY version DESC LIMIT 1) latest
+      FROM (SELECT signal_id,version FROM public.signal_versions WHERE signal_id=$1 AND title IS NOT NULL ORDER BY version DESC LIMIT 1) latest
       LEFT JOIN public.signal_publication_state head ON head.signal_id=latest.signal_id
       LEFT JOIN public.current_public_signals visible ON visible.signal_id=latest.signal_id`,
         [command.signal_id],
@@ -189,7 +189,7 @@ export async function getSignalWorkbenchDetail({ pool, request }) {
         left(summary,4000) AS summary,left(analysis,12000) AS analysis,importance,confidence,novelty,
         left(revision_reason,1000) AS revision_reason,origin,created_at,
         (length(title)>300 OR length(date_basis)>1000 OR length(summary)>4000 OR COALESCE(length(analysis)>12000,false) OR length(revision_reason)>1000) AS text_truncated
-      FROM public.signal_versions WHERE signal_id=$1 AND version=$2 LIMIT 1`,
+      FROM public.signal_versions WHERE signal_id=$1 AND version=$2 AND title IS NOT NULL LIMIT 1`,
         values,
       )
     ).rows;
@@ -239,7 +239,7 @@ export async function getSignalWorkbenchDetail({ pool, request }) {
         (length(title)>300 OR length(revision_reason)>1000) AS text_truncated,
         EXISTS(SELECT 1 FROM public.signal_candidate_assembly_receipts a WHERE a.signal_id=s.signal_id AND a.target_version=s.version) AS assembled_candidate,
         EXISTS(SELECT 1 FROM public.signal_qualified_publication_receipts q WHERE q.signal_id=s.signal_id AND q.target_version=s.version) AS publication_snapshot
-      FROM public.signal_versions s WHERE signal_id=$1 ORDER BY version DESC LIMIT 51`,
+      FROM public.signal_versions s WHERE signal_id=$1 AND title IS NOT NULL ORDER BY version DESC LIMIT 51`,
       [command.signal_id],
       (row) => ({
         version: version(row.version),

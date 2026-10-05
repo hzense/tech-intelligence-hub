@@ -1,4 +1,9 @@
 import {
+  unifiedStorageChecks,
+  unifiedStorageColumns,
+  unifiedNullableLegacyColumns,
+} from './unified-signal-storage-catalog.mjs';
+import {
   legacyArchiveColumns,
   legacyArchivePrimaryKeys,
   legacyArchiveChecks,
@@ -312,6 +317,12 @@ const expectedColumns = {
   ...legacyArchiveColumns,
   ...automationColumns,
 };
+for (const [tableName, columns] of Object.entries(unifiedStorageColumns)) {
+  Object.assign(expectedColumns[tableName], columns);
+  for (const column of unifiedNullableLegacyColumns[tableName]) {
+    expectedColumns[tableName][column] = [expectedColumns[tableName][column][0], false];
+  }
+}
 for (const tableName of allStampedSignalTables) {
   expectedColumns[tableName] = {
     ...expectedColumns[tableName],
@@ -405,6 +416,7 @@ const expectedPrimaryKeys = new Set([
 ]);
 
 const expectedForeignKeys = new Set([
+  'signals|id,latest_version|signal_versions|signal_id,version|a|a|true',
   ...signalFoundationForeignKeys,
   ...affiliationForeignKeys,
   ...eventIdentityForeignKeys,
@@ -508,7 +520,10 @@ const expectedCheckExpressions = {
   hzense_schema_migrations: [['lengthchecksum=64']],
 };
 
+Object.assign(expectedCheckExpressions, unifiedStorageChecks);
+
 const expectedDefaults = new Map([
+  ['signals.storage_schema', new Set(["'3.0.0'"])],
   ...allStampedSignalTables.map((name) => [
     `${name}.created_xid`,
     new Set(['pg_current_xact_id', 'pg_catalog.pg_current_xact_id']),
@@ -920,8 +935,14 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
   if (foreignKeys.rows.some((row) => row.validated !== true)) {
     problems.push('one or more foreign keys are not validated');
   }
-  if (foreignKeys.rows.some((row) => row.initially_deferred === true)) {
-    problems.push('one or more foreign keys are initially deferred');
+  if (
+    foreignKeys.rows.some(
+      (row) =>
+        row.initially_deferred !==
+        (row.table_name === 'signals' && row.columns.join(',') === 'id,latest_version'),
+    )
+  ) {
+    problems.push('foreign key initial deferral contract mismatch');
   }
   if (foreignKeys.rows.some((row) => row.target_schema !== 'public')) {
     problems.push('one or more foreign keys target a relation outside the public schema');
@@ -933,6 +954,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
             bool_and(constraint_info.convalidated) AS validated,
             array_agg(
               pg_get_constraintdef(constraint_info.oid, table_info.relname NOT IN (
+                'signals', 'signal_versions',
                 'signal_publication_control', 'signal_publication_tasks', 'signal_publication_runs',
                 'signal_qualified_publication_receipts',
                 'signal_candidate_verifications', 'signal_candidate_assembly_receipts',
@@ -978,6 +1000,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
   }
   for (const [tableName, expressionAlternatives] of Object.entries(expectedCheckExpressions)) {
     const canonicalize =
+      Object.hasOwn(unifiedStorageChecks, tableName) ||
       Object.hasOwn(signalPublicationControlChecks, tableName) ||
       Object.hasOwn(qualifiedPublicationChecks, tableName) ||
       Object.hasOwn(candidateVerificationChecks, tableName) ||

@@ -18,12 +18,13 @@ const migration = [
   '0024_material_review_proposals.sql',
   '0025_editorial_signal_publication.sql',
   '0028_legacy_signal_archive.sql',
+  '0029_unified_signal_storage.sql',
 ]
   .map((name) => readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), 'utf8'))
   .join('\n');
 const bodies = [
   ...migration.matchAll(
-    /CREATE FUNCTION public\.(\w+)\(([^)]*)\) RETURNS (\w+)\s+([\s\S]*?)AS \$(\w+)\$([\s\S]*?)\$\5\$;/g,
+    /CREATE (?:OR REPLACE )?FUNCTION public\.(\w+)\(([^)]*)\) RETURNS (\w+)\s+([\s\S]*?)AS \$(\w+)\$([\s\S]*?)\$\5\$;/g,
   ),
 ];
 
@@ -177,7 +178,9 @@ export function signalImmutabilityFixture(owner = 'hzense_migrator') {
       old_transition_table: null,
       new_transition_table: null,
     })),
-    routines: bodies.map(([, name, argumentsList, result, attributes, , source]) => ({
+    routines: [
+      ...new Map(bodies.map((body) => [body[1] + '(' + body[2] + ')', body])).values(),
+    ].map(([, name, argumentsList, result, attributes, , source]) => ({
       name,
       source,
       owner,

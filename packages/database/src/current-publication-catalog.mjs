@@ -52,7 +52,7 @@ export const currentPublicationRoutines = {
     volatility: 's',
     definer: false,
     utc: true,
-    hash: '673b9b908b26c6990b2b6f532c80d0fe07bd1ea9523de8a531be2be278713530',
+    hash: 'eb80df596390d601b0bda0df6b72c7bd9ed752f34f2fd72172ca527c46335fe5',
     grantees: [],
   },
   hzense_lock_publication_controls: {
