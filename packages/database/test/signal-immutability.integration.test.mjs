@@ -188,7 +188,22 @@ suite('Signal snapshot transaction sealing', () => {
 
   it('freezes pre-existing rows at the migration commit without changing their payloads', async () => {
     await withClient(databases.legacy, async (client) => {
-      expect(await payloads(client)).toEqual(legacyPayloads);
+      // 0029 adds nullable 4.0 columns without rewriting any sealed 3.0 field.
+      // Assert their exact NULL values as well as every original payload value.
+      expect(await payloads(client)).toEqual({
+        ...legacyPayloads,
+        signal_versions: legacyPayloads.signal_versions.map(({ payload }) => ({
+          payload: {
+            ...payload,
+            content: null,
+            publication_basis: null,
+            lifecycle_status: null,
+            recorded_at: null,
+            source_record: null,
+            source_record_hash: null,
+          },
+        })),
+      });
       const stamps = await client.query(`SELECT created_xid::text AS stamp FROM signal_versions
         UNION SELECT created_xid::text FROM public_source_evidence
         UNION SELECT created_xid::text FROM signal_event_identities`);
