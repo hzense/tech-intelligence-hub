@@ -16,6 +16,32 @@ export const unifiedCoreInventoryQuery = `SELECT
 export const unifiedSourcePublicIdsQuery = `SELECT signal_id FROM public.legacy_public_signals
 UNION ALL SELECT signal_id FROM public.editorial_public_signals`;
 
+/** Borrow the caller's snapshot; never start/commit a transaction here. */
+export async function readUnifiedSignalSources(client) {
+  const archive = (await client.query(legacySignalArchiveReadQuery)).rows;
+  const payload = { schema_version: '1.0.0', rows: archive, count: archive.length };
+  const archivePlan = assertLegacySignalArchivePlan({
+    ...payload,
+    plan_hash: createHash('sha256').update(canonicalLegacyArchiveJson(payload)).digest('hex'),
+  });
+  const editorialRevisions = (await client.query(unifiedEditorialHistoryQuery)).rows;
+  return { archivePlan, editorialRevisions };
+}
+
+export async function assertUnifiedSourcePublicSet(client, visible) {
+  const publicIds = (await client.query(unifiedSourcePublicIdsQuery)).rows.map(
+    (row) => row.signal_id,
+  );
+  const projectedIds = visible.map((row) => row.id).sort();
+  if (
+    publicIds.some((id) => typeof id !== 'string') ||
+    new Set(publicIds).size !== publicIds.length ||
+    canonicalLegacyArchiveJson(publicIds.sort()) !== canonicalLegacyArchiveJson(projectedIds)
+  )
+    throw new Error('unified_source_public_set_mismatch');
+  return createHash('sha256').update(canonicalLegacyArchiveJson(projectedIds)).digest('hex');
+}
+
 /**
  * Maintenance-only read adapter. Requires an exclusively borrowed client with
  * no active transaction. Opens no connection, accepts no credentials, emits no
@@ -26,13 +52,7 @@ export async function inspectUnifiedSignalMigration(client) {
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
   try {
     await client.query("SET LOCAL statement_timeout='30s'");
-    const archive = (await client.query(legacySignalArchiveReadQuery)).rows;
-    const payload = { schema_version: '1.0.0', rows: archive, count: archive.length };
-    const archivePlan = assertLegacySignalArchivePlan({
-      ...payload,
-      plan_hash: createHash('sha256').update(canonicalLegacyArchiveJson(payload)).digest('hex'),
-    });
-    const editorialRevisions = (await client.query(unifiedEditorialHistoryQuery)).rows;
+    const sources = await readUnifiedSignalSources(client);
     const inventory = (await client.query(unifiedCoreInventoryQuery)).rows[0];
     if (
       !inventory ||
@@ -41,19 +61,9 @@ export async function inspectUnifiedSignalMigration(client) {
     ) {
       throw new Error('unified_inventory_unavailable');
     }
-    const sources = { archivePlan, editorialRevisions };
     const plan = buildUnifiedSignalPlan(sources);
     const visible = previewUnifiedPublicSignals(plan, sources);
-    const publicIds = (await client.query(unifiedSourcePublicIdsQuery)).rows.map(
-      (row) => row.signal_id,
-    );
-    const projectedIds = visible.map((row) => row.id).sort();
-    if (
-      publicIds.some((id) => typeof id !== 'string') ||
-      new Set(publicIds).size !== publicIds.length ||
-      canonicalLegacyArchiveJson(publicIds.sort()) !== canonicalLegacyArchiveJson(projectedIds)
-    )
-      throw new Error('unified_source_public_set_mismatch');
+    const publicIdFingerprint = await assertUnifiedSourcePublicSet(client, visible);
     const latest = new Map(plan.signal_versions.map((row) => [row.signal_id, row.status]));
     const lifecycle = { draft: 0, published: 0, withdrawn: 0 };
     for (const status of latest.values()) lifecycle[status] += 1;
@@ -74,9 +84,7 @@ export async function inspectUnifiedSignalMigration(client) {
         signals: plan.signals.length,
         versions: plan.signal_versions.length,
         public_preview: visible.length,
-        public_id_fingerprint: createHash('sha256')
-          .update(canonicalLegacyArchiveJson(projectedIds))
-          .digest('hex'),
+        public_id_fingerprint: publicIdFingerprint,
         lifecycle,
         existing_core: inventory,
         source_fingerprint: plan.source_fingerprint,
