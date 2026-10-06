@@ -15,6 +15,12 @@ overrides:
   '@workflow/core>devalue': '5.9.3'
   # minimatch 10 uses brace-expansion 5; patch its recursion/CPU DoS fixes only.
   'minimatch@10>brace-expansion': '5.0.12'
+  # Preserve the source-map 1 API and patch indexed-map offset DoS.
+  'postcss@8>source-map-js': '1.2.2'
+  '@tailwindcss/node>source-map-js': '1.2.2'
+  # gray-matter uses only js-yaml's library API, not its CLI. Omit the unused
+  # argparse 1 -> sprintf-js chain (GHSA-hp3w-g68c-fv3c has no published fix).
+  'js-yaml@3.15.2>argparse': '-'
 
 allowBuilds:
   '@swc/core': true
