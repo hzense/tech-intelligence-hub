@@ -1,6 +1,8 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-10-05
+**最后更新：** 2026-10-06
+
+**0029 生产结构升级已完成（2026-10-06）：** 在 `main@58a19e2` 上，经新备份核验、双次 ACL 采集及当次环境审批，[迁移运行](https://github.com/hzense/tech-intelligence-hub/actions/runs/37457538984)和[独立只读核验](https://github.com/hzense/tech-intelligence-hub/actions/runs/37458231493)均成功，30 项迁移、61 张表通过精确结构核验，无待执行迁移。数据库健康接口正常，公开列表仍含 112 条信号，抽查新旧详情 HTTP 200。本次只应用结构，不回填历史或人工发布记录，不新增业务角色授权，不切换读写入口，不调用 AI。下一步仍为统一业务写入器、受保护数据迁移及公开读取切换。见[生产证据](production-evidence/2026-10-06-unified-signal-schema.md)。下条保留代码上线时的历史快照。
 
 **统一存储阶段 B（2026-10-06，PR #207 已合并并部署代码，未执行生产 DDL）：** 新增 0029，为原 `signals`／`signal_versions` 增加 4.0 分支及 JSON 正文，保留 3.0 必填、封存和原始封印语义；新增最新版本延迟外键与完整历史检查、owner-only 写入保护和旧发布链隔离。同步 Drizzle、精确 catalog、校验清单及工作台旧版本过滤。默认数据库测试 2,980 通过、本地定向 PostgreSQL 测试 44 通过；[PR CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/37306926175) 三项全绿，完整 pgvector 迁移及真实旧发布链升级回归通过。合并提交 `83e54e6` 已由 `hzense.com` 服务，公开列表仍为 112 条，抽查详情与数据库健康接口正常。主分支运行 `37436750164` 的数据库和内容检查通过，但安全审计报告 `source-map-js`／`sprintf-js` 间接依赖漏洞，另行最小修复，不能将该运行记作全绿。未改生产权限、数据、开关或公开读取。下一步为统一业务写入器；见 [统一存储说明](UNIFIED_SIGNAL_STORAGE.md#阶段-b兼容物理结构2026-10-05)。
 
