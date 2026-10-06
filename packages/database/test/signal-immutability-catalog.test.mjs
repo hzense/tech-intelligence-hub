@@ -13,15 +13,16 @@ import {
 const owner = 'hzense_migrator';
 
 describe('Signal transaction seal exact catalog contract', () => {
-  it('accepts exactly twenty-five reviewed functions, sixty-three guards and four xid8 columns', () => {
+  it('accepts exactly twenty-eight reviewed functions, seventy-six guards and four xid8 columns', () => {
     const fixture = signalImmutabilityFixture();
-    expect(fixture.routines).toHaveLength(25);
-    expect(fixture.triggers).toHaveLength(63);
+    expect(fixture.routines).toHaveLength(28);
+    expect(fixture.triggers).toHaveLength(76);
     expect(fixture.stamps).toHaveLength(4);
     expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([]);
-    expect(expectedSignalTriggerCount('signal_versions')).toBe(2);
-    expect(expectedSignalTriggerCount('signal_publication_outbox')).toBe(3);
-    expect(expectedSignalTriggerCount('signal_publication_state')).toBe(2);
+    expect(expectedSignalTriggerCount('signals')).toBe(2);
+    expect(expectedSignalTriggerCount('signal_versions')).toBe(4);
+    expect(expectedSignalTriggerCount('signal_publication_outbox')).toBe(4);
+    expect(expectedSignalTriggerCount('signal_publication_state')).toBe(3);
     expect(expectedSignalTriggerCount('signal_publication_runs')).toBe(2);
     expect(expectedSignalTriggerCount('signal_qualified_publication_receipts')).toBe(3);
     expect(expectedSignalTriggerCount('signal_candidate_verifications')).toBe(3);

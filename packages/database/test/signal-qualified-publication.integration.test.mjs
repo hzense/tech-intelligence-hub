@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, readdir, copyFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import process from 'node:process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { URL } from 'node:url';
@@ -142,7 +144,19 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
     } finally {
       await target.end();
     }
-    await runMigrations({ connectionString: databaseUrl() });
+    // Exercise an actual published 3.0 chain before the 0029 upgrade below.
+    const baseline = await mkdtemp(join(tmpdir(), 'hzense-unified-upgrade-'));
+    try {
+      const directory = new URL('../../../db/migrations/', import.meta.url);
+      for (const name of (await readdir(directory)).filter(
+        (name) => name.endsWith('.sql') && name < '0029_',
+      )) {
+        await copyFile(new URL(name, directory), join(baseline, name));
+      }
+      await runMigrations({ connectionString: databaseUrl(), directory: baseline });
+    } finally {
+      await rm(baseline, { recursive: true, force: true });
+    }
     pool = new Pool({ connectionString: databaseUrl(), max: 8 });
   }, 30_000);
 
@@ -306,6 +320,28 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
     // adapter still owns BEGIN/COMMIT/release. Only its PID is observed here.
     return { pid, pending: settle(publish({ pool: { connect: async () => client }, request })) };
   }
+
+  it('upgrades 0028 to 0029 without changing a real public 3.0 seal or visible content', async () => {
+    const f = await publicCandidate();
+    await publishVerifiedSignal({ pool, request: f.request });
+    const visible = await pool.query(
+      'SELECT * FROM public.current_public_signals WHERE signal_id=$1',
+      [f.id],
+    );
+    expect(visible.rows).toHaveLength(1);
+    const before = await pool.query('SELECT public.hzense_signal_dependency_seal($1,2) AS seal', [
+      f.id,
+    ]);
+    await runMigrations({ connectionString: databaseUrl() });
+    const after = await pool.query('SELECT public.hzense_signal_dependency_seal($1,2) AS seal', [
+      f.id,
+    ]);
+    expect(after.rows).toEqual(before.rows);
+    expect(
+      (await pool.query('SELECT * FROM public.current_public_signals WHERE signal_id=$1', [f.id]))
+        .rows,
+    ).toEqual(visible.rows);
+  });
 
   it('atomically clones a sealed snapshot and all four edge sets with a new canonical hash', async () => {
     const f = await fixture();

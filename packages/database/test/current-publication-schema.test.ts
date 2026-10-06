@@ -60,13 +60,27 @@ describe('Current public Signal release schema', () => {
   });
   it('pins each capability body, argument identity, security and timezone explicitly', async () => {
     const migration = await readFile(path, 'utf8');
+    const unifiedMigration = await readFile(
+      resolve(process.cwd(), '../../db/migrations/0029_unified_signal_storage.sql'),
+      'utf8',
+    );
     const functions = [
       ...migration.matchAll(
         /CREATE FUNCTION public\.(\w+)\(([^)]*)\)([\s\S]*?)AS \$(\w+)\$([\s\S]*?)\$\4\$;/g,
       ),
     ];
     expect(functions).toHaveLength(8);
-    for (const [, name, args, header, , body] of functions) {
+    const replacements = [
+      ...unifiedMigration.matchAll(
+        /CREATE OR REPLACE FUNCTION public\.(\w+)\(([^)]*)\)([\s\S]*?)AS \$(\w+)\$([\s\S]*?)\$\4\$;/g,
+      ),
+    ];
+    expect(replacements.map((match) => match[1])).toEqual(['hzense_signal_dependency_seal']);
+    const latestFunctions = new Map(
+      [...functions, ...replacements].map((match) => [match[1], match]),
+    );
+    expect(latestFunctions.size).toBe(8);
+    for (const [, name, args, header, , body] of latestFunctions.values()) {
       const contract = currentPublicationRoutines[name];
       expect(args).toBe(contract.arguments);
       expect(signalGuardSourceHash(body)).toBe(contract.hash);
@@ -75,6 +89,9 @@ describe('Current public Signal release schema', () => {
       expect(header.includes("SET timezone = 'UTC'")).toBe(contract.utc === true);
       expect(migration).toContain(`REVOKE ALL ON FUNCTION public.${name}(`);
     }
+    expect(replacements[0][5]).toContain(
+      "to_jsonb(r)-ARRAY['content','publication_basis','lifecycle_status','recorded_at','source_record','source_record_hash']::text[]",
+    );
     expect(migration).toContain(
       'ALTER FUNCTION public.hzense_guard_qualified_publication_receipt() SECURITY DEFINER',
     );

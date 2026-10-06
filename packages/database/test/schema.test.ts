@@ -35,6 +35,45 @@ function columnNames(table: Parameters<typeof getTableConfig>[0]): string[] {
   return getTableConfig(table).columns.map((column) => column.name);
 }
 
+// Compare complete CHECK expressions while preserving literals and Boolean
+// parentheses. Only whitespace and redundant outer parentheses are ignored.
+function checkTokens(expression: string): string[] {
+  const tokens =
+    expression.match(/'(?:''|[^'])*'|"(?:""|[^"])*"|[a-zA-Z_][a-zA-Z_0-9]*|\d+|[^\s]/g) ?? [];
+  while (tokens[0] === '(' && tokens.at(-1) === ')') {
+    let depth = 0;
+    const closing = tokens.findIndex((token) => {
+      if (token === '(') depth += 1;
+      if (token === ')') depth -= 1;
+      return depth === 0;
+    });
+    if (closing !== tokens.length - 1) break;
+    tokens.shift();
+    tokens.pop();
+  }
+  return tokens.map((token) => (/^[a-zA-Z_]/.test(token) ? token.toLowerCase() : token));
+}
+
+function latestMigrationCheck(migration: string, name: string): string[] {
+  const declarations = [
+    ...migration.matchAll(new RegExp(`CONSTRAINT\\s+${name}\\s+CHECK\\s*\\(`, 'g')),
+  ];
+  expect(declarations.length).toBeGreaterThan(0);
+  const declaration = declarations.at(-1)!;
+  const tokens =
+    migration
+      .slice(declaration.index + declaration[0].length - 1)
+      .match(/'(?:''|[^'])*'|"(?:""|[^"])*"|[a-zA-Z_][a-zA-Z_0-9]*|\d+|[^\s]/g) ?? [];
+  let depth = 0;
+  const closing = tokens.findIndex((token) => {
+    if (token === '(') depth += 1;
+    if (token === ')') depth -= 1;
+    return depth === 0;
+  });
+  expect(closing).toBeGreaterThan(0);
+  return checkTokens(tokens.slice(0, closing + 1).join(' '));
+}
+
 describe('Transaction-sealed Signal snapshot metadata', () => {
   it('stores full transaction IDs as xid8 database defaults rather than content fields', () => {
     const dialect = new PgDialect();
@@ -477,6 +516,12 @@ describe('Signal 3.0.0 private storage foundation', () => {
       'revision_reason',
       'origin',
       'legacy_status',
+      'content',
+      'publication_basis',
+      'lifecycle_status',
+      'recorded_at',
+      'source_record',
+      'source_record_hash',
       'content_hash',
       'created_at',
       'created_xid',
@@ -491,6 +536,16 @@ describe('Signal 3.0.0 private storage foundation', () => {
     expect(signalVersions.legacyStatus.notNull).toBe(false);
     expect(signalVersions.capturedAt.hasDefault).toBe(false);
     expect(signalVersions.createdAt.hasDefault).toBe(true);
+    expect(config.columns.filter((column) => column.notNull).map((column) => column.name)).toEqual([
+      'signal_id',
+      'version',
+      'schema_version',
+      'revision_reason',
+      'origin',
+      'content_hash',
+      'created_at',
+      'created_xid',
+    ]);
     for (const field of ['published_at', 'publication_status', 'current_version']) {
       expect(foundationTables.flatMap(columnNames)).not.toContain(field);
     }
@@ -577,6 +632,10 @@ describe('Signal 3.0.0 private storage foundation', () => {
       'utf8',
     );
     const normalizedMigration = migration.replace(/\s+/g, ' ');
+    const unifiedMigration = await readFile(
+      resolve(process.cwd(), '../../db/migrations/0029_unified_signal_storage.sql'),
+      'utf8',
+    );
     const dialect = new PgDialect();
     for (const table of foundationTables) {
       const config = getTableConfig(table);
@@ -586,8 +645,8 @@ describe('Signal 3.0.0 private storage foundation', () => {
           .sqlToQuery(constraint.value)
           .sql.replace(/"[a-z_]+"\."([a-z_]+)"/g, '$1')
           .replace(/\s+/g, ' ');
-        expect(normalizedMigration).toContain(
-          `CONSTRAINT ${constraint.name} CHECK (${expression})`,
+        expect(latestMigrationCheck(`${migration}\n${unifiedMigration}`, constraint.name)).toEqual(
+          checkTokens(expression),
         );
         expect(constraint.name.length).toBeLessThanOrEqual(63);
       }

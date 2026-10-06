@@ -1,4 +1,8 @@
 import {
+  unifiedStorageFunctionHashes,
+  unifiedStorageTriggers,
+} from './unified-signal-storage-catalog.mjs';
+import {
   legacyArchiveFunctionHashes,
   legacyArchiveTriggers,
 } from './legacy-signal-archive-catalog.mjs';
@@ -66,6 +70,7 @@ export const sealedSignalTables = Object.freeze([
 
 // Updated only after reviewing the function source as part of a migration.
 export const sealedSignalFunctionHashes = Object.freeze({
+  ...unifiedStorageFunctionHashes,
   ...editorialFunctionHashes,
   ...legacyArchiveFunctionHashes,
   ...materialProposalFunctionHashes,
@@ -85,6 +90,7 @@ export function expectedSignalTriggerCount(tableName) {
 }
 
 export const sealedSignalTriggers = Object.freeze([
+  ...unifiedStorageTriggers,
   ...materialProposalTriggers,
   ...candidateMaterialTriggers,
   ...candidateReviewTriggers,

@@ -291,21 +291,22 @@ export const signals = pgTable(
   'signals',
   {
     id: text('id').primaryKey(),
-    title: text('title').notNull(),
-    type: signalType('type').notNull(),
-    status: signalStatus('status').notNull().default('inbox'),
-    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
-    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
-    sourceId: text('source_id')
-      .notNull()
-      .references(() => sources.id),
-    sourceUrl: text('source_url').notNull(),
-    summary: text('summary').notNull(),
-    importance: integer('importance').notNull(),
-    strength: integer('strength').notNull(),
-    confidence: doublePrecision('confidence').notNull(),
-    novelty: doublePrecision('novelty').notNull(),
-    metadata: jsonb('metadata').notNull().default({}),
+    storageSchema: text('storage_schema').$type<'3.0.0' | '4.0.0'>().notNull().default('3.0.0'),
+    origin: text('origin').$type<'legacy_seed' | 'ai_generation'>(),
+    latestVersion: integer('latest_version'),
+    title: text('title'),
+    type: signalType('type'),
+    status: signalStatus('status').default('inbox'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).defaultNow(),
+    sourceId: text('source_id').references(() => sources.id),
+    sourceUrl: text('source_url'),
+    summary: text('summary'),
+    importance: integer('importance'),
+    strength: integer('strength'),
+    confidence: doublePrecision('confidence'),
+    novelty: doublePrecision('novelty'),
+    metadata: jsonb('metadata').default({}),
   },
   (t) => [
     index('signals_occurred_idx').on(t.occurredAt),
@@ -315,6 +316,28 @@ export const signals = pgTable(
     check('signals_strength_ck', sql`${t.strength} between 1 and 5`),
     check('signals_confidence_ck', sql`${t.confidence} between 0 and 1`),
     check('signals_novelty_ck', sql`${t.novelty} between 0 and 1`),
+    check(
+      'signals_storage_shape_ck',
+      sql`((
+        (${t.storageSchema} = '3.0.0' AND ${t.origin} IS NULL AND ${t.latestVersion} IS NULL
+          AND ${t.title} IS NOT NULL AND ${t.type} IS NOT NULL AND ${t.status} IS NOT NULL
+          AND ${t.occurredAt} IS NOT NULL AND ${t.capturedAt} IS NOT NULL
+          AND ${t.sourceId} IS NOT NULL AND ${t.sourceUrl} IS NOT NULL AND ${t.summary} IS NOT NULL
+          AND ${t.importance} IS NOT NULL AND ${t.strength} IS NOT NULL
+          AND ${t.confidence} IS NOT NULL AND ${t.novelty} IS NOT NULL AND ${t.metadata} IS NOT NULL)
+        OR
+        (${t.storageSchema} = '4.0.0' AND ${t.origin} IN ('legacy_seed', 'ai_generation')
+          AND ${t.latestVersion} > 0 AND ${t.id} COLLATE "C" ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND length(${t.id}) <= 200
+          AND ${t.title} IS NULL AND ${t.type} IS NULL AND ${t.status} IS NULL
+          AND ${t.occurredAt} IS NULL AND ${t.capturedAt} IS NULL
+          AND ${t.sourceId} IS NULL AND ${t.sourceUrl} IS NULL AND ${t.summary} IS NULL
+          AND ${t.importance} IS NULL AND ${t.strength} IS NULL
+          AND ${t.confidence} IS NULL AND ${t.novelty} IS NULL AND ${t.metadata} IS NULL)
+      ) IS TRUE)`,
+    ),
+    // Migration 0029 owns signals_latest_version_fk: (id, latest_version) ->
+    // signal_versions(signal_id, version), DEFERRABLE INITIALLY DEFERRED.
+    // Drizzle cannot express that deferral; do not generate an immediate FK here.
   ],
 );
 
@@ -406,22 +429,30 @@ export const signalVersions = pgTable(
   {
     signalId: text('signal_id').notNull(),
     version: integer('version').notNull(),
-    schemaVersion: text('schema_version').$type<'3.0.0'>().notNull().default('3.0.0'),
-    title: text('title').notNull(),
-    type: signalType('type').notNull(),
-    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
-    datePrecision: text('date_precision').$type<'day' | 'instant'>().notNull(),
-    dateBasis: text('date_basis').notNull(),
-    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
-    summary: text('summary').notNull(),
+    schemaVersion: text('schema_version').$type<'3.0.0' | '4.0.0'>().notNull().default('3.0.0'),
+    title: text('title'),
+    type: signalType('type'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }),
+    datePrecision: text('date_precision').$type<'day' | 'instant'>(),
+    dateBasis: text('date_basis'),
+    capturedAt: timestamp('captured_at', { withTimezone: true }),
+    summary: text('summary'),
     analysis: text('analysis'),
-    importance: integer('importance').notNull(),
-    strength: integer('strength').notNull(),
-    confidence: doublePrecision('confidence').notNull(),
-    novelty: doublePrecision('novelty').notNull(),
+    importance: integer('importance'),
+    strength: integer('strength'),
+    confidence: doublePrecision('confidence'),
+    novelty: doublePrecision('novelty'),
     revisionReason: text('revision_reason').notNull(),
-    origin: text('origin').$type<'legacy_seed' | 'pipeline' | 'manual'>().notNull(),
+    origin: text('origin')
+      .$type<'legacy_seed' | 'pipeline' | 'manual' | 'ai_generation'>()
+      .notNull(),
     legacyStatus: signalStatus('legacy_status'),
+    content: jsonb('content'),
+    publicationBasis: text('publication_basis').$type<'legacy_import' | 'manual_confirmation'>(),
+    lifecycleStatus: text('lifecycle_status').$type<'draft' | 'published' | 'withdrawn'>(),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }),
+    sourceRecord: jsonb('source_record'),
+    sourceRecordHash: text('source_record_hash'),
     contentHash: text('content_hash').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     createdXid: xid8('created_xid')
@@ -439,7 +470,7 @@ export const signalVersions = pgTable(
       .onDelete('no action'),
     index('signal_versions_occurred_idx').on(t.occurredAt),
     check('signal_versions_version_ck', sql`${t.version} > 0`),
-    check('signal_versions_schema_version_ck', sql`${t.schemaVersion} = '3.0.0'`),
+    check('signal_versions_schema_version_ck', sql`${t.schemaVersion} IN ('3.0.0', '4.0.0')`),
     check('signal_versions_title_ck', sql`${t.title} ~ '[^[:space:]]'`),
     check('signal_versions_occurred_at_ck', sql`isfinite(${t.occurredAt})`),
     check('signal_versions_date_precision_ck', sql`${t.datePrecision} IN ('day', 'instant')`),
@@ -459,10 +490,41 @@ export const signalVersions = pgTable(
     check('signal_versions_confidence_ck', sql`${t.confidence} BETWEEN 0 AND 1`),
     check('signal_versions_novelty_ck', sql`${t.novelty} BETWEEN 0 AND 1`),
     check('signal_versions_revision_reason_ck', sql`${t.revisionReason} ~ '[^[:space:]]'`),
-    check('signal_versions_origin_ck', sql`${t.origin} IN ('legacy_seed', 'pipeline', 'manual')`),
+    check(
+      'signal_versions_origin_ck',
+      sql`(${t.schemaVersion} = '3.0.0' AND ${t.origin} IN ('legacy_seed', 'pipeline', 'manual'))
+        OR (${t.schemaVersion} = '4.0.0' AND ${t.origin} IN ('legacy_seed', 'ai_generation'))`,
+    ),
     check(
       'signal_versions_legacy_status_ck',
-      sql`(${t.origin} = 'legacy_seed') = (${t.legacyStatus} IS NOT NULL)`,
+      sql`${t.schemaVersion} <> '3.0.0' OR ((${t.origin} = 'legacy_seed') = (${t.legacyStatus} IS NOT NULL))`,
+    ),
+    check(
+      'signal_versions_storage_shape_ck',
+      sql`((
+        (${t.schemaVersion} = '3.0.0' AND ${t.title} IS NOT NULL AND ${t.type} IS NOT NULL
+          AND ${t.occurredAt} IS NOT NULL AND ${t.datePrecision} IS NOT NULL AND ${t.dateBasis} IS NOT NULL
+          AND ${t.capturedAt} IS NOT NULL AND ${t.summary} IS NOT NULL
+          AND ${t.importance} IS NOT NULL AND ${t.strength} IS NOT NULL
+          AND ${t.confidence} IS NOT NULL AND ${t.novelty} IS NOT NULL
+          AND ${t.content} IS NULL AND ${t.publicationBasis} IS NULL AND ${t.lifecycleStatus} IS NULL
+          AND ${t.recordedAt} IS NULL AND ${t.sourceRecord} IS NULL AND ${t.sourceRecordHash} IS NULL)
+        OR
+        (${t.schemaVersion} = '4.0.0' AND ${t.title} IS NULL AND ${t.type} IS NULL
+          AND ${t.occurredAt} IS NULL AND ${t.datePrecision} IS NULL AND ${t.dateBasis} IS NULL
+          AND ${t.capturedAt} IS NULL AND ${t.summary} IS NULL AND ${t.analysis} IS NULL
+          AND ${t.importance} IS NULL AND ${t.strength} IS NULL
+          AND ${t.confidence} IS NULL AND ${t.novelty} IS NULL AND ${t.legacyStatus} IS NULL
+          AND jsonb_typeof(${t.content}) = 'object'
+          AND ${t.lifecycleStatus} IN ('draft', 'published', 'withdrawn')
+          AND ((${t.lifecycleStatus} = 'draft' AND ${t.publicationBasis} IS NULL)
+            OR (${t.lifecycleStatus} IN ('published', 'withdrawn') AND
+              ((${t.origin} = 'legacy_seed' AND ${t.publicationBasis} = 'legacy_import')
+                OR (${t.origin} = 'ai_generation' AND ${t.publicationBasis} = 'manual_confirmation'))))
+          AND (${t.recordedAt} IS NULL OR isfinite(${t.recordedAt}))
+          AND jsonb_typeof(${t.sourceRecord}) = 'object'
+          AND ${t.sourceRecordHash} COLLATE "C" ~ '^[a-f0-9]{64}$')
+      ) IS TRUE)`,
     ),
     check('signal_versions_content_hash_ck', sql`${t.contentHash} ~ '^[a-f0-9]{64}$'`),
     check('signal_versions_created_at_ck', sql`isfinite(${t.createdAt})`),

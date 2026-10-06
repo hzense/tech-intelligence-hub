@@ -13,7 +13,9 @@ import {
 } from '../../../.github/scripts/production-maintenance.mjs';
 import { loadMigrations } from '../src/migrate.mjs';
 
-const migrations = await loadMigrations();
+// Historical 0028 approval stays frozen; it must never authorize newer DDL.
+const allMigrations = await loadMigrations();
+const migrations = allMigrations.filter((row) => row.name <= legacyMigrationName);
 const policy = {
   host: 'reviewed.invalid',
   port: '5432',
@@ -104,6 +106,17 @@ function fixture() {
 }
 
 describe('protected legacy signal migration', () => {
+  it('refuses the newer unified-storage migration under the historical approval', () => {
+    expect(() =>
+      legacySignalMaintenancePlan({
+        migrations: allMigrations,
+        policy,
+        preflight: initial,
+        backupId,
+        archivePlan,
+      }),
+    ).toThrow('legacy-signal-manifest-required');
+  });
   it('binds artifact content, target, backup, pending state and original immutable manifest', () => {
     expect(plan()).toMatchObject({ contentFingerprint: archivePlan.plan_hash });
     for (const change of [

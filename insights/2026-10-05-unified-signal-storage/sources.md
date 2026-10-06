@@ -12,3 +12,8 @@
 - `packages/database/src/legacy-signal-archive.mjs`：冻结清单和逐条摘要对账。
 - `apps/web/lib/seed-runtime.ts`：当前按模式选择分散来源，尚非统一物理写入。
 - `packages/database/test/unified-signal-plan.test.mjs`、`unified-signal-preflight.test.mjs`：本批可重复合成验证；不是生产验收。
+- `db/migrations/0029_unified_signal_storage.sql`：阶段 B 的分支结构、封印兼容、指针及写入保护。
+- `packages/database/test/unified-signal-storage.integration.test.mjs`：定向隔离 PostgreSQL 验证，非生产数据；no-vector 明确不覆盖 FTS。
+- `packages/database/test/signal-qualified-publication.integration.test.mjs`：真实旧发布链升级回归，待完整环境执行。
+- [PostgreSQL 18 Constraints](https://www.postgresql.org/docs/18/ddl-constraints.html)：CHECK 的 NULL 语义、非空及复合外键（2026-10-05 查阅）。
+- [PostgreSQL 18 CREATE TRIGGER](https://www.postgresql.org/docs/18/sql-createtrigger.html)：延迟约束触发器（2026-10-05 查阅）。
