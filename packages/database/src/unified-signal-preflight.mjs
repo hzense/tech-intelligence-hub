@@ -13,6 +13,8 @@ FROM public.editorial_signal_revisions ORDER BY run_id,candidate_index,revision`
 export const unifiedCoreInventoryQuery = `SELECT
   (SELECT count(*)::text FROM public.signals) AS signal_count,
   (SELECT count(*)::text FROM public.signal_versions) AS version_count`;
+export const unifiedSourcePublicIdsQuery = `SELECT signal_id FROM public.legacy_public_signals
+UNION ALL SELECT signal_id FROM public.editorial_public_signals`;
 
 /**
  * Maintenance-only read adapter. Requires an exclusively borrowed client with
@@ -42,8 +44,21 @@ export async function inspectUnifiedSignalMigration(client) {
     const sources = { archivePlan, editorialRevisions };
     const plan = buildUnifiedSignalPlan(sources);
     const visible = previewUnifiedPublicSignals(plan, sources);
+    const publicIds = (await client.query(unifiedSourcePublicIdsQuery)).rows.map(
+      (row) => row.signal_id,
+    );
+    const projectedIds = visible.map((row) => row.id).sort();
+    if (
+      publicIds.some((id) => typeof id !== 'string') ||
+      new Set(publicIds).size !== publicIds.length ||
+      canonicalLegacyArchiveJson(publicIds.sort()) !== canonicalLegacyArchiveJson(projectedIds)
+    )
+      throw new Error('unified_source_public_set_mismatch');
+    const latest = new Map(plan.signal_versions.map((row) => [row.signal_id, row.status]));
+    const lifecycle = { draft: 0, published: 0, withdrawn: 0 };
+    for (const status of latest.values()) lifecycle[status] += 1;
     const blockers = [
-      'physical_schema_and_writer_not_implemented',
+      'unified_writer_not_implemented',
       'protected_apply_verify_not_implemented',
       'public_reader_cutover_not_implemented',
     ];
@@ -59,6 +74,10 @@ export async function inspectUnifiedSignalMigration(client) {
         signals: plan.signals.length,
         versions: plan.signal_versions.length,
         public_preview: visible.length,
+        public_id_fingerprint: createHash('sha256')
+          .update(canonicalLegacyArchiveJson(projectedIds))
+          .digest('hex'),
+        lifecycle,
         existing_core: inventory,
         source_fingerprint: plan.source_fingerprint,
         plan_hash: plan.plan_hash,

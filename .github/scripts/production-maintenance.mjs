@@ -21,6 +21,7 @@ export const maintenanceOperations = Object.freeze([
   'legacy-signal-dry-run',
   'legacy-signal-apply',
   'legacy-signal-verify',
+  'unified-signal-dry-run',
 ]);
 const migrationSequence = 'migrate-and-verify';
 const writes = new Set([
@@ -1586,6 +1587,25 @@ export function publicRecoveryAcceptance(request, rawApproval) {
 // Allowlist types too: a database error or document ID must never become a log.
 export function publicMaintenanceResult(operation, result = {}) {
   const summary = { operation, status: 'succeeded' };
+  if (operation === 'unified-signal-dry-run') {
+    for (const key of [
+      'sourceLegacyCount',
+      'sourceRevisionCount',
+      'signalCount',
+      'versionCount',
+      'publicCount',
+      'draftCount',
+      'withdrawnCount',
+      'existingSignalCount',
+      'existingVersionCount',
+    ])
+      if (Number.isSafeInteger(result[key]) && result[key] >= 0) summary[key] = result[key];
+    for (const key of ['sourceFingerprint', 'publicIdFingerprint'])
+      if (typeof result[key] === 'string' && digest.test(result[key])) summary[key] = result[key];
+    // A successful read is not a migration, approval, or completed cutover.
+    summary.previewOnly = true;
+    summary.cutoverReady = false;
+  }
   for (const key of [
     'migrationCount',
     'tableCount',
@@ -1957,6 +1977,10 @@ async function executeEditorialResourceGrant(env, approval, context) {
 }
 
 async function executeOperation(env, { operation, approval }, context = {}) {
+  if (operation === 'unified-signal-dry-run') {
+    const { executeUnifiedSignalDryRun } = await import('./unified-signal-maintenance.mjs');
+    return executeUnifiedSignalDryRun(env, { operation }, context);
+  }
   if (operation.startsWith('legacy-signal-')) {
     const { executeLegacySignalMaintenance } = await import('./legacy-signal-maintenance.mjs');
     return executeLegacySignalMaintenance(env, { operation, approval }, context);
@@ -2741,6 +2765,7 @@ export async function runMaintenance(
               executionEnv,
               request,
               ...(request.operation === 'editorial-resource-grant' ||
+              request.operation === 'unified-signal-dry-run' ||
               request.operation.startsWith('legacy-signal-')
                 ? [{ checkApproval, checkFreshness }]
                 : []),

@@ -10,6 +10,7 @@ import {
   inspectUnifiedSignalMigration,
   unifiedCoreInventoryQuery,
   unifiedEditorialHistoryQuery,
+  unifiedSourcePublicIdsQuery,
 } from '../src/unified-signal-preflight.mjs';
 
 let archive;
@@ -24,6 +25,7 @@ function adapter({
   rows = archive.rows,
   core = { signal_count: '0', version_count: '0' },
   history = [],
+  publicIds = archive.rows.filter((row) => row.projection).map(({ signal_id }) => ({ signal_id })),
 } = {}) {
   const calls = [];
   return {
@@ -33,6 +35,7 @@ function adapter({
       if (sql === legacySignalArchiveReadQuery) return { rows };
       if (sql === unifiedEditorialHistoryQuery) return { rows: history };
       if (sql === unifiedCoreInventoryQuery) return { rows: [core] };
+      if (sql === unifiedSourcePublicIdsQuery) return { rows: publicIds };
       if (
         [
           'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY',
@@ -56,6 +59,7 @@ describe('unified Signal read-only preflight', () => {
       legacySignalArchiveReadQuery,
       unifiedEditorialHistoryQuery,
       unifiedCoreInventoryQuery,
+      unifiedSourcePublicIdsQuery,
       'COMMIT',
     ]);
     expect(summary).toMatchObject({
@@ -64,10 +68,24 @@ describe('unified Signal read-only preflight', () => {
       signals: 110,
       versions: 110,
       public_preview: 110,
+      lifecycle: { draft: 0, published: 110, withdrawn: 0 },
     });
     expect(summary.blockers).toHaveLength(3);
     expect(plan.plan_hash).toBe(summary.plan_hash);
     expect(JSON.stringify(summary)).not.toContain('source_record');
+    expect(summary.public_id_fingerprint).toMatch(/^[a-f0-9]{64}$/);
+  });
+  it.each(['missing', 'extra', 'duplicate', 'invalid'])('rejects %s public IDs', async (mode) => {
+    const ids = archive.rows.map(({ signal_id }) => ({ signal_id }));
+    if (mode === 'missing') ids.pop();
+    if (mode === 'extra') ids.push({ signal_id: 'unexpected-public-signal' });
+    if (mode === 'duplicate') ids.push(ids[0]);
+    if (mode === 'invalid') ids[0] = { signal_id: null };
+    const client = adapter({ publicIds: ids });
+    await expect(inspectUnifiedSignalMigration(client)).rejects.toThrow(
+      'unified_source_public_set_mismatch',
+    );
+    expect(client.calls.at(-1)).toBe('ROLLBACK');
   });
   it('flags existing original core records instead of ignoring or overwriting them', async () => {
     const { summary } = await inspectUnifiedSignalMigration(
