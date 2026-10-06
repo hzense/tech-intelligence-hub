@@ -20,6 +20,7 @@ on:
           - legacy-signal-dry-run
           - legacy-signal-apply
           - legacy-signal-verify
+          - unified-signal-dry-run
 
 permissions:
   contents: read

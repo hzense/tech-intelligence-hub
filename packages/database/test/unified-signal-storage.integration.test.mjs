@@ -6,8 +6,12 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { loadSeedCatalog } from '../../content/src/seed.ts';
 import { projectLegacySignalEntries } from '../../../apps/web/lib/legacy-signal-projection.ts';
-import { buildLegacySignalArchivePlan } from '../src/legacy-signal-archive.mjs';
+import {
+  applyLegacySignalArchive,
+  buildLegacySignalArchivePlan,
+} from '../src/legacy-signal-archive.mjs';
 import { buildUnifiedSignalPlan } from '../src/unified-signal-plan.mjs';
+import { inspectUnifiedSignalMigration } from '../src/unified-signal-preflight.mjs';
 import { unifiedStorageChecks } from '../src/unified-signal-storage-catalog.mjs';
 import { canonicalPublicationControlCheck } from '../src/signal-publication-control-catalog.mjs';
 import { collectSignalImmutabilityProblems } from '../src/signal-immutability-catalog.mjs';
@@ -25,6 +29,7 @@ suite('unified Signal additive PostgreSQL storage', () => {
   let admin,
     client,
     fixture,
+    archivePlan,
     oldVersion,
     oldMaster,
     oldSeal,
@@ -125,8 +130,9 @@ suite('unified Signal additive PostgreSQL storage', () => {
       fileURLToPath(new URL('../../../data/seed/', import.meta.url)),
       fileURLToPath(new URL('../../../data/taxonomy/taxonomy.yaml', import.meta.url)),
     );
+    archivePlan = buildLegacySignalArchivePlan(catalog, projectLegacySignalEntries(catalog));
     fixture = buildUnifiedSignalPlan({
-      archivePlan: buildLegacySignalArchivePlan(catalog, projectLegacySignalEntries(catalog)),
+      archivePlan,
       editorialRevisions: [],
     }).signal_versions[0];
     await admin.query(`CREATE ROLE "${outsider}" NOLOGIN`);
@@ -143,6 +149,28 @@ suite('unified Signal additive PostgreSQL storage', () => {
   });
   afterEach(async () => {
     await client?.query('ROLLBACK');
+  });
+
+  it('previews all real archive rows in a read-only snapshot and flags pre-existing core data', async () => {
+    await client.query('BEGIN');
+    await applyLegacySignalArchive(client, archivePlan);
+    await client.query('COMMIT');
+    const result = await inspectUnifiedSignalMigration(client);
+    expect(result.summary).toMatchObject({
+      status: 'preview_only',
+      cutover_ready: false,
+      source_counts: { legacy: 110, editorial_revisions: 0 },
+      signals: 110,
+      versions: 110,
+      public_preview: 110,
+      existing_core: { signal_count: '1', version_count: '1' },
+      lifecycle: { draft: 0, published: 110, withdrawn: 0 },
+    });
+    expect(result.summary.blockers).toContain('existing_core_signals_require_reconciliation');
+    expect(result.plan.signal_versions[0].recorded_at).toBeNull();
+    expect((await client.query('SHOW transaction_read_only')).rows[0].transaction_read_only).toBe(
+      'off',
+    );
   });
 
   it('matches reviewed constraints, triggers and function bodies exactly', async () => {
