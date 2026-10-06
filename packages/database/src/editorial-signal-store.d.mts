@@ -33,6 +33,7 @@ export function saveEditorialSignal(input: {
   owner: string;
   request: EditorialRequest;
   material: EditorialMaterial;
+  unified?: boolean;
 }): Promise<EditorialSignalRecord>;
 export function readEditorialSignal(input: {
   pool: unknown;

@@ -7,7 +7,7 @@ const requireGate = (condition, code) => {
 };
 const hash = (text) => createHash('sha256').update(text).digest('hex');
 
-async function productionDependencies(env) {
+export async function productionDependencies(env) {
   const connection = await import('../../packages/database/src/connection-policy.mjs');
   const preflight = await import('../../packages/database/src/preflight.mjs');
   const migrations = await import('../../packages/database/src/migrate.mjs');
@@ -26,6 +26,22 @@ async function productionDependencies(env) {
   };
 }
 
+export function assertUnifiedMaintenanceManifest(migrations) {
+  const pairs = JSON.stringify(migrations.map(({ name, checksum }) => [name, checksum]));
+  requireGate(
+    migrations.length === 31 &&
+      hash(
+        JSON.stringify(migrations.slice(0, 30).map(({ name, checksum }) => [name, checksum])),
+      ) === 'e9f0a1e69887519a34656f0d8cb78cd627eaabcaf74d344c42519f9b8a8c6c8f' &&
+      migrations.at(-1).name === '0030_unified_signal_cutover.sql' &&
+      migrations.at(-1).checksum ===
+        '04a114a2f38037e60e97be2057e14ce69b07368b53f33cd4e059be0b5bf09469' &&
+      migrations.every((row) => hash(row.sql) === row.checksum),
+    'reviewed-schema-required',
+  );
+  return hash(`hzense/unified-signal-preflight-manifest/v1\0${pairs}`);
+}
+
 /**
  * Hosted, read-only inventory before implementing/applying the unified cutover.
  * No apply branch, DDL, grants, AI, file output, or publication authorization.
@@ -39,17 +55,7 @@ export async function executeUnifiedSignalDryRun(env, request, context, injected
   const policy = deps.validateConnectionTarget(options);
   const migrations = await deps.loadMigrations();
   await deps.verifyMigrationManifest(migrations);
-  const pairs = JSON.stringify(migrations.map(({ name, checksum }) => [name, checksum]));
-  requireGate(
-    migrations.length === 30 &&
-      hash(pairs) === 'e9f0a1e69887519a34656f0d8cb78cd627eaabcaf74d344c42519f9b8a8c6c8f' &&
-      migrations.at(-1).name === '0029_unified_signal_storage.sql' &&
-      migrations.at(-1).checksum ===
-        '8975f0eddf179bb1f5d1c4ad594b76fb11b631b4300979677af00fe5e97c6366' &&
-      migrations.every((row) => hash(row.sql) === row.checksum),
-    'reviewed-schema-required',
-  );
-  const manifestFingerprint = hash(`hzense/unified-signal-preflight-manifest/v1\0${pairs}`);
+  const manifestFingerprint = assertUnifiedMaintenanceManifest(migrations);
   const snapshot = async () => {
     await context.checkFreshness();
     const client = deps.createClient({

@@ -7,11 +7,12 @@ import {
   normalizeEditorialRequest,
 } from './editorial-signal-contract.mjs';
 import { registerEditorialResources } from './editorial-resource-store.mjs';
+import { editorialUnifiedContent } from './unified-signal-plan.mjs';
 export { previewEditorialResources } from './editorial-resource-store.mjs';
 export { EditorialSignalError } from './editorial-signal-contract.mjs';
 const columns =
   'request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,created_at';
-export async function saveEditorialSignal({ pool, owner, request, material }) {
+export async function saveEditorialSignal({ pool, owner, request, material, unified = false }) {
   owner = editorialText(owner, 200);
   const r = normalizeEditorialRequest(request, material, { checkPublication: false });
   const requestHash = createHash('sha256')
@@ -103,7 +104,7 @@ export async function saveEditorialSignal({ pool, owner, request, material }) {
     }
     const row = (
       await client.query(
-        `INSERT INTO public.editorial_signal_revisions(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9) RETURNING ${columns}`,
+        `INSERT INTO public.editorial_signal_revisions(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash${unified ? ',unified_content' : ''}) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9${unified ? ',$10::jsonb' : ''}) RETURNING ${columns}`,
         [
           r.requestId,
           r.runId,
@@ -114,6 +115,7 @@ export async function saveEditorialSignal({ pool, owner, request, material }) {
           r.action,
           JSON.stringify(content),
           requestHash,
+          ...(unified ? [JSON.stringify(editorialUnifiedContent(content))] : []),
         ],
       )
     ).rows[0];

@@ -136,6 +136,8 @@ jobs:
         run: corepack prepare "pnpm@${PNPM_VERSION}" --activate
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
+      - name: Build search dependency for unified public reader fixtures
+        run: pnpm --filter @hzense/search build
       - name: Verify restricted-role migrations, Topic sync, Runtime reader and production contracts
         env:
           MIGRATION_TEST_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres

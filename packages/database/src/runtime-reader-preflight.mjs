@@ -735,6 +735,8 @@ async function inspectRuntimeReaderTarget(
     'editorial_public_signals',
     'legacy_public_signals',
     'published_topic_insights',
+    'unified_public_signals',
+    'unified_public_status',
   ]);
   const actualRelations = new Set(relations.rows.map((row) => row.name));
   const missingRelations = setDifference(expectedRelations, actualRelations);
@@ -751,6 +753,8 @@ async function inspectRuntimeReaderTarget(
         'editorial_public_signals',
         'legacy_public_signals',
         'published_topic_insights',
+        'unified_public_signals',
+        'unified_public_status',
       ].includes(relation.name)
     ) {
       if (!isExactCurrentPublicSignalRelation(relation, target.database_owner)) {

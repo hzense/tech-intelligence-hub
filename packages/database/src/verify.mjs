@@ -1,4 +1,9 @@
 import {
+  unifiedCutoverColumns,
+  unifiedCutoverChecks,
+  unifiedCutoverViews,
+} from './unified-cutover-catalog.mjs';
+import {
   unifiedStorageChecks,
   unifiedStorageColumns,
   unifiedNullableLegacyColumns,
@@ -316,6 +321,11 @@ const expectedColumns = {
   ...editorialColumns,
   ...legacyArchiveColumns,
   ...automationColumns,
+  ...unifiedCutoverColumns,
+};
+expectedColumns.editorial_signal_revisions = {
+  ...expectedColumns.editorial_signal_revisions,
+  unified_content: ['jsonb', false],
 };
 for (const [tableName, columns] of Object.entries(unifiedStorageColumns)) {
   Object.assign(expectedColumns[tableName], columns);
@@ -399,6 +409,7 @@ const expectedPrimaryKeys = new Set([
   ...candidateReviewPrimaryKeys,
   ...editorialPrimaryKeys,
   ...legacyArchivePrimaryKeys,
+  'unified_signal_cutover|singleton',
   ...automationPrimaryKeys,
   'topics|id',
   'entities|id',
@@ -466,6 +477,7 @@ const expectedCheckExpressions = {
   ...candidateReviewChecks,
   ...editorialChecks,
   ...legacyArchiveChecks,
+  ...unifiedCutoverChecks,
   ...automationChecks,
   topics: [["notruntime_enabledorstatus<>'archived'"]],
   sources: [
@@ -542,6 +554,7 @@ const expectedDefaults = new Map([
   ...candidateReviewDefaults,
   ...editorialDefaults,
   ...legacyArchiveDefaults,
+  ['unified_signal_cutover.ready', new Set(['false'])],
   ...automationDefaults,
   ['topics.status', new Set(["'watching'"])],
   ['topics.metadata', new Set(["'{}'"])],
@@ -725,6 +738,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname='public' AND c.relkind IN ('v','m') ORDER BY c.relname`);
   const viewContracts = {
+    ...unifiedCutoverViews,
     current_public_signals: {
       columns: currentPublicSignalColumns,
       hashes: currentPublicSignalViewHashes,
@@ -965,7 +979,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
                 'candidate_material_requests','candidate_material_reports','candidate_material_receipts',
                 'candidate_material_proposals','candidate_material_approvals',
                 'candidate_reviews','candidate_review_conversions','candidate_review_attestations',
-                'editorial_signal_revisions','automation_configs','automation_runs','legacy_signal_archive'
+                'editorial_signal_revisions','automation_configs','automation_runs','legacy_signal_archive','unified_signal_cutover'
               ))::text
               ORDER BY constraint_info.oid
             ) AS definitions
@@ -1001,6 +1015,7 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
   for (const [tableName, expressionAlternatives] of Object.entries(expectedCheckExpressions)) {
     const canonicalize =
       Object.hasOwn(unifiedStorageChecks, tableName) ||
+      Object.hasOwn(unifiedCutoverChecks, tableName) ||
       Object.hasOwn(signalPublicationControlChecks, tableName) ||
       Object.hasOwn(qualifiedPublicationChecks, tableName) ||
       Object.hasOwn(candidateVerificationChecks, tableName) ||

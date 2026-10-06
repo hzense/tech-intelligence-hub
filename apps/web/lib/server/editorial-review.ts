@@ -1,4 +1,5 @@
 import 'server-only';
+import { unifiedSignalEnabled } from '../unified-signal-mode';
 import {
   saveEditorialSignal,
   readEditorialSignal,
@@ -123,7 +124,13 @@ const service = createEditorialReviewService({
   read: (owner, runId, candidateIndex) =>
     readEditorialSignal({ pool: editorialPool, owner, runId, candidateIndex }),
   save: (owner, request, bound) =>
-    saveEditorialSignal({ pool: editorialPool, owner, request, material: bound }),
+    saveEditorialSignal({
+      pool: editorialPool,
+      owner,
+      request,
+      material: bound,
+      unified: unifiedSignalEnabled(process.env),
+    }),
   resources: (resources, catalog) =>
     previewEditorialResources({ pool: candidateReviewPool, resources, catalog }),
   resourcePublicationReady: editorialResourcePublicationReady,

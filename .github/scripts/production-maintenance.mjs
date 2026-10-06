@@ -1,4 +1,5 @@
 import { LegacySignalMaintenanceError, legacyMigrationName } from './legacy-signal-maintenance.mjs';
+import { UnifiedSignalMaintenanceError } from './unified-signal-apply.mjs';
 import console from 'node:console';
 import process from 'node:process';
 import { createHash } from 'node:crypto';
@@ -22,6 +23,8 @@ export const maintenanceOperations = Object.freeze([
   'legacy-signal-apply',
   'legacy-signal-verify',
   'unified-signal-dry-run',
+  'unified-signal-apply',
+  'unified-signal-verify',
 ]);
 const migrationSequence = 'migrate-and-verify';
 const writes = new Set([
@@ -30,6 +33,7 @@ const writes = new Set([
   migrationSequence,
   'editorial-resource-grant',
   'legacy-signal-apply',
+  'unified-signal-apply',
 ]);
 const digest = /^[a-f0-9]{64}$/;
 export const editorialResourceRoleUpgradeSha256 =
@@ -1469,6 +1473,17 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
     'approval-expired-or-too-long',
   );
   const recoveryPolicy = validateRecoveryPolicy(approval, operation);
+  if (operation === 'unified-signal-apply') {
+    requireGate(
+      recoveryPolicy === 'verified' &&
+        approval.roleUpgradeApproved === true &&
+        approval.cutoverApproved === true &&
+        ['manifestFingerprint', 'planFingerprint', 'targetFingerprint'].every((key) =>
+          digest.test(approval[key] ?? ''),
+        ),
+      'unified-signal-approval-required',
+    );
+  }
   if (operation === 'legacy-signal-apply') {
     requireGate(
       recoveryPolicy === 'verified' &&
@@ -1587,7 +1602,7 @@ export function publicRecoveryAcceptance(request, rawApproval) {
 // Allowlist types too: a database error or document ID must never become a log.
 export function publicMaintenanceResult(operation, result = {}) {
   const summary = { operation, status: 'succeeded' };
-  if (operation === 'unified-signal-dry-run') {
+  if (operation.startsWith('unified-signal-')) {
     for (const key of [
       'sourceLegacyCount',
       'sourceRevisionCount',
@@ -1603,8 +1618,8 @@ export function publicMaintenanceResult(operation, result = {}) {
     for (const key of ['sourceFingerprint', 'publicIdFingerprint'])
       if (typeof result[key] === 'string' && digest.test(result[key])) summary[key] = result[key];
     // A successful read is not a migration, approval, or completed cutover.
-    summary.previewOnly = true;
-    summary.cutoverReady = false;
+    summary.previewOnly = operation === 'unified-signal-dry-run';
+    summary.cutoverReady = operation !== 'unified-signal-dry-run' && result.cutoverReady === true;
   }
   for (const key of [
     'migrationCount',
@@ -1641,7 +1656,10 @@ export function publicMaintenanceResult(operation, result = {}) {
 }
 
 export function publicMaintenanceFailure(error) {
-  if (error instanceof LegacySignalMaintenanceError)
+  if (
+    error instanceof LegacySignalMaintenanceError ||
+    error instanceof UnifiedSignalMaintenanceError
+  )
     return {
       ...publicMaintenanceFailure(error.cause),
       operation: error.operation,
@@ -1977,6 +1995,10 @@ async function executeEditorialResourceGrant(env, approval, context) {
 }
 
 async function executeOperation(env, { operation, approval }, context = {}) {
+  if (['unified-signal-apply', 'unified-signal-verify'].includes(operation)) {
+    const { executeUnifiedSignalApply } = await import('./unified-signal-apply.mjs');
+    return executeUnifiedSignalApply(env, { operation, approval }, context);
+  }
   if (operation === 'unified-signal-dry-run') {
     const { executeUnifiedSignalDryRun } = await import('./unified-signal-maintenance.mjs');
     return executeUnifiedSignalDryRun(env, { operation }, context);
@@ -2765,7 +2787,7 @@ export async function runMaintenance(
               executionEnv,
               request,
               ...(request.operation === 'editorial-resource-grant' ||
-              request.operation === 'unified-signal-dry-run' ||
+              request.operation.startsWith('unified-signal-') ||
               request.operation.startsWith('legacy-signal-')
                 ? [{ checkApproval, checkFreshness }]
                 : []),

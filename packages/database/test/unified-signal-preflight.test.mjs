@@ -70,7 +70,10 @@ describe('unified Signal read-only preflight', () => {
       public_preview: 110,
       lifecycle: { draft: 0, published: 110, withdrawn: 0 },
     });
-    expect(summary.blockers).toHaveLength(3);
+    expect(summary.blockers).toEqual([
+      'protected_apply_verify_approval_required',
+      'application_cutover_and_public_comparison_required',
+    ]);
     expect(plan.plan_hash).toBe(summary.plan_hash);
     expect(JSON.stringify(summary)).not.toContain('source_record');
     expect(summary.public_id_fingerprint).toMatch(/^[a-f0-9]{64}$/);

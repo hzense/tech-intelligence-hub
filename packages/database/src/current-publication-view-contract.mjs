@@ -3,6 +3,7 @@ import {
   legacyPublicSignalViewHashes,
 } from './legacy-signal-archive-catalog.mjs';
 import { createHash } from 'node:crypto';
+import { unifiedCutoverViews } from './unified-cutover-catalog.mjs';
 import { editorialPublicColumns, editorialPublicViewHashes } from './editorial-signal-catalog.mjs';
 import {
   publishedTopicInsightColumns,
@@ -23,6 +24,7 @@ export function isExactCurrentPublicSignalRelation(relation, expectedOwner) {
       'editorial_public_signals',
       'legacy_public_signals',
       'published_topic_insights',
+      ...Object.keys(unifiedCutoverViews),
     ].includes(relation.name) &&
     relation.relkind === 'v' &&
     relation.relpersistence === 'p' &&
@@ -44,6 +46,7 @@ export async function collectCurrentPublicSignalViewProblems(client, expectedOwn
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname='public' AND c.relkind IN ('v','m') ORDER BY c.relname`);
   const contracts = {
+    ...unifiedCutoverViews,
     current_public_signals: {
       columns: currentPublicSignalColumns,
       hashes: currentPublicSignalViewHashes,

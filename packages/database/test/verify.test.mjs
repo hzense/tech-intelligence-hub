@@ -10,6 +10,7 @@ import {
   legacyPublicSignalViewFixture,
   publishedTopicInsightViewFixture,
   signalImmutabilityQueryFixture,
+  unifiedPublicViewFixtures,
 } from './signal-immutability-fixtures.mjs';
 import {
   canonicalCatalogExpression,
@@ -28,6 +29,7 @@ describe('database catalog expression canonicalization', () => {
       editorialPublicSignalViewFixture(),
       legacyPublicSignalViewFixture(),
       publishedTopicInsightViewFixture(),
+      ...unifiedPublicViewFixtures(),
     ]);
     for (const changed of [
       view.definition.replace('AND hzense_public_signal_is_current(head.event_id)', ''),

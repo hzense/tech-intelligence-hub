@@ -227,6 +227,8 @@ function preflightClient({
         'editorial_public_signals',
         'legacy_public_signals',
         'published_topic_insights',
+        'unified_public_signals',
+        'unified_public_status',
         ...extraRelations,
       ].map((name) => ({
         name,
@@ -235,6 +237,8 @@ function preflightClient({
           'editorial_public_signals',
           'legacy_public_signals',
           'published_topic_insights',
+          'unified_public_signals',
+          'unified_public_status',
         ].includes(name)
           ? 'v'
           : 'r',
@@ -249,6 +253,8 @@ function preflightClient({
           'editorial_public_signals',
           'legacy_public_signals',
           'published_topic_insights',
+          'unified_public_signals',
+          'unified_public_status',
         ].includes(name)
           ? 1
           : rewriteRuleCount,

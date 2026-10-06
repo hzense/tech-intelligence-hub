@@ -13,10 +13,10 @@ import {
 const owner = 'hzense_migrator';
 
 describe('Signal transaction seal exact catalog contract', () => {
-  it('accepts exactly twenty-eight reviewed functions, seventy-six guards and four xid8 columns', () => {
+  it('accepts exactly thirty-one reviewed functions, seventy-eight guards and four xid8 columns', () => {
     const fixture = signalImmutabilityFixture();
-    expect(fixture.routines).toHaveLength(28);
-    expect(fixture.triggers).toHaveLength(76);
+    expect(fixture.routines).toHaveLength(31);
+    expect(fixture.triggers).toHaveLength(78);
     expect(fixture.stamps).toHaveLength(4);
     expect(inspectSignalImmutabilityCatalog(fixture, owner)).toEqual([]);
     expect(expectedSignalTriggerCount('signals')).toBe(2);

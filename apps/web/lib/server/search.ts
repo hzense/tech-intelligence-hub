@@ -15,6 +15,7 @@ import { searchRuntimeDocuments } from './runtime-reader';
 import { readSignalReadMode, mergeCurrentSignalSearch } from '../public-signal-reader-core';
 import { searchPublicSignals } from './public-signals';
 import { visibleTopicInsights } from './topic-insights';
+import { unifiedSignalEnabled } from '../unified-signal-mode';
 
 async function filterRetiredDocuments(results: SearchResult[]): Promise<SearchResult[]> {
   const visibleInsights = results.some((result) => result.type === 'insight')
@@ -68,7 +69,7 @@ async function searchCurrentResources(query: string, type?: SearchType): Promise
 
 export async function searchPublishedContent(query: string, type?: SearchType) {
   if (type === 'daily' || type === 'weekly') return [];
-  if (readSignalReadMode(process.env) === 'database') {
+  if (!unifiedSignalEnabled(process.env) && readSignalReadMode(process.env) === 'database') {
     if (type === 'signal') return searchPublicSignals(query);
     const [legacy, current, resources, insights] = await Promise.all([
       searchWithMode({

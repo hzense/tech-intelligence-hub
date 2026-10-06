@@ -1,4 +1,9 @@
 import {
+  unifiedCutoverFunctionHashes,
+  unifiedCutoverRoutines,
+  unifiedCutoverTriggers,
+} from './unified-cutover-catalog.mjs';
+import {
   unifiedStorageFunctionHashes,
   unifiedStorageTriggers,
 } from './unified-signal-storage-catalog.mjs';
@@ -70,6 +75,7 @@ export const sealedSignalTables = Object.freeze([
 
 // Updated only after reviewing the function source as part of a migration.
 export const sealedSignalFunctionHashes = Object.freeze({
+  ...unifiedCutoverFunctionHashes,
   ...unifiedStorageFunctionHashes,
   ...editorialFunctionHashes,
   ...legacyArchiveFunctionHashes,
@@ -90,6 +96,7 @@ export function expectedSignalTriggerCount(tableName) {
 }
 
 export const sealedSignalTriggers = Object.freeze([
+  ...unifiedCutoverTriggers,
   ...unifiedStorageTriggers,
   ...materialProposalTriggers,
   ...candidateMaterialTriggers,
@@ -179,6 +186,8 @@ export function inspectSignalImmutabilityCatalog({ triggers, routines, stamps },
         [
           'hzense_guard_qualified_publication_receipt',
           'hzense_guard_editorial_generation_delete',
+          'hzense_write_unified_editorial',
+          'hzense_require_unified_editorial',
         ].includes(name) ||
       row.leakproof !== false ||
       row.strict !== false ||
@@ -200,6 +209,7 @@ export function inspectSignalImmutabilityCatalog({ triggers, routines, stamps },
   for (const [name, contract] of Object.entries({
     ...currentPublicationRoutines,
     ...candidateMaterialRoutines,
+    ...unifiedCutoverRoutines,
   })) {
     const key = `${name}(${contract.arguments})`;
     const row = actualRoutines.get(key);
@@ -213,7 +223,7 @@ export function inspectSignalImmutabilityCatalog({ triggers, routines, stamps },
       row.result_type !== contract.result ||
       row.security_definer !== (contract.definer ?? true) ||
       row.leakproof !== false ||
-      row.strict !== false ||
+      row.strict !== (contract.strict ?? false) ||
       row.returns_set !== false ||
       row.volatility !== (contract.volatility ?? 'v') ||
       row.parallel !== 'u' ||

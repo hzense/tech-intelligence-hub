@@ -50,7 +50,7 @@
 
 按用户确认的新目标，正式信号将统一到 `signals`／`signal_versions`，不再长期以来源拆分主表。
 新版内容契约、历史归档／人工全修订转换和只读预演已实现；目标模型和剩余实施工作见
-[统一物理存储重构](UNIFIED_SIGNAL_STORAGE.md)。0029 的兼容 DDL、Drizzle 和核验已本地实现，统一业务写入与读切换尚未实现；本段不表示生产已完成统一迁移。
+[统一物理存储重构](UNIFIED_SIGNAL_STORAGE.md)。0029 已应用生产；本批补齐 0030、统一业务读写及受保护 apply／verify，默认关闭。生产结构升级、回填和开关切换须按[独立步骤](UNIFIED_SIGNAL_CUTOVER.md)执行；本段不表示生产已完成统一迁移。
 AI 原始候选／任务／费用仍留在 `signal_generation_runs`，不是待删除的重复正式信号。
 
 ## 物理迁移边界

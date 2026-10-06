@@ -1,5 +1,7 @@
 # HZense — Information Model
 
+> **2026-10-06 0030 实施增量（默认关闭）：** 私有 `unified_signal_cutover` 保存就绪状态及回填计划指纹；`editorial_signal_revisions.unified_content` 为原子统一写入的输入列；`unified_public_signals` 和 `unified_public_status` 为 4.0 公开数据／状态视图。两项 owner 触发器保证审计、正文、最新版本指针和发布／撤回同事务提交，激活后拒绝旧审计单写。完整契约及最小 ACL 见[切换说明](UNIFIED_SIGNAL_CUTOVER.md)。0029 已应用生产，0030 与数据切换尚待受保护执行；下条为旧阶段记录。
+
 > **2026-10-05 0029 实施增量（本地，未生产执行）：** `signals` 新增 `storage_schema/origin/latest_version`；`signal_versions` 新增 4.0 `content` 与生命周期、发布依据、来源引用列。按 schema 分支约束，旧 3.0 非空／封存规则不放宽，旧正文列在 4.0 行必须为 NULL。精确 DDL 见 `db/migrations/0029_unified_signal_storage.sql`，边界见[统一存储阶段 B](UNIFIED_SIGNAL_STORAGE.md#阶段-b兼容物理结构2026-10-05)。下文旧物理表说明仍用于 3.0 分支；新增 DDL 不等于生产迁移或公开读取切换。
 
 ## Technology Intelligence Information Model
