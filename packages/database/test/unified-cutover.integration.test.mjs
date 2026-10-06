@@ -1,5 +1,6 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { URL } from 'node:url';
+import { randomBytes } from 'node:crypto';
 import process from 'node:process';
 import pg from 'pg';
 import { beforeAll, afterAll, it, describe, expect } from 'vitest';
@@ -29,6 +30,7 @@ if (noVector && process.env.CI) throw new Error('CI requires pgvector');
 const suite = url ? describe.sequential : describe.skip;
 suite('unified cutover writes and public reads', () => {
   const suffix = `${process.pid}_${Date.now()}`;
+  const writerPassword = randomBytes(32).toString('hex');
   const db = `hzense_cutover_${suffix}`,
     role = `hzense_cutover_writer_${suffix}`,
     readerRole = `hzense_cutover_reader_${suffix}`;
@@ -84,7 +86,7 @@ suite('unified cutover writes and public reads', () => {
         ],
       );
     await client.query('COMMIT');
-    await admin.query(`CREATE ROLE "${role}" LOGIN`);
+    await admin.query(`CREATE ROLE "${role}" LOGIN PASSWORD '${writerPassword}'`);
     roleCreated = true;
     await admin.query(`CREATE ROLE "${readerRole}" LOGIN`);
     readerCreated = true;
@@ -93,7 +95,7 @@ suite('unified cutover writes and public reads', () => {
       GRANT INSERT(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash,created_at,unified_content), SELECT(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash,created_at) ON public.editorial_signal_revisions TO "${role}"`,
     );
     connection.username = role;
-    connection.password = '';
+    connection.password = writerPassword;
     writer = new pg.Client({ connectionString: connection.toString() });
     await writer.connect();
   }, 60000);
