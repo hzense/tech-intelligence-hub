@@ -323,7 +323,7 @@ describe('protected legacy signal migration', () => {
       'utf8',
     );
     expect(text).toContain(
-      "inputs.operation == 'legacy-signal-apply') && secrets.MAINTENANCE_APPROVAL",
+      "inputs.operation == 'legacy-signal-apply' || inputs.operation == 'unified-signal-apply') && secrets.MAINTENANCE_APPROVAL",
     );
     expect(text).not.toContain(
       "inputs.operation == 'legacy-signal-dry-run') && secrets.MAINTENANCE_APPROVAL",

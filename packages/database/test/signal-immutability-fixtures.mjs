@@ -19,12 +19,13 @@ const migration = [
   '0025_editorial_signal_publication.sql',
   '0028_legacy_signal_archive.sql',
   '0029_unified_signal_storage.sql',
+  '0030_unified_signal_cutover.sql',
 ]
   .map((name) => readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), 'utf8'))
   .join('\n');
 const bodies = [
   ...migration.matchAll(
-    /CREATE (?:OR REPLACE )?FUNCTION public\.(\w+)\(([^)]*)\) RETURNS (\w+)\s+([\s\S]*?)AS \$(\w+)\$([\s\S]*?)\$\5\$;/g,
+    /CREATE (?:OR REPLACE )?FUNCTION public\.(\w+)\(([^)]*)\) RETURNS (\w+)\s+([\s\S]*?)AS \$(\w*)\$([\s\S]*?)\$\5\$;/g,
   ),
 ];
 
@@ -160,6 +161,7 @@ export function signalImmutabilityFixture(owner = 'hzense_migrator') {
       editorialPublicSignalViewFixture(owner),
       legacyPublicSignalViewFixture(owner),
       publishedTopicInsightViewFixture(owner),
+      ...unifiedPublicViewFixtures(owner),
     ],
     triggers: sealedSignalTriggers.map((contract) => ({
       ...contract,
@@ -192,9 +194,13 @@ export function signalImmutabilityFixture(owner = 'hzense_migrator') {
         /SECURITY DEFINER/.test(attributes) ||
         migration.includes(`ALTER FUNCTION public.${name}() SECURITY DEFINER;`),
       leakproof: false,
-      strict: false,
+      strict: /\bSTRICT\b/.test(attributes),
       returns_set: false,
-      volatility: /\bSTABLE\b/.test(attributes) ? 's' : 'v',
+      volatility: /\bIMMUTABLE\b/.test(attributes)
+        ? 'i'
+        : /\bSTABLE\b/.test(attributes)
+          ? 's'
+          : 'v',
       parallel: 'u',
       support_function: false,
       binary: null,
@@ -215,6 +221,44 @@ export function signalImmutabilityFixture(owner = 'hzense_migrator') {
       default_expression: 'pg_current_xact_id()',
     })),
   };
+}
+
+export function unifiedPublicViewFixtures(owner = 'hzense_migrator') {
+  return [
+    {
+      name: 'unified_public_signals',
+      owner,
+      options: ['security_barrier=true'],
+      columns: [
+        ['signal_id', 'text'],
+        ['version', 'integer'],
+        ['origin', 'text'],
+        ['publication_basis', 'text'],
+        ['content', 'jsonb'],
+        ['recorded_at', 'timestamp with time zone'],
+      ],
+      definition: ` SELECT s.id AS signal_id,
+    v.version,
+    v.origin,
+    v.publication_basis,
+    v.content,
+    v.recorded_at
+   FROM signals s
+     JOIN signal_versions v ON v.signal_id = s.id AND v.version = s.latest_version
+  WHERE s.storage_schema = '4.0.0'::text AND v.schema_version = '4.0.0'::text AND v.lifecycle_status = 'published'::text AND (EXISTS ( SELECT 1
+           FROM unified_signal_cutover
+          WHERE unified_signal_cutover.singleton AND unified_signal_cutover.ready));`,
+    },
+    {
+      name: 'unified_public_status',
+      owner,
+      options: ['security_barrier=true'],
+      columns: [['ready', 'boolean']],
+      definition: ` SELECT ready
+   FROM unified_signal_cutover
+  WHERE singleton;`,
+    },
+  ];
 }
 
 export function signalImmutabilityQueryFixture(sql, fixture = signalImmutabilityFixture()) {

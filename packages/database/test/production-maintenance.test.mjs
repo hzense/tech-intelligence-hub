@@ -722,10 +722,20 @@ describe('execution-time GitHub freshness check', () => {
               'acl-capture',
               'editorial-resource-grant',
               'legacy-signal-apply',
+              'unified-signal-apply',
             ].includes(operation)
           ? writeEnvironment(operation, {
               publicArchiveApproved: true,
               archiveRepository: 'hzense/tech-intelligence-hub',
+              ...(operation === 'unified-signal-apply'
+                ? {
+                    roleUpgradeApproved: true,
+                    cutoverApproved: true,
+                    planFingerprint: 'e'.repeat(64),
+                    targetFingerprint: 'd'.repeat(64),
+                    manifestFingerprint: 'f'.repeat(64),
+                  }
+                : {}),
               ...(operation === 'legacy-signal-apply'
                 ? {
                     roleUpgradeApproved: true,

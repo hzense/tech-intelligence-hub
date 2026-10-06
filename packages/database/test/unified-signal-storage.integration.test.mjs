@@ -125,6 +125,9 @@ suite('unified Signal additive PostgreSQL storage', () => {
     await client.query(
       await readFile(new URL('0029_unified_signal_storage.sql', directory), 'utf8'),
     );
+    await client.query(
+      await readFile(new URL('0030_unified_signal_cutover.sql', directory), 'utf8'),
+    );
     await client.query('COMMIT');
     const catalog = await loadSeedCatalog(
       fileURLToPath(new URL('../../../data/seed/', import.meta.url)),

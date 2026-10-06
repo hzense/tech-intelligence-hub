@@ -11,6 +11,8 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 
 ## 当前部署
 
+统一 Signal 新开关 `HZENSE_UNIFIED_SIGNAL_ENABLED` 默认未设置／`0`。设置 `1` 将同时启用统一业务写入和公开读取，**必须先完成 0030 受保护结构升级、回填、最小权限授权和独立核验**。新视图未就绪时不回退旧数据；数据库激活后旧写入也被拦截。本批部署保持开关关闭，操作顺序与回退边界见[统一 Signal 切换](UNIFIED_SIGNAL_CUTOVER.md)。
+
 > **2026-09-25 人工确认发布（本地开发，未上线）：** 新入口需要独立 `0025` 迁移、`hzense_editorial_writer`／`hzense_editorial_reader` 及默认关闭的 `HZENSE_EDITORIAL_PUBLICATION_ENABLED`。四项齐全后人工确认直接公开，不复用旧签名门禁或旧审批范围。具体步骤见 [人工确认发布](EDITORIAL_PUBLICATION.md#生产启用尚未执行)。现有线上维护审批只覆盖至 0024；必须先补充并审核 0025 专属维护范围，不能使用旧批准执行新迁移。仅合并、构建或部署页面不能宣称此功能已启用。
 
 > **2026-09-24 通用补证：** [PR #157](https://github.com/hzense/tech-intelligence-hub/pull/157) 基础接入已合并并部署，功能尚未生产启用。当前材料准备、人工确认和独立 GitHub 执行器为后续本地开发，未提交／上线。旧 main 只读 [preflight 36022413674](https://github.com/hzense/tech-intelligence-hub/actions/runs/36022413674) 成功，当时仅待 0023；加入本批 0024 后应重新预检，预期两项 pending。25 迁移／57 表是本批代码目标，不能记作生产核验结果。生产迁移、最小权限及新凭据配置另行批准，见[通用补证部署清单](MATERIAL_REGISTRATION.md#数据库与配置)和[本批证据](production-evidence/2026-09-24-material-review-preparation.md)。

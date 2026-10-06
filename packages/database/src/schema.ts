@@ -1811,6 +1811,33 @@ export const candidateMaterialApprovals = pgTable(
   ],
 );
 
+export const unifiedSignalCutover = pgTable(
+  'unified_signal_cutover',
+  {
+    singleton: boolean('singleton').primaryKey(),
+    ready: boolean('ready').notNull().default(false),
+    planHash: text('plan_hash'),
+  },
+  (t) => [
+    check('unified_signal_cutover_singleton_check', sql`${t.singleton}`),
+    check(
+      'unified_signal_cutover_check',
+      sql`((NOT ${t.ready} AND ${t.planHash} IS NULL) OR (${t.ready} AND ${t.planHash} COLLATE "C" ~ '^[a-f0-9]{64}$')) IS TRUE`,
+    ),
+  ],
+);
+export const unifiedPublicSignals = pgView('unified_public_signals', {
+  signalId: text('signal_id'),
+  version: integer('version'),
+  origin: text('origin'),
+  publicationBasis: text('publication_basis'),
+  content: jsonb('content'),
+  recordedAt: timestamp('recorded_at', { withTimezone: true }),
+}).existing();
+export const unifiedPublicStatus = pgView('unified_public_status', {
+  ready: boolean('ready'),
+}).existing();
+
 export const editorialSignalRevisions = pgTable(
   'editorial_signal_revisions',
   {
@@ -1822,6 +1849,7 @@ export const editorialSignalRevisions = pgTable(
     materialHash: text('material_hash').notNull(),
     action: text('action').notNull(),
     content: jsonb('content').notNull(),
+    unifiedContent: jsonb('unified_content'),
     requestHash: text('request_hash').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

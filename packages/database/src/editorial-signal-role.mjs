@@ -28,6 +28,12 @@ export async function assertEditorialRole(client, role) {
     ]),
   );
   if (role === 'writer') {
+    const unified = (
+      await client.query(
+        "SELECT has_column_privilege(c.oid,a.attnum,'INSERT') AS available FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname='public' AND c.relname='editorial_signal_revisions' AND a.attname='unified_content' AND NOT a.attisdropped",
+      )
+    ).rows[0]?.available;
+    if (unified) capabilities.push('editorial_signal_revisions|unified_content|INSERT');
     const resources = (
       await client.query(
         "SELECT has_column_privilege(c.oid,a.attnum,'SELECT') AS available FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname='public' AND c.relname='entities' AND a.attname='name' AND NOT a.attisdropped",
@@ -41,6 +47,23 @@ export async function assertEditorialRole(client, role) {
           capabilities.push(`${table}|${name}|SELECT`, `${table}|${name}|INSERT`);
   }
   if (role === 'reader') {
+    const unified = (
+      await client.query(
+        "SELECT has_column_privilege(c.oid,a.attnum,'SELECT') AS available FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname='public' AND c.relname='unified_public_status' AND a.attname='ready' AND NOT a.attisdropped",
+      )
+    ).rows[0]?.available;
+    if (unified) {
+      capabilities.push('unified_public_status|ready|SELECT');
+      for (const column of [
+        'signal_id',
+        'version',
+        'origin',
+        'publication_basis',
+        'content',
+        'recorded_at',
+      ])
+        capabilities.push(`unified_public_signals|${column}|SELECT`);
+    }
     const archiveAvailable = (
       await client.query(
         "SELECT has_column_privilege(c.oid,a.attnum,'SELECT') AS available FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname='public' AND c.relname='legacy_public_signals' AND a.attname='signal_id' AND NOT a.attisdropped",

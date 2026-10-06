@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { unifiedSignalEnabled } from './unified-signal-mode.ts';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import { readSignalReadMode, type SignalEntry } from './public-signal-reader-core.ts';
 import { projectLegacySignalEntries } from './legacy-signal-projection.ts';
@@ -25,6 +26,12 @@ function getSeedCatalog() {
 }
 
 export async function getSignalEntries(): Promise<SignalEntry[]> {
+  if (unifiedSignalEnabled(process.env)) {
+    return projectEditorialEntityLinks(
+      await (await import('./server/unified-signals.ts')).getUnifiedSignals(),
+      await getResourceEntries(),
+    );
+  }
   const archiveMode = readLegacySignalArchiveMode(process.env);
   if (readSignalReadMode(process.env) === 'database') {
     const signals = await (await import('./server/public-signals.ts')).getPublicSignals();
@@ -47,6 +54,8 @@ export async function getSignalEntries(): Promise<SignalEntry[]> {
 }
 
 export async function getSignalEntryById(id: string): Promise<SignalEntry | undefined> {
+  if (unifiedSignalEnabled(process.env))
+    return (await getSignalEntries()).find((signal) => signal.id === id);
   if (id.startsWith('editorial-')) {
     if (!editorialSignalIdPattern.test(id)) return undefined;
     if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED !== '1') return undefined;

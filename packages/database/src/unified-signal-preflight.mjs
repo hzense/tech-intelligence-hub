@@ -68,9 +68,8 @@ export async function inspectUnifiedSignalMigration(client) {
     const lifecycle = { draft: 0, published: 0, withdrawn: 0 };
     for (const status of latest.values()) lifecycle[status] += 1;
     const blockers = [
-      'unified_writer_not_implemented',
-      'protected_apply_verify_not_implemented',
-      'public_reader_cutover_not_implemented',
+      'protected_apply_verify_approval_required',
+      'application_cutover_and_public_comparison_required',
     ];
     if (BigInt(inventory.signal_count) !== 0n || BigInt(inventory.version_count) !== 0n) {
       blockers.push('existing_core_signals_require_reconciliation');

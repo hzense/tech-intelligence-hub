@@ -75,7 +75,7 @@ function legacyContent(row) {
     { historical: true },
   );
 }
-function editorialContent(raw) {
+export function editorialUnifiedContent(raw) {
   const c = normalizeEditorialContent(raw);
   if (!same(c, raw)) fail('noncanonical_editorial_content');
   const resources = c.resources ?? [];
@@ -203,7 +203,7 @@ export function buildUnifiedSignalPlan({ archivePlan, editorialRevisions }) {
           recordedAt: createdAt,
           source: { table: 'editorial_signal_revisions', key: row.request_id },
           sourceHash: hash({ ...row, created_at: createdAt }),
-          content: editorialContent(row.content),
+          content: editorialUnifiedContent(row.content),
         }),
       );
       prior = row;
