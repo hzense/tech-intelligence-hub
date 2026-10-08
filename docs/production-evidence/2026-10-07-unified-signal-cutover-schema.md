@@ -1,6 +1,6 @@
 # 统一 Signal 结构迁移验收
 
-2026-10-08 更新：生产已完成 `0030_unified_signal_cutover.sql`、统一 Signal 回填、最小业务授权和独立只读核验，确认 **31 项迁移、62 张表、114 条 Signal、120 个版本、112 条公开信号**。网站已切读统一视图，首次完整对比发现资源链接兼容差异，修复和最终验收进行中；以下首先保留 10 月 7 日仅结构升级的历史记录，10 月 8 日续跑结果见文末。
+2026-10-08 更新：生产已完成 `0030_unified_signal_cutover.sql`、统一 Signal 回填、最小业务授权、独立只读核验和网站切换，确认 **31 项迁移、62 张表、114 条 Signal、120 个版本、112 条公开信号**。首次完整对比发现的资源链接兼容差异已由 PR #214 修复，最终全量比较 PASS；以下保留全过程记录，当前结论以文末最终验收为准。
 
 ## 受保护运行
 
@@ -89,3 +89,14 @@ apply 在串行化事务内锁定源／目标、重新构建计划、逐版本�
 原因是统一 reader 给旧名称型人工修订附加 `public_resources: []`，而资源投影以该字段是否存在判断身份是否已审核登记，空列表让原本的唯一名称匹配被跳过。修复仅在尚无登记身份时不附加该字段，继续原有只读目录匹配；已登记身份仍优先，未知或歧义名称不生成身份，也不回写历史数据库正文。新增红绿回归覆盖旧／新读取投影一致、空目录、名称歧义及明确身份保护。同时将统一开关纳入旧发布 API 拒绝条件、旧雷达快照和 sitemap 的更新策略，避免切换后仍写旧发布链或使用旧评分。
 
 本次不重放 apply、不再变更 Schema／ACL，不调用 AI 或试发布。兼容修复通过 CI、评审和重新部署后，须重新与原冻结基线比较；在全部通过前继续保持发布／撤回冻结。
+
+## 最终生产切换验收通过
+
+- [PR #214](https://github.com/hzense/tech-intelligence-hub/pull/214) 经独立代理评审无阻塞，补强非空雷达回归后通过全部 [PR CI 37776861776](https://github.com/hzense/tech-intelligence-hub/actions/runs/37776861776)。于 `2026-10-08T12:32:26Z` 合并为 `86f791accccd92322aace7bf2c0af120cb9b3b9e`，本地 main 已快进同步；[合并后 CI 37777597108](https://github.com/hzense/tech-intelligence-hub/actions/runs/37777597108) 三项检查也全部通过。
+- Production 部署 `dpl_FuJ2Lid24yGmeQAJxhKR16Nyyrxc` 于 `12:33:22.414Z` READY，提交精确匹配上述 main，正式别名包括 `hzense.com` 与 `www.hzense.com`。Production `HZENSE_UNIFIED_SIGNAL_ENABLED=1`、既有 `HZENSE_EDITORIAL_PUBLICATION_ENABLED=1` 均已回读确认，未改变其他环境或凭据。
+- `12:35:15Z` 完成全部页面重新采集，`12:35:28Z` 与 **切换前原冻结基线** 比较通过，并非与存在回归的中途快照比较。112 个详情、5 个核心页面均 HTTP 200，列表与 sitemap 的 Signal ID 集合一致；3273 段详情文本、875 个详情链接、112 个原始来源链接完全相同，0 条缺来源，正文／链接／来源／状态差异均为空。
+- 核心页面范围为首页雷达、`/signals`、`/resources`、`/search`、`/search?q=OpenAI`。最终聚合 SHA-256 恢复为 `f7d6a9b129d6492735529762272a2fcc4a75103205d9d0dea71adc5f2007fd9b`，与最初冻结快照完全一致。比较结果文件 SHA-256：`0823d8c24ace579b1d96c703a00e4a48a58a8c33a14ed16c5d4fbd63f3677812`。
+- 正式浏览器复查恢复的 Tulsee Doshi／Google／Wiz 三条链接，首页 Google 重新进入 TOP 5；数据库健康接口通过不使用缓存的 GET 返回 HTTP 200、`{"status":"ok"}`。新部署自 `12:33:00Z` 起至验收查询时的 error/fatal 日志分组为空，不能将该短窗口外推为长期无故障。
+- 私有本地归档目录为 `hzense-unified-cutover-20261008`：`public-before`、首次失败的 `public-after`／`public-comparison.json`、修复后的 `public-after-214`／`public-comparison-after-214.json`，以及正式页面截图；保留失败轨迹，不覆盖为成功。
+
+此次维护冻结可以解除。公开读取与后续管理员确认发布已切换统一模式，独立旧发布／撤回接口 `/api/admin/signals/publish`、`/api/admin/signals/withdraw` 在该模式下拒绝写入；这不表示其余历史核验通道已经移除或全部禁用。原表仍保留供审计，不再是公开 Signal 正文权威。此次没有创建真实试发布／撤回或调用 AI；写入原子性、权限和上述独立接口拒绝由隔离集成测试验证，不声称已完成新增生产内容的实发验收。正式 apply 已提交，不可重放；解除冻结后的新修订会改变原计划，原计划 verify 也不应当作长期健康检查。
