@@ -46,6 +46,18 @@ export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
         name: s.name ?? new URL(s.url).hostname,
         url: s.url,
       }));
+      const resources = [...c.people, ...c.organizations]
+        .filter(
+          (p: (typeof c.people)[number]) =>
+            p.id && ['person', 'company', 'institution'].includes(p.kind ?? ''),
+        )
+        .map((p: (typeof c.people)[number]) => ({
+          id: p.id!,
+          name: p.name,
+          type: p.kind as 'person' | 'company' | 'institution',
+          introduction: p.introduction,
+          source_urls: p.source_urls,
+        }));
       const date = (value: unknown, preserve = false) => {
         if (!(value instanceof Date) && typeof value !== 'string')
           throw new PublicSignalReaderError();
@@ -75,18 +87,10 @@ export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
         ...(manual
           ? { publication_revision: Number(row.version) }
           : { legacy_related_entities: c.related_entities }),
-        public_resources: [...c.people, ...c.organizations]
-          .filter(
-            (p: (typeof c.people)[number]) =>
-              p.id && ['person', 'company', 'institution'].includes(p.kind ?? ''),
-          )
-          .map((p: (typeof c.people)[number]) => ({
-            id: p.id!,
-            name: p.name,
-            type: p.kind as 'person' | 'company' | 'institution',
-            introduction: p.introduction,
-            source_urls: p.source_urls,
-          })),
+        // Presence means reviewed identities to the entity-link projector. Older
+        // name-only editorial revisions must still resolve unique catalog names;
+        // an empty array would incorrectly bypass that read-only projection.
+        ...(!manual || resources.length ? { public_resources: resources } : {}),
       };
       if (manual)
         return {

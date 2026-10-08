@@ -1,6 +1,12 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-10-06
+**最后更新：** 2026-10-08
+
+**统一 Signal 正式数据迁移已完成（2026-10-08）：** 修复后的受保护 [apply 37772790225](https://github.com/hzense/tech-intelligence-hub/actions/runs/37772790225) 已提交，另行人工审批的 [verify 37775017445](https://github.com/hzense/tech-intelligence-hub/actions/runs/37775017445) 独立只读核验通过：`signals` 114 条、`signal_versions` 120 个版本、112 条公开信号；31 项迁移、62 张表，无待迁移。源数据、计划、目标和公开 ID 指纹均与批准值一致，最小业务授权和 `ready=true` 同事务生效。Vercel Production 已设置 `HZENSE_UNIFIED_SIGNAL_ENABLED=1`，`ae973cb` 的新部署已接管正式域名；健康接口及全部 112 个详情页为 HTTP 200，正文与来源保持完整。全量比较发现一条旧人工记录的 3 个资源链接缺失并影响资源统计，已定位为 reader 的空资源列表阻止名称匹配，正交付兼容修复；同步关闭统一模式下的旧发布 API，并让雷达快照与 sitemap 使用统一开关。完整对比通过前继续保持发布／撤回冻结。以下为各阶段历史快照。
+
+**统一数据迁移故障修复（2026-10-08）：** 正式 apply [37768575644](https://github.com/hzense/tech-intelligence-hub/actions/runs/37768575644) 在写入前被 ACL 指纹检查阻止。只读核查确认 `signals=0`、`signal_versions=0`、`ready=false`，业务新增授权未发生。根因为基线采集与 apply 的 `search_path` 不同，PostgreSQL 对自定义函数参数类型输出不同限定名；[PR #213](https://github.com/hzense/tech-intelligence-hub/pull/213) 已评审、通过三项必需 CI 并合并为 `ae973cb`，将检查会话设置对齐，保留全部 ACL 比较并增加真实 PostgreSQL 回归，同时以 Next.js 16.3.8 补丁消除既有依赖审计阻塞。用户已明确不再进行预演；待合并后 main CI 通过，以旧数据计划作为严格 expected 值、当前 31 项 manifest、已审核 ACL 和新的 run-bound 审批续跑正式迁移，任何实际数据或权限漂移仍须停止。当前尚未完成统一数据回填或网站切读。
+
+**0030 生产结构升级已完成（2026-10-07）：** 新备份隔离恢复通过，61 张 public 表、742 行数据及完整捕获的结构／权限摘要恢复一致，演练副本经确认清理。当前提交的双次 ACL 采集审核通过后，[结构迁移](https://github.com/hzense/tech-intelligence-hub/actions/runs/37646627663)及[独立只读核验](https://github.com/hzense/tech-intelligence-hub/actions/runs/37647191968)均成功，生产为 31 项迁移、62 张表。首页、列表、数据库健康正常，公开信号仍为相同的 112 个 ID。本次不回填、不增加业务授权、不切换数据源或生产开关。详见[本轮生产证据](production-evidence/2026-10-07-unified-signal-cutover-schema.md)。以下为各阶段历史快照。
 
 **统一 Signal 三项开发（2026-10-06，本批）：** 补齐原子发布／撤回写入器、唯一 4.0 公开读取入口及受保护 `unified-signal-apply`／独立 `unified-signal-verify`。新增 0030、精确 Schema／ACL 核验与回归测试，`HZENSE_UNIFIED_SIGNAL_ENABLED` 默认关闭。本批交付代码；生产仍保持 0029 和旧读写路径，未执行新 DDL、回填、授权或开关切换。下一步按[生产执行顺序](UNIFIED_SIGNAL_CUTOVER.md#生产执行顺序)申请当次批准，不复用历史审批。以下各批“本地未提交／待开发”为历史快照，PR #211 回填核心已经合并部署。
 

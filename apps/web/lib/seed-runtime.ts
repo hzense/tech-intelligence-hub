@@ -85,6 +85,7 @@ export async function getSeedRelations(): Promise<SeedRelation[]> {
 }
 
 export async function getRadarSnapshots(): Promise<SeedRadarSnapshot[]> {
+  if (unifiedSignalEnabled(process.env)) return [];
   if (readSignalReadMode(process.env) === 'database') {
     await (await import('./server/public-signals.ts')).waitForPublicSignalRequest();
     // Legacy scores lack immutable content-version/publication-revision bindings.

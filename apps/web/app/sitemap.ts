@@ -5,6 +5,7 @@ import { getInsightEntries, getTopicEntries } from '@/lib/content-runtime';
 import { getPublicExploration } from '@/lib/public-exploration-runtime';
 import { resourceHref } from '@/lib/resource-presentation';
 import { visibleTopicInsights } from '@/lib/server/topic-insights';
+import { unifiedSignalEnabled } from '@/lib/unified-signal-mode';
 
 const siteUrl = 'https://hzense.com';
 
@@ -63,7 +64,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: `${siteUrl}/signals/${entry.id}`,
       lastModified: new Date(entry.occurred_at),
       changeFrequency:
-        readSignalReadMode(process.env) === 'database' ? ('daily' as const) : ('never' as const),
+        unifiedSignalEnabled(process.env) || readSignalReadMode(process.env) === 'database'
+          ? ('daily' as const)
+          : ('never' as const),
       priority: 0.7,
     })),
     {
