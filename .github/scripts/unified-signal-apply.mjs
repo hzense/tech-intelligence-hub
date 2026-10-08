@@ -143,6 +143,12 @@ export async function executeUnifiedSignalApply(env, request, context, injected)
         await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
         let acl;
         try {
+          // Match baseline capture: PostgreSQL renders routine argument types
+          // relative to search_path, which is part of the ACL fingerprint input.
+          await client.query('SET LOCAL search_path=pg_catalog,pg_temp');
+          await client.query("SET LOCAL statement_timeout='30s'");
+          await client.query("SET LOCAL lock_timeout='5s'");
+          await client.query("SET LOCAL idle_in_transaction_session_timeout='45s'");
           acl = await deps.inspectRuntimeAclBaseline(client, {
             expectedDatabase: policy.database,
             expectedUser: policy.user,
