@@ -230,3 +230,27 @@ test('publisher requires independent role, approved production target and verifi
     );
   }
 });
+
+test('unified mode rejects both legacy publication operations before database work', async () => {
+  const unified = { ...env, HZENSE_UNIFIED_SIGNAL_ENABLED: '1' };
+  let calls = 0;
+  const handle = createPublicationHandler({
+    authenticate: async () => true,
+    origin: () => origin,
+    execute: async () => {
+      calls++;
+      readPublisherConfiguration(unified);
+    },
+  });
+
+  for (const [operation, command] of [
+    ['publish', publish],
+    ['withdraw', withdraw],
+  ]) {
+    const response = await handle(request(command), operation);
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: 'publisher_not_configured' });
+  }
+  assert.equal(calls, 2);
+  assert.throws(() => readPublisherConfiguration(unified), PublisherConfigurationError);
+});

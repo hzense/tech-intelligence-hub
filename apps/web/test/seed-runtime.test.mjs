@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
+import { Buffer } from 'node:buffer';
+import process from 'node:process';
 import test from 'node:test';
+import { URL } from 'node:url';
+import { build } from 'esbuild';
 
 import {
   getResourceEntries,
@@ -85,5 +89,100 @@ test('does not reuse Radar scores whose historical Signal evidence was removed',
       previous.date > current.date ||
         (previous.date === current.date && previous.attention >= current.attention),
     );
+  }
+});
+
+test('unified mode suppresses non-empty legacy Radar snapshots even if the old read mode is legacy', async () => {
+  const snapshot = {
+    id: 'radar-fixture',
+    topic: 'topic-fixture',
+    date: '2026-10-08',
+    attention: 88,
+  };
+  globalThis.__unifiedRadarGuardTest = { radar: [snapshot] };
+  const previousUnified = process.env.HZENSE_UNIFIED_SIGNAL_ENABLED;
+  const previousReadMode = process.env.HZENSE_SIGNAL_READ_MODE;
+  try {
+    const bundled = await build({
+      entryPoints: [new URL('../lib/seed-runtime.ts', import.meta.url).pathname],
+      bundle: true,
+      write: false,
+      format: 'esm',
+      platform: 'node',
+      plugins: [
+        {
+          name: 'isolate-unified-radar-guard',
+          setup(plugin) {
+            const modules = {
+              '@hzense/content': `
+                export async function loadSeedCatalog() {
+                  return { ...globalThis.__unifiedRadarGuardTest, entities: [], relations: [], signals: [], sources: [] };
+                }
+              `,
+              '@hzense/ingestion/person-resource-policy': `
+                export function isExcludedPublicPerson() { return false; }
+              `,
+              './unified-signal-mode.ts': `
+                export function unifiedSignalEnabled(env) { return env.HZENSE_UNIFIED_SIGNAL_ENABLED === '1'; }
+              `,
+              './public-signal-reader-core.ts': `
+                export function readSignalReadMode() { return 'legacy'; }
+              `,
+              './legacy-signal-projection.ts': `
+                export function projectLegacySignalEntries() { return []; }
+              `,
+              './legacy-signal-archive-reader-core.ts': `
+                export function readLegacySignalArchiveMode() { return 'seed'; }
+              `,
+              './editorial-entity-links.ts': `
+                export function projectEditorialEntityLinks(signals) { return signals; }
+              `,
+              './editorial-signal-reader-core.ts': `
+                export const editorialSignalIdPattern = /^editorial-/;
+              `,
+              './server/public-signals.ts': `
+                export async function waitForPublicSignalRequest() {}
+                export async function getPublicSignals() { return []; }
+                export async function getPublicSignalById() {}
+              `,
+              './server/unified-signals.ts': `
+                export async function getUnifiedSignals() { return []; }
+              `,
+              './server/editorial-signals.ts': `
+                export async function getEditorialSignals() { return []; }
+              `,
+              './server/legacy-signal-archive.ts': `
+                export async function getLegacyArchivedSignals() { return []; }
+              `,
+            };
+            plugin.onResolve(
+              {
+                filter:
+                  /^(?:@hzense\/(?:content|ingestion\/person-resource-policy)|\.\/(?:unified-signal-mode|public-signal-reader-core|legacy-signal-projection|legacy-signal-archive-reader-core|editorial-entity-links|editorial-signal-reader-core)\.ts|\.\/server\/(?:public-signals|unified-signals|editorial-signals|legacy-signal-archive)\.ts)$/,
+              },
+              (args) => ({ path: args.path, namespace: 'radar-fixture' }),
+            );
+            plugin.onLoad({ filter: /.*/, namespace: 'radar-fixture' }, (args) => ({
+              contents: modules[args.path],
+              loader: 'js',
+            }));
+          },
+        },
+      ],
+    });
+    const isolated = await import(
+      `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`
+    );
+    process.env.HZENSE_UNIFIED_SIGNAL_ENABLED = '1';
+    process.env.HZENSE_SIGNAL_READ_MODE = 'legacy';
+    assert.deepEqual(await isolated.getRadarSnapshots(), []);
+    process.env.HZENSE_UNIFIED_SIGNAL_ENABLED = '0';
+    assert.deepEqual(await isolated.getRadarSnapshots(), [snapshot]);
+  } finally {
+    delete globalThis.__unifiedRadarGuardTest;
+    if (previousUnified === undefined) delete process.env.HZENSE_UNIFIED_SIGNAL_ENABLED;
+    else process.env.HZENSE_UNIFIED_SIGNAL_ENABLED = previousUnified;
+    if (previousReadMode === undefined) delete process.env.HZENSE_SIGNAL_READ_MODE;
+    else process.env.HZENSE_SIGNAL_READ_MODE = previousReadMode;
   }
 });

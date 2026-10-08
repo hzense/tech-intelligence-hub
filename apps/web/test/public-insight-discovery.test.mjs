@@ -62,7 +62,10 @@ test('sitemap lists only topic insight editions still visible against public Sig
                 }
               `,
               '@/lib/public-signal-reader-core': `
-                export function readSignalReadMode() { return 'database'; }
+                export function readSignalReadMode() { return 'legacy'; }
+              `,
+              '@/lib/unified-signal-mode': `
+                export function unifiedSignalEnabled() { return true; }
               `,
             };
             plugin.onResolve({ filter: /^@\/lib\// }, (args) => ({
@@ -88,6 +91,11 @@ test('sitemap lists only topic insight editions still visible against public Sig
     assert.ok(initialUrls.includes('https://hzense.com/persons/person-visible'));
     assert.ok(!initialUrls.includes('https://hzense.com/resources/company-unlinked'));
     assert.ok(!initialUrls.includes('https://hzense.com/resources/product-linked'));
+    assert.equal(
+      (await sitemap()).find((item) => item.url === 'https://hzense.com/signals/public-evidence')
+        .changeFrequency,
+      'daily',
+    );
     assert.deepEqual(state.validatedSignalIds, ['public-evidence']);
     state.visible = [];
     assert.ok(!(await sitemap()).some((item) => item.url === publishedUrl));

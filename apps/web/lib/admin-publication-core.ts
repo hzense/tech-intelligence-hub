@@ -1,4 +1,5 @@
 import { readRuntimeReaderConfig, type RuntimeReaderEnvironment } from './runtime-reader-core.ts';
+import { unifiedSignalEnabled } from './unified-signal-mode.ts';
 
 export class PublisherConfigurationError extends Error {
   constructor() {
@@ -14,6 +15,10 @@ export class PublicationOutcomeUnknownError extends Error {
 /** A separate credential, never DATABASE_URL/migrator or the public reader. */
 export function readPublisherConfiguration(env: RuntimeReaderEnvironment): string {
   try {
+    // These endpoints belong to the superseded qualified-publication pipeline.
+    // Once Unified Signal is active, neither publish nor emergency withdrawal may
+    // write that legacy state alongside the authoritative editorial workflow.
+    if (unifiedSignalEnabled(env)) throw new Error();
     const value = env.HZENSE_PUBLISHER_DATABASE_URL;
     if (
       !value ||
