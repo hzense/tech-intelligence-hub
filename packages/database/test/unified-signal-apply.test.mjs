@@ -93,6 +93,22 @@ function fixture() {
   };
 }
 describe('protected unified cutover orchestration', () => {
+  it('normalizes the read-only ACL session before comparing the captured fingerprint', async () => {
+    const f = fixture();
+    f.deps.inspectRuntimeAclBaseline.mockImplementation(async (client) => {
+      const statements = client.query.mock.calls.map(([sql]) => sql);
+      expect(statements.slice(-5)).toEqual([
+        'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY',
+        'SET LOCAL search_path=pg_catalog,pg_temp',
+        "SET LOCAL statement_timeout='30s'",
+        "SET LOCAL lock_timeout='5s'",
+        "SET LOCAL idle_in_transaction_session_timeout='45s'",
+      ]);
+      return { fingerprint: approval.aclFingerprint };
+    });
+    await expect(f.execute()).resolves.toMatchObject({ committed: true });
+    expect(f.deps.inspectRuntimeAclBaseline).toHaveBeenCalledOnce();
+  });
   it('binds target, schema, source plan and ACL; grants and activation precede commit, verify uses another connection', async () => {
     const f = fixture();
     const result = await f.execute();
