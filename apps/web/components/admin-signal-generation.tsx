@@ -10,6 +10,8 @@ import styles from './admin-signal-generation.module.css';
 import controls from './admin-controls.module.css';
 import { AdminGenerationPreflight } from './admin-generation-preflight';
 import { PrivateResult } from './private-generation-result';
+import type { GenerationPublication } from '../lib/generation-publication';
+import { GenerationPublicationSummary } from './generation-publication-status';
 import { GenerationProgress, generationIsActive } from './generation-progress';
 import { isGenerationRecordId } from '../lib/signal-generation-id';
 
@@ -29,6 +31,7 @@ type GenerationRun = {
   profile_id: string;
   profile_revision: number;
   result?: unknown;
+  publication?: GenerationPublication;
   created_at: string;
   error_code?: string | null;
   reserved_microusd: number | string;
@@ -81,7 +84,7 @@ const profileUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const statuses: Record<GenerationRun['status'], string> = {
   pending: '待执行',
   running: '生成中',
-  completed: '生成完成（私有候选）',
+  completed: '生成完成',
   failed: '失败',
   unknown: '结果待核对',
   cancelled: '已取消',
@@ -778,7 +781,11 @@ export function AdminSignalGeneration({
         disabled={!historyConfigured || busy}
         onClick={() =>
           void perform(async () => {
-            setData(await requestApi());
+            const refreshed: ListResponse = await requestApi();
+            setData(refreshed);
+            setDetail((previous) =>
+              previous ? (refreshed.runs.find((run) => run.id === previous.id) ?? null) : null,
+            );
             setConsent(false);
             setMessage('列表已刷新；未调用 AI。');
           }, true)
@@ -1038,6 +1045,7 @@ export function AdminSignalGeneration({
               <tr>
                 <th scope="col">资料 / 任务</th>
                 <th scope="col">状态</th>
+                <th scope="col">发布情况</th>
                 <th scope="col">模型配置</th>
                 <th scope="col">创建时间</th>
                 <th scope="col">费用</th>
@@ -1047,7 +1055,7 @@ export function AdminSignalGeneration({
             <tbody>
               {visibleRuns.length === 0 && (
                 <tr>
-                  <td colSpan={6}>没有匹配的已加载任务。</td>
+                  <td colSpan={7}>没有匹配的已加载任务。</td>
                 </tr>
               )}
               {visibleRuns.map((run) => (
@@ -1073,6 +1081,12 @@ export function AdminSignalGeneration({
                     {knownErrorMessage(run.error_code) && (
                       <p className={styles.taskError}>{knownErrorMessage(run.error_code)}</p>
                     )}
+                  </td>
+                  <td className={styles.publicationCell}>
+                    <GenerationPublicationSummary
+                      status={run.status}
+                      publication={run.publication}
+                    />
                   </td>
                   <td>
                     <span>
@@ -1197,7 +1211,7 @@ export function AdminSignalGeneration({
           </table>
         </div>
         <p className={styles.tableNote}>
-          窄屏可横向滚动表格。费用为系统记账与预留金额，并非供应商最终账单。候选尚未审核或发布。
+          窄屏可横向滚动表格。费用为系统记账与预留金额，并非供应商最终账单。生成状态与发布状态分别记录；审核发布后可手动刷新列表核对。
         </p>
       </section>
       {detail?.result !== undefined && <PrivateResult result={detail.result} reviewTask={detail} />}

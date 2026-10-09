@@ -26,7 +26,8 @@ export default async function GenerationDetailPage({
     <main className="section-shell">
       <h1>私有候选生成记录</h1>
       <p>
-        查看和刷新不会调用 AI。未开始的排队任务可手动标记失败；候选未经独立事实核验，不代表已发表。
+        查看和刷新不会调用
+        AI。生成结果保留原始候选，是否公开以最新发布状态为准。未开始的排队任务可手动标记失败。
       </p>
       {run ? (
         <GenerationLiveDetail key={run.id} initialRun={run} />

@@ -150,6 +150,11 @@
 .timeCell {
   min-width: 135px;
 }
+.publicationCell {
+  min-width: 190px;
+  max-width: 260px;
+  line-height: 1.7;
+}
 .costCell {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;

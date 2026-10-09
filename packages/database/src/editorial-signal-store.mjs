@@ -166,3 +166,71 @@ export async function readEditorialSignal({ pool, owner, runId, candidateIndex }
     client.release(discard);
   }
 }
+
+/** Read current publication receipts without reading private content or changing task state. */
+export async function readEditorialSignalStatuses({ pool, owner, runIds }) {
+  owner = editorialText(owner, 200);
+  if (!Array.isArray(runIds) || runIds.length > 50) fail();
+  const ids = [...new Set(Array.from(runIds, editorialUuid))];
+  if (!ids.length) return [];
+  const client = await pool.connect();
+  let discard = false;
+  try {
+    const rows = (
+      await client.query(
+        `WITH owned_runs AS (
+          SELECT id FROM public.signal_generation_runs
+          WHERE owner_id=$1 AND id=ANY($2::uuid[]) AND status='completed' AND deleted_at IS NULL
+        ), latest AS (
+          SELECT DISTINCT ON (r.run_id,r.candidate_index)
+            r.run_id,r.candidate_index,r.revision,r.action
+          FROM public.editorial_signal_revisions r JOIN owned_runs g ON g.id=r.run_id
+          WHERE r.owner_id=$1
+          ORDER BY r.run_id,r.candidate_index,r.revision DESC
+        )
+        SELECT g.id AS run_id,r.candidate_index,r.revision,r.action,
+          CASE WHEN r.action='publish' THEN 'editorial-' || md5(g.id::text || ':' || r.candidate_index::text)
+            ELSE NULL END AS public_id
+        FROM owned_runs g LEFT JOIN latest r ON r.run_id=g.id
+        ORDER BY g.id,r.candidate_index`,
+        [owner, ids],
+      )
+    ).rows;
+    const statuses = new Map();
+    for (const row of rows) {
+      if (!ids.includes(row.run_id)) fail('database_unavailable');
+      const entry = statuses.get(row.run_id) ?? { run_id: row.run_id, candidates: [] };
+      if (row.candidate_index === null) {
+        if (row.revision !== null || row.action !== null || row.public_id !== null)
+          fail('database_unavailable');
+      } else {
+        if (
+          !Number.isInteger(row.candidate_index) ||
+          row.candidate_index < 0 ||
+          row.candidate_index > 4 ||
+          !Number.isSafeInteger(row.revision) ||
+          row.revision < 1 ||
+          !['draft', 'publish', 'withdraw'].includes(row.action) ||
+          entry.candidates.some((candidate) => candidate.candidate_index === row.candidate_index) ||
+          (row.action === 'publish'
+            ? typeof row.public_id !== 'string' || !/^editorial-[a-f0-9]{32}$/.test(row.public_id)
+            : row.public_id !== null)
+        )
+          fail('database_unavailable');
+        entry.candidates.push({
+          candidate_index: row.candidate_index,
+          revision: row.revision,
+          action: row.action,
+          public_id: row.public_id,
+        });
+      }
+      statuses.set(row.run_id, entry);
+    }
+    return [...statuses.values()];
+  } catch {
+    discard = true;
+    fail('database_unavailable');
+  } finally {
+    client.release(discard);
+  }
+}

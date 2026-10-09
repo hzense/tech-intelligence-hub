@@ -27,6 +27,9 @@ import { invokeSignalGeneration } from '../signal-generation-provider';
 import { createGenerationSourceInspector } from '../signal-generation-source-inspection';
 import { buildCandidateReview } from '../candidate-review';
 import { editorialTopicOptions } from './editorial-topics';
+import { readEditorialSignalStatuses } from '../../../../packages/database/src/editorial-signal-store.mjs';
+import { editorialPool } from './editorial-database';
+import { withGenerationPublications } from '../generation-publication';
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
@@ -108,13 +111,20 @@ async function source(
 }
 async function historyDtos(owner: string, runs: store.SignalGenerationRun[]) {
   const itemIds = [...new Set(runs.map((run) => run.item_id).filter(Boolean))];
-  const labels =
+  const [labels, receipts] = await Promise.all([
     importsConfigured() && itemIds.length
-      ? await getImportItemLabels({ pool: importPool, owner, itemIds }).catch(() => [])
-      : [];
+      ? getImportItemLabels({ pool: importPool, owner, itemIds }).catch(() => [])
+      : [],
+    // Publication history must remain visible when generation spending or
+    // editorial writes are disabled. Reuse the existing owner-scoped reader;
+    // do not expand the generation role's access or rewrite its immutable result.
+    withGenerationPublications(runs.map(generationDto), (runIds) =>
+      readEditorialSignalStatuses({ pool: editorialPool, owner, runIds }),
+    ),
+  ]);
   const names = new Map(labels.map((item) => [item.id, item.name ?? item.url ?? '未命名资料']));
-  return runs.map((run) => ({
-    ...generationDto(run),
+  return receipts.map((run) => ({
+    ...run,
     // Compatibility mode is deliberately read-only until 0019/ACL enablement.
     ...(process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1' ? { can_delete: false } : {}),
     ...(names.has(run.item_id) ? { source_name: names.get(run.item_id) } : {}),

@@ -41,3 +41,17 @@ export function readEditorialSignal(input: {
   runId: string;
   candidateIndex: number;
 }): Promise<EditorialSignalRecord | null>;
+export interface EditorialSignalStatus {
+  run_id: string;
+  candidates: Array<{
+    candidate_index: number;
+    revision: number;
+    action: 'draft' | 'publish' | 'withdraw';
+    public_id: string | null;
+  }>;
+}
+export function readEditorialSignalStatuses(input: {
+  pool: unknown;
+  owner: string;
+  runIds: string[];
+}): Promise<EditorialSignalStatus[]>;
