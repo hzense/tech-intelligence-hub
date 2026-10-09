@@ -1252,13 +1252,15 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 
 # 40. PostgreSQL 物理数据库设计
 
+**最新开发目标（2026-10-09，0031，生产迁移未执行）：** `0031_retire_unused_tables.sql` 仅退役 `content_registry`、`entity_topics`、`radar_snapshots`、`radar_snapshot_signals` 四张未接入现行业务的表。目标为 **32 项迁移（0000–0031）、58 张持久表（57 张应用表及 1 张迁移账本）**；迁移先锁表并拒绝非空数据、异常结构及未审核依赖，再以 `RESTRICT` 删除。Schema、维护预检和严格校验同步调整，本地默认测试与无 pgvector 的隔离退役回归通过，完整 pgvector Schema 核验由 CI 继续执行，不据此宣称生产已退役。最近一次已归档的生产验收为 2026-10-08 的 31 项迁移、62 张表及统一 Signal 切换完成；详见[四表退役说明](UNUSED_TABLE_RETIREMENT.md)与[统一切换验收](UNIFIED_SIGNAL_CUTOVER.md)。本章下方带日期的旧批次计数与“待生产”描述均保留为当时历史，不是最新状态。
+
 ## 40.1 范围与权威来源
 
-**2026-09-25 人工确认发布增量（本地代码目标，未执行生产迁移）：** 新增 `0025_editorial_signal_publication.sql`，目标为 26 个迁移、58 张持久表及 2 个公开视图。新增 `editorial_signal_revisions` 为独立追加式管理员声明，不写入原 verified 证据、实体关系或签名记录；`editorial_public_signals` 投影最新已发布修订，标题、摘要、日期、组织名、人物名、领域可公开，owner／原任务编号／原始资料不公开。下方 0024 计数保留历史基线，生产状态须另行核验。完整行为及授权边界见 [人工确认发布](EDITORIAL_PUBLICATION.md)。
+**历史记录：2026-09-25 人工确认发布增量（当时本地代码目标，未执行生产迁移）：** 新增 `0025_editorial_signal_publication.sql`，目标为 26 个迁移、58 张持久表及 2 个公开视图。新增 `editorial_signal_revisions` 为独立追加式管理员声明，不写入原 verified 证据、实体关系或签名记录；`editorial_public_signals` 投影最新已发布修订，标题、摘要、日期、组织名、人物名、领域可公开，owner／原任务编号／原始资料不公开。下方 0024 计数保留历史基线，生产状态须另行核验。完整行为及授权边界见 [人工确认发布](EDITORIAL_PUBLICATION.md)。
 
 新增表字段：`request_id` UUID 主键；`run_id, owner_id` 复合外键绑定原生成任务；`candidate_index` 为 0–4；`revision` 正整数且 `(run_id,candidate_index,revision)` 唯一；`material_hash`、`request_hash` 固定 64 位十六进制；`action` 为 draft／publish／withdraw；`content` JSONB 保存严格应用契约；`created_at` 服务器时间。更新、删除、TRUNCATE 被 ALWAYS 触发器拒绝；有当前人工发布的原任务不得软删除，先撤回。公开 ID 使用稳定不透明摘要，不暴露私有任务 UUID。按最新修订优先后再筛选 publish，撤回不会回落到旧版。
 
-本节描述仓库已实现、由自动校验保护的 PostgreSQL `public` Schema 目标，不把尚未执行的迁移表述为生产现状。当前仓库目标包含：
+以下五条保留 **0024 阶段的历史目标与当时生产记录**，其中“当前”均指该阶段；最新仓库目标以本章顶部 0031 说明为准，不把尚未执行的迁移表述为生产现状：
 
 - 57 张持久表：56 张领域、派生或私有控制表，以及 1 张 Migration 历史表。`0015` 后的 48 表底座上，`0020–0021` 增加三张审核／转换／签名私表，`0022` 增加一张候选补全任务表，`0023` 增加三张材料请求／报告／回执私表，`0024` 增加两张材料提案／确认私表。另有 1 个当前公开资格安全视图。此为当前本地代码目标；最近生产记录仍为截至 `0022` 的 23 迁移／52 表，0023–0024 尚待独立批准和核验，不能将目标计数当作生产结果。
 - 9 个 PostgreSQL Enum。
@@ -1266,17 +1268,19 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 - 仓库 [Migration manifest](../db/migrations/checksums.json) 登记 25 个顺序文件（0000–0024）；迁移只能追加、不得修改已批准 SQL 或校验和。0023–0024 的新部署使用独立物理目标／备份／计划指纹，旧批准不继承为新批次授权。当前生产准备见[本批记录](production-evidence/2026-09-24-material-review-preparation.md)，历史记录保留其当时状态。
 - Signal／私有材料精确封存契约当前覆盖 22 个已审查函数、58 个触发器及四个 xid8 戳列；0024 新增一项只追加防护函数、四个 ALWAYS 触发器，不改变原 0023 函数。函数正文、目录属性、附件关系及 ACL 由独立精确契约核验；这些数量描述仓库目标，不代表本批已授予生产权限。
 
-物理结构的权威顺序如下：
+0031 目标物理结构的权威顺序如下：
 
-1. [`db/migrations/*.sql`](../db/migrations/) 是 56 张应用 Schema 表及公开视图的可执行 DDL 权威来源。
+1. [`db/migrations/*.sql`](../db/migrations/) 是 57 张应用 Schema 表及公开视图的可执行 DDL 权威来源；旧文件及校验和保持不变，0031 通过前向迁移退役四表。
 2. [`packages/database/src/migrate.mjs`](../packages/database/src/migrate.mjs) 创建并维护运维表 `hzense_schema_migrations`。
-3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts)、[`import-schema.ts`](../packages/database/src/import-schema.ts)及[`signal-generation-schema.ts`](../packages/database/src/signal-generation-schema.ts)共同映射 56 张应用表及公开视图；运维历史表不进入应用 ORM 映射。
-4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs)及各阶段独立 catalog 契约校验完整 57 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史；[当前公开资格 catalog](../packages/database/src/current-publication-catalog.mjs)固定安全视图与能力函数，[材料 catalog](../packages/database/src/candidate-material-catalog.mjs)与[提案 catalog](../packages/database/src/candidate-material-proposal-catalog.mjs)分别固定可信报告和未可信提案边界。早期分阶段契约独立保留，不从待校验的迁移或数据库对象反推期望值。
+3. [`packages/database/src/schema.ts`](../packages/database/src/schema.ts)、[`import-schema.ts`](../packages/database/src/import-schema.ts)及[`signal-generation-schema.ts`](../packages/database/src/signal-generation-schema.ts)共同映射 57 张应用表及公开视图；运维历史表不进入应用 ORM 映射。
+4. [`packages/database/src/verify.mjs`](../packages/database/src/verify.mjs)及各阶段独立 catalog 契约校验完整 58 表的列、类型、主外键、检查约束、默认值、索引、Enum、pgvector 和 Migration 历史。只有迁移前预检可在校验账本并确认 0031 待执行时接受四张旧表；0031 后的完整校验、Runtime Reader 与 Topic Sync 仍使用严格最新集合。[当前公开资格 catalog](../packages/database/src/current-publication-catalog.mjs)固定安全视图与能力函数，[材料 catalog](../packages/database/src/candidate-material-catalog.mjs)与[提案 catalog](../packages/database/src/candidate-material-proposal-catalog.mjs)分别固定可信报告和未可信提案边界。早期分阶段契约独立保留，不从待校验的迁移或数据库对象反推期望值。
 5. 本节是上述可执行合约的设计说明，不能代替 Migration 或 Runner DDL。
 
-Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文的 Source of Truth。公开 Signal 默认仍读 Seed；`0012` 新增可选 `database` 模式，只从 `current_public_signals` 读取当前符合资格的新版本，不回退旧 Seed。本批未导入生产正文或切换生产数据源。
+Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文的 Source of Truth。公开 Signal 已按 2026-10-08 验收切到统一 4.0 读取：`signals` 保存身份及最新版本指针，`signal_versions.content` 保存版本正文，`unified_public_signals` 输出最新已发布版本。历史 `0012` 的 `current_public_signals` 及 3.0 证据资格链继续保留；本次四表退役不改变 Signal 正文、来源、审计或读写开关。
 
 ## 40.2 仓库已实现表清单
+
+以下按历史增量说明保留表的职责，不是一份完整的 58 表枚举。0031 目标已从当前基础表清单移除四张退役表；历史建表、回填和验收记录保留，生产尚未执行此次删除。
 
 **2026-09-24 通用材料与人工确认增量（0023–0024，生产待批准）：** 下表是本批物理设计。两类数据不可混用：提案与人工确认不构成签名核验报告，报告与登记回执也不构成 Signal 公开发布许可。
 
@@ -1298,23 +1302,19 @@ Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNo
 
 **2026-09-17 私有导入与生成增量：** 原有表清单之外，`0014` 新增 `import_batches`、`import_items`、`import_documents`、`import_attempts`、`import_outputs`、`import_audit`、`import_daily_usage`，职责与列契约见 [IMPORT_TASKS.md](IMPORT_TASKS.md)。`0015` 新增 `signal_generation_runs`，详见 [AI_SIGNAL_GENERATION.md](AI_SIGNAL_GENERATION.md)：UUID 主键、owner 隔离；`batch_id/item_id/source_fence/source_hash` 与 `profile_id/profile_revision/generation_version` 固定来源及配置；脱敏 `snapshot`、预算 `configuration` 与费用／用量／私有结果保存；状态为 pending/running/completed/failed/unknown/cancelled，租约 token 防止旧执行写回。来源和 Profile 由各自最小权限连接读取并服务端验证，生成表不授予跨表读权，也不以外键伪装事实核验；语义唯一索引由 owner、item、source fence/hash、profile/revision、generation version 组成。仅新增私有预览记录，未创建正式 Signal、人物或公开许可；迁移默认 owner-only，生产授权另行审查。
 
-| 领域               | 表                         | 职责与关键字段                                                                                                 | 主键、唯一约束与核心关系                                                                          |
-| ------------------ | -------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Taxonomy           | `topics`                   | Topic 标识、标题、可选 `parent_id`、状态、`runtime_enabled` 和 JSONB 元数据                                    | PK `id`；`parent_id` 当前不是自引用外键                                                           |
-| Entity Graph       | `entities`                 | Person、Company、Technology、Model 等实体；别名以内联 `text[]` 保存                                            | PK `id`                                                                                           |
-| Source             | `sources`                  | 来源类型、主页、可信度、启用状态和允许的证据域名                                                               | PK `id`                                                                                           |
-| Signal             | `signals`                  | 现有旧物理契约：事件时间、来源、精确证据 URL、摘要、重要度、强度、置信度、新颖度和状态；新版统一存储目标见下文 | PK `id`；`source_id` FK → `sources.id`                                                            |
-| Entity / Topic     | `entity_topics`            | Entity 与 Topic 的多对多关联                                                                                   | 复合 PK `(entity_id, topic_id)`；两端均为 FK，删除父对象时级联删除关联                            |
-| Signal / Topic     | `signal_topics`            | Signal 与 Topic 的多对多关联                                                                                   | 复合 PK `(signal_id, topic_id)`；两端均为 FK，删除父对象时级联删除关联                            |
-| Signal / Entity    | `signal_entities`          | Signal 与 Entity 的多对多关联                                                                                  | 复合 PK `(signal_id, entity_id)`；两端均为 FK，删除父对象时级联删除关联                           |
-| Entity Graph       | `relations`                | Entity → Entity 有向关系，包含关系类型、有效期、置信度、来源引用和 JSONB 元数据                                | PK `id`；`source_id` 与 `target_id` 均 FK → `entities.id`                                         |
-| Radar              | `radar_snapshots`          | Topic 在指定日期的 Domain、Attention、Trend、Maturity、Strategic Value、Confidence 和人工 Reasoning            | PK `id`；`topic_id` FK → `topics.id`；唯一 `(topic_id, snapshot_date)`                            |
-| Radar Evidence     | `radar_snapshot_signals`   | Radar Snapshot 的有序评分证据                                                                                  | 复合 PK `(snapshot_id, signal_id)`；唯一 `(snapshot_id, position)`；Snapshot 删除时级联删除证据边 |
-| Content Metadata   | `content_registry`         | Markdown 内容的类型、仓库路径、发布状态和时间                                                                  | PK `id`；`path` 唯一                                                                              |
-| Search / Embedding | `search_documents`         | 可重建搜索文档，包含 UI/正文副本、规范化文本、generated `tsvector`、Topic / Entity JSONB 与可选向量            | PK `id`；唯一 `(source_type, source_id)`；逻辑引用不绑定数据库外键；`search_vector` 使用 GIN      |
-| Operations         | `hzense_schema_migrations` | 已执行 Migration 的文件名、64 字符 SHA-256 Checksum 和应用时间                                                 | PK `name`                                                                                         |
+| 领域               | 表                         | 职责与关键字段                                                                                      | 主键、唯一约束与核心关系                                                                     |
+| ------------------ | -------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Taxonomy           | `topics`                   | Topic 标识、标题、可选 `parent_id`、状态、`runtime_enabled` 和 JSONB 元数据                         | PK `id`；`parent_id` 当前不是自引用外键                                                      |
+| Entity Graph       | `entities`                 | Person、Company、Technology、Model 等实体；别名以内联 `text[]` 保存                                 | PK `id`                                                                                      |
+| Source             | `sources`                  | 来源类型、主页、可信度、启用状态和允许的证据域名                                                    | PK `id`                                                                                      |
+| Signal             | `signals`                  | 4.0 保存稳定身份、产生来源和最新版本指针；旧正文、评分及来源列仅供 3.0 兼容分支使用                 | PK `id`；4.0 最新版本指向 `signal_versions`；3.0 `source_id` FK → `sources.id`               |
+| Signal / Topic     | `signal_topics`            | Signal 与 Topic 的多对多关联                                                                        | 复合 PK `(signal_id, topic_id)`；两端均为 FK，删除父对象时级联删除关联                       |
+| Signal / Entity    | `signal_entities`          | Signal 与 Entity 的多对多关联                                                                       | 复合 PK `(signal_id, entity_id)`；两端均为 FK，删除父对象时级联删除关联                      |
+| Entity Graph       | `relations`                | Entity → Entity 有向关系，包含关系类型、有效期、置信度、来源引用和 JSONB 元数据                     | PK `id`；`source_id` 与 `target_id` 均 FK → `entities.id`                                    |
+| Search / Embedding | `search_documents`         | 可重建搜索文档，包含 UI/正文副本、规范化文本、generated `tsvector`、Topic / Entity JSONB 与可选向量 | PK `id`；唯一 `(source_type, source_id)`；逻辑引用不绑定数据库外键；`search_vector` 使用 GIN |
+| Operations         | `hzense_schema_migrations` | 已执行 Migration 的文件名、64 字符 SHA-256 Checksum 和应用时间                                      | PK `name`                                                                                    |
 
-**2026-10-05 重构目标（未执行 DDL）：** `signals` 将收敛为稳定身份，`signal_versions` 承载统一 4.0.0 正文；来源与发布依据分离，未知评分／身份为空，取消新内容的 `strength`。旧 3.0.0 封存字段与证据资格不能直接删除或降级。历史归档及人工确认均迁入上述核心表，原表仅在切换完成后降为审计／回退来源。当前已实现契约与无写入转换预演，物理迁移、写入／读取切换仍待开发；见[完整设计](UNIFIED_SIGNAL_STORAGE.md)。以下历史 SQL 定义仍是现有物理契约，不应误认为新版字段已生效。
+**历史记录：2026-10-05 重构目标（当时未执行 DDL）：** `signals` 将收敛为稳定身份，`signal_versions` 承载统一 4.0.0 正文；来源与发布依据分离，未知评分／身份为空，取消新内容的 `strength`。旧 3.0.0 封存字段与证据资格不能直接删除或降级。历史归档及人工确认均迁入上述核心表，原表仅在切换完成后降为审计／回退来源。当时已实现契约与无写入转换预演，物理迁移、写入／读取切换仍待开发；见[完整设计](UNIFIED_SIGNAL_STORAGE.md)。该阶段已由后续 0029–0030 实施及 2026-10-08 验收推进，以下 3.0 表定义继续作为兼容契约保留。
 
 `0004` 另增下列 8 表，均未向 Runtime 开放：
 
@@ -1405,11 +1405,12 @@ AI 测试先登记再调用，配置行锁下校验预算及并发，修订变�
 
 ## 40.3 核心关系
 
-```text
-sources 1 ─────── N signals
+下图保留 0031 后的实体关系及 3.0 兼容边。4.0 Signal 的人物、组织、领域和来源在版本正文内保存，不使用旧 Signal 边表；实体主题在公开资源页由关联 Signal 汇总，当前雷达由公开 Signal 计算。
 
-entities N ───── N topics
-          entity_topics
+```text
+sources 1 ─────── N signals（仅 3.0 来源外键）
+
+signals 1 ─────── N signal_versions
 
 signals  N ───── N topics
           signal_topics
@@ -1419,10 +1420,6 @@ signals  N ───── N entities
 
 entities 1 ───── N relations N ───── 1 entities
           source_id                 target_id
-
-topics 1 ─────── N radar_snapshots
-radar_snapshots N ───── N signals
-                  radar_snapshot_signals（有序证据）
 ```
 
 所有当前公开对象都直接使用稳定 `text` ID 作为主键；尚未采用“内部 UUID + `public_id`”双层键设计。
@@ -1431,13 +1428,11 @@ radar_snapshots N ───── N signals
 
 数据库直接保证以下规则：
 
-此处记录现有物理表约束；`strength` 已从当前 Seed 和统一公开 Signal 逻辑结构移除，但旧表与不可变版本仍保留该列。物理迁移另行设计和授权，不用虚构分数填充旧表。
+此处记录 0031 后保留表的约束；`strength` 已从当前 Seed 和统一 4.0 内容移除，但旧 3.0 表分支与不可变版本仍保留该列。4.0 主表的旧正文、来源及评分列必须为空，正文保存在版本表；不得用虚构分数填充旧列。
 
 - `sources.trust_score` 为 `0..100`，`allowed_hosts` 必须为非空数组。
-- `signals.source_url` 必须以 `https://` 开头；`importance` 与 `strength` 为 `1..5`；`confidence` 与 `novelty` 为 `0..1`。
+- 3.0 `signals.source_url` 必须以 `https://` 开头；`importance` 与 `strength` 为 `1..5`；`confidence` 与 `novelty` 为 `0..1`。
 - `relations.confidence` 为 `0..1`。
-- `radar_snapshots.attention` 为 `0..100`，`confidence` 为 `0..1`，`reasoning` 去除空白后不得为空。
-- `radar_snapshot_signals.position` 必须非负，并且同一 Snapshot 内不得重复。
 - `topics.runtime_enabled` 为非空布尔值，由同步器按 Seed 成员身份与非 archived 状态确定。
 - `hzense_schema_migrations.checksum` 长度必须为 64。
 
@@ -1446,11 +1441,10 @@ radar_snapshots N ───── N signals
 - `entities(type)` 与 `entities(name)`。
 - `signals(occurred_at)` 与 `signals(status)`。
 - `relations(source_id)` 与 `relations(target_id)`。
-- `radar_snapshot_signals(signal_id)`。
 - `search_documents(source_id)`。
 - `search_documents(document_date)`、唯一 `(source_type, source_id)` 与 GIN `(search_vector)`。
 
-当前仓库目标没有 RLS 或 Policy；Signal／审核／材料封存契约已明确引入并精确校验 58 个用户触发器；当前公开行过滤由 security-barrier 视图及固定资格函数实现。新增机制必须通过单独评审的新 Migration，并同步更新 Verifier 和本节；仅当变更可由 Drizzle 表达且影响应用类型映射时，才同步更新 Drizzle Schema。新增控制状态与回执的 CHECK 校验保留括号、类型转换和字面量，防止 AND／OR 重分组被错误归一化为原约束。
+当前仓库目标没有 RLS 或 Policy；Signal／审核／材料及统一存储触发器按独立 catalog 精确校验，58 个用户触发器是历史 0024 检查点的数量。0031 不删除这些保留表的触发器；若退役目标自身出现用户触发器、规则或 Policy，迁移直接停止。公开行过滤由 security-barrier 视图及各发布契约实现。新增机制必须通过单独评审的新 Migration，并同步更新 Verifier 和本节；仅当变更可由 Drizzle 表达且影响应用类型映射时，才同步更新 Drizzle Schema。新增控制状态与回执的 CHECK 校验保留括号、类型转换和字面量，防止 AND／OR 重分组被错误归一化为原约束。
 
 ## 40.5 Enum 与 pgvector
 
@@ -1468,23 +1462,26 @@ radar_snapshots N ───── N signals
 
 `search_documents.embedding` 是可空的 `vector(1536)`。Embedding 与 Search Document 同生命周期保存，当前没有独立 `embeddings` 表。
 
+0031 只退役四表，保留 `trend`、`maturity`、`strategic_value`、`radar_domain` 等既有 Enum 及其校验契约，不将类型清理隐含在本批范围内。
+
 ## 40.6 实现边界与原规划差异
 
-| 逻辑概念或原规划     | 当前物理实现或边界                                                                                                                                                      |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `entity_aliases`     | 未独立建表；别名保存在 `entities.aliases text[]`。                                                                                                                      |
-| `topic_relations`    | 尚未实现；当前 `relations` 只连接 Entity。                                                                                                                              |
-| `signal_sources`     | 尚未实现多来源表；每条 Signal 当前只有一个 `source_id`，并以 `source_url` 保存精确证据页面。                                                                            |
-| `content_index`      | 实际实现为 `content_registry`，只登记 Markdown 内容元数据，不保存正式正文。                                                                                             |
-| `embeddings`         | 未独立建表；向量内联在 `search_documents.embedding`。                                                                                                                   |
-| `ingestion_jobs`     | 尚未实现。                                                                                                                                                              |
-| Topic 层级           | `topics.parent_id` 是 Taxonomy primary parent 的数据库投影；父级存在性、唯一性与循环由 Taxonomy 门禁保证，同步不得生成不同层级。                                        |
-| Topic 运行时启用     | `topics.runtime_enabled` 仅当 Topic 存在于 Seed 且 Seed 状态不是 `archived` 时为 `true`；Taxonomy-only Topic 为 `false`。                                               |
-| Topic 跨域关系       | 本阶段仍只存在于正式 Taxonomy YAML；物理数据库尚无 `topic_relations` 表，同步器不把关系塞入 Entity `relations` 或 Topic `metadata`。                                    |
-| Search Document 来源 | `search_documents.source_id` 可以引用不同内容类型，因此当前不绑定单一数据库外键；该表是可重建派生数据。                                                                 |
-| Radar 证据资格       | 数据库保证外键、唯一性和位置范围；其余跨表资格规则由 Migration 审计和生产 Verifier 检测。未来运行时写入路径必须额外提供事务化保证，当前数据库本身不会持续阻止此类违规。 |
-| 正文存储             | Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文继续保存在 Git / Markdown。                                                                                    |
-| Migration 历史       | `hzense_schema_migrations` 是运维控制表，不属于领域信息模型。                                                                                                           |
+| 逻辑概念或原规划     | 当前物理实现或边界                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `entity_aliases`     | 未独立建表；别名保存在 `entities.aliases text[]`。                                                                                               |
+| `topic_relations`    | 尚未实现；当前 `relations` 只连接 Entity。                                                                                                       |
+| `signal_sources`     | 未独立建表；3.0 保留 `source_id/source_url` 及版本证据边，4.0 来源列表保存在 `signal_versions.content.sources`。                                 |
+| `content_index`      | 原预留表 `content_registry` 未接入现行业务，0031 目标退役；Markdown 元数据继续由文件内容加载器读取，搜索投影使用 `search_documents`。            |
+| `embeddings`         | 未独立建表；向量内联在 `search_documents.embedding`。                                                                                            |
+| `ingestion_jobs`     | 尚未实现。                                                                                                                                       |
+| Topic 层级           | `topics.parent_id` 是 Taxonomy primary parent 的数据库投影；父级存在性、唯一性与循环由 Taxonomy 门禁保证，同步不得生成不同层级。                 |
+| Topic 运行时启用     | `topics.runtime_enabled` 仅当 Topic 存在于 Seed 且 Seed 状态不是 `archived` 时为 `true`；Taxonomy-only Topic 为 `false`。                        |
+| Topic 跨域关系       | 本阶段仍只存在于正式 Taxonomy YAML；物理数据库尚无 `topic_relations` 表，同步器不把关系塞入 Entity `relations` 或 Topic `metadata`。             |
+| Search Document 来源 | `search_documents.source_id` 可以引用不同内容类型，因此当前不绑定单一数据库外键；该表是可重建派生数据。                                          |
+| Entity / Topic       | 0031 目标退役未使用的 `entity_topics`；资源页领域从关联公开 Signal 动态汇总，不由实体登记写入一套独立关系。                                      |
+| Radar 证据资格       | 0031 目标退役旧快照和证据边两表；当前首页由公开 Signal 与 Taxonomy 生成雷达。历史 Seed Radar 内容与旧迁移测试保留，不把它们误当作当前 SQL 读写。 |
+| 正文存储             | Daily、Weekly、Insight、Briefing、Topic 和 PaperNote 正文继续保存在 Git / Markdown。                                                             |
+| Migration 历史       | `hzense_schema_migrations` 是运维控制表，不属于领域信息模型。                                                                                    |
 
 物理表已经存在不代表 Web Runtime 已经接入数据库；运行时连接、权限和发布状态以 [`docs/DEPLOYMENT.md`](./DEPLOYMENT.md) 为准。
 

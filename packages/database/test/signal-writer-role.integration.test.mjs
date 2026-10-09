@@ -498,7 +498,7 @@ integration('PostgreSQL private Signal snapshot writer role', () => {
     "INSERT INTO public.sources(id,name,type,trust_score) VALUES ('forbidden-source','No','website',0)",
     'SELECT * FROM public.search_documents',
     'DELETE FROM public.search_documents',
-    "UPDATE public.content_registry SET status='published'",
+    "UPDATE public.ai_connections SET name='forbidden-name'",
   ])('cannot review, modify history or expand authority: %s', async (statement) => {
     await expect(writer((client) => client.query(statement))).rejects.toMatchObject({
       code: '42501',

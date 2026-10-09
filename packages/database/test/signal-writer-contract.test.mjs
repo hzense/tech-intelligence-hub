@@ -96,11 +96,11 @@ describe('private Signal writer privilege contract', () => {
       'person_organization_affiliations',
       'affiliation_evidence',
       'search_documents',
-      'radar_snapshots',
-      'content_registry',
+      'ai_connections',
+      'import_batches',
     ])
       expect(signalWriterInsertColumns).not.toHaveProperty(table);
-    for (const table of ['search_documents', 'radar_snapshots', 'content_registry', 'relations'])
+    for (const table of ['search_documents', 'ai_connections', 'import_batches', 'relations'])
       expect(signalWriterSelectTables).not.toContain(table);
   });
 

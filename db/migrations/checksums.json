@@ -29,5 +29,6 @@
   "0027_automation_config_deletion.sql": "d395736de66cc66868dbe5ef1ac5a3ad6f724c2c8c77476c3e6e111682cf1ee5",
   "0028_legacy_signal_archive.sql": "9f2b64e199d4c7cb8cd47d6cff39d5f17c12c0350122944b5a9092bf6c7e9781",
   "0029_unified_signal_storage.sql": "8975f0eddf179bb1f5d1c4ad594b76fb11b631b4300979677af00fe5e97c6366",
-  "0030_unified_signal_cutover.sql": "04a114a2f38037e60e97be2057e14ce69b07368b53f33cd4e059be0b5bf09469"
+  "0030_unified_signal_cutover.sql": "04a114a2f38037e60e97be2057e14ce69b07368b53f33cd4e059be0b5bf09469",
+  "0031_retire_unused_tables.sql": "2c8996e31b2d0d9e6a9c3ec2a2e40381ac4177482de8f3456a36fb94ddc5de36"
 }

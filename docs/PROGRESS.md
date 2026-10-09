@@ -1,6 +1,8 @@
 # HZense 开发进度看板
 
-**最后更新：** 2026-10-08
+**最后更新：** 2026-10-09
+
+**四张未使用表退役（2026-10-09，代码交付，生产迁移未执行）：** 新增 0031，仅退役 `content_registry`、`entity_topics`、`radar_snapshots`、`radar_snapshot_signals`，仓库目标为 32 项迁移、58 张表（57 张应用表及迁移账本）。先锁表，拒绝非空、RLS／规则／触发器等异常，以 `RESTRICT` 阻止未审核依赖；同步当前 Schema、严格校验和迁移前历史表兼容，保留旧迁移、历史验收与 Signal／来源／审计数据。数据库默认测试 3,048 项通过，隔离 PostgreSQL 退役／统一回填／发布链路 42 项通过、2 项因无 pgvector 跳过；全项目默认测试与类型检查、数据库 lint、格式检查和独立代码复审通过。完整 pgvector Schema 核验由 CI 继续执行，不把本地兼容测试视为生产验收。合并及应用部署不运行生产 DDL 或授权；后续生产须使用新备份和当次审批的普通 `migrate` 及独立 `verify`。详见[四表退役说明](UNUSED_TABLE_RETIREMENT.md)。
 
 **统一 Signal 生产切换验收完成（2026-10-08）：** 正式回填和独立核验成功，`signals` 114 条、`signal_versions` 120 个版本，112 条公开、2 条撤回。[PR #214](https://github.com/hzense/tech-intelligence-hub/pull/214) 修复切换后的名称型资源链接兼容问题，评审、PR CI 与 [main CI](https://github.com/hzense/tech-intelligence-hub/actions/runs/37777597108) 全部通过；验收时本地和远端 main 均为 `86f791a`。Production 统一开关及人工发布开关均为 `1`，该提交的 READY 部署已接管 `hzense.com`。全量 112 条详情的正文、875 个链接、112 个来源与 5 个核心页面和冻结基线完全一致，比较 PASS；数据库健康正常，验收窗口未检出新部署 error/fatal。可以解除本次维护冻结；未新增试发布、撤回或 AI 调用，旧来源及审计表仍保留。详见[最终验收](production-evidence/2026-10-07-unified-signal-cutover-schema.md#最终生产切换验收通过)。下方为过程记录，不能将中途 FAIL／待部署解释为当前状态。
 

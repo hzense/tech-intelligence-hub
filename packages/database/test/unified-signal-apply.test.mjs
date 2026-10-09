@@ -12,7 +12,10 @@ import {
   validateMaintenanceRequest,
 } from '../../../.github/scripts/production-maintenance.mjs';
 import { loadMigrations } from '../src/migrate.mjs';
-const migrations = await loadMigrations();
+const currentMigrations = await loadMigrations();
+// Preserve the exact reviewed 0030 cutover scope; 0031 needs its own maintenance
+// approval and must not become eligible for this historical execution path.
+const migrations = currentMigrations.filter(({ name }) => name < '0031_');
 const hash = (v) => createHash('sha256').update(v).digest('hex');
 const policy = { host: 'fixture.invalid', port: '5432', database: 'fixture', user: 'owner' };
 const approval = {
@@ -93,6 +96,12 @@ function fixture() {
   };
 }
 describe('protected unified cutover orchestration', () => {
+  it('rejects the current post-retirement artifact before opening any session', async () => {
+    const f = fixture();
+    f.deps.loadMigrations.mockResolvedValue(currentMigrations);
+    await expect(f.execute()).rejects.toThrow('reviewed-schema-required');
+    expect(f.clients).toHaveLength(0);
+  });
   it('normalizes the read-only ACL session before comparing the captured fingerprint', async () => {
     const f = fixture();
     f.deps.inspectRuntimeAclBaseline.mockImplementation(async (client) => {
