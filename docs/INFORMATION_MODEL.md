@@ -1252,7 +1252,7 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 
 # 40. PostgreSQL 物理数据库设计
 
-**最新开发目标（2026-10-09，0031，生产迁移未执行）：** `0031_retire_unused_tables.sql` 仅退役 `content_registry`、`entity_topics`、`radar_snapshots`、`radar_snapshot_signals` 四张未接入现行业务的表。目标为 **32 项迁移（0000–0031）、58 张持久表（57 张应用表及 1 张迁移账本）**；迁移先锁表并拒绝非空数据、异常结构及未审核依赖，再以 `RESTRICT` 删除。Schema、维护预检和严格校验同步调整，本地默认测试与无 pgvector 的隔离退役回归通过，完整 pgvector Schema 核验由 CI 继续执行，不据此宣称生产已退役。最近一次已归档的生产验收为 2026-10-08 的 31 项迁移、62 张表及统一 Signal 切换完成；详见[四表退役说明](UNUSED_TABLE_RETIREMENT.md)与[统一切换验收](UNIFIED_SIGNAL_CUTOVER.md)。本章下方带日期的旧批次计数与“待生产”描述均保留为当时历史，不是最新状态。
+**最新生产验收（2026-10-09，0031 已完成）：** `0031_retire_unused_tables.sql` 已通过受保护迁移和单独审批的只读核验，仅删除 `content_registry`、`entity_topics`、`radar_snapshot_signals`、`radar_snapshots` 四张未接入现行业务的空表。生产与仓库契约均为 **32 项迁移（0000–0031）、58 张持久表（57 张应用表及 1 张迁移账本）**。迁移先锁表，拒绝非空数据、异常结构及未审核依赖，再以 `RESTRICT` 删除；保留 Signal、来源及审计数据。新备份、隔离恢复和双次 ACL 审核通过，完整 Schema 及所覆盖安全契约独立核验成功，网站健康与公开详情链接检查通过。详见[生产验收记录](production-evidence/2026-10-09-unused-table-retirement.md)与[四表退役说明](UNUSED_TABLE_RETIREMENT.md)。本章下方带日期的旧批次计数与“待生产”描述均保留为当时历史，不是最新状态。
 
 ## 40.1 范围与权威来源
 
@@ -1260,7 +1260,7 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 
 新增表字段：`request_id` UUID 主键；`run_id, owner_id` 复合外键绑定原生成任务；`candidate_index` 为 0–4；`revision` 正整数且 `(run_id,candidate_index,revision)` 唯一；`material_hash`、`request_hash` 固定 64 位十六进制；`action` 为 draft／publish／withdraw；`content` JSONB 保存严格应用契约；`created_at` 服务器时间。更新、删除、TRUNCATE 被 ALWAYS 触发器拒绝；有当前人工发布的原任务不得软删除，先撤回。公开 ID 使用稳定不透明摘要，不暴露私有任务 UUID。按最新修订优先后再筛选 publish，撤回不会回落到旧版。
 
-以下五条保留 **0024 阶段的历史目标与当时生产记录**，其中“当前”均指该阶段；最新仓库目标以本章顶部 0031 说明为准，不把尚未执行的迁移表述为生产现状：
+以下五条保留 **0024 阶段的历史目标与当时生产记录**，其中“当前”均指该阶段；最新结构与生产验收以本章顶部 0031 说明为准：
 
 - 57 张持久表：56 张领域、派生或私有控制表，以及 1 张 Migration 历史表。`0015` 后的 48 表底座上，`0020–0021` 增加三张审核／转换／签名私表，`0022` 增加一张候选补全任务表，`0023` 增加三张材料请求／报告／回执私表，`0024` 增加两张材料提案／确认私表。另有 1 个当前公开资格安全视图。此为当前本地代码目标；最近生产记录仍为截至 `0022` 的 23 迁移／52 表，0023–0024 尚待独立批准和核验，不能将目标计数当作生产结果。
 - 9 个 PostgreSQL Enum。
@@ -1268,7 +1268,7 @@ generated `tsvector`，并提供受保护同步与三阶段查询模式；生产
 - 仓库 [Migration manifest](../db/migrations/checksums.json) 登记 25 个顺序文件（0000–0024）；迁移只能追加、不得修改已批准 SQL 或校验和。0023–0024 的新部署使用独立物理目标／备份／计划指纹，旧批准不继承为新批次授权。当前生产准备见[本批记录](production-evidence/2026-09-24-material-review-preparation.md)，历史记录保留其当时状态。
 - Signal／私有材料精确封存契约当前覆盖 22 个已审查函数、58 个触发器及四个 xid8 戳列；0024 新增一项只追加防护函数、四个 ALWAYS 触发器，不改变原 0023 函数。函数正文、目录属性、附件关系及 ACL 由独立精确契约核验；这些数量描述仓库目标，不代表本批已授予生产权限。
 
-0031 目标物理结构的权威顺序如下：
+0031 物理结构的权威顺序如下：
 
 1. [`db/migrations/*.sql`](../db/migrations/) 是 57 张应用 Schema 表及公开视图的可执行 DDL 权威来源；旧文件及校验和保持不变，0031 通过前向迁移退役四表。
 2. [`packages/database/src/migrate.mjs`](../packages/database/src/migrate.mjs) 创建并维护运维表 `hzense_schema_migrations`。
@@ -1280,7 +1280,7 @@ Git / Markdown 仍是旧 Daily、Weekly、Insight、Briefing、Topic 和 PaperNo
 
 ## 40.2 仓库已实现表清单
 
-以下按历史增量说明保留表的职责，不是一份完整的 58 表枚举。0031 目标已从当前基础表清单移除四张退役表；历史建表、回填和验收记录保留，生产尚未执行此次删除。
+以下按历史增量说明保留表的职责，不是一份完整的 58 表枚举。0031 已从当前基础表清单及生产数据库移除四张退役表；历史建表、回填和验收记录保留。
 
 **2026-09-24 通用材料与人工确认增量（0023–0024，生产待批准）：** 下表是本批物理设计。两类数据不可混用：提案与人工确认不构成签名核验报告，报告与登记回执也不构成 Signal 公开发布许可。
 
