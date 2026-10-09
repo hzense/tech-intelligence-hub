@@ -8,6 +8,7 @@ import pg from 'pg';
 import { productionDatabaseOptions, validateConnectionTarget } from './connection-policy.mjs';
 import { loadMigrations, planPendingMigrations, verifyMigrationManifest } from './migrate.mjs';
 import { expectedTableNames } from './verify.mjs';
+import { expectedMigrationTableNames } from './retired-tables.mjs';
 
 const { Client } = pg;
 const migrationDirectory = fileURLToPath(new URL('../../../db/migrations/', import.meta.url));
@@ -231,13 +232,6 @@ export async function inspectDatabasePreflight(
      ORDER BY tablename`,
   );
   const tableNames = tables.rows.map((row) => row.name);
-  const unexpectedTables = tableNames.filter((name) => !expectedTableNames.has(name));
-  if (unexpectedTables.length > 0) {
-    throw new Error(
-      `Dedicated database contains unexpected public tables: ${unexpectedTables.join(', ')}`,
-    );
-  }
-
   const historyPresent = tableNames.includes('hzense_schema_migrations');
   let appliedRows = [];
   if (historyPresent) {
@@ -248,6 +242,13 @@ export async function inspectDatabasePreflight(
     throw new Error('Dedicated database contains an untracked HZense schema');
   }
   const pending = planPendingMigrations(migrations, appliedRows);
+  const allowedTableNames = expectedMigrationTableNames(expectedTableNames, pending);
+  const unexpectedTables = tableNames.filter((name) => !allowedTableNames.has(name));
+  if (unexpectedTables.length > 0) {
+    throw new Error(
+      `Dedicated database contains unexpected public tables: ${unexpectedTables.join(', ')}`,
+    );
+  }
 
   console.log(
     `[db:preflight] verified ${databaseName}/${userName}, PostgreSQL ${expectedPostgresMajor}, ${tlsVersion}/${tlsCipher} (${tlsEvidence} evidence), pgvector ${vectorVersion}, ${pending.length} pending migrations`,

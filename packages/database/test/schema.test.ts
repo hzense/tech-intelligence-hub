@@ -10,8 +10,6 @@ import {
   personProfiles,
   personOrganizationAffiliations,
   publicSourceEvidence,
-  radarSnapshots,
-  radarSnapshotSignals,
   relations,
   searchDocuments,
   signals,
@@ -372,16 +370,10 @@ describe('Person organization affiliation foundation', () => {
   });
 });
 
-describe('Radar evidence persistence schema', () => {
-  it('keeps Signal and Radar evidence fields aligned with the information model', () => {
+describe('Historical Radar evidence migration', () => {
+  it('retains the source fields still used by the Signal information model', () => {
     expect(columnNames(signals)).toContain('source_url');
     expect(columnNames(sources)).toContain('allowed_hosts');
-    expect(columnNames(radarSnapshots)).toEqual(expect.arrayContaining(['domain', 'reasoning']));
-    expect(columnNames(radarSnapshotSignals)).toEqual(['snapshot_id', 'signal_id', 'position']);
-
-    const evidenceConfig = getTableConfig(radarSnapshotSignals);
-    expect(evidenceConfig.primaryKeys).toHaveLength(1);
-    expect(evidenceConfig.foreignKeys).toHaveLength(2);
   });
 
   it('ships an expand-backfill-constrain SQL migration for the evidence contract', async () => {

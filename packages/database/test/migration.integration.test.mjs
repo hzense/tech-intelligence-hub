@@ -363,9 +363,10 @@ integrationSuite('PostgreSQL migration integration', () => {
       await expect(
         client.query('SELECT runtime_enabled FROM topics LIMIT 0'),
       ).resolves.toBeDefined();
-      await expect(
-        client.query('SELECT position FROM radar_snapshot_signals LIMIT 0'),
-      ).resolves.toBeDefined();
+      expect(
+        (await client.query("SELECT to_regclass('public.radar_snapshot_signals') AS relation"))
+          .rows[0].relation,
+      ).toBeNull();
       await expect(
         client.query(
           'SELECT summary, href, keywords, normalized_title, search_vector FROM search_documents LIMIT 0',
@@ -1113,68 +1114,68 @@ integrationSuite('PostgreSQL migration integration', () => {
     const driftClient = new Client({ connectionString: databaseUrl });
     await driftClient.connect();
     try {
-      await driftClient.query('ALTER TABLE content_registry SET UNLOGGED');
+      await driftClient.query('ALTER TABLE ai_probe_runs SET UNLOGGED');
       await expect(
         verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
       ).rejects.toThrow(/table persistence mismatch/);
-      await driftClient.query('ALTER TABLE content_registry SET LOGGED');
+      await driftClient.query('ALTER TABLE ai_probe_runs SET LOGGED');
 
       await withClient(adminDatabaseUrl(databaseNames.fresh), (client) =>
-        client.query(`ALTER TABLE content_registry OWNER TO ${quotedRoleName(inheritedRole)}`),
+        client.query(`ALTER TABLE ai_probe_runs OWNER TO ${quotedRoleName(inheritedRole)}`),
       );
       await expect(
         verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
       ).rejects.toThrow(/table owner mismatch/);
       await withClient(adminDatabaseUrl(databaseNames.fresh), (client) =>
-        client.query(`ALTER TABLE content_registry OWNER TO ${quotedRoleName(migrationRole)}`),
+        client.query(`ALTER TABLE ai_probe_runs OWNER TO ${quotedRoleName(migrationRole)}`),
       );
 
-      await driftClient.query('ALTER TABLE content_registry ENABLE ROW LEVEL SECURITY');
+      await driftClient.query('ALTER TABLE ai_probe_runs ENABLE ROW LEVEL SECURITY');
       await expect(
         verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
       ).rejects.toThrow(/unexpected row-level security/);
-      await driftClient.query('ALTER TABLE content_registry DISABLE ROW LEVEL SECURITY');
+      await driftClient.query('ALTER TABLE ai_probe_runs DISABLE ROW LEVEL SECURITY');
 
-      await driftClient.query('CREATE POLICY hzense_test_policy ON content_registry USING (true)');
+      await driftClient.query('CREATE POLICY hzense_test_policy ON ai_probe_runs USING (true)');
       await expect(
         verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
       ).rejects.toThrow(/unexpected row-level security policy/);
-      await driftClient.query('DROP POLICY hzense_test_policy ON content_registry');
+      await driftClient.query('DROP POLICY hzense_test_policy ON ai_probe_runs');
 
       await driftClient.query(`
         CREATE FUNCTION hzense_test_trigger() RETURNS trigger
         LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;
         CREATE TRIGGER hzense_test_trigger
-        BEFORE UPDATE ON content_registry
+        BEFORE UPDATE ON ai_probe_runs
         FOR EACH ROW EXECUTE FUNCTION hzense_test_trigger();
       `);
       await expect(
         verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
       ).rejects.toThrow(/unexpected user trigger/);
       await driftClient.query(`
-        DROP TRIGGER hzense_test_trigger ON content_registry;
+        DROP TRIGGER hzense_test_trigger ON ai_probe_runs;
         DROP FUNCTION hzense_test_trigger();
       `);
 
       await driftClient.query(`
         CREATE RULE hzense_test_rewrite_rule AS
-        ON UPDATE TO content_registry DO ALSO NOTHING
+        ON UPDATE TO ai_probe_runs DO ALSO NOTHING
       `);
       await expect(
         verifyDatabaseContract(productionLikeOptions(databaseNames.fresh)),
       ).rejects.toThrow(/unexpected rewrite rule/);
-      await driftClient.query('DROP RULE hzense_test_rewrite_rule ON content_registry');
+      await driftClient.query('DROP RULE hzense_test_rewrite_rule ON ai_probe_runs');
     } finally {
       await withClient(adminDatabaseUrl(databaseNames.fresh), (client) =>
-        client.query(`ALTER TABLE content_registry OWNER TO ${quotedRoleName(migrationRole)}`),
+        client.query(`ALTER TABLE ai_probe_runs OWNER TO ${quotedRoleName(migrationRole)}`),
       );
       await driftClient.query(`
-        ALTER TABLE content_registry SET LOGGED;
-        ALTER TABLE content_registry DISABLE ROW LEVEL SECURITY;
-        DROP POLICY IF EXISTS hzense_test_policy ON content_registry;
-        DROP TRIGGER IF EXISTS hzense_test_trigger ON content_registry;
+        ALTER TABLE ai_probe_runs SET LOGGED;
+        ALTER TABLE ai_probe_runs DISABLE ROW LEVEL SECURITY;
+        DROP POLICY IF EXISTS hzense_test_policy ON ai_probe_runs;
+        DROP TRIGGER IF EXISTS hzense_test_trigger ON ai_probe_runs;
         DROP FUNCTION IF EXISTS hzense_test_trigger();
-        DROP RULE IF EXISTS hzense_test_rewrite_rule ON content_registry;
+        DROP RULE IF EXISTS hzense_test_rewrite_rule ON ai_probe_runs;
       `);
       await driftClient.end();
     }
@@ -1183,7 +1184,7 @@ integrationSuite('PostgreSQL migration integration', () => {
     ).resolves.toBeDefined();
   }, 30_000);
 
-  it('upgrades a populated 0000 database to the current evidence seed', async () => {
+  it('preserves populated historical Radar evidence through 0030 and blocks retirement', async () => {
     const databaseUrl = connectionUrl(databaseNames.legacy);
     await applyFoundation(databaseUrl);
 
@@ -1227,12 +1228,23 @@ integrationSuite('PostgreSQL migration integration', () => {
       `),
     );
 
-    const baselineChecksum = await foundationChecksum();
-    await runMigrations({
-      connectionString: databaseUrl,
-      baselineChecksum,
-    });
-    await runMigrations({ connectionString: databaseUrl });
+    // Historical backfill behaviour remains covered independently of the new
+    // retirement: a populated Radar fixture must not be silently deleted.
+    const directory = await mkdtemp(join(tmpdir(), 'hzense-pre-retirement-'));
+    try {
+      const historical = (
+        await loadMigrations(resolve(process.cwd(), '../../db/migrations'))
+      ).filter(({ name }) => name < '0031_');
+      await Promise.all(historical.map(({ name, sql }) => writeFile(join(directory, name), sql)));
+      await runMigrations({
+        connectionString: databaseUrl,
+        directory,
+        baselineChecksum: await foundationChecksum(),
+      });
+      await runMigrations({ connectionString: databaseUrl, directory });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
 
     await withClient(databaseUrl, async (client) => {
       const source = await client.query(
@@ -1288,9 +1300,22 @@ integrationSuite('PostgreSQL migration integration', () => {
         ),
       ).rejects.toThrow(/topics_runtime_enabled_status_ck/);
     });
-    await expect(
-      verifyDatabaseContract(productionLikeOptions(databaseNames.legacy)),
-    ).resolves.toBeDefined();
+    await expect(runMigrations({ connectionString: databaseUrl })).rejects.toThrow(
+      /unused-table-retirement-nonempty/,
+    );
+    await withClient(databaseUrl, async (client) => {
+      expect(
+        (await client.query('SELECT count(*)::int AS count FROM radar_snapshots')).rows[0].count,
+      ).toBe(1);
+      expect(
+        (await client.query('SELECT count(*)::int AS count FROM radar_snapshot_signals')).rows[0]
+          .count,
+      ).toBe(1);
+      expect(
+        (await client.query("SELECT name FROM hzense_schema_migrations WHERE name LIKE '0031_%'"))
+          .rows,
+      ).toEqual([]);
+    });
   }, 30_000);
 
   it('rolls back 0001 when legacy provenance cannot be backfilled', async () => {

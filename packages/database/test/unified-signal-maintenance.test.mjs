@@ -11,7 +11,10 @@ import {
 } from '../../../.github/scripts/production-maintenance.mjs';
 import { loadMigrations } from '../src/migrate.mjs';
 
-const migrations = await loadMigrations();
+const currentMigrations = await loadMigrations();
+// The completed cutover operation is deliberately frozen to its reviewed 0030
+// artifact, not expanded whenever unrelated forward migrations are introduced.
+const migrations = currentMigrations.filter(({ name }) => name < '0031_');
 const policy = { host: 'fixture.invalid', port: '5432', database: 'fixture', user: 'owner' };
 function fixture() {
   const clients = [];
@@ -107,6 +110,12 @@ describe('hosted unified Signal read-only inventory', () => {
   it('refuses an apply operation before opening a connection', async () => {
     const f = fixture();
     await expect(f.execute('unified-signal-apply')).rejects.toThrow('operation-required');
+    expect(f.clients).toHaveLength(0);
+  });
+  it('refuses the post-retirement artifact rather than reusing an old cutover approval', async () => {
+    const f = fixture();
+    f.deps.loadMigrations.mockResolvedValue(currentMigrations);
+    await expect(f.execute()).rejects.toThrow('reviewed-schema-required');
     expect(f.clients).toHaveLength(0);
   });
   it.each(['older', 'newer', 'tampered'])('refuses %s schema artifacts', async (mode) => {

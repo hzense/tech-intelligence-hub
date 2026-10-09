@@ -1261,18 +1261,6 @@ export const signalVersionTopics = pgTable(
   ],
 );
 
-export const entityTopics = pgTable(
-  'entity_topics',
-  {
-    entityId: text('entity_id')
-      .notNull()
-      .references(() => entities.id, { onDelete: 'cascade' }),
-    topicId: text('topic_id')
-      .notNull()
-      .references(() => topics.id, { onDelete: 'cascade' }),
-  },
-  (t) => [primaryKey({ columns: [t.entityId, t.topicId] })],
-);
 export const signalTopics = pgTable(
   'signal_topics',
   {
@@ -1427,59 +1415,6 @@ export const affiliationEvidence = pgTable(
     ),
     index('affiliation_evidence_evidence_idx').on(t.evidenceId),
   ],
-);
-export const radarSnapshots = pgTable(
-  'radar_snapshots',
-  {
-    id: text('id').primaryKey(),
-    topicId: text('topic_id')
-      .notNull()
-      .references(() => topics.id),
-    snapshotDate: date('snapshot_date').notNull(),
-    domain: radarDomain('domain').notNull(),
-    attention: integer('attention').notNull(),
-    trend: trend('trend').notNull(),
-    maturity: maturity('maturity').notNull(),
-    strategicValue: strategicValue('strategic_value').notNull(),
-    confidence: doublePrecision('confidence').notNull(),
-    reasoning: text('reasoning').notNull(),
-  },
-  (t) => [
-    uniqueIndex('radar_topic_date_uq').on(t.topicId, t.snapshotDate),
-    check('radar_attention_ck', sql`${t.attention} between 0 and 100`),
-    check('radar_confidence_ck', sql`${t.confidence} between 0 and 1`),
-    check('radar_reasoning_ck', sql`length(trim(${t.reasoning})) > 0`),
-  ],
-);
-export const radarSnapshotSignals = pgTable(
-  'radar_snapshot_signals',
-  {
-    snapshotId: text('snapshot_id')
-      .notNull()
-      .references(() => radarSnapshots.id, { onDelete: 'cascade' }),
-    signalId: text('signal_id')
-      .notNull()
-      .references(() => signals.id),
-    position: integer('position').notNull(),
-  },
-  (t) => [
-    primaryKey({ columns: [t.snapshotId, t.signalId] }),
-    uniqueIndex('radar_snapshot_signal_position_uq').on(t.snapshotId, t.position),
-    index('radar_snapshot_signals_signal_idx').on(t.signalId),
-    check('radar_snapshot_signal_position_ck', sql`${t.position} >= 0`),
-  ],
-);
-export const contentRegistry = pgTable(
-  'content_registry',
-  {
-    id: text('id').primaryKey(),
-    contentType: text('content_type').notNull(),
-    path: text('path').notNull(),
-    status: text('status').notNull(),
-    publishedAt: timestamp('published_at', { withTimezone: true }),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [uniqueIndex('content_path_uq').on(t.path)],
 );
 export const candidateReviews = pgTable(
   'candidate_reviews',

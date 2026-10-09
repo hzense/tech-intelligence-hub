@@ -230,10 +230,6 @@ const expectedColumns = {
     novelty: ['double precision', true],
     metadata: ['jsonb', true],
   },
-  entity_topics: {
-    entity_id: ['text', true],
-    topic_id: ['text', true],
-  },
   signal_topics: {
     signal_id: ['text', true],
     topic_id: ['text', true],
@@ -252,31 +248,6 @@ const expectedColumns = {
     valid_to: ['date', false],
     source_refs: ['text[]', true],
     metadata: ['jsonb', true],
-  },
-  radar_snapshots: {
-    id: ['text', true],
-    topic_id: ['text', true],
-    snapshot_date: ['date', true],
-    attention: ['integer', true],
-    trend: ['trend', true],
-    maturity: ['maturity', true],
-    strategic_value: ['strategic_value', true],
-    confidence: ['double precision', true],
-    domain: ['radar_domain', true],
-    reasoning: ['text', true],
-  },
-  radar_snapshot_signals: {
-    snapshot_id: ['text', true],
-    signal_id: ['text', true],
-    position: ['integer', true],
-  },
-  content_registry: {
-    id: ['text', true],
-    content_type: ['text', true],
-    path: ['text', true],
-    status: ['text', true],
-    published_at: ['timestamp with time zone', false],
-    updated_at: ['timestamp with time zone', true],
   },
   search_documents: {
     id: ['text', true],
@@ -415,13 +386,9 @@ const expectedPrimaryKeys = new Set([
   'entities|id',
   'sources|id',
   'signals|id',
-  'entity_topics|entity_id,topic_id',
   'signal_topics|signal_id,topic_id',
   'signal_entities|signal_id,entity_id',
   'relations|id',
-  'radar_snapshots|id',
-  'radar_snapshot_signals|snapshot_id,signal_id',
-  'content_registry|id',
   'search_documents|id',
   'hzense_schema_migrations|name',
 ]);
@@ -446,17 +413,12 @@ const expectedForeignKeys = new Set([
   ...editorialForeignKeys,
   ...automationForeignKeys,
   'signals|source_id|sources|id|a|a|false',
-  'entity_topics|entity_id|entities|id|c|a|false',
-  'entity_topics|topic_id|topics|id|c|a|false',
   'signal_topics|signal_id|signals|id|c|a|false',
   'signal_topics|topic_id|topics|id|c|a|false',
   'signal_entities|signal_id|signals|id|c|a|false',
   'signal_entities|entity_id|entities|id|c|a|false',
   'relations|source_id|entities|id|a|a|false',
   'relations|target_id|entities|id|a|a|false',
-  'radar_snapshots|topic_id|topics|id|a|a|false',
-  'radar_snapshot_signals|snapshot_id|radar_snapshots|id|c|a|false',
-  'radar_snapshot_signals|signal_id|signals|id|a|a|false',
 ]);
 
 const expectedCheckExpressions = {
@@ -503,16 +465,6 @@ const expectedCheckExpressions = {
       'confidencebetween0and1',
     ],
   ],
-  radar_snapshots: [
-    ['attention>=0andattention<=100', 'attentionbetween0and100'],
-    [
-      'confidence>=0andconfidence<=1',
-      "confidence>='0'andconfidence<='1'",
-      'confidencebetween0and1',
-    ],
-    ['lengthbtrimreasoning>0'],
-  ],
-  radar_snapshot_signals: [['position>=0', '"position">=0']],
   search_documents: [
     [
       "source_type=anyarray['daily','weekly','insight','topic','signal','resource']",
@@ -571,7 +523,6 @@ const expectedDefaults = new Map([
   ['relations.confidence', new Set(['1', "'1'"])],
   ['relations.source_refs', new Set(["'{}'", 'array[]'])],
   ['relations.metadata', new Set(["'{}'"])],
-  ['content_registry.updated_at', new Set(['now'])],
   ['search_documents.importance', new Set(['1', "'1'"])],
   ['search_documents.topics', new Set(["'[]'"])],
   ['search_documents.entities', new Set(["'[]'"])],
@@ -593,9 +544,6 @@ const expectedUniqueIndexes = new Set([
   ...qualifiedPublicationUniqueIndexes,
   ...candidateVerificationUniqueIndexes,
   'entities|id,type',
-  'radar_snapshots|topic_id,snapshot_date',
-  'radar_snapshot_signals|snapshot_id,position',
-  'content_registry|path',
   'search_documents|source_type,source_id',
 ]);
 
@@ -615,7 +563,6 @@ const requiredNonUniqueIndexes = new Set([
   'signals|status',
   'relations|source_id',
   'relations|target_id',
-  'radar_snapshot_signals|signal_id',
   'search_documents|source_id',
   'search_documents|document_date',
 ]);
@@ -1180,38 +1127,6 @@ async function collectSchemaProblems(client, migrations, expectedPgvectorVersion
         `pgvector version mismatch: expected ${expectedPgvectorVersion}, found ${vectorRow.version}`,
       );
     }
-  }
-
-  const dataIntegrity = await client.query(
-    `SELECT
-       (SELECT count(*)::integer
-        FROM radar_snapshots AS snapshot
-        WHERE NOT EXISTS (
-          SELECT 1 FROM radar_snapshot_signals AS evidence
-          WHERE evidence.snapshot_id = snapshot.id
-        )) AS snapshots_without_evidence,
-       (SELECT count(*)::integer
-        FROM radar_snapshot_signals AS evidence
-        JOIN radar_snapshots AS snapshot ON snapshot.id = evidence.snapshot_id
-        JOIN signals AS signal ON signal.id = evidence.signal_id
-        WHERE signal.status NOT IN ('reviewed', 'accepted')
-           OR (signal.occurred_at AT TIME ZONE 'UTC')::date > snapshot.snapshot_date
-           OR (signal.captured_at AT TIME ZONE 'UTC')::date > snapshot.snapshot_date
-           OR NOT EXISTS (
-             SELECT 1 FROM signal_topics
-             WHERE signal_topics.signal_id = signal.id
-               AND signal_topics.topic_id = snapshot.topic_id
-           )) AS ineligible_evidence`,
-  );
-  if (dataIntegrity.rows[0]?.snapshots_without_evidence !== 0) {
-    problems.push(
-      `${dataIntegrity.rows[0].snapshots_without_evidence} Radar snapshots have no evidence`,
-    );
-  }
-  if (dataIntegrity.rows[0]?.ineligible_evidence !== 0) {
-    problems.push(
-      `${dataIntegrity.rows[0].ineligible_evidence} Radar evidence edges are ineligible`,
-    );
   }
 
   return { problems, pgvectorVersion: vectorRow?.version };
