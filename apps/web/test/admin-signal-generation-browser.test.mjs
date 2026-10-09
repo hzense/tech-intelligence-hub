@@ -70,6 +70,7 @@ test(
     let profileWarnings = [];
     let mismatchedCreate = false;
     let dashboardRequests = 0;
+    let detailRequestMethods = [];
     let preflightRequests = [];
     let preflightWait = null;
     let preflightResponse;
@@ -106,6 +107,7 @@ test(
       }
       if (req.url.startsWith('/api/admin/signal-generation?id=')) {
         const id = new URL(req.url, 'http://fixture').searchParams.get('id');
+        detailRequestMethods.push(req.method);
         commands.push({ action: 'detail', id });
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ run: runs.find((run) => run.id === id) }));
@@ -250,10 +252,15 @@ test(
         if (command.action === 'run') {
           run.status = droppedAction === 'run' ? 'failed' : 'completed';
           run.can_delete = droppedAction !== 'run';
+          run.publication = {
+            state: 'available',
+            candidates: [{ index: 0, status: 'unpublished', publicId: null }],
+          };
           run.result = {
             classification: 'private',
             candidates: [
               {
+                index: 0,
                 title: 'Synthetic candidate <script>globalThis.hacked=true</script>',
                 summary: 'Synthetic summary',
                 event_date: '2026-09-10',
@@ -340,6 +347,7 @@ test(
       profileWarnings = [];
       mismatchedCreate = false;
       dashboardRequests = 0;
+      detailRequestMethods = [];
       preflightRequests = [];
       preflightWait = null;
       preflightResponse = passedPreflight();
@@ -358,6 +366,146 @@ test(
       await page.getByLabel('导入已解析资料').selectOption(itemId);
       await page.getByLabel('分阶段模型配置').selectOption(profileId);
     }
+
+    function publicationRun(id = liveDetailId) {
+      return {
+        id,
+        batch_id: batchId,
+        item_id: itemId,
+        profile_id: profileId,
+        profile_revision: 2,
+        status: 'completed',
+        created_at: '2026-10-09T09:00:00Z',
+        reserved_microusd: '0',
+        charged_microusd: '0',
+        result: {
+          classification: 'private',
+          candidates: [0, 2, 3, 4].map((index) => ({
+            index,
+            classification: 'private',
+            status: 'needs_review',
+            title: `Publication candidate ${index}`,
+            summary: `Saved result ${index}`,
+            event_date: '2026-10-09',
+            persons: [],
+            organizations: [],
+            claims: [],
+          })),
+        },
+        publication: {
+          state: 'available',
+          // Deliberately not in candidate order: match original indices, not offsets.
+          candidates: [
+            { index: 4, status: 'unpublished', publicId: null },
+            { index: 3, status: 'draft', publicId: null },
+            {
+              index: 2,
+              status: 'withdrawn',
+              publicId: 'editorial-22222222222242228222222222222222',
+            },
+            {
+              index: 0,
+              status: 'published',
+              publicId: 'editorial-11111111111141118111111111111111',
+            },
+          ],
+        },
+      };
+    }
+
+    await t.test(
+      'publication summaries and sparse candidate badges reflect persisted state with read-only details',
+      async () => {
+        const page = await newPage();
+        runs = [publicationRun()];
+        await page.goto(`${origin}/?off`);
+        const table = page.getByRole('table', { name: /生成任务/ });
+        await expect(table.getByRole('columnheader', { name: '发布情况' })).toBeVisible();
+        await expect(table.getByText('生成完成', { exact: true })).toBeVisible();
+        await expect(table).toContainText('候选 4 条 · 已发布 1 条 · 未发布 2 条 · 已撤回 1 条');
+        await page.getByText('更多操作', { exact: true }).click();
+        await page.getByRole('button', { name: '查看任务与私有候选', exact: true }).click();
+        const published = page.getByRole('article', { name: '候选信号 1', exact: true });
+        const withdrawn = page.getByRole('article', { name: '候选信号 3', exact: true });
+        const draft = page.getByRole('article', { name: '候选信号 4', exact: true });
+        const unpublished = page.getByRole('article', { name: '候选信号 5', exact: true });
+        await expect(published.getByText('已发布', { exact: true })).toBeVisible();
+        await expect(withdrawn.getByText('已撤回', { exact: true })).toBeVisible();
+        await expect(draft.getByText('草稿 · 未发布', { exact: true })).toBeVisible();
+        await expect(unpublished.getByText('未发布', { exact: true })).toBeVisible();
+        await expect(published.getByRole('link', { name: '查看正式信号' })).toHaveAttribute(
+          'href',
+          '/signals/editorial-11111111111141118111111111111111',
+        );
+        await expect(published.getByRole('link', { name: '查看候选 1 发布记录' })).toHaveAttribute(
+          'href',
+          `/admin/signal-review/${liveDetailId}/0`,
+        );
+        await expect(page.getByRole('link', { name: '查看正式信号' })).toHaveCount(1);
+        await expect(page.getByText('待审核 · 未发布', { exact: true })).toHaveCount(0);
+        assert.deepEqual(commands, [{ action: 'detail', id: liveDetailId }]);
+        assert.equal(preflightRequests.length, 0);
+        await page.close();
+      },
+    );
+
+    await t.test(
+      'missing, unavailable or incomplete publication reads never label candidates as unpublished',
+      async () => {
+        for (const publication of [
+          undefined,
+          { state: 'unavailable', candidates: [] },
+          { state: 'available', candidates: [] },
+        ]) {
+          const page = await newPage();
+          runs = [{ ...publicationRun(), publication }];
+          await page.goto(`${origin}/?off`);
+          await expect(
+            page
+              .getByRole('table')
+              .getByText(publication?.state === 'available' ? '暂无可发布候选' : '发布状态待核对'),
+          ).toBeVisible();
+          await page.getByText('更多操作', { exact: true }).click();
+          await page.getByRole('button', { name: '查看任务与私有候选', exact: true }).click();
+          const candidate = page.getByRole('article', { name: '候选信号 1', exact: true });
+          await expect(candidate.getByText('发布状态待核对', { exact: true })).toBeVisible();
+          await expect(candidate.getByText('未发布', { exact: true })).toHaveCount(0);
+          await expect(candidate.getByText('待审核 · 未发布', { exact: true })).toHaveCount(0);
+          await expect(page.getByRole('link', { name: '查看正式信号' })).toHaveCount(0);
+          assert.deepEqual(commands, [{ action: 'detail', id: liveDetailId }]);
+          assert.equal(preflightRequests.length, 0);
+          await page.close();
+        }
+      },
+    );
+
+    await t.test(
+      'completed task publication refresh updates published to withdrawn without model or mutation calls',
+      async () => {
+        const page = await newPage();
+        runs = [publicationRun()];
+        await page.clock.install();
+        await page.goto(`${origin}/?live-detail`);
+        await page.clock.fastForward(5100);
+        const candidate = page.getByRole('article', { name: '候选信号 1', exact: true });
+        await expect(candidate.getByText('已发布', { exact: true })).toBeVisible();
+        await expect(candidate.getByRole('link', { name: '查看正式信号' })).toBeVisible();
+        runs[0].publication.candidates.find((entry) => entry.index === 0).status = 'withdrawn';
+        await page.getByRole('button', { name: '刷新任务与发布状态', exact: true }).click();
+        await expect(candidate.getByText('已撤回', { exact: true })).toBeVisible();
+        await expect(candidate.getByRole('link', { name: '查看正式信号' })).toHaveCount(0);
+        assert.deepEqual(commands, [
+          { action: 'detail', id: liveDetailId },
+          { action: 'detail', id: liveDetailId },
+        ]);
+        assert.deepEqual(detailRequestMethods, ['GET', 'GET']);
+        assert.equal(dashboardRequests, 0);
+        assert.equal(preflightRequests.length, 0);
+        await page.clock.fastForward(15000);
+        assert.equal(commands.length, 2);
+        await page.close();
+      },
+    );
 
     await t.test(
       'unified parsed source picker preserves the selected batch without calling AI',
@@ -465,9 +613,7 @@ test(
           finished_at: new Date().toISOString(),
         };
         await page.clock.fastForward(5100);
-        await expect(
-          page.getByRole('table').getByText('生成完成（私有候选）', { exact: true }),
-        ).toBeVisible();
+        await expect(page.getByRole('table').getByText('生成完成', { exact: true })).toBeVisible();
         await expect(page.getByRole('progressbar', { name: '已完成的任务阶段' })).toHaveCount(0);
         const count = commands.length;
         await page.clock.fastForward(15000);
@@ -1096,15 +1242,14 @@ test(
         ).toBeDisabled();
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
-        await expect(
-          page.getByRole('table').getByText('生成完成（私有候选）', { exact: true }),
-        ).toBeVisible();
+        await expect(page.getByRole('table').getByText('生成完成', { exact: true })).toBeVisible();
         await expect(page.getByText('PRIVATE_THINKING_SENTINEL', { exact: true })).toHaveCount(0);
         const table = page.getByRole('table', { name: /生成任务/ });
         await expect(table).toBeVisible();
         assert.deepEqual(await table.getByRole('columnheader').allTextContents(), [
           '资料 / 任务',
           '状态',
+          '发布情况',
           '模型配置',
           '创建时间',
           '费用',
@@ -1134,7 +1279,7 @@ test(
           page.getByText('Synthetic Person · Researcher · Synthetic Organization'),
         ).toBeVisible();
         const candidate = page.getByRole('article', { name: '候选信号 1', exact: true });
-        await expect(candidate.getByText('待审核 · 未发布', { exact: true })).toBeVisible();
+        await expect(candidate.getByText('未发布', { exact: true })).toBeVisible();
         await expect(
           candidate.getByText('<img src=x onerror=globalThis.hacked=true>', { exact: true }),
         ).not.toBeVisible();
@@ -1390,9 +1535,7 @@ test(
         assert.deepEqual(commands, [{ action: 'detail', id }]);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
-        await expect(
-          page.getByRole('table').getByText('生成完成（私有候选）', { exact: true }),
-        ).toBeVisible();
+        await expect(page.getByRole('table').getByText('生成完成', { exact: true })).toBeVisible();
         assert.deepEqual(commands, [
           { action: 'detail', id },
           { action: 'run', id },
@@ -1911,9 +2054,7 @@ test(
         assert.equal(commands.filter((command) => command.action === 'run').length, 0);
         await page.getByRole('checkbox').check();
         await page.getByRole('button', { name: '执行生成（调用 AI，可能计费）' }).click();
-        await expect(
-          page.getByRole('table').getByText('生成完成（私有候选）', { exact: true }),
-        ).toBeVisible();
+        await expect(page.getByRole('table').getByText('生成完成', { exact: true })).toBeVisible();
         assert.deepEqual(commands.at(-1), { action: 'run', id: retryId });
         assert.equal(commands.filter((command) => command.action === 'run').length, 1);
         await page.close();

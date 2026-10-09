@@ -3,6 +3,8 @@ import preview from './private-generation-result.module.css';
 import Link from 'next/link';
 import controls from './admin-controls.module.css';
 import { isGenerationValidationDetail } from '../../../packages/ingestion/src/signal-generation-validation-diagnostics.mjs';
+import type { GenerationPublication } from '../lib/generation-publication';
+import { candidatePublication, publicationLabels } from './generation-publication-status';
 
 function objectRows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
@@ -36,7 +38,7 @@ export function PrivateResult({
   snapshotOnly = false,
 }: {
   result: unknown;
-  reviewTask?: { id: string; status: string };
+  reviewTask?: { id: string; status: string; publication?: GenerationPublication };
   snapshotOnly?: boolean;
 }) {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
@@ -73,9 +75,13 @@ export function PrivateResult({
   };
   return (
     <section aria-label="私有候选结果" className={styles.result}>
-      <h3>
-        {snapshotOnly ? '原始 AI 候选快照（不代表当前发布状态）' : '私有候选结果 · 尚未审核或发布'}
-      </h3>
+      <h3>{snapshotOnly ? '原始 AI 候选快照（不代表当前发布状态）' : '候选结果与发布状态'}</h3>
+      {!snapshotOnly && (
+        <p className={preview.hint}>
+          发布标记来自最新人工发布记录；下方正文为原始 AI
+          候选，人工修订后的内容以正式页面或发布记录为准。
+        </p>
+      )}
       {row.validation_version === 1 && (
         <p>
           结构与引用校验通过 {candidates.length} 条，拒绝 {rejected.length}{' '}
@@ -93,6 +99,15 @@ export function PrivateResult({
         const people = objectRows(data.persons);
         const claims = objectRows(data.claims);
         const candidateNumber = typeof data.index === 'number' ? data.index + 1 : index + 1;
+        const publication = snapshotOnly
+          ? undefined
+          : candidatePublication(reviewTask?.publication, data.index);
+        const publicHref =
+          publication?.status === 'published' &&
+          publication.publicId &&
+          /^editorial-[a-f0-9]{32}$/.test(publication.publicId)
+            ? `/signals/${publication.publicId}`
+            : null;
         const canOpenReview =
           reviewTask?.status === 'completed' &&
           /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(reviewTask.id) &&
@@ -115,8 +130,12 @@ export function PrivateResult({
           >
             <header className={preview.header}>
               <div className={preview.meta}>
-                <span className={preview.badge}>
-                  {snapshotOnly ? '原始快照' : '待审核 · 未发布'}
+                <span className={preview.badge} data-publication={publication?.status ?? 'unknown'}>
+                  {snapshotOnly
+                    ? '原始快照'
+                    : publication
+                      ? publicationLabels[publication.status]
+                      : '发布状态待核对'}
                 </span>
                 <span>候选 {candidateNumber}</span>
               </div>
@@ -138,10 +157,21 @@ export function PrivateResult({
                     className={controls.button}
                     prefetch={false}
                     href={`/admin/signal-review/${reviewTask.id}/${data.index}`}
-                    aria-label={`审核候选 ${candidateNumber}`}
+                    aria-label={
+                      publication?.status === 'published' || publication?.status === 'withdrawn'
+                        ? `查看候选 ${candidateNumber} 发布记录`
+                        : `审核候选 ${candidateNumber}`
+                    }
                   >
-                    审核候选
+                    {publication?.status === 'published' || publication?.status === 'withdrawn'
+                      ? '查看发布记录'
+                      : '审核候选'}
                   </Link>
+                  {publicHref && (
+                    <Link className={controls.button} prefetch={false} href={publicHref}>
+                      查看正式信号
+                    </Link>
+                  )}
                   <span className={preview.hint}>
                     查看本条材料与发布待办；不调用 AI，不直接发布。
                   </span>
@@ -217,7 +247,8 @@ export function PrivateResult({
                     <li>人物及组织是否与事件直接相关</li>
                   </ul>
                   <p>
-                    引用匹配不代表独立事实核验。此原始候选区域仅供阅读核对，当前发布状态以确认发布区为准。
+                    引用匹配不代表独立事实核验。此原始候选区域仅供阅读核对，发布标记与原始 AI
+                    快照分别展示。
                   </p>
                 </section>
               </aside>

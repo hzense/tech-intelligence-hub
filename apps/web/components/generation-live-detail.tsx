@@ -7,20 +7,24 @@ import {
 } from './generation-progress';
 import { PrivateResult } from './private-generation-result';
 import controls from './admin-controls.module.css';
+import type { GenerationPublication } from '../lib/generation-publication';
+import { GenerationPublicationSummary } from './generation-publication-status';
 
-export function GenerationLiveDetail({
-  initialRun,
-}: {
-  initialRun: GenerationProgressRun & { result?: unknown };
-}) {
+type GenerationDetailRun = GenerationProgressRun & {
+  result?: unknown;
+  publication?: GenerationPublication;
+};
+
+export function GenerationLiveDetail({ initialRun }: { initialRun: GenerationDetailRun }) {
   const [run, setRun] = useState(initialRun);
   const [error, setError] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [queueConfirmation, setQueueConfirmation] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const active = generationIsActive(run);
   useEffect(() => {
-    if (!active || resolving) return;
+    if (!active || resolving || refreshing) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
@@ -45,7 +49,30 @@ export function GenerationLiveDetail({
       controller.abort();
       clearTimeout(timer);
     };
-  }, [active, initialRun.id, resolving]);
+  }, [active, initialRun.id, resolving, refreshing]);
+  async function refresh() {
+    if (refreshing || resolving) return;
+    setRefreshing(true);
+    try {
+      const response = await fetch(
+        `/api/admin/signal-generation?id=${encodeURIComponent(run.id)}`,
+        {
+          cache: 'no-store',
+        },
+      );
+      if (!response.ok) throw new Error('unavailable');
+      const data = await response.json();
+      if (!data.run || data.run.id !== run.id) throw new Error('identity_mismatch');
+      setRun(data.run);
+      setError(false);
+      setNotice('任务与发布状态已刷新；未调用 AI。');
+    } catch {
+      setError(true);
+      setNotice('');
+    } finally {
+      setRefreshing(false);
+    }
+  }
   async function resolveQueue() {
     if (!run.progress_at || resolving || !queueConfirmation) return;
     setResolving(true);
@@ -82,6 +109,19 @@ export function GenerationLiveDetail({
     <>
       <p>任务：{run.id}</p>
       <GenerationProgress run={run} />
+      {run.status === 'completed' && (
+        <p>
+          <GenerationPublicationSummary status={run.status} publication={run.publication} />
+        </p>
+      )}
+      <button
+        className={controls.button}
+        type="button"
+        disabled={refreshing || resolving}
+        onClick={() => void refresh()}
+      >
+        {refreshing ? '正在刷新…' : '刷新任务与发布状态'}
+      </button>
       {run.status === 'pending' &&
         run.progress_phase === 'queued' &&
         run.progress_at &&
@@ -96,7 +136,7 @@ export function GenerationLiveDetail({
                 <button
                   className={controls.button}
                   type="button"
-                  disabled={resolving}
+                  disabled={resolving || refreshing}
                   onClick={() => void resolveQueue()}
                 >
                   {resolving ? '正在结束排队…' : '确认标记失败'}

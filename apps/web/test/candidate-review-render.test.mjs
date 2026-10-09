@@ -114,6 +114,59 @@ test('review renders private evidence safely with confirmation-only publication 
   assert.doesNotMatch(render(undefined), /aria-label="审核候选/);
   assert.doesNotMatch(render({ id: '../invalid', status: 'completed' }), /aria-label="审核候选/);
 
+  assert.match(taskHtml, /发布状态待核对/);
+  assert.doesNotMatch(taskHtml, /尚未审核或发布|待审核 · 未发布/);
+  const publicId = `editorial-${'a'.repeat(32)}`;
+  const publication = (status, link = null) => ({
+    state: 'available',
+    candidates: [{ index: 3, status, publicId: link }],
+  });
+  const published = render({
+    id,
+    status: 'completed',
+    publication: publication('published', publicId),
+  });
+  assert.match(published, /data-publication="published">已发布/);
+  assert.match(published, new RegExp(`href="/signals/${publicId}"`));
+  assert.match(published, /查看发布记录/);
+  assert.doesNotMatch(published, /待审核 · 未发布|尚未审核或发布/);
+  const withdrawn = render({ id, status: 'completed', publication: publication('withdrawn') });
+  assert.match(withdrawn, /data-publication="withdrawn">已撤回/);
+  assert.doesNotMatch(withdrawn, /查看正式信号/);
+  assert.match(
+    render({ id, status: 'completed', publication: publication('draft') }),
+    /草稿 · 未发布/,
+  );
+  assert.match(
+    render({ id, status: 'completed', publication: publication('unpublished') }),
+    />未发布</,
+  );
+  for (const value of [
+    { state: 'unavailable', candidates: [] },
+    { state: 'available', candidates: [{ index: 0, status: 'published', publicId }] },
+  ]) {
+    const unavailable = render({ id, status: 'completed', publication: value });
+    assert.match(unavailable, /发布状态待核对/);
+    assert.doesNotMatch(unavailable, /查看正式信号|data-publication="published"/);
+  }
+  assert.doesNotMatch(
+    render({
+      id,
+      status: 'completed',
+      publication: publication('published', 'javascript:alert(1)'),
+    }),
+    /href="javascript:|查看正式信号/,
+  );
+  const snapshotHtml = renderToStaticMarkup(
+    createElement(module.exports.PrivateResult, {
+      result,
+      reviewTask: { id, status: 'completed', publication: publication('published', publicId) },
+      snapshotOnly: true,
+    }),
+  );
+  assert.match(snapshotHtml, /原始 AI 候选快照/);
+  assert.doesNotMatch(snapshotHtml, /data-publication="published"|查看正式信号/);
+
   const diagnosticHtml = render(undefined, {
     classification: 'private',
     validation_version: 1,

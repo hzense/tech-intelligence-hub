@@ -24,6 +24,16 @@
   padding: 0.3rem 0.65rem;
   font-weight: 600;
 }
+.badge[data-publication='published'] {
+  color: #16643e;
+  background: #e9f7ef;
+  border-color: #6ba985;
+}
+.badge[data-publication='withdrawn'] {
+  color: #754518;
+  background: #fff3e6;
+  border-color: #c39965;
+}
 .title {
   margin: 1rem 0 0.75rem;
   font-size: clamp(1.2rem, 2.4vw, 1.7rem);

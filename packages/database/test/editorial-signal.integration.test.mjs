@@ -9,6 +9,7 @@ import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import {
   saveEditorialSignal,
   readEditorialSignal,
+  readEditorialSignalStatuses,
   previewEditorialResources,
 } from '../src/editorial-signal-store.mjs';
 import { normalizeEditorialRequest } from '../src/editorial-signal-contract.mjs';
@@ -627,6 +628,10 @@ suite('editorial publication persistence and isolated capabilities', () => {
     await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
       request.runId,
     ]);
+    const statuses = (owner = 'owner') =>
+      readEditorialSignalStatuses({ pool: writer, owner, runIds: [request.runId] });
+    expect(await statuses()).toEqual([{ run_id: request.runId, candidates: [] }]);
+    expect(await statuses('other')).toEqual([]);
     const args = { pool: writer, owner: 'owner', request, material };
     const first = await saveEditorialSignal(args);
     expect(first.revision).toBe(1);
@@ -650,6 +655,14 @@ suite('editorial publication persistence and isolated capabilities', () => {
     expect(Object.keys(publicRow)).toEqual(['signal_id', 'revision', 'content', 'published_at']);
     expect(publicRow.signal_id).toMatch(/^editorial-[a-f0-9]{32}$/);
     expect(publicRow.signal_id).not.toContain(request.runId);
+    expect(await statuses()).toEqual([
+      {
+        run_id: request.runId,
+        candidates: [
+          { candidate_index: 0, revision: 1, action: 'publish', public_id: publicRow.signal_id },
+        ],
+      },
+    ]);
     await expect(
       pool.query('UPDATE signal_generation_runs SET deleted_at=now() WHERE id=$1', [request.runId]),
     ).rejects.toThrow('published_candidate_delete_forbidden');
@@ -691,6 +704,12 @@ suite('editorial publication persistence and isolated capabilities', () => {
     });
     expect(latest.content.persons).toEqual(['Person']);
     expect(latest.action).toBe('withdraw');
+    expect(await statuses()).toEqual([
+      {
+        run_id: request.runId,
+        candidates: [{ candidate_index: 0, revision: 3, action: 'withdraw', public_id: null }],
+      },
+    ]);
     await expect(
       saveEditorialSignal({
         ...args,
@@ -705,6 +724,7 @@ suite('editorial publication persistence and isolated capabilities', () => {
     await pool.query('UPDATE signal_generation_runs SET deleted_at=now() WHERE id=$1', [
       request.runId,
     ]);
+    expect(await statuses()).toEqual([]);
     expect(
       await readEditorialSignal({
         pool: writer,
