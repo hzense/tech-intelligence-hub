@@ -68,8 +68,12 @@ suite('unified apply matches the captured PostgreSQL ACL contract', () => {
       );
       INSERT INTO public.unified_signal_cutover(singleton) VALUES(true);
     `);
-    migrations = await loadMigrations();
-    await verifyMigrationManifest(migrations);
+    const currentMigrations = await loadMigrations();
+    await verifyMigrationManifest(currentMigrations);
+    // This ACL regression exercises the historical, reviewed 0030 cutover.
+    // Verify today's on-disk artifact first, then freeze only that operation's
+    // exact snapshot instead of admitting later unrelated migrations.
+    migrations = currentMigrations.filter(({ name }) => name < '0031_');
   }, 30_000);
 
   afterAll(async () => {
@@ -102,7 +106,9 @@ suite('unified apply matches the captured PostgreSQL ACL contract', () => {
       options,
       validateConnectionTarget,
       loadMigrations: async () => migrations,
-      verifyMigrationManifest,
+      verifyMigrationManifest: async (reviewed) => {
+        expect(reviewed).toEqual(migrations);
+      },
       migrationLockKeys,
       verifyDatabaseContract: async () => ({ migrationCount: 31, tableCount: 62 }),
       inspectDatabasePreflight: async (client) => {
