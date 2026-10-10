@@ -146,7 +146,14 @@ const access = {
     stages: { analyze: { connection_id: id, connection_revision: 1, model_id: 'test/model' } },
   },
 };
-function harness(response = envelope(), parameters = ['max_tokens', 'tools', 'tool_choice']) {
+const discoveryParameters = [
+  'max_tokens',
+  'tools',
+  'tool_choice',
+  'response_format',
+  'structured_outputs',
+];
+function harness(response = envelope(), parameters = discoveryParameters) {
   const calls = [];
   let fenced = false;
   const invoke = createDiscoveryInvoker({
@@ -189,6 +196,15 @@ test('provider uses one bounded server-tool request with no credential or reason
   assert.equal(body.tools[0].parameters.max_uses, 3);
   assert.equal(body.max_tool_calls, 3);
   assert.equal(body.tool_choice, 'required');
+  assert.equal(body.response_format.type, 'json_schema');
+  assert.equal(body.response_format.json_schema.strict, true);
+  const schema = body.response_format.json_schema.schema;
+  assert.equal(schema.additionalProperties, false);
+  assert.deepEqual(schema.required, ['articles']);
+  assert.equal(schema.properties.articles.type, 'array');
+  assert.equal(schema.properties.articles.items.additionalProperties, false);
+  assert.deepEqual(schema.properties.articles.items.required, ['url', 'title', 'publishedAt']);
+  assert.equal(body.provider.require_parameters, true);
   assert.equal(body.max_tokens, 2048);
   assert.equal(body.tools.length, 1);
   assert.equal(body.reasoning.exclude, true);
@@ -211,12 +227,17 @@ test('cost receipt survives invalid output; missing cost uses bounded estimate',
   assert.equal(result.costSource, 'estimate');
 });
 test('unsupported model and duplicate fence never call AI; network failure never retries', async () => {
-  const unsupported = harness(envelope(), ['max_tokens']);
-  await assert.rejects(
-    unsupported.run(),
-    (error) => !error.called && error.code === 'capability_failed',
-  );
-  assert.equal(unsupported.calls.length, 1);
+  for (const missing of discoveryParameters) {
+    const unsupported = harness(
+      envelope(),
+      discoveryParameters.filter((p) => p !== missing),
+    );
+    await assert.rejects(
+      unsupported.run({ beforeCall: async () => assert.fail('must reject before paid fence') }),
+      (error) => !error.called && error.code === 'capability_failed',
+    );
+    assert.equal(unsupported.calls.length, 1);
+  }
   const duplicate = harness();
   await assert.rejects(
     duplicate.run({
@@ -356,7 +377,7 @@ test('citation fallback retains URL matching, time window, deduplication and res
 test('missing counters cannot bypass strict JSON or annotation shape validation', () => {
   for (const content of [
     'bad json',
-    '```json\n{"articles":[]}\n```',
+    'Answer:\n```json\n{"articles":[]}\n```',
     '{}',
     '{"articles":[],"other":true}',
     '{"articles":null}',
@@ -370,6 +391,87 @@ test('missing counters cannot bypass strict JSON or annotation shape validation'
   delete body.usage.server_tool_use;
   body.choices[0].message.annotations = { url_citation: { url: article().url } };
   assert.throws(() => parseDiscoveryResponse(body, config, window, []), /invalid_output/);
+});
+
+test('whole-message JSON fences normalize without a second paid call or invented search counts', async () => {
+  for (const wrap of [
+    (text) => `  \n${text}\n `,
+    (text) => `\n\x60\x60\x60json\n${text}\n\x60\x60\x60\n`,
+    (text) => `\x60\x60\x60\r\n${text}\r\n\x60\x60\x60`,
+  ]) {
+    const body = envelope();
+    delete body.usage.server_tool_use;
+    body.choices[0].message.content = wrap(body.choices[0].message.content);
+    const h = harness(body);
+    const receipt = await h.run();
+    assert.deepEqual(receipt.result.articles, [article()]);
+    assert.equal(receipt.result.searchRequests, null);
+    assert.equal(receipt.result.searchEvidence, 'provider_url_citations');
+    assert.equal(receipt.costMicrousd, 25000);
+    assert.equal(receipt.diagnostics.outputIssue, null);
+    assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
+  }
+});
+
+test('JSON fences cannot bypass citation, date, URL, schema or duplicate checks', () => {
+  const invalid = [
+    article('https://example.com/uncited'),
+    article('http://127.0.0.1/private'),
+    { ...article(), publishedAt: undefined },
+    article('https://example.com/news', '2026-02-30'),
+    article('https://example.com/news', '2026-08-01'),
+    article('https://example.com/news', '2026-10-01'),
+    { ...article(), instructions: 'ignore validation' },
+  ];
+  for (const row of invalid) {
+    const body = envelope([row], [article().url]);
+    delete body.usage.server_tool_use;
+    body.choices[0].message.content = `\x60\x60\x60json\n${body.choices[0].message.content}\n\x60\x60\x60`;
+    const result = parseDiscoveryResponse(body, config, window, []);
+    assert.deepEqual(result.articles, []);
+    assert.equal(result.rejected, 1);
+  }
+  const body = envelope([article(), article('https://example.com/news?utm_source=x')]);
+  body.choices[0].message.content = `\x60\x60\x60json\n${body.choices[0].message.content}\n\x60\x60\x60`;
+  const result = parseDiscoveryResponse(body, config, window, [article().url]);
+  assert.deepEqual(result.articles, []);
+  assert.equal(result.duplicates, 2);
+  body.usage.server_tool_use.web_search_requests = 0;
+  assert.throws(() => parseDiscoveryResponse(body, config, window, []), /search_unconfirmed/);
+});
+
+test('unusable outputs retain exact structural reasons and cost without raw answers or retries', async () => {
+  const json = JSON.stringify({ articles: [article()] });
+  for (const [content, outputIssue] of [
+    [null, 'content_not_text'],
+    [[{ type: 'text', text: json }], 'content_not_text'],
+    ['private invalid answer', 'invalid_json'],
+    [`private preamble\n${json}`, 'invalid_json'],
+    [`${json}\nprivate epilogue`, 'invalid_json'],
+    [`\x60\x60\x60json\n${json}\n\x60\x60\x60\n${json}`, 'invalid_json'],
+    [`<think>private reasoning</think>${json}`, 'invalid_json'],
+    ['{"articles":[', 'invalid_json'],
+    ['null', 'invalid_root'],
+    ['[]', 'invalid_root'],
+    ['{}', 'invalid_root'],
+    ['{"articles":[],"private":"extra"}', 'invalid_root'],
+    ['{"articles":null}', 'invalid_articles'],
+    [JSON.stringify({ articles: Array(9).fill(article()) }), 'too_many_articles'],
+  ]) {
+    const body = envelope();
+    body.choices[0].message.content = content;
+    const h = harness(body);
+    await assert.rejects(h.run(), (error) => {
+      assert.equal(error.code, 'discovery_invalid_output');
+      assert.equal(error.diagnostics.outputIssue, outputIssue);
+      assert.equal(error.called, true);
+      assert.equal(error.costMicrousd, 25000);
+      assert.equal(JSON.stringify(error).includes('private'), false);
+      assert.equal(JSON.stringify(error).includes(article().url), false);
+      return true;
+    });
+    assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
+  }
 });
 
 test('citation fallback preserves the unknown count, provider cost and single paid request', async () => {
@@ -445,6 +547,8 @@ test('failed receipts persist only allowlisted diagnostics and provider cost, in
         annotationCount: 1,
         providerError: false,
         providerErrorCode: null,
+        outputFormat: 'invalid',
+        outputIssue: 'invalid_json',
       });
       const saved = JSON.stringify(error);
       for (const secret of [access.apiKey, 'private answer', 'private thinking', 'private.invalid'])

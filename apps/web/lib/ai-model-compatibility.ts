@@ -45,7 +45,7 @@ export async function openRouterOptions(
   baseUrl: string,
   modelId: string,
   transport: typeof fetch,
-  required: 'text' | 'structured' | 'tools',
+  required: 'text' | 'structured' | 'tools' | readonly ('text' | 'structured' | 'tools')[],
   budget?: { inputTokens: number; outputTokens: number },
 ) {
   if (new URL(baseUrl).hostname !== 'openrouter.ai') return undefined;
@@ -66,11 +66,13 @@ export async function openRouterOptions(
       throw new AiProbeError('capability_failed');
   }
   const parameters = model.supported_parameters as unknown[];
+  const requirements = typeof required === 'string' ? [required] : required;
   if (
     !parameters.includes('max_tokens') ||
-    (required === 'structured' &&
+    (requirements.includes('structured') &&
       (!parameters.includes('structured_outputs') || !parameters.includes('response_format'))) ||
-    (required === 'tools' && (!parameters.includes('tools') || !parameters.includes('tool_choice')))
+    (requirements.includes('tools') &&
+      (!parameters.includes('tools') || !parameters.includes('tool_choice')))
   )
     throw new AiProbeError('capability_failed');
   const reasoning: Record<string, string | boolean | number> = { exclude: true };
