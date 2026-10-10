@@ -6,7 +6,8 @@ import {
   type AiResolver,
   type AiWireRequest,
 } from './ai-provider-transport.ts';
-import { openRouterOptions } from './ai-model-compatibility.ts';
+import { openRouterOptions, portableJsonSchema } from './ai-model-compatibility.ts';
+import { discoveryArticleLimit, discoveryJsonSchema } from './source-discovery-output.ts';
 import { readApiCostMicrousd } from './ai-response-cost.ts';
 import {
   readDiscoveryDiagnostics,
@@ -95,7 +96,7 @@ export function createDiscoveryInvoker(
         connection.base_url,
         profile.stages.analyze.model_id,
         transport,
-        'tools',
+        ['tools', 'structured'],
         { inputTokens: 30000, outputTokens: discoveryOutputTokens },
       );
       const window = discoveryWindow(input.config, input.now);
@@ -128,8 +129,8 @@ export function createDiscoveryInvoker(
                   engine: 'exa',
                   mode: 'fast',
                   max_uses: discoverySearchLimit,
-                  max_results: 8,
-                  max_total_results: 8,
+                  max_results: discoveryArticleLimit,
+                  max_total_results: discoveryArticleLimit,
                   max_characters: 1000,
                 },
               },
@@ -138,6 +139,14 @@ export function createDiscoveryInvoker(
             // Supplying a server tool alone allows zero searches. Require its use,
             // retaining both loop limits (this does not promise exactly one search).
             tool_choice: 'required',
+            response_format: {
+              type: 'json_schema',
+              json_schema: {
+                name: 'source_discovery',
+                strict: true,
+                schema: portableJsonSchema(discoveryJsonSchema),
+              },
+            },
             max_tokens: discoveryOutputTokens,
             stream: false,
             ...options,

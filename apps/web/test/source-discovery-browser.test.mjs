@@ -448,6 +448,45 @@ test(
       await expect(page.getByText('must-not-display-private-body', { exact: false })).toHaveCount(
         0,
       );
+      // Legacy version 1 receipts have no output classification. Missing fields
+      // must not be presented as a successful JSON or structure validation.
+      await expect(page.getByText('输出格式：', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('结构校验：', { exact: false })).toHaveCount(0);
+      const discoveryDiagnostics = run.result.discoveryDiagnostics;
+      for (const [outputFormat, label] of [
+        ['json', '输出格式：JSON'],
+        ['json_fence', '输出格式：JSON 代码块'],
+      ]) {
+        discoveryDiagnostics.outputFormat = outputFormat;
+        discoveryDiagnostics.outputIssue = null;
+        await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+        await expect(page.getByText(label, { exact: true })).toBeVisible();
+        await expect(page.getByText('结构校验：', { exact: false })).toHaveCount(0);
+      }
+      run.error_code = 'discovery_invalid_output';
+      discoveryDiagnostics.outputFormat = 'invalid';
+      discoveryDiagnostics.outputIssue = 'invalid_json';
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByText('结构校验：JSON 格式无效', { exact: true })).toBeVisible();
+      await expect(page.getByText('输出格式：JSON', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('输出格式：JSON 代码块', { exact: true })).toHaveCount(0);
+
+      // Unknown classifications and arbitrary output text are untrusted data;
+      // reading the diagnostic panel must never echo them or retry the request.
+      discoveryDiagnostics.outputFormat = 'must-not-display-private-format';
+      discoveryDiagnostics.outputIssue = 'must-not-display-private-issue';
+      discoveryDiagnostics.rawOutput = 'must-not-display-private-output';
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByText('must-not-display-private', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('输出格式：', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('结构校验：', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('搜索回执：供应商未返回搜索次数', { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole('cell', { name: '$0.0642 provider', exact: false }),
+      ).toBeVisible();
+      delete discoveryDiagnostics.outputFormat;
+      delete discoveryDiagnostics.outputIssue;
+      delete discoveryDiagnostics.rawOutput;
       run.error_code = 'discovery_output_truncated';
       run.result.discoveryDiagnostics.finishReason = 'length';
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();

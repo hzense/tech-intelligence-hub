@@ -1,4 +1,10 @@
 /** Structural receipts only: never retain prompts, answers, citations or provider messages. */
+import {
+  decodeDiscoveryOutput,
+  type DiscoveryOutputFormat,
+  type DiscoveryOutputIssue,
+} from './source-discovery-output.ts';
+
 export const discoverySearchLimit = 3;
 const finishReasons = [
   'stop',
@@ -20,6 +26,9 @@ export interface DiscoveryDiagnostics {
   annotationCount: number | null;
   providerError: boolean;
   providerErrorCode: number | null;
+  // Optional for compatibility with historical version 1 receipts.
+  outputFormat?: DiscoveryOutputFormat;
+  outputIssue?: DiscoveryOutputIssue | null;
 }
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -50,6 +59,7 @@ export function readDiscoveryDiagnostics(body: unknown): DiscoveryDiagnostics {
     (usage.server_tool_use !== undefined && !isRecord(usage.server_tool_use));
   const rawCount = record(usage.server_tool_use).web_search_requests;
   const searchRequests = count(rawCount);
+  const output = decodeDiscoveryOutput(message.content);
   return {
     version: 1,
     responseId: responseId(envelope.id),
@@ -71,6 +81,8 @@ export function readDiscoveryDiagnostics(body: unknown): DiscoveryDiagnostics {
     providerError:
       envelope.error != null || choice.error != null || choice.finish_reason === 'error',
     providerErrorCode: errorCode(record(envelope.error ?? choice.error).code),
+    outputFormat: output.format,
+    outputIssue: output.issue,
   };
 }
 
@@ -93,10 +105,29 @@ export function discoveryDiagnosticItems(value: unknown): string[] {
   const reason = row.finishReason === 'missing' ? 'missing' : finishReason(row.finishReason);
   const id = responseId(row.responseId);
   const code = errorCode(row.providerErrorCode);
+  const formats: Record<DiscoveryOutputFormat, string> = {
+    json: 'JSON',
+    json_fence: 'JSON 代码块',
+    invalid: '无法解析为 JSON',
+    non_text: '未返回文本',
+  };
+  const issues: Record<DiscoveryOutputIssue, string> = {
+    content_not_text: '未返回文本内容',
+    invalid_json: 'JSON 格式无效',
+    invalid_root: '顶层必须为仅含 articles 的对象',
+    invalid_articles: 'articles 必须为数组',
+    too_many_articles: '原文条目超过 8 条上限',
+  };
   return [
     `搜索回执：${status}${requests === null ? '' : `（${requests} 次，上限 ${discoverySearchLimit} 次）`}`,
     `结束原因：${reason}`,
     `响应选项：${count(row.choiceCount) ?? '未返回'} · 引用条目：${count(row.annotationCount) ?? '未返回'}`,
+    ...(typeof row.outputFormat === 'string' && Object.hasOwn(formats, row.outputFormat)
+      ? [`输出格式：${formats[row.outputFormat as DiscoveryOutputFormat]}`]
+      : []),
+    ...(typeof row.outputIssue === 'string' && Object.hasOwn(issues, row.outputIssue)
+      ? [`结构校验：${issues[row.outputIssue as DiscoveryOutputIssue]}`]
+      : []),
     ...(row.providerError === true ? [`供应商错误：${code ?? '未提供标准错误码'}`] : []),
     ...(id ? [`供应商响应 ID：${id}`] : []),
   ];

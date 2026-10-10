@@ -1,6 +1,7 @@
 import { validateImportManifest } from '../../../packages/ingestion/src/import-manifest.mjs';
 import type { AutomationConfig } from '../../../packages/database/src/automation-contract.mjs';
 import { readDiscoveryDiagnostics } from './source-discovery-diagnostics.ts';
+import { decodeDiscoveryOutput } from './source-discovery-output.ts';
 
 export { discoverySearchLimit } from './source-discovery-diagnostics.ts';
 export const discoveryOutputTokens = 2048;
@@ -84,19 +85,8 @@ export function parseDiscoveryResponse(
     typeof choice.message?.content !== 'string'
   )
     throw new Error('discovery_invalid_output');
-  let output;
-  try {
-    output = JSON.parse(choice.message.content);
-  } catch {
-    throw new Error('discovery_invalid_output');
-  }
-  if (
-    !output ||
-    Object.keys(output).join(',') !== 'articles' ||
-    !Array.isArray(output.articles) ||
-    output.articles.length > 8
-  )
-    throw new Error('discovery_invalid_output');
+  const output = decodeDiscoveryOutput(choice.message.content);
+  if (output.issue !== null) throw new Error('discovery_invalid_output');
   if (choice.message.annotations !== undefined && !Array.isArray(choice.message.annotations))
     throw new Error('discovery_invalid_output');
   const cited = new Set(
@@ -123,20 +113,23 @@ export function parseDiscoveryResponse(
   let rejected = 0,
     duplicates = 0;
   for (const row of output.articles) {
-    const url = discoveryUrl(row?.url);
+    const entry =
+      row && typeof row === 'object' && !Array.isArray(row) ? (row as Record<string, unknown>) : {};
+    const url = discoveryUrl(entry.url);
     if (
       !url ||
       !cited.has(url) ||
-      typeof row?.title !== 'string' ||
-      !row.title.trim() ||
-      [...row.title].length > 300 ||
-      /[\p{Cc}\p{Cf}]/u.test(row.title) ||
-      typeof row.publishedAt !== 'string' ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(row.publishedAt) ||
-      !Number.isFinite(Date.parse(row.publishedAt)) ||
-      new Date(row.publishedAt).toISOString().slice(0, 10) !== row.publishedAt ||
-      row.publishedAt < window.windowStart.slice(0, 10) ||
-      row.publishedAt > window.windowEnd.slice(0, 10)
+      Object.keys(entry).some((key) => !['url', 'title', 'publishedAt'].includes(key)) ||
+      typeof entry.title !== 'string' ||
+      !entry.title.trim() ||
+      [...entry.title].length > 300 ||
+      /[\p{Cc}\p{Cf}]/u.test(entry.title) ||
+      typeof entry.publishedAt !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(entry.publishedAt) ||
+      !Number.isFinite(Date.parse(entry.publishedAt)) ||
+      new Date(entry.publishedAt).toISOString().slice(0, 10) !== entry.publishedAt ||
+      entry.publishedAt < window.windowStart.slice(0, 10) ||
+      entry.publishedAt > window.windowEnd.slice(0, 10)
     ) {
       rejected++;
       continue;
@@ -146,7 +139,7 @@ export function parseDiscoveryResponse(
       continue;
     }
     seen.add(url);
-    articles.push({ url, title: row.title.trim(), publishedAt: row.publishedAt });
+    articles.push({ url, title: entry.title.trim(), publishedAt: entry.publishedAt });
   }
   return {
     articles: articles.slice(0, config.discovery.maxSources),
