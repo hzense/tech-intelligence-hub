@@ -53,6 +53,16 @@ export async function discoverSources(owner: string, id: string): Promise<string
       },
     });
     receipt = completion;
+    // A nonempty response with no valid articles is a validation failure, not
+    // an empty search. Valid but already-collected sources remain a normal
+    // no-new-sources outcome. Keep the paid receipt before throwing so the
+    // failure path persists item diagnostics and settles the original charge.
+    if (
+      completion.result.articles.length === 0 &&
+      completion.result.rejected > 0 &&
+      completion.result.duplicates === 0
+    )
+      throw new Error('discovery_all_sources_rejected');
     await store.updateAutomationRun({
       pool: automationPool,
       owner,
@@ -80,6 +90,7 @@ export async function discoverSources(owner: string, id: string): Promise<string
         'discovery_invalid_output',
         'discovery_provider_error',
         'discovery_output_truncated',
+        'discovery_all_sources_rejected',
         'discovery_connection_unsupported',
         'capability_failed',
         'invalid_model',

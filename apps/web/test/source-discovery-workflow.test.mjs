@@ -22,7 +22,7 @@ test('source discovery orchestrates originals and private candidates without dro
       export async function readAutomationRun(){return structuredClone(globalThis.__sourceFlow.run)}
       export async function updateAutomationRun(args){const f=globalThis.__sourceFlow;if(f.run.status!=='running')throw Error('stale_attempt');f.updates.push(args);f.run.result=args.result;f.run.phase=args.phase;f.run.status=args.status??'running';f.run.charged_microusd=args.costMicrousd??f.run.charged_microusd;return structuredClone(f.run)}
     `,
-    '../lib/server/source-discovery': `export async function discoverSources(){const f=globalThis.__sourceFlow;f.discoveries++;f.run.result={discovery:{articles:f.urls.map(url=>({url,title:'原文',publishedAt:'2026-09-30'}))},discoveryCostMicrousd:25000,discoveryCostSource:'provider'};return f.urls;}`,
+    '../lib/server/source-discovery': `export async function discoverSources(){const f=globalThis.__sourceFlow;f.discoveries++;f.run.result={discovery:{articles:f.urls.map(url=>({url,title:'原文',publishedAt:'2026-09-30'}))},discoveryCostMicrousd:25000,discoveryCostSource:'provider'};if(f.discoveryFailure){Object.assign(f.run,f.discoveryFailure);throw Error(f.discoveryFailure.error_code)}return f.urls;}`,
     '../lib/server/import-service': `
       export async function executeImportAdmin(_owner,_method,body){const f=globalThis.__sourceFlow;f.imports.push(body);return {id:'batch-id',items:f.urls.map((_url,i)=>({id:f.itemIds?.[i]??'item-'+i,status:body.action==='detail'?(f.readbackStates[f.itemIds?.[i]??'item-'+i]??'unknown'):'pending',kind:'url'}))}}
       export async function runImportItem(_owner,_batch,id){const f=globalThis.__sourceFlow;f.importAttempts.push(id);if(f.thrownItems.includes(id))throw Error('unconfirmed');return {status:f.returnedStates[id]??(f.failedItems.includes(id)?'failed':'completed')}}
@@ -99,6 +99,46 @@ test('source discovery orchestrates originals and private candidates without dro
     assert.equal(f.imports.length, 0);
     assert.equal(f.generated.length, 0);
     assert.equal(f.run.charged_microusd, 25000);
+    f = setup([]);
+    f.discoveryFailure = {
+      status: 'failed',
+      phase: 'discovery_failed',
+      error_code: 'discovery_all_sources_rejected',
+      lease_token: null,
+      charged_microusd: 7364,
+      cost_source: 'provider',
+      result: {
+        discovery: {
+          articles: [],
+          rejected: 8,
+          duplicates: 0,
+          validation: {
+            version: 1,
+            returnedCount: 8,
+            validCitationCount: 8,
+            rejections: Array.from({ length: 8 }, (_, index) => ({
+              index,
+              reasons: ['uncited_url'],
+            })),
+            reasonCounts: { uncited_url: 8 },
+          },
+        },
+        discoveryCostMicrousd: 7364,
+        discoveryCostSource: 'provider',
+      },
+    };
+    assert.equal(await automationWorkflow('owner', 'run'), 'failed');
+    assert.equal(f.imports.length, 0);
+    assert.equal(f.generated.length, 0);
+    assert.equal(f.dispatched.length, 0);
+    assert.equal(f.updates.length, 0, 'workflow must not overwrite the terminal discovery receipt');
+    assert.equal(f.run.status, 'failed');
+    assert.equal(f.run.phase, 'discovery_failed');
+    assert.equal(f.run.error_code, 'discovery_all_sources_rejected');
+    assert.equal(f.run.charged_microusd, 7364);
+    assert.deepEqual(f.run.result, f.discoveryFailure.result);
+    assert.equal(await automationWorkflow('owner', 'run'), 'already_started_or_finished');
+    assert.equal(f.discoveries, 1);
     f = setup(['https://example.com/a', 'https://example.com/b']);
     f.failedItems = ['item-1'];
     await automationWorkflow('owner', 'run');

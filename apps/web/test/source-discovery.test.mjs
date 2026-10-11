@@ -113,6 +113,144 @@ test('only cited public recent originals survive; tracking variants and existing
   );
   assert.equal(discoveryUrl('https://user:secret@example.com/'), null);
 });
+test('article validation records each rejection rule without dependent or invented reasons', () => {
+  const cases = [
+    [null, 'invalid_article'],
+    [[], 'invalid_article'],
+    ['private article', 'invalid_article'],
+    [article('http://127.0.0.1/private'), 'invalid_url'],
+    [article('https://example.com/uncited'), 'uncited_url'],
+    [{ ...article(), privateField: 'private value' }, 'unexpected_fields'],
+    ...[undefined, null, '', '  ', 'a'.repeat(301), 'private\u0000title', 'private\u200btitle'].map(
+      (title) => [{ ...article(), title }, 'invalid_title'],
+    ),
+    ...[undefined, null, '2026/09/29', '2026-09-29T00:00:00Z'].map((publishedAt) => [
+      { ...article(), publishedAt },
+      'invalid_date_format',
+    ]),
+    ...['2026-02-30', '2026-13-01'].map((date) => [article(article().url, date), 'invalid_date']),
+    ...['2026-08-01', '2026-10-01'].map((date) => [
+      article(article().url, date),
+      'date_out_of_window',
+    ]),
+  ];
+  for (const [row, reason] of cases) {
+    const result = parseDiscoveryResponse(envelope([row], [article().url]), config, window, []);
+    assert.deepEqual(result.articles, []);
+    assert.equal(result.rejected, 1);
+    assert.deepEqual(result.validation, {
+      version: 1,
+      returnedCount: 1,
+      validCitationCount: 1,
+      rejections: [{ index: 0, reasons: [reason] }],
+      reasonCounts: { [reason]: 1 },
+    });
+  }
+});
+test('independent rejection reasons are counted once per article and never retain provider fields', () => {
+  const rows = [
+    {
+      url: 'https://private-user:private-password@example.com/private-source',
+      title: 'private-title\u0000',
+      publishedAt: 'private-date',
+      'private-extra-key': 'private-extra-value',
+    },
+    {
+      url: 'https://example.com/private-uncited',
+      title: ' ',
+      publishedAt: '2026-08-01',
+    },
+  ];
+  const result = parseDiscoveryResponse(envelope(rows, []), config, window, []);
+  assert.equal(result.rejected, 2);
+  assert.deepEqual(result.validation, {
+    version: 1,
+    returnedCount: 2,
+    validCitationCount: 0,
+    rejections: [
+      {
+        index: 0,
+        reasons: ['invalid_url', 'unexpected_fields', 'invalid_title', 'invalid_date_format'],
+      },
+      { index: 1, reasons: ['uncited_url', 'invalid_title', 'date_out_of_window'] },
+    ],
+    reasonCounts: {
+      invalid_url: 1,
+      unexpected_fields: 1,
+      invalid_title: 2,
+      invalid_date_format: 1,
+      uncited_url: 1,
+      date_out_of_window: 1,
+    },
+  });
+  assert.equal(JSON.stringify(result).includes('private'), false);
+});
+test('all eight rejected articles retain bounded zero-based diagnostics', () => {
+  const rows = Array.from({ length: 8 }, (_, index) =>
+    article(`https://example.com/old-${index}`, '2026-08-01'),
+  );
+  const result = parseDiscoveryResponse(envelope(rows), config, window, []);
+  assert.deepEqual(result.articles, []);
+  assert.equal(result.rejected, 8);
+  assert.equal(result.duplicates, 0);
+  assert.deepEqual(result.validation, {
+    version: 1,
+    returnedCount: 8,
+    validCitationCount: 8,
+    rejections: rows.map((_, index) => ({ index, reasons: ['date_out_of_window'] })),
+    reasonCounts: { date_out_of_window: 8 },
+  });
+});
+test('validation distinguishes rejected articles from duplicates and counts unique safe citations', () => {
+  const rows = [
+    article(),
+    article('https://example.com/news?utm_source=duplicate'),
+    article('https://example.com/known'),
+    article('https://example.com/uncited'),
+    article('https://example.com/second'),
+  ];
+  const body = envelope(rows, [
+    article().url,
+    `${article().url}?utm_source=citation#fragment`,
+    'https://example.com/known',
+    'https://example.com/second',
+    'http://127.0.0.1/private',
+  ]);
+  body.choices[0].message.annotations.push(null, {
+    type: 'other',
+    url_citation: { url: 'https://example.com/untrusted' },
+  });
+  const result = parseDiscoveryResponse(body, config, window, ['https://example.com/known']);
+  assert.deepEqual(result.articles, [article(), article('https://example.com/second')]);
+  assert.equal(result.duplicates, 2);
+  assert.equal(result.rejected, 1);
+  assert.deepEqual(result.validation, {
+    version: 1,
+    returnedCount: 5,
+    validCitationCount: 3,
+    rejections: [{ index: 3, reasons: ['uncited_url'] }],
+    reasonCounts: { uncited_url: 1 },
+  });
+});
+test('valid and empty responses have explicit validation receipts without rejection records', () => {
+  for (const rows of [[], [article()]]) {
+    const result = parseDiscoveryResponse(envelope(rows), config, window, []);
+    assert.deepEqual(result.articles, rows);
+    assert.equal(result.rejected, 0);
+    assert.deepEqual(result.validation, {
+      version: 1,
+      returnedCount: rows.length,
+      validCitationCount: rows.length,
+      rejections: [],
+      reasonCounts: {},
+    });
+  }
+  const result = parseDiscoveryResponse(envelope(), config, window, [article().url]);
+  assert.deepEqual(result.articles, []);
+  assert.equal(result.duplicates, 1);
+  assert.deepEqual(result.validation.rejections, []);
+  assert.deepEqual(result.validation.reasonCounts, {});
+});
 test('no actual search, missing citations, malformed JSON and truncated outputs do not invent sources', () => {
   const noSearch = envelope();
   noSearch.usage.server_tool_use.web_search_requests = 0;
@@ -215,6 +353,23 @@ test('provider uses one bounded server-tool request with no credential or reason
   assert.equal(JSON.stringify(result).includes(access.apiKey), false);
   assert.equal(result.costMicrousd, 25000);
   assert.equal(result.costSource, 'provider');
+});
+test('all-rejected provider results retain validation and cost without another paid request', async () => {
+  const rows = Array.from({ length: 8 }, (_, index) =>
+    article(`https://example.com/old-${index}`, '2026-08-01'),
+  );
+  const body = envelope(rows);
+  delete body.usage.server_tool_use;
+  const h = harness(body);
+  const receipt = await h.run();
+  assert.deepEqual(receipt.result.articles, []);
+  assert.equal(receipt.result.rejected, 8);
+  assert.deepEqual(receipt.result.validation.reasonCounts, { date_out_of_window: 8 });
+  assert.equal(receipt.result.validation.rejections.length, 8);
+  assert.equal(receipt.result.searchEvidence, 'provider_url_citations');
+  assert.equal(receipt.costMicrousd, 25000);
+  assert.equal(receipt.costSource, 'provider');
+  assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
 });
 test('cost receipt survives invalid output; missing cost uses bounded estimate', async () => {
   const bad = envelope();

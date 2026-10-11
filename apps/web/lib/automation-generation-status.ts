@@ -100,11 +100,35 @@ export function generationSummaryLabel(task: GenerationSummary): string {
   return '结果未知，需人工核对';
 }
 
-export function sourceAutomationLabel(run: {
+type SourceAutomationRun = {
   status: string;
   phase: string;
+  error_code?: string | null;
+  result?: unknown;
   generationProgress?: AutomationGenerationProgress;
-}): string {
+};
+
+/** Correct historical presentation without rewriting receipts or replaying discovery. */
+export function sourceAutomationAllSourcesRejected(run: SourceAutomationRun): boolean {
+  if (run.status === 'failed' && run.error_code === 'discovery_all_sources_rejected') return true;
+  if (run.status !== 'completed' || run.phase !== 'no_new_sources') return false;
+  if (!run.result || typeof run.result !== 'object' || Array.isArray(run.result)) return false;
+  const discovery = (run.result as { discovery?: unknown }).discovery;
+  if (!discovery || typeof discovery !== 'object' || Array.isArray(discovery)) return false;
+  const row = discovery as { articles?: unknown; rejected?: unknown; duplicates?: unknown };
+  return (
+    Array.isArray(row.articles) &&
+    row.articles.length === 0 &&
+    typeof row.rejected === 'number' &&
+    Number.isSafeInteger(row.rejected) &&
+    row.rejected > 0 &&
+    row.rejected <= 8 &&
+    row.duplicates === 0
+  );
+}
+
+export function sourceAutomationLabel(run: SourceAutomationRun): string {
+  if (sourceAutomationAllSourcesRejected(run)) return '采集失败，来源全部未通过校验';
   if (run.status === 'queued') return '等待采集';
   if (run.status === 'running') {
     const phases: Record<string, string> = {

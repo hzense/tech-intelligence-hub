@@ -173,6 +173,76 @@ test('discovery server persists safe receipts without replaying a paid search', 
       assert.deepEqual(f.run.result.discoveryDiagnostics, diagnostics);
     });
 
+    for (const [costSource, costMicrousd] of [
+      ['provider', 7364],
+      ['provider', 0],
+      ['estimate', 250000],
+    ]) {
+      await t.test(
+        `all rejected sources persist a failed ${costSource} receipt (${costMicrousd})`,
+        async () => {
+          const f = setup();
+          f.receipt.costSource = costSource;
+          f.receipt.costMicrousd = costMicrousd;
+          Object.assign(f.receipt.result, {
+            articles: [],
+            rejected: 8,
+            duplicates: 0,
+            validation: {
+              version: 1,
+              returnedCount: 8,
+              validCitationCount: 8,
+              rejections: Array.from({ length: 8 }, (_, index) => ({
+                index,
+                reasons: ['date_out_of_window'],
+              })),
+              reasonCounts: { date_out_of_window: 8 },
+            },
+          });
+          await assert.rejects(discoverSources('owner', f.run.id), {
+            message: 'discovery_all_sources_rejected',
+          });
+          assert.equal(f.run.status, 'failed');
+          assert.equal(f.run.phase, 'discovery_failed');
+          assert.equal(f.updates.length, 1, 'never persists a successful discovery phase');
+          assert.equal(f.updates[0].errorCode, 'discovery_all_sources_rejected');
+          assert.deepEqual(f.run.result.discovery, f.receipt.result);
+          assert.deepEqual(f.run.result.discoveryDiagnostics, f.receipt.diagnostics);
+          assert.equal(f.run.result.discoveryCostMicrousd, costMicrousd);
+          assert.equal(f.run.charged_microusd, costMicrousd);
+          assert.equal(f.run.cost_source, costSource);
+          assert.equal(f.fenceAttempts, 1);
+          assert.equal(f.paidCalls, 1);
+          await assert.rejects(discoverSources('owner', f.run.id), /stale_attempt/);
+          assert.equal(f.paidCalls, 1, 'a validation failure never retries a paid discovery');
+        },
+      );
+    }
+
+    for (const [name, rejected, duplicates, keepArticle] of [
+      ['genuinely empty', 0, 0, false],
+      ['only duplicates', 0, 8, false],
+      ['duplicates and rejected entries', 7, 1, false],
+      ['partial rejection with a new source', 7, 0, true],
+    ]) {
+      await t.test(`${name} is not an all-sources-rejected failure`, async () => {
+        const f = setup();
+        Object.assign(f.receipt.result, {
+          articles: keepArticle ? f.receipt.result.articles : [],
+          rejected,
+          duplicates,
+        });
+        assert.deepEqual(
+          await discoverSources('owner', f.run.id),
+          keepArticle ? ['https://example.com/new'] : [],
+        );
+        assert.equal(f.run.status, 'running');
+        assert.equal(f.run.phase, 'sources_discovered');
+        assert.deepEqual(f.run.result.discovery, f.receipt.result);
+        assert.equal(f.paidCalls, 1);
+      });
+    }
+
     await t.test('unknown provider cost remains unknown and never becomes zero', async () => {
       const f = setup();
       f.failure = { code: 'discovery_search_unconfirmed', costMicrousd: null, diagnostics };

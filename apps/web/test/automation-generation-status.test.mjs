@@ -4,6 +4,7 @@ import {
   automationGenerationIds,
   summarizeAutomationGenerations,
   sourceAutomationLabel,
+  sourceAutomationAllSourcesRejected,
   generationSummaryLabel,
 } from '../lib/automation-generation-status.ts';
 
@@ -122,6 +123,53 @@ test('source stages use the actual saved workflow phases', () => {
     dispatching_candidates: '派发候选任务',
   })) {
     assert.equal(sourceAutomationLabel({ status: 'running', phase }), expected);
+  }
+});
+
+test('new and historical all-rejected discovery runs display failure without mutating receipts', () => {
+  const historical = {
+    status: 'completed',
+    phase: 'no_new_sources',
+    result: { discovery: { articles: [], rejected: 8, duplicates: 0 } },
+  };
+  const original = globalThis.structuredClone(historical);
+  for (const run of [
+    historical,
+    { status: 'failed', phase: 'discovery_failed', error_code: 'discovery_all_sources_rejected' },
+  ]) {
+    assert.equal(sourceAutomationAllSourcesRejected(run), true);
+    assert.equal(sourceAutomationLabel(run), '采集失败，来源全部未通过校验');
+  }
+  assert.deepEqual(historical, original);
+});
+
+test('empty, duplicate, partial and malformed discovery receipts are not mislabeled all rejected', () => {
+  for (const discovery of [
+    { articles: [], rejected: 0, duplicates: 0 },
+    { articles: [], rejected: 0, duplicates: 8 },
+    { articles: [], rejected: 4, duplicates: 4 },
+    { articles: [{ url: 'https://example.com' }], rejected: 7, duplicates: 0 },
+    { articles: [], rejected: '8', duplicates: 0 },
+    { articles: [], rejected: 8, duplicates: '0' },
+    { articles: [], rejected: 8.5, duplicates: 0 },
+    { articles: [], rejected: 9999, duplicates: 0 },
+    { articles: {}, rejected: 8, duplicates: 0 },
+    null,
+  ]) {
+    const run = { status: 'completed', phase: 'no_new_sources', result: { discovery } };
+    assert.equal(sourceAutomationAllSourcesRejected(run), false);
+    assert.equal(sourceAutomationLabel(run), '采集完成，无新来源');
+  }
+  for (const status of ['running', 'unknown', 'cancelled']) {
+    assert.equal(
+      sourceAutomationAllSourcesRejected({
+        status,
+        phase: 'no_new_sources',
+        error_code: 'discovery_all_sources_rejected',
+        result: { discovery: { articles: [], rejected: 8, duplicates: 0 } },
+      }),
+      false,
+    );
   }
 });
 
