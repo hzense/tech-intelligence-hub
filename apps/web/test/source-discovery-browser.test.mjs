@@ -367,6 +367,116 @@ test(
       }
       assert.equal(posts.length, 6, 'search receipt refreshes never create or retry a task');
 
+      // Historical all-rejected runs must not keep the misleading completed label.
+      const normalDiscovery = globalThis.structuredClone(run.result.discovery);
+      run.status = 'completed';
+      run.phase = 'no_new_sources';
+      run.result = {
+        generationIds: [],
+        queuedSources: [],
+        failed: 0,
+        discovery: { articles: [], rejected: 8, duplicates: 0 },
+      };
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(
+        page.getByRole('cell', { name: '采集失败，来源全部未通过校验', exact: false }),
+      ).toBeVisible();
+      await expect(page.getByText('采集完成，无新来源', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('资料或候选登记未完成', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('候选任务仍需各自完成生成与审核', { exact: false })).toHaveCount(
+        0,
+      );
+      await page.getByText('查看来源校验原因（脱敏）', { exact: true }).click();
+      await expect(
+        page.getByText('此历史任务未记录逐条拒绝原因，无法追溯具体规则。', { exact: true }),
+      ).toBeVisible();
+
+      run.status = 'failed';
+      run.phase = 'discovery_failed';
+      run.error_code = 'discovery_all_sources_rejected';
+      run.result.discovery.validation = {
+        version: 1,
+        returnedCount: 8,
+        validCitationCount: 8,
+        rejections: Array.from({ length: 8 }, (_, index) => ({
+          index,
+          reasons: index ? ['date_out_of_window'] : ['uncited_url', 'date_out_of_window'],
+          title: 'must-not-display-private-rejected-title',
+        })),
+        reasonCounts: { uncited_url: 1, date_out_of_window: 8 },
+      };
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(
+        page.getByText('返回条目：8 条 · 有效引用网址：8 个', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('发布日期不在采集时间范围内：8 条', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('第 1 条：来源网址与供应商引用不匹配；发布日期不在采集时间范围内', {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('第 8 条：发布日期不在采集时间范围内', { exact: true }),
+      ).toBeVisible();
+      await expect(page.getByText('历史任务未记录', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('must-not-display-private', { exact: false })).toHaveCount(0);
+      if (process.env.HZENSE_DISCOVERY_VALIDATION_SCREENSHOT) {
+        await page.setViewportSize({ width: 1440, height: 1080 });
+        await page.screenshot({
+          path: process.env.HZENSE_DISCOVERY_VALIDATION_SCREENSHOT,
+          fullPage: true,
+        });
+        await page.setViewportSize({ width: 390, height: 844 });
+      }
+
+      // Partial rejection still permits valid sources and only displays safe reason enums.
+      run.status = 'completed';
+      run.phase = 'candidate_tasks_queued';
+      delete run.error_code;
+      run.result.discovery = {
+        articles: normalDiscovery.articles,
+        rejected: 1,
+        duplicates: 0,
+        validation: {
+          version: 1,
+          returnedCount: 2,
+          validCitationCount: 1,
+          rejections: [
+            { index: 1, reasons: ['invalid_date_format', 'must-not-display-private-reason'] },
+          ],
+          reasonCounts: { invalid_date_format: 9999, 'must-not-display-private-reason': 1 },
+        },
+      };
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByText('选中 1 篇原文', { exact: false })).toBeVisible();
+      await expect(page.getByText('来源全部未通过校验', { exact: false })).toHaveCount(0);
+      await expect(
+        page.getByText('第 2 条：发布日期须为 YYYY-MM-DD 格式', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('发布日期须为 YYYY-MM-DD 格式：1 条', { exact: true }),
+      ).toBeVisible();
+      await expect(page.getByText('must-not-display-private', { exact: false })).toHaveCount(0);
+
+      for (const duplicates of [0, 8]) {
+        run.phase = 'no_new_sources';
+        run.result.discovery = { articles: [], rejected: 0, duplicates };
+        await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+        await expect(
+          page.getByRole('cell', { name: '采集完成，无新来源', exact: false }),
+        ).toBeVisible();
+        await expect(page.getByText('查看来源校验原因（脱敏）', { exact: true })).toHaveCount(0);
+        await expect(page.getByText('来源全部未通过校验', { exact: false })).toHaveCount(0);
+      }
+      assert.equal(
+        posts.length,
+        6,
+        'reading validation diagnostics never creates or retries a task',
+      );
+      run.result = { discovery: normalDiscovery };
+
       run.status = 'failed';
       run.phase = 'source_failed';
       run.result.sourceFailures = [

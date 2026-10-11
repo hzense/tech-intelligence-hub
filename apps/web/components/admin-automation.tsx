@@ -8,11 +8,15 @@ import type {
   AutomationRun,
 } from '../../../packages/database/src/automation-store.mjs';
 import styles from './admin-automation.module.css';
-import { discoveryDiagnosticItems } from '../lib/source-discovery-diagnostics';
+import {
+  discoveryDiagnosticItems,
+  discoveryValidationItems,
+} from '../lib/source-discovery-diagnostics';
 import { automationSourceFailureItems } from '../lib/automation-source-failures';
 import {
   automationGenerationIds,
   generationSummaryLabel,
+  sourceAutomationAllSourcesRejected,
   sourceAutomationLabel,
   type AutomationGenerationProgress,
 } from '../lib/automation-generation-status';
@@ -72,6 +76,7 @@ const errors: Record<string, string> = {
   discovery_search_unconfirmed:
     '供应商未确认实际联网检索，已停止后续生成；请核对原任务，不要重复调用。',
   discovery_invalid_output: '检索结果格式不符合要求，未用于生成；费用仍保留。',
+  discovery_all_sources_rejected: '返回的来源全部未通过校验，未启动导入和生成；检索费用仍保留。',
   discovery_provider_error: '供应商返回错误结果，已停止后续生成；请核对诊断信息与费用。',
   discovery_output_truncated: '检索输出达到长度上限，结果不完整，未用于生成；费用仍保留。',
   discovery_unavailable: '联网发现未完成，请核对模型权限、连接与原任务。',
@@ -140,9 +145,11 @@ function TopicReport({ result }: { result: Record<string, unknown> }) {
 function SourceResult({
   result,
   progress,
+  allSourcesRejected,
 }: {
   result: Record<string, unknown>;
   progress?: AutomationGenerationProgress;
+  allSourcesRejected: boolean;
 }) {
   const discovery = result.discovery as
     | {
@@ -151,10 +158,16 @@ function SourceResult({
         duplicates?: number;
         rejected?: number;
         articles?: { url: string; title: string; publishedAt: string }[];
+        validation?: unknown;
       }
     | undefined;
   const ids = automationGenerationIds(result);
   const diagnostics = discoveryDiagnosticItems(result.discoveryDiagnostics);
+  const validation = discoveryValidationItems(discovery?.validation);
+  const missingRejectionReasons =
+    typeof discovery?.rejected === 'number' &&
+    Number.isSafeInteger(discovery.rejected) &&
+    discovery.rejected > validation.rejections.length;
   const sourceFailures = automationSourceFailureItems(result.sourceFailures);
   const searchRequests = discovery?.searchRequests;
   const knownSearchCount =
@@ -163,6 +176,7 @@ function SourceResult({
     searchRequests >= 0;
   return (
     <div className={styles.report}>
+      {allSourcesRejected ? <p>来源全部未通过校验，未启动资料导入和候选生成。</p> : null}
       {diagnostics.length ? (
         <details>
           <summary>查看检索诊断（脱敏）</summary>
@@ -184,6 +198,33 @@ function SourceResult({
             · 选中 {discovery.articles?.length ?? 0} 篇原文 · 已有或重复 {discovery.duplicates ?? 0}{' '}
             项 · 不符合规则 {discovery.rejected ?? 0} 项
           </p>
+          {validation.summary.length || missingRejectionReasons ? (
+            <details>
+              <summary>查看来源校验原因（脱敏）</summary>
+              {validation.summary.length ? (
+                <ul>
+                  {validation.summary.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {validation.rejections.length ? (
+                <ul>
+                  {validation.rejections.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {missingRejectionReasons ? (
+                <p>
+                  {discovery.validation === undefined
+                    ? '此历史任务未记录逐条拒绝原因，无法追溯具体规则。'
+                    : '部分逐条拒绝原因未记录或不可读取，无法确认具体规则。'}
+                </p>
+              ) : null}
+              <p>一条来源可能违反多项规则；仅显示条目序号和规则分类，不展示被拒绝的原文内容。</p>
+            </details>
+          ) : null}
           <details>
             <summary>查看发现的来源</summary>
             <ul>
@@ -237,8 +278,13 @@ function SourceResult({
           );
         })}
       </ul>
-      {typeof result.failed === 'number' ? (
-        <p>资料或候选登记未完成：{result.failed} 项。候选任务仍需各自完成生成与审核。</p>
+      {typeof result.failed === 'number' &&
+      Number.isSafeInteger(result.failed) &&
+      result.failed > 0 ? (
+        <p>
+          资料或候选登记未完成：{result.failed} 项。
+          {ids.length ? '候选任务仍需各自完成生成与审核。' : ''}
+        </p>
       ) : null}
     </div>
   );
@@ -850,6 +896,7 @@ export function AdminAutomation({
                       ) : row.snapshot.kind === 'source_collection' && row.result ? (
                         <SourceResult
                           result={row.result}
+                          allSourcesRejected={sourceAutomationAllSourcesRejected(row)}
                           {...(row.generationProgress ? { progress: row.generationProgress } : {})}
                         />
                       ) : (

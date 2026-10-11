@@ -2,6 +2,10 @@ import { validateImportManifest } from '../../../packages/ingestion/src/import-m
 import type { AutomationConfig } from '../../../packages/database/src/automation-contract.mjs';
 import { readDiscoveryDiagnostics } from './source-discovery-diagnostics.ts';
 import { decodeDiscoveryOutput } from './source-discovery-output.ts';
+import type {
+  DiscoveryRejectionReason,
+  DiscoveryValidation,
+} from './source-discovery-rejections.ts';
 
 export { discoverySearchLimit } from './source-discovery-diagnostics.ts';
 export const discoveryOutputTokens = 2048;
@@ -18,6 +22,7 @@ export interface DiscoveryResult {
   duplicates: number;
   windowStart: string;
   windowEnd: string;
+  validation: DiscoveryValidation;
 }
 /** Empty user filters mean the site's complete taxonomy scope, not an unbounded news feed. */
 export function discoveryTopics(
@@ -110,36 +115,69 @@ export function parseDiscoveryResponse(
   if (searchEvidence === null) throw new Error('discovery_search_unconfirmed');
   const seen = new Set(knownUrls.map(discoveryUrl).filter(Boolean));
   const articles: DiscoveryArticle[] = [];
+  const validation: DiscoveryValidation = {
+    version: 1,
+    returnedCount: output.articles.length,
+    validCitationCount: cited.size,
+    rejections: [],
+    reasonCounts: {},
+  };
+  const reject = (index: number, reasons: DiscoveryRejectionReason[]) => {
+    validation.rejections.push({ index, reasons });
+    for (const reason of reasons)
+      validation.reasonCounts[reason] = (validation.reasonCounts[reason] ?? 0) + 1;
+  };
   let rejected = 0,
     duplicates = 0;
-  for (const row of output.articles) {
-    const entry =
-      row && typeof row === 'object' && !Array.isArray(row) ? (row as Record<string, unknown>) : {};
-    const url = discoveryUrl(entry.url);
-    if (
-      !url ||
-      !cited.has(url) ||
-      Object.keys(entry).some((key) => !['url', 'title', 'publishedAt'].includes(key)) ||
-      typeof entry.title !== 'string' ||
-      !entry.title.trim() ||
-      [...entry.title].length > 300 ||
-      /[\p{Cc}\p{Cf}]/u.test(entry.title) ||
-      typeof entry.publishedAt !== 'string' ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(entry.publishedAt) ||
-      !Number.isFinite(Date.parse(entry.publishedAt)) ||
-      new Date(entry.publishedAt).toISOString().slice(0, 10) !== entry.publishedAt ||
-      entry.publishedAt < window.windowStart.slice(0, 10) ||
-      entry.publishedAt > window.windowEnd.slice(0, 10)
-    ) {
+  for (const [index, row] of output.articles.entries()) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      reject(index, ['invalid_article']);
       rejected++;
       continue;
     }
-    if (seen.has(url)) {
+    const entry = row as Record<string, unknown>;
+    const url = discoveryUrl(entry.url);
+    const reasons: DiscoveryRejectionReason[] = [];
+    if (!url) reasons.push('invalid_url');
+    else if (!cited.has(url)) reasons.push('uncited_url');
+    if (Object.keys(entry).some((key) => !['url', 'title', 'publishedAt'].includes(key)))
+      reasons.push('unexpected_fields');
+    if (
+      typeof entry.title !== 'string' ||
+      !entry.title.trim() ||
+      [...entry.title].length > 300 ||
+      /[\p{Cc}\p{Cf}]/u.test(entry.title)
+    )
+      reasons.push('invalid_title');
+    if (typeof entry.publishedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(entry.publishedAt))
+      reasons.push('invalid_date_format');
+    else if (
+      !Number.isFinite(Date.parse(entry.publishedAt)) ||
+      new Date(entry.publishedAt).toISOString().slice(0, 10) !== entry.publishedAt
+    )
+      reasons.push('invalid_date');
+    else if (
+      entry.publishedAt < window.windowStart.slice(0, 10) ||
+      entry.publishedAt > window.windowEnd.slice(0, 10)
+    )
+      reasons.push('date_out_of_window');
+    if (reasons.length) {
+      reject(index, reasons);
+      rejected++;
+      continue;
+    }
+    // These fields have passed every check above; the receipt contains no raw rejected fields.
+    const accepted = {
+      url: url!,
+      title: (entry.title as string).trim(),
+      publishedAt: entry.publishedAt as string,
+    };
+    if (seen.has(accepted.url)) {
       duplicates++;
       continue;
     }
-    seen.add(url);
-    articles.push({ url, title: entry.title.trim(), publishedAt: entry.publishedAt });
+    seen.add(accepted.url);
+    articles.push(accepted);
   }
   return {
     articles: articles.slice(0, config.discovery.maxSources),
@@ -147,6 +185,7 @@ export function parseDiscoveryResponse(
     searchEvidence,
     rejected,
     duplicates,
+    validation,
     ...window,
   };
 }

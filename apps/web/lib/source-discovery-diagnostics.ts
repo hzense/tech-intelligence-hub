@@ -4,6 +4,10 @@ import {
   type DiscoveryOutputFormat,
   type DiscoveryOutputIssue,
 } from './source-discovery-output.ts';
+import {
+  discoveryRejectionReasons,
+  type DiscoveryRejectionReason,
+} from './source-discovery-rejections.ts';
 
 export const discoverySearchLimit = 3;
 const finishReasons = [
@@ -131,4 +135,65 @@ export function discoveryDiagnosticItems(value: unknown): string[] {
     ...(row.providerError === true ? [`供应商错误：${code ?? '未提供标准错误码'}`] : []),
     ...(id ? [`供应商响应 ID：${id}`] : []),
   ];
+}
+
+const rejectionLabels: Record<DiscoveryRejectionReason, string> = {
+  invalid_article: '条目不是有效对象',
+  invalid_url: '来源网址无效或不安全',
+  uncited_url: '来源网址与供应商引用不匹配',
+  unexpected_fields: '条目包含不允许的字段',
+  invalid_title: '标题为空、过长或含控制字符',
+  invalid_date_format: '发布日期须为 YYYY-MM-DD 格式',
+  invalid_date: '发布日期不是有效日期',
+  date_out_of_window: '发布日期不在采集时间范围内',
+};
+const boundedCount = (value: unknown, limit: number): number | null => {
+  const result = count(value);
+  return result !== null && result <= limit ? result : null;
+};
+
+/** Only bounded indices and known reason enums are presented, never rejected content. */
+export function discoveryValidationItems(value: unknown): {
+  summary: string[];
+  rejections: string[];
+} {
+  const row = record(value);
+  if (row.version !== 1) return { summary: [], rejections: [] };
+  const returnedCount = boundedCount(row.returnedCount, 8);
+  const validCitationCount = boundedCount(row.validCitationCount, 1000);
+  if (returnedCount === null) return { summary: [], rejections: [] };
+  const seen = new Set<number>();
+  const reasonCounts = new Map<DiscoveryRejectionReason, number>();
+  const rejections: string[] = [];
+  for (const entry of (Array.isArray(row.rejections) ? row.rejections : []).slice(0, 8)) {
+    const item = record(entry);
+    const index = boundedCount(item.index, 7);
+    if (index === null || index >= returnedCount || seen.has(index)) continue;
+    const reasons = [
+      ...new Set(
+        (Array.isArray(item.reasons) ? item.reasons : [])
+          .slice(0, discoveryRejectionReasons.length)
+          .filter(
+            (reason): reason is DiscoveryRejectionReason =>
+              typeof reason === 'string' && Object.hasOwn(rejectionLabels, reason),
+          ),
+      ),
+    ];
+    if (!reasons.length) continue;
+    seen.add(index);
+    for (const reason of reasons) reasonCounts.set(reason, (reasonCounts.get(reason) ?? 0) + 1);
+    rejections.push(
+      `第 ${index + 1} 条：${reasons.map((reason) => rejectionLabels[reason]).join('；')}`,
+    );
+  }
+  // Derive totals from accepted diagnostic rows instead of trusting stored arbitrary keys/counts.
+  return {
+    summary: [
+      `返回条目：${returnedCount} 条 · 有效引用网址：${validCitationCount ?? '未记录'}${validCitationCount === null ? '' : ' 个'}`,
+      ...discoveryRejectionReasons
+        .filter((reason) => reasonCounts.has(reason))
+        .map((reason) => `${rejectionLabels[reason]}：${reasonCounts.get(reason)} 条`),
+    ],
+    rejections,
+  };
 }
