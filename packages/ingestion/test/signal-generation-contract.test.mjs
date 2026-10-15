@@ -786,6 +786,22 @@ test('resource contract covers all identities in one output and keeps metadata/l
   const schema = generationCandidateWithResourcesJsonSchema.properties.candidates.items;
   assert.ok(schema.required.includes('resources'));
   assert.ok(schema.required.includes('signal_type'));
+  assert.match(
+    schema.properties.resources.description,
+    /只能且必须精确覆盖.*persons\.name.*并集.*禁止集合外的额外资源/,
+  );
+  assert.match(
+    schema.properties.resources.items.properties.type.description,
+    /人物用 person.*组织按原文用 company 或 institution/,
+  );
+  assert.match(
+    schema.properties.resources.items.properties.name.description,
+    /本资源自己的至少一条 evidence\.quote 中完整出现/,
+  );
+  assert.match(
+    schema.properties.resources.items.properties.evidence.description,
+    /至少一条 quote 包含完整 name 字面串/,
+  );
   assert.equal(
     generationCandidateWithMetadataJsonSchema.properties.candidates.items.required.includes(
       'resources',
@@ -932,6 +948,94 @@ test('resource names cannot borrow a substring identity and excluded people are 
   ).candidates[0];
   assert.deepEqual(normalized.persons, []);
   assert.deepEqual(normalized.resources, []);
+});
+
+test('resource coverage and each resource own literal name evidence remain mandatory', () => {
+  const text = 'Ada at AMD announced a processor. Grace commented on the processor.';
+  const source = {
+    classification: 'private',
+    fragments: [{ id: 'fragment-1', text, locator: { paragraph: 1 } }],
+  };
+  const resources = [
+    {
+      type: 'person',
+      name: 'Ada',
+      introduction: null,
+      event_role: null,
+      evidence: [ref('Ada at AMD announced a processor.')],
+    },
+    {
+      type: 'company',
+      name: 'AMD',
+      introduction: null,
+      event_role: null,
+      evidence: [ref('AMD announced a processor.')],
+    },
+  ];
+  const row = {
+    title: 'AMD processor announcement',
+    summary: 'Ada at AMD announced a processor.',
+    event_date: null,
+    event_date_evidence: [],
+    persons: [
+      { name: 'Ada', role: 'announcer', organization: 'AMD', evidence: resources[0].evidence },
+    ],
+    organizations: ['AMD'],
+    claims: [{ text: 'AMD announced a processor.', evidence: [ref('AMD announced a processor.')] }],
+    topic_ids: [],
+    signal_type: 'product',
+    resources,
+  };
+  const assess = (value) =>
+    assessGeneratedCandidates(
+      { candidates: [value], reason: 'synthetic regression' },
+      source,
+      [],
+      GENERATION_RESOURCES_CONTRACT,
+    );
+  assert.equal(assess(row).candidates.length, 1);
+  for (const [value, path, reason] of [
+    [
+      {
+        ...row,
+        resources: [
+          ...resources,
+          { ...resources[0], name: 'Grace', evidence: [ref('Grace commented on the processor.')] },
+        ],
+      },
+      'resources[2].name',
+      'unexpected_resource',
+    ],
+    [
+      {
+        ...row,
+        resources: [resources[0], { ...resources[1], evidence: [ref('announced a processor.')] }],
+      },
+      'resources[1].name',
+      'missing_evidence',
+    ],
+    [
+      {
+        ...row,
+        organizations: ['Advanced Micro Devices'],
+        persons: [{ ...row.persons[0], organization: 'Advanced Micro Devices' }],
+        resources: [resources[0], { ...resources[1], name: 'Advanced Micro Devices' }],
+      },
+      'resources[1].name',
+      'missing_evidence',
+    ],
+    [
+      { ...row, resources: [{ ...resources[0], type: 'company' }, resources[1]] },
+      'resources[0].name',
+      'unexpected_resource',
+    ],
+  ]) {
+    const result = assess(value);
+    assert.equal(result.candidates.length, 0);
+    assert.deepEqual(result.rejected[0].errors, [
+      { field: 'resources', code: 'invalid_field', path, reason },
+    ]);
+  }
 });
 
 test('Latin resource names remain supported in Chinese source sentences', () => {

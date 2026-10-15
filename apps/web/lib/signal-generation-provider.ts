@@ -4,6 +4,8 @@ import {
   jsonSchema,
   isStepCount,
   NoObjectGeneratedError,
+  JSONParseError,
+  TypeValidationError,
   type LanguageModelUsage,
 } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
@@ -70,19 +72,41 @@ const safeTokens = (value: unknown) =>
 function classifyFailure(error: unknown, expired: boolean): GenerationDiagnosticCode {
   if (expired) return 'generation_timeout';
   let current = error;
+  let fallback: GenerationDiagnosticCode = 'generation_sdk_error';
+  let outputFailure = false;
   for (let depth = 0; depth < 5 && current instanceof Error; depth++) {
     if (current instanceof AiProbeError)
       return safeGenerationDiagnosticCode(`generation_${current.code}`) ?? 'generation_sdk_error';
     if (current.name === 'AbortError' || current.name === 'TimeoutError')
       return 'generation_timeout';
-    if (NoObjectGeneratedError.isInstance(current))
-      return current.finishReason === 'length'
-        ? 'generation_output_truncated'
-        : 'generation_invalid_output';
-    if (current instanceof SignalGenerationError) return 'generation_invalid_output';
+    if (NoObjectGeneratedError.isInstance(current)) {
+      if (current.finishReason === 'length') return 'generation_output_truncated';
+      outputFailure = true;
+      fallback = 'generation_invalid_output';
+    }
+    if (JSONParseError.isInstance(current))
+      return outputFailure ? 'generation_invalid_json' : 'generation_invalid_response';
+    if (TypeValidationError.isInstance(current))
+      fallback = outputFailure ? 'generation_invalid_envelope' : 'generation_invalid_response';
+    if (current instanceof SignalGenerationError) {
+      if (current.code === 'generation_output_too_large') return 'generation_output_too_large';
+      // Read server-owned paths only; never serialize SDK text, value, cause or messages.
+      switch (current.diagnostic?.path) {
+        case 'envelope':
+          return 'generation_invalid_envelope';
+        case 'reason':
+          return 'generation_invalid_reason';
+        case 'candidates':
+          return current.diagnostic.reason === 'too_many_items'
+            ? 'generation_too_many_candidates'
+            : 'generation_invalid_candidates';
+        default:
+          return 'generation_invalid_output';
+      }
+    }
     current = current.cause;
   }
-  return 'generation_sdk_error';
+  return fallback;
 }
 
 const generationEvidenceRules = `证据是每条候选的必填内容，不是可选附件。只使用本次 untrusted_source.fragments 中的原文；每条证据必须包含真实 fragment_id 和该片段 text 中连续逐字复制的非空 quote，保留原语言、大小写和标点，不翻译、改写或用省略号拼接。
@@ -94,8 +118,10 @@ claims 中每条主张的 evidence 必须至少提供一条支持该主张的原
 
 const generationTopicRules = `本次同时匹配领域：每条候选还必须输出 topic_ids，包含 0 至 5 个不重复的领域 ID。根据事件的核心技术内容，只能从本次 enabled_topics 目录选择直接相关的领域；不要根据公司名称笼统关联所有领域，不创建或改写领域 ID。
 没有合适领域或目录为空时返回 topic_ids: []，不要强行匹配。领域只是待人工确认的分类建议，不代表事实核验或公开许可。`;
-export const generationResourceRules = `本次同时生成 resources 资源草稿，覆盖 persons、organizations 和 persons.organization 中的所有人物和组织，一种身份仅一项；保留 persons/organizations 兼容字段且名称一致。type 只能为 person、company、institution，并按本次原文判断；不要因为陌生或暂无目录档案而省略资源。名称采用有原文证据的写法，不擅自翻译或补全未知别名。
-每项只包含 type、name、introduction、event_role、evidence；不得生成实体 ID、主页或来源 URL。evidence 至少一条，逐字引用须支持名称、类型以及所有填写的简介与事件角色。introduction 只概括原文明确交代的身份或业务，缺少支持时为 null；event_role 仅描述这一次事件中的角色，缺少支持时为 null，不将事件参与、引述或一次发言改写成长任负责人、作者或任职。
+export const generationResourceRules = `本次同时生成 resources 资源草稿。每条候选单独确定资源集合：人物集合为该候选的 persons.name；组织集合为该候选的 organizations 与非 null 的 persons.organization 的并集。resources 只能且必须精确覆盖这两个集合，按身份去重，一种身份仅一项；禁止输出集合外的额外资源，即使该名称出现在原文、其他候选或背景资料中。不要为凑齐资源把信息源、产品、技术名词或仅被提及的背景实体加入人物或组织；不推断未被原文支持的身份、负责人或关系。
+保留 persons/organizations 兼容字段；同一身份在 persons.name、persons.organization、organizations 和 resources.name 中必须使用完全一致的原文名称写法。人物对应 type: person，组织对应 type: company 或 institution，组织类型按本次原文判断，不以人物类型代替组织或反之；不要因为陌生或暂无目录档案而省略已有原文支持的资源。不擅自翻译名称、扩展缩写、补全全称或未知别名；原文只写 AMD 时，不自行改写为 Advanced Micro Devices。
+每项只包含 type、name、introduction、event_role、evidence；不得生成实体 ID、主页或来源 URL。每项 evidence 至少一条，且该资源自己的 evidence 中至少一条 quote 必须包含完整的 name 字面串。quote 仍须从对应 fragment_id 的原文连续逐字复制，不可借用其他资源的引用或仅凭全文出现过名称；拉丁字母或数字名称要按完整名称匹配，Ann 不能借用 Anna 的引用。逐字引用须支持名称、类型以及所有填写的简介与事件角色。introduction 只概括原文明确交代的身份或业务，缺少支持时为 null；event_role 仅描述这一次事件中的角色，缺少支持时为 null，不将事件参与、引述或一次发言改写成长任负责人、作者或任职。
+提交前静默逐项核对：没有多余或遗漏的资源；人物/组织类型与所属集合一致；所有关联名称一致；每个资源的自身引用包含其完整原文名称且支持所填内容。发现缺证时先使用原文中确实可引用的名称并同步所有关联字段；找不到证据的身份不要推断或补造，移除该无依据的身份及其关联资源后重新核对；仍须保留其他有依据的人物、组织、主张及其证据。只输出最终 JSON，不输出核对过程。
 这是与信号同一次调用生成的私有草稿，仍需人工确认类型、简介、证据和身份匹配；不能声称已核验或已公开发布。人物范围规则同时适用于 persons 和 resources。`;
 const generationTypeRules = `每条候选必须输出 signal_type，选择最贴近核心事件的一种类型：research（研究）、product（产品）、funding（融资）、acquisition（收购）、hiring（人才招聘）、policy（政策）、technology（技术进展）、market（市场）、people（人物变动）、open_source（开源）、security（安全）、patent（专利）、partnership（合作）、regulation（监管）、supply_chain（供应链）。
 事件类型与 topic_ids 技术领域不同，必须分别填写；不能使用 editorial、private 或领域 ID 作为事件类型。`;
@@ -345,8 +371,14 @@ export function createSignalGenerationInvoker(
                 try {
                   validateGenerationEnvelope(value);
                   return { success: true, value };
-                } catch {
-                  return { success: false, error: new Error('invalid_generation_output') };
+                } catch (error) {
+                  return {
+                    success: false,
+                    error:
+                      error instanceof SignalGenerationError
+                        ? error
+                        : new Error('invalid_generation_output'),
+                  };
                 }
               },
             }),

@@ -525,7 +525,7 @@ test('only complete JSON is accepted, never fences, reasoning prefixes or a seco
     });
     const value = await f.invoke();
     assert.equal(value.success, false);
-    assert.equal(value.diagnostic.code, 'generation_invalid_output');
+    assert.equal(value.diagnostic.code, 'generation_invalid_json');
     assert.equal(value.output, undefined);
   }
 });
@@ -908,7 +908,14 @@ test('invalid candidate structure and evidence have a separate output classifica
   ]) {
     const value = await providerFixture(bad).invoke();
     assert.equal(value.success, false);
-    assert.equal(value.diagnostic.code, 'generation_invalid_output');
+    assert.equal(
+      value.diagnostic.code,
+      !Array.isArray(bad.candidates)
+        ? 'generation_invalid_envelope'
+        : bad.candidates.length > 5
+          ? 'generation_too_many_candidates'
+          : 'generation_invalid_output',
+    );
     if (Array.isArray(bad.candidates) && bad.candidates.length <= 5) {
       assert.equal(value.output.candidates.length, 0);
       assert.equal(value.output.rejected.length, 1);
@@ -916,6 +923,113 @@ test('invalid candidate structure and evidence have a separate output classifica
     assert.equal(value.input_tokens, 200);
     assert.equal(value.output_tokens, 100);
     assert.equal(JSON.stringify(value).includes(apiKey), false);
+  }
+});
+test('envelope failures keep bounded actionable codes without raw output, automatic repairs or retries', async () => {
+  const cases = [
+    [{ [apiKey]: 'private source', candidates: [] }, 'generation_invalid_envelope'],
+    [[], 'generation_invalid_envelope'],
+    [null, 'generation_invalid_envelope'],
+    [{ ...result, candidates: apiKey }, 'generation_invalid_candidates'],
+    [
+      { ...result, candidates: Array.from({ length: 6 }, () => candidate) },
+      'generation_too_many_candidates',
+    ],
+    [{ ...result, reason: null }, 'generation_invalid_reason'],
+    [{ ...result, reason: '' }, 'generation_invalid_reason'],
+    [{ ...result, reason: 'x'.repeat(1001) }, 'generation_invalid_reason'],
+    [{ ...result, reason: String.fromCharCode(0) }, 'generation_invalid_reason'],
+    [
+      { ...result, candidates: [{ ...candidate, summary: 'x'.repeat(400000) }] },
+      'generation_output_too_large',
+    ],
+  ];
+  for (const [bad, code] of cases) {
+    const provider = providerFixture(bad);
+    const value = await provider.invoke();
+    assert.equal(value.success, false);
+    assert.equal(value.error_code, 'generation_failed');
+    assert.equal(value.diagnostic.code, code);
+    assert.equal(value.output, undefined);
+    assert.equal(value.input_tokens, 200);
+    assert.equal(value.output_tokens, 100);
+    assert.equal(provider.calls.length, 1);
+    assert.doesNotMatch(JSON.stringify(value), /synthetic-generation-key|private source|xxxx/);
+  }
+});
+
+test('JSON parse failure persists the fixed diagnosis and API cost through completion and readback', async () => {
+  let calls = 0;
+  const provider = providerFixture(undefined, {
+    request: async (args) => {
+      if (args.url.pathname.endsWith('/models'))
+        return Response.json({
+          data: [
+            {
+              id: stage.model_id,
+              supported_parameters: ['max_tokens', 'response_format', 'structured_outputs'],
+            },
+          ],
+        });
+      calls++;
+      return Response.json({
+        choices: [
+          {
+            message: { role: 'assistant', content: `<think>${apiKey}</think>{` },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 200, completion_tokens: 100, cost: 0.001234 },
+      });
+    },
+  });
+  const logs = [];
+  const f = coreFixture({
+    invoke: () =>
+      provider.invoke({
+        connection: { ...connection, base_url: 'https://openrouter.ai/api/v1' },
+        allowedHosts: ['openrouter.ai'],
+      }),
+    report: (entry) => logs.push(entry),
+  });
+  const value = await f.execute('admin', { action: 'run', id: f.run().id });
+  assert.equal(value.status, 'failed');
+  assert.equal(value.error_code, 'generation_invalid_json');
+  assert.equal(value.result, undefined);
+  assert.equal(f.finishes.length, 1);
+  assert.equal(f.finishes[0].chargedMicrousd, 1234);
+  assert.equal(f.finishes[0].providerCostMicrousd, 1234);
+  assert.ok(
+    logs.some((entry) => entry.phase === 'provider' && entry.code === 'generation_invalid_json'),
+  );
+  assert.equal(calls, 1);
+  const saved = await f.execute('admin', { action: 'detail', id: f.run().id });
+  assert.equal(saved.error_code, 'generation_invalid_json');
+  assert.equal(calls, 1);
+  assert.doesNotMatch(
+    JSON.stringify({ saved, finishes: f.finishes, logs }),
+    /synthetic-generation-key|<think>|choices|content/,
+  );
+});
+test('malformed provider response envelopes are not mistaken for model JSON or candidate fields', async () => {
+  for (const response of [
+    { choices: 'not-an-array', secret: apiKey },
+    { choices: [{ message: { role: 'assistant', content: 42 } }] },
+  ]) {
+    let calls = 0;
+    const f = providerFixture(undefined, {
+      request: async () => {
+        calls++;
+        return Response.json(response);
+      },
+    });
+    const value = await f.invoke();
+    assert.equal(value.success, false);
+    assert.equal(value.diagnostic.code, 'generation_invalid_response');
+    assert.equal(value.error_code, 'generation_unknown');
+    assert.equal(value.output, undefined);
+    assert.equal(calls, 1);
+    assert.doesNotMatch(JSON.stringify(value), /synthetic-generation-key|not-an-array|secret/);
   }
 });
 test('legal large sources and maximum extraction prompts fit the bounded SDK request after JSON escaping', async () => {
@@ -1753,6 +1867,23 @@ test('resource contract generates evidence-backed resource drafts in the same si
     ),
   );
   assert.match(wire.messages[0].content, /与信号同一次调用生成/);
+  assert.match(
+    wire.messages[0].content,
+    /persons\.name.*organizations.*persons\.organization.*并集/,
+  );
+  assert.match(wire.messages[0].content, /只能且必须精确覆盖.*禁止输出集合外的额外资源/);
+  assert.match(
+    wire.messages[0].content,
+    /人物对应 type: person.*组织对应 type: company 或 institution/,
+  );
+  assert.match(
+    wire.messages[0].content,
+    /该资源自己的 evidence 中至少一条 quote 必须包含完整的 name 字面串/,
+  );
+  assert.match(wire.messages[0].content, /不擅自翻译名称、扩展缩写/);
+  assert.match(wire.messages[0].content, /Ann 不能借用 Anna 的引用/);
+  assert.match(wire.messages[0].content, /不推断未被原文支持的身份、负责人或关系/);
+  assert.match(wire.messages[0].content, /仍须保留其他有依据的人物、组织、主张及其证据/);
   const request = generationInput(
     source,
     stage.prompt,

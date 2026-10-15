@@ -289,7 +289,11 @@ export function PrivateResult({
                       )}
                       ：
                       {detailed
-                        ? detailLabels[String(error.reason)]
+                        ? error.reason === 'missing_evidence' &&
+                          typeof error.path === 'string' &&
+                          /^resources\[\d+\]\.name$/.test(error.path)
+                          ? '引用未包含该资源完整名称；请核对名称与原文引用是否一致'
+                          : detailLabels[String(error.reason)]
                         : typeof error.code === 'string' && errorLabels[error.code]
                           ? errorLabels[error.code]
                           : '校验未通过'}

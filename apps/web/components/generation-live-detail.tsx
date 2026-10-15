@@ -9,10 +9,12 @@ import { PrivateResult } from './private-generation-result';
 import controls from './admin-controls.module.css';
 import type { GenerationPublication } from '../lib/generation-publication';
 import { GenerationPublicationSummary } from './generation-publication-status';
+import { generationFailureMessage } from '../lib/generation-error-messages';
 
 type GenerationDetailRun = GenerationProgressRun & {
   result?: unknown;
   publication?: GenerationPublication;
+  error_code?: string | null;
 };
 
 export function GenerationLiveDetail({ initialRun }: { initialRun: GenerationDetailRun }) {
@@ -23,6 +25,7 @@ export function GenerationLiveDetail({ initialRun }: { initialRun: GenerationDet
   const [queueConfirmation, setQueueConfirmation] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const active = generationIsActive(run);
+  const failureMessage = generationFailureMessage(run);
   useEffect(() => {
     if (!active || resolving || refreshing) return;
     const controller = new AbortController();
@@ -109,6 +112,7 @@ export function GenerationLiveDetail({ initialRun }: { initialRun: GenerationDet
     <>
       <p>任务：{run.id}</p>
       <GenerationProgress run={run} />
+      {failureMessage && <p aria-label="任务失败原因">失败原因：{failureMessage}</p>}
       {run.status === 'completed' && (
         <p>
           <GenerationPublicationSummary status={run.status} publication={run.publication} />
