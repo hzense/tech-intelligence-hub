@@ -216,8 +216,19 @@ export const generatedResourceJsonSchema = Object.freeze({
   additionalProperties: false,
   required: ['type', 'name', 'introduction', 'event_role', 'evidence'],
   properties: {
-    type: { type: 'string', enum: ['person', 'company', 'institution'] },
-    name: { type: 'string', minLength: 1, maxLength: 200 },
+    type: {
+      type: 'string',
+      enum: ['person', 'company', 'institution'],
+      description:
+        'persons.name 中的人物用 person；organizations 或 persons.organization 中的组织按原文用 company 或 institution，不混淆人物与组织身份。',
+    },
+    name: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 200,
+      description:
+        '与当前候选 persons.name、organizations 或非 null 的 persons.organization 完全一致的原文名称。必须在本资源自己的至少一条 evidence.quote 中完整出现；不翻译名称、不扩展缩写或补全别名，Ann 不能用 Anna 作为名称证据。',
+    },
     introduction: {
       description:
         '只根据本次原文概括资源身份或业务；无法支持则为 null。不得把单次事件角色写成长期任职。',
@@ -227,7 +238,12 @@ export const generatedResourceJsonSchema = Object.freeze({
       description: '本资源在当前事件中的角色；无原文依据则为 null，不猜测负责人或作者。',
       anyOf: [{ type: 'string', minLength: 1, maxLength: 200 }, { type: 'null' }],
     },
-    evidence: { ...referencesSchema, minItems: 1 },
+    evidence: {
+      ...referencesSchema,
+      minItems: 1,
+      description:
+        '本资源自己的原文证据，至少一条 quote 包含完整 name 字面串；quote 须从对应 fragment_id 连续逐字复制并支持类型及所填简介、事件角色，不借用其他资源的引用。',
+    },
   },
 });
 const metadataCandidateSchema =
@@ -246,7 +262,7 @@ export const generationCandidateWithResourcesJsonSchema = Object.freeze({
           resources: {
             type: 'array',
             description:
-              '与信号同一次生成的资源草稿；覆盖 persons、organizations 以及人物所属组织。按身份去重，不填实体 ID 或来源 URL。',
+              '与信号同一次生成的资源草稿；只能且必须精确覆盖当前候选的 persons.name 以及 organizations 与非 null 的 persons.organization 的并集，禁止集合外的额外资源。按身份去重，关联字段名称和人物/组织类型一致，不推断无原文依据的身份，不填实体 ID 或来源 URL。',
             maxItems: 36,
             items: generatedResourceJsonSchema,
           },
@@ -722,9 +738,10 @@ export function assessGeneratedCandidates(value, source, topics, outputContract)
 
 /** Validate only the bounded envelope in the SDK; business validation runs after usage is captured. */
 export function validateGenerationEnvelope(value) {
-  record(value, ['candidates', 'reason']);
-  string(value.reason, 1000);
-  list(value.candidates, GENERATION_LIMITS.candidates);
+  // Fixed paths only: never put unexpected model keys or values into diagnostics.
+  record(value, ['candidates', 'reason'], undefined, 'envelope');
+  string(value.reason, 1000, undefined, 'reason');
+  list(value.candidates, GENERATION_LIMITS.candidates, 0, undefined, 'candidates');
   boundedBytes(value, GENERATION_LIMITS.outputBytes, 'generation_output_too_large');
   return value;
 }

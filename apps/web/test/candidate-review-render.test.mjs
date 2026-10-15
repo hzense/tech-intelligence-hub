@@ -185,6 +185,18 @@ test('review renders private evidence safely with confirmation-only publication 
           },
           { field: 'title', code: 'title_too_long' },
           {
+            field: 'resources',
+            code: 'invalid_field',
+            path: 'resources[2].name',
+            reason: 'missing_evidence',
+          },
+          {
+            field: 'resources',
+            code: 'invalid_field',
+            path: 'resources[3].evidence',
+            reason: 'missing_evidence',
+          },
+          {
             field: 'claims',
             code: 'invalid_field',
             path: 'private-raw-path',
@@ -197,5 +209,10 @@ test('review renders private evidence safely with confirmation-only publication 
   assert.match(diagnosticHtml, /persons\[1\]\.evidence\[0\]\.quote/);
   assert.match(diagnosticHtml, /引文未逐字匹配所引用的原文片段/);
   assert.match(diagnosticHtml, /标题超过 80 个字符/);
+  assert.match(
+    diagnosticHtml,
+    /resources\[2\]\.name<\/code>：引用未包含该资源完整名称；请核对名称与原文引用是否一致/,
+  );
+  assert.match(diagnosticHtml, /resources\[3\]\.evidence<\/code>：未提供必需的原文证据/);
   assert.doesNotMatch(diagnosticHtml, /private-raw/);
 });

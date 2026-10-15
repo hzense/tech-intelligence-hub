@@ -1027,6 +1027,48 @@ test(
     );
 
     await t.test(
+      'output failures survive list, expanded detail and live detail readback without paid calls',
+      async () => {
+        const page = await newPage();
+        const expected = '模型输出的 candidates 字段不是候选数组';
+        runs = [
+          {
+            id: liveDetailId,
+            batch_id: batchId,
+            item_id: itemId,
+            profile_id: profileId,
+            profile_revision: 2,
+            status: 'failed',
+            error_code: 'generation_invalid_candidates',
+            reserved_microusd: 1000,
+            charged_microusd: 100,
+            result: null,
+          },
+        ];
+        await page.goto(`${origin}/?off`);
+        await expect(page.getByRole('table').getByText(expected, { exact: false })).toBeVisible();
+        await page.getByText('更多操作', { exact: true }).click();
+        await page.getByRole('button', { name: '查看任务与私有候选', exact: true }).click();
+        await expect(
+          page
+            .getByRole('region', { name: '已保存的任务详情' })
+            .getByText(expected, { exact: false }),
+        ).toBeVisible();
+        await page.reload();
+        await expect(page.getByRole('table').getByText(expected, { exact: false })).toBeVisible();
+        await page.goto(`${origin}/?live-detail`);
+        await page.getByRole('button', { name: '刷新任务与发布状态' }).click();
+        await expect(page.getByLabel('任务失败原因')).toContainText(expected);
+        assert.ok(detailRequestMethods.length >= 1);
+        assert.ok(detailRequestMethods.every((method) => method === 'GET'));
+        assert.ok(commands.length >= 2);
+        assert.ok(commands.every((command) => command.action === 'detail'));
+        assert.equal(runs[0].charged_microusd, 100);
+        await page.close();
+      },
+    );
+
+    await t.test(
       'saved mixed and rejected results show bounded field diagnostics without invoking AI',
       async () => {
         for (const mixed of [true, false]) {
