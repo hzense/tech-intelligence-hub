@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { cache } from 'react';
 import { unifiedSignalEnabled } from './unified-signal-mode.ts';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import { readSignalReadMode, type SignalEntry } from './public-signal-reader-core.ts';
@@ -25,7 +26,9 @@ function getSeedCatalog() {
   return seedPromise;
 }
 
-export async function getSignalEntries(): Promise<SignalEntry[]> {
+// React scopes this memoization to one server render. Background/API calls
+// outside that scope still read current publications on each invocation.
+export const getSignalEntries = cache(async function getSignalEntries(): Promise<SignalEntry[]> {
   if (unifiedSignalEnabled(process.env)) {
     return projectEditorialEntityLinks(
       await (await import('./server/unified-signals.ts')).getUnifiedSignals(),
@@ -51,11 +54,21 @@ export async function getSignalEntries(): Promise<SignalEntry[]> {
     ),
     await getResourceEntries(),
   );
-}
+});
 
-export async function getSignalEntryById(id: string): Promise<SignalEntry | undefined> {
-  if (unifiedSignalEnabled(process.env))
-    return (await getSignalEntries()).find((signal) => signal.id === id);
+export const getSignalEntryById = cache(async function getSignalEntryById(
+  id: string,
+): Promise<SignalEntry | undefined> {
+  if (unifiedSignalEnabled(process.env)) {
+    const signal = await (await import('./server/unified-signals.ts')).getUnifiedSignalById(id);
+    if (!signal) return undefined;
+    // Older name-only publications resolve identities against every current
+    // public resource. Keep that compatibility path without loading the whole
+    // catalog for revisions that already contain reviewed resource identities.
+    if (signal.publication_basis === 'manual_confirmation' && signal.public_resources === undefined)
+      return (await getSignalEntries()).find((entry) => entry.id === id);
+    return projectEditorialEntityLinks([signal], await getResourceEntries())[0];
+  }
   if (id.startsWith('editorial-')) {
     if (!editorialSignalIdPattern.test(id)) return undefined;
     if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED !== '1') return undefined;
@@ -66,7 +79,7 @@ export async function getSignalEntryById(id: string): Promise<SignalEntry | unde
     return (await import('./server/public-signals.ts')).getPublicSignalById(id);
   }
   return (await getSignalEntries()).find((signal) => signal.id === id);
-}
+});
 
 export async function getSeedEntityMap(): Promise<Map<string, SeedEntity>> {
   return new Map(

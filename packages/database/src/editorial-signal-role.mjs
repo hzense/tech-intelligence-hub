@@ -1,7 +1,8 @@
 import { editorialColumns, editorialPublicColumns } from './editorial-signal-catalog.mjs';
 import { EditorialSignalError } from './editorial-signal-contract.mjs';
 import { editorialVectorManifest } from './editorial-vector-manifest.mjs';
-import { editorialVectorQuery, canonicalVectorManifest } from './editorial-vector-query.mjs';
+import { editorialVectorValidationQuery } from './editorial-vector-query.mjs';
+const expectedVectorManifest = JSON.stringify(editorialVectorManifest);
 export const editorialRoleColumns = {
   writer: {
     editorial_signal_revisions: Object.keys(editorialColumns.editorial_signal_revisions),
@@ -167,11 +168,10 @@ export async function assertRestrictedApplicationRole(client, roleName, capabili
   ).rows[0];
   if (!identity?.safe || identity.name !== roleName)
     throw new EditorialSignalError('editorial_role_invalid');
-  const vectorFunctions = (await client.query(editorialVectorQuery)).rows;
-  if (
-    vectorFunctions.length &&
-    canonicalVectorManifest(vectorFunctions) !== canonicalVectorManifest(editorialVectorManifest)
-  )
+  const vectorValidation = (
+    await client.query(editorialVectorValidationQuery, [expectedVectorManifest])
+  ).rows;
+  if (vectorValidation.length !== 1 || vectorValidation[0]?.safe !== true)
     throw new EditorialSignalError('editorial_role_invalid');
   const columns = (
     await client.query(`SELECT n.nspname AS schema,c.relname AS table_name,a.attname AS column_name,p.privilege,

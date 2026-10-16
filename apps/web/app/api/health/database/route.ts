@@ -6,7 +6,7 @@ import process from 'node:process';
 import { readSearchMode } from '@/lib/search-mode';
 import { readSignalReadMode } from '@/lib/public-signal-reader-core';
 import { unifiedSignalEnabled } from '@/lib/unified-signal-mode';
-import { readUnifiedSignalsForTask } from '@/lib/server/unified-signals';
+import { probeUnifiedSignals } from '@/lib/server/unified-signals';
 import { probeLegacySignalArchive } from '@/lib/server/legacy-signal-archive';
 import {
   readRuntimeTopics,
@@ -37,7 +37,7 @@ const handleHealthRequest = createRuntimeReaderHealthHandler({
   signalReadMode: () =>
     unifiedSignalEnabled(process.env) ? 'database' : readSignalReadMode(process.env),
   probePublicSignals: async () => {
-    if (unifiedSignalEnabled(process.env)) await readUnifiedSignalsForTask();
+    if (unifiedSignalEnabled(process.env)) await probeUnifiedSignals();
     else await probeRuntimePublicSignals();
   },
   probeLegacySignals: async () => {

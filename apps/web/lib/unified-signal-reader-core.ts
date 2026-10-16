@@ -8,6 +8,10 @@ import {
 
 export const unifiedPublicListQuery = `SELECT signal_id,version,origin,publication_basis,content,recorded_at
 FROM public.unified_public_signals ORDER BY signal_id COLLATE "C" LIMIT $1`;
+export const unifiedPublicByIdQuery = `SELECT signal_id,version,origin,publication_basis,content,recorded_at
+FROM public.unified_public_signals WHERE signal_id = $1 LIMIT 2`;
+export const unifiedPublicProbeQuery = `SELECT signal_id,version,origin,publication_basis,content,recorded_at
+FROM public.unified_public_signals LIMIT 1`;
 export const unifiedPublicStatusQuery = 'SELECT ready FROM public.unified_public_status';
 
 export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
@@ -111,18 +115,31 @@ export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
     .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at) || a.id.localeCompare(b.id));
 }
 export function createUnifiedSignalReader(client: PublicSignalQueryClient) {
+  async function read(sql: string, parameters: unknown[]) {
+    try {
+      const status = (await client.query(unifiedPublicStatusQuery, [])).rows;
+      if (status.length !== 1 || (status[0] as { ready?: unknown })?.ready !== true)
+        throw new PublicSignalReaderError();
+      return mapUnifiedSignalRows((await client.query(sql, parameters)).rows);
+    } catch {
+      throw new PublicSignalReaderError();
+    }
+  }
   return {
     async list() {
-      try {
-        const status = (await client.query(unifiedPublicStatusQuery, [])).rows;
-        if (status.length !== 1 || (status[0] as { ready?: unknown })?.ready !== true)
-          throw new PublicSignalReaderError();
-        return mapUnifiedSignalRows(
-          (await client.query(unifiedPublicListQuery, [publicSignalMaximumEntries + 1])).rows,
-        );
-      } catch {
+      return read(unifiedPublicListQuery, [publicSignalMaximumEntries + 1]);
+    },
+    async byId(id: string): Promise<SignalEntry | undefined> {
+      if (typeof id !== 'string' || id.length > 200 || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(id))
+        return undefined;
+      const rows = await read(unifiedPublicByIdQuery, [id]);
+      if (rows.length > 1 || (rows.length === 1 && rows[0]!.id !== id))
         throw new PublicSignalReaderError();
-      }
+      return rows[0];
+    },
+    async probe(): Promise<void> {
+      const rows = await read(unifiedPublicProbeQuery, []);
+      if (rows.length > 1) throw new PublicSignalReaderError();
     },
   };
 }

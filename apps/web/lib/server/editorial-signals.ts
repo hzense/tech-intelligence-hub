@@ -8,7 +8,11 @@ import {
   createEditorialSignalReader,
   editorialReaderConnectionString,
 } from '../editorial-signal-reader-core';
-import { PublicSignalReaderError, type SignalEntry } from '../public-signal-reader-core';
+import {
+  PublicSignalReaderError,
+  type PublicSignalQueryClient,
+  type SignalEntry,
+} from '../public-signal-reader-core';
 
 let pool: pg.Pool | undefined;
 let poolConnectionString: string | undefined;
@@ -32,13 +36,15 @@ function readerPool() {
   return pool;
 }
 
-/** Share the bounded public-reader pool between current and archived Signals. */
-export async function queryEditorialPublicData(sql: string, parameters: unknown[]) {
+/** Validate one checked-out connection for a single public read operation. */
+export async function withEditorialPublicReader<T>(
+  read: (client: PublicSignalQueryClient) => Promise<T>,
+): Promise<T> {
   const client = await readerPool().connect();
   let discard = false;
   try {
     await assertEditorialRole(client, 'reader');
-    return await client.query(sql, parameters);
+    return await read(client);
   } catch (error) {
     // query_timeout can reject before PostgreSQL is ready for another query.
     discard = true;
@@ -46,6 +52,11 @@ export async function queryEditorialPublicData(sql: string, parameters: unknown[
   } finally {
     client.release(discard);
   }
+}
+
+/** Share the bounded public-reader pool between current and archived Signals. */
+export async function queryEditorialPublicData(sql: string, parameters: unknown[]) {
+  return withEditorialPublicReader((client) => client.query(sql, parameters));
 }
 
 function reader() {

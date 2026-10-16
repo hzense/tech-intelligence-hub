@@ -35,6 +35,7 @@ import {
   type SearchType,
 } from '@hzense/search/ranking';
 import type { TopicInsightResult } from './topic-insight-core.ts';
+import type { SignalEntry } from './public-signal-reader-core.ts';
 
 export {
   isSearchType,
@@ -208,6 +209,7 @@ function resourceCandidate(entity: SeedEntity): SearchProjectionCandidate {
 
 export async function getSearchDocumentProjections(
   includeSignals = true,
+  currentSignals?: readonly SignalEntry[],
 ): Promise<CanonicalSearchDocument[]> {
   const [
     insightEntries,
@@ -220,7 +222,9 @@ export async function getSearchDocumentProjections(
   ] = await Promise.all([
     getInsightEntries(),
     getTopicEntries(),
-    includeSignals ? getSignalEntries() : Promise.resolve([]),
+    Promise.resolve<readonly SignalEntry[]>(
+      includeSignals ? (currentSignals ?? getSignalEntries()) : [],
+    ),
     getResourceEntries(),
     getTopicTitleMap(),
     getSeedEntityMap(),
@@ -256,19 +260,27 @@ export async function getSearchDocumentProjections(
   return projectPublishedSearchDocuments(candidates);
 }
 
-export async function getSearchDocuments(includeSignals = true): Promise<SearchDocument[]> {
-  return (await getSearchDocumentProjections(includeSignals)).map(toSearchDocument);
+export async function getSearchDocuments(
+  includeSignals = true,
+  currentSignals?: readonly SignalEntry[],
+): Promise<SearchDocument[]> {
+  return (await getSearchDocumentProjections(includeSignals, currentSignals)).map(toSearchDocument);
 }
 
 export async function searchPublishedContent(
   query: string,
   type?: SearchType,
   includeSignals = true,
+  currentSignals?: readonly SignalEntry[],
 ): Promise<SearchResult[]> {
-  const legacy = rankSearchDocuments(await getSearchDocuments(includeSignals), query, type);
-  if (!includeSignals || (type && type !== 'signal')) return legacy;
-  const editorial = (await getSignalEntries()).filter(
-    (entry) => entry.publication_basis === 'manual_confirmation',
+  // A single invocation uses one public snapshot even outside an RSC render.
+  const signals = includeSignals ? (currentSignals ?? (await getSignalEntries())) : [];
+  const legacy = rankSearchDocuments(
+    await getSearchDocuments(includeSignals, signals),
+    query,
+    type,
   );
+  if (!includeSignals || (type && type !== 'signal')) return legacy;
+  const editorial = signals.filter((entry) => entry.publication_basis === 'manual_confirmation');
   return [...legacy, ...searchSignalEntries(editorial, query)].sort(compareSearchResults);
 }

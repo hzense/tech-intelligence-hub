@@ -12,7 +12,11 @@ import {
 import { getSignalEntries } from '../seed-runtime';
 import { getPublicExploration } from '../public-exploration-runtime';
 import { searchRuntimeDocuments } from './runtime-reader';
-import { readSignalReadMode, mergeCurrentSignalSearch } from '../public-signal-reader-core';
+import {
+  readSignalReadMode,
+  mergeCurrentSignalSearch,
+  type SignalEntry,
+} from '../public-signal-reader-core';
 import { searchPublicSignals } from './public-signals';
 import { visibleTopicInsights } from './topic-insights';
 import { unifiedSignalEnabled } from '../unified-signal-mode';
@@ -49,26 +53,35 @@ function mergeCurrentResourceSearch(
 
 async function searchCurrentTopicInsights(
   query: string,
-  type?: SearchType,
+  type: SearchType | undefined,
+  readSignals: () => Promise<SignalEntry[]>,
 ): Promise<SearchResult[]> {
   if (
     process.env.HZENSE_TOPIC_INSIGHTS_ENABLED !== '1' ||
     (type !== undefined && type !== 'insight')
   )
     return [];
-  const [signals, topicTitleMap] = await Promise.all([getSignalEntries(), getTopicTitleMap()]);
+  const [signals, topicTitleMap] = await Promise.all([readSignals(), getTopicTitleMap()]);
   return rankVisibleTopicInsightResults(await visibleTopicInsights(signals), query, topicTitleMap);
 }
 
-async function searchCurrentResources(query: string, type?: SearchType): Promise<SearchResult[]> {
+async function searchCurrentResources(
+  query: string,
+  type: SearchType | undefined,
+  readSignals: () => Promise<SignalEntry[]>,
+): Promise<SearchResult[]> {
   if (type !== undefined && type !== 'resource') return [];
-  const exploration = await getPublicExploration();
+  const exploration = await getPublicExploration(await readSignals());
   const topicNames = new Map(exploration.taxonomy.topics.map((topic) => [topic.id, topic.name]));
   return rankVisibleResourceResults(exploration.entities, query, topicNames);
 }
 
 export async function searchPublishedContent(query: string, type?: SearchType) {
   if (type === 'daily' || type === 'weekly') return [];
+  // Search also runs outside RSC cache scopes. Share only this invocation's
+  // current public snapshot across signal, resource and insight projections.
+  let signals: Promise<SignalEntry[]> | undefined;
+  const readSignals = () => (signals ??= getSignalEntries());
   if (!unifiedSignalEnabled(process.env) && readSignalReadMode(process.env) === 'database') {
     if (type === 'signal') return searchPublicSignals(query);
     const [legacy, current, resources, insights] = await Promise.all([
@@ -79,8 +92,8 @@ export async function searchPublishedContent(query: string, type?: SearchType) {
         database: () => searchRuntimeDocuments(query, type),
       }),
       type ? Promise.resolve([]) : searchPublicSignals(query),
-      searchCurrentResources(query, type),
-      searchCurrentTopicInsights(query, type),
+      searchCurrentResources(query, type, readSignals),
+      searchCurrentTopicInsights(query, type, readSignals),
     ]);
     return mergeCurrentResourceSearch(
       mergeCurrentSignalSearch(await filterRetiredDocuments(legacy), current),
@@ -98,9 +111,11 @@ export async function searchPublishedContent(query: string, type?: SearchType) {
           inProcess: () => searchInProcess(query, type, false),
           database: () => searchRuntimeDocuments(query, type),
         }),
-    !type || type === 'signal' ? searchInProcess(query, 'signal') : Promise.resolve([]),
-    searchCurrentResources(query, type),
-    searchCurrentTopicInsights(query, type),
+    !type || type === 'signal'
+      ? readSignals().then((current) => searchInProcess(query, 'signal', true, current))
+      : Promise.resolve([]),
+    searchCurrentResources(query, type, readSignals),
+    searchCurrentTopicInsights(query, type, readSignals),
   ]);
   return mergeCurrentResourceSearch(
     mergeCurrentSignalSearch(await filterRetiredDocuments(legacy), current),

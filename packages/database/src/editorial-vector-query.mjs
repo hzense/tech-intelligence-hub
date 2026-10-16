@@ -32,6 +32,22 @@ export const editorialVectorQuery = `SELECT p.proname AS name,
   LEFT JOIN pg_type mt ON mt.oid=ag.aggmtranstype LEFT JOIN pg_namespace mn ON mn.oid=mt.typnamespace
   WHERE e.extname='vector'`;
 
+// Compare the same complete catalog projection inside PostgreSQL. Returning its
+// 118 rows for every ACL check needlessly transfers extension metadata on every
+// public read. JSONB retains array order and every nested aggregate attribute;
+// EXCEPT ALL also retains duplicate multiplicity, matching the old sorted-row
+// comparison. The empty-extension case remains allowed by the role contract.
+export const editorialVectorValidationQuery = `WITH actual AS MATERIALIZED (
+  SELECT pg_catalog.to_jsonb(vector_function) AS value
+  FROM (${editorialVectorQuery}) AS vector_function
+), expected AS MATERIALIZED (
+  SELECT value FROM pg_catalog.jsonb_array_elements($1::jsonb) AS item(value)
+)
+SELECT NOT EXISTS (SELECT 1 FROM actual) OR (
+  NOT EXISTS (SELECT value FROM actual EXCEPT ALL SELECT value FROM expected)
+  AND NOT EXISTS (SELECT value FROM expected EXCEPT ALL SELECT value FROM actual)
+) AS safe`;
+
 export function canonicalVectorManifest(rows) {
   const canonical = (value) =>
     Array.isArray(value)
