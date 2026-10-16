@@ -15,7 +15,12 @@ import {
 import { normalizeEditorialRequest } from '../src/editorial-signal-contract.mjs';
 import { assertEditorialRole } from '../src/editorial-signal-role.mjs';
 import { assertCandidateReviewRole } from '../src/candidate-review-role.mjs';
-import { editorialVectorQuery } from '../src/editorial-vector-query.mjs';
+import {
+  editorialVectorQuery,
+  editorialVectorValidationQuery,
+  canonicalVectorManifest,
+} from '../src/editorial-vector-query.mjs';
+import { editorialVectorManifest } from '../src/editorial-vector-manifest.mjs';
 import { editorialFixture } from './editorial-signal.test.mjs';
 import { resourceFixture } from './editorial-resources.test.mjs';
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
@@ -487,6 +492,76 @@ suite('editorial publication persistence and isolated capabilities', () => {
       } finally {
         client.release();
       }
+    }
+  });
+  it('retains canonical manifest comparison semantics in PostgreSQL', async () => {
+    // Exercise the production multiset comparison with controlled catalog rows,
+    // independently of whether the disposable cluster has pgvector installed.
+    const projection = `SELECT pg_catalog.to_jsonb(vector_function) AS value
+  FROM (${editorialVectorQuery}) AS vector_function`;
+    expect(editorialVectorValidationQuery).toContain(projection);
+    const query = editorialVectorValidationQuery.replace(
+      projection,
+      'SELECT value FROM pg_catalog.jsonb_array_elements($2::jsonb) AS item(value)',
+    );
+    const modified = (change) => {
+      const rows = globalThis.structuredClone(editorialVectorManifest);
+      change(rows);
+      return rows;
+    };
+    const cases = [
+      [],
+      editorialVectorManifest,
+      [...editorialVectorManifest].reverse(),
+      editorialVectorManifest.slice(1),
+      [...editorialVectorManifest, editorialVectorManifest[0]],
+      modified((rows) => (rows[1] = rows[0])),
+      modified((rows) => (rows[0].source += '_modified')),
+      modified((rows) => (rows[0].args = [...rows[0].args].reverse())),
+      modified((rows) => (rows[0].strict = !rows[0].strict)),
+      modified((rows) => (rows[0].strict = String(rows[0].strict))),
+      modified((rows) => (rows[0].strict = null)),
+      modified((rows) => delete rows[0].configuration),
+      modified((rows) => (rows[0].extra = true)),
+      modified((rows) => {
+        rows.find((row) => row.aggregate !== null).aggregate.support_functions.trans =
+          'public.unaudited_transition(public.vector)';
+      }),
+    ];
+    for (const actual of cases) {
+      const expected =
+        actual.length === 0 ||
+        canonicalVectorManifest(actual) === canonicalVectorManifest(editorialVectorManifest);
+      const rows = (
+        await pool.query(query, [JSON.stringify(editorialVectorManifest), JSON.stringify(actual)])
+      ).rows;
+      expect(rows).toEqual([{ safe: expected }]);
+    }
+  });
+  it('returns only an exact bounded vector validation receipt, including nested attributes and duplicates', async () => {
+    const validate = async (manifest) =>
+      (await pool.query(editorialVectorValidationQuery, [JSON.stringify(manifest)])).rows;
+    // No extension was previously accepted and remains accepted.
+    expect(await validate(editorialVectorManifest)).toEqual([{ safe: true }]);
+    await pool.query("CREATE EXTENSION vector VERSION '0.8.6'");
+    try {
+      expect(await validate(editorialVectorManifest)).toEqual([{ safe: true }]);
+      expect(await validate([...editorialVectorManifest].reverse())).toEqual([{ safe: true }]);
+      expect(await validate([])).toEqual([{ safe: false }]);
+      expect(await validate(editorialVectorManifest.slice(1))).toEqual([{ safe: false }]);
+      expect(await validate([...editorialVectorManifest, editorialVectorManifest[0]])).toEqual([
+        { safe: false },
+      ]);
+      const changed = globalThis.structuredClone(editorialVectorManifest);
+      changed[0].source += '_modified';
+      expect(await validate(changed)).toEqual([{ safe: false }]);
+      const changedAggregate = globalThis.structuredClone(editorialVectorManifest);
+      const aggregate = changedAggregate.find((row) => row.aggregate !== null).aggregate;
+      aggregate.support_functions.trans = 'public.unaudited_transition(public.vector)';
+      expect(await validate(changedAggregate)).toEqual([{ safe: false }]);
+      await expect(pool.query(editorialVectorValidationQuery, ['{}'])).rejects.toThrow();
+    } finally {
+      await pool.query('DROP EXTENSION vector');
     }
   });
   it('accepts only the audited vector extension and rejects attached application functions', async () => {

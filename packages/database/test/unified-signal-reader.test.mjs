@@ -7,6 +7,9 @@ import { previewUnifiedPublicSignals } from '../src/unified-signal-plan.mjs';
 import {
   mapUnifiedSignalRows,
   createUnifiedSignalReader,
+  unifiedPublicByIdQuery,
+  unifiedPublicProbeQuery,
+  unifiedPublicStatusQuery,
 } from '../../../apps/web/lib/unified-signal-reader-core.ts';
 import { mapEditorialSignalRows } from '../../../apps/web/lib/editorial-signal-reader-core.ts';
 import { toUnifiedSignal } from '../../../apps/web/lib/unified-signal-core.ts';
@@ -164,4 +167,60 @@ test('one default-off flag controls writer, pages, task snapshots and search', a
       /unifiedSignalEnabled\(process.env\)/,
     );
   }
+});
+
+test('detail reads only the requested public ID and observes withdrawal on the next call', async () => {
+  let visible = [rows[0]];
+  const queries = [];
+  const reader = createUnifiedSignalReader({
+    async query(sql, parameters) {
+      queries.push({ sql, parameters });
+      return { rows: sql === unifiedPublicStatusQuery ? [{ ready: true }] : visible };
+    },
+  });
+  assert.deepEqual(await reader.byId(rows[0].signal_id), mapUnifiedSignalRows(visible)[0]);
+  assert.deepEqual(queries, [
+    { sql: unifiedPublicStatusQuery, parameters: [] },
+    { sql: unifiedPublicByIdQuery, parameters: [rows[0].signal_id] },
+  ]);
+  assert.match(unifiedPublicByIdQuery, /WHERE signal_id = \$1 LIMIT 2$/);
+  visible = [];
+  assert.equal(await reader.byId(rows[0].signal_id), undefined);
+  assert.equal(queries.length, 4);
+  for (const id of ['', '../private', "x' OR true--", 'a'.repeat(201), undefined])
+    assert.equal(await reader.byId(id), undefined);
+  assert.equal(queries.length, 4, 'invalid IDs never query the database');
+  for (const invalid of [[rows[1]], [rows[0], rows[1]], [rows[0], rows[0]]]) {
+    visible = invalid;
+    await assert.rejects(reader.byId(rows[0].signal_id), { name: 'PublicSignalReaderError' });
+  }
+});
+
+test('bounded health probe validates readiness and a public sample without listing the catalog', async () => {
+  let ready = true;
+  let sample = [rows[0]];
+  const queries = [];
+  const reader = createUnifiedSignalReader({
+    async query(sql, parameters) {
+      queries.push({ sql, parameters });
+      return { rows: sql === unifiedPublicStatusQuery ? [{ ready }] : sample };
+    },
+  });
+  await reader.probe();
+  assert.deepEqual(queries, [
+    { sql: unifiedPublicStatusQuery, parameters: [] },
+    { sql: unifiedPublicProbeQuery, parameters: [] },
+  ]);
+  assert.match(unifiedPublicProbeQuery, /FROM public\.unified_public_signals LIMIT 1$/);
+  sample = [];
+  await reader.probe();
+  sample = [{ ...rows[0], content: { ...rows[0].content, private: 'secret' } }];
+  await assert.rejects(reader.probe(), { name: 'PublicSignalReaderError' });
+  sample = [rows[0], rows[1]];
+  await assert.rejects(reader.probe(), { name: 'PublicSignalReaderError' });
+  ready = false;
+  const before = queries.length;
+  await assert.rejects(reader.probe(), { name: 'PublicSignalReaderError' });
+  await assert.rejects(reader.byId(rows[0].signal_id), { name: 'PublicSignalReaderError' });
+  assert.equal(queries.length, before + 2, 'not-ready never reads content');
 });

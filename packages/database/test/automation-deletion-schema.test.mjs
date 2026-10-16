@@ -10,6 +10,7 @@ import {
   automationUpdateColumns,
 } from '../src/automation-role.mjs';
 import { automationChecks, automationColumns } from '../src/automation-catalog.mjs';
+import { editorialVectorValidationQuery } from '../src/editorial-vector-query.mjs';
 
 const read = (path) => readFile(new URL(`../../../${path}`, import.meta.url), 'utf8');
 const oldCapabilities = Object.entries(automationRoleColumns).flatMap(([table, columns]) =>
@@ -24,6 +25,7 @@ function roleClient({ column = false, extra = [], missing = [], unsafe = false }
   const capabilities = [...oldCapabilities, ...extra].filter((value) => !missing.includes(value));
   return {
     async query(sql) {
+      if (sql === editorialVectorValidationQuery) return { rows: [{ safe: true }] };
       if (sql.includes("a.attname='deleted_at'"))
         return { rows: column === false ? [] : [{ safe: column === true }] };
       if (sql.includes('current_user AS name'))
