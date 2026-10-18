@@ -5,8 +5,9 @@ import Link from 'next/link';
 import type { AutomationConfig } from '../../../packages/database/src/automation-contract.mjs';
 import type {
   AutomationConfigRecord,
-  AutomationRun,
+  AutomationRunView,
 } from '../../../packages/database/src/automation-store.mjs';
+import { startVisiblePolling } from '../lib/visible-polling';
 import styles from './admin-automation.module.css';
 import {
   discoveryDiagnosticItems,
@@ -28,20 +29,7 @@ type ConfigView = Pick<
   AutomationConfigRecord,
   'id' | 'revision' | 'config' | 'enabled' | 'next_run_at' | 'created_at' | 'updated_at'
 >;
-type RunView = Pick<
-  AutomationRun,
-  | 'id'
-  | 'snapshot'
-  | 'status'
-  | 'phase'
-  | 'result'
-  | 'error_code'
-  | 'created_at'
-  | 'finished_at'
-  | 'charged_microusd'
-  | 'cost_source'
-  | 'publication_status'
-> & { generationProgress?: AutomationGenerationProgress };
+type RunView = AutomationRunView & { generationProgress?: AutomationGenerationProgress };
 type Dashboard = { configs: ConfigView[]; runs: RunView[]; configDeletionAvailable: boolean };
 const blank = (kind: Kind): AutomationConfig => ({
   name: '',
@@ -86,15 +74,19 @@ const errors: Record<string, string> = {
   insight_stale: '证据信号已改变或撤回，请重新生成报告。',
   dispatch_unknown: '任务已保存，但派发结果未知；请先刷新核对。',
 };
-async function api<T>(body?: unknown): Promise<T> {
-  const response = await fetch('/api/admin/automation', {
-    method: body ? 'POST' : 'GET',
-    credentials: 'same-origin',
-    cache: 'no-store',
-    ...(body
-      ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-      : {}),
-  });
+async function api<T>(body?: unknown, signal?: AbortSignal, id?: string): Promise<T> {
+  const response = await fetch(
+    `/api/admin/automation${id ? `?id=${encodeURIComponent(id)}` : ''}`,
+    {
+      method: body ? 'POST' : 'GET',
+      credentials: 'same-origin',
+      cache: 'no-store',
+      ...(signal ? { signal } : {}),
+      ...(body
+        ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+        : {}),
+    },
+  );
   const result = await response.json();
   if (!response.ok) throw new Error(errors[result.error] ?? '操作结果未确认，请刷新列表核对。');
   return result;
@@ -146,10 +138,12 @@ function SourceResult({
   result,
   progress,
   allSourcesRejected,
+  summaryOnly = false,
 }: {
   result: Record<string, unknown>;
   progress?: AutomationGenerationProgress;
   allSourcesRejected: boolean;
+  summaryOnly?: boolean;
 }) {
   const discovery = result.discovery as
     | {
@@ -158,6 +152,7 @@ function SourceResult({
         duplicates?: number;
         rejected?: number;
         articles?: { url: string; title: string; publishedAt: string }[];
+        articleCount?: number | null;
         validation?: unknown;
       }
     | undefined;
@@ -176,8 +171,10 @@ function SourceResult({
     searchRequests >= 0;
   return (
     <div className={styles.report}>
-      {allSourcesRejected ? <p>来源全部未通过校验，未启动资料导入和候选生成。</p> : null}
-      {diagnostics.length ? (
+      {summaryOnly && allSourcesRejected ? (
+        <p>来源全部未通过校验，未启动资料导入和候选生成。</p>
+      ) : null}
+      {!summaryOnly && diagnostics.length ? (
         <details>
           <summary>查看检索诊断（脱敏）</summary>
           <ul>
@@ -188,15 +185,15 @@ function SourceResult({
           <p>仅显示结构回执，不保存原始回答、思考过程或密钥；查看不会重新调用 AI。</p>
         </details>
       ) : null}
-      {discovery ? (
+      {!summaryOnly && discovery ? (
         <>
           <p>
             {knownSearchCount ? `实际检索 ${searchRequests} 次` : '搜索次数未返回'}
             {!knownSearchCount && discovery.searchEvidence === 'provider_url_citations'
               ? ' · 已收到有效来源引用'
               : ''}{' '}
-            · 选中 {discovery.articles?.length ?? 0} 篇原文 · 已有或重复 {discovery.duplicates ?? 0}{' '}
-            项 · 不符合规则 {discovery.rejected ?? 0} 项
+            · 选中 {discovery.articles?.length ?? '待核对'} 篇原文 · 已有或重复{' '}
+            {discovery.duplicates ?? '待核对'} 项 · 不符合规则 {discovery.rejected ?? '待核对'} 项
           </p>
           {validation.summary.length || missingRejectionReasons ? (
             <details>
@@ -240,10 +237,10 @@ function SourceResult({
           </details>
         </>
       ) : null}
-      {typeof result.batchId === 'string' ? (
+      {!summaryOnly && typeof result.batchId === 'string' ? (
         <Link href="/admin/imports">查看导入批次 · {result.batchId}</Link>
       ) : null}
-      {sourceFailures.length ? (
+      {!summaryOnly && sourceFailures.length ? (
         <details>
           <summary>查看来源处理失败原因（脱敏）</summary>
           <ul>
@@ -254,7 +251,7 @@ function SourceResult({
           <p>仅显示已确认的创建拒绝原因；查看不会重新导入或调用 AI。</p>
         </details>
       ) : null}
-      {progress?.total ? (
+      {summaryOnly && progress?.total ? (
         <p>
           候选任务 {progress.total} 项 · 已完成 {progress.completed} 项 · 排队 {progress.pending} 项
           · 生成中 {progress.running} 项 · 失败 {progress.failed} 项 · 取消 {progress.cancelled} 项
@@ -267,24 +264,99 @@ function SourceResult({
           候选仍需人工确认发布。
         </p>
       ) : null}
-      <ul>
-        {ids.map((id) => {
-          const task = progress?.tasks.find((row) => row.id === id);
-          return (
-            <li key={id}>
-              <Link href={`/admin/signal-generation/${id}`}>查看私有候选任务 · {id}</Link>
-              <span>{task ? generationSummaryLabel(task) : '已登记，结果待核对'}</span>
-            </li>
-          );
-        })}
-      </ul>
-      {typeof result.failed === 'number' &&
+      {summaryOnly ? (
+        <ul>
+          {ids.map((id) => {
+            const task = progress?.tasks.find((row) => row.id === id);
+            return (
+              <li key={id}>
+                <Link href={`/admin/signal-generation/${id}`}>查看私有候选任务 · {id}</Link>
+                <span>{task ? generationSummaryLabel(task) : '已登记，结果待核对'}</span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {summaryOnly &&
+      typeof result.failed === 'number' &&
       Number.isSafeInteger(result.failed) &&
       result.failed > 0 ? (
         <p>
           资料或候选登记未完成：{result.failed} 项。
           {ids.length ? '候选任务仍需各自完成生成与审核。' : ''}
         </p>
+      ) : null}
+    </div>
+  );
+}
+
+function AutomationResultDetails({ row }: { row: RunView }) {
+  const [detail, setDetail] = useState<AutomationRunView | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => request.current?.abort(), []);
+  function close() {
+    request.current?.abort();
+    request.current = null;
+    setLoading(false);
+    setDetail(null);
+    setError('');
+  }
+  async function load() {
+    if (request.current) return;
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true);
+    setError('');
+    try {
+      const next = await api<{ run: AutomationRunView }>(undefined, controller.signal, row.id);
+      if (next?.run?.id !== row.id || next.run.snapshot?.kind !== row.snapshot.kind)
+        throw new Error('返回的详情与当前任务不一致，已保留原详情；请刷新列表后核对。');
+      if (!controller.signal.aborted) setDetail(next.run);
+    } catch (failure) {
+      if (!controller.signal.aborted)
+        setError(failure instanceof Error ? failure.message : '详情读取失败，请重试。');
+    } finally {
+      if (!controller.signal.aborted) {
+        request.current = null;
+        setLoading(false);
+      }
+    }
+  }
+  return (
+    <div>
+      <button type="button" disabled={loading} onClick={() => void load()}>
+        {loading
+          ? '读取详情中…'
+          : detail
+            ? '刷新详情'
+            : row.snapshot.kind === 'topic_insight'
+              ? '阅读私有报告'
+              : '查看采集详情'}
+      </button>
+      {detail ? (
+        <button type="button" onClick={close}>
+          收起详情
+        </button>
+      ) : null}
+      {error ? <p role="alert">{error}</p> : null}
+      {detail ? (
+        <>
+          <p>详情按需读取，不自动刷新，也不会调用 AI。</p>
+          {detail.result ? (
+            detail.snapshot.kind === 'topic_insight' ? (
+              <TopicReport result={detail.result} />
+            ) : (
+              <SourceResult
+                result={detail.result}
+                allSourcesRejected={sourceAutomationAllSourcesRejected(detail)}
+              />
+            )
+          ) : (
+            <p>此任务尚无可查看的结果。</p>
+          )}
+        </>
       ) : null}
     </div>
   );
@@ -490,6 +562,7 @@ export function AdminAutomation({
   const shouldRefresh =
     configured &&
     !busy &&
+    !refreshFailed &&
     (runs.some(
       (row) =>
         row.status === 'queued' || row.status === 'running' || row.generationProgress?.active,
@@ -497,15 +570,11 @@ export function AdminAutomation({
       (summaryReadFailed && summaryReadFailures < 3));
   useEffect(() => {
     if (!shouldRefresh) return;
-    let stopped = false;
-    let inFlight = false;
-    const timer = window.setInterval(async () => {
-      if (stopped || inFlight || document.visibilityState === 'hidden') return;
-      inFlight = true;
-      const sequence = ++refreshSequence.current;
-      try {
-        const next = await api<Dashboard>();
-        if (!stopped && sequence === refreshSequence.current) {
+    return startVisiblePolling({
+      poll: async (signal) => {
+        const sequence = ++refreshSequence.current;
+        const next = await api<Dashboard>(undefined, signal);
+        if (!signal.aborted && sequence === refreshSequence.current) {
           setState(next);
           setRefreshFailed(false);
           setSummaryReadFailures((count) =>
@@ -516,19 +585,12 @@ export function AdminAutomation({
               : 0,
           );
         }
-      } catch {
-        if (!stopped && sequence === refreshSequence.current) {
-          setRefreshFailed(true);
-          setSummaryReadFailures((count) => count + 1);
-        }
-      } finally {
-        inFlight = false;
-      }
-    }, 5000);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-    };
+      },
+      onError: () => {
+        setRefreshFailed(true);
+        setSummaryReadFailures((count) => count + 1);
+      },
+    });
   }, [shouldRefresh, kind]);
   const checkLabels: Record<string, string> = {
     storage: '配置存储',
@@ -820,7 +882,10 @@ export function AdminAutomation({
       <section className={styles.card} aria-labelledby="runs-title">
         <h2 id="runs-title">运行记录</h2>
         {shouldRefresh ? (
-          <p>每 5 秒自动读取任务状态，不调用 AI；切换到后台标签页后暂停刷新。</p>
+          <p>
+            每 15 秒自动读取任务摘要，不调用
+            AI；后台标签页暂停，返回后立即更新。报告与来源详情仅在点击时读取。
+          </p>
         ) : null}
         {refreshFailed ? (
           <p role="alert">自动刷新失败，当前显示上次读取的状态；请点击“刷新列表”核对。</p>
@@ -872,10 +937,10 @@ export function AdminAutomation({
                       row.status === 'completed' &&
                       row.result ? (
                         <>
-                          <details>
-                            <summary>阅读私有报告</summary>
-                            <TopicReport result={row.result} />
-                          </details>
+                          <AutomationResultDetails
+                            key={`${row.id}:${row.status}:${row.phase}`}
+                            row={row}
+                          />
                           <button
                             type="button"
                             disabled={busy || row.publication_status === 'published'}
@@ -894,11 +959,20 @@ export function AdminAutomation({
                           ) : null}
                         </>
                       ) : row.snapshot.kind === 'source_collection' && row.result ? (
-                        <SourceResult
-                          result={row.result}
-                          allSourcesRejected={sourceAutomationAllSourcesRejected(row)}
-                          {...(row.generationProgress ? { progress: row.generationProgress } : {})}
-                        />
+                        <>
+                          <SourceResult
+                            result={row.result}
+                            summaryOnly
+                            allSourcesRejected={sourceAutomationAllSourcesRejected(row)}
+                            {...(row.generationProgress
+                              ? { progress: row.generationProgress }
+                              : {})}
+                          />
+                          <AutomationResultDetails
+                            key={`${row.id}:${row.status}:${row.phase}`}
+                            row={row}
+                          />
+                        </>
                       ) : (
                         '—'
                       )}

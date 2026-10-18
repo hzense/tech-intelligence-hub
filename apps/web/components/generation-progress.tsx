@@ -61,7 +61,9 @@ export function GenerationProgress({
           已执行 {Math.floor(elapsed / 60)} 分 {elapsed % 60} 秒
         </small>
       )}
-      {active && <small>每 5 秒只读刷新。关闭页面不取消任务，也不会重新调用 AI。</small>}
+      {active && (
+        <small>每 15 秒只读刷新进度，隐藏页面时暂停。关闭页面不取消任务，也不会重新调用 AI。</small>
+      )}
       {failed && (
         <small>
           {localMode

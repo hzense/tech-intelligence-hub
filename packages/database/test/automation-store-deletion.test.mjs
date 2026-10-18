@@ -9,6 +9,7 @@ import {
   deleteAutomationConfig,
   enqueueAutomation,
   readAutomationDashboard,
+  readAutomationRunDetail,
   saveAutomationConfig,
 } from '../src/automation-store.mjs';
 
@@ -157,6 +158,24 @@ describe('automation configuration deletion transaction contract', () => {
     const historyRead = calls.find(({ sql }) => sql.includes('FROM public.automation_runs'));
     expect(historyRead.sql).not.toContain('deleted_at');
     expect(historyRead.sql).not.toContain('automation_configs');
+  });
+  it('projects summaries in SQL before transfer and reads complete results only by owner-scoped detail', async () => {
+    const { pool, calls } = fixture();
+    await readAutomationDashboard({ pool, owner });
+    const list = calls.find(({ sql }) => sql.includes('FROM public.automation_runs'));
+    expect(list.sql).not.toMatch(/frozen_inputs|lease_token|lease_until|config_snapshot/);
+    expect(list.sql).not.toMatch(/(?:SELECT |,)\s*(?:snapshot|result)\s*(?:,|FROM)/);
+    expect(list.sql).toContain("'name',snapshot->'name','kind',snapshot->'kind'");
+    expect(list.sql).toContain('LIMIT 8');
+    expect(list.sql).toContain("'articleCount'");
+    expect(list.params).toEqual([owner]);
+    await expect(readAutomationRunDetail({ pool, owner, id })).rejects.toThrow('not_found');
+    const detail = calls.find(({ sql }) => sql.includes('FROM public.automation_runs WHERE id=$1'));
+    expect(detail.sql).toContain(',result FROM');
+    expect(detail.sql).toContain('AND owner_id=$2');
+    expect(detail.params).toEqual([id, owner]);
+    expect(detail.sql).not.toMatch(/frozen_inputs|lease_token|lease_until/);
+    expect(calls.some(({ sql }) => /^(UPDATE|INSERT|DELETE) /.test(sql))).toBe(false);
   });
 
   it('refuses to revive a deleted configuration with either a save or a new manual run', async () => {

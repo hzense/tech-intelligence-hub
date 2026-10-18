@@ -6,6 +6,8 @@ import {
   signalGenerationSourceHash,
   signalGenerationProfileIdentity,
   type SignalGenerationRun,
+  type SignalGenerationDisplay,
+  type SignalGenerationProgress,
   type SignalGenerationSnapshot,
 } from '../../../packages/database/src/signal-generation-store.mjs';
 import type { AiProfile, AiConnection } from '../../../packages/database/src/ai-config-store.mjs';
@@ -119,7 +121,7 @@ export function generationCost(input: number, output: number, settings: AiConnec
   return Number(value);
 }
 /** Excludes source text, credentials, lease tokens, owner and internal configuration. */
-export function generationDto(run: SignalGenerationRun) {
+export function generationDto(run: SignalGenerationDisplay) {
   // Unknown provider outcomes are failed tasks for users. Keep the stored
   // diagnostic and accounting state intact. Retries need a separate explicit request.
   const leaseReleased =
@@ -141,6 +143,26 @@ export function generationDto(run: SignalGenerationRun) {
       (!['unknown', 'cancelled'].includes(run.status) || leaseReleased),
     result: run.result,
     error_code: expired ? 'outcome_unknown' : run.error_code,
+    progress_phase: run.progress_phase ?? null,
+    progress_at: run.progress_at ?? null,
+    started_at: run.started_at ?? null,
+    finished_at: run.finished_at,
+    created_at: run.created_at,
+    reserved_microusd: run.reserved_microusd,
+    charged_microusd: run.charged_microusd,
+  };
+}
+
+/** Small, read-only projection; task detail is loaded once when progress ends. */
+export function generationProgressDto(run: SignalGenerationProgress) {
+  const leaseUntil = run.lease_until === null ? Number.NaN : new Date(run.lease_until).getTime();
+  const expired =
+    run.status === 'running' && (!Number.isFinite(leaseUntil) || leaseUntil <= Date.now());
+  return {
+    id: run.id,
+    status: expired || run.status === 'unknown' ? 'failed' : run.status,
+    error_code: expired ? 'outcome_unknown' : run.error_code,
+    lease_until: run.lease_until,
     progress_phase: run.progress_phase ?? null,
     progress_at: run.progress_at ?? null,
     started_at: run.started_at ?? null,

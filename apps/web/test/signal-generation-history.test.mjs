@@ -104,6 +104,24 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   };
   assert.equal(service.generationConfigured(), false);
   assert.equal(service.generationHistoryConfigured(), true);
+  const progressStart = service.queries.length;
+  const [progress] = await service.generationProgress('admin', [service.id]);
+  assert.equal(progress.status, 'completed');
+  assert.doesNotMatch(
+    JSON.stringify(progress),
+    /PRIVATE_|snapshot|configuration|result|owner_id|lease_token|Saved candidate/,
+  );
+  const progressSelect = service.queries
+    .slice(progressStart)
+    .find((q) => q.sql.startsWith('SELECT id,status,error_code,lease_until,'));
+  assert.ok(progressSelect);
+  assert.doesNotMatch(progressSelect.sql, /snapshot|configuration|result|lease_token/);
+  assert.match(progressSelect.sql, /NULL::text AS progress_phase/);
+  assert.equal(service.ancillary.aiReads, 0);
+  assert.equal(service.ancillary.importReads, 0);
+  await assert.rejects(service.generationProgress('other-admin', [service.id]), {
+    code: 'not_found',
+  });
   const detail = await service.generationDetail('admin', service.id);
   assert.equal(detail.can_delete, false);
   await assert.rejects(service.deleteGeneration('admin', service.id), { code: 'not_configured' });
@@ -114,6 +132,15 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   );
   const dashboard = await service.generationDashboard('admin');
   assert.deepEqual(dashboard, { runs: [detail], profiles: [], batches: [], dailyUsage: undefined });
+  const initialDisplaySelects = service.queries.filter((q) =>
+    q.sql.startsWith('SELECT id,batch_id,item_id,'),
+  );
+  assert.equal(initialDisplaySelects.length, 2);
+  for (const query of initialDisplaySelects) {
+    assert.doesNotMatch(query.sql, /snapshot|configuration|lease_token/);
+    assert.match(query.sql, /generation_version/);
+    assert.match(query.sql, /result/);
+  }
   assert.equal(service.ancillary.aiReads, 0);
   assert.equal(service.ancillary.importReads, 0);
   // Expired running is displayed as failed without mutating its stored state or ledger.
@@ -223,6 +250,15 @@ test('disabled generation history is owner-scoped, read-only and independent of 
   const aiReads = service.ancillary.aiReads;
   const reviewStart = service.queries.length;
   assert.equal((await service.candidateReviewDetail('admin', service.id, 0)).canPublish, false);
+  const reviewSelect = service.queries
+    .slice(reviewStart)
+    .find((q) => q.sql.includes('FROM public.signal_generation_runs'));
+  assert.ok(reviewSelect);
+  assert.match(reviewSelect.sql, /snapshot,configuration/);
+  assert.deepEqual(
+    (await service.generationRecord('admin', service.id)).snapshot.source,
+    reviewSource,
+  );
   await assert.rejects(service.candidateReviewDetail('other-admin', service.id, 0), {
     code: 'not_found',
   });

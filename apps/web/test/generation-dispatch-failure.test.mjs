@@ -34,6 +34,7 @@ async function loadDispatchers() {
       export async function resolveQueuedGeneration(){}
       export async function generationDashboard(){}
       export async function generationDetail(){}
+      export async function generationProgress(){}
       export async function deleteGeneration(){}
       export async function inspectGenerationInput(){}
     `,

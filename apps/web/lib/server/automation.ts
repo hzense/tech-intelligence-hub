@@ -148,6 +148,10 @@ export async function automationDashboard(owner: string) {
     ),
   };
 }
+export async function automationRunDetail(owner: string, id: string) {
+  // Inspecting a result needs storage access, not enabled execution or AI calls.
+  return store.readAutomationRunDetail({ pool: automationConfigPool, owner, id });
+}
 export async function saveAutomation(owner: string, request: store.SaveAutomationRequest) {
   const config = normalizeAutomationConfig(request.config);
   // Saving an inactive configuration neither enables execution nor needs its

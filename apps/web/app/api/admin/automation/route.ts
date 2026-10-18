@@ -2,6 +2,7 @@ import { createAutomationHandler } from '@/lib/admin-automation-handler';
 import { getAdminSession, getAdminOrigin } from '@/lib/server/admin-auth';
 import {
   automationDashboard,
+  automationRunDetail,
   saveAutomation,
   deleteAutomation,
   triggerAutomation,
@@ -15,6 +16,7 @@ const handler = createAutomationHandler({
   session: getAdminSession,
   origin: () => getAdminOrigin() ?? undefined,
   dashboard: automationDashboard,
+  detail: automationRunDetail,
   save: (owner, request) => saveAutomation(owner, request as Parameters<typeof saveAutomation>[1]),
   remove: (owner, request) =>
     deleteAutomation(owner, request as Parameters<typeof deleteAutomation>[1]),

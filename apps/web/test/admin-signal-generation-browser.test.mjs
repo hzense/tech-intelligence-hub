@@ -71,6 +71,8 @@ test(
     let mismatchedCreate = false;
     let dashboardRequests = 0;
     let detailRequestMethods = [];
+    let progressRequests = [];
+    let progressResponse;
     let preflightRequests = [];
     let preflightWait = null;
     let preflightResponse;
@@ -111,6 +113,37 @@ test(
         commands.push({ action: 'detail', id });
         res.setHeader('Content-Type', 'application/json');
         res.end(JSON.stringify({ run: runs.find((run) => run.id === id) }));
+        return;
+      }
+      if (req.url.startsWith('/api/admin/signal-generation?progress=')) {
+        const ids = new URL(req.url, 'http://fixture').searchParams.get('progress').split(',');
+        progressRequests.push({ method: req.method, ids });
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+          JSON.stringify(
+            progressResponse ?? {
+              runs: runs
+                .filter((run) => ids.includes(run.id))
+                .map((run) =>
+                  Object.fromEntries(
+                    [
+                      'id',
+                      'status',
+                      'progress_phase',
+                      'progress_at',
+                      'started_at',
+                      'finished_at',
+                      'reserved_microusd',
+                      'charged_microusd',
+                      'error_code',
+                    ]
+                      .filter((key) => key in run)
+                      .map((key) => [key, run[key]]),
+                  ),
+                ),
+            },
+          ),
+        );
         return;
       }
       if (req.url === '/api/admin/signal-generation') {
@@ -348,6 +381,8 @@ test(
       mismatchedCreate = false;
       dashboardRequests = 0;
       detailRequestMethods = [];
+      progressRequests = [];
+      progressResponse = undefined;
       preflightRequests = [];
       preflightWait = null;
       preflightResponse = passedPreflight();
@@ -486,7 +521,7 @@ test(
         runs = [publicationRun()];
         await page.clock.install();
         await page.goto(`${origin}/?live-detail`);
-        await page.clock.fastForward(5100);
+        await page.clock.fastForward(15100);
         const candidate = page.getByRole('article', { name: '候选信号 1', exact: true });
         await expect(candidate.getByText('已发布', { exact: true })).toBeVisible();
         await expect(candidate.getByRole('link', { name: '查看正式信号' })).toBeVisible();
@@ -596,7 +631,7 @@ test(
           progress_phase: 'generating',
           started_at: new Date().toISOString(),
         };
-        await page.clock.fastForward(5100);
+        await page.clock.fastForward(15100);
         await expect(page.getByText('模型生成中', { exact: true })).toBeVisible();
         await expect(page.getByRole('progressbar', { name: '已完成的任务阶段' })).toHaveAttribute(
           'value',
@@ -605,22 +640,149 @@ test(
         await expect(page.getByRole('progressbar', { name: '模型生成中' })).not.toHaveAttribute(
           'value',
         );
-        assert.ok(commands.every((command) => command.action === 'detail'));
+        assert.deepEqual(commands, []);
+        assert.deepEqual(progressRequests, [{ method: 'GET', ids: [liveDetailId] }]);
         runs[0] = {
           ...runs[0],
           status: 'completed',
           progress_phase: 'saving',
           finished_at: new Date().toISOString(),
         };
-        await page.clock.fastForward(5100);
+        await page.clock.fastForward(15100);
         await expect(page.getByRole('table').getByText('生成完成', { exact: true })).toBeVisible();
         await expect(page.getByRole('progressbar', { name: '已完成的任务阶段' })).toHaveCount(0);
+        await expect.poll(() => commands).toEqual([{ action: 'detail', id: liveDetailId }]);
         const count = commands.length;
-        await page.clock.fastForward(15000);
+        const progressCount = progressRequests.length;
+        await page.clock.fastForward(31000);
         assert.equal(commands.length, count);
+        assert.equal(progressRequests.length, progressCount);
         await page.close();
       },
     );
+    await t.test(
+      'multiple active rows share one small progress request and fetch full detail only at completion',
+      async () => {
+        const page = await newPage();
+        runs = [liveDetailId, pendingItemId].map((id) => ({
+          id,
+          status: 'running',
+          progress_phase: 'generating',
+          batch_id: batchId,
+          item_id: itemId,
+          profile_id: profileId,
+          profile_revision: 2,
+          snapshot: { source: 'PRIVATE_LARGE_SOURCE_SENTINEL' },
+          result: { candidates: [], reason: 'PRIVATE_RESULT_SENTINEL' },
+        }));
+        await page.clock.install();
+        await page.goto(origin);
+        await expect(page.getByRole('link', { name: '任务详情' })).toHaveCount(2);
+        await page.clock.fastForward(15100);
+        await expect.poll(() => progressRequests.length).toBe(1);
+        assert.deepEqual(new Set(progressRequests[0].ids), new Set([liveDetailId, pendingItemId]));
+        assert.equal(progressRequests[0].method, 'GET');
+        assert.deepEqual(commands, []);
+        assert.equal(dashboardRequests, 1);
+        await expect(page.getByText('PRIVATE_LARGE_SOURCE_SENTINEL')).toHaveCount(0);
+        await expect(page.getByText('PRIVATE_RESULT_SENTINEL')).toHaveCount(0);
+
+        runs = runs.map((run) => ({ ...run, status: 'completed', progress_phase: 'saving' }));
+        await page.clock.fastForward(15100);
+        await expect(page.getByRole('table').getByText('生成完成', { exact: true })).toHaveCount(2);
+        await expect.poll(() => commands.length).toBe(2);
+        assert.deepEqual(
+          commands.map((command) => command.id).sort(),
+          [liveDetailId, pendingItemId].sort(),
+        );
+        assert.ok(commands.every((command) => command.action === 'detail'));
+        const progressCount = progressRequests.length;
+        await page.clock.fastForward(61000);
+        assert.equal(commands.length, 2);
+        assert.equal(progressRequests.length, progressCount);
+        assert.equal(dashboardRequests, 1);
+        await page.close();
+      },
+    );
+
+    for (const surface of ['list', 'live-detail']) {
+      await t.test(
+        `${surface} pauses hidden polling and refreshes once immediately on resume`,
+        async () => {
+          const page = await newPage();
+          runs = [{ id: liveDetailId, status: 'running', progress_phase: 'generating' }];
+          await page.addInitScript(() => {
+            globalThis.syntheticHidden = false;
+            Object.defineProperty(globalThis.document, 'hidden', {
+              configurable: true,
+              get: () => globalThis.syntheticHidden,
+            });
+            Object.defineProperty(globalThis.document, 'visibilityState', {
+              configurable: true,
+              get: () => (globalThis.syntheticHidden ? 'hidden' : 'visible'),
+            });
+          });
+          await page.clock.install();
+          await page.goto(surface === 'list' ? origin : `${origin}/?live-detail`);
+          await expect(page.getByText('模型生成中', { exact: true })).toBeVisible();
+          await page.evaluate(() => {
+            globalThis.syntheticHidden = true;
+            globalThis.document.dispatchEvent(new globalThis.Event('visibilitychange'));
+          });
+          await page.clock.fastForward(61000);
+          assert.equal(progressRequests.length, 0);
+          assert.equal(commands.length, 0);
+          await page.evaluate(() => {
+            globalThis.syntheticHidden = false;
+            globalThis.document.dispatchEvent(new globalThis.Event('visibilitychange'));
+          });
+          await expect.poll(() => progressRequests.length).toBe(1);
+          assert.deepEqual(progressRequests, [{ method: 'GET', ids: [liveDetailId] }]);
+          assert.equal(commands.length, 0);
+          await page.clock.fastForward(5100);
+          assert.equal(progressRequests.length, 1);
+          await page.clock.fastForward(10100);
+          await expect.poll(() => progressRequests.length).toBe(2);
+          assert.equal(commands.length, 0);
+          await page.close();
+        },
+      );
+
+      await t.test(
+        `${surface} preserves the original task on missing or invalid progress without calling AI`,
+        async () => {
+          for (const response of [
+            { runs: [] },
+            { runs: [{ id: pendingItemId, status: 'completed' }] },
+            { runs: [{ id: liveDetailId, status: 'invented_status' }] },
+          ]) {
+            const page = await newPage();
+            runs = [{ id: liveDetailId, status: 'running', progress_phase: 'generating' }];
+            progressResponse = response;
+            await page.clock.install();
+            await page.goto(surface === 'list' ? origin : `${origin}/?live-detail`);
+            await expect(page.getByText('模型生成中', { exact: true })).toBeVisible();
+            await page.clock.fastForward(15100);
+            await expect.poll(() => progressRequests.length).toBe(1);
+            await expect(page.getByText('模型生成中', { exact: true })).toBeVisible();
+            if (surface === 'list') {
+              await expect(page.getByRole('link', { name: '任务详情' })).toHaveAttribute(
+                'href',
+                `/admin/signal-generation/${liveDetailId}`,
+              );
+            } else {
+              await expect(page.getByText(`任务：${liveDetailId}`, { exact: true })).toBeVisible();
+            }
+            await page.clock.fastForward(61000);
+            assert.deepEqual(commands, []);
+            assert.equal(preflightRequests.length, 0);
+            assert.equal(runs[0].status, 'running');
+            await page.close();
+          }
+        },
+      );
+    }
+
     await t.test(
       'fixed-link detail refreshes persisted candidates and stops polling at completion',
       async () => {
@@ -641,7 +803,7 @@ test(
           status: 'completed',
           result: { classification: 'private', candidates: [], reason: 'Synthetic saved result' },
         };
-        await page.clock.fastForward(5100);
+        await page.clock.fastForward(15100);
         await expect(page.getByText('Synthetic saved result', { exact: true })).toHaveCount(0);
         await expect(
           page.getByText('本次没有生成可供审核的候选信号。', { exact: true }),
@@ -656,9 +818,13 @@ test(
           ),
           true,
         );
+        assert.deepEqual(commands, [{ action: 'detail', id: liveDetailId }]);
+        assert.deepEqual(progressRequests, [{ method: 'GET', ids: [liveDetailId] }]);
         const count = commands.length;
-        await page.clock.fastForward(15000);
+        const progressCount = progressRequests.length;
+        await page.clock.fastForward(31000);
         assert.equal(commands.length, count);
+        assert.equal(progressRequests.length, progressCount);
         assert.ok(commands.every((command) => command.action === 'detail'));
         await page.close();
       },
@@ -758,10 +924,11 @@ test(
 
         const newerQueuedAt = '2026-10-03T10:00:00.456Z';
         runs[0] = { ...runs[0], progress_at: newerQueuedAt };
-        await page.clock.fastForward(5100);
+        await page.clock.fastForward(15100);
         await expect(page.locator('pre')).toContainText(newerQueuedAt);
         await expect(confirmation).toBeVisible();
-        assert.ok(commands.length > 0 && commands.every((command) => command.action === 'detail'));
+        assert.deepEqual(commands, []);
+        assert.deepEqual(progressRequests, [{ method: 'GET', ids: [liveDetailId] }]);
 
         await confirmation.getByRole('button', { name: '确认标记失败', exact: true }).click();
         await expect(
