@@ -36,3 +36,13 @@ test('traces repository content required by deployed routes', () => {
     assert.ok(includes[route].includes('../../content/**/*'));
   }
 });
+
+test('every deployment trace excludes local credentials, originals, workflow state and Docker tooling', () => {
+  assert.deepEqual(nextConfig.outputFileTracingExcludes?.['/*'], [
+    '../../.hzense-local/**/*',
+    './.hzense-local/**/*',
+    '../../docker/local-import-parser/**/*',
+    '../../compose.local.yml',
+    '../../scripts/local-*.mjs',
+  ]);
+});

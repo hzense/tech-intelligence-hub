@@ -22,6 +22,7 @@ import { importPool } from './generation-import-reader';
 import { readMaterialSupplement } from '../material-source-reader';
 import { readEditorialSourceOptions } from '../editorial-source-options';
 import { getResourceEntries } from '../seed-runtime';
+import { localFixtureSourceOptions } from '../local-generation';
 
 async function material(owner: string, runId: string, index: number) {
   const run = await generationRecord(owner, runId);
@@ -81,9 +82,16 @@ async function material(owner: string, runId: string, index: number) {
       .filter((resource) => resource.type === 'person')
       .map((resource) => resource.name);
   }
-  const originalSourceOptions = await readEditorialSourceOptions(owner, run, (o, b, i) =>
-    readMaterialSupplement(importPool, o, b, i),
-  );
+  const fixtureSources = localFixtureSourceOptions(run);
+  if (fixtureSources.length)
+    warnings.push(
+      '本地虚构资料：example.invalid 仅为模拟来源，非互联网证据、未经事实核验；发布仅写入本机测试库。',
+    );
+  const originalSourceOptions = fixtureSources.length
+    ? fixtureSources
+    : await readEditorialSourceOptions(owner, run, (o, b, i) =>
+        readMaterialSupplement(importPool, o, b, i),
+      );
   const resourceSourceOptions =
     resources === undefined
       ? undefined

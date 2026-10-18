@@ -19,3 +19,5 @@ apps/web/app/.well-known/workflow/
 apps/web/.generation-worker/
 apps/web/.automation-worker/
 .firecrawl/
+# Isolated developer database credentials/state; never deploy or commit.
+.hzense-local/

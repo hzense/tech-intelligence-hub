@@ -237,9 +237,11 @@ function money(value: number | string) {
 export function AdminSignalGeneration({
   configured,
   historyConfigured = configured,
+  localMode = false,
 }: {
   configured: boolean;
   historyConfigured?: boolean;
+  localMode?: boolean;
 }) {
   const [data, setData] = useState<ListResponse>({ runs: [], profiles: [], batches: [] });
   const [taskQuery, setTaskQuery] = useState('');
@@ -447,7 +449,9 @@ export function AdminSignalGeneration({
     if (
       (retry || retryDraft) &&
       !window.confirm(
-        '创建重新生成任务？旧结果和费用会保留；手动执行新任务将再次调用 AI，并可能再次计费。',
+        localMode
+          ? '创建新的本地模拟任务？旧结果和技术预留记录会保留；不会请求供应商或产生 AI 费用。'
+          : '创建重新生成任务？旧结果和费用会保留；手动执行新任务将再次调用 AI，并可能再次计费。',
       )
     )
       return;
@@ -532,11 +536,13 @@ export function AdminSignalGeneration({
       setTaskStatus('all');
       setListNavigation((value) => value + 1);
       setMessage(
-        canonical.id === request.id
-          ? request.retryOf
-            ? '重新生成任务已创建，旧任务与费用保留。尚未调用 AI；手动执行将再次调用模型，并可能再次计费。'
-            : '任务已创建。尚未调用 AI；请核对任务与外发授权，再手动执行生成。'
-          : '已复用相同资料与配置的原任务，并对齐原任务编号。本次未调用 AI；请核对已有结果或重新确认外发授权。',
+        localMode
+          ? '本地模拟任务已就绪，请确认资料后手动执行；不请求供应商、不调用真实 AI。已有任务会按原编号继续，避免重复执行。'
+          : canonical.id === request.id
+            ? request.retryOf
+              ? '重新生成任务已创建，旧任务与费用保留。尚未调用 AI；手动执行将再次调用模型，并可能再次计费。'
+              : '任务已创建。尚未调用 AI；请核对任务与外发授权，再手动执行生成。'
+            : '已复用相同资料与配置的原任务，并对齐原任务编号。本次未调用 AI；请核对已有结果或重新确认外发授权。',
       );
     });
   }
@@ -566,7 +572,14 @@ export function AdminSignalGeneration({
   }
 
   async function deleteTask(id: string) {
-    if (!window.confirm('删除此任务？任务将从列表移除，必要的费用和防重复调用记录会保留。')) return;
+    if (
+      !window.confirm(
+        localMode
+          ? '删除此本地模拟任务？任务将从列表移除，必要的技术预留和防重复执行记录会保留。'
+          : '删除此任务？任务将从列表移除，必要的费用和防重复调用记录会保留。',
+      )
+    )
+      return;
     await perform(async () => {
       const deleted = await requestApi({ action: 'delete', id });
       if (deleted.id !== id || deleted.deleted !== true)
@@ -635,7 +648,11 @@ export function AdminSignalGeneration({
     setPending(request);
     setRetryDraft(null);
     setConsent(false);
-    setMessage('已选择原任务。请核对接收方并重新确认外发授权；未调用 AI。');
+    setMessage(
+      localMode
+        ? '已选择原任务。请核对本地资料并确认模拟执行；不向供应商发送内容。'
+        : '已选择原任务。请核对接收方并重新确认外发授权；未调用 AI。',
+    );
   }
 
   async function inspectSource() {
@@ -671,12 +688,15 @@ export function AdminSignalGeneration({
       <Link className={controls.button} href="/admin">
         返回管理后台
       </Link>
-      <h1>AI 信号生成</h1>
-      <section className={styles.panel} aria-label="今日 AI 调用费用">
-        <h2>今日 AI 调用费用总额</h2>
+      <h1>{localMode ? '本地信号生成联调' : 'AI 信号生成'}</h1>
+      <section
+        className={styles.panel}
+        aria-label={localMode ? '本地模拟记账' : '今日 AI 调用费用'}
+      >
+        <h2>{localMode ? '今日模拟记账 · 无 AI 调用费用' : '今日 AI 调用费用总额'}</h2>
         <p>
           <strong>{data.dailyUsage ? money(data.dailyUsage.charged_microusd) : '暂不可用'}</strong>
-          （美元 · 系统记账）
+          {localMode ? '（本地账本记录，非供应商费用）' : '（美元 · 系统记账）'}
         </p>
         {data.dailyUsage && (
           <p>
@@ -685,12 +705,15 @@ export function AdminSignalGeneration({
           </p>
         )}
         <p>
-          统计当前管理员当天执行的信号生成，包含失败及已删除任务，不含连接能力测试。API
-          返回费用优先，缺失时使用预估；历史记录可能为预估，合计并非全部已确认实际费用。进行中的调用可能仅有预留。打开页面或手动刷新列表时更新。
+          {localMode
+            ? '本地模拟不会请求供应商。为复用真实任务状态机，每次创建保留 1 微美元（$0.000001）的技术预留；最小模拟记账为 1 微美元，技术预留和模拟记账不是实际费用或供应商账单。'
+            : '统计当前管理员当天执行的信号生成，包含失败及已删除任务，不含连接能力测试。API 返回费用优先，缺失时使用预估；历史记录可能为预估，合计并非全部已确认实际费用。进行中的调用可能仅有预留。打开页面或手动刷新列表时更新。'}
         </p>
       </section>
       <p>
-        从已完成解析的私有资料生成候选信号。创建任务与调用 AI 分开执行，不自动重试，不发布到网站。
+        {localMode
+          ? '请导入 docs/fixtures/local-signal.md，从本地联调模板生成确定性模拟候选，用于验证导入、审核、发布和撤回。普通资料仍可解析，但不会冒充真实 AI 分析；生成不会自动发布。'
+          : '从已完成解析的私有资料生成候选信号。创建任务与调用 AI 分开执行，不自动重试，不发布到网站。'}
       </p>
       <details className={styles.diagnostics}>
         <summary>诊断与使用说明</summary>
@@ -701,13 +724,16 @@ export function AdminSignalGeneration({
           50,000 tokens；超限会停止，不自动截断。现有配置修订的输出额度保持不变。
         </p>
         <p>
-          执行后立即提交后台长任务，模型最多等待 25
-          分钟。可关闭页面，重新打开查看进度；不会自动重试模型调用。
+          {localMode
+            ? '执行后提交本地任务，使用确定性模拟器，不调用模型。可关闭页面后重新查看状态；不会自动重试。'
+            : '执行后立即提交后台长任务，模型最多等待 25 分钟。可关闭页面，重新打开查看进度；不会自动重试模型调用。'}
         </p>
       </details>
       {!configured && (
         <p role="status">
-          AI 信号生成已关闭或尚未完成配置，不可创建或执行新任务。
+          {localMode
+            ? '本地模拟已关闭或尚未完成配置，不可创建或执行新任务。'
+            : 'AI 信号生成已关闭或尚未完成配置，不可创建或执行新任务。'}
           {historyConfigured
             ? '仍可查看历史任务与已保存候选，不调用 AI。'
             : '历史记录数据库尚未配置，请联系管理员核对。'}
@@ -764,7 +790,7 @@ export function AdminSignalGeneration({
           </select>
         </label>
         <label>
-          分阶段模型配置
+          {localMode ? '本地模拟配置' : '分阶段模型配置'}
           <select
             value={profileId}
             onChange={(event) => {
@@ -786,7 +812,9 @@ export function AdminSignalGeneration({
         )}
         {!!profile?.readiness.warnings?.length && (
           <p role="status">
-            部分能力测试已超过 24 小时，建议按需复测；此提醒不阻止生成，也不会自动调用模型。
+            {localMode
+              ? profile.readiness.warnings.join('；')
+              : '部分能力测试已超过 24 小时，建议按需复测；此提醒不阻止生成，也不会自动调用模型。'}
           </p>
         )}
         {configured && batches.length === 0 && <p>暂无已完成解析的资料，请先在导入页完成解析。</p>}
@@ -832,7 +860,10 @@ export function AdminSignalGeneration({
           className={styles.panel}
           aria-label="重新生成确认"
         >
-          <p>重新生成自任务：{retryDraft.id}。旧结果、发布关联和费用保留。</p>
+          <p>
+            重新生成自任务：{retryDraft.id}。
+            {localMode ? '旧结果、发布关联和技术预留记录保留。' : '旧结果、发布关联和费用保留。'}
+          </p>
           <p>
             资料：
             {retryDraft.source_name ?? sourceNames.get(retryDraft.item_id) ?? retryDraft.item_id} ·
@@ -852,7 +883,14 @@ export function AdminSignalGeneration({
       )}
       {(profile || pending || retryDraft) && (
         <p>
-          资料发送至：{recipientProfile?.provider_host ?? '所选任务模型供应商（请先核对配置快照）'}
+          {localMode ? (
+            '资料仅在本机处理，不发送至供应商。'
+          ) : (
+            <>
+              资料发送至：
+              {recipientProfile?.provider_host ?? '所选任务模型供应商（请先核对配置快照）'}
+            </>
+          )}
         </p>
       )}
       <label className={styles.consent}>
@@ -863,12 +901,15 @@ export function AdminSignalGeneration({
           onChange={(event) => setConsent(event.target.checked)}
         />
         <span>
-          我允许把所选资料的私有解析文本发送给对应任务模型配置中的 AI
-          供应商，并了解手动执行可能产生费用；仅生成私有候选，不授权发布。
+          {localMode
+            ? '我确认使用所选本地资料执行确定性模拟；不请求供应商、不调用真实 AI，仅生成本机私有候选，不授权发布。'
+            : '我允许把所选资料的私有解析文本发送给对应任务模型配置中的 AI 供应商，并了解手动执行可能产生费用；仅生成私有候选，不授权发布。'}
         </span>
       </label>
       <p>
-        费用受服务端预算控制，预留金额不等于最终账单。重新生成会保留旧费用，并可能再次计费；不会自动重试。
+        {localMode
+          ? '重新生成也仅在本机模拟。旧记录保留，每个新任务的 1 微美元仅为技术预留，不是费用；不会自动重试。'
+          : '费用受服务端预算控制，预留金额不等于最终账单。重新生成会保留旧费用，并可能再次计费；不会自动重试。'}
       </p>
       <button
         disabled={
@@ -990,9 +1031,9 @@ export function AdminSignalGeneration({
                 <th scope="col">资料 / 任务</th>
                 <th scope="col">状态</th>
                 <th scope="col">发布情况</th>
-                <th scope="col">模型配置</th>
+                <th scope="col">{localMode ? '模拟配置' : '模型配置'}</th>
                 <th scope="col">创建时间</th>
-                <th scope="col">费用</th>
+                <th scope="col">{localMode ? '本地记账' : '费用'}</th>
                 <th scope="col">操作</th>
               </tr>
             </thead>
@@ -1021,7 +1062,9 @@ export function AdminSignalGeneration({
                       <span aria-hidden="true" className={styles.statusDot} />
                       {statuses[run.status]}
                     </span>
-                    {generationIsActive(run) && <GenerationProgress run={run} />}
+                    {generationIsActive(run) && (
+                      <GenerationProgress run={run} localMode={localMode} />
+                    )}
                     {generationFailureMessage(run) && (
                       <p className={styles.taskError}>
                         失败原因：
@@ -1056,8 +1099,16 @@ export function AdminSignalGeneration({
                   </td>
                   <td className={styles.costCell}>
                     <strong>{money(run.charged_microusd)}</strong>
-                    <span className={styles.taskId}>记账金额</span>
-                    <span className={styles.taskId}>预留 {money(run.reserved_microusd)}</span>
+                    <span className={styles.taskId}>
+                      {localMode ? '本地账本（非费用）' : '记账金额'}
+                    </span>
+                    <span className={styles.taskId}>
+                      {localMode ? (
+                        `技术预留 ${run.reserved_microusd} 微美元`
+                      ) : (
+                        <>预留 {money(run.reserved_microusd)}</>
+                      )}
+                    </span>
                   </td>
                   <td>
                     <div className={styles.actions}>
@@ -1089,7 +1140,10 @@ export function AdminSignalGeneration({
                         <summary>更多操作</summary>
                         <p className={styles.id}>请求 ID：{run.id}</p>
                         {run.retry_of && (
-                          <p className={styles.id}>重新生成自任务：{run.retry_of}；旧费用保留。</p>
+                          <p className={styles.id}>
+                            重新生成自任务：{run.retry_of}；
+                            {localMode ? '旧技术预留记录保留。' : '旧费用保留。'}
+                          </p>
                         )}
                         <p className={styles.id}>
                           资料：{run.item_id} · 配置：{run.profile_id} r{run.profile_revision}
@@ -1118,7 +1172,7 @@ export function AdminSignalGeneration({
                               disabled={!configured || busy || !storageReady}
                               onClick={() => trackRun(run)}
                             >
-                              选择此任务并核对接收方
+                              {localMode ? '选择此任务并核对本地资料' : '选择此任务并核对接收方'}
                             </button>
                           )}
                           <button
@@ -1133,7 +1187,9 @@ export function AdminSignalGeneration({
                           >
                             {run.progress_phase === 'queued'
                               ? '核对后重新提交原任务（不重复调用）'
-                              : '执行生成（调用 AI，可能计费）'}
+                              : localMode
+                                ? '执行本地模拟（不调用 AI）'
+                                : '执行生成（调用 AI，可能计费）'}
                           </button>
                           <button
                             disabled={!configured || busy}
@@ -1158,7 +1214,9 @@ export function AdminSignalGeneration({
           </table>
         </div>
         <p className={styles.tableNote}>
-          窄屏可横向滚动表格。费用为系统记账与预留金额，并非供应商最终账单。生成状态与发布状态分别记录；审核发布后可手动刷新列表核对。
+          {localMode
+            ? '窄屏可横向滚动表格。本地技术预留并非费用，不存在供应商调用或账单。生成与发布状态分别记录；审核发布仅写入本机测试库。'
+            : '窄屏可横向滚动表格。费用为系统记账与预留金额，并非供应商最终账单。生成状态与发布状态分别记录；审核发布后可手动刷新列表核对。'}
         </p>
       </section>
       {detail && (
@@ -1167,7 +1225,7 @@ export function AdminSignalGeneration({
             <p className={styles.taskError}>失败原因：{generationFailureMessage(detail)}</p>
           )}
           {detail.result !== undefined && (
-            <PrivateResult result={detail.result} reviewTask={detail} />
+            <PrivateResult result={detail.result} reviewTask={detail} localMode={localMode} />
           )}
         </section>
       )}

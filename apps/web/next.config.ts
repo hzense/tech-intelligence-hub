@@ -35,6 +35,17 @@ export const nextConfig: NextConfig = {
   poweredByHeader: false,
   transpilePackages: ['@hzense/content'],
   outputFileTracingRoot: repositoryRoot,
+  // Local credentials, originals, Workflow state and Docker tooling must never
+  // become deployment artifacts, even if a future dynamic fs access is traced.
+  outputFileTracingExcludes: {
+    '/*': [
+      '../../.hzense-local/**/*',
+      './.hzense-local/**/*',
+      '../../docker/local-import-parser/**/*',
+      '../../compose.local.yml',
+      '../../scripts/local-*.mjs',
+    ],
+  },
   outputFileTracingIncludes: {
     '/.well-known/workflow/v1/step': [
       './.generation-worker/worker.cjs',

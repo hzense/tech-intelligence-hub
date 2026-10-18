@@ -30,6 +30,8 @@ import { editorialTopicOptions } from './editorial-topics';
 import { readEditorialSignalStatuses } from '../../../../packages/database/src/editorial-signal-store.mjs';
 import { editorialPool } from './editorial-database';
 import { withGenerationPublications } from '../generation-publication';
+import { isLocalDevelopment } from '../local-development';
+import { invokeLocalGeneration, localGenerationAccess } from '../local-generation';
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
@@ -76,7 +78,7 @@ export function generationConfigured() {
   try {
     if (process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1') return false;
     readGenerationConfiguration(process.env);
-    readAiBackendConfiguration(process.env);
+    if (!isLocalDevelopment()) readAiBackendConfiguration(process.env);
     return importsConfigured();
   } catch {
     return false;
@@ -144,7 +146,9 @@ export async function generationDashboard(owner: string) {
   const [runs, ai, batches] = await Promise.all([
     store.listSignalGenerations({ ...historyOptions(), owner }),
     // Selection data is optional: an ancillary outage must not hide saved runs.
-    getAiDashboard().catch(() => null),
+    isLocalDevelopment()
+      ? Promise.resolve({ profiles: [localGenerationAccess().profile], connections: [] })
+      : getAiDashboard().catch(() => null),
     listImportBatches({ pool: importPool, owner, view: 'sources' }).catch(() => []),
   ]);
   return {
@@ -157,7 +161,11 @@ export async function generationDashboard(owner: string) {
         revision,
         name,
         readiness,
-        provider_host: connection ? new URL(connection.base_url).hostname : '',
+        provider_host: isLocalDevelopment()
+          ? '本地模拟（不联网）'
+          : connection
+            ? new URL(connection.base_url).hostname
+            : '',
       };
     }),
     batches,
@@ -185,13 +193,16 @@ export async function candidateReviewDetail(owner: string, id: string, index: nu
 export async function executeGeneration(owner: string, body: unknown, queuedAt?: string) {
   if (!generationConfigured()) throw new GenerationError('not_configured');
   const config = readGenerationConfiguration(process.env);
-  const ai = readAiBackendConfiguration(process.env);
+  const local = isLocalDevelopment();
+  const allowedHosts = local ? [] : readAiBackendConfiguration(process.env).allowedHosts;
   const execute = createGenerationExecutor({
     topics: editorialTopicOptions,
     source,
-    access: generationAiAccess,
-    invoke: invokeSignalGeneration,
-    allowedHosts: ai.allowedHosts,
+    access: local
+      ? async (id, revision, credentials) => localGenerationAccess(id, revision, credentials)
+      : generationAiAccess,
+    invoke: local ? invokeLocalGeneration : invokeSignalGeneration,
+    allowedHosts,
     report: (event) => console.info(JSON.stringify(event)),
     progress: (owner, id, token, phase) =>
       store.updateSignalGenerationProgress({ pool: generationPool, owner, id, token, phase }),
@@ -203,7 +214,7 @@ export async function executeGeneration(owner: string, body: unknown, queuedAt?:
         snapshot: args.snapshot,
         ...(args.retryOf ? { retryOf: args.retryOf } : {}),
         configuration: {
-          version: 'private-candidate-v1',
+          version: local ? 'local-simulation-v1' : 'private-candidate-v1',
           batchLimitMicrousd: config.batch,
           dailyLimitMicrousd: config.daily,
           reserveMicrousd: args.reserveMicrousd,

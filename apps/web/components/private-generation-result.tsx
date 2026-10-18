@@ -36,10 +36,12 @@ export function PrivateResult({
   result,
   reviewTask,
   snapshotOnly = false,
+  localMode = false,
 }: {
   result: unknown;
   reviewTask?: { id: string; status: string; publication?: GenerationPublication };
   snapshotOnly?: boolean;
+  localMode?: boolean;
 }) {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
   const row = result as Record<string, unknown>;
@@ -75,11 +77,18 @@ export function PrivateResult({
   };
   return (
     <section aria-label="私有候选结果" className={styles.result}>
-      <h3>{snapshotOnly ? '原始 AI 候选快照（不代表当前发布状态）' : '候选结果与发布状态'}</h3>
+      <h3>
+        {snapshotOnly
+          ? localMode
+            ? '原始模拟候选快照（不代表当前发布状态）'
+            : '原始 AI 候选快照（不代表当前发布状态）'
+          : '候选结果与发布状态'}
+      </h3>
       {!snapshotOnly && (
         <p className={preview.hint}>
-          发布标记来自最新人工发布记录；下方正文为原始 AI
-          候选，人工修订后的内容以正式页面或发布记录为准。
+          {localMode
+            ? '发布标记来自本机人工发布记录；下方正文为原始模拟候选，不代表真实 AI 分析或公开事实。'
+            : '发布标记来自最新人工发布记录；下方正文为原始 AI 候选，人工修订后的内容以正式页面或发布记录为准。'}
         </p>
       )}
       {row.validation_version === 1 && (
@@ -247,8 +256,9 @@ export function PrivateResult({
                     <li>人物及组织是否与事件直接相关</li>
                   </ul>
                   <p>
-                    引用匹配不代表独立事实核验。此原始候选区域仅供阅读核对，发布标记与原始 AI
-                    快照分别展示。
+                    {localMode
+                      ? '引用仅匹配本地虚构资料，不代表事实核验。此原始模拟候选区域仅供联调，发布标记与模拟快照分别展示。'
+                      : '引用匹配不代表独立事实核验。此原始候选区域仅供阅读核对，发布标记与原始 AI 快照分别展示。'}
                   </p>
                 </section>
               </aside>

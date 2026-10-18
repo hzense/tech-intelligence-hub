@@ -1,8 +1,9 @@
 import { createGenerationHandler } from '@/lib/admin-signal-generation-handler';
-import { getAdminSession } from '@/lib/server/admin-auth';
-import { parseAdminAuthEnvironment } from '@/lib/admin-auth-policy';
+import { getAdminOrigin, getAdminSession } from '@/lib/server/admin-auth';
 import { start } from 'workflow/api';
 import { signalGenerationWorkflow } from '@/workflows/signal-generation';
+import { localSignalGenerationWorkflow } from '@/workflows/local-signal-generation';
+import { isLocalDevelopment } from '@/lib/local-development';
 import {
   generationDashboard,
   generationDetail,
@@ -19,7 +20,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 export const GET = createGenerationHandler({
   session: getAdminSession,
-  origin: () => parseAdminAuthEnvironment(process.env)?.origin,
+  origin: () => getAdminOrigin() ?? undefined,
   dashboard: generationDashboard,
   detail: generationDetail,
   delete: deleteGeneration,
@@ -32,7 +33,9 @@ export const GET = createGenerationHandler({
       const queuedAt = new Date(run.progress_at!).toISOString();
       let workflow;
       try {
-        workflow = await start(signalGenerationWorkflow, [owner, id, queuedAt]);
+        workflow = isLocalDevelopment()
+          ? await start(localSignalGenerationWorkflow, [owner, id, queuedAt])
+          : await start(signalGenerationWorkflow, [owner, id, queuedAt]);
       } catch (error) {
         // If start was accepted but its acknowledgement was lost, the exact
         // queue fence protects any worker that has already claimed this task.

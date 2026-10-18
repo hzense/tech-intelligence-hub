@@ -42,8 +42,8 @@ async function loadDispatchers() {
       'export async function startTopicInsightSandbox(){} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
     '@/lib/admin-signal-generation-handler':
       'export function createGenerationHandler(deps){return deps}',
-    '@/lib/server/admin-auth': 'export async function getAdminSession(){}',
-    '@/lib/admin-auth-policy': 'export function parseAdminAuthEnvironment(){}',
+    '@/lib/server/admin-auth':
+      'export async function getAdminSession(){} export function getAdminOrigin(){return "https://hzense.com"}',
   };
   const aliases = {
     '../lib/server/signal-generation': 'generation',

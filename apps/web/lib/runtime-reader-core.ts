@@ -14,6 +14,7 @@ import {
 } from '@hzense/search/ranking';
 import type { SearchMode } from './search-mode';
 import { createPublicSignalReader, type SignalEntry } from './public-signal-reader-core.ts';
+import { assertLocalDatabaseUrl, isLocalDevelopment } from './local-development.ts';
 
 const runtimeRole = 'hzense_runtime';
 const pooledHostPattern = /(^|[.-])pooler([.-]|$)/;
@@ -214,6 +215,19 @@ function parseConnectionString(connectionString: string): URL {
 export function readRuntimeReaderConfig(
   environment: RuntimeReaderEnvironment,
 ): RuntimeReaderConfig {
+  if (isLocalDevelopment(environment)) {
+    return {
+      connectionString: assertLocalDatabaseUrl(
+        environment.HZENSE_RUNTIME_DATABASE_URL,
+        runtimeRole,
+        environment,
+      ),
+      database: 'hzense_local',
+      host: '127.0.0.1',
+      port: 55432,
+      user: runtimeRole,
+    };
+  }
   if (environment.VERCEL_ENV !== 'production') fail('not_production');
   if (environment.NODE_TLS_REJECT_UNAUTHORIZED === '0') fail('tls_required');
 

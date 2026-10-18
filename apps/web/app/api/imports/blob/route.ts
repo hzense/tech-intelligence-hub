@@ -7,12 +7,14 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 export async function POST(request: Request) {
   try {
+    const config = importConfig();
+    if (config.mode !== 'cloud') return importResponse({ error: 'forbidden' }, 403);
     const body = (await readImportJSON(request, 16384)) as HandleUploadBody;
     if (body?.type !== 'blob.upload-completed') return importResponse({ error: 'forbidden' }, 403);
     const result = await handleUpload({
       request,
       body,
-      token: importConfig().token,
+      token: config.token,
       onBeforeGenerateToken: async () => {
         throw new Error('forbidden');
       },

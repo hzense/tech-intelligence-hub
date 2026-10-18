@@ -3,8 +3,11 @@ import 'server-only';
 import process from 'node:process';
 import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { createAdminAuthOptions } from '../admin-auth-options';
 import { parseAdminAuthEnvironment } from '../admin-auth-policy';
+import { getLocalAdminSession } from '../local-admin-auth';
+import { isLocalDevelopment, localDevelopmentOrigin } from '../local-development';
 
 export interface AdminSession {
   user: { id: string; email: string };
@@ -12,6 +15,9 @@ export interface AdminSession {
 }
 
 export function getAdminAuthOptions() {
+  // Local development has no OAuth/credentials endpoint and never falls back
+  // to production authentication when its strict environment is invalid.
+  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1') return null;
   const config = parseAdminAuthEnvironment(process.env);
   return config
     ? createAdminAuthOptions(config, () => parseAdminAuthEnvironment(process.env))
@@ -19,10 +25,23 @@ export function getAdminAuthOptions() {
 }
 
 export function isAdminAuthConfigured(): boolean {
-  return parseAdminAuthEnvironment(process.env) !== null;
+  return process.env.HZENSE_LOCAL_DEVELOPMENT === '1'
+    ? isLocalDevelopment()
+    : getAdminAuthOptions() !== null;
+}
+
+export function getAdminOrigin(): string | null {
+  return process.env.HZENSE_LOCAL_DEVELOPMENT === '1'
+    ? localDevelopmentOrigin(process.env)
+    : (parseAdminAuthEnvironment(process.env)?.origin ?? null);
 }
 
 export async function getAdminSession(): Promise<AdminSession | null> {
+  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1') {
+    // Actual Origin and Fetch Metadata are checked even for page reads. API
+    // writes additionally require the existing operation-level Origin check.
+    return getLocalAdminSession({ headers: await headers(), method: 'GET' });
+  }
   const options = getAdminAuthOptions();
   if (!options) return null;
   // NextAuth decrypts/authenticates the cookie and runs both policy callbacks.

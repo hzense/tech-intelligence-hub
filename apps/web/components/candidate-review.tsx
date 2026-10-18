@@ -4,7 +4,13 @@ import { PrivateResult } from './private-generation-result';
 import controls from './admin-controls.module.css';
 import { EditorialPublicationEditor } from './editorial-publication-editor';
 
-export function CandidateReview({ packet }: { packet: ReturnType<typeof buildCandidateReview> }) {
+export function CandidateReview({
+  packet,
+  localMode = false,
+}: {
+  packet: ReturnType<typeof buildCandidateReview>;
+  localMode?: boolean;
+}) {
   return (
     <>
       <EditorialPublicationEditor
@@ -13,9 +19,10 @@ export function CandidateReview({ packet }: { packet: ReturnType<typeof buildCan
         candidateIndex={packet.candidateIndex}
       />
       <details>
-        <summary>辅助资料与原始 AI 候选</summary>
+        <summary>{localMode ? '辅助资料与原始模拟候选' : '辅助资料与原始 AI 候选'}</summary>
         <p>以下保留生成时的原始结果。原始缺项提示不会阻止补齐发布信息后的人工确认发布。</p>
         <PrivateResult
+          localMode={localMode}
           snapshotOnly
           result={{ classification: 'private', candidates: [packet.candidate] }}
         />
@@ -55,7 +62,7 @@ export function CandidateReview({ packet }: { packet: ReturnType<typeof buildCan
       </details>
       <div className={controls.group}>
         <Link className={controls.button} href="/admin/signal-generation">
-          返回 AI 生成任务列表
+          {localMode ? '返回本地模拟任务列表' : '返回 AI 生成任务列表'}
         </Link>
         <Link className={controls.button} href={`/admin/signal-generation/${packet.runId}`}>
           返回原生成任务

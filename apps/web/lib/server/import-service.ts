@@ -19,6 +19,13 @@ import { runImportProcessing } from '../import-worker-core';
 import { retryImportWithSourceCheck } from '../import-retry';
 import { originalExpired } from '../../../../packages/ingestion/src/import-retention.mjs';
 import { removeImportOriginal, cleanCancelledImportOriginals } from '../import-original-cleanup';
+import { isLocalDevelopment } from '../local-development';
+import {
+  putLocalImportObject,
+  readLocalImportObject,
+  removeLocalImportObject,
+} from '../local-import-storage';
+import { parseLocalImport } from '../local-import-parser';
 export const importCapabilities = {
   parsers: ['pdf', 'docx', 'markdown', 'text', 'html', 'csv', 'xlsx'] as const,
   ocr: false,
@@ -29,10 +36,22 @@ function parserVersion(snapshot: string) {
 }
 export function importConfig() {
   if (!importConfigurationDiagnostics().ready) throw new ImportIOError('not_configured');
+  if (isLocalDevelopment(process.env))
+    return {
+      mode: 'local' as const,
+      url: process.env.HZENSE_IMPORT_DATABASE_URL!,
+      parserIdentity: 'local-docker-parser-v1',
+      // Local parsing does not call a paid cloud provider. Keep the real ledger at zero.
+      reserve: 0,
+      daily: 0,
+      batch: 0,
+    };
   return {
+    mode: 'cloud' as const,
     url: process.env.HZENSE_IMPORT_DATABASE_URL!,
     token: process.env.HZENSE_IMPORT_BLOB_TOKEN!,
     snapshot: process.env.HZENSE_IMPORT_PARSER_SNAPSHOT_ID!,
+    parserIdentity: process.env.HZENSE_IMPORT_PARSER_SNAPSHOT_ID!,
     reserve: Number(process.env.HZENSE_IMPORT_RESERVE_MICROUSD),
     daily: Number(process.env.HZENSE_IMPORT_DAILY_LIMIT_MICROUSD),
     batch: Number(process.env.HZENSE_IMPORT_BATCH_LIMIT_MICROUSD),
@@ -66,6 +85,9 @@ export const importPool = {
         allowExitOnIdle: true,
         enableChannelBinding: true,
         application_name: 'hzense-import',
+        ...(config.mode === 'local'
+          ? { ssl: false, options: '-c search_path=pg_catalog,public' }
+          : {}),
       });
       pool.on('error', () => console.error('import_pool_unavailable'));
     }
@@ -84,7 +106,9 @@ function key(batchId: string, itemId: string) {
   return `imports/${importUuid(batchId)}/${importUuid(itemId)}`;
 }
 async function removeOriginal(path: string) {
-  const { token } = importConfig();
+  const config = importConfig();
+  if (config.mode === 'local') return removeLocalImportObject(path);
+  const { token } = config;
   await removeImportOriginal(path, {
     head: (pathname) => head(pathname, { token, abortSignal: AbortSignal.timeout(15000) }),
     del: (pathname, etag) =>
@@ -96,7 +120,9 @@ function cleanupFailed() {
   console.error('import_original_cleanup_pending');
 }
 async function inspectImportOriginal(path: string) {
-  const { token } = importConfig();
+  const config = importConfig();
+  if (config.mode !== 'cloud') throw new ImportIOError('not_configured');
+  const { token } = config;
   let metadata;
   try {
     metadata = await head(path, { token, abortSignal: AbortSignal.timeout(15000) });
@@ -109,7 +135,9 @@ async function inspectImportOriginal(path: string) {
   return metadata;
 }
 export async function readImportObject(path: string) {
-  const { token } = importConfig();
+  const config = importConfig();
+  if (config.mode === 'local') return readLocalImportObject(path);
+  const { token } = config;
   const metadata = await inspectImportOriginal(path);
   let result;
   try {
@@ -134,6 +162,22 @@ export async function uploadItem(owner: string, batchId: string, itemId: string)
   if (batch.cancelled || !item || item.kind !== 'file' || item.status !== 'awaiting_upload')
     importFail('not_claimable');
   return item;
+}
+export async function uploadLocalImport(
+  owner: string,
+  batchId: string,
+  itemId: string,
+  request: Request,
+) {
+  if (importConfig().mode !== 'local') throw new ImportIOError('not_configured');
+  const item = await uploadItem(owner, batchId, itemId);
+  if (request.headers.get('content-type') !== 'application/octet-stream')
+    throw new ImportIOError('invalid_request');
+  const declared = item.declaration.size!;
+  const bytes = await readImportBytes(request.body, Math.min(declared, 25 * 1024 * 1024), 60000);
+  if (bytes.length !== declared) throw new ImportIOError('document_conflict');
+  await putLocalImportObject(key(batchId, item.id), bytes);
+  return confirmImportUpload(owner, batchId, item.id);
 }
 export async function confirmImportUpload(owner: string, batchId: string, itemId: string) {
   const batch = await store.getImportBatch({ pool: importPool, owner, id: importUuid(batchId) });
@@ -161,7 +205,9 @@ export async function confirmImportUpload(owner: string, batchId: string, itemId
   });
 }
 async function parseIsolated(bytes: Buffer, format: string) {
-  const { snapshot } = importConfig();
+  const config = importConfig();
+  if (config.mode === 'local') return parseLocalImport(bytes, format);
+  const { snapshot } = config;
   const sandbox = await Sandbox.create({
     source: { type: 'snapshot', snapshotId: snapshot },
     persistent: false,
@@ -218,7 +264,7 @@ export async function runImportItem(owner: string, batchId: string, itemId: stri
     claim: () =>
       store.claimImportItem({
         ...args,
-        parserVersion: parserVersion(config.snapshot),
+        parserVersion: parserVersion(config.parserIdentity),
         reserveMicrousd: config.reserve,
         dailyLimitMicrousd: config.daily,
       }),
@@ -230,13 +276,15 @@ export async function runImportItem(owner: string, batchId: string, itemId: stri
     remove: removeOriginal,
     cleanupFailed,
     put: (path, bytes) =>
-      put(path, bytes, {
-        access: 'private',
-        token: config.token,
-        addRandomSuffix: false,
-        allowOverwrite: false,
-        contentType: 'application/octet-stream',
-      }),
+      config.mode === 'local'
+        ? putLocalImportObject(path, bytes)
+        : put(path, bytes, {
+            access: 'private',
+            token: config.token,
+            addRandomSuffix: false,
+            allowOverwrite: false,
+            contentType: 'application/octet-stream',
+          }),
   });
 }
 export async function executeImportAdmin(owner: string, method: string, body: unknown) {
@@ -265,7 +313,10 @@ export async function executeImportAdmin(owner: string, method: string, body: un
       owner,
       request: value.request,
       capabilities: importCapabilities,
-      configuration: { parserVersion: parserVersion(c.snapshot), batchLimitMicrousd: c.batch },
+      configuration: {
+        parserVersion: parserVersion(c.parserIdentity),
+        batchLimitMicrousd: c.batch,
+      },
     });
   }
   const batchId = importUuid(value.batchId);
@@ -307,7 +358,7 @@ export async function importQueue() {
   const config = importConfig();
   return store.getImportQueue({
     pool: importPool,
-    parserVersion: parserVersion(config.snapshot),
+    parserVersion: parserVersion(config.parserIdentity),
     reserveMicrousd: config.reserve,
   });
 }

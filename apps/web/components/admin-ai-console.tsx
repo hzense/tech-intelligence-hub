@@ -51,12 +51,14 @@ export function AdminAiConsole({
   configured,
   available,
   allowedHosts,
+  localMode = false,
 }: {
   initialConnections: AiConnection[];
   initialProbes: AiProbe[];
   configured: boolean;
   available: boolean;
   allowedHosts: string[];
+  localMode?: boolean;
 }) {
   const [connections, setConnections] = useState(initialConnections);
   const [probes, setProbes] = useState(initialProbes);
@@ -70,7 +72,8 @@ export function AdminAiConsole({
     useSyncExternalStore(subscribePending, pendingSnapshot, serverPendingSnapshot),
   ) as ReturnType<typeof readPendingAiProbe>;
   const pending = pendingState.request;
-  const modelControlsDisabled = busy || !available || !pendingState.available || pending !== null;
+  const modelControlsDisabled =
+    localMode || busy || !available || !pendingState.available || pending !== null;
   const createId = useRef<string | null>(null);
   const settings = editing?.settings ?? defaults;
   const selected = connections.find((row) => row.id === selectedId);

@@ -4,6 +4,7 @@ import controls from '@/components/admin-controls.module.css';
 import { requireAdminSession } from '@/lib/server/admin-auth';
 import { generationDetail } from '@/lib/server/signal-generation';
 import { GenerationLiveDetail } from '@/components/generation-live-detail';
+import { isLocalDevelopment } from '@/lib/local-development';
 export const metadata: Metadata = {
   title: '私有候选生成记录',
   robots: { index: false, follow: false },
@@ -26,11 +27,12 @@ export default async function GenerationDetailPage({
     <main className="section-shell">
       <h1>私有候选生成记录</h1>
       <p>
-        查看和刷新不会调用
-        AI。生成结果保留原始候选，是否公开以最新发布状态为准。未开始的排队任务可手动标记失败。
+        {isLocalDevelopment()
+          ? '本地模拟记录：不请求供应商、不调用真实 AI。候选与发布仅用于本机联调，不代表真实新闻或事实核验。'
+          : '查看和刷新不会调用 AI。生成结果保留原始候选，是否公开以最新发布状态为准。未开始的排队任务可手动标记失败。'}
       </p>
       {run ? (
-        <GenerationLiveDetail key={run.id} initialRun={run} />
+        <GenerationLiveDetail key={run.id} initialRun={run} localMode={isLocalDevelopment()} />
       ) : (
         <p>记录不存在、无权访问或生成服务尚未配置。</p>
       )}

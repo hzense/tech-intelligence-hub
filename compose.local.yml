@@ -1,0 +1,44 @@
+# Development and disposable tests are separate PostgreSQL clusters.
+# Start through scripts/local-database.mjs so Docker context and target checks run.
+services:
+  postgres:
+    image: mirror.gcr.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+    command: ['postgres', '-c', 'cluster_name=hzense-local-development']
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/development_password
+    secrets: [development_password]
+    ports: ['127.0.0.1:55432:5432']
+    volumes: ['development_data:/var/lib/postgresql']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    stop_grace_period: 20s
+  postgres-test:
+    profiles: [test]
+    image: mirror.gcr.io/pgvector/pgvector:0.8.6-pg18-bookworm@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+    command: ['postgres', '-c', 'cluster_name=hzense-local-test']
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/test_password
+    secrets: [test_password]
+    ports: ['127.0.0.1:55433:5432']
+    # Deliberately ephemeral: role integration tests must never use the dev volume.
+    tmpfs: ['/var/lib/postgresql:size=2147483648']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d postgres']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    stop_grace_period: 20s
+volumes:
+  development_data:
+secrets:
+  development_password:
+    file: ./.hzense-local/development-password
+  test_password:
+    file: ./.hzense-local/test-password

@@ -1,7 +1,11 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
-import { getAdminSession } from '@/lib/server/admin-auth';
-import { parseAdminAuthEnvironment } from '@/lib/admin-auth-policy';
-import { importConfig, uploadItem } from '@/lib/server/import-service';
+import { getAdminSession, getAdminOrigin } from '@/lib/server/admin-auth';
+import { importConfig, uploadItem, uploadLocalImport } from '@/lib/server/import-service';
+import {
+  assertLocalDevelopmentRequest,
+  isLocalDevelopment,
+  localRequestMatchesOrigin,
+} from '@/lib/local-development';
 import { importResponse, readImportJSON } from '@/lib/import-io';
 import { importError } from '@/lib/admin-import-core';
 export const runtime = 'nodejs';
@@ -10,18 +14,38 @@ export async function POST(request: Request) {
   try {
     const session = await getAdminSession();
     if (!session) return importResponse({ error: 'unauthorized' }, 401);
-    const origin = parseAdminAuthEnvironment(process.env)?.origin;
+    const origin = getAdminOrigin();
     if (
       !origin ||
-      new URL(request.url).origin !== origin ||
+      (isLocalDevelopment()
+        ? !localRequestMatchesOrigin(request, origin)
+        : new URL(request.url).origin !== origin) ||
       request.headers.get('origin') !== origin ||
       request.headers.get('sec-fetch-site') === 'cross-site'
     )
       return importResponse({ error: 'forbidden' }, 403);
+    const config = importConfig();
+    if (config.mode === 'local') {
+      assertLocalDevelopmentRequest(request);
+      const query = new URL(request.url).searchParams;
+      if (
+        query.size !== 2 ||
+        query.getAll('batchId').length !== 1 ||
+        query.getAll('itemId').length !== 1
+      )
+        return importResponse({ error: 'invalid_request' }, 400);
+      return importResponse(
+        await uploadLocalImport(
+          session.user.id,
+          query.get('batchId')!,
+          query.get('itemId')!,
+          request,
+        ),
+      );
+    }
     const body = (await readImportJSON(request, 16384)) as HandleUploadBody;
     if (body?.type !== 'blob.generate-client-token')
       return importResponse({ error: 'invalid_request' }, 400);
-    const config = importConfig();
     const result = await handleUpload({
       request,
       body,

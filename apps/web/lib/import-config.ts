@@ -1,5 +1,6 @@
 import { readRuntimeReaderConfig, RuntimeReaderError } from './runtime-reader-core.ts';
 import { assertImportStore } from '../../../packages/ingestion/src/import-retention.mjs';
+import { assertLocalDatabaseUrl, isLocalDevelopment } from './local-development.ts';
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -29,6 +30,7 @@ export const importConfigurationMessages = {
   reserve: 'HZENSE_IMPORT_RESERVE_MICROUSD 必须为正安全整数。',
   daily: 'HZENSE_IMPORT_DAILY_LIMIT_MICROUSD 必须为正安全整数。',
   batch: 'HZENSE_IMPORT_BATCH_LIMIT_MICROUSD 必须为正安全整数。',
+  local_storage: '本地临时目录配置缺失；请使用 local:dev 启动。',
 } as const;
 type Issue = keyof typeof importConfigurationMessages;
 export type ImportConfigurationDiagnostics = {
@@ -61,6 +63,18 @@ function targetIssues(raw: string | undefined, env: Environment): Issue[] {
 // Pure, no I/O: safe to run while the import gate is closed. Never returns input values/errors.
 export function diagnoseImportConfiguration(env: Environment): ImportConfigurationDiagnostics {
   const issues: Issue[] = [];
+  if (isLocalDevelopment(env)) {
+    if (!['0', '1'].includes(env.HZENSE_IMPORT_ENABLED ?? '')) issues.push('enabled');
+    try {
+      assertLocalDatabaseUrl(env.HZENSE_IMPORT_DATABASE_URL, 'hzense_import_admin', env);
+    } catch {
+      issues.push('database_url');
+    }
+    if (!/^\/.+\/\.hzense-local$/.test(env.HZENSE_LOCAL_STATE_DIR ?? ''))
+      issues.push('local_storage');
+    const enabled = env.HZENSE_IMPORT_ENABLED === '1';
+    return { enabled, valid: issues.length === 0, ready: enabled && issues.length === 0, issues };
+  }
   if (env.VERCEL_ENV !== 'production') issues.push('environment');
   if (!['0', '1'].includes(env.HZENSE_IMPORT_ENABLED ?? '')) issues.push('enabled');
   try {
