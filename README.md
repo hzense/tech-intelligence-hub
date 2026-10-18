@@ -183,27 +183,42 @@ docs/
 
 ## 本地开发与基础检查
 
-使用 Node.js 24 和项目固定的 pnpm 11.21.0。若使用 Corepack 管理 pnpm，可先运行下列前两条命令；锁文件已纳入仓库，常规安装应冻结依赖版本。
+目标是**同一份代码，本地开发验证，提交评审后在线部署**：Neon 或生产网站不可用不应阻断代码开发。`local:browse` 提供无数据库的公开快照浏览；新增 `local:dev` 将同一管理后台连接到本机 PostgreSQL、免令牌本地身份、私有临时文件、Docker 解析和本地任务。生成仅使用明确标记的模拟资料，真实 AI、自动采集与 AI 补全尚未本地化。导入→模拟生成→发布→撤回 HTTP 闭环及部分浏览器检查已通过；本次免令牌访问替代旧登录方式，已独立验证后台直达、同源读取与跨站／错误 Host 拒绝，没有重复生成或发布内容。安装、命令与准确边界见[本地开发说明](docs/LOCAL.md)。
+
+使用 Node.js 24 和项目固定的 pnpm 11.21.0；在仓库根目录执行：
 
 ```bash
-corepack enable
-corepack prepare pnpm@11.21.0 --activate
+npm install --global pnpm@11.21.0
 pnpm install --frozen-lockfile
-pnpm --filter @hzense/web dev
+pnpm local:check
+pnpm local:browse
 ```
 
-质量检查在仓库根目录执行：
+打开 `http://127.0.0.1:3000`，按 **Ctrl+C** 停止。若检查发现可能加载生产配置的环境文件，请按本地运行说明另建干净 worktree，不要删除原有环境文件。此入口不会部署或修改线上网站。
+
+`local:browse`（兼容入口 `local`）使用仓库中的 110 条 Seed 信号及编辑内容，不包含生产数据库独有的新发布记录。公开页面不需要数据库或密钥；外部图片与来源链接仍需联网。
+
+隔离的代码检查和本地数据库准备：
 
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm content:validate
-pnpm seed:validate
-pnpm workflow:validate
+pnpm local:verify
+# 停止本地 Web 开发服务器后，额外验证生产构建：
+pnpm local:verify --build
+# 以下需要先安装并启动 Docker；不会连接 Neon：
+pnpm local:db:doctor
+pnpm local:db:up
+pnpm local:db:init
+pnpm local:db:verify
+pnpm local:db:test
+# 开发后台需要本地解析镜像；首次构建需要联网：
+docker build --tag hzense-local-import-parser:1 docker/local-import-parser
+pnpm local:dev:check
+pnpm local:dev
 ```
 
-`pnpm build` 构建整个项目；`pnpm test:e2e` 运行浏览器端到端测试。更多本地说明见[网站 README](apps/web/README.md)。
+开发后台直接打开 `http://127.0.0.1:3000/admin`，无需令牌、Cookie 或 Google 登录；严格本地模式使用独立开发身份，生产认证不变。此模式信任所有能访问本机回环地址的进程与操作系统用户，不要通过代理、隧道或局域网公开，停止服务即可结束访问。使用 [本地联调资料](docs/fixtures/local-signal.md) 验证导入 → 模拟生成 → 审核发布 → 公开查看 → 撤回；测试只影响本机数据。原件仅临时保存，处理结束走删除流程，解析结果及审计记录仍保留本地库。
+
+`local:verify` 不继承生产密钥，不运行数据库集成、浏览器或付费 AI 验收；数据库测试只在独立测试集群执行。Git 同步代码、迁移与测试，不同步本地数据库、上传资料或密钥。合并后沿用 Vercel 部署；线上服务恢复后仍需确认迁移、角色、域名及实际发布链路。本轮未修改生产配置或部署。更多说明见[网站 README](apps/web/README.md)。
 
 ## 专题数据库投影约定
 

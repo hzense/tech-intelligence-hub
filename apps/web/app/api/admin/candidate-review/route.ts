@@ -1,6 +1,5 @@
 import { createCandidateReviewHandler } from '@/lib/admin-candidate-review-handler';
-import { getAdminSession } from '@/lib/server/admin-auth';
-import { parseAdminAuthEnvironment } from '@/lib/admin-auth-policy';
+import { getAdminSession, getAdminOrigin } from '@/lib/server/admin-auth';
 import { confirmPreparedReview, reviewDashboard } from '@/lib/server/candidate-review';
 import { operateCandidateReview } from '@/lib/server/candidate-review-publication';
 import {
@@ -14,7 +13,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 export const GET = createCandidateReviewHandler({
   session: getAdminSession,
-  origin: () => parseAdminAuthEnvironment(process.env)?.origin,
+  origin: () => getAdminOrigin() ?? undefined,
   read: reviewDashboard,
   confirm: confirmPreparedReview,
   enrich: async (owner, request) => {

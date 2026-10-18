@@ -1,6 +1,5 @@
 import { createAdminMaterialHandler } from '@/lib/admin-material-handler';
-import { getAdminSession } from '@/lib/server/admin-auth';
-import { parseAdminAuthEnvironment } from '@/lib/admin-auth-policy';
+import { getAdminSession, getAdminOrigin } from '@/lib/server/admin-auth';
 import {
   readMaterialDashboard,
   createMaterialRequest,
@@ -22,7 +21,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 export const GET = createAdminMaterialHandler({
   session: getAdminSession,
-  origin: () => parseAdminAuthEnvironment(process.env)?.origin,
+  origin: () => getAdminOrigin() ?? undefined,
   read: readMaterialDashboard,
   create: createMaterialRequest,
   inspect: inspectMaterialRequest,

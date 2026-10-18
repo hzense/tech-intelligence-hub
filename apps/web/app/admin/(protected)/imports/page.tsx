@@ -3,6 +3,7 @@ import { requireAdminSession } from '@/lib/server/admin-auth';
 import { importConfigurationDiagnostics } from '@/lib/server/import-service';
 import { importConfigurationMessages } from '@/lib/import-config';
 import { AdminImports } from '@/components/admin-imports';
+import { isLocalDevelopment } from '@/lib/local-development';
 export const metadata: Metadata = { title: '批量导入', robots: { index: false, follow: false } };
 export const dynamic = 'force-dynamic';
 export default async function ImportsPage() {
@@ -10,6 +11,7 @@ export default async function ImportsPage() {
   const diagnostics = importConfigurationDiagnostics();
   return (
     <AdminImports
+      local={isLocalDevelopment(process.env)}
       configured={diagnostics.ready}
       diagnostics={{
         enabled: diagnostics.enabled,

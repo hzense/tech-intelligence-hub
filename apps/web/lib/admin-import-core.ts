@@ -1,6 +1,7 @@
 import { ImportTaskError } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { ImportIOError, importResponse, readImportJSON } from './import-io.ts';
 import { safeImportConflictReason } from './import-conflict.ts';
+import { isLocalDevelopment, localRequestMatchesOrigin } from './local-development.ts';
 
 export interface ImportAdminDependencies {
   session(): Promise<{ user: { id: string } } | null>;
@@ -58,7 +59,12 @@ export function createImportAdminHandler(deps: ImportAdminDependencies) {
       const session = await deps.session();
       if (!session) return importResponse({ error: 'unauthorized' }, 401);
       const origin = deps.origin();
-      if (!origin || new URL(request.url).origin !== origin)
+      if (
+        !origin ||
+        (isLocalDevelopment()
+          ? !localRequestMatchesOrigin(request, origin)
+          : new URL(request.url).origin !== origin)
+      )
         return importResponse({ error: 'forbidden' }, 403);
       if (
         request.method !== 'GET' &&

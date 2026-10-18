@@ -15,9 +15,17 @@ type GenerationDetailRun = GenerationProgressRun & {
   result?: unknown;
   publication?: GenerationPublication;
   error_code?: string | null;
+  reserved_microusd?: number | string;
+  charged_microusd?: number | string;
 };
 
-export function GenerationLiveDetail({ initialRun }: { initialRun: GenerationDetailRun }) {
+export function GenerationLiveDetail({
+  initialRun,
+  localMode = false,
+}: {
+  initialRun: GenerationDetailRun;
+  localMode?: boolean;
+}) {
   const [run, setRun] = useState(initialRun);
   const [error, setError] = useState(false);
   const [resolving, setResolving] = useState(false);
@@ -101,7 +109,11 @@ export function GenerationLiveDetail({ initialRun }: { initialRun: GenerationDet
       if (!data.run || data.run.id !== run.id || data.run.status !== 'failed')
         throw new Error('unconfirmed');
       setRun(data.run);
-      setNotice('已结束排队并标记为失败。原记录和费用保留，未调用 AI。');
+      setNotice(
+        localMode
+          ? '已结束排队并标记为失败。原记录和技术预留保留，不请求供应商。'
+          : '已结束排队并标记为失败。原记录和费用保留，未调用 AI。',
+      );
     } catch {
       setNotice('处理结果尚未确认，请刷新核对原任务；不会重新调用 AI。');
     } finally {
@@ -111,7 +123,14 @@ export function GenerationLiveDetail({ initialRun }: { initialRun: GenerationDet
   return (
     <>
       <p>任务：{run.id}</p>
-      <GenerationProgress run={run} />
+      {localMode && (
+        <p>
+          本地模拟：不请求供应商、不调用真实 AI。技术预留 {run.reserved_microusd ?? '待核对'}{' '}
+          微美元，记账 {run.charged_microusd ?? '待核对'}{' '}
+          微美元；这些是本地流程记录，不是供应商费用。
+        </p>
+      )}
+      <GenerationProgress run={run} localMode={localMode} />
       {failureMessage && <p aria-label="任务失败原因">失败原因：{failureMessage}</p>}
       {run.status === 'completed' && (
         <p>
@@ -135,7 +154,9 @@ export function GenerationLiveDetail({ initialRun }: { initialRun: GenerationDet
             {queueConfirmation ? (
               <div role="group" aria-label="确认结束排队">
                 <p>
-                  确认将这次尚未开始的排队任务标记为失败？原记录和费用保留，不会调用 AI 或重新生成。
+                  {localMode
+                    ? '确认将这次尚未开始的本地模拟任务标记为失败？原记录和技术预留保留，不请求供应商、不重新模拟。'
+                    : '确认将这次尚未开始的排队任务标记为失败？原记录和费用保留，不会调用 AI 或重新生成。'}
                 </p>
                 <button
                   className={controls.button}
@@ -169,7 +190,7 @@ export function GenerationLiveDetail({ initialRun }: { initialRun: GenerationDet
       {error && (
         <p role="alert">状态刷新失败，显示最后一次已保存状态。请刷新页面核对；不会重新调用 AI。</p>
       )}
-      <PrivateResult result={run.result} reviewTask={run} />
+      <PrivateResult result={run.result} reviewTask={run} localMode={localMode} />
       <details>
         <summary>查看完整任务记录</summary>
         <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>

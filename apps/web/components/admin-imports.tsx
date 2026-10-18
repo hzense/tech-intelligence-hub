@@ -50,9 +50,11 @@ async function api(body?: unknown, before?: string, view: TaskView = 'current') 
 export function AdminImports({
   configured,
   diagnostics,
+  local = false,
 }: {
   configured: boolean;
   diagnostics?: { enabled: boolean; valid: boolean; issues: string[] };
+  local?: boolean;
 }) {
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [files, setFiles] = useState<File[]>([]),
@@ -125,7 +127,7 @@ export function AdminImports({
           }
         })
         .catch(() => {
-          if (active) setMessage('导入服务暂不可用，请检查生产配置与权限。');
+          if (active) setMessage('导入服务暂不可用，请检查配置与权限。');
         })
         .finally(() => {
           if (active) setBusy(false);
@@ -179,13 +181,24 @@ export function AdminImports({
         } catch (error) {
           if (!canUploadAfterConfirmError(error)) throw error;
         }
-        await upload(`imports/${batch.id}/${item.id}`, file, {
-          access: 'private',
-          contentType: 'application/octet-stream',
-          handleUploadUrl: '/api/admin/imports/upload',
-          clientPayload: JSON.stringify({ batchId: batch.id, itemId: item.id }),
-          multipart: file.size > 4 * 1024 * 1024,
-        });
+        if (local) {
+          const query = new URLSearchParams({ batchId: batch.id, itemId: item.id });
+          const response = await fetch(`/api/admin/imports/upload?${query}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: file,
+          });
+          const result = await response.json();
+          if (!response.ok)
+            throw new ImportClientError(result.error ?? 'unavailable', result.reason);
+        } else
+          await upload(`imports/${batch.id}/${item.id}`, file, {
+            access: 'private',
+            contentType: 'application/octet-stream',
+            handleUploadUrl: '/api/admin/imports/upload',
+            clientPayload: JSON.stringify({ batchId: batch.id, itemId: item.id }),
+            multipart: file.size > 4 * 1024 * 1024,
+          });
         await api({ action: 'confirm', batchId: batch.id, itemId: item.id });
       }
       setBatches((await api()).batches);
@@ -212,6 +225,12 @@ export function AdminImports({
           <p className={styles.eyebrow}>内容工作台 · 第一步</p>
           <h1>文档与链接批量导入</h1>
           <p>导入资料，解析后再选择是否生成私有信号候选。不会自动发布。</p>
+          {local && (
+            <p>
+              本地开发模式：原件临时存放本机，Docker 隔离解析并写入本地
+              PostgreSQL；不上传云存储、不产生云解析费用。
+            </p>
+          )}
         </div>
         <Link className={controls.button} href="/admin">
           返回管理后台

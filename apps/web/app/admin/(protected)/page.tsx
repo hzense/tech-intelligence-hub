@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { AdminSignOutButton } from '@/components/admin-auth-buttons';
 import styles from '@/components/admin-auth.module.css';
 import { requireAdminSession } from '@/lib/server/admin-auth';
+import { isLocalDevelopment } from '@/lib/local-development';
 
 export const metadata: Metadata = {
   title: '管理后台',
@@ -12,18 +13,19 @@ export const metadata: Metadata = {
 export default async function AdminHomePage() {
   // Pages must authenticate independently; a layout is not an authorization boundary.
   const session = await requireAdminSession();
+  const local = isLocalDevelopment();
 
   return (
     <main className={`section-shell ${styles.main}`}>
       <section className={styles.card} aria-labelledby="admin-home-title">
         <p className="kicker">HZENSE 管理后台</p>
         <h1 className={styles.title} id="admin-home-title">
-          管理员身份已验证
+          {local ? '本地开发后台' : '管理员身份已验证'}
         </h1>
         <p className={styles.copy}>管理文档导入、信号候选审核、自动采集、专题洞察和 AI 配置。</p>
         <dl className={styles.account}>
-          <dt>当前登录账号</dt>
-          <dd>{session.user.email}</dd>
+          <dt>{local ? '当前访问方式' : '当前登录账号'}</dt>
+          <dd>{local ? '本机直接访问，无需登录；操作仅影响本地数据库。' : session.user.email}</dd>
         </dl>
         <div className={styles.actions}>
           <Link className={styles.backLink} href="/admin/imports">
@@ -44,9 +46,9 @@ export default async function AdminHomePage() {
           <Link className={styles.backLink} href="/admin/ai/profiles">
             分阶段模型配置
           </Link>
-          <AdminSignOutButton />
+          {!local ? <AdminSignOutButton /> : null}
           <Link className={styles.backLink} href="/">
-            返回网站
+            {local ? '返回首页' : '返回网站'}
           </Link>
         </div>
       </section>

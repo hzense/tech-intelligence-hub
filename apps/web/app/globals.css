@@ -44,6 +44,21 @@ a {
   color: inherit;
   text-decoration: none;
 }
+.local-preview-notice {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
+  padding: 10px 24px;
+  background: var(--surface-soft);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.local-preview-notice strong {
+  color: var(--brand-bright);
+}
 button,
 input {
   font: inherit;

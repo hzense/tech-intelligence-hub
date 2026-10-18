@@ -119,6 +119,7 @@ export const aiAdminErrorStatus: Readonly<Record<string, number>> = {
   probe_outcome_unknown: 503,
   ai_not_configured: 503,
   keyring_unavailable: 503,
+  local_provider_disabled: 409,
 };
 
 async function readJson(request: Request): Promise<Record<string, unknown>> {

@@ -9,6 +9,17 @@ import { encode } from 'next-auth/jwt';
 import { chromium } from '@playwright/test';
 import { ADMIN_AUTHORIZATION_VERSION } from '../lib/admin-auth-policy.ts';
 
+async function stopIsolatedServer(child, exited) {
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill('SIGTERM');
+    // Next can close its listener while retaining SDK handles. Bound graceful
+    // shutdown, then kill only the exact child spawned by this isolated test.
+    await Promise.race([exited, delay(2000, undefined, { ref: false })]);
+    if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+  }
+  await exited;
+}
+
 // Opt-in built-server regression, never a production endpoint or login bypass.
 // The isolated child receives only synthetic OAuth values and a random secret.
 // No Google requests, real accounts, inherited DB URLs or deployment credentials.
@@ -57,10 +68,7 @@ test(
       output += chunk;
     });
     const exited = new Promise((resolve) => child.once('exit', resolve));
-    t.after(async () => {
-      if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
-      await exited;
-    });
+    t.after(() => stopIsolatedServer(child, exited));
     for (let count = 0; !output.includes('Ready in'); count += 1) {
       assert.equal(
         child.exitCode,
@@ -516,8 +524,7 @@ test(
         // Reuse the same canonical local origin, key and otherwise-valid claims;
         // only VERCEL_ENV changes. A different port would invalidate the origin
         // independently and would not prove the Preview deployment gate.
-        child.kill('SIGTERM');
-        await exited;
+        await stopIsolatedServer(child, exited);
         const preview = spawn(process.execPath, child.spawnargs.slice(1), {
           cwd: fileURLToPath(new URL('../', import.meta.url)),
           env: {
@@ -560,8 +567,7 @@ test(
             assert.equal(response.headers.get('cache-control'), 'private, no-store');
           }
         } finally {
-          if (preview.exitCode === null && preview.signalCode === null) preview.kill('SIGTERM');
-          await previewExited;
+          await stopIsolatedServer(preview, previewExited);
         }
       },
     );
