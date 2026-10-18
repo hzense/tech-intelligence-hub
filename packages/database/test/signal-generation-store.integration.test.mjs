@@ -13,6 +13,9 @@ import {
   createSignalGeneration,
   deleteSignalGeneration,
   getSignalGeneration,
+  getSignalGenerationDisplay,
+  listSignalGenerationDisplays,
+  readSignalGenerationProgress,
   listSignalGenerations,
   claimSignalGeneration,
   finishSignalGeneration,
@@ -151,6 +154,87 @@ suite('private AI generation PostgreSQL ledger', () => {
   });
   beforeEach(async () => {
     await pool.query('TRUNCATE public.signal_generation_runs');
+  });
+  it('reads saved candidates without snapshots for display while retaining full execution and evidence records', async () => {
+    const task = await claimed();
+    await finishSignalGeneration({
+      ...args(task),
+      token: task.lease_token,
+      outcome: 'completed',
+      result,
+      chargedMicrousd: 3,
+    });
+    const full = await getSignalGeneration({ ...args(task), readOnly: true });
+    const detail = await getSignalGenerationDisplay(args(task));
+    const rows = await listSignalGenerationDisplays({ pool, owner, batchId: task.batch_id });
+    expect(rows).toEqual([detail]);
+    expect(detail.result).toEqual(full.result);
+    expect(detail.generation_version).toBe(full.generation_version);
+    expect(detail.charged_microusd).toBe(full.charged_microusd);
+    expect(detail).not.toHaveProperty('snapshot');
+    expect(detail).not.toHaveProperty('configuration');
+    expect(detail).not.toHaveProperty('lease_token');
+    expect(full.snapshot.source.fragments[0].text).toBe('Synthetic source');
+    expect(full.configuration.reserveMicrousd).toBe(10);
+    await expect(
+      getSignalGenerationDisplay({ ...args(task), owner: 'other-owner' }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    expect(await listSignalGenerationDisplays({ pool, owner: 'other-owner' })).toEqual([]);
+    await deleteSignalGeneration(args(task));
+    await expect(getSignalGenerationDisplay(args(task))).rejects.toMatchObject({
+      code: 'not_found',
+    });
+    expect(await listSignalGenerationDisplays({ pool, owner })).toEqual([]);
+  });
+  it('reads bounded owner-scoped progress without exposing source, results or expiring leases', async () => {
+    const task = await createSignalGeneration(input());
+    const second = await createSignalGeneration(input());
+    const claimed = await claimSignalGeneration(args(task));
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 minute' WHERE id=$1",
+      [task.id],
+    );
+    const [progress] = await readSignalGenerationProgress({
+      pool,
+      owner,
+      ids: [task.id, task.id],
+    });
+    expect(progress.id).toBe(task.id);
+    expect(progress.status).toBe('running');
+    expect(progress.progress_phase).toBe('preparing');
+    expect(progress.reserved_microusd).toBe(claimed.run.reserved_microusd);
+    expect(progress).not.toHaveProperty('snapshot');
+    expect(progress).not.toHaveProperty('result');
+    expect(progress).not.toHaveProperty('configuration');
+    expect(progress).not.toHaveProperty('lease_token');
+    const legacy = await readSignalGenerationProgress({
+      pool,
+      owner,
+      ids: [task.id],
+      legacyReadOnly: true,
+    });
+    expect(legacy[0].progress_phase).toBeNull();
+    expect(legacy[0].progress_at).toBeNull();
+    expect(legacy[0].started_at).toBeNull();
+    await expect(
+      readSignalGenerationProgress({
+        pool,
+        owner: 'other-owner',
+        ids: [task.id],
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    await deleteSignalGeneration(args(second));
+    await expect(
+      readSignalGenerationProgress({
+        pool,
+        owner,
+        ids: [task.id, second.id],
+      }),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    const saved = await getSignalGeneration({ ...args(task), readOnly: true });
+    expect(saved.status).toBe('running');
+    expect(saved.error_code).toBeNull();
+    expect(saved.reserved_microusd).toBe(claimed.run.reserved_microusd);
   });
   it('queues without spending and fences monotonic progress across duplicate delivery and completion', async () => {
     const task = await createSignalGeneration(input());

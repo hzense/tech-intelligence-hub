@@ -17,6 +17,7 @@ import { readAiBackendConfiguration } from '../admin-ai-core';
 import {
   createGenerationExecutor,
   generationDto,
+  generationProgressDto,
   GenerationError,
 } from '../signal-generation-core';
 import {
@@ -111,7 +112,7 @@ async function source(
     output: await getImportOutput({ pool: importPool, owner, batchId, itemId }),
   };
 }
-async function historyDtos(owner: string, runs: store.SignalGenerationRun[]) {
+async function historyDtos(owner: string, runs: store.SignalGenerationDisplay[]) {
   const itemIds = [...new Set(runs.map((run) => run.item_id).filter(Boolean))];
   const [labels, receipts] = await Promise.all([
     importsConfigured() && itemIds.length
@@ -140,11 +141,11 @@ export async function generationDashboard(owner: string) {
     .catch(() => null);
   // History does not depend on import, AI credentials, budgets or the spend switch.
   if (!generationConfigured()) {
-    const runs = await store.listSignalGenerations({ ...historyOptions(), owner });
+    const runs = await store.listSignalGenerationDisplays({ ...historyOptions(), owner });
     return { runs: await historyDtos(owner, runs), profiles: [], batches: [], dailyUsage };
   }
   const [runs, ai, batches] = await Promise.all([
-    store.listSignalGenerations({ ...historyOptions(), owner }),
+    store.listSignalGenerationDisplays({ ...historyOptions(), owner }),
     // Selection data is optional: an ancillary outage must not hide saved runs.
     isLocalDevelopment()
       ? Promise.resolve({ profiles: [localGenerationAccess().profile], connections: [] })
@@ -177,7 +178,17 @@ export async function inspectGenerationInput(owner: string, body: unknown) {
 }
 export async function generationDetail(owner: string, id: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
-  return (await historyDtos(owner, [await generationRecord(owner, id)]))[0];
+  return (
+    await historyDtos(owner, [
+      await store.getSignalGenerationDisplay({ ...historyOptions(), owner, id }),
+    ])
+  )[0];
+}
+export async function generationProgress(owner: string, ids: string[]) {
+  if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
+  return (await store.readSignalGenerationProgress({ ...historyOptions(), owner, ids })).map(
+    generationProgressDto,
+  );
 }
 export async function generationRecord(owner: string, id: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');

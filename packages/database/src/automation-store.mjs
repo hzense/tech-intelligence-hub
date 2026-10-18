@@ -23,6 +23,33 @@ async function configShape(client) {
 }
 const runColumns =
   'id,config_id,owner_id,config_revision,snapshot,slot,trigger,status,phase,result,frozen_inputs,error_code,lease_token,lease_until,budget_day,reserved_microusd,charged_microusd,cost_source,publication_status,published_at,created_at,started_at,finished_at';
+// Dashboard polling must not transfer worker snapshots or complete report/source
+// results. Project small public metadata in PostgreSQL, before network transfer.
+const publicRunColumns = `id,status,phase,error_code,created_at,finished_at,
+  charged_microusd,cost_source,publication_status,
+  jsonb_build_object('name',snapshot->'name','kind',snapshot->'kind') AS snapshot`;
+const runSummaryResult = `CASE WHEN result IS NULL THEN NULL ELSE jsonb_build_object(
+  'generationIds',COALESCE((
+    SELECT jsonb_agg(ids.value ORDER BY ids.first_seen) FROM (
+      SELECT value,min(ordinality) AS first_seen
+      FROM jsonb_array_elements(CASE WHEN jsonb_typeof(result->'generationIds')='array'
+        THEN result->'generationIds' ELSE '[]'::jsonb END) WITH ORDINALITY
+      WHERE jsonb_typeof(value)='string'
+        AND value #>> '{}' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+      GROUP BY value ORDER BY first_seen LIMIT 8
+    ) ids
+  ),'[]'::jsonb),
+  'failed',CASE WHEN jsonb_typeof(result->'failed')='number' THEN result->'failed' ELSE NULL END,
+  'discovery',CASE WHEN jsonb_typeof(result->'discovery')='object' THEN jsonb_build_object(
+    'articleCount',CASE WHEN jsonb_typeof(result->'discovery'->'articles')='array'
+      THEN jsonb_array_length(result->'discovery'->'articles') ELSE NULL END,
+    'duplicates',CASE WHEN jsonb_typeof(result->'discovery'->'duplicates')='number'
+      THEN result->'discovery'->'duplicates' ELSE NULL END,
+    'rejected',CASE WHEN jsonb_typeof(result->'discovery'->'rejected')='number'
+      THEN result->'discovery'->'rejected' ELSE NULL END
+  ) ELSE NULL END
+) END AS result`;
+const publicRunDto = (row) => ({ ...row, charged_microusd: Number(row.charged_microusd) });
 const dto = (row) =>
   row
     ? {
@@ -161,11 +188,25 @@ export async function readAutomationDashboard({ pool, owner }) {
       ).rows,
       runs: (
         await client.query(
-          `SELECT ${runColumns} FROM public.automation_runs WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100`,
+          `SELECT ${publicRunColumns},${runSummaryResult} FROM public.automation_runs WHERE owner_id=$1 ORDER BY created_at DESC LIMIT 100`,
           [owner],
         )
-      ).rows.map(dto),
+      ).rows.map(publicRunDto),
     };
+  });
+}
+export async function readAutomationRunDetail({ pool, owner, id }) {
+  owner = automationText(owner);
+  id = automationUuid(id);
+  return transaction(pool, async (client) => {
+    const row = (
+      await client.query(
+        `SELECT ${publicRunColumns},result FROM public.automation_runs WHERE id=$1 AND owner_id=$2`,
+        [id, owner],
+      )
+    ).rows[0];
+    if (!row) fail('not_found');
+    return publicRunDto(row);
   });
 }
 async function enqueue(client, config, { id, slot, trigger }) {

@@ -1,4 +1,7 @@
-import { AutomationError } from '../../../packages/database/src/automation-contract.mjs';
+import {
+  AutomationError,
+  automationUuid,
+} from '../../../packages/database/src/automation-contract.mjs';
 import { importResponse, readImportJSON, ImportIOError } from './import-io.ts';
 
 type Session = { user: { id: string } } | null;
@@ -6,6 +9,7 @@ type Dependencies = {
   session(): Promise<Session>;
   origin(): string | undefined;
   dashboard(owner: string): Promise<unknown>;
+  detail(owner: string, id: string): Promise<unknown>;
   save(owner: string, request: unknown): Promise<unknown>;
   remove(owner: string, request: unknown): Promise<unknown>;
   trigger(owner: string, request: unknown): Promise<unknown>;
@@ -75,7 +79,13 @@ export function createAutomationHandler(deps: Dependencies) {
       )
         return importResponse({ error: 'forbidden' }, 403);
       const url = new URL(request.url);
-      if (url.search || url.hash) throw new AutomationError();
+      if (url.hash) throw new AutomationError();
+      if (request.method === 'GET' && url.search) {
+        if (Array.from(url.searchParams.keys()).join(',') !== 'id') throw new AutomationError();
+        const id = automationUuid(url.searchParams.get('id'));
+        return importResponse({ run: safeRun(await deps.detail(session.user.id, id)) });
+      }
+      if (url.search) throw new AutomationError();
       if (request.method === 'GET')
         return importResponse(safeResult(await deps.dashboard(session.user.id)));
       if (request.method !== 'POST') return importResponse({ error: 'method_not_allowed' }, 405);

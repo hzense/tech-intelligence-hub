@@ -37,6 +37,7 @@ export function createGenerationHandler(deps: {
   execute(owner: string, body: unknown): Promise<unknown>;
   delete?(owner: string, id: string): Promise<unknown>;
   detail?(owner: string, id: string): Promise<unknown>;
+  progress?(owner: string, ids: string[]): Promise<unknown>;
   inspectSource?(owner: string, body: unknown): Promise<unknown>;
   enqueue?(owner: string, id: string): Promise<unknown>;
   resolveQueue?(owner: string, id: string, queuedAt: string): Promise<unknown>;
@@ -57,6 +58,14 @@ export function createGenerationHandler(deps: {
       )
         return importResponse({ error: 'forbidden' }, 403);
       // Next reconstructs an internal URL; authority comes from actual Host and fixed auth origin.
+      if (request.method === 'GET' && url.searchParams.has('progress') && !url.hash) {
+        if ([...url.searchParams.keys()].join(',') !== 'progress' || !deps.progress)
+          throw new GenerationError('invalid_request');
+        const values = url.searchParams.get('progress')!.split(',');
+        if (values.length > 50) throw new GenerationError('invalid_request');
+        const ids = [...new Set(values.map(generationRecordId))];
+        return importResponse({ runs: await deps.progress(session.user.id, ids) });
+      }
       if (request.method === 'GET' && url.searchParams.has('id') && !url.hash) {
         if ([...url.searchParams.keys()].join(',') !== 'id' || !deps.detail)
           throw new GenerationError('invalid_request');

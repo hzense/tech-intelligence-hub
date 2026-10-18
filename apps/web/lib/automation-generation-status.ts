@@ -115,10 +115,14 @@ export function sourceAutomationAllSourcesRejected(run: SourceAutomationRun): bo
   if (!run.result || typeof run.result !== 'object' || Array.isArray(run.result)) return false;
   const discovery = (run.result as { discovery?: unknown }).discovery;
   if (!discovery || typeof discovery !== 'object' || Array.isArray(discovery)) return false;
-  const row = discovery as { articles?: unknown; rejected?: unknown; duplicates?: unknown };
+  const row = discovery as {
+    articles?: unknown;
+    articleCount?: unknown;
+    rejected?: unknown;
+    duplicates?: unknown;
+  };
   return (
-    Array.isArray(row.articles) &&
-    row.articles.length === 0 &&
+    (Array.isArray(row.articles) ? row.articles.length === 0 : row.articleCount === 0) &&
     typeof row.rejected === 'number' &&
     Number.isSafeInteger(row.rejected) &&
     row.rejected > 0 &&

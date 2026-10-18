@@ -16,6 +16,7 @@ import {
   readCollectedSourceUrls,
   readAutomationRun,
   readAutomationDashboard,
+  readAutomationRunDetail,
   deleteAutomationConfig,
   enqueueDueAutomations,
   publishAutomationInsight,
@@ -477,6 +478,19 @@ suite('automation role isolation and publication boundary', () => {
       (await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [id])).rows[0],
     ).toEqual(before);
     expect((await readAutomationDashboard({ pool, owner: operator })).runs).toHaveLength(1);
+    const summary = (await readAutomationDashboard({ pool, owner: operator })).runs[0];
+    expect(summary.snapshot).toEqual({ name: snapshot.name, kind: 'topic_insight' });
+    expect(summary.result).not.toHaveProperty('inputs');
+    expect(summary.result).not.toHaveProperty('title');
+    expect(summary).not.toHaveProperty('frozen_inputs');
+    expect(summary).not.toHaveProperty('lease_token');
+    expect(await readAutomationRunDetail({ pool, owner: operator, id })).toMatchObject({
+      result,
+      charged_microusd: 27000,
+    });
+    await expect(readAutomationRunDetail({ pool, owner: 'another-owner', id })).rejects.toThrow(
+      'not_found',
+    );
     expect(await readAutomationRun({ pool, owner: operator, id })).toMatchObject({
       result,
       reserved_microusd: 500000,
@@ -507,6 +521,63 @@ suite('automation role isolation and publication boundary', () => {
     expect(dashboard.runs).toHaveLength(100);
     expect(dashboard.runs.some((run) => run.id === oldId)).toBe(false);
     await expect(deletion(config, operator)).rejects.toThrow('config_in_use');
+  });
+  it('keeps generation linkage and rejection counts while excluding large results from polling', async () => {
+    const operator = 'summary-projection-owner';
+    const config = await save(operator);
+    const id = randomUUID();
+    const generationIds = Array.from({ length: 10 }, () => randomUUID());
+    const result = {
+      generationIds: [
+        'invalid',
+        generationIds[0],
+        generationIds[0],
+        null,
+        ...generationIds.slice(1),
+      ],
+      failed: 2,
+      discovery: { articles: [], rejected: 8, duplicates: 0 },
+      report: { body: 'synthetic private result'.repeat(10000) },
+      inputs: [{ body: 'synthetic source' }],
+    };
+    await owner.query(
+      "INSERT INTO public.automation_runs(id,config_id,owner_id,config_revision,snapshot,slot,trigger,status,phase,result,frozen_inputs) VALUES($1,$2,$3,1,$4::jsonb,$5,'manual','completed','no_new_sources',$6::jsonb,$7::jsonb)",
+      [
+        id,
+        config.id,
+        operator,
+        JSON.stringify(config.config),
+        `manual:${id}`,
+        JSON.stringify(result),
+        JSON.stringify({ inputs: result.inputs }),
+      ],
+    );
+    const summary = (await readAutomationDashboard({ pool, owner: operator })).runs[0];
+    expect(summary.result).toEqual({
+      generationIds: generationIds.slice(0, 8),
+      failed: 2,
+      discovery: { articleCount: 0, rejected: 8, duplicates: 0 },
+    });
+    expect(summary.snapshot).toEqual({ name: config.config.name, kind: 'source_collection' });
+    expect(JSON.stringify(summary).length).toBeLessThan(2000);
+    const detail = await readAutomationRunDetail({ pool, owner: operator, id });
+    expect(detail.result).toEqual(result);
+    expect(detail).not.toHaveProperty('frozen_inputs');
+    expect((await readAutomationRun({ pool, owner: operator, id })).frozen_inputs).toEqual({
+      inputs: result.inputs,
+    });
+    for (const discovery of [
+      { rejected: 8, duplicates: 0 },
+      { articles: {}, rejected: 8, duplicates: 0 },
+    ]) {
+      await owner.query('UPDATE public.automation_runs SET result=$2::jsonb WHERE id=$1', [
+        id,
+        JSON.stringify({ discovery }),
+      ]);
+      const malformed = (await readAutomationDashboard({ pool, owner: operator })).runs[0];
+      expect(malformed.result.discovery.articleCount).toBe(null);
+      expect(malformed.result.generationIds).toEqual([]);
+    }
   });
   it('does not count deleted configurations against the 50 visible-configuration quota', async () => {
     const operator = 'quota-owner';

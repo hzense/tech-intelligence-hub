@@ -14,6 +14,11 @@ import type { GenerationPublication } from '../lib/generation-publication';
 import { GenerationPublicationSummary } from './generation-publication-status';
 import { GenerationProgress, generationIsActive } from './generation-progress';
 import { isGenerationRecordId } from '../lib/signal-generation-id';
+import { startVisiblePolling } from '../lib/visible-polling';
+import {
+  fetchGenerationProgress,
+  type GenerationProgressReceipt,
+} from '../lib/generation-progress-client';
 import {
   generationFailureMessage,
   knownGenerationErrorMessage as knownErrorMessage,
@@ -334,35 +339,39 @@ export function AdminSignalGeneration({
 
   useEffect(() => {
     if (!historyConfigured || busy || !activeIds) return;
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    async function poll() {
-      try {
+    return startVisiblePolling({
+      async poll(signal) {
         // Read existing task IDs only; never dispatch, retry or create from polling.
-        const updates: GenerationRun[] = [];
-        for (const id of activeIds.split(',')) {
-          const { run } = await requestApi({ action: 'detail', id }, controller.signal);
-          if (!run || run.id !== id) throw new Error('identity_mismatch');
-          updates.push(run);
+        const ids = activeIds.split(',');
+        const progress: GenerationProgressReceipt[] = [];
+        // Initial history is bounded to 50, but this tab can append newly created tasks.
+        for (let offset = 0; offset < ids.length; offset += 50) {
+          if (signal.aborted) return;
+          progress.push(...(await fetchGenerationProgress(ids.slice(offset, offset + 50), signal)));
         }
-        if (controller.signal.aborted) return;
+        const updates: (GenerationRun | GenerationProgressReceipt)[] = [];
+        for (const receipt of progress) {
+          if (signal.aborted) return;
+          if (generationIsActive(receipt)) updates.push(receipt);
+          else {
+            // Only a terminal transition needs the complete candidate/publication receipt.
+            const { run } = await requestApi({ action: 'detail', id: receipt.id }, signal);
+            if (!run || run.id !== receipt.id) throw new Error('identity_mismatch');
+            updates.push(run);
+          }
+        }
+        if (signal.aborted) return;
         const byId = new Map(updates.map((run) => [run.id, run]));
         setData((previous) => ({
           ...previous,
-          runs: previous.runs.map((run) => byId.get(run.id) ?? run),
+          runs: previous.runs.map((run) => ({ ...run, ...byId.get(run.id) })),
         }));
-        setDetail((previous) => (previous ? (byId.get(previous.id) ?? previous) : null));
+        setDetail((previous) => (previous ? { ...previous, ...byId.get(previous.id) } : null));
         setPollError(false);
-        timer = setTimeout(poll, 5000);
-      } catch {
-        if (!controller.signal.aborted) setPollError(true);
-      }
-    }
-    timer = setTimeout(poll, 5000);
-    return () => {
-      controller.abort();
-      clearTimeout(timer);
-    };
+        return updates.some(generationIsActive);
+      },
+      onError: () => setPollError(true),
+    });
   }, [activeIds, historyConfigured, busy]);
 
   useEffect(() => {

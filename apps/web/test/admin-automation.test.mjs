@@ -4,8 +4,8 @@ import { createAutomationHandler } from '../lib/admin-automation-handler.ts';
 import { AutomationError } from '../../../packages/database/src/automation-contract.mjs';
 
 const origin = 'https://hzense.com';
-const request = (method, body, headers = {}) =>
-  new globalThis.Request(`${origin}/api/admin/automation`, {
+const request = (method, body, headers = {}, query = '') =>
+  new globalThis.Request(`${origin}/api/admin/automation${query}`, {
     method,
     headers: {
       host: 'hzense.com',
@@ -30,9 +30,52 @@ const deps = () => ({
     ],
   }),
   save: async () => ({ id: 'config' }),
+  detail: async () => ({ id: 'run', result: { report: { title: 'Private report' } } }),
   remove: async () => ({ id: 'config', revision: 2, deleted_at: '2026-10-02T10:00:00Z' }),
   trigger: async () => ({ run: { id: 'run', owner_id: 'operator', lease_token: 'secret-token' } }),
   publish: async () => ({ id: 'run', owner_id: 'operator', lease_token: 'secret-token' }),
+});
+test('result details are explicit owner-scoped GETs and retain authentication and redaction', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const calls = [];
+  const dependencies = {
+    ...deps(),
+    detail: async (owner, runId) => {
+      calls.push({ owner, id: runId });
+      return {
+        id: runId,
+        result: { report: { title: 'Private report' } },
+        owner_id: owner,
+        frozen_inputs: { private: true },
+        lease_token: 'private-lease',
+      };
+    },
+  };
+  const handler = createAutomationHandler(dependencies);
+  await handler(request('GET'));
+  assert.equal(calls.length, 0);
+  for (const query of ['?id=invalid', `?id=${id}&id=${id}`, `?id=${id}&owner=other`])
+    assert.equal((await handler(request('GET', undefined, {}, query))).status, 400);
+  assert.equal(
+    (await handler(request('GET', undefined, { 'sec-fetch-site': 'cross-site' }, `?id=${id}`)))
+      .status,
+    403,
+  );
+  assert.equal(
+    (
+      await createAutomationHandler({ ...dependencies, session: async () => null })(
+        request('GET', undefined, {}, `?id=${id}`),
+      )
+    ).status,
+    401,
+  );
+  assert.equal(calls.length, 0);
+  const response = await handler(request('GET', undefined, {}, `?id=${id}`));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    run: { id, result: { report: { title: 'Private report' } } },
+  });
+  assert.deepEqual(calls, [{ owner: 'operator', id }]);
 });
 test('execution-disabled response is explicit and does not block configuration saves', async () => {
   const handler = createAutomationHandler({

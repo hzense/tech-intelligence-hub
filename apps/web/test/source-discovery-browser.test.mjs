@@ -47,7 +47,7 @@ test(
     };
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client'; import {AdminAutomation} from './components/admin-automation'; const p=new URLSearchParams(location.search); createRoot(document.getElementById('root')).render(<AdminAutomation kind="source_collection" configured={!p.has('missingStorage')} executionEnabled={p.has('execute')} executionReadiness={{ready:false,checks:[{key:'storage',ready:true},{key:'generation',ready:false}]}} loadError={false} initial={{...${JSON.stringify(initial)},configDeletionAvailable:!p.has('legacySchema')}} profiles={[{id:'${profileId}',revision:1,name:'验收模型',ready:true}]} topics={[{id:'topic-ai',name:'人工智能'}]}/>);`,
+        contents: `import {createRoot} from 'react-dom/client'; import {AdminAutomation} from './components/admin-automation'; const p=new URLSearchParams(location.search); createRoot(document.getElementById('root')).render(<AdminAutomation kind={p.has('insight')?'topic_insight':'source_collection'} configured={!p.has('missingStorage')} executionEnabled={p.has('execute')} executionReadiness={{ready:false,checks:[{key:'storage',ready:true},{key:'generation',ready:false}]}} loadError={false} initial={{...${JSON.stringify(initial)},configDeletionAvailable:!p.has('legacySchema')}} profiles={[{id:'${profileId}',revision:1,name:'验收模型',ready:true}]} topics={[{id:'topic-ai',name:'人工智能'}]}/>);`,
         resolveDir: root,
         loader: 'tsx',
       },
@@ -99,23 +99,53 @@ test(
     try {
       browser = await chromium.launch({ headless: true });
       const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+      await page.clock.install();
       const errors = [],
         posts = [];
       let deletionError = null;
       let gets = 0;
+      let detailGets = 0;
+      let detailOverride = null;
       let getFailure = false;
       let holdRefresh = false,
         releaseRefresh;
       page.on('pageerror', (error) => errors.push(error.message));
-      await page.route('**/api/admin/automation', async (route) => {
+      await page.route('**/api/admin/automation*', async (route) => {
         if (route.request().method() === 'GET') {
+          const id = new URL(route.request().url()).searchParams.get('id');
+          if (id) {
+            detailGets++;
+            return route.fulfill({
+              json: { run: detailOverride ?? initial.runs.find((run) => run.id === id) },
+            });
+          }
           gets++;
           if (getFailure) return route.fulfill({ status: 503, json: { error: 'unavailable' } });
           if (holdRefresh)
             await new Promise((resolve) => {
               releaseRefresh = resolve;
             });
-          return route.fulfill({ json: initial });
+          return route.fulfill({
+            json: {
+              ...initial,
+              runs: initial.runs.map((run) => ({
+                ...run,
+                result: run.result
+                  ? {
+                      generationIds: run.result.generationIds ?? [],
+                      failed: run.result.failed ?? null,
+                      discovery: run.result.discovery
+                        ? {
+                            articleCount: run.result.discovery.articles?.length ?? null,
+                            rejected: run.result.discovery.rejected ?? null,
+                            duplicates: run.result.discovery.duplicates ?? null,
+                          }
+                        : null,
+                    }
+                  : null,
+              })),
+            },
+          });
         }
         const body = route.request().postDataJSON();
         posts.push(body);
@@ -139,6 +169,12 @@ test(
           },
         });
       });
+      const readDetails = async () => {
+        const before = detailGets;
+        await page.getByRole('button', { name: /^(查看采集详情|刷新详情)$/ }).click();
+        await expect.poll(() => detailGets).toBe(before + 1);
+        await expect(page.getByRole('button', { name: '刷新详情', exact: true })).toBeVisible();
+      };
       await page.goto(`http://127.0.0.1:${server.address().port}`);
       await expect(page.getByText('无需指定领域或填写网址', { exact: false })).toBeVisible();
       await expect(page.locator('textarea')).toHaveCount(0);
@@ -246,18 +282,44 @@ test(
       await page.getByLabel('配置名称', { exact: true }).fill('保留未保存修改');
       await page.getByText('执行条件（配置检查，不调用 AI）', { exact: true }).click();
       await expect(page.getByText('信号生成服务：待配置', { exact: true })).toBeVisible();
+      const beforeHidden = gets;
+      await page.evaluate(() => {
+        Object.defineProperty(globalThis.document, 'visibilityState', {
+          configurable: true,
+          value: 'hidden',
+        });
+        globalThis.document.dispatchEvent(new globalThis.Event('visibilitychange'));
+      });
+      await page.clock.runFor(45001);
+      assert.equal(gets, beforeHidden, 'hidden dashboards do not poll');
+      await page.evaluate(() => {
+        Object.defineProperty(globalThis.document, 'visibilityState', {
+          configurable: true,
+          value: 'visible',
+        });
+        globalThis.document.dispatchEvent(new globalThis.Event('visibilitychange'));
+      });
+      await page.clock.runFor(1);
+      await expect.poll(() => gets).toBe(beforeHidden + 1);
       const beforeFailure = gets;
       getFailure = true;
-      await expect.poll(() => gets, { timeout: 10000 }).toBeGreaterThan(beforeFailure);
+      await page.clock.runFor(15001);
+      await expect.poll(() => gets).toBeGreaterThan(beforeFailure);
       await expect(page.getByRole('alert')).toContainText('自动刷新失败');
       await expect(page.getByRole('cell', { name: '候选排队中', exact: false })).toBeVisible();
       getFailure = false;
       run.generationProgress = summarizeAutomationGenerations(run.result, [
         { id: generationId, status: 'completed', progress_phase: 'completed', candidate_count: 3 },
       ]);
-      await expect(page.getByRole('cell', { name: '私有候选已生成', exact: false })).toBeVisible({
-        timeout: 10000,
-      });
+      const failedGets = gets;
+      await page.clock.runFor(45001);
+      assert.equal(
+        gets,
+        failedGets,
+        'HTTP failures stop automatic reads until an explicit refresh',
+      );
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByRole('cell', { name: '私有候选已生成', exact: false })).toBeVisible();
       await expect(page.getByText('已生成 3 条私有候选', { exact: true })).toBeVisible();
       await expect(
         page.getByRole('link', { name: `查看私有候选任务 · ${generationId}` }),
@@ -270,21 +332,22 @@ test(
         await page.setViewportSize({ width: 390, height: 844 });
       }
       const completedGets = gets;
-      await page.waitForTimeout(5500);
+      await page.clock.runFor(30001);
       assert.equal(gets, completedGets, 'finished tasks stop polling');
       run.generationProgress = summarizeAutomationGenerations(run.result, null);
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
       await expect(page.getByRole('cell', { name: '生成结果待核对', exact: false })).toBeVisible();
       await expect(page.getByRole('alert')).toContainText('关联候选状态暂时无法读取');
-      await expect(page.getByText('每 5 秒自动读取任务状态', { exact: false })).toBeVisible();
+      await expect(page.getByText('每 15 秒自动读取任务摘要', { exact: false })).toBeVisible();
       // A successful HTTP dashboard with a failed ancillary read is retryable,
       // unlike a confirmed hidden/missing row. Retry only GET, with a bound.
       const failedSummaryGets = gets;
-      await expect.poll(() => gets, { timeout: 10000 }).toBe(failedSummaryGets + 1);
-      getFailure = true; // Subsequent HTTP errors must count toward the same bound.
-      await expect.poll(() => gets, { timeout: 20000 }).toBe(failedSummaryGets + 3);
-      await expect(page.getByText('每 5 秒自动读取任务状态', { exact: false })).toHaveCount(0);
-      await page.waitForTimeout(5500);
+      for (let count = 1; count <= 3; count++) {
+        await page.clock.runFor(15001);
+        await expect.poll(() => gets).toBe(failedSummaryGets + count);
+      }
+      await expect(page.getByText('每 15 秒自动读取任务摘要', { exact: false })).toHaveCount(0);
+      await page.clock.runFor(30001);
       assert.equal(gets, failedSummaryGets + 3);
       getFailure = false;
       run.generationProgress = summarizeAutomationGenerations(run.result, []);
@@ -293,7 +356,7 @@ test(
       await expect(
         page.getByText('记录不可读取或已隐藏，请核对原任务', { exact: true }),
       ).toBeVisible();
-      await expect(page.getByText('每 5 秒自动读取任务状态', { exact: false })).toHaveCount(0);
+      await expect(page.getByText('每 15 秒自动读取任务摘要', { exact: false })).toHaveCount(0);
       assert.equal(posts.length, 6, 'polling and reconciliation do not POST or retry');
       assert.equal(
         posts.some((post) => ['trigger', 'publish'].includes(post.action)),
@@ -329,6 +392,9 @@ test(
       const beforeCitationRefresh = gets;
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
       await expect.poll(() => gets).toBe(beforeCitationRefresh + 1);
+      assert.equal(detailGets, 0, 'listing and polling never read full results');
+      await expect(page.getByText('查看检索诊断（脱敏）', { exact: true })).toHaveCount(0);
+      await readDetails();
       await expect(page.getByText('搜索次数未返回', { exact: false })).toBeVisible();
       await expect(page.getByText('已收到有效来源引用', { exact: false })).toBeVisible();
       await expect(page.getByText('实际检索 0 次', { exact: false })).toHaveCount(0);
@@ -348,6 +414,7 @@ test(
       const beforeLegacyRefresh = gets;
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
       await expect.poll(() => gets).toBe(beforeLegacyRefresh + 1);
+      await readDetails();
       await expect(page.getByText('搜索次数未返回', { exact: false })).toBeVisible();
       await expect(page.getByText('实际检索 0 次', { exact: false })).toHaveCount(0);
       await expect(page.getByText('已收到有效来源引用', { exact: false })).toHaveCount(0);
@@ -359,6 +426,7 @@ test(
         const beforeKnownRefresh = gets;
         await page.getByRole('button', { name: '刷新列表', exact: true }).click();
         await expect.poll(() => gets).toBe(beforeKnownRefresh + 1);
+        await readDetails();
         await expect(
           page.getByText(`实际检索 ${searchRequests} 次`, { exact: false }),
         ).toBeVisible();
@@ -386,6 +454,7 @@ test(
       await expect(page.getByText('候选任务仍需各自完成生成与审核', { exact: false })).toHaveCount(
         0,
       );
+      await readDetails();
       await page.getByText('查看来源校验原因（脱敏）', { exact: true }).click();
       await expect(
         page.getByText('此历史任务未记录逐条拒绝原因，无法追溯具体规则。', { exact: true }),
@@ -406,6 +475,8 @@ test(
         reasonCounts: { uncited_url: 1, date_out_of_window: 8 },
       };
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await readDetails();
+      await page.getByText('查看来源校验原因（脱敏）', { exact: true }).click();
       await expect(
         page.getByText('返回条目：8 条 · 有效引用网址：8 个', { exact: true }),
       ).toBeVisible();
@@ -450,6 +521,8 @@ test(
         },
       };
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await readDetails();
+      await page.getByText('查看来源校验原因（脱敏）', { exact: true }).click();
       await expect(page.getByText('选中 1 篇原文', { exact: false })).toBeVisible();
       await expect(page.getByText('来源全部未通过校验', { exact: false })).toHaveCount(0);
       await expect(
@@ -464,6 +537,7 @@ test(
         run.phase = 'no_new_sources';
         run.result.discovery = { articles: [], rejected: 0, duplicates };
         await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+        await readDetails();
         await expect(
           page.getByRole('cell', { name: '采集完成，无新来源', exact: false }),
         ).toBeVisible();
@@ -501,6 +575,7 @@ test(
       const beforeSourceFailureRefresh = gets;
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
       await expect.poll(() => gets).toBe(beforeSourceFailureRefresh + 1);
+      await readDetails();
       await page.getByText('查看来源处理失败原因（脱敏）', { exact: true }).click();
       await expect(
         page.getByText(
@@ -522,6 +597,7 @@ test(
 
       delete run.result.sourceFailures;
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await readDetails();
       await expect(page.getByText('查看来源处理失败原因（脱敏）', { exact: true })).toHaveCount(0);
 
       // Failed discovery diagnostics are private structural readbacks, not a retry action.
@@ -545,6 +621,7 @@ test(
         },
       };
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await readDetails();
       await expect(page.getByRole('cell', { name: '采集失败', exact: false })).toBeVisible();
       await expect(page.getByText('资料或候选登记未完成', { exact: false })).toHaveCount(0);
       await page.getByText('查看检索诊断（脱敏）', { exact: true }).click();
@@ -570,6 +647,7 @@ test(
         discoveryDiagnostics.outputFormat = outputFormat;
         discoveryDiagnostics.outputIssue = null;
         await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+        await readDetails();
         await expect(page.getByText(label, { exact: true })).toBeVisible();
         await expect(page.getByText('结构校验：', { exact: false })).toHaveCount(0);
       }
@@ -577,6 +655,7 @@ test(
       discoveryDiagnostics.outputFormat = 'invalid';
       discoveryDiagnostics.outputIssue = 'invalid_json';
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await readDetails();
       await expect(page.getByText('结构校验：JSON 格式无效', { exact: true })).toBeVisible();
       await expect(page.getByText('输出格式：JSON', { exact: true })).toHaveCount(0);
       await expect(page.getByText('输出格式：JSON 代码块', { exact: true })).toHaveCount(0);
@@ -587,6 +666,7 @@ test(
       discoveryDiagnostics.outputIssue = 'must-not-display-private-issue';
       discoveryDiagnostics.rawOutput = 'must-not-display-private-output';
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await readDetails();
       await expect(page.getByText('must-not-display-private', { exact: false })).toHaveCount(0);
       await expect(page.getByText('输出格式：', { exact: false })).toHaveCount(0);
       await expect(page.getByText('结构校验：', { exact: false })).toHaveCount(0);
@@ -600,15 +680,81 @@ test(
       run.error_code = 'discovery_output_truncated';
       run.result.discoveryDiagnostics.finishReason = 'length';
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await readDetails();
       await expect(page.getByText('检索输出达到长度上限', { exact: false })).toBeVisible();
       await expect(page.getByText('结束原因：length', { exact: true })).toBeVisible();
       run.error_code = 'discovery_provider_error';
       run.result.discoveryDiagnostics.providerError = true;
       run.result.discoveryDiagnostics.providerErrorCode = 429;
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await readDetails();
       await expect(page.getByText('供应商返回错误结果', { exact: false })).toBeVisible();
       await expect(page.getByText('供应商错误：429', { exact: true })).toBeVisible();
       assert.equal(posts.length, 6, 'opening failure diagnostics never creates or retries a task');
+      // Topic report bodies are also excluded from every listing, and loaded
+      // only when the administrator explicitly opens a report.
+      initial.runs = [
+        {
+          ...run,
+          id: 'topic-report',
+          snapshot: { name: '专题任务', kind: 'topic_insight' },
+          status: 'completed',
+          phase: 'completed',
+          error_code: null,
+          result: {
+            report: {
+              title: '按需读取专题正文',
+              summary: '私有摘要',
+              sections: [
+                { heading: '分析结论', body: '此正文不在轮询返回中', signalIds: ['signal-one'] },
+              ],
+              uncertainties: ['待验证'],
+            },
+          },
+        },
+      ];
+      const beforeReport = detailGets;
+      await page.goto(`http://127.0.0.1:${server.address().port}/?insight=1`);
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByRole('button', { name: '阅读私有报告', exact: true })).toBeVisible();
+      await expect(page.getByText('按需读取专题正文', { exact: true })).toHaveCount(0);
+      assert.equal(detailGets, beforeReport);
+      await page.getByRole('button', { name: '阅读私有报告', exact: true }).click();
+      await expect(
+        page.getByRole('heading', { name: '按需读取专题正文', exact: true }),
+      ).toBeVisible();
+      await expect(page.getByText('此正文不在轮询返回中', { exact: true })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'signal-one', exact: true })).toHaveAttribute(
+        'href',
+        '/signals/signal-one',
+      );
+      assert.equal(detailGets, beforeReport + 1);
+      for (const override of [
+        { id: 'different-task' },
+        { snapshot: { name: '另一类任务', kind: 'source_collection' } },
+      ]) {
+        detailOverride = {
+          ...initial.runs[0],
+          ...override,
+          result: { report: { title: '不能展示的其他任务报告', summary: '错配详情' } },
+        };
+        await page.getByRole('button', { name: '刷新详情', exact: true }).click();
+        await expect(page.getByRole('alert')).toHaveText(
+          '返回的详情与当前任务不一致，已保留原详情；请刷新列表后核对。',
+        );
+        await expect(
+          page.getByRole('heading', { name: '按需读取专题正文', exact: true }),
+        ).toBeVisible();
+        await expect(page.getByText('此正文不在轮询返回中', { exact: true })).toBeVisible();
+        await expect(page.getByText('不能展示的其他任务报告', { exact: true })).toHaveCount(0);
+      }
+      detailOverride = null;
+      await page.getByRole('button', { name: '刷新详情', exact: true }).click();
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      await expect(
+        page.getByRole('heading', { name: '按需读取专题正文', exact: true }),
+      ).toBeVisible();
+      assert.equal(posts.length, 6, 'reading a report neither publishes it nor invokes AI');
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

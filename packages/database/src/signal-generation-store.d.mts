@@ -84,6 +84,39 @@ export function createSignalGeneration(
 export function getSignalGeneration(
   args: RunArgs & { readOnly?: boolean; legacyReadOnly?: boolean },
 ): Promise<SignalGenerationRun>;
+export type SignalGenerationDisplay = Omit<
+  SignalGenerationRun,
+  | 'snapshot'
+  | 'configuration'
+  | 'owner_id'
+  | 'source_fence'
+  | 'source_hash'
+  | 'fingerprint'
+  | 'lease_token'
+  | 'budget_day'
+>;
+export function getSignalGenerationDisplay(
+  args: RunArgs & { legacyReadOnly?: boolean },
+): Promise<SignalGenerationDisplay>;
+export function listSignalGenerationDisplays(
+  args: Owned & { batchId?: string; itemId?: string; legacyReadOnly?: boolean },
+): Promise<SignalGenerationDisplay[]>;
+export interface SignalGenerationProgress {
+  id: string;
+  status: SignalGenerationRun['status'];
+  error_code: string | null;
+  lease_until: Date | string | null;
+  progress_phase: NonNullable<SignalGenerationRun['progress_phase']> | null;
+  progress_at: Date | string | null;
+  started_at: Date | string | null;
+  finished_at: Date | string | null;
+  created_at: Date | string;
+  reserved_microusd: string;
+  charged_microusd: string;
+}
+export function readSignalGenerationProgress(
+  args: Owned & { ids: string[]; legacyReadOnly?: boolean },
+): Promise<SignalGenerationProgress[]>;
 export function listSignalGenerations(
   args: Owned & { batchId?: string; itemId?: string; readOnly?: boolean; legacyReadOnly?: boolean },
 ): Promise<SignalGenerationRun[]>;

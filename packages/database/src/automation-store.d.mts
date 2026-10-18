@@ -41,6 +41,19 @@ export interface AutomationLimits {
   daily: number;
   reserve: number;
 }
+export type AutomationRunView = Pick<
+  AutomationRun,
+  | 'id'
+  | 'status'
+  | 'phase'
+  | 'result'
+  | 'error_code'
+  | 'created_at'
+  | 'finished_at'
+  | 'charged_microusd'
+  | 'cost_source'
+  | 'publication_status'
+> & { snapshot: Pick<AutomationConfig, 'name' | 'kind'> };
 export interface SaveAutomationRequest {
   id: string;
   expectedRevision: number;
@@ -75,9 +88,14 @@ export function deleteAutomationConfig(input: {
 }): Promise<DeletedAutomationConfig>;
 export function readAutomationDashboard(input: { pool: unknown; owner: string }): Promise<{
   configs: AutomationConfigRecord[];
-  runs: AutomationRun[];
+  runs: AutomationRunView[];
   configDeletionAvailable: boolean;
 }>;
+export function readAutomationRunDetail(input: {
+  pool: unknown;
+  owner: string;
+  id: string;
+}): Promise<AutomationRunView>;
 export function enqueueAutomation(input: {
   pool: unknown;
   owner: string;

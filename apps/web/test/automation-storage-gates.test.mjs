@@ -105,6 +105,7 @@ test('inactive configuration saves without execution budgets, while enable/trigg
         export async function saveAutomationConfig(x){if(x.pool.kind!=='config')throw Error('wrong_pool');globalThis.__automationService.writes.push(x);return x.request}
         export async function deleteAutomationConfig(x){if(x.pool.kind!=='config')throw Error('wrong_pool');globalThis.__automationService.deletions.push(x);return {id:x.request.id,revision:2,deleted_at:'2026-10-02T10:00:00Z'}}
         export async function readAutomationDashboard(x){if(x.pool.kind!=='config')throw Error('wrong_pool');return {configs:[],runs:globalThis.__automationService.runs,configDeletionAvailable:true}}
+        export async function readAutomationRunDetail(x){if(x.pool.kind!=='config')throw Error('wrong_pool');return {id:x.id,owner:x.owner,result:{report:{title:'Private report'}}}}
         export async function enqueueAutomation(x){const f=globalThis.__automationService;if(!f.replay)await x.beforeEnqueue(f.config);f.enqueued++;return {created:!f.replay,run:{id:'existing'}}}
         export async function enqueueDueAutomations(x){globalThis.__automationService.due++;globalThis.__automationService.dueKinds.push(x.kinds);return []}
         export async function readAutomationRun(){} export async function failAutomationDispatch(){} export async function publishAutomationInsight(){}`,
@@ -144,6 +145,11 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     assert.equal(mod.automationStorageConfigured(), true);
     assert.equal(mod.automationExecutionConfigured('source_collection'), false);
     assert.equal((await mod.automationDashboard('owner')).configDeletionAvailable, true);
+    assert.deepEqual(await mod.automationRunDetail('owner', 'detail-id'), {
+      id: 'detail-id',
+      owner: 'owner',
+      result: { report: { title: 'Private report' } },
+    });
     assert.equal(f.summaryCalls.length, 0);
     await mod.saveAutomation('owner', request);
     assert.equal(f.writes.length, 1);

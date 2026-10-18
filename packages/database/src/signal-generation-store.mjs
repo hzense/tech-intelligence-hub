@@ -21,6 +21,34 @@ const legacyColumns = columns.replace(
   'progress_phase,progress_at,started_at',
   'NULL::text AS progress_phase,NULL::timestamptz AS progress_at,NULL::timestamptz AS started_at',
 );
+// Explicit display projection: candidate bodies are needed for review, but the
+// input snapshot and internal settings are only needed by execution/evidence.
+const displayFields = [
+  'id',
+  'batch_id',
+  'item_id',
+  'profile_id',
+  'profile_revision',
+  'generation_version',
+  'status',
+  'lease_until',
+  'reserved_microusd',
+  'charged_microusd',
+  'result',
+  'error_code',
+  'created_at',
+  'finished_at',
+  'deleted_at',
+  'progress_phase',
+  'progress_at',
+  'started_at',
+];
+const displayColumns = displayFields.join(',');
+const legacyDisplayColumns = displayColumns.replace(
+  'progress_phase,progress_at,started_at',
+  'NULL::text AS progress_phase,NULL::timestamptz AS progress_at,NULL::timestamptz AS started_at',
+);
+const displayRow = (row) => Object.fromEntries(displayFields.map((field) => [field, row[field]]));
 const errorCodes = new Set([
   'published_candidate_delete_forbidden',
   'task_deleted',
@@ -602,6 +630,101 @@ export async function getSignalGeneration({
       return row;
     },
     readOnly,
+  );
+}
+/** Saved task display; never reads execution snapshots or changes task state. */
+export async function getSignalGenerationDisplay({ pool, owner, id, legacyReadOnly = false }) {
+  ownerId(owner);
+  uuid(id);
+  return transaction(
+    pool,
+    async (client) => {
+      const row = (
+        await client.query(
+          `SELECT ${legacyReadOnly ? legacyDisplayColumns : displayColumns}
+      FROM public.signal_generation_runs WHERE id=$1 AND owner_id=$2 AND deleted_at IS NULL`,
+          [id, owner],
+        )
+      ).rows[0];
+      if (!row || row.deleted_at) fail('not_found');
+      return displayRow(row);
+    },
+    true,
+  );
+}
+
+/** Initial/manual history display. Progress polling uses the smaller reader below. */
+export async function listSignalGenerationDisplays({
+  pool,
+  owner,
+  batchId,
+  itemId,
+  legacyReadOnly = false,
+}) {
+  ownerId(owner);
+  if (batchId !== undefined) uuid(batchId);
+  if (itemId !== undefined) uuid(itemId);
+  return transaction(
+    pool,
+    async (client) =>
+      (
+        await client.query(
+          `SELECT ${legacyReadOnly ? legacyDisplayColumns : displayColumns}
+      FROM public.signal_generation_runs
+      WHERE owner_id=$1 AND deleted_at IS NULL AND ($2::uuid IS NULL OR batch_id=$2) AND ($3::uuid IS NULL OR item_id=$3)
+      ORDER BY created_at DESC,id DESC LIMIT 50`,
+          [owner, batchId ?? null, itemId ?? null],
+        )
+      ).rows.map(displayRow),
+    true,
+  );
+}
+
+/** Poll progress without transferring source snapshots, settings or candidate results. */
+export async function readSignalGenerationProgress({ pool, owner, ids, legacyReadOnly = false }) {
+  ownerId(owner);
+  if (!Array.isArray(ids) || !ids.length || ids.length > 50) fail();
+  const requestedIds = [...new Set(Array.from(ids, uuid))];
+  return transaction(
+    pool,
+    async (client) => {
+      const rows = (
+        await client.query(
+          `SELECT id,status,error_code,lease_until,
+      ${legacyReadOnly ? 'NULL::text AS progress_phase,NULL::timestamptz AS progress_at,NULL::timestamptz AS started_at' : 'progress_phase,progress_at,started_at'},
+      finished_at,created_at,reserved_microusd,charged_microusd
+      FROM public.signal_generation_runs
+      WHERE owner_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL`,
+          [owner, requestedIds],
+        )
+      ).rows;
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      // Missing, foreign and deleted receipts are indistinguishable. Do not
+      // let a partial response make a client mistake a missing task for done.
+      if (
+        rows.length !== requestedIds.length ||
+        byId.size !== requestedIds.length ||
+        requestedIds.some((id) => !byId.has(id))
+      )
+        fail('not_found');
+      return requestedIds.map((id) => {
+        const row = byId.get(id);
+        return {
+          id: row.id,
+          status: row.status,
+          error_code: row.error_code,
+          lease_until: row.lease_until,
+          progress_phase: row.progress_phase ?? null,
+          progress_at: row.progress_at ?? null,
+          started_at: row.started_at ?? null,
+          finished_at: row.finished_at,
+          created_at: row.created_at,
+          reserved_microusd: row.reserved_microusd,
+          charged_microusd: row.charged_microusd,
+        };
+      });
+    },
+    true,
   );
 }
 async function expireRunning(client, owner, { id, batchId, itemId } = {}) {

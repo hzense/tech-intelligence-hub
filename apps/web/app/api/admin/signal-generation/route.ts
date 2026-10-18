@@ -7,6 +7,7 @@ import { isLocalDevelopment } from '@/lib/local-development';
 import {
   generationDashboard,
   generationDetail,
+  generationProgress,
   deleteGeneration,
   executeGeneration,
   failQueuedGeneration,
@@ -23,6 +24,7 @@ export const GET = createGenerationHandler({
   origin: () => getAdminOrigin() ?? undefined,
   dashboard: generationDashboard,
   detail: generationDetail,
+  progress: generationProgress,
   delete: deleteGeneration,
   execute: executeGeneration,
   inspectSource: inspectGenerationInput,

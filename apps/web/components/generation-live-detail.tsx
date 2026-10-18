@@ -10,6 +10,8 @@ import controls from './admin-controls.module.css';
 import type { GenerationPublication } from '../lib/generation-publication';
 import { GenerationPublicationSummary } from './generation-publication-status';
 import { generationFailureMessage } from '../lib/generation-error-messages';
+import { startVisiblePolling } from '../lib/visible-polling';
+import { fetchGenerationProgress } from '../lib/generation-progress-client';
 
 type GenerationDetailRun = GenerationProgressRun & {
   result?: unknown;
@@ -36,30 +38,31 @@ export function GenerationLiveDetail({
   const failureMessage = generationFailureMessage(run);
   useEffect(() => {
     if (!active || resolving || refreshing) return;
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
-    async function poll() {
-      try {
+    return startVisiblePolling({
+      async poll(signal) {
+        const [progress] = await fetchGenerationProgress([initialRun.id], signal);
+        if (signal.aborted) return;
+        if (generationIsActive(progress)) {
+          setRun((previous) => ({ ...previous, ...progress }));
+          setError(false);
+          return;
+        }
+        // Fetch candidates/publication once on completion, not on every progress tick.
         const response = await fetch(
           `/api/admin/signal-generation?id=${encodeURIComponent(initialRun.id)}`,
-          { cache: 'no-store', signal: controller.signal },
+          { cache: 'no-store', signal },
         );
         if (!response.ok) throw new Error('unavailable');
         const { run: next } = await response.json();
         if (!next || next.id !== initialRun.id) throw new Error('identity_mismatch');
-        if (!controller.signal.aborted) {
+        if (!signal.aborted) {
           setRun(next);
-          if (generationIsActive(next)) timer = setTimeout(poll, 5000);
+          setError(false);
+          return generationIsActive(next);
         }
-      } catch {
-        if (!controller.signal.aborted) setError(true);
-      }
-    }
-    timer = setTimeout(poll, 5000);
-    return () => {
-      controller.abort();
-      clearTimeout(timer);
-    };
+      },
+      onError: () => setError(true),
+    });
   }, [active, initialRun.id, resolving, refreshing]);
   async function refresh() {
     if (refreshing || resolving) return;

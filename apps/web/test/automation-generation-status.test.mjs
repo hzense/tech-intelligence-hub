@@ -10,6 +10,31 @@ import {
 
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const result = { generationIds: [id(1), id(2), id(3)] };
+test('small SQL summaries preserve historical rejection labels without treating missing counts as zero', () => {
+  const base = { status: 'completed', phase: 'no_new_sources' };
+  assert.equal(
+    sourceAutomationAllSourcesRejected({
+      ...base,
+      result: { discovery: { articleCount: 0, rejected: 8, duplicates: 0 } },
+    }),
+    true,
+  );
+  for (const articleCount of [undefined, null, '0', -1, 1, {}])
+    assert.equal(
+      sourceAutomationAllSourcesRejected({
+        ...base,
+        result: { discovery: { articleCount, rejected: 8, duplicates: 0 } },
+      }),
+      false,
+    );
+  for (const discovery of [
+    { articleCount: 0, rejected: null, duplicates: 0 },
+    { articleCount: 0, rejected: 8, duplicates: null },
+    { articleCount: 0, rejected: '8', duplicates: 0 },
+    { articleCount: 0, rejected: 8, duplicates: '0' },
+  ])
+    assert.equal(sourceAutomationAllSourcesRejected({ ...base, result: { discovery } }), false);
+});
 test('generation IDs are valid, deduplicated and bounded to eight sources', () => {
   assert.deepEqual(automationGenerationIds(null), []);
   assert.deepEqual(automationGenerationIds({ generationIds: ['bad', id(1), id(1)] }), [id(1)]);
