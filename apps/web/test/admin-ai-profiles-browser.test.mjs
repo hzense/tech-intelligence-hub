@@ -105,7 +105,7 @@ async function startProfilesFixture() {
         });
         createRoot(document.getElementById('root')).render(
           <AdminAiProfiles connections={data.connections} initialProfiles={data.profiles}
-            initialProbes={data.probes} configured available />
+            initialProbes={data.probes} configured available localMode={data.localMode ?? false} />
         );
       `,
       resolveDir: resolve(directory, '..'),
@@ -157,7 +157,7 @@ async function startProfilesFixture() {
       } else if (url.pathname === '/api/admin/ai/profiles') {
         if (incoming.method === 'GET') json({ profiles: state.profiles });
         else if (incoming.method === 'POST') {
-          if (!state.profileReady) {
+          if (!state.profileReady && !state.localMode) {
             json({ error: 'profile_not_ready' }, 409);
             return;
           }
@@ -165,7 +165,9 @@ async function startProfilesFixture() {
           const profile = {
             ...request.body,
             revision: previous ? previous.revision + 1 : 1,
-            readiness: { ready: true, reasons: [] },
+            readiness: state.localMode
+              ? { ready: false, reasons: ['extract:connection_unavailable'] }
+              : { ready: true, reasons: [] },
           };
           delete profile.expected_revision;
           state.profiles = [...state.profiles.filter((row) => row.id !== profile.id), profile];
@@ -339,6 +341,42 @@ test(
       await group(stage).getByRole('option', { name: id, exact: true }).click();
       await expect(model(stage)).toHaveValue(id);
     }
+
+    await t.test(
+      'local drafts accept disabled keyless connections and never request provider models',
+      async () => {
+        await mount({
+          localMode: true,
+          connections: [{ ...connectionA, enabled: false, has_key: false, key_mask: null }],
+        });
+        await page.getByLabel('配置名称', { exact: true }).fill('Local draft');
+        for (const stage of Object.keys(stageLabels)) {
+          await connection(stage).selectOption(connectionA.id);
+          await expect(model(stage)).toBeEnabled();
+          await model(stage).fill('provider/manual-model');
+          await expect(
+            group(stage).getByRole('button', { name: '重新读取模型列表' }),
+          ).toBeDisabled();
+        }
+        await page.getByRole('button', { name: '保存本地草稿', exact: true }).click();
+        await expect(page.getByText('本地配置草稿 · 不可执行', { exact: true })).toBeVisible();
+        await expect(page.getByRole('status')).toContainText('未调用 AI');
+        assert.equal(posts('profiles').length, 1);
+        assert.equal(posts().length, 0);
+        assert.equal(fixture.profiles[0].readiness.ready, false);
+        assert.equal('localMode' in posts('profiles')[0].body, false);
+        assert.equal('localConfigurationDrafts' in posts('profiles')[0].body, false);
+        await page.getByRole('button', { name: '刷新状态', exact: true }).click();
+        await expect(model('extract')).toHaveValue('provider/manual-model');
+        await page.reload();
+        await page.getByRole('button', { name: '编辑新修订', exact: true }).click();
+        await expect(model('extract')).toHaveValue('provider/manual-model');
+        await page.getByLabel('配置名称', { exact: true }).fill('Revised local draft');
+        await page.getByRole('button', { name: '保存草稿新修订', exact: true }).click();
+        await expect.poll(() => fixture.profiles[0].revision).toBe(2);
+        assert.equal(posts().length, 0);
+      },
+    );
 
     await t.test(
       'new stages have distinct default prompts, no temperature controls and independent accessible pickers',

@@ -10,7 +10,8 @@ import {
   automationConfigPool,
   automationPool,
 } from './automation-store-access';
-import { aiStageAccess, generationAiAccess } from './admin-ai';
+import { aiStageAccess, generationAiAccess, validateLocalAiProfileReference } from './admin-ai';
+import { isLocalDevelopment } from '../local-development';
 import { importsConfigured } from './import-service';
 import { generationConfigured, generationSummaries } from './signal-generation';
 import { currentInsight } from '../topic-insight-core';
@@ -157,7 +158,21 @@ export async function saveAutomation(owner: string, request: store.SaveAutomatio
   // Saving an inactive configuration neither enables execution nor needs its
   // budgets/import/generation services. Enabling a schedule remains protected.
   if (config.enabled) assertExecutionConfiguration(config.kind);
-  await validateAutomationProfile(config);
+  if (isLocalDevelopment() && !config.enabled) {
+    try {
+      await validateLocalAiProfileReference(config.profileId!, config.profileRevision!);
+    } catch (error) {
+      const code = (error as { code?: unknown })?.code;
+      throw new store.AutomationError(
+        typeof code === 'string' && ['not_found', 'revision_conflict'].includes(code)
+          ? code
+          : 'database_unavailable',
+      );
+    }
+    const topics = new Set((await getTopicEntries()).map((entry) => entry.frontMatter.id));
+    if (config.topicIds.some((id) => !topics.has(id)))
+      throw new store.AutomationError('discovery_topic_invalid');
+  } else await validateAutomationProfile(config);
   return store.saveAutomationConfig({
     pool: automationConfigPool,
     owner,

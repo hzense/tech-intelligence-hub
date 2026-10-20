@@ -48,6 +48,7 @@ test('configuration connections retain role checks while execution and public re
     });
     process.env.HZENSE_AUTOMATION_ENABLED = '0';
     process.env.HZENSE_TOPIC_INSIGHTS_ENABLED = '0';
+    delete process.env.HZENSE_LOCAL_DEVELOPMENT;
     delete process.env.HZENSE_AUTOMATION_DATABASE_URL;
     assert.throws(() => mod.automationStorageConfiguration(), /not_configured/);
     process.env.HZENSE_AUTOMATION_DATABASE_URL =
@@ -68,6 +69,16 @@ test('configuration connections retain role checks while execution and public re
     process.env.HZENSE_AUTOMATION_ENABLED = '0';
     await assert.rejects(mod.automationPool.connect(), /not_configured/);
     await mod.automationConfigPool.connect();
+    // Local settings remain writable, but even mistakenly enabled execution
+    // flags must not permit paid work or the public insight reader.
+    process.env.HZENSE_LOCAL_DEVELOPMENT = '1';
+    process.env.HZENSE_AUTOMATION_ENABLED = '1';
+    process.env.HZENSE_TOPIC_INSIGHTS_ENABLED = '1';
+    await mod.automationConfigPool.connect();
+    const connectionsBeforeLocalExecution = globalThis.__automationStorage.connections;
+    await assert.rejects(mod.automationPool.connect(), /execution_disabled/);
+    await assert.rejects(mod.insightReaderPool.connect(), /execution_disabled/);
+    assert.equal(globalThis.__automationStorage.connections, connectionsBeforeLocalExecution);
   } finally {
     for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
     Object.assign(process.env, saved);
@@ -83,6 +94,8 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     imports: false,
     generation: false,
     profile: true,
+    local: false,
+    localProfileChecks: [],
     writes: [],
     deletions: [],
     enqueued: 0,
@@ -113,10 +126,13 @@ test('inactive configuration saves without execution budgets, while enable/trigg
         'export const normalizeAutomationConfig=x=>x;',
       './automation-store-access': `export const automationConfigPool={kind:'config'},automationPool={kind:'execution'};
         export function automationStorageConfiguration(){if(!globalThis.__automationService.storage)throw Error('missing')}
-        export function automationDatabaseConfiguration(){automationStorageConfiguration();if(!globalThis.__automationService.enabled)throw Error('off')}
+        export function automationDatabaseConfiguration(){automationStorageConfiguration();if(globalThis.__automationService.local||!globalThis.__automationService.enabled)throw Error('off')}
         export async function freezeAutomationInputs(){}`,
       './admin-ai': `export async function generationAiAccess(_id,_revision,credentials){if(credentials)throw Error('credentials_not_needed');const f=globalThis.__automationService;if(!f.profile)throw Object.assign(Error(f.profileErrorMessage),{code:f.profileErrorCode})}
-        export async function aiStageAccess(_id,_revision,_stage,credentials){if(credentials)throw Error('credentials_not_needed');return {}}`,
+        export async function aiStageAccess(_id,_revision,_stage,credentials){if(credentials)throw Error('credentials_not_needed');return {}}
+        export async function validateLocalAiProfileReference(id,revision){const f=globalThis.__automationService;f.localProfileChecks.push({id,revision});if(id!=='profile')throw Object.assign(Error('not_found'),{code:'not_found'});if(revision!==1)throw Object.assign(Error('revision_conflict'),{code:'revision_conflict'})}`,
+      '../local-development':
+        'export const isLocalDevelopment=()=>globalThis.__automationService.local;',
       './import-service':
         'export const importsConfigured=()=>globalThis.__automationService.imports;',
       './signal-generation': `export const generationConfigured=()=>globalThis.__automationService.generation;
@@ -125,7 +141,8 @@ test('inactive configuration saves without execution budgets, while enable/trigg
         export const summarizeAutomationGenerations=(result,rows)=>({ids:result?.generationIds??[],rows});`,
       '../topic-insight-core': 'export const currentInsight=()=>true;',
       './task-public-signals': 'export async function readTaskPublicSignals(){return []}',
-      '../content-runtime': 'export async function getTopicEntries(){return []}',
+      '../content-runtime':
+        "export async function getTopicEntries(){return [{frontMatter:{id:'topic-ai'}}]}",
       '../source-discovery-provider': 'export function assertDiscoveryConnection(){}',
       'workflow/api': 'export async function start(){globalThis.__automationService.starts++}',
       '../../workflows/automation': 'export async function automationWorkflow(){}',
@@ -244,6 +261,38 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     await mod.dispatchDueAutomations();
     assert.deepEqual(f.dueKinds.at(-1), ['source_collection', 'topic_insight']);
     await assert.rejects(mod.saveAutomation('owner', request), /profile_not_ready/);
+    const writesBeforeLocal = f.writes.length;
+    const enqueuedBeforeLocal = f.enqueued;
+    const dueBeforeLocal = f.due;
+    f.local = true;
+    // The profile has no successful capability evidence. Local saving checks
+    // only that it is a current, existing reference and performs no dispatch.
+    for (const draft of [config, { ...config, kind: 'topic_insight', topicIds: ['topic-ai'] }]) {
+      await mod.saveAutomation('owner', { ...request, config: draft });
+    }
+    assert.equal(f.writes.length, writesBeforeLocal + 2);
+    assert.deepEqual(f.localProfileChecks, [
+      { id: 'profile', revision: 1 },
+      { id: 'profile', revision: 1 },
+    ]);
+    for (const [override, code] of [
+      [{ profileId: 'missing-profile' }, 'not_found'],
+      [{ profileRevision: 2 }, 'revision_conflict'],
+      [{ topicIds: ['unknown-topic'] }, 'discovery_topic_invalid'],
+      [{ enabled: true }, 'execution_disabled'],
+    ]) {
+      await assert.rejects(
+        mod.saveAutomation('owner', { ...request, config: { ...config, ...override } }),
+        new RegExp(code),
+      );
+    }
+    await assert.rejects(mod.triggerAutomation('owner', {}), /execution_disabled/);
+    assert.deepEqual(await mod.dispatchDueAutomations(), { dispatched: 0, failed: 0 });
+    assert.equal(f.writes.length, writesBeforeLocal + 2);
+    assert.equal(f.enqueued, enqueuedBeforeLocal);
+    assert.equal(f.due, dueBeforeLocal);
+    assert.equal(f.starts, 0);
+    f.local = false;
     const sourceRun = {
       id: 'source-run',
       snapshot: config,

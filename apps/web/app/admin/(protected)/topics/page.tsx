@@ -9,6 +9,7 @@ import {
 import { getAiDashboard } from '@/lib/server/admin-ai';
 import { getTopicEntries } from '@/lib/content-runtime';
 import { AdminAutomation } from '@/components/admin-automation';
+import { isLocalDevelopment } from '@/lib/local-development';
 
 export const metadata: Metadata = {
   title: '专题洞察任务',
@@ -33,6 +34,7 @@ export default async function AdminTopicsPage() {
   return (
     <AdminAutomation
       kind="topic_insight"
+      localMode={isLocalDevelopment()}
       configured={configured && !stateResult.loadError}
       executionEnabled={automationExecutionConfigured('topic_insight')}
       executionReadiness={automationExecutionReadiness('topic_insight')}

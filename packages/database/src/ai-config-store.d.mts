@@ -25,7 +25,7 @@ export interface AiConnectionCreateRequest {
   base_url: string;
   enabled: boolean;
   settings: AiConnectionSettings;
-  api_key: string;
+  api_key?: string;
 }
 export interface AiConnectionUpdateRequest {
   id: string;
@@ -146,19 +146,30 @@ export function createAiConnection(input: {
   request: unknown;
   keyring: AiKeyring;
   allowedHosts: AiAllowedHosts;
+  localConfigurationDrafts?: boolean;
 }): Promise<AiConnection>;
 export function updateAiConnection(input: {
   pool: unknown;
   request: unknown;
   keyring: AiKeyring;
   allowedHosts: AiAllowedHosts;
+  localConfigurationDrafts?: boolean;
 }): Promise<AiConnection>;
 export function listAiConnections(input: { pool: unknown }): Promise<AiConnection[]>;
 export function getAiConnectionHistory(input: {
   pool: unknown;
   id: string;
 }): Promise<AiConfigHistory<AiConnection>[]>;
-export function saveAiProfile(input: { pool: unknown; request: unknown }): Promise<AiProfile>;
+export function saveAiProfile(input: {
+  pool: unknown;
+  request: unknown;
+  localConfigurationDrafts?: boolean;
+}): Promise<AiProfile>;
+export function getAiProfileReference(input: {
+  pool: unknown;
+  id: string;
+  revision: number;
+}): Promise<Pick<AiProfile, 'id' | 'revision'>>;
 export function listAiProfiles(input: { pool: unknown }): Promise<AiProfile[]>;
 export function getAiProfileHistory(input: {
   pool: unknown;

@@ -11,6 +11,7 @@ export const localDatabaseEnvironmentRoles: Readonly<Record<string, string>> = O
   HZENSE_GENERATION_DATABASE_URL: 'hzense_generation_admin',
   HZENSE_REVIEW_DATABASE_URL: 'hzense_candidate_reviewer',
   HZENSE_SIGNAL_ADMIN_DATABASE_URL: 'hzense_signal_admin_reader',
+  HZENSE_AUTOMATION_DATABASE_URL: 'hzense_automation_admin',
 });
 
 export class LocalDevelopmentError extends Error {

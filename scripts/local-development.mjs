@@ -47,7 +47,7 @@ export function buildLocalDevelopmentEnvironment(
   credentials,
   { root = repositoryRoot, port = 3000 } = {},
 ) {
-  if (credentials.version !== 2)
+  if (credentials.version !== 3)
     throw new LocalSiteError('本地后台凭据尚未初始化，请先执行 pnpm local:db:init。');
   const env = {
     ...buildLocalEnvironment(parent, port),
@@ -55,6 +55,9 @@ export function buildLocalDevelopmentEnvironment(
     HZENSE_LOCAL_DEVELOPMENT: '1',
     HZENSE_LOCAL_PREVIEW: '0',
     HZENSE_LOCAL_AI_MODE: 'mock',
+    HZENSE_AI_ALLOWED_HOSTS: 'openrouter.ai,ai-gateway.vercel.sh',
+    HZENSE_AUTOMATION_ENABLED: '0',
+    HZENSE_TOPIC_INSIGHTS_ENABLED: '0',
     HZENSE_LOCAL_STATE_DIR: resolve(root, '.hzense-local'),
     HZENSE_RUNTIME_EXPECTED_USER: 'hzense_runtime',
     HZENSE_SIGNAL_READ_MODE: 'database',

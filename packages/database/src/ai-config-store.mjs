@@ -30,7 +30,11 @@ const one = (result) => {
 function safeError(error) {
   return error instanceof AiConfigError ? error : new AiConfigError('database_unavailable');
 }
-async function transaction(pool, operation, { commitErrorCode = 'database_unavailable' } = {}) {
+async function transaction(
+  pool,
+  operation,
+  { commitErrorCode = 'database_unavailable', readOnly = false } = {},
+) {
   let client;
   let started = false;
   let committing = false;
@@ -38,7 +42,7 @@ async function transaction(pool, operation, { commitErrorCode = 'database_unavai
   try {
     if (!pool || typeof pool.connect !== 'function') aiFail('database_unavailable');
     client = await pool.connect();
-    await client.query('BEGIN ISOLATION LEVEL READ COMMITTED');
+    await client.query(`BEGIN ISOLATION LEVEL READ COMMITTED${readOnly ? ' READ ONLY' : ''}`);
     started = true;
     await client.query('SET LOCAL search_path = pg_catalog, pg_temp');
     await client.query("SET LOCAL lock_timeout='5s'");
@@ -129,13 +133,14 @@ async function connectionHistory(client, row) {
 function matchesConnectionCreate(row, request, keyring) {
   if (
     row.revision !== 1 ||
-    !row.encrypted_key ||
     ['name', 'protocol', 'base_url', 'enabled', 'settings'].some(
       (field) => !isDeepStrictEqual(row[field], request[field]),
     )
   )
     return false;
-  return matchesConnectionKey(row, request.api_key, keyring);
+  return request.api_key === undefined
+    ? row.encrypted_key === null && row.enabled === false
+    : matchesConnectionKey(row, request.api_key, keyring);
 }
 function matchesConnectionKey(row, apiKey, keyring) {
   if (!row.encrypted_key) return false;
@@ -148,8 +153,16 @@ function matchesConnectionKey(row, apiKey, keyring) {
     expected.fill(0);
   }
 }
-export async function createAiConnection({ pool, request, keyring, allowedHosts }) {
-  const v = parseAiConnectionCreate(request, allowedHosts);
+export async function createAiConnection({
+  pool,
+  request,
+  keyring,
+  allowedHosts,
+  localConfigurationDrafts = false,
+}) {
+  const v = parseAiConnectionCreate(request, allowedHosts, {
+    allowKeylessDraft: localConfigurationDrafts === true,
+  });
   const id = v.id ?? randomUUID();
   return transaction(pool, async (client) => {
     await client.query(
@@ -166,7 +179,7 @@ export async function createAiConnection({ pool, request, keyring, allowedHosts 
       if (!matchesConnectionCreate(old, v, keyring)) aiFail('request_id_conflict');
       return connectionDto(old);
     }
-    const encrypted = encryptAiKey(v.api_key, id, keyring);
+    const encrypted = v.api_key === undefined ? null : encryptAiKey(v.api_key, id, keyring);
     const row = (
       await client.query(
         `/* ai:connection-create */ INSERT INTO public.ai_connections(id,revision,name,protocol,base_url,enabled,settings,encrypted_key)
@@ -178,7 +191,7 @@ export async function createAiConnection({ pool, request, keyring, allowedHosts 
           v.base_url,
           v.enabled,
           JSON.stringify(v.settings),
-          JSON.stringify(encrypted),
+          encrypted === null ? null : JSON.stringify(encrypted),
         ],
       )
     ).rows[0];
@@ -187,7 +200,13 @@ export async function createAiConnection({ pool, request, keyring, allowedHosts 
     return connectionDto(row);
   });
 }
-export async function updateAiConnection({ pool, request, keyring, allowedHosts }) {
+export async function updateAiConnection({
+  pool,
+  request,
+  keyring,
+  allowedHosts,
+  localConfigurationDrafts = false,
+}) {
   const v = parseAiConnectionUpdate(request, allowedHosts);
   return transaction(pool, async (client) => {
     const old = await connection(client, v.id, true);
@@ -195,7 +214,11 @@ export async function updateAiConnection({ pool, request, keyring, allowedHosts 
     const endpointChanged =
       (v.base_url !== undefined && v.base_url !== old.base_url) ||
       (v.protocol !== undefined && v.protocol !== old.protocol);
-    if (endpointChanged && !v.api_key) aiFail('endpoint_key_required');
+    const keylessDraft =
+      localConfigurationDrafts === true &&
+      old.encrypted_key === null &&
+      (v.enabled ?? old.enabled) === false;
+    if (endpointChanged && !v.api_key && !keylessDraft) aiFail('endpoint_key_required');
     const next = { ...old, ...v, revision: old.revision + 1 };
     // A removed endpoint must not prevent emergency disable/key revocation.
     // New endpoints are always validated by the request parser, and an enabled
@@ -314,7 +337,27 @@ async function readiness(client, stages, locking = false) {
   }
   return { ready: reasons.length === 0, reasons, warnings };
 }
-export async function saveAiProfile({ pool, request }) {
+/** Local configuration drafts retain real reference/CAS checks, not fabricated capability proofs. */
+async function validateProfileConnectionReferences(client, stages, locking = false) {
+  const revisions = new Map();
+  for (const id of [...new Set(Object.values(stages).map((stage) => stage.connection_id))].sort()) {
+    const row = (
+      await client.query(
+        `/* ai:profile-reference-connection */ SELECT id,revision FROM public.ai_connections WHERE id=$1${locking ? ' FOR SHARE' : ''}`,
+        [id],
+      )
+    ).rows[0];
+    if (!row) aiFail('connection_unavailable');
+    revisions.set(id, row.revision);
+  }
+  if (
+    Object.values(stages).some(
+      (stage) => revisions.get(stage.connection_id) !== stage.connection_revision,
+    )
+  )
+    aiFail('revision_conflict');
+}
+export async function saveAiProfile({ pool, request, localConfigurationDrafts = false }) {
   const v = parseAiProfileSave(request);
   const id = v.id ?? randomUUID();
   const updating = 'expected_revision' in v;
@@ -338,10 +381,14 @@ export async function saveAiProfile({ pool, request }) {
     } else if (old) {
       if (old.revision !== 1 || old.name !== v.name || !isDeepStrictEqual(old.stages, v.stages))
         aiFail('request_id_conflict');
+      if (localConfigurationDrafts === true)
+        await validateProfileConnectionReferences(client, old.stages, true);
       return profileDto(old, await readiness(client, old.stages, true));
     }
+    if (localConfigurationDrafts === true)
+      await validateProfileConnectionReferences(client, v.stages, true);
     const ready = await readiness(client, v.stages, true);
-    if (!ready.ready) aiFail('profile_not_ready');
+    if (!ready.ready && localConfigurationDrafts !== true) aiFail('profile_not_ready');
     const row = one(
       await client.query(
         updating
@@ -356,6 +403,26 @@ export async function saveAiProfile({ pool, request }) {
     );
     return profileDto(row, ready);
   });
+}
+/** Configuration reference only; no capability admission or credentials. Execution must resolve readiness again. */
+export async function getAiProfileReference({ pool, id, revision }) {
+  aiUuid(id);
+  aiInteger(revision, 1, 2147483647);
+  return transaction(
+    pool,
+    async (client) => {
+      const row = one(
+        await client.query(
+          '/* ai:profile-reference */ SELECT id,revision,stages FROM public.ai_profiles WHERE id=$1',
+          [id],
+        ),
+      );
+      if (row.revision !== revision) aiFail('revision_conflict');
+      await validateProfileConnectionReferences(client, row.stages);
+      return { id: row.id, revision: row.revision };
+    },
+    { readOnly: true },
+  );
 }
 export async function listAiProfiles({ pool }) {
   return transaction(pool, async (client) => {

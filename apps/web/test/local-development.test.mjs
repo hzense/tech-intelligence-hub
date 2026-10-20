@@ -35,6 +35,10 @@ test('local contract requires explicit development origin and validated role-spe
     assertLocalDatabaseUrl(env.HZENSE_AI_DATABASE_URL, 'hzense_ai_admin', env),
     env.HZENSE_AI_DATABASE_URL,
   );
+  assert.equal(
+    assertLocalDatabaseUrl(env.HZENSE_AUTOMATION_DATABASE_URL, 'hzense_automation_admin', env),
+    env.HZENSE_AUTOMATION_DATABASE_URL,
+  );
   for (const [key, value] of [
     ['HZENSE_LOCAL_DEVELOPMENT', '0'],
     ['NODE_ENV', 'production'],
@@ -60,6 +64,12 @@ test('local contract requires explicit development origin and validated role-spe
     env.HZENSE_AI_DATABASE_URL.replace('hzense_ai_admin', 'hzense_local_owner'),
   ])
     assert.equal(isLocalDevelopment({ ...env, HZENSE_AI_DATABASE_URL: value }), false);
+  for (const value of [
+    env.HZENSE_AUTOMATION_DATABASE_URL.replace('127.0.0.1', 'example.neon.tech'),
+    env.HZENSE_AUTOMATION_DATABASE_URL.replace('55432', '55433'),
+    env.HZENSE_AUTOMATION_DATABASE_URL.replace('hzense_automation_admin', 'hzense_local_owner'),
+  ])
+    assert.equal(isLocalDevelopment({ ...env, HZENSE_AUTOMATION_DATABASE_URL: value }), false);
 });
 
 test('loopback requests reject cross-origin, rebinding and proxy targets', () => {

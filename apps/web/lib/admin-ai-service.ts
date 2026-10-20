@@ -24,6 +24,7 @@ export function createAiAdminExecutor(dependencies: {
   keyring: AiKeyring;
   allowedHosts: AiAllowedHosts;
   invoke: AiProbeInvoker;
+  localConfigurationDrafts?: boolean;
 }) {
   return async (
     operation: AiAdminOperation,
@@ -34,6 +35,7 @@ export function createAiAdminExecutor(dependencies: {
       request: command,
       keyring: dependencies.keyring,
       allowedHosts: dependencies.allowedHosts,
+      localConfigurationDrafts: dependencies.localConfigurationDrafts === true,
     };
     switch (operation) {
       case 'list-connections':
@@ -55,6 +57,10 @@ export function createAiAdminExecutor(dependencies: {
       case 'get-probe':
         return { probe: await getAiProbe({ ...input, id: String(command.id) }) };
       case 'run-probe':
+        if (dependencies.localConfigurationDrafts === true)
+          throw Object.assign(new Error('local_provider_disabled'), {
+            code: 'local_provider_disabled',
+          });
         return { probe: await runAiProbe({ ...input, invoke: dependencies.invoke }) };
     }
   };

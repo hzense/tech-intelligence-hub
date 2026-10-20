@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { URL } from 'node:url';
 import {
   assertLocalDevelopmentLaunchEnvironment,
   buildLocalDevelopmentEnvironment,
@@ -39,6 +40,12 @@ test('development launcher discards all inherited service credentials and binds 
       HZENSE_LOCAL_LOGIN_TOKEN_HASH: 'stale-token',
       HZENSE_LOCAL_LOGIN_TOKEN_FILE: '/stale/login.token',
       HZENSE_LOCAL_LOGIN_EXPIRES_AT: '123456',
+      HZENSE_AI_ALLOWED_HOSTS: 'untrusted.invalid',
+      HZENSE_AUTOMATION_ENABLED: '1',
+      HZENSE_TOPIC_INSIGHTS_ENABLED: '1',
+      HZENSE_AUTOMATION_DATABASE_URL: 'production-private',
+      HZENSE_AUTOMATION_DISPATCH_TOKEN: 'production-private',
+      CRON_SECRET: 'production-private',
     },
     credentials(),
     launch,
@@ -52,6 +59,20 @@ test('development launcher discards all inherited service credentials and binds 
   assert.equal(env.HZENSE_LOCAL_AI_MODE, 'mock');
   assert.equal(env.HZENSE_SIGNAL_READ_MODE, 'database');
   assert.equal(env.HZENSE_AUTOMATION_ENABLED, '0');
+  assert.equal(env.HZENSE_TOPIC_INSIGHTS_ENABLED, '0');
+  assert.equal(env.HZENSE_AI_ALLOWED_HOSTS, 'openrouter.ai,ai-gateway.vercel.sh');
+  assert.equal(env.HZENSE_AUTOMATION_DISPATCH_TOKEN, undefined);
+  assert.equal(env.CRON_SECRET, undefined);
+  const automationTarget = new URL(env.HZENSE_AUTOMATION_DATABASE_URL);
+  assert.deepEqual(
+    [
+      automationTarget.username,
+      automationTarget.hostname,
+      automationTarget.port,
+      automationTarget.pathname,
+    ],
+    ['hzense_automation_admin', '127.0.0.1', '55432', '/hzense_local'],
+  );
   assert.ok(isLocalDevelopment(env));
   assert.doesNotMatch(JSON.stringify(env), /production-private|unsafe/);
   for (const key of [
@@ -62,6 +83,14 @@ test('development launcher discards all inherited service credentials and binds 
   ])
     assert.equal(env[key], undefined);
   assert.doesNotMatch(JSON.stringify(env), /stale-secret|stale-token|stale\/login/);
+});
+
+test('launcher requires an explicit credential upgrade before exposing local automation configuration', () => {
+  for (const version of [1, 2])
+    assert.throws(
+      () => buildLocalDevelopmentEnvironment({}, { ...credentials(), version }, launch),
+      /local:db:init/,
+    );
 });
 
 test('launcher rejects deployment markers before scrubbing inherited variables', () => {

@@ -31,6 +31,7 @@ export function parseAiApiKey(value: unknown): string;
 export function parseAiConnectionCreate(
   request: unknown,
   allowedHosts: AiAllowedHosts,
+  options?: { allowKeylessDraft?: boolean },
 ): AiConnectionCreateRequest;
 export function parseAiConnectionUpdate(
   request: unknown,

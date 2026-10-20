@@ -295,6 +295,9 @@ test('allows only the selected operation field set', async () => {
   for (const [operation, body, method] of [
     ['run-probe', { id, api_key: secret }, 'POST'],
     ['save-profile', { name: 'X', capabilities: { tools: true } }, 'POST'],
+    ['save-profile', { name: 'X', stages: {}, localConfigurationDrafts: true }, 'POST'],
+    ['create-connection', { name: 'X', localConfigurationDrafts: true }, 'POST'],
+    ['update-connection', { id, expected_revision: 1, localMode: true }, 'PATCH'],
     ['update-connection', { id, expected_revision: 1, connection_id: id }, 'PATCH'],
   ])
     assert.equal((await f.handle(request(body, {}, method), operation)).status, 400);

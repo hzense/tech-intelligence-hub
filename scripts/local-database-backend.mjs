@@ -19,6 +19,11 @@ import {
   generationRoleCheckSQL,
 } from '../packages/database/src/signal-generation-role-check.mjs';
 import { candidateEnrichmentRoleColumns } from '../packages/database/src/signal-generation-role-columns.mjs';
+import {
+  assertAutomationRole,
+  automationRoleColumns,
+  automationUpdateColumns,
+} from '../packages/database/src/automation-role.mjs';
 
 export const localBackendRolePlan = Object.freeze([
   { role: 'hzense_ai_admin', file: 'configure_ai_admin.sql', verifyTag: 'ai_admin_verify' },
@@ -34,6 +39,7 @@ export const localBackendRolePlan = Object.freeze([
     file: 'configure_signal_admin_reader.sql',
     verifyTag: 'signal_admin_reader_verify',
   },
+  { role: 'hzense_automation_admin', file: 'configure_automation_config_admin.sql' },
 ]);
 const stop = (message) => {
   throw new LocalDatabaseError(message);
@@ -42,7 +48,14 @@ const marker = (credentials) =>
   `HZense isolated local development v1 ${createHash('sha256').update(credentials.developmentPassword).digest('hex')}`;
 
 export function localRoleVerificationBlock(script, tag) {
-  if (!['ai_admin_verify', 'import_admin_verify', 'signal_admin_reader_verify'].includes(tag))
+  if (
+    ![
+      'ai_admin_verify',
+      'import_admin_verify',
+      'signal_admin_reader_verify',
+      'verify_acl',
+    ].includes(tag)
+  )
     stop('未知的本地角色核验块');
   const blocks = [...script.matchAll(new RegExp(`DO \\$${tag}\\$[\\s\\S]*?\\$${tag}\\$;`, 'g'))];
   if (blocks.length !== 1) stop('角色核验块缺失或不唯一，拒绝初始化');
@@ -111,6 +124,43 @@ export const localCandidateEnrichmentGrants = Object.entries(candidateEnrichment
   )
   .join('\n');
 
+// The production config-only provisioner is pinned to hzense. Do not rewrite
+// that guard or create the public insight reader locally. Apply its exported
+// column matrix only after the strict local owner check, and reuse its exact
+// post-grant audit before committing. The existing deletion upgrade subsequently
+// accepts only this exact baseline or its already-upgraded column ACL.
+export const localAutomationGrants = [
+  'GRANT CONNECT ON DATABASE hzense_local TO hzense_automation_admin;',
+  'GRANT USAGE ON SCHEMA public TO hzense_automation_admin;',
+  ...Object.entries(automationRoleColumns).map(
+    ([table, columns]) =>
+      `GRANT SELECT(${columns.join(',')}), INSERT(${columns.join(',')}), UPDATE(${automationUpdateColumns[table].join(',')}) ON public.${table} TO hzense_automation_admin;`,
+  ),
+].join('\n');
+
+export async function prepareLocalAutomationAdmin(client, root = localDatabaseRoot) {
+  await assertLocalBackendTarget(client);
+  const script = await readFile(
+    resolve(root, 'db/roles/configure_automation_config_admin.sql'),
+    'utf8',
+  );
+  const audit = localRoleVerificationBlock(script, 'verify_acl');
+  await client.query('BEGIN');
+  try {
+    if (
+      (await client.query('SELECT pg_try_advisory_xact_lock(1215921955,1298498925) AS locked'))
+        .rows[0]?.locked !== true
+    )
+      stop('本地数据库维护锁忙，未修改权限');
+    await client.query(localAutomationGrants);
+    await client.query(audit);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
+
 export async function prepareLocalCandidateEnrichment(client) {
   await assertLocalBackendTarget(client);
   await client.query('BEGIN');
@@ -161,8 +211,17 @@ async function provisionRole({ admin, client, credentials, root, descriptor }) {
     row = await inspectRole(admin, descriptor.role, credentials);
   }
   try {
-    if (!row.acl)
-      await client.query(await readFile(resolve(root, 'db/roles', descriptor.file), 'utf8'));
+    if (!row.acl) {
+      if (descriptor.role === 'hzense_automation_admin')
+        await prepareLocalAutomationAdmin(client, root);
+      else await client.query(await readFile(resolve(root, 'db/roles', descriptor.file), 'utf8'));
+    }
+    if (descriptor.role === 'hzense_automation_admin') {
+      await assertLocalBackendTarget(client);
+      await client.query(
+        await readFile(resolve(root, 'db/roles/upgrade_automation_config_deletion.sql'), 'utf8'),
+      );
+    }
     if (descriptor.role === 'hzense_generation_admin')
       await prepareLocalCandidateEnrichment(client);
     await verifyOne(client, descriptor, root);
@@ -189,10 +248,10 @@ export async function resumeLocalBackendReader({
   root = localDatabaseRoot,
 }) {
   validateLocalDatabaseCredentials(credentials);
-  if (credentials.version !== 2) return;
+  if (credentials.version < 2) return;
   await assertLocalCluster(admin);
   await assertLocalBackendTarget(client);
-  const descriptor = localBackendRolePlan.at(-1);
+  const descriptor = localBackendRolePlan.find(({ role }) => role === 'hzense_signal_admin_reader');
   const row = await inspectRole(admin, descriptor.role, credentials);
   if (row && !row.acl) await provisionRole({ admin, client, credentials, root, descriptor });
 }
@@ -204,7 +263,7 @@ export async function prepareLocalBackendRoles({
   root = localDatabaseRoot,
 }) {
   validateLocalDatabaseCredentials(credentials);
-  if (credentials.version !== 2) stop('请先升级本地凭据；不会修改现有密码');
+  if (credentials.version !== 3) stop('请先升级本地凭据；不会修改现有密码');
   await assertLocalCluster(admin);
   await assertLocalBackendTarget(client);
   for (const descriptor of localBackendRolePlan)
@@ -225,8 +284,8 @@ export async function verifyLocalBackendRoles({
     ['hzense_editorial_writer', (roleClient) => assertEditorialRole(roleClient, 'writer')],
     ['hzense_editorial_reader', (roleClient) => assertEditorialRole(roleClient, 'reader')],
   ];
-  if (credentials.version === 2) {
-    for (const descriptor of localBackendRolePlan) {
+  if (credentials.version >= 2) {
+    for (const descriptor of localBackendRolePlan.filter(({ role }) => credentials.roles[role])) {
       const row = await inspectRole(admin, descriptor.role, credentials);
       if (!row?.acl) stop('本地后台角色尚未配置；请运行 local:db:init');
       await verifyOne(client, descriptor, root);
@@ -238,6 +297,7 @@ export async function verifyLocalBackendRoles({
       ['hzense_ai_admin', async () => {}],
       ['hzense_signal_admin_reader', async () => {}],
     );
+    if (credentials.version === 3) checks.push(['hzense_automation_admin', assertAutomationRole]);
   }
   for (const [role, check] of checks) {
     const roleClient = await connect(localDatabaseUrl(credentials, role));
@@ -257,5 +317,5 @@ export async function verifyLocalBackendRoles({
       await roleClient.end();
     }
   }
-  return credentials.version === 2;
+  return credentials.version === 3;
 }

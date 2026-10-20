@@ -18,12 +18,16 @@ export const localDatabaseBaseRoles = Object.freeze([
   'hzense_editorial_writer',
   'hzense_editorial_reader',
 ]);
-export const localDatabaseBackendRoles = Object.freeze([
+export const localDatabaseV2BackendRoles = Object.freeze([
   'hzense_ai_admin',
   'hzense_import_admin',
   'hzense_generation_admin',
   'hzense_candidate_reviewer',
   'hzense_signal_admin_reader',
+]);
+export const localDatabaseBackendRoles = Object.freeze([
+  ...localDatabaseV2BackendRoles,
+  'hzense_automation_admin',
 ]);
 export const localDatabaseRoles = Object.freeze([
   ...localDatabaseBaseRoles,
@@ -172,13 +176,18 @@ export function assertLocalDatabaseContainer(
 }
 
 export function validateLocalDatabaseCredentials(value) {
-  const roles = value?.version === 1 ? localDatabaseBaseRoles : localDatabaseRoles;
+  const roles =
+    value?.version === 1
+      ? localDatabaseBaseRoles
+      : value?.version === 2
+        ? [...localDatabaseBaseRoles, ...localDatabaseV2BackendRoles]
+        : localDatabaseRoles;
   const keys =
     value?.version === 1
       ? ['version', 'developmentPassword', 'testPassword', 'roles']
       : ['version', 'developmentPassword', 'testPassword', 'roles', 'aiKeyring'];
   if (
-    ![1, 2].includes(value?.version) ||
+    ![1, 2, 3].includes(value?.version) ||
     Object.keys(value).sort().join(',') !== keys.sort().join(',') ||
     !/^[a-f0-9]{64}$/.test(value?.developmentPassword ?? '') ||
     !/^[a-f0-9]{64}$/.test(value?.testPassword ?? '') ||
@@ -188,7 +197,7 @@ export function validateLocalDatabaseCredentials(value) {
   )
     fail('本地数据库凭据文件格式无效；不会重置现有密码或数据卷');
   if (
-    value.version === 2 &&
+    value.version >= 2 &&
     (value.aiKeyring?.active !== 'local-v1' ||
       Object.keys(value.aiKeyring?.keys ?? {}).join(',') !== 'local-v1' ||
       !/^[A-Za-z0-9+/]{43}=$/.test(value.aiKeyring.keys['local-v1']) ||
@@ -202,17 +211,22 @@ export function validateLocalDatabaseCredentials(value) {
 
 export function upgradeLocalDatabaseCredentials(value) {
   validateLocalDatabaseCredentials(value);
-  if (value.version === 2) return value;
+  if (value.version === 3) return value;
   return validateLocalDatabaseCredentials({
     ...value,
-    version: 2,
+    version: 3,
     roles: {
       ...value.roles,
       ...Object.fromEntries(
-        localDatabaseBackendRoles.map((role) => [role, randomBytes(32).toString('hex')]),
+        localDatabaseBackendRoles
+          .filter((role) => !Object.hasOwn(value.roles, role))
+          .map((role) => [role, randomBytes(32).toString('hex')]),
       ),
     },
-    aiKeyring: { active: 'local-v1', keys: { 'local-v1': randomBytes(32).toString('base64') } },
+    aiKeyring: value.aiKeyring ?? {
+      active: 'local-v1',
+      keys: { 'local-v1': randomBytes(32).toString('base64') },
+    },
   });
 }
 
@@ -251,7 +265,7 @@ export async function loadLocalDatabaseCredentials({
   }
   await requirePrivatePath(path);
   let credentials = validateLocalDatabaseCredentials(JSON.parse(await readFile(path, 'utf8')));
-  if (create && credentials.version === 1) {
+  if (create && credentials.version < 3) {
     const lock = resolve(directory, 'database-upgrade.lock');
     const temporary = resolve(directory, `database-${randomBytes(12).toString('hex')}.tmp`);
     try {
@@ -328,6 +342,11 @@ export function localDatabaseServiceEnvironment(credentials) {
     HZENSE_GENERATION_DATABASE_URL: localDatabaseUrl(credentials, 'hzense_generation_admin'),
     HZENSE_REVIEW_DATABASE_URL: localDatabaseUrl(credentials, 'hzense_candidate_reviewer'),
     HZENSE_SIGNAL_ADMIN_DATABASE_URL: localDatabaseUrl(credentials, 'hzense_signal_admin_reader'),
+    ...(credentials.version === 3
+      ? {
+          HZENSE_AUTOMATION_DATABASE_URL: localDatabaseUrl(credentials, 'hzense_automation_admin'),
+        }
+      : {}),
   };
 }
 

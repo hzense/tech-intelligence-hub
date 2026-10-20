@@ -18,7 +18,7 @@ const messages: Record<string, string> = {
   ai_not_configured: 'AI 后台尚未配置完成。',
   invalid_request: '请检查字段格式、模型名称和数值范围。',
   invalid_configuration:
-    '接口基础地址未通过服务端校验。请检查 HTTPS 基础路径和本页允许域名；修改 Production 的 HZENSE_AI_ALLOWED_HOSTS 后须重新部署并刷新页面。',
+    '接口基础地址未通过服务端校验。请检查 HTTPS 基础路径和本页允许域名；修改当前运行环境的 HZENSE_AI_ALLOWED_HOSTS 后须重启服务或重新部署，并刷新页面。',
   revision_conflict: '配置已变化，请刷新后重新编辑。',
   request_id_conflict:
     '该请求编号已用于不同内容，或已有配置已被修改。请刷新核对原记录，不要覆盖重试。',
@@ -105,10 +105,14 @@ export function AiEndpointFields({
   initialBaseUrl,
   editing,
   allowedHosts,
+  localMode = false,
+  keyOptional = false,
 }: {
   initialBaseUrl: string;
   editing: boolean;
   allowedHosts: string[];
+  localMode?: boolean;
+  keyOptional?: boolean;
 }) {
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
   const storedBaseUrl = editing ? initialBaseUrl : undefined;
@@ -126,7 +130,11 @@ export function AiEndpointFields({
   function updateEndpoint(next: string) {
     if (aiEndpointChanged(baseUrl, next, storedBaseUrl)) {
       if (keyInput.current) keyInput.current.value = '';
-      setKeyNotice('接口地址已改变，请为当前地址重新填写 API Key；不会沿用之前填写或保存的密钥。');
+      setKeyNotice(
+        keyOptional
+          ? '接口地址已改变；本地无密钥草稿可留空保存，不会发送请求。'
+          : '接口地址已改变，请为当前地址重新填写 API Key；不会沿用之前填写或保存的密钥。',
+      );
     }
     setBaseUrl(next);
   }
@@ -173,7 +181,9 @@ export function AiEndpointFields({
       <p id="ai-endpoint-guidance" className={styles.muted} role="status">
         {guidance.valid
           ? '此域名在当前服务端白名单中；保存时仍由服务端校验。'
-          : aiEndpointMessage(guidance)}
+          : localMode && guidance.issue === 'unapproved_host'
+            ? '该域名不在本地允许列表中，请使用列出的供应商预设；无需调整 Production 配置。'
+            : aiEndpointMessage(guidance)}
       </p>
       {!guidance.valid && guidance.suggestedBaseUrl ? (
         <>
@@ -197,17 +207,23 @@ export function AiEndpointFields({
         </>
       ) : null}
       <p className={styles.muted}>
-        首批协议：OpenAI-compatible Chat
-        Completions。修改接口地址时必须重新填写密钥；不沿用旧密钥访问新端点。
+        首批协议：OpenAI-compatible Chat Completions。
+        {keyOptional
+          ? '本地无密钥草稿可先保存接口地址；不会发起供应商请求。'
+          : '修改接口地址时必须重新填写密钥；不沿用旧密钥访问新端点。'}
       </p>
       {keyNotice ? <p className={styles.muted}>{keyNotice}</p> : null}
       <label>
-        {editing ? '替换 API Key（不替换则留空）' : 'API Key'}
+        {keyOptional
+          ? 'API Key（本地草稿可留空）'
+          : editing
+            ? '替换 API Key（不替换则留空）'
+            : 'API Key'}
         <input
           ref={keyInput}
           name="api_key"
           type="password"
-          required={!editing || endpointChanged}
+          required={!keyOptional && (!editing || endpointChanged)}
           minLength={8}
           maxLength={4096}
           autoComplete="new-password"
