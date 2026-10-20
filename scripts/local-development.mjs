@@ -21,6 +21,18 @@ import { isLocalDevelopment } from '../apps/web/lib/local-development.ts';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+export function parseLocalDevelopmentArguments(args = []) {
+  const aiArgs = args.filter(
+    (argument) => typeof argument === 'string' && argument.startsWith('--ai='),
+  );
+  if (aiArgs.length > 1 || (aiArgs.length === 1 && !['--ai=mock', '--ai=real'].includes(aiArgs[0])))
+    throw new LocalSiteError('AI 模式仅支持一次 --ai=mock 或 --ai=real；默认 mock 不调用供应商。');
+  return {
+    ...parseLocalArguments(args.filter((argument) => !aiArgs.includes(argument))),
+    aiMode: aiArgs[0] === '--ai=real' ? 'real' : 'mock',
+  };
+}
+
 export function assertLocalDevelopmentLaunchEnvironment(environment) {
   assertLocalExecution(environment);
   for (const [key, value] of Object.entries(environment)) {
@@ -45,8 +57,9 @@ export function assertLocalDevelopmentLaunchEnvironment(environment) {
 export function buildLocalDevelopmentEnvironment(
   parent,
   credentials,
-  { root = repositoryRoot, port = 3000 } = {},
+  { root = repositoryRoot, port = 3000, aiMode = 'mock' } = {},
 ) {
+  if (!['mock', 'real'].includes(aiMode)) throw new LocalSiteError('AI 模式必须为 mock 或 real。');
   if (credentials.version !== 3)
     throw new LocalSiteError('本地后台凭据尚未初始化，请先执行 pnpm local:db:init。');
   const env = {
@@ -54,9 +67,9 @@ export function buildLocalDevelopmentEnvironment(
     ...localDatabaseServiceEnvironment(credentials),
     HZENSE_LOCAL_DEVELOPMENT: '1',
     HZENSE_LOCAL_PREVIEW: '0',
-    HZENSE_LOCAL_AI_MODE: 'mock',
+    HZENSE_LOCAL_AI_MODE: aiMode,
     HZENSE_AI_ALLOWED_HOSTS: 'openrouter.ai,ai-gateway.vercel.sh',
-    HZENSE_AUTOMATION_ENABLED: '0',
+    HZENSE_AUTOMATION_ENABLED: aiMode === 'real' ? '1' : '0',
     HZENSE_TOPIC_INSIGHTS_ENABLED: '0',
     HZENSE_LOCAL_STATE_DIR: resolve(root, '.hzense-local'),
     HZENSE_RUNTIME_EXPECTED_USER: 'hzense_runtime',
@@ -70,6 +83,10 @@ export function buildLocalDevelopmentEnvironment(
     HZENSE_EDITORIAL_PUBLICATION_ENABLED: '1',
     HZENSE_GENERATION_BATCH_LIMIT_MICROUSD: '5000000',
     HZENSE_GENERATION_DAILY_LIMIT_MICROUSD: '10000000',
+    // Separately approved source-discovery ledger; generation keeps its own budget.
+    HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD: '5000000',
+    HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD: '10000000',
+    HZENSE_AUTOMATION_RESERVE_MICROUSD: '5000000',
     WORKFLOW_TARGET_WORLD: 'local',
     WORKFLOW_LOCAL_DATA_DIR: resolve(root, '.hzense-local', 'workflow'),
     WORKFLOW_LOCAL_BASE_URL: `http://127.0.0.1:${port}`,
@@ -92,7 +109,7 @@ async function requirePrivateDirectory(path) {
 }
 
 export async function main(args = process.argv.slice(2), options = {}) {
-  const { port, check } = parseLocalArguments(args);
+  const { port, check, aiMode } = parseLocalDevelopmentArguments(args);
   const parent = options.environment ?? process.env;
   const root = options.repositoryRoot ?? repositoryRoot;
   const log = options.log ?? console.log;
@@ -112,9 +129,12 @@ export async function main(args = process.argv.slice(2), options = {}) {
   const env = buildLocalDevelopmentEnvironment(parent, credentials, {
     root,
     port,
+    aiMode,
   });
   log(
-    '本地完整开发模式：仅连接本机 PostgreSQL；不调用付费 AI，本地模拟记账不是真实费用；发布只写本地，不会同步生产。',
+    aiMode === 'real'
+      ? '本地真实 AI 模式：仅连接本机 PostgreSQL；模型测试、手动启动的自动采集与生成会使用本地保存的 API Key 联网并产生供应商费用，所选资料会发送给供应商；采集每次 5 美元／UTC 每日 10 美元，生成另计。定时采集和专题自动执行关闭；发布只写本地，不会同步生产。'
+      : '本地完整开发模式：仅连接本机 PostgreSQL；不调用付费 AI，本地模拟记账不是真实费用；发布只写本地，不会同步生产。使用 --ai=real 可显式开启真实 AI。',
   );
   if (check) {
     log('本地数据库与开发配置检查通过；未启动服务，不需要登录令牌。');

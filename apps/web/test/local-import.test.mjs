@@ -23,6 +23,8 @@ import {
 import { localParserArguments, parseLocalImport } from '../lib/local-import-parser.ts';
 import { diagnoseImportConfiguration } from '../lib/import-config.ts';
 import { importParserSource } from '../../../packages/ingestion/src/import-parser-source.mjs';
+import { importUuid } from '../../../packages/ingestion/src/import-task-contract.mjs';
+import { automationStableId } from '../../../packages/database/src/automation-contract.mjs';
 
 const key = 'imports/11111111-1111-4111-8111-111111111111/22222222-2222-4222-8222-222222222222';
 const secret = 'a'.repeat(64);
@@ -66,6 +68,73 @@ test('local originals are immutable, hash-checked, private and removed on comple
   assert.deepEqual(await readdir(join(directory, 'import-originals')), []);
   await removeLocalImportObject(key, env);
   await assert.rejects(readLocalImportObject(key, env), { code: 'source_unavailable' });
+});
+test('local originals accept the unchanged stable automation IDs and all import UUID nibbles', async (t) => {
+  const { directory, env } = await fixture(t);
+  const cases = [
+    ['e56768a4-81b1-4c57-a5e6-3cd172c946c6', '83791f48-cf19-1567-7c26-db6848e3800e'],
+    ['ab5b42f3-1b07-4a92-94d2-7fd1b849766a', '8216c294-47b2-3a28-fe9d-8868913d4c48'],
+  ].map(([runId, expected]) => {
+    const id = automationStableId({ runId, kind: 'import' });
+    assert.equal(id, expected);
+    return id;
+  });
+  for (const nibble of '0123456789abcdef') {
+    cases.push(`11111111-1111-${nibble}111-8111-111111111111`);
+    cases.push(`11111111-1111-4111-${nibble}111-111111111111`);
+  }
+  for (const id of cases) {
+    assert.equal(importUuid(id), id);
+    // Both path segments use the same record-ID contract, not an RFC variant rule.
+    const path = `imports/${id}/${id}`;
+    const bytes = Buffer.from(`synthetic original for ${id}`);
+    const receipt = await putLocalImportObject(path, bytes, env);
+    assert.deepEqual((await readLocalImportObject(path, env)).bytes, bytes);
+    assert.equal(receipt.sha256, createHash('sha256').update(bytes).digest('hex'));
+    await putLocalImportObject(path, bytes, env);
+    await assert.rejects(putLocalImportObject(path, Buffer.from('changed'), env), {
+      code: 'document_conflict',
+    });
+    await removeLocalImportObject(path, env);
+    await removeLocalImportObject(path, env);
+    await assert.rejects(readLocalImportObject(path, env), { code: 'source_unavailable' });
+  }
+  assert.deepEqual(await readdir(join(directory, 'import-originals')), []);
+});
+test('local object keys reject malformed segments for writes, reads and cleanup before filesystem access', async () => {
+  const env = environment();
+  const [, batch, item] = key.split('/');
+  const invalidKeys = [
+    '',
+    `/${key}`,
+    `other/${batch}/${item}`,
+    `imports//${batch}/${item}`,
+    `imports/${batch}`,
+    `${key}/`,
+    `${key}/extra`,
+    `${key}\n`,
+    `${key}\r\n`,
+    `${key}\0`,
+    `${key}?query=1`,
+    `${key}#fragment`,
+    `${key} `,
+    `imports/${batch}\n/${item}`,
+    `imports/${batch}/../${item}`,
+    `imports/${batch}/%2e%2e`,
+    key.replaceAll('/', '\\'),
+    `imports/${batch.slice(1)}/${item}`,
+    `imports/${batch}/${item.slice(1)}`,
+    `imports/${batch}/${item.replace(/2$/, 'g')}`,
+    'imports/AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA/22222222-2222-4222-8222-222222222222',
+    'imports/11111111-1111-4111-8111-111111111111/AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA',
+  ];
+  for (const path of invalidKeys) {
+    await assert.rejects(putLocalImportObject(path, Buffer.from('synthetic'), env), {
+      code: 'invalid_request',
+    });
+    await assert.rejects(readLocalImportObject(path, env), { code: 'invalid_request' });
+    await assert.rejects(removeLocalImportObject(path, env), { code: 'invalid_request' });
+  }
 });
 test('local upload rejects cloud contexts, arbitrary paths, symbolic links and permissive directories', async (t) => {
   const { directory, root, env } = await fixture(t);

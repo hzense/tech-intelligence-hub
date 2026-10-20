@@ -23,6 +23,7 @@ import { readMaterialSupplement } from '../material-source-reader';
 import { readEditorialSourceOptions } from '../editorial-source-options';
 import { getResourceEntries } from '../seed-runtime';
 import { localFixtureSourceOptions } from '../local-generation';
+import { missingGenerationResources } from '../../../../packages/ingestion/src/signal-generation-contract.mjs';
 
 async function material(owner: string, runId: string, index: number) {
   const run = await generationRecord(owner, runId);
@@ -73,6 +74,20 @@ async function material(owner: string, runId: string, index: number) {
     sourceUrls: [],
   };
   const resources = prefill?.resources ?? candidate.resources ?? original.candidate.resources;
+  // Recompute against both the immutable candidate and the current enrichment.
+  // A short resource list must never silently erase a declared participant.
+  const missingResourceDetails =
+    resources === undefined
+      ? []
+      : missingGenerationResources({
+          persons: [...original.candidate.persons, ...candidate.persons],
+          organizations: [
+            ...original.candidate.organizations,
+            ...candidate.organizations,
+            ...content.organizations,
+          ],
+          resources,
+        });
   if (resources !== undefined) {
     content.resources = resources.map((resource) => ({ ...resource, entity_id: null }));
     content.organizations = resources
@@ -111,6 +126,7 @@ async function material(owner: string, runId: string, index: number) {
       ? {}
       : {
           resources,
+          missingResourceDetails,
           resourceSourceOptions: resourceSourceOptions ?? [],
           resourceCatalog: (await getResourceEntries()).filter(
             (resource) =>

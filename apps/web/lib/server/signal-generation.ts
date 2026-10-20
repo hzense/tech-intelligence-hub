@@ -16,6 +16,7 @@ import { generationAiAccess, getAiDashboard } from './admin-ai';
 import { readAiBackendConfiguration } from '../admin-ai-core';
 import {
   createGenerationExecutor,
+  generationAiMode,
   generationDto,
   generationProgressDto,
   GenerationError,
@@ -31,8 +32,12 @@ import { editorialTopicOptions } from './editorial-topics';
 import { readEditorialSignalStatuses } from '../../../../packages/database/src/editorial-signal-store.mjs';
 import { editorialPool } from './editorial-database';
 import { withGenerationPublications } from '../generation-publication';
-import { isLocalDevelopment } from '../local-development';
-import { invokeLocalGeneration, localGenerationAccess } from '../local-generation';
+import { isLocalDevelopment, isLocalMockAi, isLocalRealAi } from '../local-development';
+import {
+  invokeLocalGeneration,
+  localGenerationAccess,
+  LOCAL_GENERATION_PROFILE_ID,
+} from '../local-generation';
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
@@ -79,7 +84,7 @@ export function generationConfigured() {
   try {
     if (process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1') return false;
     readGenerationConfiguration(process.env);
-    if (!isLocalDevelopment()) readAiBackendConfiguration(process.env);
+    if (!isLocalMockAi()) readAiBackendConfiguration(process.env);
     return importsConfigured();
   } catch {
     return false;
@@ -126,10 +131,12 @@ async function historyDtos(owner: string, runs: store.SignalGenerationDisplay[])
     ),
   ]);
   const names = new Map(labels.map((item) => [item.id, item.name ?? item.url ?? '未命名资料']));
+  const matchingModes = new Map(runs.map((run) => [run.id, localGenerationModeMatches(run)]));
   return receipts.map((run) => ({
     ...run,
     // Compatibility mode is deliberately read-only until 0019/ACL enablement.
     ...(process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1' ? { can_delete: false } : {}),
+    ...(isLocalDevelopment() && !matchingModes.get(run.id) ? { can_retry: false } : {}),
     ...(names.has(run.item_id) ? { source_name: names.get(run.item_id) } : {}),
   }));
 }
@@ -137,7 +144,11 @@ export async function generationDashboard(owner: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
   // Keep history available if accounting cannot be read; never substitute zero.
   const dailyUsage = await store
-    .getSignalGenerationDailyUsage({ pool: generationHistoryPool, owner })
+    .getSignalGenerationDailyUsage({
+      pool: generationHistoryPool,
+      owner,
+      ...localGenerationBudgetOptions(),
+    })
     .catch(() => null);
   // History does not depend on import, AI credentials, budgets or the spend switch.
   if (!generationConfigured()) {
@@ -147,7 +158,7 @@ export async function generationDashboard(owner: string) {
   const [runs, ai, batches] = await Promise.all([
     store.listSignalGenerationDisplays({ ...historyOptions(), owner }),
     // Selection data is optional: an ancillary outage must not hide saved runs.
-    isLocalDevelopment()
+    isLocalMockAi()
       ? Promise.resolve({ profiles: [localGenerationAccess().profile], connections: [] })
       : getAiDashboard().catch(() => null),
     listImportBatches({ pool: importPool, owner, view: 'sources' }).catch(() => []),
@@ -162,7 +173,7 @@ export async function generationDashboard(owner: string) {
         revision,
         name,
         readiness,
-        provider_host: isLocalDevelopment()
+        provider_host: isLocalMockAi()
           ? '本地模拟（不联网）'
           : connection
             ? new URL(connection.base_url).hostname
@@ -199,47 +210,106 @@ export async function generationSummaries(owner: string, ids: string[]) {
   return store.readSignalGenerationSummaries({ ...historyOptions(), owner, ids });
 }
 export async function candidateReviewDetail(owner: string, id: string, index: number) {
-  return buildCandidateReview(await generationRecord(owner, id), index);
+  const run = await generationRecord(owner, id);
+  const aiMode = generationAiMode(run);
+  return { ...buildCandidateReview(run, index), ...(aiMode ? { ai_mode: aiMode } : {}) };
 }
+
+function localGenerationBudgetOptions(): { budgetMode?: store.LocalGenerationBudgetMode } {
+  return isLocalMockAi()
+    ? { budgetMode: 'local-mock' }
+    : isLocalRealAi()
+      ? { budgetMode: 'local-real' }
+      : {};
+}
+
+/** A saved task keeps its execution mode across restarts and mode switches. */
+function localGenerationModeMatches(
+  run: Pick<store.SignalGenerationRun, 'generation_version' | 'profile_id' | 'profile_revision'>,
+) {
+  const mock = isLocalMockAi();
+  const version = mock ? 'local-simulation-v1' : 'local-real-ai-v1';
+  const validVersion = new RegExp(
+    `^${version}(?:/retry/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})?$`,
+  );
+  return (
+    validVersion.test(run.generation_version) &&
+    run.generation_version === run.generation_version.trim() &&
+    (mock
+      ? run.profile_id === LOCAL_GENERATION_PROFILE_ID && run.profile_revision === 1
+      : isLocalRealAi() && run.profile_id !== LOCAL_GENERATION_PROFILE_ID)
+  );
+}
+
+function assertLocalGenerationMode(run: store.SignalGenerationRun) {
+  if (!isLocalDevelopment()) return;
+  const profile = run.snapshot.profile as { id?: unknown; revision?: unknown } | null;
+  if (
+    !localGenerationModeMatches(run) ||
+    run.configuration.version !== run.generation_version ||
+    profile?.id !== run.profile_id ||
+    profile?.revision !== run.profile_revision
+  )
+    throw new GenerationError('configuration_changed');
+}
+
 export async function executeGeneration(owner: string, body: unknown, queuedAt?: string) {
   if (!generationConfigured()) throw new GenerationError('not_configured');
   const config = readGenerationConfiguration(process.env);
-  const local = isLocalDevelopment();
-  const allowedHosts = local ? [] : readAiBackendConfiguration(process.env).allowedHosts;
+  const mock = isLocalMockAi();
+  const allowedHosts = mock ? [] : readAiBackendConfiguration(process.env).allowedHosts;
   const execute = createGenerationExecutor({
     topics: editorialTopicOptions,
     source,
-    access: local
+    access: mock
       ? async (id, revision, credentials) => localGenerationAccess(id, revision, credentials)
       : generationAiAccess,
-    invoke: local ? invokeLocalGeneration : invokeSignalGeneration,
+    invoke: mock ? invokeLocalGeneration : invokeSignalGeneration,
     allowedHosts,
     report: (event) => console.info(JSON.stringify(event)),
     progress: (owner, id, token, phase) =>
       store.updateSignalGenerationProgress({ pool: generationPool, owner, id, token, phase }),
-    create: (owner, args) =>
-      store.createSignalGeneration({
+    create: async (owner, args) => {
+      if (isLocalDevelopment() && args.retryOf)
+        assertLocalGenerationMode(
+          await store.getSignalGeneration({ pool: generationPool, owner, id: args.retryOf }),
+        );
+      return store.createSignalGeneration({
         pool: generationPool,
         owner,
         request: args.request,
         snapshot: args.snapshot,
         ...(args.retryOf ? { retryOf: args.retryOf } : {}),
         configuration: {
-          version: local ? 'local-simulation-v1' : 'private-candidate-v1',
+          version: mock
+            ? 'local-simulation-v1'
+            : isLocalRealAi()
+              ? 'local-real-ai-v1'
+              : 'private-candidate-v1',
           batchLimitMicrousd: config.batch,
           dailyLimitMicrousd: config.daily,
           reserveMicrousd: args.reserveMicrousd,
         },
-      }),
+      });
+    },
     get: (owner, id) => store.getSignalGeneration({ pool: generationPool, owner, id }),
-    claim: (owner, id) =>
-      store.claimSignalGeneration({
+    claim: async (owner, id) => {
+      // Validate the immutable task before reserving budget or claiming its lease.
+      if (isLocalDevelopment())
+        assertLocalGenerationMode(
+          await store.getSignalGeneration({ pool: generationPool, owner, id }),
+        );
+      const admission = await store.claimSignalGeneration({
         pool: generationPool,
         owner,
         id,
         currentLimits: { batchLimitMicrousd: config.batch, dailyLimitMicrousd: config.daily },
+        ...localGenerationBudgetOptions(),
         ...(queuedAt === undefined ? {} : { queuedAt }),
-      }),
+      });
+      assertLocalGenerationMode(admission.run);
+      return admission;
+    },
     finish: (owner, args) => store.finishSignalGeneration({ pool: generationPool, owner, ...args }),
     cancel: (owner, id) => store.cancelSignalGeneration({ pool: generationPool, owner, id }),
   });
@@ -255,6 +325,8 @@ export async function deleteGeneration(owner: string, id: string) {
 export async function queueGeneration(owner: string, id: string) {
   if (!generationConfigured() || process.env.HZENSE_GENERATION_WORKFLOW_ENABLED !== '1')
     throw new GenerationError('not_configured');
+  if (isLocalDevelopment())
+    assertLocalGenerationMode(await store.getSignalGeneration({ pool: generationPool, owner, id }));
   return generationDto(await store.queueSignalGeneration({ pool: generationPool, owner, id }));
 }
 

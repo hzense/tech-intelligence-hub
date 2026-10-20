@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { requireAdminSession } from '@/lib/server/admin-auth';
 import { candidateReviewDetail } from '@/lib/server/signal-generation';
 import { CandidateReview } from '@/components/candidate-review';
-import { isLocalDevelopment } from '@/lib/local-development';
+import { isLocalDevelopment, isLocalRealAi } from '@/lib/local-development';
 import controls from '@/components/admin-controls.module.css';
 
 export const metadata: Metadata = {
@@ -29,7 +29,11 @@ export default async function CandidateReviewDetailPage({
     <main className="section-shell">
       <h1>候选确认发布</h1>
       {packet ? (
-        <CandidateReview packet={packet} localMode={isLocalDevelopment()} />
+        <CandidateReview
+          packet={packet}
+          localMode={isLocalDevelopment()}
+          localRealAi={isLocalRealAi()}
+        />
       ) : (
         <>
           <p role="alert">

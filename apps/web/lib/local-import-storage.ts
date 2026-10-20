@@ -5,13 +5,27 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { isLocalDevelopment } from './local-development.ts';
 import { ImportIOError } from './import-io.ts';
 import { originalExpired } from '../../../packages/ingestion/src/import-retention.mjs';
+import { importUuid } from '../../../packages/ingestion/src/import-task-contract.mjs';
 
 const maximumSize = 25 * 1024 * 1024;
-const pathPattern =
-  /^imports\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 type Environment = Readonly<Record<string, string | undefined>>;
 const conflict = () => new ImportIOError('document_conflict');
 const missing = (error: unknown) => (error as NodeJS.ErrnoException)?.code === 'ENOENT';
+
+function validObjectKey(key: string) {
+  // Exactly imports/<36-character batch>/<36-character item>. Stable hash IDs
+  // follow the import record contract, not RFC UUID version/variant bits.
+  if (typeof key !== 'string' || key.length !== 81) return false;
+  const segments = key.split('/');
+  if (segments.length !== 3 || segments[0] !== 'imports') return false;
+  try {
+    importUuid(segments[1]);
+    importUuid(segments[2]);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function privateDirectory(path: string, create: boolean) {
   if (create)
@@ -32,7 +46,7 @@ async function privateDirectory(path: string, create: boolean) {
 async function objectPath(key: string, env: Environment, create = false) {
   if (!isLocalDevelopment(env)) throw new ImportIOError('not_configured');
   const state = env.HZENSE_LOCAL_STATE_DIR;
-  if (!state || !isAbsolute(state) || basename(state) !== '.hzense-local' || !pathPattern.test(key))
+  if (!state || !isAbsolute(state) || basename(state) !== '.hzense-local' || !validObjectKey(key))
     throw new ImportIOError('invalid_request');
   await privateDirectory(state, false);
   const directory = join(state, 'import-originals');

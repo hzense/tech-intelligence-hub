@@ -8,6 +8,9 @@ import { readAutomationRun } from '../../../../packages/database/src/automation-
 import { readAiBackendConfiguration } from '../admin-ai-core';
 
 export type TopicInsightSandboxHandle = { sandboxName: string; commandId: string };
+function assertCloudTopicExecution() {
+  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1') throw new Error('execution_disabled');
+}
 const keys = [
   'VERCEL_ENV',
   'HZENSE_AUTOMATION_ENABLED',
@@ -28,6 +31,7 @@ export async function startTopicInsightSandbox(
   owner: string,
   id: string,
 ): Promise<TopicInsightSandboxHandle | null> {
+  assertCloudTopicExecution();
   const run = await readAutomationRun({ pool: automationPool, owner, id });
   if (run.status !== 'running' || !run.lease_token || run.snapshot.kind !== 'topic_insight')
     return null;
@@ -78,12 +82,14 @@ export async function startTopicInsightSandbox(
   }
 }
 export async function pollTopicInsightSandbox(handle: TopicInsightSandboxHandle) {
+  assertCloudTopicExecution();
   const signal = AbortSignal.timeout(15000);
   const sandbox = await Sandbox.get({ name: handle.sandboxName, resume: false, signal });
   const exitCode = await observeSandboxCommandExit(sandbox, handle.commandId, signal);
   return exitCode === null ? 'running' : 'finished';
 }
 export async function stopTopicInsightSandbox(handle: TopicInsightSandboxHandle) {
+  assertCloudTopicExecution();
   const signal = AbortSignal.timeout(15000);
   const sandbox = await Sandbox.get({ name: handle.sandboxName, resume: false, signal });
   await sandbox.stop({ signal });

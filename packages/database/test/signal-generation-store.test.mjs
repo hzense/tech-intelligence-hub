@@ -12,6 +12,7 @@ import {
   getSignalGeneration,
   listSignalGenerations,
   getSignalGenerationDailyUsage,
+  claimSignalGeneration,
   finishSignalGeneration,
   signalGenerationSourceHash,
 } from '../src/signal-generation-store.mjs';
@@ -35,6 +36,48 @@ it('daily usage reads the full owner ledger in UTC without excluding deleted tas
   expect(aggregate.sql).not.toMatch(/LIMIT|deleted_at|created_at/);
   expect(queries[0].sql).toContain('READ ONLY');
   expect(client.release).toHaveBeenCalled();
+});
+it.each(['local-mock', 'local-real'])(
+  'daily usage isolates the trusted %s ledger',
+  async (budgetMode) => {
+    const queries = [];
+    const pool = {
+      connect: async () => ({
+        query: async (sql, params) => {
+          queries.push({ sql, params });
+          return { rows: sql.includes(' AS available') ? [{ available: true }] : [] };
+        },
+        release() {},
+      }),
+    };
+    await getSignalGenerationDailyUsage({ pool, owner: 'admin', budgetMode });
+    const aggregate = queries.find(({ sql }) => sql.startsWith('WITH today'));
+    expect(aggregate.params).toEqual(['admin']);
+    expect(aggregate.sql).toContain('local-simulation-v1');
+    expect(aggregate.sql.includes('NOT (r.generation_version')).toBe(budgetMode === 'local-real');
+    expect(aggregate.sql).not.toMatch(/deleted_at|LIMIT|candidate_enrichment_runs/);
+  },
+);
+it('rejects unknown budget scopes before touching a database', async () => {
+  const pool = {
+    connect: () => {
+      throw new Error('must not connect');
+    },
+  };
+  for (const budgetMode of ['', 'production', null, 'local-real OR true']) {
+    await expect(
+      getSignalGenerationDailyUsage({ pool, owner: 'admin', budgetMode }),
+    ).rejects.toMatchObject({ code: 'invalid_configuration' });
+    await expect(
+      claimSignalGeneration({
+        pool,
+        owner: 'admin',
+        id: randomUUID(),
+        budgetMode,
+        currentLimits: { batchLimitMicrousd: 100, dailyLimitMicrousd: 100 },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_configuration' });
+  }
 });
 it.each([undefined, 0, 1, 30])(
   'persists API amount %s without changing reservation',
@@ -439,7 +482,7 @@ describe('private generation input boundaries', () => {
     await expect(finishSignalGeneration({ ...args, result: metadataResult })).rejects.toMatchObject(
       { code: 'invalid_result' },
     );
-    const resourceRejection = {
+    const incompleteResourceResult = {
       ...assessGeneratedCandidates(
         {
           candidates: [{ ...raw, signal_type: 'research', organizations: ['safe'], resources: [] }],
@@ -451,15 +494,32 @@ describe('private generation input boundaries', () => {
       ),
       usage: result.usage,
     };
-    expect(
-      (await finishSignalGeneration({ ...failedArgs, result: resourceRejection })).result
-        .rejected[0].errors,
-    ).toEqual([
-      { field: 'resources', code: 'invalid_field', path: 'resources', reason: 'missing_resource' },
-    ]);
+    const retained = (await finishSignalGeneration({ ...args, result: incompleteResourceResult }))
+      .result;
+    expect(retained.candidates[0].organizations).toEqual(['safe']);
+    expect(retained.candidates[0].resources).toEqual([]);
+    expect(retained.candidates[0].issues).toContain('needs_resource_details');
+    expect(retained.rejected).toEqual([]);
+    for (const issues of [
+      retained.candidates[0].issues.filter((issue) => issue !== 'needs_resource_details'),
+      [...retained.candidates[0].issues, 'approved'],
+    ]) {
+      await expect(
+        finishSignalGeneration({
+          ...args,
+          result: {
+            ...incompleteResourceResult,
+            candidates: [{ ...retained.candidates[0], issues }],
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_result' });
+    }
+    await expect(
+      finishSignalGeneration({ ...failedArgs, result: incompleteResourceResult }),
+    ).rejects.toMatchObject({ code: 'invalid_result' });
     row.snapshot.output_contract = GENERATION_METADATA_CONTRACT;
     await expect(
-      finishSignalGeneration({ ...failedArgs, result: resourceRejection }),
+      finishSignalGeneration({ ...args, result: incompleteResourceResult }),
     ).rejects.toMatchObject({ code: 'invalid_result' });
   });
 

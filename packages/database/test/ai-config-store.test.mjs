@@ -715,6 +715,59 @@ describe('AI probe reservation and exactly-once external attempt', () => {
       expect(f.state.probes[0].result.models).toEqual([{ id: modelId }]);
     },
   );
+  it.each([0, 12])(
+    'preserves a safe skipped alias count of %s in model catalog history',
+    async (skippedCount) => {
+      const f = fake();
+      const req = request();
+      req.kind = 'models';
+      delete req.model_id;
+      const catalog = {
+        models: [{ id: 'test/model' }],
+        count: 1,
+        truncated: false,
+        skipped_count: skippedCount,
+      };
+      const result = await run(f, req, async () => ({
+        success: true,
+        model_id: null,
+        input_tokens: null,
+        output_tokens: null,
+        result: catalog,
+      }));
+      expect(result.status).toBe('succeeded');
+      expect(result.result).toEqual(catalog);
+      expect(result.charged_microusd).toBe('0');
+      expect((await getAiProbe({ pool: f.pool, id: req.id })).result).toEqual(catalog);
+      expect((await listAiProbes({ pool: f.pool }))[0].result).toEqual(catalog);
+    },
+  );
+  it.each([-1, 1.5, '12', null, 100001])(
+    'rejects an unsafe skipped alias count %j without publishing a partial result',
+    async (skippedCount) => {
+      const f = fake();
+      const req = request();
+      req.kind = 'models';
+      delete req.model_id;
+      const result = await run(f, req, async () => ({
+        success: true,
+        model_id: null,
+        input_tokens: null,
+        output_tokens: null,
+        result: {
+          models: [{ id: 'test/model' }],
+          count: 1,
+          truncated: false,
+          skipped_count: skippedCount,
+        },
+      }));
+      expect(result).toMatchObject({
+        status: 'failed',
+        error_code: 'invalid_response',
+        result: {},
+      });
+    },
+  );
   it.each([1, 2])(
     'does not issue an external call after uncertain commit %s',
     async (failCommit) => {

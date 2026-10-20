@@ -13,6 +13,7 @@ import {
   normalizeGenerationTopics,
   normalizeGeneratedCandidates,
   assessGeneratedCandidates,
+  missingGenerationResources,
   REJECTED_CANDIDATES_REASON,
   validateGenerationSource,
   inspectGenerationSource,
@@ -833,7 +834,7 @@ test('resource contract covers all identities in one output and keeps metadata/l
   );
 });
 
-test('resource validation rejects missing, duplicate, unbound and forged evidence without exposing model text', () => {
+test('resource validation rejects duplicate, unbound and forged evidence without exposing model text', () => {
   const source = buildGenerationSource(input());
   const resources = [
     {
@@ -852,7 +853,6 @@ test('resource validation rejects missing, duplicate, unbound and forged evidenc
     },
   ];
   for (const [value, path, reason] of [
-    [resources.slice(0, 1), 'resources', 'missing_resource'],
     [[...resources, resources[0]], 'resources[2].name', 'duplicate_item'],
     [
       [resources[0], { ...resources[1], name: '合成研究结果' }],
@@ -892,6 +892,209 @@ test('resource validation rejects missing, duplicate, unbound and forged evidenc
     ]);
     assert.equal(JSON.stringify(checked).includes('forged private resource quote'), false);
   }
+});
+
+test('private assessment retains missing resource details without relaxing strict completion validation', () => {
+  const text = 'Notion announced agents on 2026-10-19.';
+  const source = {
+    classification: 'private',
+    fragments: [{ id: 'fragment-1', text, locator: { paragraph: 1 } }],
+  };
+  const row = {
+    title: 'Notion announced agents',
+    summary: 'Notion announced agents.',
+    event_date: '2026-10-19',
+    event_date_evidence: [ref('2026-10-19')],
+    persons: [],
+    organizations: ['Notion'],
+    claims: [{ text: 'Notion announced agents.', evidence: [ref('Notion announced agents')] }],
+    topic_ids: [],
+    signal_type: 'product',
+    resources: [],
+  };
+  const value = { candidates: [row], reason: 'synthetic private draft' };
+  const before = JSON.stringify({ value, source });
+  const assessed = assessGeneratedCandidates(value, source, [], GENERATION_RESOURCES_CONTRACT);
+  assert.equal(assessed.candidates.length, 1);
+  assert.deepEqual(assessed.rejected, []);
+  assert.deepEqual(assessed.candidates[0], {
+    ...row,
+    index: 0,
+    classification: 'private',
+    status: 'needs_review',
+    issues: ['needs_public_evidence', 'needs_person_evidence', 'needs_resource_details'],
+  });
+  assert.deepEqual(missingGenerationResources(assessed.candidates[0]), [
+    { type: 'organization', name: 'Notion' },
+  ]);
+  assert.throws(
+    () => normalizeGeneratedCandidates(value, source, [], GENERATION_RESOURCES_CONTRACT),
+    (error) =>
+      error.diagnostic?.path === 'resources' && error.diagnostic?.reason === 'missing_resource',
+  );
+  assert.equal(JSON.stringify({ value, source }), before);
+});
+
+test('private drafts keep valid resource entries and flag missing affiliated organizations only', () => {
+  const source = buildGenerationSource(input());
+  const person = {
+    type: 'person',
+    name: '李明',
+    introduction: null,
+    event_role: null,
+    evidence: [ref('研究作者李明')],
+  };
+  const row = {
+    ...candidate(),
+    organizations: [],
+    topic_ids: [],
+    signal_type: 'research',
+    resources: [person],
+  };
+  const assessed = assessGeneratedCandidates(
+    { candidates: [row], reason: 'affiliation only' },
+    source,
+    [],
+    GENERATION_RESOURCES_CONTRACT,
+  );
+  assert.deepEqual(assessed.candidates[0].resources, [person]);
+  assert.deepEqual(assessed.candidates[0].issues, [
+    'needs_public_evidence',
+    'needs_resource_details',
+  ]);
+  assert.deepEqual(missingGenerationResources(assessed.candidates[0]), [
+    { type: 'organization', name: '示例研究所' },
+  ]);
+  assert.throws(
+    () =>
+      normalizeGeneratedCandidates(
+        { candidates: [row], reason: 'affiliation only' },
+        source,
+        [],
+        GENERATION_RESOURCES_CONTRACT,
+      ),
+    (error) => error.diagnostic?.reason === 'missing_resource',
+  );
+  const empty = assessGeneratedCandidates(
+    { candidates: [{ ...row, persons: [], resources: [] }], reason: 'no supported identities' },
+    source,
+    [],
+    GENERATION_RESOURCES_CONTRACT,
+  );
+  assert.equal(empty.candidates.length, 1);
+  assert.equal(empty.candidates[0].issues.includes('needs_resource_details'), false);
+  assert.deepEqual(missingGenerationResources(empty.candidates[0]), []);
+});
+
+test('incomplete private resource coverage does not admit other invalid fields or renumber siblings', () => {
+  const source = buildGenerationSource(input());
+  const resources = [
+    {
+      type: 'person',
+      name: '李明',
+      introduction: null,
+      event_role: null,
+      evidence: [ref('研究作者李明')],
+    },
+    {
+      type: 'institution',
+      name: '示例研究所',
+      introduction: null,
+      event_role: null,
+      evidence: [ref('示例研究所')],
+    },
+  ];
+  const row = { ...candidate(), topic_ids: [], signal_type: 'research', resources };
+  const assessed = assessGeneratedCandidates(
+    {
+      candidates: [
+        { ...row, resources: resources.slice(0, 1) },
+        {
+          ...row,
+          resources: [{ ...resources[0], evidence: [ref('invented private quotation')] }],
+        },
+        row,
+        { ...row, title: '长'.repeat(GENERATION_LIMITS.titleCharacters + 1), resources: [] },
+      ],
+      reason: 'private model reason',
+    },
+    source,
+    [],
+    GENERATION_RESOURCES_CONTRACT,
+  );
+  assert.deepEqual(
+    assessed.candidates.map(({ index }) => index),
+    [0, 2],
+  );
+  assert.equal(assessed.candidates[0].issues.includes('needs_resource_details'), true);
+  assert.equal(assessed.candidates[1].issues.includes('needs_resource_details'), false);
+  assert.deepEqual(assessed.candidates[1], {
+    ...normalizeGeneratedCandidates(
+      { candidates: [row], reason: 'complete' },
+      source,
+      [],
+      GENERATION_RESOURCES_CONTRACT,
+    ).candidates[0],
+    index: 2,
+  });
+  assert.deepEqual(
+    assessed.rejected.map(({ index }) => index),
+    [1, 3],
+  );
+  assert.equal(assessed.rejected[0].errors[0].reason, 'quote_mismatch');
+  assert.equal(assessed.rejected[1].errors[0].code, 'title_too_long');
+  assert.equal(JSON.stringify(assessed).includes('invented private quotation'), false);
+});
+
+test('private resource completion still requires a present correctly typed resources array', () => {
+  const source = buildGenerationSource(input());
+  const row = { ...candidate(), topic_ids: [], signal_type: 'research' };
+  for (const value of [
+    row,
+    ...[undefined, null, {}, '', 0, false].map((resources) => ({
+      ...row,
+      resources,
+    })),
+  ]) {
+    const assessed = assessGeneratedCandidates(
+      { candidates: [value], reason: 'invalid resource shape' },
+      source,
+      [],
+      GENERATION_RESOURCES_CONTRACT,
+    );
+    assert.equal(assessed.candidates.length, 0);
+    assert.equal(assessed.rejected.length, 1);
+    assert.equal(assessed.rejected[0].errors.length, 1);
+    assert.equal(
+      assessed.rejected[0].errors[0].reason,
+      Object.hasOwn(value, 'resources') ? 'invalid_type' : 'invalid_shape',
+    );
+  }
+});
+
+test('resource coverage helper matches normalized names by identity type without mutating input', () => {
+  const evidence = [ref()];
+  const row = {
+    persons: [
+      { name: 'Ada', role: 'presenter', organization: ' ACME ', evidence },
+      { name: 'Ａｄａ', role: 'presenter', organization: 'acme', evidence },
+      { name: 'Grace', role: 'researcher', organization: null, evidence },
+    ],
+    organizations: ['ACME', 'Notion'],
+    resources: [
+      { type: 'company', name: 'Ada', introduction: null, event_role: null, evidence },
+      { type: 'person', name: 'acme', introduction: null, event_role: null, evidence },
+      { type: 'person', name: 'Ｇｒａｃｅ', introduction: null, event_role: null, evidence },
+      { type: 'institution', name: 'notion', introduction: null, event_role: null, evidence },
+    ],
+  };
+  const before = JSON.stringify(row);
+  assert.deepEqual(missingGenerationResources(row), [
+    { type: 'person', name: 'Ada' },
+    { type: 'organization', name: 'ACME' },
+  ]);
+  assert.equal(JSON.stringify(row), before);
+  assert.notEqual(missingGenerationResources(row), missingGenerationResources(row));
 });
 
 test('resource names cannot borrow a substring identity and excluded people are removed consistently', () => {

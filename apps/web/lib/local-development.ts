@@ -88,6 +88,27 @@ export function isLocalDevelopment(env: LocalDevelopmentEnvironment = process.en
   return true;
 }
 
+/** Real provider access is explicit and never weakens the local isolation contract. */
+export function isLocalRealAi(env: LocalDevelopmentEnvironment = process.env): boolean {
+  return isLocalDevelopment(env) && env.HZENSE_LOCAL_AI_MODE === 'real';
+}
+
+/** Only manually triggered source collection is available in the local real-AI world. */
+export function isLocalRealAutomationEnabled(
+  env: LocalDevelopmentEnvironment = process.env,
+): boolean {
+  return (
+    isLocalRealAi(env) &&
+    env.WORKFLOW_TARGET_WORLD === 'local' &&
+    env.HZENSE_AUTOMATION_ENABLED === '1'
+  );
+}
+
+/** Missing or unknown modes fail closed to the existing non-networked simulator. */
+export function isLocalMockAi(env: LocalDevelopmentEnvironment = process.env): boolean {
+  return isLocalDevelopment(env) && !isLocalRealAi(env);
+}
+
 export function localDevelopmentOrigin(
   env: LocalDevelopmentEnvironment = process.env,
 ): string | null {

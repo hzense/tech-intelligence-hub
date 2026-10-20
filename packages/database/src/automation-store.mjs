@@ -59,6 +59,27 @@ const dto = (row) =>
         charged_microusd: Number(row.charged_microusd),
       }
     : null;
+// A source run can have an unknown downstream import/dispatch outcome even when
+// its one fenced discovery call has a settled provider receipt. That uncertainty
+// must not reserve discovery money again; imports/generation have separate ledgers.
+// Keep the conservative reservation for every live or financially unknown run.
+// JSONB equality avoids unsafe casts and accepts only the exact integer charge.
+const automationBudgetUsageSql = `SELECT COALESCE(sum(CASE
+  WHEN status='unknown' AND phase='source_failed'
+    AND snapshot->>'kind'='source_collection'
+    AND jsonb_typeof(snapshot->'discovery')='object'
+    AND lease_token IS NULL AND lease_until IS NULL AND finished_at IS NOT NULL
+    AND cost_source='provider'
+    AND result->>'discoveryCostSource'='provider'
+    AND jsonb_typeof(result->'discoveryCostMicrousd')='number'
+    AND charged_microusd>=0
+    AND result->'discoveryCostMicrousd'=to_jsonb(charged_microusd)
+  THEN charged_microusd
+  WHEN status IN ('running','unknown')
+  THEN greatest(reserved_microusd,charged_microusd)
+  ELSE charged_microusd END),0) AS used
+  FROM public.automation_runs
+  WHERE budget_day=(clock_timestamp() AT TIME ZONE 'UTC')::date`;
 async function transaction(pool, work) {
   let client,
     committing = false;
@@ -402,13 +423,7 @@ export async function claimAutomationRun({ pool, owner, id, limits }) {
         );
         return null;
       }
-      const usage = Number(
-        (
-          await client.query(
-            "SELECT COALESCE(sum(CASE WHEN status IN ('running','unknown') THEN greatest(reserved_microusd,charged_microusd) ELSE charged_microusd END),0) AS used FROM public.automation_runs WHERE budget_day=(clock_timestamp() AT TIME ZONE 'UTC')::date",
-          )
-        ).rows[0].used,
-      );
+      const usage = Number((await client.query(automationBudgetUsageSql)).rows[0].used);
       if (usage + limits.reserve > limits.daily) {
         await client.query(
           "UPDATE public.automation_runs SET status='failed',phase='budget_exceeded',error_code='budget_exceeded',finished_at=clock_timestamp() WHERE id=$1 AND owner_id=$2 AND status='queued'",

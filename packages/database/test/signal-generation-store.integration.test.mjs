@@ -5,6 +5,7 @@ import { URL } from 'node:url';
 import pg from 'pg';
 import {
   REJECTED_CANDIDATES_REASON,
+  GENERATION_RESOURCES_CONTRACT,
   assessGeneratedCandidates,
 } from '../../ingestion/src/signal-generation-contract.mjs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -13,6 +14,7 @@ import {
   createSignalGeneration,
   deleteSignalGeneration,
   getSignalGeneration,
+  getSignalGenerationDailyUsage,
   getSignalGenerationDisplay,
   listSignalGenerationDisplays,
   readSignalGenerationProgress,
@@ -136,6 +138,50 @@ function uncertainCommit(basePool) {
   };
 }
 suite('private AI generation PostgreSQL ledger', () => {
+  it('local mock and real ledgers preserve independent budgets; production still counts everything', async () => {
+    const make = async (version) => {
+      const value = input();
+      value.configuration = { ...value.configuration, version, reserveMicrousd: 100 };
+      return createSignalGeneration(value);
+    };
+    const mock = await make('local-simulation-v1');
+    const m = await claimSignalGeneration({ ...args(mock), budgetMode: 'local-mock' });
+    await finishSignalGeneration({
+      ...args(mock),
+      token: m.run.lease_token,
+      outcome: 'failed',
+      errorCode: 'provider_failed',
+    });
+    const real = await make('local-real-ai-v1');
+    const r = await claimSignalGeneration({ ...args(real), budgetMode: 'local-real' });
+    expect(r.claimed).toBe(true);
+    await finishSignalGeneration({
+      ...args(real),
+      token: r.run.lease_token,
+      outcome: 'failed',
+      errorCode: 'provider_failed',
+    });
+    for (const budgetMode of ['local-mock', 'local-real']) {
+      expect(await getSignalGenerationDailyUsage({ pool, owner, budgetMode })).toMatchObject({
+        charged_microusd: '100',
+        budget_used_microusd: '100',
+      });
+      const next = await make(
+        budgetMode === 'local-mock' ? 'local-simulation-v1' : 'local-real-ai-v1',
+      );
+      await expect(claimSignalGeneration({ ...args(next), budgetMode })).rejects.toMatchObject({
+        code: 'budget_exceeded',
+      });
+    }
+    expect(await getSignalGenerationDailyUsage({ pool, owner })).toMatchObject({
+      charged_microusd: '200',
+      budget_used_microusd: '200',
+    });
+    const production = await make('private-candidate-v1');
+    await expect(claimSignalGeneration(args(production))).rejects.toMatchObject({
+      code: 'budget_exceeded',
+    });
+  });
   beforeAll(async () => {
     if (process.env.RUNTIME_READER_TEST_ISOLATED_CLUSTER !== '1')
       throw new Error('Generation role tests require an explicitly isolated disposable cluster');
@@ -1117,6 +1163,68 @@ suite('private AI generation PostgreSQL ledger', () => {
       expect((await getSignalGeneration(args(a))).result).toEqual(result);
       expect((await claimSignalGeneration(args(a))).claimed).toBe(false);
     }
+  });
+  it('persists incomplete private resource candidates without weakening evidence or derived-issue validation', async () => {
+    const value = input();
+    value.snapshot.output_contract = GENERATION_RESOURCES_CONTRACT;
+    value.snapshot.topics = [];
+    const a = await claimed(value);
+    const candidate = {
+      title: 'Synthetic',
+      summary: 'Synthetic summary',
+      event_date: null,
+      event_date_evidence: [],
+      persons: [],
+      organizations: ['Synthetic'],
+      claims: [
+        {
+          text: 'Synthetic claim',
+          evidence: [{ fragment_id: 'fragment-1', quote: 'Synthetic source' }],
+        },
+      ],
+      signal_type: 'research',
+      resources: [],
+      topic_ids: [],
+    };
+    const result = {
+      ...assessGeneratedCandidates(
+        { candidates: [candidate], reason: 'Synthetic fixture' },
+        value.snapshot.source,
+        value.snapshot.topics,
+        GENERATION_RESOURCES_CONTRACT,
+      ),
+      usage: { input_tokens: 10, output_tokens: 10 },
+    };
+    const completion = {
+      ...args(a),
+      token: a.lease_token,
+      outcome: 'completed',
+      result,
+      chargedMicrousd: 10,
+      providerCostMicrousd: 1,
+    };
+    expect(result.candidates[0].issues).toContain('needs_resource_details');
+    for (const mutation of [
+      { issues: result.candidates[0].issues.filter((issue) => issue !== 'needs_resource_details') },
+      {
+        claims: [
+          { text: 'Synthetic claim', evidence: [{ fragment_id: 'fragment-1', quote: 'Forged' }] },
+        ],
+      },
+    ]) {
+      await expect(
+        finishSignalGeneration({
+          ...completion,
+          result: { ...result, candidates: [{ ...result.candidates[0], ...mutation }] },
+        }),
+      ).rejects.toMatchObject({ code: 'invalid_result' });
+    }
+    const saved = await finishSignalGeneration(completion);
+    expect(saved.status).toBe('completed');
+    expect(saved.charged_microusd).toBe('1');
+    expect((await getSignalGeneration(args(a))).result).toEqual(result);
+    expect((await finishSignalGeneration(completion)).result).toEqual(result);
+    expect((await claimSignalGeneration(args(a))).claimed).toBe(false);
   });
   it('revalidates every v1 candidate field and quotation against its frozen source before saving', async () => {
     const value = input();

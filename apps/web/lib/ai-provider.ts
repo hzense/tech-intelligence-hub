@@ -145,32 +145,46 @@ export function createAiProbeInvoker(
           const seen = new Set<string>();
           let bytes = 0;
           let truncated = false;
+          let skippedCount = 0;
+          const openRouterCatalog = new URL(input.connection.base_url).hostname === 'openrouter.ai';
           for (const entry of data) {
-            if (models.length === 200) {
-              truncated = true;
-              break;
-            }
-            if (
-              !entry ||
-              typeof entry !== 'object' ||
-              !validAiModelId((entry as { id?: unknown }).id)
-            )
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry))
               throw new AiProbeError('invalid_response');
-            const id = (entry as { id: string }).id;
-            if (id.includes(input.apiKey)) throw new AiProbeError('invalid_response');
-            if (seen.has(id)) continue;
-            if (bytes + Buffer.byteLength(id) > 12000) {
-              truncated = true;
-              break;
+            const id = (entry as { id?: unknown }).id;
+            if (typeof id !== 'string' || id.includes(input.apiKey) || id.includes('[REDACTED]'))
+              throw new AiProbeError('invalid_response');
+            const unsupportedOpenRouterAlias =
+              openRouterCatalog &&
+              id.length <= 200 &&
+              id.match(/^@[A-Za-z0-9][A-Za-z0-9._:/-]*$/)?.[0] === id;
+            if (!validAiModelId(id)) {
+              // OpenRouter's authenticated catalog also contains @ aliases.
+              // Do not normalize or admit them for execution: skip only this
+              // bounded, harmless shape; malformed IDs still fail closed.
+              if (unsupportedOpenRouterAlias) {
+                skippedCount++;
+                continue;
+              }
+              throw new AiProbeError('invalid_response');
             }
+            if (seen.has(id)) continue;
             seen.add(id);
+            if (models.length === 200 || bytes + Buffer.byteLength(id) > 12000) {
+              truncated = true;
+              continue;
+            }
             bytes += Buffer.byteLength(id);
             models.push({ id });
           }
           return {
             ...base,
             success: true,
-            result: { models, count: models.length, truncated },
+            result: {
+              models,
+              count: models.length,
+              truncated,
+              ...(skippedCount > 0 ? { skipped_count: skippedCount } : {}),
+            },
           };
         }
         const routerOptions = await openRouterOptions(

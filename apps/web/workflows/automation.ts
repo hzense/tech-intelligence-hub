@@ -11,6 +11,8 @@ import {
 } from '../lib/server/signal-generation';
 import { start } from 'workflow/api';
 import { signalGenerationWorkflow } from './signal-generation';
+import { localSignalGenerationWorkflow } from './local-signal-generation';
+import { isLocalRealAutomationEnabled } from '../lib/local-development';
 import { discoverSources } from '../lib/server/source-discovery';
 import {
   appendAutomationSourceFailure,
@@ -28,6 +30,19 @@ type SourceItem = { id: string; status: string; kind: string; url: string };
 type SourceBatch = { id: string; items: SourceItem[] };
 type GenerationDispatch = { id: string; queuedAt: string };
 type QueuedSource = { url: string; generationId: string; queuedAt: string };
+
+/** Called only from steps: a local marker must never fall back to cloud execution. */
+function assertLocalAutomationExecution(kind?: 'source_collection' | 'topic_insight') {
+  if (process.env.HZENSE_LOCAL_DEVELOPMENT !== '1') return false;
+  if (!isLocalRealAutomationEnabled() || (kind !== undefined && kind !== 'source_collection'))
+    throw new Error('execution_disabled');
+  return true;
+}
+
+function assertLocalAutomationRun(run: Pick<store.AutomationRun, 'snapshot' | 'trigger'>) {
+  if (assertLocalAutomationExecution(run.snapshot.kind) && run.trigger !== 'manual')
+    throw new Error('execution_disabled');
+}
 
 export async function automationWorkflow(owner: string, id: string) {
   'use workflow';
@@ -135,6 +150,11 @@ export async function automationWorkflow(owner: string, id: string) {
 
 async function claim(owner: string, id: string) {
   'use step';
+  if (assertLocalAutomationExecution()) {
+    // Reject unsupported historic/misdispatched local tasks before reserving money.
+    const pending = await store.readAutomationRun({ pool: automationPool, owner, id });
+    assertLocalAutomationRun(pending);
+  }
   const run = await store.claimAutomationRun({
     pool: automationPool,
     owner,
@@ -146,6 +166,12 @@ async function claim(owner: string, id: string) {
 claim.maxRetries = 0;
 async function findSources(owner: string, id: string) {
   'use step';
+  if (assertLocalAutomationExecution('source_collection')) {
+    // A resumed Workflow may reuse its completed claim step. Recheck the
+    // persisted trigger before any discovery call can cross its paid fence.
+    const run = await store.readAutomationRun({ pool: automationPool, owner, id });
+    assertLocalAutomationRun(run);
+  }
   return discoverSources(owner, id);
 }
 findSources.maxRetries = 0;
@@ -155,7 +181,9 @@ async function createSourceBatch(
   urls: string[],
 ): Promise<SourceBatch> {
   'use step';
+  assertLocalAutomationExecution('source_collection');
   const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
+  assertLocalAutomationRun(run);
   if (run.status !== 'running' || run.snapshot.kind !== 'source_collection')
     throw new Error('stale_attempt');
   const batch = (await executeImportAdmin(owner, 'POST', {
@@ -187,6 +215,7 @@ async function createSourceBatch(
 createSourceBatch.maxRetries = 0;
 async function importSourceItem(owner: string, batchId: string, itemId: string) {
   'use step';
+  assertLocalAutomationExecution('source_collection');
   try {
     const result = (await runImportItem(owner, batchId, itemId)) as unknown as { status: string };
     if (['completed', 'failed', 'cancelled'].includes(result.status)) return result.status;
@@ -210,7 +239,9 @@ async function createPrivateGeneration(
   itemId: string,
 ): Promise<GenerationDispatch | null> {
   'use step';
+  assertLocalAutomationExecution('source_collection');
   const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
+  assertLocalAutomationRun(run);
   if (
     run.status !== 'running' ||
     run.snapshot.kind !== 'source_collection' ||
@@ -384,7 +415,9 @@ failSourceRun.maxRetries = 0;
 async function dispatchGeneration(owner: string, generation: GenerationDispatch) {
   'use step';
   try {
-    await start(signalGenerationWorkflow, [owner, generation.id, generation.queuedAt]);
+    if (assertLocalAutomationExecution('source_collection'))
+      await start(localSignalGenerationWorkflow, [owner, generation.id, generation.queuedAt]);
+    else await start(signalGenerationWorkflow, [owner, generation.id, generation.queuedAt]);
     return true;
   } catch (error) {
     // A lost acknowledgement may hide an accepted workflow. Only fail this
@@ -399,16 +432,19 @@ async function dispatchGeneration(owner: string, generation: GenerationDispatch)
 dispatchGeneration.maxRetries = 0;
 async function startTopicWorker(owner: string, id: string) {
   'use step';
+  assertLocalAutomationExecution('topic_insight');
   return startTopicInsightSandbox(owner, id);
 }
 startTopicWorker.maxRetries = 0;
 async function pollTopicWorker(handle: TopicInsightSandboxHandle) {
   'use step';
+  assertLocalAutomationExecution('topic_insight');
   return pollTopicInsightSandbox(handle);
 }
 pollTopicWorker.maxRetries = 3;
 async function stopTopicWorker(handle: TopicInsightSandboxHandle) {
   'use step';
+  assertLocalAutomationExecution('topic_insight');
   await stopTopicInsightSandbox(handle).catch(() => undefined);
 }
 stopTopicWorker.maxRetries = 0;

@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
-import { isLocalDevelopment } from '@/lib/local-development';
+import { isLocalDevelopment, isLocalRealAi } from '@/lib/local-development';
 import './globals.css';
 
 const localDevelopment = isLocalDevelopment();
+const localRealAi = isLocalRealAi();
 
 const localPreview =
   process.env.HZENSE_LOCAL_PREVIEW === '1' &&
@@ -63,9 +64,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         {localDevelopment ? (
           <aside className="local-preview-notice" aria-label="本地开发说明">
-            <strong>本地开发环境</strong>
+            <strong>{localRealAi ? '本地开发环境 · 真实 AI' : '本地开发环境 · 模拟 AI'}</strong>
             <span>
-              使用本地数据库；AI 为模拟结果。发布仅本地可见，不会同步生产，也不会产生 AI 费用。
+              {localRealAi
+                ? '使用本地数据库；真实 AI 会联网发送资料给供应商，可能产生费用。发布仅本地可见，不会同步生产。'
+                : '使用本地数据库；AI 为模拟结果。发布仅本地可见，不会同步生产，也不会产生 AI 费用。'}
             </span>
           </aside>
         ) : null}

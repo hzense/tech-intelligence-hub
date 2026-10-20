@@ -69,6 +69,65 @@ test('publication metadata determines readiness; names normalize without invente
   );
   assert.deepEqual(editorialNames('甲、乙\n甲，丙；丁'), ['甲', '乙', '丙', '丁']);
 });
+test('server-derived missing resources reach the UI and cannot be bypassed by publishing a shorter participant list', async () => {
+  let missingResourceDetails = [{ type: 'organization', name: '待补组织' }];
+  const sourceUrl = 'https://example.com/announcement';
+  const resource = {
+    type: 'company',
+    name: '合成组织',
+    introduction: null,
+    event_role: null,
+    evidence: [{ fragment_id: 'fragment-1', quote: '合成组织' }],
+  };
+  const resourceContent = {
+    ...content,
+    persons: [],
+    resources: [{ ...resource, entity_id: null }],
+    sourceUrls: [sourceUrl],
+  };
+  const service = createEditorialReviewService({
+    enabled: () => true,
+    material: async () => ({
+      materialHash,
+      content: resourceContent,
+      resources: [resource],
+      warnings: [],
+      sourceOptions: [sourceUrl],
+      missingResourceDetails,
+    }),
+    topics: async () => content.topics,
+    read: async () => null,
+    save: async (_owner, request, material) => {
+      normalizeEditorialRequest(request, material);
+      return {
+        request_id: request.requestId,
+        revision: 1,
+        action: request.action,
+        content: request.content,
+      };
+    },
+  });
+  const dashboard = await service.read('owner', runId, 0);
+  assert.deepEqual(dashboard.missingResourceDetails, missingResourceDetails);
+  assert.ok(
+    editorialMissing(resourceContent, [], [], dashboard.missingResourceDetails).includes(
+      '待补组织 的组织资源资料',
+    ),
+  );
+  const publish = { ...request(), content: resourceContent };
+  await assert.rejects(service.write('owner', publish), { code: 'resource_details_incomplete' });
+  assert.equal(
+    (await service.write('owner', { ...publish, action: 'draft', consent: false })).action,
+    'draft',
+  );
+  assert.equal(
+    (await service.write('owner', { ...publish, action: 'withdraw' })).action,
+    'withdraw',
+  );
+  missingResourceDetails = [];
+  assert.deepEqual((await service.read('owner', runId, 0)).missingResourceDetails, []);
+  assert.equal((await service.write('owner', publish)).action, 'publish');
+});
 test('publication switch participates in build cache invalidation and stays closed in example configuration', async () => {
   const turbo = JSON.parse(await readFile(new URL('../../../turbo.json', import.meta.url), 'utf8'));
   assert.ok(turbo.globalEnv.includes('HZENSE_EDITORIAL_PUBLICATION_ENABLED'));

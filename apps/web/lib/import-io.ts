@@ -1,9 +1,29 @@
+export type ImportFetchDiagnostic =
+  | { reason: 'http_status'; status: number }
+  | { reason: 'dns' | 'timeout' | 'encoding' | 'network' };
+
 export class ImportIOError extends Error {
   readonly code: string;
-  constructor(code: string) {
+  readonly diagnostic: ImportFetchDiagnostic | undefined;
+  constructor(code: string, diagnostic?: ImportFetchDiagnostic) {
     super(code);
     this.code = code;
+    this.diagnostic = diagnostic;
   }
+}
+/** Never forward arbitrary exception properties, messages, URLs, headers or response bodies. */
+export function importFetchDiagnostic(error: unknown): ImportFetchDiagnostic | undefined {
+  if (!(error instanceof ImportIOError) || error.code !== 'fetch_failed') return undefined;
+  const diagnostic = error.diagnostic;
+  if (!diagnostic || typeof diagnostic !== 'object') return undefined;
+  if (diagnostic.reason === 'http_status') {
+    if (Number.isInteger(diagnostic.status) && diagnostic.status >= 100 && diagnostic.status <= 599)
+      return { reason: 'http_status', status: diagnostic.status };
+    return undefined;
+  }
+  if (['dns', 'timeout', 'encoding', 'network'].includes(diagnostic.reason))
+    return { reason: diagnostic.reason };
+  return undefined;
 }
 /** Limits apply to actual bytes, including absent or dishonest Content-Length. */
 export async function readImportBytes(

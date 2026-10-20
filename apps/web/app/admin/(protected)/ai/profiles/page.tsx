@@ -3,7 +3,7 @@ import { requireAdminSession } from '@/lib/server/admin-auth';
 import { getAiDashboard } from '@/lib/server/admin-ai';
 import { AdminAiProfiles } from '@/components/admin-ai-profiles';
 import { AiNavigation } from '@/components/admin-ai-shared';
-import { isLocalDevelopment } from '@/lib/local-development';
+import { isLocalDevelopment, isLocalRealAi } from '@/lib/local-development';
 import styles from '@/components/admin-ai.module.css';
 
 export const metadata: Metadata = {
@@ -30,6 +30,7 @@ export default async function AdminAiProfilesPage() {
         configured={state.configured}
         available={state.available}
         localMode={isLocalDevelopment()}
+        localRealAi={isLocalRealAi()}
       />
     </main>
   );

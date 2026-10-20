@@ -106,12 +106,14 @@ export function AiEndpointFields({
   editing,
   allowedHosts,
   localMode = false,
+  localRealAi = false,
   keyOptional = false,
 }: {
   initialBaseUrl: string;
   editing: boolean;
   allowedHosts: string[];
   localMode?: boolean;
+  localRealAi?: boolean;
   keyOptional?: boolean;
 }) {
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
@@ -161,6 +163,9 @@ export function AiEndpointFields({
       </label>
       <p className={styles.muted}>
         预设只填写基础地址，不自动保存、授权或发起请求；其他配置字段保留。
+        {localMode && localRealAi
+          ? '本地真实 AI 模式下，启用后手动执行测试会将固定测试内容发送给该供应商，并可能计费。'
+          : ''}
       </p>
       <label>
         接口基础地址

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { AdminSignOutButton } from '@/components/admin-auth-buttons';
 import styles from '@/components/admin-auth.module.css';
 import { requireAdminSession } from '@/lib/server/admin-auth';
-import { isLocalDevelopment } from '@/lib/local-development';
+import { isLocalDevelopment, isLocalRealAi } from '@/lib/local-development';
 
 export const metadata: Metadata = {
   title: '管理后台',
@@ -23,9 +23,15 @@ export default async function AdminHomePage() {
           {local ? '本地开发后台' : '管理员身份已验证'}
         </h1>
         <p className={styles.copy}>管理文档导入、信号候选审核、自动采集、专题洞察和 AI 配置。</p>
+        {local && isLocalRealAi() ? (
+          <p className={styles.copy}>
+            当前为本地真实 AI 模式：AI
+            测试和生成会请求供应商，可能产生费用；生成资料会发送给所选供应商，候选与发布保存在本地。
+          </p>
+        ) : null}
         <dl className={styles.account}>
           <dt>{local ? '当前访问方式' : '当前登录账号'}</dt>
-          <dd>{local ? '本机直接访问，无需登录；操作仅影响本地数据库。' : session.user.email}</dd>
+          <dd>{local ? '本机直接访问，无需登录；业务数据写入本地数据库。' : session.user.email}</dd>
         </dl>
         <div className={styles.actions}>
           <Link className={styles.backLink} href="/admin/imports">

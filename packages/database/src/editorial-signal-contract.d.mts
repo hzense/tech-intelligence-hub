@@ -45,6 +45,8 @@ export interface EditorialMaterial {
   sourceUrls: string[];
   sourceOptions?: string[];
   resources?: EditorialResourceDraft[];
+  /** Server-recomputed coverage gaps, never supplied by the publication client. */
+  missingResourceDetails?: { type: 'person' | 'organization'; name: string }[];
   resourceCatalog?: EditorialResourceCatalogEntry[];
   resourceSourceOptions?: {
     name: string;

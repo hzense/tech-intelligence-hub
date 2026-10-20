@@ -583,7 +583,7 @@ function safeProviderResult(value, kind, modelId) {
       };
     let result;
     if (kind === 'models') {
-      const r = aiObject(v.result, ['models', 'count', 'truncated']);
+      const r = aiObject(v.result, ['models', 'count', 'truncated'], ['skipped_count']);
       if (
         !Array.isArray(r.models) ||
         r.models.length > 200 ||
@@ -591,10 +591,12 @@ function safeProviderResult(value, kind, modelId) {
         typeof r.truncated !== 'boolean'
       )
         throw Error();
+      if (r.skipped_count !== undefined) aiInteger(r.skipped_count, 0, 100_000);
       result = {
         models: r.models.map((model) => ({ id: aiModelId(aiObject(model, ['id']).id) })),
         count: r.count,
         truncated: r.truncated,
+        ...(r.skipped_count !== undefined ? { skipped_count: r.skipped_count } : {}),
       };
     } else {
       const required =

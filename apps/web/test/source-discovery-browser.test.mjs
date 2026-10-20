@@ -47,7 +47,29 @@ test(
     };
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client'; import {AdminAutomation} from './components/admin-automation'; const p=new URLSearchParams(location.search); createRoot(document.getElementById('root')).render(<AdminAutomation kind={p.has('insight')?'topic_insight':'source_collection'} configured={!p.has('missingStorage')} executionEnabled={p.has('execute')} executionReadiness={{ready:false,checks:[{key:'storage',ready:true},{key:'generation',ready:false}]}} loadError={false} localMode={p.has('local')} initial={{...${JSON.stringify(initial)},configDeletionAvailable:!p.has('legacySchema')}} profiles={[{id:'${profileId}',revision:1,name:'验收模型',ready:!p.has('draft')}]} topics={[{id:'topic-ai',name:'人工智能'}]}/>);`,
+        contents: `
+          import {createRoot} from 'react-dom/client';
+          import {AdminAutomation} from './components/admin-automation';
+          const p=new URLSearchParams(location.search);
+          const initial=${JSON.stringify(initial)};
+          if (p.has('discoveryConfig')) initial.configs=initial.configs.map(row=>({
+            ...row,
+            config:{...row.config,sourceUrls:[],topicIds:[],
+              discovery:{keywords:[],lookbackDays:2,maxSources:5}}
+          }));
+          if (p.has('withInsightConfig')) initial.configs=initial.configs.map(row=>({
+            ...row,config:{...row.config,kind:'topic_insight'}
+          }));
+          createRoot(document.getElementById('root')).render(
+            <AdminAutomation kind={p.has('insight')?'topic_insight':'source_collection'}
+              configured={!p.has('missingStorage')} executionEnabled={p.has('execute')}
+              executionReadiness={{ready:false,checks:[{key:'storage',ready:true},{key:'generation',ready:false}]}}
+              loadError={false} localMode={p.has('local')} localRealAiMode={p.has('real')}
+              initial={{...initial,configDeletionAvailable:!p.has('legacySchema')}}
+              profiles={[{id:'${profileId}',revision:p.has('staleProfile')?2:1,name:'验收模型',ready:!p.has('draft')}]}
+              topics={[{id:'topic-ai',name:'人工智能'}]}/>
+          );
+        `,
         resolveDir: root,
         loader: 'tsx',
       },
@@ -101,7 +123,8 @@ test(
       const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
       await page.clock.install();
       const errors = [],
-        posts = [];
+        posts = [],
+        blockedRequests = [];
       let deletionError = null;
       let gets = 0;
       let detailGets = 0;
@@ -110,6 +133,12 @@ test(
       let holdRefresh = false,
         releaseRefresh;
       page.on('pageerror', (error) => errors.push(error.message));
+      await page.route('**/*', (route) => {
+        if (route.request().url().startsWith(`http://127.0.0.1:${server.address().port}/`))
+          return route.continue();
+        blockedRequests.push(route.request().url());
+        return route.abort();
+      });
       await page.route('**/api/admin/automation*', async (route) => {
         if (route.request().method() === 'GET') {
           const id = new URL(route.request().url()).searchParams.get('id');
@@ -149,6 +178,9 @@ test(
         }
         const body = route.request().postDataJSON();
         posts.push(body);
+        if (body.action === 'trigger') {
+          return route.fulfill({ json: { run: { id: 'synthetic-local-manual-run' } } });
+        }
         if (body.action === 'delete') {
           if (deletionError) return route.fulfill({ status: 409, json: { error: deletionError } });
           initial.configs = initial.configs.filter((config) => config.id !== body.request.id);
@@ -292,6 +324,7 @@ test(
       });
       await page.clock.runFor(45001);
       assert.equal(gets, beforeHidden, 'hidden dashboards do not poll');
+      run.snapshot.name = '恢复可见后的采集任务';
       await page.evaluate(() => {
         Object.defineProperty(globalThis.document, 'visibilityState', {
           configurable: true,
@@ -301,6 +334,7 @@ test(
       });
       await page.clock.runFor(1);
       await expect.poll(() => gets).toBe(beforeHidden + 1);
+      await expect(page.getByText('恢复可见后的采集任务', { exact: true })).toBeVisible();
       const beforeFailure = gets;
       getFailure = true;
       await page.clock.runFor(15001);
@@ -789,6 +823,78 @@ test(
         assert.equal(posts.at(-1).request.config.profileRevision, 1);
       }
       assert.equal(posts.filter((post) => post.action === 'trigger').length, 0);
+      // Local real collection requires a ready current profile, explicit
+      // confirmation and the server execution flag. Scheduling stays disabled.
+      const localRealUrl = `http://127.0.0.1:${server.address().port}/?local=1&real=1&execute=1&discoveryConfig=1`;
+      await page.goto(localRealUrl);
+      await expect(page.getByText('本地真实采集', { exact: false })).toBeVisible();
+      await expect(page.getByText('可能产生检索与模型费用', { exact: false })).toBeVisible();
+      await expect(page.getByText('配置、资料和候选仅保存在本地', { exact: false })).toBeVisible();
+      await expect(page.getByText('本地仅手动 · 定时关闭', { exact: true })).toBeVisible();
+      const schedule = page.getByRole('checkbox', { name: '允许定时执行', exact: false });
+      await expect(schedule).toBeDisabled();
+      await expect(schedule).not.toBeChecked();
+      await expect(page.getByLabel('执行频率', { exact: true })).toBeDisabled();
+      await expect(page.getByLabel('执行频率', { exact: true })).toHaveValue('manual');
+      const runButton = page.getByRole('button', { name: '立即运行', exact: true });
+      await expect(runButton).toBeEnabled();
+      const beforeLocalRun = posts.length;
+      page.once('dialog', (dialog) => {
+        assert.match(dialog.message(), /联网搜索、获取原文/);
+        assert.match(dialog.message(), /发送给所选 AI 供应商/);
+        assert.match(dialog.message(), /可能产生检索和模型费用/);
+        assert.match(dialog.message(), /不同步生产.*不.*定时/);
+        return dialog.dismiss();
+      });
+      await runButton.click();
+      assert.equal(posts.length, beforeLocalRun, 'Dismissed confirmation never triggers a run');
+      page.once('dialog', (dialog) => dialog.accept());
+      await runButton.click();
+      await expect(
+        page.getByRole('status').filter({ hasText: '任务 synthetic-local-manual-run 已保存' }),
+      ).toBeVisible();
+      assert.equal(posts.length, beforeLocalRun + 1);
+      assert.equal(posts.at(-1).action, 'trigger');
+      assert.equal(posts.at(-1).request.consent, true);
+      assert.equal(posts.at(-1).request.configId, 'legacy');
+      assert.equal(posts.at(-1).request.expectedRevision, 1);
+      assert.match(posts.at(-1).request.requestId, /^[a-f0-9-]{36}$/);
+      await page.goto(localRealUrl);
+      await page.getByRole('button', { name: '编辑', exact: true }).click();
+      await expect(schedule).toBeDisabled();
+      await expect(schedule).not.toBeChecked();
+      await page.getByRole('button', { name: '保存配置', exact: true }).click();
+      await expect(
+        page.getByRole('status').filter({ hasText: '保存配置不会启动任务' }),
+      ).toBeVisible();
+      assert.equal(posts.at(-1).action, 'save');
+      assert.equal(posts.at(-1).request.config.enabled, false);
+      assert.equal(posts.at(-1).request.config.frequency, 'manual');
+      await page.goto(`${localRealUrl}&draft=1`);
+      await expect(runButton).toBeDisabled();
+      await expect(page.getByText('模型未就绪 · 不能运行', { exact: true })).toBeVisible();
+      await page.getByLabel('配置名称', { exact: true }).fill('本地真实模式的未验证草稿');
+      await page.getByLabel('分阶段模型配置', { exact: true }).selectOption(profileId);
+      await page.getByRole('button', { name: '保存配置', exact: true }).click();
+      await expect(
+        page.getByRole('status').filter({ hasText: '保存配置不会启动任务' }),
+      ).toBeVisible();
+      assert.equal(posts.at(-1).action, 'save');
+      assert.equal(posts.at(-1).request.config.enabled, false);
+      for (const query of [
+        'local=1&execute=1&discoveryConfig=1',
+        'local=1&real=1&discoveryConfig=1',
+        'local=1&real=1&execute=1&discoveryConfig=1&staleProfile=1',
+        'local=1&real=1&execute=1&discoveryConfig=1&missingStorage=1',
+        'local=1&real=1&execute=1&insight=1&withInsightConfig=1',
+      ]) {
+        await page.goto(`http://127.0.0.1:${server.address().port}/?${query}`);
+        await expect(runButton).toBeDisabled();
+        await expect(schedule).toBeDisabled();
+        await expect(schedule).not.toBeChecked();
+      }
+      assert.equal(posts.filter((post) => post.action === 'trigger').length, 1);
+      assert.deepEqual(blockedRequests, []);
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

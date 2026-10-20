@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { requireAdminSession } from '@/lib/server/admin-auth';
 import { generationConfigured, generationHistoryConfigured } from '@/lib/server/signal-generation';
 import { AdminSignalGeneration } from '@/components/admin-signal-generation';
-import { isLocalDevelopment } from '@/lib/local-development';
+import { isLocalDevelopment, isLocalRealAi } from '@/lib/local-development';
 export const metadata: Metadata = {
   title: 'AI 信号候选生成',
   robots: { index: false, follow: false },
@@ -13,6 +13,7 @@ export default async function SignalGenerationPage() {
   return (
     <AdminSignalGeneration
       localMode={isLocalDevelopment()}
+      localRealAi={isLocalRealAi()}
       configured={generationConfigured()}
       historyConfigured={generationHistoryConfigured()}
     />

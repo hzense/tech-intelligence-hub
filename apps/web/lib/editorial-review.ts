@@ -45,6 +45,7 @@ export type EditorialDashboard = {
   resourceOptions?: EditorialResourceOption[];
   resourceSourceOptions?: EditorialResourceSourceOption[];
   resourcePublicationReady?: boolean;
+  missingResourceDetails?: { type: 'person' | 'organization'; name: string }[];
   warnings: string[];
   requestId: string | null;
   publicId: string | null;
@@ -54,6 +55,7 @@ export function editorialMissing(
   content: EditorialContent,
   resourceOptions: EditorialResourceOption[] = [],
   resourceSourceOptions: EditorialResourceSourceOption[] = [],
+  missingResourceDetails: NonNullable<EditorialDashboard['missingResourceDetails']> = [],
 ): string[] {
   const missing: string[] = [];
   if (!content.signalType) missing.push('事件类型');
@@ -95,6 +97,8 @@ export function editorialMissing(
     )
       missing.push(`${option.name} 的资源身份`);
   }
+  for (const resource of missingResourceDetails)
+    missing.push(`${resource.name} 的${resource.type === 'person' ? '人物' : '组织'}资源资料`);
   return missing;
 }
 

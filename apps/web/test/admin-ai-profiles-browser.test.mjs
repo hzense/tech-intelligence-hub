@@ -105,7 +105,7 @@ async function startProfilesFixture() {
         });
         createRoot(document.getElementById('root')).render(
           <AdminAiProfiles connections={data.connections} initialProfiles={data.profiles}
-            initialProbes={data.probes} configured available localMode={data.localMode ?? false} />
+            initialProbes={data.probes} configured available localMode={data.localMode ?? false} localRealAi={data.localRealAi ?? false} />
         );
       `,
       resolveDir: resolve(directory, '..'),
@@ -157,7 +157,7 @@ async function startProfilesFixture() {
       } else if (url.pathname === '/api/admin/ai/profiles') {
         if (incoming.method === 'GET') json({ profiles: state.profiles });
         else if (incoming.method === 'POST') {
-          if (!state.profileReady && !state.localMode) {
+          if (!state.profileReady && !(state.localMode && !state.localRealAi)) {
             json({ error: 'profile_not_ready' }, 409);
             return;
           }
@@ -165,9 +165,10 @@ async function startProfilesFixture() {
           const profile = {
             ...request.body,
             revision: previous ? previous.revision + 1 : 1,
-            readiness: state.localMode
-              ? { ready: false, reasons: ['extract:connection_unavailable'] }
-              : { ready: true, reasons: [] },
+            readiness:
+              state.localMode && !state.localRealAi
+                ? { ready: false, reasons: ['extract:connection_unavailable'] }
+                : { ready: true, reasons: [] },
           };
           delete profile.expected_revision;
           state.profiles = [...state.profiles.filter((row) => row.id !== profile.id), profile];
@@ -375,6 +376,86 @@ test(
         await page.getByRole('button', { name: '保存草稿新修订', exact: true }).click();
         await expect.poll(() => fixture.profiles[0].revision).toBe(2);
         assert.equal(posts().length, 0);
+      },
+    );
+
+    await t.test(
+      'local real AI discovers models and requires the normal readiness proof before saving',
+      async () => {
+        await mount({ localMode: true, localRealAi: true });
+        await expect(page.getByText(/本地真实 AI：配置只保存在本地数据库/)).toBeVisible();
+        await barrier();
+        assert.equal(posts().length, 0);
+        await page.getByLabel('配置名称', { exact: true }).fill('Local real profile');
+        for (const stage of Object.keys(stageLabels)) {
+          await connection(stage).selectOption(connectionA.id);
+          await choose(stage, modelsA[0]);
+        }
+        assert.equal(posts().length, 1, 'Model list is shared across stages');
+        await page.getByRole('button', { name: '创建新配置', exact: true }).click();
+        await expect(page.getByRole('status')).toContainText('测试');
+        assert.equal(fixture.profiles.length, 0, 'Unproven real profile is rejected');
+        await mount({
+          localMode: true,
+          localRealAi: true,
+          profileReady: true,
+          probes: [modelReceipt()],
+        });
+        await page.getByLabel('配置名称', { exact: true }).fill('Ready local real profile');
+        for (const stage of Object.keys(stageLabels)) {
+          await connection(stage).selectOption(connectionA.id);
+          await choose(stage, modelsA[0]);
+        }
+        await page.getByRole('button', { name: '创建新配置', exact: true }).click();
+        await expect(page.getByText('测试证明有效', { exact: true })).toBeVisible();
+        assert.equal(fixture.profiles[0].readiness.ready, true);
+        assert.equal(posts().length, 0, 'Saved model list is reused');
+        assert.equal('localRealAi' in posts('profiles')[0].body, false);
+      },
+    );
+
+    await t.test(
+      'successful stage lists preserve ordinary selections and explain skipped aliases only when present',
+      async () => {
+        for (const skippedCount of [3, undefined, 0]) {
+          const receipt = modelReceipt();
+          await mount({
+            localMode: true,
+            localRealAi: true,
+            probes: [
+              {
+                ...receipt,
+                result: {
+                  ...receipt.result,
+                  truncated: true,
+                  ...(skippedCount === undefined ? {} : { skipped_count: skippedCount }),
+                },
+              },
+            ],
+          });
+          for (const stage of Object.keys(stageLabels)) {
+            await connection(stage).selectOption(connectionA.id);
+            const statusId = `ai-profile-${stage}-model-status`;
+            const status = page.locator(`#${statusId}`);
+            await expect(model(stage)).toHaveAttribute('aria-describedby', statusId);
+            if (skippedCount > 0) {
+              await expect(status).toContainText(
+                '已跳过 3 个暂不支持的模型别名；其余模型可正常选择。',
+              );
+            } else {
+              await expect(status).not.toContainText('已跳过');
+            }
+            await expect(status).toContainText('列表已截断；仍可手填未列出的模型 ID。');
+            await choose(stage, modelsA[1]);
+          }
+          await barrier();
+          assert.equal(
+            posts().length,
+            0,
+            'The successful saved list does not trigger another read',
+          );
+          assert.equal(posts('profiles').length, 0, 'Selecting a model does not save the profile');
+        }
       },
     );
 
@@ -855,7 +936,10 @@ test(
 
     assert.deepEqual(pageErrors, []);
     assert.deepEqual(blockedRequests, []);
-    assert.deepEqual(fixture.expectedHttpErrors, [{ path: '/api/admin/ai/profiles', status: 409 }]);
+    assert.deepEqual(fixture.expectedHttpErrors, [
+      { path: '/api/admin/ai/profiles', status: 409 },
+      { path: '/api/admin/ai/profiles', status: 409 },
+    ]);
     assert.ok(
       fixture.allRequests
         .filter((request) => request.method === 'POST' && request.path === '/api/admin/ai/probes')

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { requireAdminSession } from '@/lib/server/admin-auth';
 import { getAiDashboard } from '@/lib/server/admin-ai';
-import { isLocalDevelopment } from '@/lib/local-development';
+import { isLocalDevelopment, isLocalRealAi } from '@/lib/local-development';
 import { AdminAiConsole } from '@/components/admin-ai-console';
 import { AiNavigation } from '@/components/admin-ai-shared';
 import styles from '@/components/admin-ai.module.css';
@@ -21,7 +21,9 @@ export default async function AdminAiPage() {
         <h1>AI 连接与模型测试</h1>
         <p className={styles.muted}>
           {isLocalDevelopment()
-            ? '本地开发模式：配置只保存在本机。真实供应商能力测试已禁用；请到 AI 信号生成选择“本地模拟”验证业务流程，无需填写 API Key。'
+            ? isLocalRealAi()
+              ? '本地真实 AI 模式：配置只保存在本机。模型列表与能力测试会联网请求供应商，可能产生费用；生成时所选资料会发送给供应商。'
+              : '本地开发模式：配置只保存在本机。真实供应商能力测试已禁用；请到 AI 信号生成选择“本地模拟”验证业务流程，无需填写 API Key。'
             : '安全管理接口、凭证与模型能力。测试使用固定内容，可能产生供应商费用；此页面不采集或发布信号。'}
         </p>
       </header>
@@ -32,6 +34,7 @@ export default async function AdminAiPage() {
         available={state.available}
         allowedHosts={state.allowedHosts}
         localMode={isLocalDevelopment()}
+        localRealAi={isLocalRealAi()}
       />
     </main>
   );

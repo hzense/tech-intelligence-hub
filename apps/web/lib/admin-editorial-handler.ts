@@ -14,6 +14,7 @@ const safeErrors = new Set([
   'entity_reference_invalid',
   'resource_identity_ambiguous',
   'resource_source_required',
+  'resource_details_incomplete',
   'published_draft_forbidden',
   'already_published',
   'not_published',

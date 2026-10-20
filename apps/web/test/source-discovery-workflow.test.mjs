@@ -3,23 +3,34 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, URL } from 'node:url';
 import { Buffer } from 'node:buffer';
+import process from 'node:process';
 import { build } from 'esbuild';
 
 test('source discovery orchestrates originals and private candidates without dropping search costs', async () => {
   const source = await readFile(new URL('../workflows/automation.ts', import.meta.url), 'utf8');
-  assert.match(source, /findSources\.maxRetries = 0/);
+  for (const step of [
+    'claim',
+    'findSources',
+    'createSourceBatch',
+    'importSourceItem',
+    'createPrivateGeneration',
+    'dispatchGeneration',
+    'startTopicWorker',
+  ])
+    assert.match(source, new RegExp(`${step}\\.maxRetries = 0`));
   const mocks = {
     workflow: 'export async function sleep(){}',
     'workflow/api':
-      'export async function start(_workflow,args){const f=globalThis.__sourceFlow;f.dispatched.push(args[1]);f.dispatchedArgs.push(args);if(f.dispatchErrors.includes(args[1]))throw Error("unknown");}',
+      'export async function start(workflow,args){const f=globalThis.__sourceFlow;f.dispatched.push(args[1]);f.dispatchedArgs.push(args);f.dispatchedWorkflows.push(workflow.name);if(f.dispatchErrors.includes(args[1]))throw Error("unknown");}',
+    '../lib/local-development': `export function isLocalRealAutomationEnabled(){return process.env.HZENSE_LOCAL_DEVELOPMENT==='1'&&process.env.HZENSE_LOCAL_AI_MODE==='real'&&process.env.WORKFLOW_TARGET_WORLD==='local'&&process.env.HZENSE_AUTOMATION_ENABLED==='1'&&globalThis.__sourceFlow.localIsolationValid}`,
     '../lib/server/automation':
       'export function automationLimits(){return {batch:1000000,daily:5000000,reserve:500000}}',
     '../lib/server/automation-store-access': 'export const automationPool={};',
     '../../../packages/database/src/automation-contract.mjs':
       'export function automationStableId(x){return x.itemId ?? "batch-id"}',
     '../../../packages/database/src/automation-store.mjs': `
-      export async function claimAutomationRun(){const f=globalThis.__sourceFlow;if(f.run.status!=='queued')return null;f.run.status='running';return structuredClone(f.run)}
-      export async function readAutomationRun(){return structuredClone(globalThis.__sourceFlow.run)}
+      export async function claimAutomationRun(){const f=globalThis.__sourceFlow;f.claims++;if(f.run.status!=='queued')return null;f.run.status='running';return structuredClone(f.run)}
+      export async function readAutomationRun(){const f=globalThis.__sourceFlow;f.reads++;return structuredClone(f.run)}
       export async function updateAutomationRun(args){const f=globalThis.__sourceFlow;if(f.run.status!=='running')throw Error('stale_attempt');f.updates.push(args);f.run.result=args.result;f.run.phase=args.phase;f.run.status=args.status??'running';f.run.charged_microusd=args.costMicrousd??f.run.charged_microusd;return structuredClone(f.run)}
     `,
     '../lib/server/source-discovery': `export async function discoverSources(){const f=globalThis.__sourceFlow;f.discoveries++;f.run.result={discovery:{articles:f.urls.map(url=>({url,title:'原文',publishedAt:'2026-09-30'}))},discoveryCostMicrousd:25000,discoveryCostSource:'provider'};if(f.discoveryFailure){Object.assign(f.run,f.discoveryFailure);throw Error(f.discoveryFailure.error_code)}return f.urls;}`,
@@ -29,16 +40,17 @@ test('source discovery orchestrates originals and private candidates without dro
     `,
     '../lib/server/signal-generation': `
       export async function executeGeneration(_owner,request){const f=globalThis.__sourceFlow;if(!f.run.result.generationIds.includes(request.id))throw Error('request id not pinned');f.generated.push(request);if(f.createErrors[request.id])throw Object.assign(Error('private creation rejection'),{code:f.createErrors[request.id],raw:'private-secret'});return {id:f.createdIds[request.id]??request.id,status:'pending'}}
-      export async function queueGeneration(_owner,id){const f=globalThis.__sourceFlow;f.queued.push(id);if(f.queueErrors[id])throw Object.assign(Error('queue failed'),{code:f.queueErrors[id]});return f.queueReceipts[id]??{status:'pending',progress_phase:'queued',progress_at:new Date('2026-10-02T12:00:00.123Z')}}
+      export async function queueGeneration(_owner,id){const f=globalThis.__sourceFlow;f.queued.push(id);if(f.switchToMockAfterQueue)process.env.HZENSE_LOCAL_AI_MODE='mock';if(f.queueErrors[id])throw Object.assign(Error('queue failed'),{code:f.queueErrors[id]});return f.queueReceipts[id]??{status:'pending',progress_phase:'queued',progress_at:new Date('2026-10-02T12:00:00.123Z')}}
       export async function failQueuedGeneration(owner,id,queuedAt){const f=globalThis.__sourceFlow;f.closedQueues.push([owner,id,queuedAt]);if(f.cleanupError)throw Error('cleanup unavailable')}
     `,
     './signal-generation': 'export async function signalGenerationWorkflow(){}',
+    './local-signal-generation': 'export async function localSignalGenerationWorkflow(){}',
     '../lib/server/topic-insight-sandbox':
-      'export async function startTopicInsightSandbox(){} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
+      'export async function startTopicInsightSandbox(){globalThis.__sourceFlow.topicCalls++} export async function pollTopicInsightSandbox(){globalThis.__sourceFlow.topicCalls++} export async function stopTopicInsightSandbox(){globalThis.__sourceFlow.topicCalls++}',
   };
   const fixture = await build({
     stdin: {
-      contents: source,
+      contents: `${source}\nexport {findSources,createSourceBatch,importSourceItem,createPrivateGeneration,dispatchGeneration,startTopicWorker,pollTopicWorker,stopTopicWorker};`,
       loader: 'ts',
       resolveDir: fileURLToPath(new URL('../workflows', import.meta.url)),
     },
@@ -60,8 +72,18 @@ test('source discovery orchestrates originals and private candidates without dro
       },
     ],
   });
-  const { automationWorkflow } = await import(
+  const steps = await import(
     `data:text/javascript;base64,${Buffer.from(fixture.outputFiles[0].text).toString('base64')}`
+  );
+  const { automationWorkflow } = steps;
+  const environmentKeys = [
+    'HZENSE_LOCAL_DEVELOPMENT',
+    'HZENSE_LOCAL_AI_MODE',
+    'WORKFLOW_TARGET_WORLD',
+    'HZENSE_AUTOMATION_ENABLED',
+  ];
+  const savedEnvironment = Object.fromEntries(
+    environmentKeys.map((key) => [key, process.env[key]]),
   );
   const setup = (urls) =>
     (globalThis.__sourceFlow = {
@@ -71,6 +93,7 @@ test('source discovery orchestrates originals and private candidates without dro
       queued: [],
       dispatched: [],
       dispatchedArgs: [],
+      dispatchedWorkflows: [],
       dispatchErrors: [],
       closedQueues: [],
       discoveries: 0,
@@ -84,9 +107,14 @@ test('source discovery orchestrates originals and private candidates without dro
       queueErrors: {},
       createErrors: {},
       createdIds: {},
+      claims: 0,
+      reads: 0,
+      topicCalls: 0,
+      localIsolationValid: true,
       run: {
         id: 'run',
         status: 'queued',
+        trigger: 'manual',
         lease_token: 'token',
         phase: 'preparing',
         snapshot: { kind: 'source_collection', profileId: 'profile', profileRevision: 1 },
@@ -94,6 +122,7 @@ test('source discovery orchestrates originals and private candidates without dro
       },
     });
   try {
+    delete process.env.HZENSE_LOCAL_DEVELOPMENT;
     let f = setup([]);
     assert.equal(await automationWorkflow('owner', 'run'), 'no_new_sources');
     assert.equal(f.imports.length, 0);
@@ -145,6 +174,7 @@ test('source discovery orchestrates originals and private candidates without dro
     assert.equal(f.imports[0].request.manifest.urlLines, f.urls.join('\n'));
     assert.deepEqual(f.dispatched, ['item-0']);
     assert.deepEqual(f.dispatchedArgs, [['owner', 'item-0', '2026-10-02T12:00:00.123Z']]);
+    assert.deepEqual(f.dispatchedWorkflows, ['signalGenerationWorkflow']);
     assert.equal(f.run.result.failed, 1);
     assert.equal(f.run.result.discovery.articles.length, 2);
     assert.equal(f.run.charged_microusd, 25000);
@@ -311,7 +341,159 @@ test('source discovery orchestrates originals and private candidates without dro
       assert.equal(f.run.charged_microusd, 25000);
       assert.equal(JSON.stringify(f.run.result).includes('private'), false);
     }
+
+    const localReal = () =>
+      Object.assign(process.env, {
+        HZENSE_LOCAL_DEVELOPMENT: '1',
+        HZENSE_LOCAL_AI_MODE: 'real',
+        WORKFLOW_TARGET_WORLD: 'local',
+        HZENSE_AUTOMATION_ENABLED: '1',
+      });
+    localReal();
+    f = setup(['https://example.com/local']);
+    assert.equal(await automationWorkflow('owner', 'run'), 'completed');
+    assert.equal(f.claims, 1);
+    assert.equal(f.topicCalls, 0);
+    assert.deepEqual(f.dispatchedWorkflows, ['localSignalGenerationWorkflow']);
+    assert.deepEqual(f.dispatchedArgs, [['owner', 'item-0', '2026-10-02T12:00:00.123Z']]);
+    assert.equal(f.run.charged_microusd, 25000);
+
+    for (const overrides of [
+      { HZENSE_LOCAL_AI_MODE: 'mock' },
+      { HZENSE_LOCAL_AI_MODE: 'unknown' },
+      { WORKFLOW_TARGET_WORLD: 'vercel' },
+      { HZENSE_AUTOMATION_ENABLED: '0' },
+    ]) {
+      localReal();
+      Object.assign(process.env, overrides);
+      f = setup(['https://example.com/blocked']);
+      await assert.rejects(automationWorkflow('owner', 'run'), /execution_disabled/);
+      assert.equal(f.reads, 0);
+      assert.equal(f.claims, 0);
+      assert.equal(f.run.status, 'queued');
+      assert.equal(f.discoveries, 0);
+      assert.deepEqual(f.importAttempts, []);
+      assert.deepEqual(f.generated, []);
+      assert.deepEqual(f.dispatched, []);
+      assert.equal(f.topicCalls, 0);
+    }
+    localReal();
+    f = setup(['https://example.com/blocked']);
+    f.localIsolationValid = false;
+    await assert.rejects(automationWorkflow('owner', 'run'), /execution_disabled/);
+    assert.equal(f.claims, 0);
+    assert.equal(f.reads, 0);
+
+    localReal();
+    f = setup([]);
+    f.run.snapshot.kind = 'topic_insight';
+    await assert.rejects(automationWorkflow('owner', 'run'), /execution_disabled/);
+    assert.equal(f.reads, 1);
+    assert.equal(f.claims, 0, 'unsupported local topics must not reserve budget');
+    assert.equal(f.topicCalls, 0);
+    for (const step of ['startTopicWorker', 'pollTopicWorker', 'stopTopicWorker'])
+      await assert.rejects(steps[step]('owner', 'run'), /execution_disabled/);
+    assert.equal(f.topicCalls, 0, 'resuming a cached topic claim must not access Sandbox');
+
+    for (const trigger of ['scheduled', undefined]) {
+      localReal();
+      f = setup(['https://example.com/scheduled']);
+      f.run.trigger = trigger;
+      await assert.rejects(automationWorkflow('owner', 'run'), /execution_disabled/);
+      assert.equal(f.reads, 1);
+      assert.equal(f.claims, 0, 'local non-manual tasks must not reserve budget');
+      assert.equal(f.discoveries, 0);
+      assert.deepEqual(f.imports, []);
+      assert.deepEqual(f.generated, []);
+      assert.deepEqual(f.dispatched, []);
+
+      // Cached claims are not admission: persisted scheduled runs must still
+      // fail before search, import creation or candidate creation on recovery.
+      for (const step of ['findSources', 'createSourceBatch', 'createPrivateGeneration']) {
+        f = setup(['https://example.com/scheduled']);
+        f.run.trigger = trigger;
+        f.run.status = 'running';
+        await assert.rejects(steps[step]('owner', 'run', 'batch', 'item'), /execution_disabled/);
+        assert.equal(f.reads, 1);
+        assert.equal(f.discoveries, 0);
+        assert.deepEqual(f.imports, []);
+        assert.deepEqual(f.generated, []);
+        assert.deepEqual(f.updates, []);
+      }
+    }
+    localReal();
+    f = setup([]);
+    f.run.status = 'running';
+    f.run.snapshot.kind = 'topic_insight';
+    await assert.rejects(steps.findSources('owner', 'run'), /execution_disabled/);
+    assert.equal(f.discoveries, 0, 'a resumed source step must verify the persisted task kind');
+
+    // A resumed workflow can bypass completed steps, so every external action
+    // must still refuse a mode switch after the claim was persisted.
+    localReal();
+    process.env.HZENSE_LOCAL_AI_MODE = 'mock';
+    f = setup(['https://example.com/blocked']);
+    f.run.status = 'running';
+    for (const step of [
+      'findSources',
+      'createSourceBatch',
+      'importSourceItem',
+      'createPrivateGeneration',
+    ])
+      await assert.rejects(steps[step]('owner', 'run', 'item'), /execution_disabled/);
+    assert.equal(f.reads, 0);
+    assert.equal(f.discoveries, 0);
+    assert.deepEqual(f.imports, []);
+    assert.deepEqual(f.importAttempts, []);
+    assert.deepEqual(f.generated, []);
+    assert.equal(
+      await steps.dispatchGeneration('owner', {
+        id: 'item',
+        queuedAt: '2026-10-02T12:00:00.123Z',
+      }),
+      false,
+    );
+    assert.deepEqual(f.dispatched, []);
+    assert.deepEqual(f.closedQueues, [['owner', 'item', '2026-10-02T12:00:00.123Z']]);
+
+    localReal();
+    f = setup(['https://example.com/local']);
+    f.dispatchErrors = ['item-0'];
+    await automationWorkflow('owner', 'run');
+    assert.deepEqual(f.dispatchedWorkflows, ['localSignalGenerationWorkflow']);
+    assert.deepEqual(f.closedQueues, [['owner', 'item-0', '2026-10-02T12:00:00.123Z']]);
+    assert.equal(await automationWorkflow('owner', 'run'), 'already_started_or_finished');
+    assert.equal(f.dispatched.length, 1, 'local dispatch ambiguity must not retry start');
+
+    localReal();
+    f = setup(['https://example.com/local']);
+    f.switchToMockAfterQueue = true;
+    await automationWorkflow('owner', 'run');
+    assert.deepEqual(
+      f.dispatched,
+      [],
+      'a mode switch before dispatch must not reach either worker',
+    );
+    assert.deepEqual(f.closedQueues, [['owner', 'item-0', '2026-10-02T12:00:00.123Z']]);
+
+    localReal();
+    f = setup(['https://example.com/local']);
+    f.queueReceipts['item-0'] = { status: 'pending', progress_phase: 'queued', progress_at: null };
+    await automationWorkflow('owner', 'run');
+    assert.deepEqual(f.dispatched, [], 'local generation needs the same exact queue receipt');
+    assert.equal(f.run.status, 'unknown');
+
+    delete process.env.HZENSE_LOCAL_DEVELOPMENT;
+    f = setup(['https://example.com/production-scheduled']);
+    f.run.trigger = 'scheduled';
+    assert.equal(await automationWorkflow('owner', 'run'), 'completed');
+    assert.deepEqual(f.dispatchedWorkflows, ['signalGenerationWorkflow']);
+    assert.equal(f.claims, 1, 'production scheduled execution is unchanged');
   } finally {
+    for (const [key, value] of Object.entries(savedEnvironment)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     delete globalThis.__sourceFlow;
   }
 });

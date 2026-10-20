@@ -3,7 +3,7 @@ import console from 'node:console';
 import { Buffer } from 'node:buffer';
 import { isDeepStrictEqual } from 'node:util';
 import {
-  normalizeGeneratedCandidates,
+  assessGeneratedCandidates,
   normalizeGenerationTopics,
   GENERATION_METADATA_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
@@ -263,12 +263,14 @@ function validateSavedCandidates(result, snapshot) {
     for (const candidate of result.candidates) {
       const { index, classification, status, issues, ...input } = candidate;
       if (Object.hasOwn(input, 'topic_ids') && topics === undefined) fail('invalid_result');
-      const normalized = normalizeGeneratedCandidates(
+      const assessed = assessGeneratedCandidates(
         { candidates: [input], reason: result.reason },
         snapshot.source,
         topics,
         outputContract,
-      ).candidates[0];
+      );
+      if (assessed.candidates.length !== 1 || assessed.rejected.length) fail('invalid_result');
+      const normalized = assessed.candidates[0];
       if (
         !isDeepStrictEqual(
           { ...normalized, index },
@@ -747,16 +749,35 @@ async function candidateEnrichmentLedgerAvailable(client) {
     ).rows[0]?.available === true
   );
 }
-export async function getSignalGenerationDailyUsage({ pool, owner }) {
+// Trusted server-only mode, never an HTTP field. Production omits this option
+// and retains the complete shared ledger. Local simulation must not spend the
+// real provider's budget (including retained/deleted/unknown task reservations).
+function localBudgetFilter(mode, alias = 'r') {
+  if (mode === undefined) return null;
+  if (!['local-mock', 'local-real'].includes(mode)) fail('invalid_configuration');
+  const mock = `${alias}.generation_version ~ '^local-simulation-v1(/retry/[0-9a-f-]{36})?$'`;
+  return mode === 'local-mock' ? mock : `NOT (${mock})`;
+}
+export async function getSignalGenerationDailyUsage({ pool, owner, budgetMode }) {
   ownerId(owner);
+  const localFilter = localBudgetFilter(budgetMode);
   return transaction(
     pool,
     async (client) => {
       const enrichment = await candidateEnrichmentLedgerAvailable(client);
       return (
         await client.query(
-          enrichment
+          localFilter
             ? `WITH today AS (
+      SELECT (statement_timestamp() AT TIME ZONE 'UTC')::date AS day
+    ) SELECT today.day::text AS day,
+      COALESCE(sum(r.charged_microusd),0)::text AS charged_microusd,
+      COALESCE(sum(greatest(r.reserved_microusd,r.charged_microusd)),0)::text AS budget_used_microusd
+      FROM today LEFT JOIN public.signal_generation_runs r
+        ON r.budget_day=today.day AND r.owner_id=$1 AND ${localFilter}
+      GROUP BY today.day`
+            : enrichment
+              ? `WITH today AS (
       SELECT (statement_timestamp() AT TIME ZONE 'UTC')::date AS day
     ), ledger AS (
       SELECT owner_id,budget_day,charged_microusd,reserved_microusd FROM public.signal_generation_runs
@@ -767,7 +788,7 @@ export async function getSignalGenerationDailyUsage({ pool, owner }) {
       COALESCE(sum(greatest(r.reserved_microusd,r.charged_microusd)),0)::text AS budget_used_microusd
       FROM today LEFT JOIN ledger r ON r.budget_day=today.day AND r.owner_id=$1
       GROUP BY today.day`
-            : `WITH today AS (
+              : `WITH today AS (
       SELECT (statement_timestamp() AT TIME ZONE 'UTC')::date AS day
     ) SELECT today.day::text AS day,
       COALESCE(sum(r.charged_microusd),0)::text AS charged_microusd,
@@ -855,7 +876,15 @@ export async function readSignalGenerationSummaries({ pool, owner, ids, legacyRe
     true,
   );
 }
-export async function claimSignalGeneration({ pool, owner, id, currentLimits, queuedAt }) {
+export async function claimSignalGeneration({
+  pool,
+  owner,
+  id,
+  currentLimits,
+  queuedAt,
+  budgetMode,
+}) {
+  const localFilter = localBudgetFilter(budgetMode);
   object(currentLimits, ['batchLimitMicrousd', 'dailyLimitMicrousd'], 'invalid_configuration');
   integer(currentLimits.batchLimitMicrousd);
   integer(currentLimits.dailyLimitMicrousd);
@@ -905,13 +934,18 @@ export async function claimSignalGeneration({ pool, owner, id, currentLimits, qu
     // AI reservations are a separate ledger, not a claim about parser/provider bills.
     const usage = (
       await client.query(
-        enrichment
+        localFilter
           ? `SELECT
+      COALESCE(sum(greatest(r.reserved_microusd,r.charged_microusd)) FILTER (WHERE r.budget_day=$1::date),0)::text AS daily,
+      COALESCE(sum(greatest(r.reserved_microusd,r.charged_microusd)) FILTER (WHERE r.batch_id=$2),0)::text AS batch
+      FROM public.signal_generation_runs r WHERE ${localFilter}`
+          : enrichment
+            ? `SELECT
       (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.signal_generation_runs WHERE budget_day=$1::date) +
       (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.candidate_enrichment_runs WHERE budget_day=$1::date) AS daily,
       (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.signal_generation_runs WHERE batch_id=$2) +
       (SELECT COALESCE(sum(greatest(e.reserved_microusd,e.charged_microusd)),0) FROM public.candidate_enrichment_runs e JOIN public.signal_generation_runs g ON g.id=e.run_id WHERE g.batch_id=$2) AS batch`
-          : `SELECT
+            : `SELECT
       COALESCE(sum(greatest(reserved_microusd,charged_microusd)) FILTER (WHERE budget_day=$1::date),0)::text AS daily,
       COALESCE(sum(greatest(reserved_microusd,charged_microusd)) FILTER (WHERE batch_id=$2),0)::text AS batch
       FROM public.signal_generation_runs`,

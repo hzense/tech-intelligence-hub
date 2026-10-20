@@ -245,6 +245,8 @@ export function normalizeEditorialRequest(request, material, { checkPublication 
   // and the historical request hash stable, then check current policy only when
   // the store has established that this is a new request, not a committed replay.
   if (checkPublication) {
+    if (request.action === 'publish' && material.missingResourceDetails?.length)
+      editorialFail('resource_details_incomplete');
     if (request.action !== 'withdraw' && content.persons.some(isExcludedPublicPerson))
       editorialFail('excluded_person');
     if (request.action !== 'withdraw') {

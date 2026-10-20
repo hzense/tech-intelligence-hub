@@ -12,6 +12,7 @@ import { GenerationPublicationSummary } from './generation-publication-status';
 import { generationFailureMessage } from '../lib/generation-error-messages';
 import { startVisiblePolling } from '../lib/visible-polling';
 import { fetchGenerationProgress } from '../lib/generation-progress-client';
+import { isLocalSimulationRecord } from '../lib/generation-ui-mode';
 
 type GenerationDetailRun = GenerationProgressRun & {
   result?: unknown;
@@ -24,11 +25,14 @@ type GenerationDetailRun = GenerationProgressRun & {
 export function GenerationLiveDetail({
   initialRun,
   localMode = false,
+  localRealAi = false,
 }: {
   initialRun: GenerationDetailRun;
   localMode?: boolean;
+  localRealAi?: boolean;
 }) {
   const [run, setRun] = useState(initialRun);
+  const localSimulation = isLocalSimulationRecord(run, localMode, localRealAi);
   const [error, setError] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -113,7 +117,7 @@ export function GenerationLiveDetail({
         throw new Error('unconfirmed');
       setRun(data.run);
       setNotice(
-        localMode
+        localSimulation
           ? '已结束排队并标记为失败。原记录和技术预留保留，不请求供应商。'
           : '已结束排队并标记为失败。原记录和费用保留，未调用 AI。',
       );
@@ -126,14 +130,21 @@ export function GenerationLiveDetail({
   return (
     <>
       <p>任务：{run.id}</p>
-      {localMode && (
+      {localSimulation && (
         <p>
           本地模拟：不请求供应商、不调用真实 AI。技术预留 {run.reserved_microusd ?? '待核对'}{' '}
           微美元，记账 {run.charged_microusd ?? '待核对'}{' '}
           微美元；这些是本地流程记录，不是供应商费用。
         </p>
       )}
-      <GenerationProgress run={run} localMode={localMode} />
+      {localMode && !localSimulation ? (
+        <p>
+          本地真实 AI 记录：执行时会向供应商发送资料并可能产生费用。预留{' '}
+          {run.reserved_microusd ?? '待核对'} 微美元，记账 {run.charged_microusd ?? '待核对'}{' '}
+          微美元；系统记账不等于供应商最终账单，候选与发布保存在本机。
+        </p>
+      ) : null}
+      <GenerationProgress run={run} localMode={localMode} localRealAi={localRealAi} />
       {failureMessage && <p aria-label="任务失败原因">失败原因：{failureMessage}</p>}
       {run.status === 'completed' && (
         <p>
@@ -157,7 +168,7 @@ export function GenerationLiveDetail({
             {queueConfirmation ? (
               <div role="group" aria-label="确认结束排队">
                 <p>
-                  {localMode
+                  {localSimulation
                     ? '确认将这次尚未开始的本地模拟任务标记为失败？原记录和技术预留保留，不请求供应商、不重新模拟。'
                     : '确认将这次尚未开始的排队任务标记为失败？原记录和费用保留，不会调用 AI 或重新生成。'}
                 </p>
@@ -193,7 +204,12 @@ export function GenerationLiveDetail({
       {error && (
         <p role="alert">状态刷新失败，显示最后一次已保存状态。请刷新页面核对；不会重新调用 AI。</p>
       )}
-      <PrivateResult result={run.result} reviewTask={run} localMode={localMode} />
+      <PrivateResult
+        result={run.result}
+        reviewTask={run}
+        localMode={localMode}
+        localRealAi={localRealAi}
+      />
       <details>
         <summary>查看完整任务记录</summary>
         <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
