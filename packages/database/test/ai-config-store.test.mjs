@@ -10,6 +10,7 @@ import {
   saveAiProfile,
   listAiProfiles,
   getAiProfileHistory,
+  getAiProfileReference,
   resolveAiProfileForExecution,
   resolveAiGenerationAccess,
   runAiProbe,
@@ -262,6 +263,7 @@ function fake(options = {}) {
         break;
       }
       case 'profile-connection':
+      case 'profile-reference-connection':
         rows = state.connections.filter((r) => r.id === args[0]);
         break;
       case 'profile-probes':
@@ -271,6 +273,7 @@ function fake(options = {}) {
         }));
         break;
       case 'profile':
+      case 'profile-reference':
       case 'profile-exists':
         rows = state.profiles.filter((r) => r.id === args[0]);
         break;
@@ -332,6 +335,67 @@ function fake(options = {}) {
 const run = (f, req, invoke) =>
   runAiProbe({ pool: f.pool, request: req, keyring, allowedHosts, invoke });
 describe('AI connection versioned configuration', () => {
+  it('allows only trusted local disabled keyless drafts, with safe replay and no fake key', async () => {
+    const f = fake({ empty: true });
+    const draft = { ...connectionCreate(), enabled: false };
+    delete draft.api_key;
+    const input = { pool: f.pool, request: draft, keyring, allowedHosts };
+    await expect(createAiConnection(input)).rejects.toMatchObject({ code: 'invalid_request' });
+    await expect(
+      createAiConnection({ ...input, request: { ...draft, localConfigurationDrafts: true } }),
+    ).rejects.toMatchObject({ code: 'invalid_request' });
+    await expect(
+      createAiConnection({
+        ...input,
+        localConfigurationDrafts: true,
+        request: { ...draft, enabled: true },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request' });
+    const created = await createAiConnection({ ...input, localConfigurationDrafts: true });
+    expect(created).toMatchObject({ enabled: false, has_key: false, key_mask: null });
+    expect(f.state.connections[0].encrypted_key).toBeNull();
+    await expect(createAiConnection({ ...input, localConfigurationDrafts: true })).resolves.toEqual(
+      created,
+    );
+    expect(f.state.history).toHaveLength(1);
+    await expect(
+      createAiConnection({
+        ...input,
+        localConfigurationDrafts: true,
+        request: { ...draft, name: 'Different' },
+      }),
+    ).rejects.toMatchObject({ code: 'request_id_conflict' });
+  });
+  it('allows a keyless local draft endpoint update but never carries a real key across endpoints', async () => {
+    const f = fake();
+    const input = {
+      pool: f.pool,
+      keyring,
+      allowedHosts,
+      request: { id, expected_revision: 1, enabled: false, base_url: 'https://other.example/v1' },
+    };
+    await expect(
+      updateAiConnection({ ...input, localConfigurationDrafts: true }),
+    ).rejects.toMatchObject({ code: 'endpoint_key_required' });
+    f.state.connections[0].enabled = false;
+    f.state.connections[0].encrypted_key = null;
+    await expect(updateAiConnection(input)).rejects.toMatchObject({
+      code: 'endpoint_key_required',
+    });
+    await expect(
+      updateAiConnection({ ...input, localConfigurationDrafts: true }),
+    ).resolves.toMatchObject({ revision: 2, has_key: false, enabled: false });
+    await expect(
+      updateAiConnection({ ...input, localConfigurationDrafts: true }),
+    ).rejects.toMatchObject({ code: 'revision_conflict' });
+    await expect(
+      updateAiConnection({
+        ...input,
+        localConfigurationDrafts: true,
+        request: { id, expected_revision: 2, enabled: true },
+      }),
+    ).rejects.toMatchObject({ code: 'key_unavailable' });
+  });
   it('replays negative-zero prices after the connection passes through JSON persistence', async () => {
     const f = fake({ empty: true });
     const input = {
@@ -776,6 +840,94 @@ describe('AI probe reservation and exactly-once external attempt', () => {
   });
 });
 describe('AI profile capability readiness', () => {
+  it('saves local drafts without keys or probes while execution and production writes remain gated', async () => {
+    const f = fake({ passedKinds: [] });
+    f.state.connections[0].enabled = false;
+    f.state.connections[0].encrypted_key = null;
+    const req = profileCreate();
+    await expect(saveAiProfile({ pool: f.pool, request: req })).rejects.toMatchObject({
+      code: 'profile_not_ready',
+    });
+    await expect(
+      saveAiProfile({ pool: f.pool, request: { ...req, localConfigurationDrafts: true } }),
+    ).rejects.toMatchObject({ code: 'invalid_request' });
+    const created = await saveAiProfile({
+      pool: f.pool,
+      request: req,
+      localConfigurationDrafts: true,
+    });
+    expect(created.readiness).toMatchObject({ ready: false });
+    expect(created.readiness.reasons).toContain('extract:connection_unavailable');
+    expect(f.state.probes).toHaveLength(0);
+    await expect(
+      saveAiProfile({ pool: f.pool, request: req, localConfigurationDrafts: true }),
+    ).resolves.toEqual(created);
+    expect(f.state.profileHistory).toHaveLength(1);
+    await expect(resolveAiProfileForExecution({ pool: f.pool, id: req.id })).rejects.toMatchObject({
+      code: 'profile_not_ready',
+    });
+    await expect(
+      resolveAiGenerationAccess({ pool: f.pool, id: req.id, revision: 1, allowedHosts, keyring }),
+    ).rejects.toMatchObject({ code: 'profile_not_ready' });
+    await expect(
+      saveAiProfile({ pool: f.pool, request: { ...req, expected_revision: 1 } }),
+    ).rejects.toMatchObject({ code: 'profile_not_ready' });
+    const revised = await saveAiProfile({
+      pool: f.pool,
+      request: { ...req, expected_revision: 1, name: 'New draft' },
+      localConfigurationDrafts: true,
+    });
+    expect(revised.revision).toBe(2);
+    await expect(
+      saveAiProfile({
+        pool: f.pool,
+        request: { ...req, expected_revision: 1 },
+        localConfigurationDrafts: true,
+      }),
+    ).rejects.toMatchObject({ code: 'revision_conflict' });
+    await expect(
+      saveAiProfile({ pool: f.pool, request: req, localConfigurationDrafts: true }),
+    ).rejects.toMatchObject({ code: 'request_id_conflict' });
+  });
+  it('requires current existing connection references even for drafts and exposes only profile identity', async () => {
+    const f = fake({ passedKinds: [] });
+    const req = profileCreate();
+    const created = await saveAiProfile({
+      pool: f.pool,
+      request: req,
+      localConfigurationDrafts: true,
+    });
+    await expect(
+      getAiProfileReference({ pool: f.pool, id: created.id, revision: 1 }),
+    ).resolves.toEqual({ id: created.id, revision: 1 });
+    await expect(
+      getAiProfileReference({ pool: f.pool, id: created.id, revision: 2 }),
+    ).rejects.toMatchObject({ code: 'revision_conflict' });
+    f.state.connections[0].revision = 2;
+    await expect(
+      getAiProfileReference({ pool: f.pool, id: created.id, revision: 1 }),
+    ).rejects.toMatchObject({ code: 'revision_conflict' });
+    await expect(
+      saveAiProfile({ pool: f.pool, request: req, localConfigurationDrafts: true }),
+    ).rejects.toMatchObject({ code: 'revision_conflict' });
+    await expect(
+      saveAiProfile({
+        pool: f.pool,
+        request: { ...req, id: randomUUID() },
+        localConfigurationDrafts: true,
+      }),
+    ).rejects.toMatchObject({ code: 'revision_conflict' });
+    f.state.connections.length = 0;
+    await expect(
+      saveAiProfile({
+        pool: f.pool,
+        request: { ...req, id: randomUUID() },
+        localConfigurationDrafts: true,
+      }),
+    ).rejects.toMatchObject({ code: 'connection_unavailable' });
+    expect(f.state.profiles).toHaveLength(1);
+    expect(f.state.profileHistory).toHaveLength(1);
+  });
   it('persists and qualifies the exact alias rather than its unprefixed model ID', async () => {
     const f = fake();
     const modelId = '~openai/gpt-astra-latest';

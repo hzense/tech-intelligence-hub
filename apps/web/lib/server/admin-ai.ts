@@ -4,6 +4,7 @@ import {
   listAiConnections,
   listAiProfiles,
   listAiProbes,
+  getAiProfileReference,
   resolveAiGenerationAccess,
   resolveAiStageAccess,
   type AiConnection,
@@ -126,8 +127,15 @@ export async function executeAiAdmin(
     keyring: config.keyring,
     allowedHosts: config.allowedHosts,
     invoke: invokeAiProbe,
+    localConfigurationDrafts: isLocalDevelopment(),
   });
   return execute(operation, command);
+}
+
+/** Local configuration persistence only; not permission to execute an AI stage. */
+export async function validateLocalAiProfileReference(id: string, revision: number) {
+  if (!isLocalDevelopment()) throw new AiBackendConfigurationError();
+  return getAiProfileReference({ pool: restrictedPool, id, revision });
 }
 
 /** Server-only capability resolution; credentials are returned only for an admitted run. */

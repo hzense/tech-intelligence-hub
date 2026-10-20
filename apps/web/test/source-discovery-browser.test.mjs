@@ -47,7 +47,7 @@ test(
     };
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client'; import {AdminAutomation} from './components/admin-automation'; const p=new URLSearchParams(location.search); createRoot(document.getElementById('root')).render(<AdminAutomation kind={p.has('insight')?'topic_insight':'source_collection'} configured={!p.has('missingStorage')} executionEnabled={p.has('execute')} executionReadiness={{ready:false,checks:[{key:'storage',ready:true},{key:'generation',ready:false}]}} loadError={false} initial={{...${JSON.stringify(initial)},configDeletionAvailable:!p.has('legacySchema')}} profiles={[{id:'${profileId}',revision:1,name:'验收模型',ready:true}]} topics={[{id:'topic-ai',name:'人工智能'}]}/>);`,
+        contents: `import {createRoot} from 'react-dom/client'; import {AdminAutomation} from './components/admin-automation'; const p=new URLSearchParams(location.search); createRoot(document.getElementById('root')).render(<AdminAutomation kind={p.has('insight')?'topic_insight':'source_collection'} configured={!p.has('missingStorage')} executionEnabled={p.has('execute')} executionReadiness={{ready:false,checks:[{key:'storage',ready:true},{key:'generation',ready:false}]}} loadError={false} localMode={p.has('local')} initial={{...${JSON.stringify(initial)},configDeletionAvailable:!p.has('legacySchema')}} profiles={[{id:'${profileId}',revision:1,name:'验收模型',ready:!p.has('draft')}]} topics={[{id:'topic-ai',name:'人工智能'}]}/>);`,
         resolveDir: root,
         loader: 'tsx',
       },
@@ -755,6 +755,40 @@ test(
         page.getByRole('heading', { name: '按需读取专题正文', exact: true }),
       ).toBeVisible();
       assert.equal(posts.length, 6, 'reading a report neither publishes it nor invokes AI');
+      // Local configuration accepts a saved, unverified model draft for both
+      // kinds, but never turns that setting into execution authorization.
+      for (const kind of ['source_collection', 'topic_insight']) {
+        await page.goto(
+          `http://127.0.0.1:${server.address().port}/?local=1&draft=1&execute=1${kind === 'topic_insight' ? '&insight=1' : ''}`,
+        );
+        await expect(page.getByText('本地配置模式', { exact: false })).toBeVisible();
+        await expect(
+          page.getByRole('option', { name: '验收模型 · r1 · 草稿，未验证' }),
+        ).toHaveCount(1);
+        await expect(
+          page.getByRole('checkbox', { name: '允许定时执行', exact: false }),
+        ).toBeDisabled();
+        if (kind === 'source_collection')
+          await expect(page.getByRole('button', { name: '立即运行', exact: true })).toBeDisabled();
+        else
+          await expect(page.getByRole('button', { name: '立即运行', exact: true })).toHaveCount(0);
+        await page.getByLabel('配置名称', { exact: true }).fill(`本地草稿 ${kind}`);
+        await page.getByLabel('分阶段模型配置', { exact: true }).selectOption(profileId);
+        if (kind === 'topic_insight')
+          await page.getByRole('checkbox', { name: '人工智能', exact: true }).check();
+        const writesBeforeSave = posts.length;
+        await page.getByRole('button', { name: '保存配置', exact: true }).click();
+        await expect(
+          page.getByRole('status').filter({ hasText: '保存配置不会启动任务' }),
+        ).toBeVisible();
+        assert.equal(posts.length, writesBeforeSave + 1);
+        assert.equal(posts.at(-1).action, 'save');
+        assert.equal(posts.at(-1).request.config.kind, kind);
+        assert.equal(posts.at(-1).request.config.enabled, false);
+        assert.equal(posts.at(-1).request.config.profileId, profileId);
+        assert.equal(posts.at(-1).request.config.profileRevision, 1);
+      }
+      assert.equal(posts.filter((post) => post.action === 'trigger').length, 0);
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

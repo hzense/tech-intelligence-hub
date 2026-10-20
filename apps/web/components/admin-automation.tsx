@@ -371,6 +371,7 @@ export function AdminAutomation({
   initial,
   profiles,
   topics,
+  localMode = false,
 }: {
   kind: Kind;
   configured: boolean;
@@ -380,6 +381,7 @@ export function AdminAutomation({
   initial: Dashboard;
   profiles: Profile[];
   topics: Topic[];
+  localMode?: boolean;
 }) {
   const [state, setState] = useState(initial);
   const [editing, setEditing] = useState<ConfigView | null>(null);
@@ -469,6 +471,7 @@ export function AdminAutomation({
   }
   async function run(row: ConfigView) {
     if (
+      localMode ||
       busy ||
       !configured ||
       !executionEnabled ||
@@ -604,11 +607,19 @@ export function AdminAutomation({
       <header className={styles.header}>
         <p className="kicker">管理后台 · 自动任务</p>
         <h1>{kind === 'source_collection' ? '自动采集配置' : '专题洞察配置'}</h1>
-        <p>
-          {kind === 'source_collection'
-            ? '选择 AI 配置，自动搜索网站科技范围内的互联网信息、获取原文、去重并生成私有候选；无需指定领域或填写网址。候选经人工确认后发布。'
-            : '按专题选择当前公开信号，生成附有引用的私有报告，确认后公开。'}
-        </p>
+        {localMode ? (
+          <p role="status">
+            本地配置模式：可选择未完成能力测试的模型草稿，保存和修订仅写入本机数据库。
+            自动采集、专题生成及定时执行暂未本地化，不能运行；不会联网搜索、调用 AI 或同步生产。
+          </p>
+        ) : null}
+        {!localMode ? (
+          <p>
+            {kind === 'source_collection'
+              ? '选择 AI 配置，自动搜索网站科技范围内的互联网信息、获取原文、去重并生成私有候选；无需指定领域或填写网址。候选经人工确认后发布。'
+              : '按专题选择当前公开信号，生成附有引用的私有报告，确认后公开。'}
+          </p>
+        ) : null}
         {loadError ? (
           <p role="alert">
             任务列表读取失败，已停用操作；请检查专用数据库连接及权限，不要将空列表当作没有任务。
@@ -684,12 +695,15 @@ export function AdminAutomation({
                 });
               }}
             >
-              <option value="">选择已就绪配置</option>
+              <option value="">
+                {localMode ? '选择本地模型配置（可选草稿）' : '选择已就绪配置'}
+              </option>
               {profiles
-                .filter((row) => row.ready)
+                .filter((row) => localMode || row.ready)
                 .map((row) => (
                   <option key={row.id} value={row.id}>
                     {row.name} · r{row.revision}
+                    {localMode && !row.ready ? ' · 草稿，未验证' : ''}
                   </option>
                 ))}
             </select>
@@ -792,7 +806,7 @@ export function AdminAutomation({
             <input
               type="checkbox"
               checked={draft.enabled}
-              disabled={!configured || (!executionEnabled && !draft.enabled)}
+              disabled={localMode || !configured || (!executionEnabled && !draft.enabled)}
               onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
             />
             允许定时执行（可能产生费用）
@@ -843,14 +857,14 @@ export function AdminAutomation({
                       ) : null}
                     </td>
                     <td>{row.config.frequency}</td>
-                    <td>{row.enabled ? '定时开启' : '仅手动'}</td>
+                    <td>{localMode ? '本地草稿 · 不执行' : row.enabled ? '定时开启' : '仅手动'}</td>
                     <td>
                       <button type="button" disabled={busy} onClick={() => edit(row)}>
                         编辑
                       </button>
                       <button
                         type="button"
-                        disabled={busy || !configured || !executionEnabled}
+                        disabled={localMode || busy || !configured || !executionEnabled}
                         onClick={() => void run(row)}
                       >
                         立即运行

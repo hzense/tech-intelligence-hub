@@ -66,7 +66,7 @@ async function startGuidanceFixture() {
         const data = await response.json();
         createRoot(document.getElementById('root')).render(
           <AdminAiConsole initialConnections={data.connections} initialProbes={data.probes}
-            configured available allowedHosts={data.allowedHosts} />
+            configured available allowedHosts={data.allowedHosts} localMode={data.localMode} />
         );
       `,
       resolveDir: resolve(directory, '..'),
@@ -90,6 +90,7 @@ async function startGuidanceFixture() {
   let connections = [];
   let probes = [];
   let allowedHosts = [];
+  let localMode = false;
   let failNextCreate = false;
   let failedCreateResponses = 0;
   const writes = [];
@@ -106,7 +107,7 @@ async function startGuidanceFixture() {
         outgoing.end(JSON.stringify(value));
       };
       if (url.pathname === '/__fixture/bootstrap') {
-        json({ connections, probes, allowedHosts });
+        json({ connections, probes, allowedHosts, localMode });
       } else if (url.pathname === '/api/admin/ai/connections') {
         if (incoming.method === 'GET') {
           json({ connections });
@@ -140,6 +141,7 @@ async function startGuidanceFixture() {
           ...savedConnection,
           ...previous,
           ...suppliedFields,
+          ...(!previous && !body.api_key ? { has_key: false, key_mask: null } : {}),
           ...(body.revoke_key === true ? { enabled: false, has_key: false, key_mask: null } : {}),
           id: body.id,
           revision: previous ? previous.revision + 1 : 1,
@@ -191,6 +193,7 @@ async function startGuidanceFixture() {
       connections = structuredClone(data.connections ?? []);
       probes = structuredClone(data.probes ?? []);
       allowedHosts = data.allowedHosts ?? ['ai-gateway.vercel.sh', 'openrouter.ai'];
+      localMode = data.localMode ?? false;
       writes.length = 0;
       failNextCreate = false;
     },
@@ -784,6 +787,43 @@ test(
         await expect(apiKey()).toHaveValue('');
         await expect(page.getByLabel('连接名称', { exact: true })).toHaveValue('');
         await expectNoWrites();
+      },
+    );
+
+    await t.test(
+      'local connections save without a key as disabled drafts and never request models or probes',
+      async () => {
+        await mount({ localMode: true });
+        const localKey = page.getByLabel('API Key（本地草稿可留空）', { exact: true });
+        await expect(localKey).toHaveValue('');
+        await expect(localKey).not.toHaveAttribute('required');
+        await expect(page.getByLabel('本地真实调用已关闭（保存不启用）')).toBeDisabled();
+        await expect(page.getByLabel('输入单价（USD／百万 token）', { exact: true })).toHaveValue(
+          '0',
+        );
+        await expect(page.getByLabel('输出单价（USD／百万 token）', { exact: true })).toHaveValue(
+          '0',
+        );
+        await page.getByLabel('连接名称', { exact: true }).fill('Synthetic local draft');
+        const created = await expectSubmitted('POST');
+        assert.equal(created.enabled, false);
+        assert.equal(Object.hasOwn(created, 'api_key'), false);
+        await expect(page.getByRole('button', { name: '启用', exact: true })).toBeDisabled();
+        await expect(
+          page.getByRole('button', { name: '读取模型列表', exact: true }),
+        ).toBeDisabled();
+        await expect(
+          page.getByRole('button', { name: '测试基础连接', exact: true }),
+        ).toBeDisabled();
+        // There is no stored credential to leak when an empty-key draft's
+        // endpoint is changed. No replacement API key is required locally.
+        await page.getByRole('button', { name: '编辑', exact: true }).click();
+        await preset().selectOption('openrouter');
+        const updated = await expectSubmitted('PATCH');
+        assert.equal(updated.base_url, openrouterBase);
+        assert.equal(updated.enabled, false);
+        assert.equal(Object.hasOwn(updated, 'api_key'), false);
+        assert.equal(fixture.writes.length, 2);
       },
     );
 

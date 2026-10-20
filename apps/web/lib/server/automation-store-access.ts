@@ -8,6 +8,9 @@ import {
 } from '../../../../packages/database/src/automation-store.mjs';
 
 export function automationDatabaseConfiguration(reader = false) {
+  // Local configuration storage is not permission to run paid automation or
+  // publish insights, even if an execution flag is accidentally enabled.
+  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1') throw new AutomationError('execution_disabled');
   if (process.env[reader ? 'HZENSE_TOPIC_INSIGHTS_ENABLED' : 'HZENSE_AUTOMATION_ENABLED'] !== '1')
     throw new AutomationError('not_configured');
   return automationStorageConfiguration(reader);

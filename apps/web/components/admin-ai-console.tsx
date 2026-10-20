@@ -108,12 +108,21 @@ export function AdminAiConsole({
     const baseUrl = string(data, 'base_url');
     const endpoint = inspectAiEndpoint(baseUrl, allowedHosts);
     if (!endpoint.valid) {
-      setMessage(aiEndpointMessage(endpoint));
+      setMessage(
+        localMode && endpoint.issue === 'unapproved_host'
+          ? '该域名不在本地允许列表中，请使用列出的供应商预设；无需调整 Production 配置。'
+          : aiEndpointMessage(endpoint),
+      );
       return;
     }
     const replaceEndpoint =
       !editing || aiEndpointChanged(editing.base_url, baseUrl, editing.base_url);
-    if (editing && replaceEndpoint && !string(data, 'api_key')) {
+    if (
+      editing &&
+      replaceEndpoint &&
+      !string(data, 'api_key') &&
+      !(localMode && !editing.has_key)
+    ) {
       setMessage('更换接口地址时必须重新填写密钥，不能沿用原接口的密钥。');
       return;
     }
@@ -122,7 +131,7 @@ export function AdminAiConsole({
       protocol: 'openai-compatible',
       // Do not re-normalize an unchanged stored endpoint when saving other fields.
       ...(replaceEndpoint ? { base_url: baseUrl } : {}),
-      enabled: data.get('enabled') === 'on',
+      enabled: !localMode && data.get('enabled') === 'on',
       settings: {
         timeout_ms: number(data, 'timeout_ms'),
         max_concurrency: number(data, 'max_concurrency'),
@@ -150,9 +159,11 @@ export function AdminAiConsole({
       createId.current = null;
       await refresh();
       setMessage(
-        editing && result.connection.revision === editing.revision
-          ? `配置未变化，保留 r${result.connection.revision}，原有能力测试继续适用。无需在测试后再次保存连接。`
-          : `连接已保存为 r${result.connection.revision}。请在此修订下完成能力测试；测试结果自动保存，测试后无需再次保存连接。`,
+        localMode
+          ? `本地连接已保存为 r${result.connection.revision}，未启用真实调用；可以继续保存分阶段模型草稿。`
+          : editing && result.connection.revision === editing.revision
+            ? `配置未变化，保留 r${result.connection.revision}，原有能力测试继续适用。无需在测试后再次保存连接。`
+            : `连接已保存为 r${result.connection.revision}。请在此修订下完成能力测试；测试结果自动保存，测试后无需再次保存连接。`,
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '保存未确认，请刷新。');
@@ -242,7 +253,7 @@ export function AdminAiConsole({
   return (
     <>
       <AiAvailability configured={configured} available={available} />
-      {!pendingState.available ? (
+      {!localMode && !pendingState.available ? (
         <p className={styles.notice}>
           尚不能安全保存／恢复测试编号，模型测试保持禁用；请允许此站点使用会话存储。仅保存测试编号和非密钥配置引用，不保存
           API key。
@@ -250,10 +261,15 @@ export function AdminAiConsole({
       ) : null}
       <p className={styles.muted}>
         允许的接口域名：{allowedHosts.join('、') || '未配置'}
-        。所有请求走服务端；测试可能产生费用，但不会采集资料或发布信号。
+        {localMode
+          ? '。本地仅保存配置，模型列表与能力测试均已禁用，不会向供应商发送请求。'
+          : '。所有请求走服务端；测试可能产生费用，但不会采集资料或发布信号。'}
       </p>
       <p className={styles.notice} role="status" aria-live="polite">
-        {message || '先保存并启用连接，再分别进行连接和能力测试。'}
+        {message ||
+          (localMode
+            ? '可不填 API Key，先保存本地连接草稿；不会启用真实 AI。'
+            : '先保存并启用连接，再分别进行连接和能力测试。')}
       </p>
       <div className={styles.grid}>
         <section className={styles.stack} aria-label="已保存的 AI 连接">
@@ -297,7 +313,7 @@ export function AdminAiConsole({
                 </button>
                 <button
                   className={styles.button}
-                  disabled={busy || !connection.has_key}
+                  disabled={localMode || busy || !connection.has_key}
                   onClick={() => change(connection)}
                 >
                   {connection.enabled ? '停用' : '启用'}
@@ -350,10 +366,19 @@ export function AdminAiConsole({
                 initialBaseUrl={editing?.base_url ?? 'https://ai-gateway.vercel.sh/v1'}
                 editing={editing !== null}
                 allowedHosts={allowedHosts}
+                localMode={localMode}
+                keyOptional={localMode && !editing?.has_key}
               />
               <label className={styles.checkbox}>
-                <input type="checkbox" name="enabled" defaultChecked={editing?.enabled ?? false} />
-                允许此连接接受测试和后续受控调用
+                <input
+                  type="checkbox"
+                  name="enabled"
+                  disabled={localMode}
+                  defaultChecked={!localMode && (editing?.enabled ?? false)}
+                />
+                {localMode
+                  ? '本地真实调用已关闭（保存不启用）'
+                  : '允许此连接接受测试和后续受控调用'}
               </label>
               <div className={styles.fields}>
                 <label>
@@ -400,7 +425,9 @@ export function AdminAiConsole({
                     max={1000000}
                     step="0.000001"
                     required
-                    defaultValue={editing ? settings.input_price_microusd_per_million / 1e6 : ''}
+                    defaultValue={
+                      editing || localMode ? settings.input_price_microusd_per_million / 1e6 : ''
+                    }
                   />
                 </label>
                 <label>
@@ -412,14 +439,16 @@ export function AdminAiConsole({
                     max={1000000}
                     step="0.000001"
                     required
-                    defaultValue={editing ? settings.output_price_microusd_per_million / 1e6 : ''}
+                    defaultValue={
+                      editing || localMode ? settings.output_price_microusd_per_million / 1e6 : ''
+                    }
                   />
                 </label>
               </div>
               <p className={styles.muted}>
-                请按所测试模型的供应商价格填写。0
-                表示明确按免费估算；此预算不是供应商账单上限。无自动重试，每日最多 100
-                次测试，失败或未知结果保留预算占用。
+                {localMode
+                  ? '这些参数仅用于配置联调。默认单价 0 是草稿占位，不表示供应商免费；本地不会执行真实测试或产生供应商费用。'
+                  : '请按所测试模型的供应商价格填写。0 表示明确按免费估算；此预算不是供应商账单上限。无自动重试，每日最多 100 次测试，失败或未知结果保留预算占用。'}
               </p>
               <button className={`${styles.button} ${styles.primary}`} type="submit">
                 {busy ? '处理中…' : '保存连接'}
@@ -458,9 +487,11 @@ export function AdminAiConsole({
               disabled={modelControlsDisabled}
             />
             <p id="ai-model-list-status" className={styles.muted}>
-              {listed
-                ? `当前连接 r${selected?.revision} 的列表包含 ${models.length} 个模型；选择后只填写模型 ID，不自动测试。`
-                : '点击“读取模型列表”后可在同一输入框搜索和选择；也可直接填写完整模型 ID。'}
+              {localMode
+                ? '本地不读取供应商模型列表；请在分阶段模型配置中手动填写模型 ID，保存为未验证草稿。'
+                : listed
+                  ? `当前连接 r${selected?.revision} 的列表包含 ${models.length} 个模型；选择后只填写模型 ID，不自动测试。`
+                  : '点击“读取模型列表”后可在同一输入框搜索和选择；也可直接填写完整模型 ID。'}
             </p>
             {listed?.result.truncated === true ? (
               <p className={styles.muted}>模型列表已截断；仍可手动填写完整模型 ID。</p>
@@ -496,8 +527,9 @@ export function AdminAiConsole({
           </fieldset>
         </div>
         <p className={styles.muted}>
-          基础连接成功不代表支持结构化输出或工具调用。分阶段配置必须绑定当前连接修订、相同模型及通过的独立测试。超过
-          24 小时仅提醒，不自动失效；更换模型时请先核对匹配测试及估算单价。
+          {localMode
+            ? '本地配置草稿不代表供应商能力已验证，不能用于真实生成。业务流程联调请使用生成页的固定本地模拟配置。'
+            : '基础连接成功不代表支持结构化输出或工具调用。分阶段配置必须绑定当前连接修订、相同模型及通过的独立测试。超过 24 小时仅提醒，不自动失效；更换模型时请先核对匹配测试及估算单价。'}
         </p>
         {pending ? (
           <div className={styles.notice}>

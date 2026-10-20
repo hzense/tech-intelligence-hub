@@ -49,12 +49,14 @@ export function AdminAiProfiles({
   initialProbes = noProbes,
   configured,
   available,
+  localMode = false,
 }: {
   connections: AiConnection[];
   initialProfiles: AiProfile[];
   initialProbes?: AiProbe[];
   configured: boolean;
   available: boolean;
+  localMode?: boolean;
 }) {
   const [profiles, setProfiles] = useState(initialProfiles);
   const [connections, setConnections] = useState(initialConnections);
@@ -64,7 +66,7 @@ export function AdminAiProfiles({
   const [busy, setBusy] = useState(false);
   const [selections, setSelections] = useState(() => selectionsFor(null));
   const [formRevision, setFormRevision] = useState(0);
-  const discovery = useAiModelDiscovery(initialProbes, available);
+  const discovery = useAiModelDiscovery(initialProbes, available && !localMode);
   const disabled = busy || !available || discovery.loading;
   const createId = useRef<string | null>(null);
 
@@ -79,7 +81,7 @@ export function AdminAiProfiles({
   function selectConnection(stage: Stage, connectionId: string) {
     setSelections((old) => ({ ...old, [stage]: { connection_id: connectionId, model_id: '' } }));
     const connection = connections.find((row) => row.id === connectionId);
-    if (connection) void discovery.load(connection);
+    if (connection && !localMode) void discovery.load(connection);
   }
 
   async function refresh() {
@@ -96,7 +98,10 @@ export function AdminAiProfiles({
           (row) => row.id === old[stage].connection_id,
         );
         if (!after) next[stage] = { connection_id: '', model_id: '' };
-        else if (after.revision !== before?.revision || !after.enabled || !after.has_key)
+        else if (
+          after.revision !== before?.revision ||
+          (!localMode && (!after.enabled || !after.has_key))
+        )
           next[stage] = { ...old[stage], model_id: '' };
       }
       return next;
@@ -111,8 +116,12 @@ export function AdminAiProfiles({
     const draft = {} as AiProfileSaveRequest['stages'];
     for (const [key] of stages) {
       const connection = connections.find((item) => item.id === selections[key].connection_id);
-      if (!connection || !connection.enabled || !connection.has_key) {
-        setMessage('请为每个阶段选择一个已启用且具有密钥的可用连接。');
+      if (!connection || (!localMode && (!connection.enabled || !connection.has_key))) {
+        setMessage(
+          localMode
+            ? '请为每个阶段选择一个当前存在的本地连接。'
+            : '请为每个阶段选择一个已启用且具有密钥的可用连接。',
+        );
         return;
       }
       if (!isValidAiModelId(selections[key].model_id)) {
@@ -143,7 +152,11 @@ export function AdminAiProfiles({
       const result = await aiRequest<{ profile: AiProfile }>('profiles', 'POST', payload);
       setEditing(result.profile);
       createId.current = null;
-      setMessage(`已保存配置 r${result.profile.revision}。本次未启动任何任务。`);
+      setMessage(
+        localMode
+          ? `已保存本地配置草稿 r${result.profile.revision}。草稿不可执行，本次未调用 AI。`
+          : `已保存配置 r${result.profile.revision}。本次未启动任何任务。`,
+      );
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '保存结果未确认，请刷新后核对。');
@@ -156,22 +169,35 @@ export function AdminAiProfiles({
     <>
       <AiAvailability configured={configured} available={available} />
       <p className={styles.notice}>
-        三个阶段可以选择不同连接和模型。保存前必须通过同一连接修订、同一模型的基础连接与结构化输出测试；启用工具要求时还需通过工具调用测试。超过
-        24
-        小时仅提醒，不自动失效；连接修订或模型变更后须具备匹配的测试记录。这里保存配置，不创建采集、核验或分析任务。
+        {localMode ? (
+          '本地配置草稿：可先保存连接、模型 ID 和提示词，无需真实 API Key 或能力测试。草稿不可执行；保存不会调用 AI，不会自动读取模型列表，也不会同步到生产。执行仍需有效的能力测试与单独授权。'
+        ) : (
+          <>
+            三个阶段可以选择不同连接和模型。保存前必须通过同一连接修订、同一模型的基础连接与结构化输出测试；启用工具要求时还需通过工具调用测试。超过
+            24
+            小时仅提醒，不自动失效；连接修订或模型变更后须具备匹配的测试记录。这里保存配置，不创建采集、核验或分析任务。
+          </>
+        )}
       </p>
       <p className={styles.muted}>
-        选择 AI
-        连接后自动加载当前修订的模型列表；已有成功列表会复用，没有时读取一次，失败不自动重试。
-        模型列表读取受测试次数、并发与预算门禁约束，不运行生成或能力测试。 随机性统一为适中（
+        {localMode ? (
+          '选择本地连接后，请手动填写完整模型 ID。'
+        ) : (
+          <>
+            选择 AI
+            连接后自动加载当前修订的模型列表；已有成功列表会复用，没有时读取一次，失败不自动重试。
+            模型列表读取受测试次数、并发与预算门禁约束，不运行生成或能力测试。
+          </>
+        )}{' '}
+        随机性统一为适中（
         {aiProfileDefaultTemperature}）；保存新修订时采用该值，历史配置不改写。
       </p>
-      {!discovery.pendingState.available ? (
+      {!localMode && !discovery.pendingState.available ? (
         <p className={styles.notice}>
           无法安全保存／恢复模型列表请求编号，请允许会话存储；暂不发起请求，仍可手填模型 ID。
         </p>
       ) : null}
-      {discovery.pendingState.request ? (
+      {!localMode && discovery.pendingState.request ? (
         <div className={styles.notice}>
           <p>
             有待确认测试 {discovery.pendingState.request.id}；暂停新的模型列表请求，不会自动重试。
@@ -186,7 +212,7 @@ export function AdminAiProfiles({
           </button>
         </div>
       ) : null}
-      {discovery.pendingMessage ? (
+      {!localMode && discovery.pendingMessage ? (
         <p className={styles.notice} role="status">
           {discovery.pendingMessage}
         </p>
@@ -209,7 +235,11 @@ export function AdminAiProfiles({
                 setBusy(true);
                 try {
                   await refresh();
-                  setMessage('配置状态与连接修订已刷新；变更后的连接仍需重新通过能力测试。');
+                  setMessage(
+                    localMode
+                      ? '本地配置与连接修订已刷新；草稿仍不可执行。'
+                      : '配置状态与连接修订已刷新；变更后的连接仍需重新通过能力测试。',
+                  );
                 } catch {
                   setMessage('读取失败，请稍后重试。');
                 } finally {
@@ -227,7 +257,11 @@ export function AdminAiProfiles({
                 {profile.name} · r{profile.revision}
               </h2>
               <p className={styles.badge}>
-                {profile.readiness.ready ? '测试证明有效' : '尚不可用，需要更新测试或配置'}
+                {localMode
+                  ? '本地配置草稿 · 不可执行'
+                  : profile.readiness.ready
+                    ? '测试证明有效'
+                    : '尚不可用，需要更新测试或配置'}
               </p>
               {profile.readiness.reasons.length ? (
                 <ul>
@@ -323,10 +357,14 @@ export function AdminAiProfiles({
                           <option
                             key={connection.id}
                             value={connection.id}
-                            disabled={!connection.enabled || !connection.has_key}
+                            disabled={!localMode && (!connection.enabled || !connection.has_key)}
                           >
                             {connection.name} · r{connection.revision}
-                            {!connection.enabled || !connection.has_key ? '（不可用）' : ''}
+                            {!connection.enabled || !connection.has_key
+                              ? localMode
+                                ? '（仅配置草稿）'
+                                : '（不可用）'
+                              : ''}
                           </option>
                         ))}
                       </select>
@@ -344,17 +382,21 @@ export function AdminAiProfiles({
                         }))
                       }
                       disabled={
-                        disabled || !connection || !connection.enabled || !connection.has_key
+                        disabled ||
+                        !connection ||
+                        (!localMode && (!connection.enabled || !connection.has_key))
                       }
                       describedBy={statusId}
                     />
                     <p id={statusId} className={styles.muted}>
-                      {catalog.message ||
-                        (!connection
-                          ? '先选择 AI 连接，即可自动加载模型列表。'
-                          : catalog.listed
-                            ? `当前连接 r${connection.revision} 的已保存列表有 ${catalog.models.length} 个模型；可搜索、选择或手填。`
-                            : '暂无当前修订的模型列表；可重新读取，也可手填完整模型 ID。')}
+                      {localMode
+                        ? '本地模式不读取供应商模型列表，请手动填写模型 ID；保存草稿不验证模型是否可调用。'
+                        : catalog.message ||
+                          (!connection
+                            ? '先选择 AI 连接，即可自动加载模型列表。'
+                            : catalog.listed
+                              ? `当前连接 r${connection.revision} 的已保存列表有 ${catalog.models.length} 个模型；可搜索、选择或手填。`
+                              : '暂无当前修订的模型列表；可重新读取，也可手填完整模型 ID。')}
                       {catalog.listed ? ` 列表时间：${catalog.listed.created_at}。` : ''}
                       {catalog.listed?.result.truncated === true
                         ? ' 列表已截断；仍可手填未列出的模型 ID。'
@@ -364,6 +406,7 @@ export function AdminAiProfiles({
                       type="button"
                       className={styles.button}
                       disabled={
+                        localMode ||
                         disabled ||
                         !connection ||
                         !connection.enabled ||
@@ -372,7 +415,7 @@ export function AdminAiProfiles({
                         discovery.pendingState.request !== null
                       }
                       onClick={() => {
-                        if (connection) void discovery.load(connection, true);
+                        if (connection && !localMode) void discovery.load(connection, true);
                       }}
                     >
                       重新读取模型列表
@@ -415,7 +458,13 @@ export function AdminAiProfiles({
                 );
               })}
               <button className={`${styles.button} ${styles.primary}`} type="submit">
-                {editing ? '保存为新修订' : '创建新配置'}
+                {localMode
+                  ? editing
+                    ? '保存草稿新修订'
+                    : '保存本地草稿'
+                  : editing
+                    ? '保存为新修订'
+                    : '创建新配置'}
               </button>
             </fieldset>
           </form>

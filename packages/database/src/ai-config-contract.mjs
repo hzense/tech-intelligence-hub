@@ -152,11 +152,23 @@ function connectionFields(v, hosts) {
   if ('api_key' in v) out.api_key = parseAiApiKey(v.api_key);
   return out;
 }
-export function parseAiConnectionCreate(input, hosts) {
+export function parseAiConnectionCreate(input, hosts, { allowKeylessDraft = false } = {}) {
   const v = connectionFields(
-    aiObject(input, ['name', 'protocol', 'base_url', 'enabled', 'settings', 'api_key'], ['id']),
+    aiObject(
+      input,
+      [
+        'name',
+        'protocol',
+        'base_url',
+        'enabled',
+        'settings',
+        ...(allowKeylessDraft === true ? [] : ['api_key']),
+      ],
+      ['id', ...(allowKeylessDraft === true ? ['api_key'] : [])],
+    ),
     hosts,
   );
+  if (!('api_key' in v) && v.enabled !== false) aiFail();
   if ('id' in v) v.id = aiUuid(v.id);
   return v;
 }
