@@ -341,6 +341,21 @@ test(
       await page.reload();
       await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
       await expect(page.getByRole('button', { name: '保存补充', exact: true })).toBeEnabled();
+      data.resourcePublicationReady = true;
+      data.missingResourceDetails = [{ type: 'organization', name: '缺失组织' }];
+      await page.reload();
+      await expect(page.getByText(/候选正文已保留，但关联资源资料尚未齐全/)).toBeVisible();
+      await expect(page.getByText(/待补充：.*缺失组织 的组织资源资料/)).toBeVisible();
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '保存补充', exact: true })).toBeEnabled();
+      assert.equal(
+        posts.length,
+        blockedPosts + 1,
+        'missing-resource check does not call AI or publish',
+      );
+      data.missingResourceDetails = [];
+      await page.reload();
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
       data = resourceScenario;
       const previousPosts = posts.length;
       await page.reload();

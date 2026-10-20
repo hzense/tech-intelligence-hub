@@ -66,7 +66,7 @@ async function startGuidanceFixture() {
         const data = await response.json();
         createRoot(document.getElementById('root')).render(
           <AdminAiConsole initialConnections={data.connections} initialProbes={data.probes}
-            configured available allowedHosts={data.allowedHosts} localMode={data.localMode} />
+            configured available allowedHosts={data.allowedHosts} localMode={data.localMode} localRealAi={data.localRealAi} />
         );
       `,
       resolveDir: resolve(directory, '..'),
@@ -91,6 +91,7 @@ async function startGuidanceFixture() {
   let probes = [];
   let allowedHosts = [];
   let localMode = false;
+  let localRealAi = false;
   let failNextCreate = false;
   let failedCreateResponses = 0;
   const writes = [];
@@ -107,7 +108,7 @@ async function startGuidanceFixture() {
         outgoing.end(JSON.stringify(value));
       };
       if (url.pathname === '/__fixture/bootstrap') {
-        json({ connections, probes, allowedHosts, localMode });
+        json({ connections, probes, allowedHosts, localMode, localRealAi });
       } else if (url.pathname === '/api/admin/ai/connections') {
         if (incoming.method === 'GET') {
           json({ connections });
@@ -150,6 +151,19 @@ async function startGuidanceFixture() {
         json({ connection });
       } else if (url.pathname === '/api/admin/ai/probes' && incoming.method === 'GET') {
         json({ probes });
+      } else if (url.pathname === '/api/admin/ai/probes' && incoming.method === 'POST') {
+        const chunks = [];
+        for await (const chunk of incoming) chunks.push(chunk);
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        writes.push({ method: incoming.method, body });
+        const probe = {
+          ...savedModelProbe,
+          ...body,
+          status: 'succeeded',
+          result: body.kind === 'models' ? savedModelProbe.result : { synthetic: true },
+        };
+        probes = [...probes.filter((item) => item.id !== probe.id), probe];
+        json({ probe });
       } else if (url.pathname.startsWith('/api/admin/ai/probes/') && incoming.method === 'GET') {
         const probe = probes.find((item) => item.id === url.pathname.split('/').at(-1));
         if (probe) json({ probe });
@@ -194,6 +208,7 @@ async function startGuidanceFixture() {
       probes = structuredClone(data.probes ?? []);
       allowedHosts = data.allowedHosts ?? ['ai-gateway.vercel.sh', 'openrouter.ai'];
       localMode = data.localMode ?? false;
+      localRealAi = data.localRealAi ?? false;
       writes.length = 0;
       failNextCreate = false;
     },
@@ -498,6 +513,39 @@ test(
         const retry = await expectSubmitted('POST');
         assert.equal(fixture.writes.length, 2);
         assert.equal(retry.id, originalId);
+      },
+    );
+
+    await t.test(
+      'successful lists explain skipped aliases without blocking normal models or old receipts',
+      async () => {
+        for (const skippedCount of [3, undefined, 0]) {
+          await mountListedModels({
+            localMode: true,
+            localRealAi: true,
+            probes: [
+              {
+                ...savedModelProbe,
+                result: {
+                  ...savedModelProbe.result,
+                  ...(skippedCount === undefined ? {} : { skipped_count: skippedCount }),
+                },
+              },
+            ],
+          });
+          const status = page.locator('#ai-model-list-status');
+          await expect(model()).toHaveAttribute('aria-describedby', 'ai-model-list-status');
+          if (skippedCount > 0) {
+            await expect(status).toContainText(
+              '已跳过 3 个暂不支持的模型别名；其余模型可正常选择。',
+            );
+          } else {
+            await expect(status).not.toContainText('已跳过');
+          }
+          await expect(page.getByText('模型列表已截断；仍可手动填写完整模型 ID。')).toBeVisible();
+          await selectListedModel(fixedModel);
+          await expectNoWrites();
+        }
       },
     );
 
@@ -827,6 +875,49 @@ test(
       },
     );
 
+    await t.test(
+      'local real AI enables keyed connections and explicit probes without calling on mount',
+      async () => {
+        assert.equal(
+          fixture.requests.filter(
+            (request) => request.path === '/api/admin/ai/probes' && request.method === 'POST',
+          ).length,
+          0,
+        );
+        await mount({ localMode: true, localRealAi: true });
+        await expect(page.getByText(/本地真实 AI：配置和测试记录保存在本地数据库/)).toBeVisible();
+        await expect(apiKey()).toHaveAttribute('required', '');
+        await expect(page.getByLabel('允许此连接接受测试和后续受控调用')).toBeEnabled();
+        await expect(page.getByLabel('输入单价（USD／百万 token）', { exact: true })).toHaveValue(
+          '',
+        );
+        await expectNoWrites();
+        await fillNew();
+        await page.getByLabel('允许此连接接受测试和后续受控调用').check();
+        const created = await expectSubmitted('POST');
+        assert.equal(created.enabled, true);
+        assert.equal(created.api_key, syntheticKey);
+        await expect(page.getByRole('button', { name: '停用', exact: true })).toBeEnabled();
+        const modelResponse = page.waitForResponse(
+          (item) =>
+            item.url().endsWith('/api/admin/ai/probes') && item.request().method() === 'POST',
+        );
+        await page.getByRole('button', { name: '读取模型列表', exact: true }).click();
+        assert.equal((await modelResponse).status(), 200);
+        await expect(page.getByRole('status').filter({ hasText: 'succeeded' })).toBeVisible();
+        assert.equal(fixture.writes.at(-1).body.kind, 'models');
+        await selectListedModel(modelAlias);
+        const probeResponse = page.waitForResponse(
+          (item) =>
+            item.url().endsWith('/api/admin/ai/probes') && item.request().method() === 'POST',
+        );
+        await page.getByRole('button', { name: '测试基础连接', exact: true }).click();
+        assert.equal((await probeResponse).status(), 200);
+        assert.equal(fixture.writes.at(-1).body.kind, 'connection');
+        assert.equal(fixture.writes.at(-1).body.model_id, modelAlias);
+      },
+    );
+
     assert.deepEqual(pageErrors, []);
     // Chromium may log the one intentional synthetic 503 used by the retry test.
     const expectedFailureLogs = consoleErrors.filter(
@@ -842,10 +933,10 @@ test(
     assert.ok(expectedFailureLogs.length <= fixture.failedCreateResponses);
     assert.deepEqual(blockedRequests, []);
     assert.equal(
-      fixture.requests.some(
+      fixture.requests.filter(
         (request) => request.path === '/api/admin/ai/probes' && request.method !== 'GET',
-      ),
-      false,
+      ).length,
+      2,
     );
   },
 );

@@ -446,7 +446,37 @@ function eventDate(value) {
 
 const resourceNameKey = (name) => name.normalize('NFKC').trim().toLocaleLowerCase('en-US');
 
-function normalizeResources(value, persons, organizations, fragments) {
+/** Coverage only; callers must separately validate candidate and resource structure/evidence. */
+export function missingGenerationResources({ persons, organizations, resources }) {
+  const covered = new Set(
+    resources.map(({ type, name }) =>
+      JSON.stringify([type === 'person' ? 'person' : 'organization', resourceNameKey(name)]),
+    ),
+  );
+  const identities = [
+    ...persons.map(({ name }) => ({ type: 'person', name })),
+    ...organizations.map((name) => ({ type: 'organization', name })),
+    ...persons.flatMap(({ organization }) =>
+      organization === null ? [] : [{ type: 'organization', name: organization }],
+    ),
+  ];
+  const missing = [];
+  const seen = new Set();
+  for (const identity of identities) {
+    const key = JSON.stringify([identity.type, resourceNameKey(identity.name)]);
+    if (!covered.has(key) && !seen.has(key)) missing.push(identity);
+    seen.add(key);
+  }
+  return missing;
+}
+
+function normalizeResources(
+  value,
+  persons,
+  organizations,
+  fragments,
+  allowMissingCoverage = false,
+) {
   const seen = new Set();
   const resources = list(value, 36, 0, undefined, 'resources')
     .map((resource, index) => {
@@ -503,18 +533,8 @@ function normalizeResources(value, persons, organizations, fragments) {
       fail(undefined, `resources[${index}].name`, 'unexpected_resource');
   }
   if (
-    [...people].some(
-      (name) =>
-        !resources.some(
-          (resource) => resource.type === 'person' && resourceNameKey(resource.name) === name,
-        ),
-    ) ||
-    [...orgs].some(
-      (name) =>
-        !resources.some(
-          (resource) => resource.type !== 'person' && resourceNameKey(resource.name) === name,
-        ),
-    )
+    !allowMissingCoverage &&
+    missingGenerationResources({ persons, organizations, resources }).length
   )
     fail(undefined, 'resources', 'missing_resource');
   return resources;
@@ -692,13 +712,18 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
       const resources =
         outputContract === GENERATION_RESOURCES_CONTRACT
           ? check('resources', () =>
-              normalizeResources(candidate.resources, persons, organizations, fragments),
+              normalizeResources(candidate.resources, persons, organizations, fragments, partial),
             )
           : undefined;
       if (errors.length) return reject();
       const issues = ['needs_public_evidence'];
       if (!persons.length) issues.push('needs_person_evidence');
       if (event_date === null) issues.push('needs_event_time');
+      if (
+        outputContract === GENERATION_RESOURCES_CONTRACT &&
+        missingGenerationResources({ persons, organizations, resources }).length
+      )
+        issues.push('needs_resource_details');
       return {
         index,
         title,
@@ -731,7 +756,10 @@ export function normalizeGeneratedCandidates(value, source, topics, outputContra
   return normalizeCandidates(value, source, false, topics, outputContract);
 }
 
-/** Reject candidates independently; diagnostics contain only server-owned codes, never raw output. */
+/**
+ * Reject invalid candidates independently; retain structurally valid private drafts whose
+ * resource coverage still needs completion. Diagnostics contain only server-owned codes.
+ */
 export function assessGeneratedCandidates(value, source, topics, outputContract) {
   return normalizeCandidates(value, source, true, topics, outputContract);
 }

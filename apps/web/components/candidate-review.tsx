@@ -3,14 +3,18 @@ import type { buildCandidateReview } from '@/lib/candidate-review';
 import { PrivateResult } from './private-generation-result';
 import controls from './admin-controls.module.css';
 import { EditorialPublicationEditor } from './editorial-publication-editor';
+import { isLocalSimulationRecord, type GenerationUiMode } from '../lib/generation-ui-mode';
 
 export function CandidateReview({
   packet,
   localMode = false,
+  localRealAi = false,
 }: {
-  packet: ReturnType<typeof buildCandidateReview>;
+  packet: ReturnType<typeof buildCandidateReview> & GenerationUiMode;
   localMode?: boolean;
+  localRealAi?: boolean;
 }) {
+  const localSimulation = isLocalSimulationRecord(packet, localMode, localRealAi);
   return (
     <>
       <EditorialPublicationEditor
@@ -19,10 +23,17 @@ export function CandidateReview({
         candidateIndex={packet.candidateIndex}
       />
       <details>
-        <summary>{localMode ? '辅助资料与原始模拟候选' : '辅助资料与原始 AI 候选'}</summary>
+        <summary>{localSimulation ? '辅助资料与原始模拟候选' : '辅助资料与原始 AI 候选'}</summary>
         <p>以下保留生成时的原始结果。原始缺项提示不会阻止补齐发布信息后的人工确认发布。</p>
         <PrivateResult
           localMode={localMode}
+          localRealAi={localRealAi}
+          reviewTask={{
+            id: packet.runId,
+            status: 'completed',
+            ...(packet.ai_mode ? { ai_mode: packet.ai_mode } : {}),
+            ...(packet.profile_id ? { profile_id: packet.profile_id } : {}),
+          }}
           snapshotOnly
           result={{ classification: 'private', candidates: [packet.candidate] }}
         />
@@ -62,7 +73,7 @@ export function CandidateReview({
       </details>
       <div className={controls.group}>
         <Link className={controls.button} href="/admin/signal-generation">
-          {localMode ? '返回本地模拟任务列表' : '返回 AI 生成任务列表'}
+          {localSimulation ? '返回本地模拟任务列表' : '返回 AI 生成任务列表'}
         </Link>
         <Link className={controls.button} href={`/admin/signal-generation/${packet.runId}`}>
           返回原生成任务

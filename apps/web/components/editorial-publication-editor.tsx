@@ -31,6 +31,8 @@ const messages: Record<string, string> = {
   entity_reference_invalid: '所选资源已不可用或类型不一致，请重新读取并核对身份。',
   resource_identity_ambiguous: '存在同名资源，请核对并选择正确身份。',
   resource_source_required: '请为每项资源勾选至少一条对应的公开来源，作为资料依据。',
+  resource_details_incomplete:
+    '人物或组织的资源资料仍有缺项，请先完成候选补全或补证，再重新读取并确认发布。',
   not_configured: '人工发布尚未配置完成。',
   invalid_request: '字段格式不正确，请检查日期和名称长度。',
   excluded_person: '人物不收录国家元首或政府首脑，请移除该人物；不要用无事件依据的人物替代。',
@@ -222,7 +224,12 @@ export function EditorialPublicationEditor({
       }
     : null;
   const missing = content
-    ? editorialMissing(content, data?.resourceOptions, data?.resourceSourceOptions)
+    ? editorialMissing(
+        content,
+        data?.resourceOptions,
+        data?.resourceSourceOptions,
+        data?.missingResourceDetails,
+      )
     : [];
   const invalidTopics =
     data?.content.topics.filter(
@@ -269,6 +276,12 @@ export function EditorialPublicationEditor({
           {data.warnings.map((warning) => (
             <p key={warning}>{warning}</p>
           ))}
+          {!!data.missingResourceDetails?.length && (
+            <p role="alert">
+              候选正文已保留，但关联资源资料尚未齐全。请在本页的候选补全或补证区补齐后重新读取；
+              当前不能发布，也不会删除原候选中的人物或组织。
+            </p>
+          )}
           <p role="status">
             {needsRefresh
               ? '当前发布状态待核对'
@@ -345,7 +358,11 @@ export function EditorialPublicationEditor({
                 placeholder="填写人物姓名，多项用换行或逗号分隔"
               />
               {data.content.resources !== undefined && data.content.persons.length === 0 ? (
-                <span>原文未提取到可支持的人物</span>
+                <span>
+                  {data.missingResourceDetails?.some((resource) => resource.type === 'person')
+                    ? '候选已提取人物，但对应资源资料待补全'
+                    : '原文未提取到可支持的人物'}
+                </span>
               ) : null}
             </label>
             {data.content.resources === undefined ? (

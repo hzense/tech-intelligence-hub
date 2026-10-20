@@ -1899,15 +1899,19 @@ test('resource contract generates evidence-backed resource drafts in the same si
       GENERATION_RESOURCES_CONTRACT,
     ),
   );
-  const invalid = providerFixture({
+  const incomplete = providerFixture({
     ...result,
     candidates: [{ ...candidate, topic_ids: [], signal_type: 'product', resources: [] }],
   });
-  const failed = await invalid.invoke({
+  const retained = await incomplete.invoke({
     topics: topicCatalog,
     outputContract: GENERATION_RESOURCES_CONTRACT,
   });
-  assert.equal(failed.success, false);
-  assert.equal(failed.output.rejected[0].errors[0].reason, 'missing_resource');
-  assert.equal(invalid.calls.length, 1);
+  assert.equal(retained.success, true);
+  assert.deepEqual(retained.output.rejected, []);
+  assert.equal(retained.output.candidates[0].status, 'needs_review');
+  assert.ok(retained.output.candidates[0].issues.includes('needs_resource_details'));
+  assert.deepEqual(retained.output.candidates[0].persons, candidate.persons);
+  assert.deepEqual(retained.output.candidates[0].resources, []);
+  assert.equal(incomplete.calls.length, 1, 'no additional paid repair call');
 });

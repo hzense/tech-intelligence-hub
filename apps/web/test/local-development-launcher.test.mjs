@@ -4,6 +4,7 @@ import { URL } from 'node:url';
 import {
   assertLocalDevelopmentLaunchEnvironment,
   buildLocalDevelopmentEnvironment,
+  parseLocalDevelopmentArguments,
   main,
 } from '../../../scripts/local-development.mjs';
 import {
@@ -41,7 +42,11 @@ test('development launcher discards all inherited service credentials and binds 
       HZENSE_LOCAL_LOGIN_TOKEN_FILE: '/stale/login.token',
       HZENSE_LOCAL_LOGIN_EXPIRES_AT: '123456',
       HZENSE_AI_ALLOWED_HOSTS: 'untrusted.invalid',
+      HZENSE_LOCAL_AI_MODE: 'real',
       HZENSE_AUTOMATION_ENABLED: '1',
+      HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD: '999999999',
+      HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD: '999999999',
+      HZENSE_AUTOMATION_RESERVE_MICROUSD: '999999999',
       HZENSE_TOPIC_INSIGHTS_ENABLED: '1',
       HZENSE_AUTOMATION_DATABASE_URL: 'production-private',
       HZENSE_AUTOMATION_DISPATCH_TOKEN: 'production-private',
@@ -59,6 +64,9 @@ test('development launcher discards all inherited service credentials and binds 
   assert.equal(env.HZENSE_LOCAL_AI_MODE, 'mock');
   assert.equal(env.HZENSE_SIGNAL_READ_MODE, 'database');
   assert.equal(env.HZENSE_AUTOMATION_ENABLED, '0');
+  assert.equal(env.HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD, '5000000');
+  assert.equal(env.HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD, '10000000');
+  assert.equal(env.HZENSE_AUTOMATION_RESERVE_MICROUSD, '5000000');
   assert.equal(env.HZENSE_TOPIC_INSIGHTS_ENABLED, '0');
   assert.equal(env.HZENSE_AI_ALLOWED_HOSTS, 'openrouter.ai,ai-gateway.vercel.sh');
   assert.equal(env.HZENSE_AUTOMATION_DISPATCH_TOKEN, undefined);
@@ -83,6 +91,64 @@ test('development launcher discards all inherited service credentials and binds 
   ])
     assert.equal(env[key], undefined);
   assert.doesNotMatch(JSON.stringify(env), /stale-secret|stale-token|stale\/login/);
+});
+
+test('real provider mode is opt-in via a validated local launch argument', () => {
+  assert.deepEqual(parseLocalDevelopmentArguments([]), {
+    port: 3000,
+    check: false,
+    aiMode: 'mock',
+  });
+  assert.deepEqual(parseLocalDevelopmentArguments(['--ai=real', '--port=3001', '--check']), {
+    port: 3001,
+    check: true,
+    aiMode: 'real',
+  });
+  for (const args of [
+    ['--ai=invalid'],
+    ['--ai=real', '--ai=mock'],
+    ['--ai=real', '--ai=real'],
+    ['--ai', 'real'],
+  ])
+    assert.throws(() => parseLocalDevelopmentArguments(args));
+  const env = buildLocalDevelopmentEnvironment(
+    { OPENAI_API_KEY: 'inherited-secret', HZENSE_GENERATION_DAILY_LIMIT_MICROUSD: '999999999' },
+    credentials(),
+    { ...launch, aiMode: 'real' },
+  );
+  assert.equal(env.HZENSE_LOCAL_AI_MODE, 'real');
+  assert.equal(env.HZENSE_AUTOMATION_ENABLED, '1');
+  assert.equal(env.HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD, '5000000');
+  assert.equal(env.HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD, '10000000');
+  assert.equal(env.HZENSE_AUTOMATION_RESERVE_MICROUSD, '5000000');
+  assert.equal(env.HZENSE_TOPIC_INSIGHTS_ENABLED, '0');
+  assert.equal(env.CRON_SECRET, undefined);
+  assert.equal(env.WORKFLOW_TARGET_WORLD, 'local');
+  assert.equal(env.HZENSE_GENERATION_DAILY_LIMIT_MICROUSD, '10000000');
+  assert.equal(env.HZENSE_GENERATION_BATCH_LIMIT_MICROUSD, '5000000');
+  assert.equal(env.OPENAI_API_KEY, undefined);
+  assert.ok(isLocalDevelopment(env));
+  assert.throws(() =>
+    buildLocalDevelopmentEnvironment({}, credentials(), { ...launch, aiMode: 'unknown' }),
+  );
+});
+
+test('real mode check warns of provider spending without starting or invoking AI', async () => {
+  const logs = [];
+  await main(['--check', '--ai=real'], {
+    environment: {},
+    repositoryRoot: launch.root,
+    inspect: async () => {
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    },
+    verifyDatabase: async () => undefined,
+    loadCredentials: async () => credentials(),
+    runProcess: async () => assert.fail('check must not start a server'),
+    log: (message) => logs.push(message),
+  });
+  assert.ok(logs.some((line) => line.includes('资料会发送给供应商')));
+  assert.ok(logs.some((line) => line.includes('供应商费用')));
+  assert.doesNotMatch(logs.join('\n'), /[a-f0-9]{64}|postgresql:/);
 });
 
 test('launcher requires an explicit credential upgrade before exposing local automation configuration', () => {

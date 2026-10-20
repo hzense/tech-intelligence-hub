@@ -120,6 +120,18 @@ export function generationCost(input: number, output: number, settings: AiConnec
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) return fail('budget_exceeded');
   return Number(value);
 }
+/** The task's persisted origin, independent of the currently selected local mode. */
+export function generationAiMode(
+  run: Pick<SignalGenerationDisplay, 'generation_version'>,
+): 'local-mock' | 'local-real' | undefined {
+  const version = run.generation_version?.split('/retry/')[0];
+  return version === 'local-simulation-v1'
+    ? 'local-mock'
+    : version === 'local-real-ai-v1'
+      ? 'local-real'
+      : undefined;
+}
+
 /** Excludes source text, credentials, lease tokens, owner and internal configuration. */
 export function generationDto(run: SignalGenerationDisplay) {
   // Unknown provider outcomes are failed tasks for users. Keep the stored
@@ -127,8 +139,10 @@ export function generationDto(run: SignalGenerationDisplay) {
   const leaseReleased =
     run.lease_until === null || new Date(run.lease_until).getTime() <= Date.now();
   const expired = run.status === 'running' && leaseReleased;
+  const aiMode = generationAiMode(run);
   return {
     id: run.id,
+    ...(aiMode ? { ai_mode: aiMode } : {}),
     retry_of: run.generation_version?.split('/retry/')[1] ?? null,
     batch_id: run.batch_id,
     item_id: run.item_id,

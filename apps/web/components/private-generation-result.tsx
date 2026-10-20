@@ -5,6 +5,7 @@ import controls from './admin-controls.module.css';
 import { isGenerationValidationDetail } from '../../../packages/ingestion/src/signal-generation-validation-diagnostics.mjs';
 import type { GenerationPublication } from '../lib/generation-publication';
 import { candidatePublication, publicationLabels } from './generation-publication-status';
+import { isLocalSimulationRecord, type GenerationUiMode } from '../lib/generation-ui-mode';
 
 function objectRows(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
@@ -37,12 +38,19 @@ export function PrivateResult({
   reviewTask,
   snapshotOnly = false,
   localMode = false,
+  localRealAi = false,
 }: {
   result: unknown;
-  reviewTask?: { id: string; status: string; publication?: GenerationPublication };
+  reviewTask?: GenerationUiMode & {
+    id: string;
+    status: string;
+    publication?: GenerationPublication;
+  };
   snapshotOnly?: boolean;
   localMode?: boolean;
+  localRealAi?: boolean;
 }) {
+  const localSimulation = isLocalSimulationRecord(reviewTask, localMode, localRealAi);
   if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
   const row = result as Record<string, unknown>;
   const candidates = Array.isArray(row.candidates) ? row.candidates : [];
@@ -79,22 +87,24 @@ export function PrivateResult({
     <section aria-label="私有候选结果" className={styles.result}>
       <h3>
         {snapshotOnly
-          ? localMode
+          ? localSimulation
             ? '原始模拟候选快照（不代表当前发布状态）'
             : '原始 AI 候选快照（不代表当前发布状态）'
           : '候选结果与发布状态'}
       </h3>
       {!snapshotOnly && (
         <p className={preview.hint}>
-          {localMode
+          {localSimulation
             ? '发布标记来自本机人工发布记录；下方正文为原始模拟候选，不代表真实 AI 分析或公开事实。'
-            : '发布标记来自最新人工发布记录；下方正文为原始 AI 候选，人工修订后的内容以正式页面或发布记录为准。'}
+            : localMode
+              ? '发布标记来自本机人工发布记录；下方正文为原始 AI 候选，人工修订后的内容以本地页面或发布记录为准，未同步生产。'
+              : '发布标记来自最新人工发布记录；下方正文为原始 AI 候选，人工修订后的内容以正式页面或发布记录为准。'}
         </p>
       )}
       {row.validation_version === 1 && (
         <p>
-          结构与引用校验通过 {candidates.length} 条，拒绝 {rejected.length}{' '}
-          条。通过不代表事实核验或发布批准。
+          已保留私有候选 {candidates.length} 条，拒绝 {rejected.length}{' '}
+          条。保留不代表资料齐全、事实核验或发布批准。
         </p>
       )}
       {/* Historical free-form reasons may contain model self-analysis. Render
@@ -106,6 +116,8 @@ export function PrivateResult({
             ? (candidate as Record<string, unknown>)
             : {};
         const people = objectRows(data.persons);
+        const needsResourceDetails =
+          Array.isArray(data.issues) && data.issues.includes('needs_resource_details');
         const claims = objectRows(data.claims);
         const candidateNumber = typeof data.index === 'number' ? data.index + 1 : index + 1;
         const publication = snapshotOnly
@@ -160,6 +172,12 @@ export function PrivateResult({
                   ? data.summary
                   : '摘要未提供，需人工补充。'}
               </p>
+              {needsResourceDetails && (
+                <p className={preview.missing}>
+                  原始候选待补全：缺少部分人物或组织的资源资料。正文与已有证据已保留，
+                  请进入审核补齐后再确认发布；原始快照不会随补全改写。
+                </p>
+              )}
               {canOpenReview && reviewTask && (
                 <div className={controls.group}>
                   <Link
@@ -256,7 +274,7 @@ export function PrivateResult({
                     <li>人物及组织是否与事件直接相关</li>
                   </ul>
                   <p>
-                    {localMode
+                    {localSimulation
                       ? '引用仅匹配本地虚构资料，不代表事实核验。此原始模拟候选区域仅供联调，发布标记与模拟快照分别展示。'
                       : '引用匹配不代表独立事实核验。此原始候选区域仅供阅读核对，发布标记与原始 AI 快照分别展示。'}
                   </p>

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import styles from './admin-signal-generation.module.css';
+import { isLocalSimulationRecord, type GenerationUiMode } from '../lib/generation-ui-mode';
 
-export type GenerationProgressRun = {
+export type GenerationProgressRun = GenerationUiMode & {
   id: string;
   status: string;
   progress_phase?: string | null;
@@ -20,10 +21,13 @@ const labels = ['排队中', '准备资料与预算', '模型生成中', '校验
 export function GenerationProgress({
   run,
   localMode = false,
+  localRealAi = false,
 }: {
   run: GenerationProgressRun;
   localMode?: boolean;
+  localRealAi?: boolean;
 }) {
+  const localSimulation = isLocalSimulationRecord(run, localMode, localRealAi);
   const active = generationIsActive(run);
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
@@ -40,7 +44,7 @@ export function GenerationProgress({
       ? '失败，需核对原任务'
       : run.status === 'cancelled'
         ? '已取消'
-        : ((localMode && phase === 2 ? '本地模拟中' : labels[phase]) ??
+        : ((localSimulation && phase === 2 ? '本地模拟中' : labels[phase]) ??
           (active ? '执行中' : '待手动执行'));
   const start = run.started_at ? new Date(run.started_at).getTime() : NaN;
   const end = active ? now : run.finished_at ? new Date(run.finished_at).getTime() : null;
@@ -51,7 +55,7 @@ export function GenerationProgress({
       <p role="status">{label}</p>
       <progress aria-label="已完成的任务阶段" max={5} value={completed ? 5 : Math.max(0, phase)} />
       <small>
-        {localMode
+        {localSimulation
           ? '排队 → 准备 → 本地模拟 → 校验 → 保存。不调用模型，进度仅代表流程阶段。'
           : '排队 → 准备 → 生成 → 校验 → 保存。进度按已完成阶段计算，不代表 token 百分比。'}
       </small>
@@ -66,7 +70,7 @@ export function GenerationProgress({
       )}
       {failed && (
         <small>
-          {localMode
+          {localSimulation
             ? '未确认成功；本地任务和技术预留记录保留，请勿重复执行。不产生供应商费用。'
             : '未确认成功；费用记录保留，请勿重复执行。'}
         </small>

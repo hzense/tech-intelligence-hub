@@ -43,6 +43,8 @@ test('configuration connections retain role checks while execution and public re
       'server-only': '',
       pg: `export default {Pool: class {on(){} async connect(){globalThis.__automationStorage.connections++;return {release(){}}}}};`,
       '../runtime-reader-core': `export function readRuntimeReaderConfig(env){if(new URL(env.HZENSE_RUNTIME_DATABASE_URL).protocol!=='postgresql:')throw Error('invalid')}`,
+      '../local-development':
+        'export const isLocalRealAutomationEnabled=()=>globalThis.__automationStorage.localReal===true;',
       '../../../../packages/database/src/automation-role.mjs': `export async function assertAutomationRole(){const f=globalThis.__automationStorage;f.acl++;if(f.deny)throw Error('role_invalid')}`,
       '../../../../packages/database/src/automation-store.mjs': `${errorClass}; export async function freezeAutomationInputs(){}`,
     });
@@ -79,6 +81,12 @@ test('configuration connections retain role checks while execution and public re
     await assert.rejects(mod.automationPool.connect(), /execution_disabled/);
     await assert.rejects(mod.insightReaderPool.connect(), /execution_disabled/);
     assert.equal(globalThis.__automationStorage.connections, connectionsBeforeLocalExecution);
+    globalThis.__automationStorage.localReal = true;
+    await mod.automationPool.connect();
+    assert.equal(globalThis.__automationStorage.connections, connectionsBeforeLocalExecution + 1);
+    await assert.rejects(mod.insightReaderPool.connect(), /execution_disabled/);
+    process.env.HZENSE_AUTOMATION_ENABLED = '0';
+    await assert.rejects(mod.automationPool.connect(), /not_configured/);
   } finally {
     for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
     Object.assign(process.env, saved);
@@ -95,6 +103,7 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     generation: false,
     profile: true,
     local: false,
+    localReal: false,
     localProfileChecks: [],
     writes: [],
     deletions: [],
@@ -121,12 +130,12 @@ test('inactive configuration saves without execution budgets, while enable/trigg
         export async function readAutomationRunDetail(x){if(x.pool.kind!=='config')throw Error('wrong_pool');return {id:x.id,owner:x.owner,result:{report:{title:'Private report'}}}}
         export async function enqueueAutomation(x){const f=globalThis.__automationService;if(!f.replay)await x.beforeEnqueue(f.config);f.enqueued++;return {created:!f.replay,run:{id:'existing'}}}
         export async function enqueueDueAutomations(x){globalThis.__automationService.due++;globalThis.__automationService.dueKinds.push(x.kinds);return []}
-        export async function readAutomationRun(){} export async function failAutomationDispatch(){} export async function publishAutomationInsight(){}`,
+        export async function readAutomationRun(){return {snapshot:globalThis.__automationService.config}} export async function failAutomationDispatch(){} export async function publishAutomationInsight(){throw Error('unexpected_publish')}`,
       '../../../../packages/database/src/automation-contract.mjs':
         'export const normalizeAutomationConfig=x=>x;',
       './automation-store-access': `export const automationConfigPool={kind:'config'},automationPool={kind:'execution'};
         export function automationStorageConfiguration(){if(!globalThis.__automationService.storage)throw Error('missing')}
-        export function automationDatabaseConfiguration(){automationStorageConfiguration();if(globalThis.__automationService.local||!globalThis.__automationService.enabled)throw Error('off')}
+        export function automationDatabaseConfiguration(){automationStorageConfiguration();const f=globalThis.__automationService;if((f.local&&!f.localReal)||!f.enabled)throw Error('off')}
         export async function freezeAutomationInputs(){}`,
       './admin-ai': `export async function generationAiAccess(_id,_revision,credentials){if(credentials)throw Error('credentials_not_needed');const f=globalThis.__automationService;if(!f.profile)throw Object.assign(Error(f.profileErrorMessage),{code:f.profileErrorCode})}
         export async function aiStageAccess(_id,_revision,_stage,credentials){if(credentials)throw Error('credentials_not_needed');return {}}
@@ -265,6 +274,7 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     const enqueuedBeforeLocal = f.enqueued;
     const dueBeforeLocal = f.due;
     f.local = true;
+    process.env.HZENSE_LOCAL_DEVELOPMENT = '1';
     // The profile has no successful capability evidence. Local saving checks
     // only that it is a current, existing reference and performs no dispatch.
     for (const draft of [config, { ...config, kind: 'topic_insight', topicIds: ['topic-ai'] }]) {
@@ -292,7 +302,35 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     assert.equal(f.enqueued, enqueuedBeforeLocal);
     assert.equal(f.due, dueBeforeLocal);
     assert.equal(f.starts, 0);
+    f.localReal = true;
+    assert.equal(mod.automationExecutionConfigured('source_collection'), true);
+    assert.equal(mod.automationExecutionConfigured('topic_insight'), false);
+    // Real mode still validates profile readiness before a paid run is queued.
+    await assert.rejects(mod.triggerAutomation('owner', {}), /profile_not_ready/);
+    assert.equal(f.enqueued, enqueuedBeforeLocal);
+    f.profile = true;
+    await mod.triggerAutomation('owner', {});
+    assert.equal(f.enqueued, enqueuedBeforeLocal + 1);
+    assert.equal(f.starts, 1);
+    await assert.rejects(
+      mod.saveAutomation('owner', { ...request, config: { ...config, enabled: true } }),
+      /execution_disabled/,
+    );
+    f.config = { ...config, kind: 'topic_insight' };
+    await assert.rejects(mod.triggerAutomation('owner', {}), /execution_disabled/);
+    assert.equal(f.enqueued, enqueuedBeforeLocal + 1);
+    assert.deepEqual(await mod.dispatchDueAutomations(), { dispatched: 0, failed: 0 });
+    assert.equal(f.due, dueBeforeLocal);
+    for (const confirm of [true, false])
+      await assert.rejects(
+        mod.publishAutomationInsight('owner', 'run', confirm),
+        /execution_disabled/,
+      );
+    f.config = config;
+    f.starts = 0;
     f.local = false;
+    f.localReal = false;
+    delete process.env.HZENSE_LOCAL_DEVELOPMENT;
     const sourceRun = {
       id: 'source-run',
       snapshot: config,

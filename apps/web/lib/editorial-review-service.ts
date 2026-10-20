@@ -23,6 +23,7 @@ type Material = {
   generatedTopicIds?: string[];
   sourceOptions?: string[];
   resources?: EditorialMaterial['resources'];
+  missingResourceDetails?: EditorialMaterial['missingResourceDetails'];
   resourceCatalog?: EditorialMaterial['resourceCatalog'];
   resourceSourceOptions?: Array<{
     name: string;
@@ -192,6 +193,7 @@ export function createEditorialReviewService(deps: {
               resourceOptions,
               resourceSourceOptions: resourceSourceOptions ?? [],
               resourcePublicationReady,
+              missingResourceDetails: material.missingResourceDetails ?? [],
             }),
         warnings,
         requestId: saved?.request_id ?? null,
@@ -228,6 +230,7 @@ export function createEditorialReviewService(deps: {
           ? {}
           : {
               resources: material.resources,
+              missingResourceDetails: material.missingResourceDetails ?? [],
               resourceSourceOptions: material.resourceSourceOptions,
               resourceCatalog: material.resourceCatalog ?? [],
             }),

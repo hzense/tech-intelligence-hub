@@ -52,6 +52,7 @@ export function AdminAiConsole({
   available,
   allowedHosts,
   localMode = false,
+  localRealAi = false,
 }: {
   initialConnections: AiConnection[];
   initialProbes: AiProbe[];
@@ -59,7 +60,9 @@ export function AdminAiConsole({
   available: boolean;
   allowedHosts: string[];
   localMode?: boolean;
+  localRealAi?: boolean;
 }) {
+  const localSimulation = localMode && !localRealAi;
   const [connections, setConnections] = useState(initialConnections);
   const [probes, setProbes] = useState(initialProbes);
   const [editing, setEditing] = useState<AiConnection | null>(null);
@@ -73,7 +76,7 @@ export function AdminAiConsole({
   ) as ReturnType<typeof readPendingAiProbe>;
   const pending = pendingState.request;
   const modelControlsDisabled =
-    localMode || busy || !available || !pendingState.available || pending !== null;
+    localSimulation || busy || !available || !pendingState.available || pending !== null;
   const createId = useRef<string | null>(null);
   const settings = editing?.settings ?? defaults;
   const selected = connections.find((row) => row.id === selectedId);
@@ -91,6 +94,7 @@ export function AdminAiConsole({
           : [],
       )
     : [];
+  const skippedModels = listed?.result.skipped_count;
   async function refresh() {
     const [a, b] = await Promise.all([
       aiRequest<{ connections: AiConnection[] }>('connections'),
@@ -118,10 +122,19 @@ export function AdminAiConsole({
     const replaceEndpoint =
       !editing || aiEndpointChanged(editing.base_url, baseUrl, editing.base_url);
     if (
+      !localSimulation &&
+      data.get('enabled') === 'on' &&
+      !editing?.has_key &&
+      !string(data, 'api_key')
+    ) {
+      setMessage('启用真实调用前必须填写 API Key；无密钥连接不能执行测试或生成。');
+      return;
+    }
+    if (
       editing &&
       replaceEndpoint &&
       !string(data, 'api_key') &&
-      !(localMode && !editing.has_key)
+      !(localSimulation && !editing.has_key)
     ) {
       setMessage('更换接口地址时必须重新填写密钥，不能沿用原接口的密钥。');
       return;
@@ -131,7 +144,7 @@ export function AdminAiConsole({
       protocol: 'openai-compatible',
       // Do not re-normalize an unchanged stored endpoint when saving other fields.
       ...(replaceEndpoint ? { base_url: baseUrl } : {}),
-      enabled: !localMode && data.get('enabled') === 'on',
+      enabled: !localSimulation && data.get('enabled') === 'on',
       settings: {
         timeout_ms: number(data, 'timeout_ms'),
         max_concurrency: number(data, 'max_concurrency'),
@@ -159,7 +172,7 @@ export function AdminAiConsole({
       createId.current = null;
       await refresh();
       setMessage(
-        localMode
+        localSimulation
           ? `本地连接已保存为 r${result.connection.revision}，未启用真实调用；可以继续保存分阶段模型草稿。`
           : editing && result.connection.revision === editing.revision
             ? `配置未变化，保留 r${result.connection.revision}，原有能力测试继续适用。无需在测试后再次保存连接。`
@@ -253,7 +266,7 @@ export function AdminAiConsole({
   return (
     <>
       <AiAvailability configured={configured} available={available} />
-      {!localMode && !pendingState.available ? (
+      {!localSimulation && !pendingState.available ? (
         <p className={styles.notice}>
           尚不能安全保存／恢复测试编号，模型测试保持禁用；请允许此站点使用会话存储。仅保存测试编号和非密钥配置引用，不保存
           API key。
@@ -261,13 +274,21 @@ export function AdminAiConsole({
       ) : null}
       <p className={styles.muted}>
         允许的接口域名：{allowedHosts.join('、') || '未配置'}
-        {localMode
+        {localSimulation
           ? '。本地仅保存配置，模型列表与能力测试均已禁用，不会向供应商发送请求。'
           : '。所有请求走服务端；测试可能产生费用，但不会采集资料或发布信号。'}
       </p>
+      {localMode && localRealAi ? (
+        <p className={styles.notice}>
+          本地真实
+          AI：配置和测试记录保存在本地数据库。模型列表与能力测试会联网请求所选供应商，可能产生费用；请使用本地专用凭据并核对预算。
+          若从模拟草稿升级，请先核对输入／输出单价与连接预算；0
+          按免费估算，不代表供应商免费。预算是本地估算门禁，不是供应商硬额度。
+        </p>
+      ) : null}
       <p className={styles.notice} role="status" aria-live="polite">
         {message ||
-          (localMode
+          (localSimulation
             ? '可不填 API Key，先保存本地连接草稿；不会启用真实 AI。'
             : '先保存并启用连接，再分别进行连接和能力测试。')}
       </p>
@@ -313,7 +334,7 @@ export function AdminAiConsole({
                 </button>
                 <button
                   className={styles.button}
-                  disabled={localMode || busy || !connection.has_key}
+                  disabled={localSimulation || busy || !connection.has_key}
                   onClick={() => change(connection)}
                 >
                   {connection.enabled ? '停用' : '启用'}
@@ -367,16 +388,17 @@ export function AdminAiConsole({
                 editing={editing !== null}
                 allowedHosts={allowedHosts}
                 localMode={localMode}
-                keyOptional={localMode && !editing?.has_key}
+                localRealAi={localRealAi}
+                keyOptional={localSimulation && !editing?.has_key}
               />
               <label className={styles.checkbox}>
                 <input
                   type="checkbox"
                   name="enabled"
-                  disabled={localMode}
-                  defaultChecked={!localMode && (editing?.enabled ?? false)}
+                  disabled={localSimulation}
+                  defaultChecked={!localSimulation && (editing?.enabled ?? false)}
                 />
-                {localMode
+                {localSimulation
                   ? '本地真实调用已关闭（保存不启用）'
                   : '允许此连接接受测试和后续受控调用'}
               </label>
@@ -426,7 +448,9 @@ export function AdminAiConsole({
                     step="0.000001"
                     required
                     defaultValue={
-                      editing || localMode ? settings.input_price_microusd_per_million / 1e6 : ''
+                      editing || localSimulation
+                        ? settings.input_price_microusd_per_million / 1e6
+                        : ''
                     }
                   />
                 </label>
@@ -440,13 +464,15 @@ export function AdminAiConsole({
                     step="0.000001"
                     required
                     defaultValue={
-                      editing || localMode ? settings.output_price_microusd_per_million / 1e6 : ''
+                      editing || localSimulation
+                        ? settings.output_price_microusd_per_million / 1e6
+                        : ''
                     }
                   />
                 </label>
               </div>
               <p className={styles.muted}>
-                {localMode
+                {localSimulation
                   ? '这些参数仅用于配置联调。默认单价 0 是草稿占位，不表示供应商免费；本地不会执行真实测试或产生供应商费用。'
                   : '请按所测试模型的供应商价格填写。0 表示明确按免费估算；此预算不是供应商账单上限。无自动重试，每日最多 100 次测试，失败或未知结果保留预算占用。'}
               </p>
@@ -487,11 +513,16 @@ export function AdminAiConsole({
               disabled={modelControlsDisabled}
             />
             <p id="ai-model-list-status" className={styles.muted}>
-              {localMode
+              {localSimulation
                 ? '本地不读取供应商模型列表；请在分阶段模型配置中手动填写模型 ID，保存为未验证草稿。'
                 : listed
                   ? `当前连接 r${selected?.revision} 的列表包含 ${models.length} 个模型；选择后只填写模型 ID，不自动测试。`
                   : '点击“读取模型列表”后可在同一输入框搜索和选择；也可直接填写完整模型 ID。'}
+              {typeof skippedModels === 'number' &&
+              Number.isInteger(skippedModels) &&
+              skippedModels > 0
+                ? ` 已跳过 ${skippedModels} 个暂不支持的模型别名；其余模型可正常选择。`
+                : ''}
             </p>
             {listed?.result.truncated === true ? (
               <p className={styles.muted}>模型列表已截断；仍可手动填写完整模型 ID。</p>
@@ -527,7 +558,7 @@ export function AdminAiConsole({
           </fieldset>
         </div>
         <p className={styles.muted}>
-          {localMode
+          {localSimulation
             ? '本地配置草稿不代表供应商能力已验证，不能用于真实生成。业务流程联调请使用生成页的固定本地模拟配置。'
             : '基础连接成功不代表支持结构化输出或工具调用。分阶段配置必须绑定当前连接修订、相同模型及通过的独立测试。超过 24 小时仅提醒，不自动失效；更换模型时请先核对匹配测试及估算单价。'}
         </p>

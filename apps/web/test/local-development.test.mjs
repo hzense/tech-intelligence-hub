@@ -4,6 +4,9 @@ import {
   assertLocalDatabaseUrl,
   assertLocalDevelopmentRequest,
   isLocalDevelopment,
+  isLocalRealAi,
+  isLocalRealAutomationEnabled,
+  isLocalMockAi,
   localRequestMatchesOrigin,
   localDatabaseEnvironmentRoles,
 } from '../lib/local-development.ts';
@@ -27,6 +30,56 @@ export function localEnvironment() {
     ),
   };
 }
+
+test('real AI requires explicit mode and the complete local environment contract', () => {
+  const env = localEnvironment();
+  for (const mode of [undefined, '', 'mock', 'REAL', 'invalid']) {
+    assert.equal(isLocalRealAi({ ...env, HZENSE_LOCAL_AI_MODE: mode }), false);
+    assert.equal(isLocalMockAi({ ...env, HZENSE_LOCAL_AI_MODE: mode }), true);
+  }
+  const real = { ...env, HZENSE_LOCAL_AI_MODE: 'real' };
+  assert.equal(isLocalRealAi(real), true);
+  assert.equal(isLocalMockAi(real), false);
+  for (const patch of [
+    { NODE_ENV: 'production' },
+    { VERCEL: '1' },
+    { HZENSE_LOCAL_DEVELOPMENT: '0' },
+    {
+      HZENSE_AI_DATABASE_URL: env.HZENSE_AI_DATABASE_URL.replace('127.0.0.1', 'example.neon.tech'),
+    },
+  ]) {
+    assert.equal(isLocalRealAi({ ...real, ...patch }), false);
+    assert.equal(isLocalMockAi({ ...real, ...patch }), false);
+  }
+});
+
+test('local source collection requires real AI, local Workflow world and explicit enablement', () => {
+  const real = {
+    ...localEnvironment(),
+    HZENSE_LOCAL_AI_MODE: 'real',
+    WORKFLOW_TARGET_WORLD: 'local',
+    HZENSE_AUTOMATION_ENABLED: '1',
+  };
+  assert.equal(isLocalRealAutomationEnabled(real), true);
+  for (const patch of [
+    { HZENSE_LOCAL_AI_MODE: 'mock' },
+    { HZENSE_LOCAL_AI_MODE: undefined },
+    { WORKFLOW_TARGET_WORLD: 'vercel' },
+    { WORKFLOW_TARGET_WORLD: undefined },
+    { HZENSE_AUTOMATION_ENABLED: '0' },
+    { HZENSE_AUTOMATION_ENABLED: undefined },
+    { NODE_ENV: 'production' },
+    { VERCEL: '1' },
+    { HZENSE_LOCAL_DEVELOPMENT: '0' },
+    {
+      HZENSE_AUTOMATION_DATABASE_URL: real.HZENSE_AUTOMATION_DATABASE_URL.replace(
+        '127.0.0.1',
+        'example.neon.tech',
+      ),
+    },
+  ])
+    assert.equal(isLocalRealAutomationEnabled({ ...real, ...patch }), false);
+});
 
 test('local contract requires explicit development origin and validated role-specific local databases', () => {
   const env = localEnvironment();

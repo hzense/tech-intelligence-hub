@@ -71,6 +71,90 @@ suite('automation role isolation and publication boundary', () => {
       owner: ownerId,
       request: { id: config.id, expectedRevision: config.revision, consent: true, ...overrides },
     });
+  // The budget ledger is global. Each case owns and removes only its synthetic
+  // configuration/run fixtures; unrelated cases are never reset or backdated.
+  async function withBudgetFixture(work) {
+    const configIds = [];
+    const newConfig = async () => {
+      const operator = `budget-${randomUUID()}`;
+      const config = await save(operator);
+      configIds.push(config.id);
+      return { operator, config };
+    };
+    const queue = async () => {
+      const { operator, config } = await newConfig();
+      const id = randomUUID();
+      await enqueueAutomation({
+        pool,
+        owner: operator,
+        request: { configId: config.id, expectedRevision: 1, requestId: id, consent: true },
+      });
+      return { owner: operator, id };
+    };
+    const record = async (changes = {}) => {
+      const { operator, config } = await newConfig();
+      const id = randomUUID();
+      const row = {
+        status: 'unknown',
+        phase: 'source_failed',
+        snapshot: config.config,
+        result: {
+          discovery: { articles: [] },
+          discoveryCostSource: 'provider',
+          discoveryCostMicrousd: 7903,
+        },
+        reserved: 5000000,
+        charged: 7903,
+        costSource: 'provider',
+        dayOffset: 0,
+        leaseToken: null,
+        leaseUntil: null,
+        finished: true,
+        ...changes,
+      };
+      await owner.query(
+        `INSERT INTO public.automation_runs(
+          id,config_id,owner_id,config_revision,snapshot,slot,trigger,status,phase,
+          result,reserved_microusd,charged_microusd,cost_source,budget_day,
+          lease_token,lease_until,finished_at
+        ) VALUES(
+          $1,$2,$3,1,$4::jsonb,$5,'manual',$6,$7,$8::jsonb,$9,$10,$11,
+          (clock_timestamp() AT TIME ZONE 'UTC')::date+$12::integer,$13,$14,
+          CASE WHEN $15 THEN clock_timestamp() ELSE NULL END
+        )`,
+        [
+          id,
+          config.id,
+          operator,
+          JSON.stringify(row.snapshot),
+          `manual:${id}`,
+          row.status,
+          row.phase,
+          row.result === null ? null : JSON.stringify(row.result),
+          row.reserved,
+          row.charged,
+          row.costSource,
+          row.dayOffset,
+          row.leaseToken,
+          row.leaseUntil,
+          row.finished,
+        ],
+      );
+      return id;
+    };
+    try {
+      return await work({ queue, record });
+    } finally {
+      if (configIds.length) {
+        await owner.query('DELETE FROM public.automation_runs WHERE config_id=ANY($1::uuid[])', [
+          configIds,
+        ]);
+        await owner.query('DELETE FROM public.automation_configs WHERE id=ANY($1::uuid[])', [
+          configIds,
+        ]);
+      }
+    }
+  }
 
   function url(role) {
     const value = new URL(adminUrl);
@@ -187,6 +271,244 @@ suite('automation role isolation and publication boundary', () => {
     );
     await owner.query('REVOKE SELECT(id) ON public.automation_runs FROM hzense_insight_reader');
     await assertAutomationRole(readerRole, 'reader');
+  });
+  it('settles old source-failure provider receipts across owners without rewriting the failed tasks', async () => {
+    await withBudgetFixture(async ({ queue, record }) => {
+      const ids = [];
+      for (const charged of [7903, 7349]) {
+        ids.push(
+          await record({
+            charged,
+            result: {
+              discovery: { articles: [] },
+              discoveryCostSource: 'provider',
+              discoveryCostMicrousd: charged,
+            },
+          }),
+        );
+      }
+      const before = (
+        await owner.query(
+          'SELECT * FROM public.automation_runs WHERE id=ANY($1::uuid[]) ORDER BY id',
+          [ids],
+        )
+      ).rows;
+      const next = await queue();
+      const run = await claimAutomationRun({
+        pool,
+        ...next,
+        limits: { batch: 5000000, daily: 10000000, reserve: 5000000 },
+      });
+      expect(run).toMatchObject({ status: 'running', reserved_microusd: 5000000 });
+      // Exact receipt boundary proves the two old reservations became 15,252,
+      // not zero. The new running claim still consumes its complete reservation.
+      const blocked = await queue();
+      expect(
+        await claimAutomationRun({
+          pool,
+          ...blocked,
+          limits: { batch: 4984749, daily: 10000000, reserve: 4984749 },
+        }),
+      ).toBeNull();
+      expect(await readAutomationRun({ pool, ...blocked })).toMatchObject({
+        status: 'failed',
+        phase: 'budget_exceeded',
+        reserved_microusd: 0,
+      });
+      expect(
+        (
+          await owner.query(
+            'SELECT * FROM public.automation_runs WHERE id=ANY($1::uuid[]) ORDER BY id',
+            [ids],
+          )
+        ).rows,
+      ).toEqual(before);
+    });
+  });
+  it.each([
+    ['missing receipt', { result: {} }],
+    ['null result', { result: null }],
+    ['estimated charge', { costSource: 'estimate' }],
+    ['reserve charge', { costSource: 'reserve' }],
+    ['missing charge source', { costSource: null }],
+    [
+      'discovery estimate',
+      { result: { discoveryCostSource: 'estimate', discoveryCostMicrousd: 7903 } },
+    ],
+    ['missing receipt source', { result: { discoveryCostMicrousd: 7903 } }],
+    [
+      'receipt amount mismatch',
+      { result: { discoveryCostSource: 'provider', discoveryCostMicrousd: 7349 } },
+    ],
+    [
+      'string receipt',
+      { result: { discoveryCostSource: 'provider', discoveryCostMicrousd: '7903' } },
+    ],
+    ['null receipt', { result: { discoveryCostSource: 'provider', discoveryCostMicrousd: null } }],
+    [
+      'object receipt',
+      { result: { discoveryCostSource: 'provider', discoveryCostMicrousd: { value: 7903 } } },
+    ],
+    [
+      'array receipt',
+      { result: { discoveryCostSource: 'provider', discoveryCostMicrousd: [7903] } },
+    ],
+    [
+      'boolean receipt',
+      { result: { discoveryCostSource: 'provider', discoveryCostMicrousd: true } },
+    ],
+    [
+      'negative receipt',
+      { result: { discoveryCostSource: 'provider', discoveryCostMicrousd: -7903 } },
+    ],
+    [
+      'fractional receipt',
+      { result: { discoveryCostSource: 'provider', discoveryCostMicrousd: 7903.5 } },
+    ],
+    [
+      'invalid numeric text',
+      { result: { discoveryCostSource: 'provider', discoveryCostMicrousd: 'not-a-number' } },
+    ],
+    ['missing discovery configuration', { snapshot: { kind: 'source_collection' } }],
+    ['null discovery configuration', { snapshot: { kind: 'source_collection', discovery: null } }],
+    ['array discovery configuration', { snapshot: { kind: 'source_collection', discovery: [] } }],
+    ['discovery failure phase', { phase: 'discovery_failed' }],
+    ['still running', { status: 'running' }],
+    ['topic insight', { snapshot: { kind: 'topic_insight', discovery: {} } }],
+    ['remaining lease token', { leaseToken: randomUUID() }],
+    ['remaining lease expiry', { leaseUntil: new Date(0) }],
+    ['no terminal timestamp', { finished: false }],
+  ])('retains the reservation for %s without unsafe JSON casts', async (_name, changes) => {
+    await withBudgetFixture(async ({ queue, record }) => {
+      const id = await record(changes);
+      const before = (await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [id]))
+        .rows[0];
+      const next = await queue();
+      expect(
+        await claimAutomationRun({
+          pool,
+          ...next,
+          limits: { batch: 5000000, daily: 5015252, reserve: 5000000 },
+        }),
+      ).toBeNull();
+      expect(await readAutomationRun({ pool, ...next })).toMatchObject({
+        status: 'failed',
+        phase: 'budget_exceeded',
+        charged_microusd: 0,
+        reserved_microusd: 0,
+      });
+      expect(
+        (await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [id])).rows[0],
+      ).toEqual(before);
+    });
+  });
+  it('accepts a genuine zero-cost provider receipt without retaining its reservation', async () => {
+    await withBudgetFixture(async ({ queue, record }) => {
+      await record({
+        charged: 0,
+        result: { discoveryCostSource: 'provider', discoveryCostMicrousd: 0 },
+      });
+      expect(
+        await claimAutomationRun({
+          pool,
+          ...(await queue()),
+          limits: { batch: 5000000, daily: 5000000, reserve: 5000000 },
+        }),
+      ).toMatchObject({ status: 'running', reserved_microusd: 5000000 });
+    });
+  });
+  it.each(['unknown', 'running', 'completed'])(
+    'accounts for a %s charge above its original reservation',
+    async (status) => {
+      await withBudgetFixture(async ({ queue, record }) => {
+        await record({
+          status,
+          charged: 6000000,
+          result: { discoveryCostSource: 'provider', discoveryCostMicrousd: 6000000 },
+        });
+        const next = await queue();
+        expect(
+          await claimAutomationRun({
+            pool,
+            ...next,
+            limits: { batch: 5000000, daily: 10000000, reserve: 5000000 },
+          }),
+        ).toBeNull();
+        expect(await readAutomationRun({ pool, ...next })).toMatchObject({
+          phase: 'budget_exceeded',
+        });
+      });
+    },
+  );
+  it('uses the UTC budget day regardless of the database session timezone', async () => {
+    await withBudgetFixture(async ({ queue, record }) => {
+      await record({ charged: 10000000, dayOffset: -1 });
+      await record({ charged: 10000000, dayOffset: 1 });
+      await record();
+      const timezone = (
+        await adminRole.query(
+          `SELECT CASE WHEN (clock_timestamp() AT TIME ZONE 'UTC')::time < time '12:00'
+            THEN 'Etc/GMT+12' ELSE 'Pacific/Kiritimati' END AS timezone`,
+        )
+      ).rows[0].timezone;
+      const previousTimezone = (await adminRole.query('SHOW TimeZone')).rows[0].TimeZone;
+      await adminRole.query("SELECT set_config('TimeZone',$1,false)", [timezone]);
+      try {
+        expect(
+          (
+            await adminRole.query(
+              "SELECT CURRENT_DATE<>(clock_timestamp() AT TIME ZONE 'UTC')::date AS different",
+            )
+          ).rows[0].different,
+        ).toBe(true);
+        const next = await queue();
+        expect(
+          await claimAutomationRun({
+            pool,
+            ...next,
+            limits: { batch: 5000000, daily: 5007903, reserve: 5000000 },
+          }),
+        ).toMatchObject({ status: 'running', reserved_microusd: 5000000 });
+        expect(
+          (
+            await owner.query(
+              "SELECT budget_day=(clock_timestamp() AT TIME ZONE 'UTC')::date AS utc_day FROM public.automation_runs WHERE id=$1",
+              [next.id],
+            )
+          ).rows[0].utc_day,
+        ).toBe(true);
+      } finally {
+        await adminRole.query("SELECT set_config('TimeZone',$1,false)", [previousTimezone]);
+      }
+    });
+  });
+  it('serializes global claims after receipt settlement instead of overspending freed reservations', async () => {
+    await withBudgetFixture(async ({ queue, record }) => {
+      await record();
+      const tasks = [await queue(), await queue()];
+      // Reuse the existing restricted-role connection plus exactly one new
+      // connection to stay within that role's CONNECTION LIMIT 2.
+      const concurrentPool = new pg.Pool({ connectionString: url(roleNames[0]), max: 1 });
+      try {
+        const runs = await Promise.all(
+          tasks.map((task, index) =>
+            claimAutomationRun({
+              pool: index === 0 ? pool : concurrentPool,
+              ...task,
+              limits: { batch: 5000000, daily: 10000000, reserve: 5000000 },
+            }),
+          ),
+        );
+        expect(runs.filter(Boolean)).toHaveLength(1);
+        expect(runs.filter((run) => run === null)).toHaveLength(1);
+        const saved = [];
+        for (const task of tasks) saved.push(await readAutomationRun({ pool, ...task }));
+        expect(saved.map((run) => run.status).sort()).toEqual(['failed', 'running']);
+        expect(saved.find((run) => run.status === 'failed').phase).toBe('budget_exceeded');
+      } finally {
+        await concurrentPool.end();
+      }
+    });
   });
   it('discovery fences paid execution, preserves receipts and keeps source results private', async () => {
     const pool = {

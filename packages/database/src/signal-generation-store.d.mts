@@ -70,7 +70,11 @@ export interface SignalGenerationDailyUsage {
   charged_microusd: string;
   budget_used_microusd: string;
 }
-export function getSignalGenerationDailyUsage(args: Owned): Promise<SignalGenerationDailyUsage>;
+/** Trusted local server selection only; omitted in production. */
+export type LocalGenerationBudgetMode = 'local-mock' | 'local-real';
+export function getSignalGenerationDailyUsage(
+  args: Owned & { budgetMode?: LocalGenerationBudgetMode },
+): Promise<SignalGenerationDailyUsage>;
 export function signalGenerationSourceHash(source: unknown): string;
 export function signalGenerationProfileIdentity(profile: unknown): unknown;
 export function createSignalGeneration(
@@ -132,6 +136,7 @@ export function readSignalGenerationSummaries(
 export function claimSignalGeneration(
   args: RunArgs & {
     queuedAt?: string;
+    budgetMode?: LocalGenerationBudgetMode;
     currentLimits: { batchLimitMicrousd: number; dailyLimitMicrousd: number };
   },
 ): Promise<{ claimed: boolean; run: SignalGenerationRun }>;

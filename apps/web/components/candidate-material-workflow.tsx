@@ -77,6 +77,8 @@ const errors: Record<string, string> = {
     '当前提案缺少有原文支持的关键人物。关联来源只会保存资料，不会自动提取；请在本批补证材料下确认启动 AI 补证补全，完成后再准备核验材料。仍未找到时应更换有事件依据的来源，不能猜测人物。',
   needs_event_time: '缺少事件发生日期及引用依据；不会改用上传时间。',
   needs_public_evidence: '现有引用不能完整对应到公开来源，请补充准确原文链接。',
+  needs_resource_details:
+    '部分人物或组织缺少资源资料；候选正文已保留，请补齐对应的身份信息与原文依据后发布。',
   needs_organization_identity: '相关组织尚未登记，规则不能推断其实体类型；需补充实体核验材料。',
   needs_topic_evidence: '未能明确匹配启用领域，需进一步分类核验。',
   material_review_expired: '人工确认已过期，不能继续签名；请重新核对材料后建立新一轮确认。',

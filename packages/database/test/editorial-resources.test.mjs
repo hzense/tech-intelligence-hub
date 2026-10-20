@@ -39,6 +39,27 @@ export function resourceFixture(suffix = '') {
 }
 
 describe('generated resource publication contract', () => {
+  it('blocks new publication of incomplete server-bound resources, but permits drafts and withdrawal', () => {
+    const { request, material } = resourceFixture();
+    // The displayed resources and participant list have already been narrowed:
+    // a client cannot make the server's missing identity disappear by omitting it.
+    material.missingResourceDetails = [{ type: 'organization', name: 'Missing organization' }];
+    expect(() => normalizeEditorialRequest(request, material)).toThrow(
+      'resource_details_incomplete',
+    );
+    expect(
+      normalizeEditorialRequest({ ...request, action: 'draft', consent: false }, material).action,
+    ).toBe('draft');
+    expect(normalizeEditorialRequest({ ...request, action: 'withdraw' }, material).action).toBe(
+      'withdraw',
+    );
+    // Receipt replay validation intentionally precedes today's publication policy.
+    expect(normalizeEditorialRequest(request, material, { checkPublication: false }).action).toBe(
+      'publish',
+    );
+    material.missingResourceDetails = [];
+    expect(normalizeEditorialRequest(request, material).action).toBe('publish');
+  });
   it('binds every generated resource field and participant name while preserving the old shape', () => {
     const { request, material } = resourceFixture();
     expect(normalizeEditorialRequest(request, material)).toEqual(request);

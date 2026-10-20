@@ -372,6 +372,7 @@ export function AdminAutomation({
   profiles,
   topics,
   localMode = false,
+  localRealAiMode = false,
 }: {
   kind: Kind;
   configured: boolean;
@@ -382,10 +383,27 @@ export function AdminAutomation({
   profiles: Profile[];
   topics: Topic[];
   localMode?: boolean;
+  localRealAiMode?: boolean;
 }) {
+  const localSourceManual = localMode && localRealAiMode && kind === 'source_collection';
+  const manualExecutionAllowed = executionEnabled && (!localMode || localSourceManual);
+  function draftForMode(config: AutomationConfig): AutomationConfig {
+    return localMode ? { ...config, enabled: false, frequency: 'manual' } : config;
+  }
+  function profileReady(row: ConfigView): boolean {
+    return profiles.some(
+      (profile) =>
+        profile.id === row.config.profileId &&
+        profile.revision === row.config.profileRevision &&
+        profile.ready,
+    );
+  }
+  function canRun(row: ConfigView): boolean {
+    return configured && manualExecutionAllowed && (!localMode || profileReady(row));
+  }
   const [state, setState] = useState(initial);
   const [editing, setEditing] = useState<ConfigView | null>(null);
-  const [draft, setDraft] = useState<AutomationConfig>(() => blank(kind));
+  const [draft, setDraft] = useState<AutomationConfig>(() => draftForMode(blank(kind)));
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
@@ -419,16 +437,18 @@ export function AdminAutomation({
     setEditing(row);
     // An explicit save is required to convert a legacy fixed-URL schedule to paid discovery.
     setDraft(
-      row
-        ? kind === 'source_collection' && !row.config.discovery
-          ? {
-              ...row.config,
-              sourceUrls: [],
-              enabled: false,
-              discovery: { keywords: [], lookbackDays: 2, maxSources: 5 },
-            }
-          : row.config
-        : blank(kind),
+      draftForMode(
+        row
+          ? kind === 'source_collection' && !row.config.discovery
+            ? {
+                ...row.config,
+                sourceUrls: [],
+                enabled: false,
+                discovery: { keywords: [], lookbackDays: 2, maxSources: 5 },
+              }
+            : row.config
+          : blank(kind),
+      ),
     );
     createId.current = null;
     setMessage('');
@@ -436,6 +456,7 @@ export function AdminAutomation({
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy || !configured) return;
+    const savedDraft = draftForMode(draft);
     createId.current ??= crypto.randomUUID();
     setBusy(true);
     setMessage('');
@@ -445,22 +466,24 @@ export function AdminAutomation({
         request: {
           id: editing?.id ?? createId.current,
           expectedRevision: editing?.revision ?? 0,
-          config: draft.discovery
+          config: savedDraft.discovery
             ? {
-                ...draft,
+                ...savedDraft,
                 topicIds: [],
                 discovery: {
-                  ...draft.discovery,
-                  keywords: draft.discovery.keywords.map((word) => word.trim()).filter(Boolean),
+                  ...savedDraft.discovery,
+                  keywords: savedDraft.discovery.keywords
+                    .map((word) => word.trim())
+                    .filter(Boolean),
                 },
               }
-            : draft,
+            : savedDraft,
           consent: true,
         },
       });
       createId.current = null;
       setEditing(result.config);
-      setDraft(result.config.config);
+      setDraft(draftForMode(result.config.config));
       await refresh();
       setMessage(`配置已保存为 r${result.config.revision}。保存配置不会启动任务。`);
     } catch (error) {
@@ -471,12 +494,12 @@ export function AdminAutomation({
   }
   async function run(row: ConfigView) {
     if (
-      localMode ||
       busy ||
-      !configured ||
-      !executionEnabled ||
+      !canRun(row) ||
       !window.confirm(
-        `确认启动“${row.config.name}”？运行可能产生导入或模型费用，结果需在任务列表中核对。`,
+        localSourceManual
+          ? `确认启动本地采集“${row.config.name}”？将联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索和模型费用。结果仅保存在本地，不同步生产、不自动发布；本次仅手动执行，不开启定时。`
+          : `确认启动“${row.config.name}”？运行可能产生导入或模型费用，结果需在任务列表中核对。`,
       )
     )
       return;
@@ -609,8 +632,15 @@ export function AdminAutomation({
         <h1>{kind === 'source_collection' ? '自动采集配置' : '专题洞察配置'}</h1>
         {localMode ? (
           <p role="status">
-            本地配置模式：可选择未完成能力测试的模型草稿，保存和修订仅写入本机数据库。
-            自动采集、专题生成及定时执行暂未本地化，不能运行；不会联网搜索、调用 AI 或同步生产。
+            {localSourceManual
+              ? '本地真实采集：手动启动会联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索与模型费用。配置、资料和候选仅保存在本地，不同步生产、不自动发布。本地定时保持关闭；保存配置不会启动采集。'
+              : '本地配置模式：可选择未完成能力测试的模型草稿，保存和修订仅写入本机数据库。当前模式不执行采集、专题生成或定时任务；不会联网搜索、调用 AI 或同步生产。'}
+          </p>
+        ) : null}
+        {localSourceManual ? (
+          <p>
+            本地采集预算为每次 $5、UTC 每日 $10；信号生成另计每批 $5、UTC 每日 $10。
+            系统预算与预留不等于供应商最终账单。
           </p>
         ) : null}
         {!localMode ? (
@@ -670,6 +700,7 @@ export function AdminAutomation({
             执行频率
             <select
               aria-label="执行频率"
+              disabled={localMode}
               value={draft.frequency}
               onChange={(e) =>
                 setDraft({ ...draft, frequency: e.target.value as AutomationConfig['frequency'] })
@@ -680,6 +711,13 @@ export function AdminAutomation({
               <option value="weekly">每周一（UTC）</option>
             </select>
           </label>
+          {localMode ? (
+            <p className={styles.full}>
+              {localSourceManual
+                ? '本地只允许手动启动；已有配置的定时计划不会执行，保存时保持定时关闭。'
+                : '本地草稿不执行任务；已有配置的定时计划不会执行，保存时保持定时关闭。'}
+            </p>
+          ) : null}
           <label>
             分阶段模型配置
             <select
@@ -708,6 +746,11 @@ export function AdminAutomation({
                 ))}
             </select>
           </label>
+          {localSourceManual ? (
+            <p className={styles.full}>
+              可保存未验证的模型草稿；立即运行必须选用当前修订已通过能力测试的配置。修改模型配置后，请重新选择并保存当前修订。
+            </p>
+          ) : null}
           {kind === 'source_collection' && draft.discovery ? (
             <>
               <p className={styles.full}>
@@ -715,7 +758,9 @@ export function AdminAutomation({
               </p>
               {editing && !editing.config.discovery ? (
                 <p className={styles.full}>
-                  此为旧固定网址配置。保存后将转为联网发现并关闭原计划；无需指定领域，请确认检索范围及是否启用定时执行。
+                  {localMode
+                    ? '此为旧固定网址配置。保存后将转为联网发现并关闭原计划；本地仅支持手动启动，请确认检索范围。'
+                    : '此为旧固定网址配置。保存后将转为联网发现并关闭原计划；无需指定领域，请确认检索范围及是否启用定时执行。'}
                 </p>
               ) : null}
               <label className={styles.full}>
@@ -766,7 +811,10 @@ export function AdminAutomation({
               </label>
               <p className={styles.full}>
                 每次最多搜索 3
-                次。原文获取失败或没有新信息时不编造候选。采集、导入、生成分别遵守服务器配置的预算；启用计划即授权按此范围定期执行，不自动发布。
+                次。原文获取失败或没有新信息时不编造候选。采集、导入、生成分别遵守服务器配置的预算；
+                {localMode
+                  ? '本地定时关闭，手动启动前仍需确认联网与计费，不自动发布。'
+                  : '启用计划即授权按此范围定期执行，不自动发布。'}
               </p>
             </>
           ) : null}
@@ -856,15 +904,27 @@ export function AdminAutomation({
                         </small>
                       ) : null}
                     </td>
-                    <td>{row.config.frequency}</td>
-                    <td>{localMode ? '本地草稿 · 不执行' : row.enabled ? '定时开启' : '仅手动'}</td>
+                    <td>{localMode ? 'manual' : row.config.frequency}</td>
+                    <td>
+                      {localSourceManual
+                        ? !profileReady(row)
+                          ? '模型未就绪 · 不能运行'
+                          : manualExecutionAllowed
+                            ? '本地仅手动 · 定时关闭'
+                            : '执行未就绪 · 定时关闭'
+                        : localMode
+                          ? '本地草稿 · 不执行'
+                          : row.enabled
+                            ? '定时开启'
+                            : '仅手动'}
+                    </td>
                     <td>
                       <button type="button" disabled={busy} onClick={() => edit(row)}>
                         编辑
                       </button>
                       <button
                         type="button"
-                        disabled={localMode || busy || !configured || !executionEnabled}
+                        disabled={busy || !canRun(row)}
                         onClick={() => void run(row)}
                       >
                         立即运行

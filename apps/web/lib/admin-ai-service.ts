@@ -24,6 +24,7 @@ export function createAiAdminExecutor(dependencies: {
   keyring: AiKeyring;
   allowedHosts: AiAllowedHosts;
   invoke: AiProbeInvoker;
+  /** Enabled only for the trusted local mock mode; real AI keeps normal validation. */
   localConfigurationDrafts?: boolean;
 }) {
   return async (

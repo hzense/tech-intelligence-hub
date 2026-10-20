@@ -46,7 +46,7 @@ test(
     assert.equal(automationGenerationId, '127973fb-4efd-679b-d66f-87bbba11e214');
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {AdminSignalGeneration} from './components/admin-signal-generation';import {GenerationLiveDetail} from './components/generation-live-detail';createRoot(document.getElementById('root')).render(location.search.includes('live-detail') ? <GenerationLiveDetail initialRun={location.search.includes('queued') ? ${JSON.stringify(queuedLiveDetail())} : {id:'${liveDetailId}',status:'running',progress_phase:'generating'}}/> : <AdminSignalGeneration configured={!location.search.includes('off')} historyConfigured={!location.search.includes('nohistory')}/>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {AdminSignalGeneration} from './components/admin-signal-generation';import {GenerationLiveDetail} from './components/generation-live-detail';createRoot(document.getElementById('root')).render(location.search.includes('live-detail') ? <GenerationLiveDetail initialRun={location.search.includes('queued') ? ${JSON.stringify(queuedLiveDetail())} : {id:'${liveDetailId}',status:'running',progress_phase:'generating'}}/> : <AdminSignalGeneration configured={!location.search.includes('off')} historyConfigured={!location.search.includes('nohistory')} localMode={location.search.includes('local-')} localRealAi={location.search.includes('local-real')}/>);`,
         resolveDir: fileURLToPath(new URL('..', import.meta.url)),
         loader: 'tsx',
       },
@@ -447,6 +447,52 @@ test(
         },
       };
     }
+
+    await t.test(
+      'local real generation keeps provider consent and distinguishes mixed historical task modes',
+      async () => {
+        const page = await newPage();
+        runs = [
+          {
+            ...publicationRun(),
+            ai_mode: 'local-real',
+            status: 'pending',
+            result: null,
+            source_name: 'Historical real input',
+            charged_microusd: '2000',
+          },
+          {
+            ...publicationRun('55555555-5555-4555-8555-555555555555'),
+            ai_mode: 'local-mock',
+            profile_id: '1389674e-ea29-4a37-a563-073f498fb7f2',
+            status: 'pending',
+            result: null,
+            source_name: 'Historical mock input',
+            charged_microusd: '1',
+            reserved_microusd: '1',
+          },
+        ];
+        await page.goto(`${origin}/?local-real`);
+        await expect(page.getByRole('heading', { name: '本地真实 AI 信号生成' })).toBeVisible();
+        await expect(page.getByText(/历史模拟技术预留不计入费用/)).toBeVisible();
+        await expect(page.getByLabel(/我允许把所选资料/)).not.toBeChecked();
+        const realRow = page.getByRole('row').filter({ hasText: 'Historical real input' });
+        const mockRow = page.getByRole('row').filter({ hasText: 'Historical mock input' });
+        await expect(realRow).toContainText('本地真实 AI');
+        await expect(realRow).toContainText('记账金额');
+        await expect(mockRow).toContainText('本地模拟');
+        await expect(mockRow).toContainText('本地账本（非费用）');
+        await expect(
+          mockRow.getByRole('button', { name: '选择此任务并核对本地资料' }),
+        ).toBeDisabled();
+        await expect(
+          mockRow.getByRole('button', { name: '执行本地模拟（不调用 AI）' }),
+        ).toBeDisabled();
+        await expect(realRow.getByRole('button', { name: '选择此任务并核对接收方' })).toBeEnabled();
+        assert.deepEqual(commands, []);
+        await page.close();
+      },
+    );
 
     await t.test(
       'publication summaries and sparse candidate badges reflect persisted state with read-only details',
@@ -1284,7 +1330,7 @@ test(
           await page.getByText('更多操作', { exact: true }).click();
           await page.getByRole('button', { name: '查看任务与私有候选', exact: true }).click();
           await expect(
-            page.getByText(`结构与引用校验通过 ${mixed ? 1 : 0} 条，拒绝 1 条。`, { exact: false }),
+            page.getByText(`已保留私有候选 ${mixed ? 1 : 0} 条，拒绝 1 条。`, { exact: false }),
           ).toBeVisible();
           await expect(
             page.getByRole('heading', { name: '原始候选 2', exact: true }),

@@ -9,7 +9,7 @@ import {
 import { getAiDashboard } from '@/lib/server/admin-ai';
 import { AdminAutomation } from '@/components/admin-automation';
 import { getTopicEntries } from '@/lib/content-runtime';
-import { isLocalDevelopment } from '@/lib/local-development';
+import { isLocalDevelopment, isLocalRealAi } from '@/lib/local-development';
 
 export const metadata: Metadata = { title: '自动采集', robots: { index: false, follow: false } };
 export const dynamic = 'force-dynamic';
@@ -32,6 +32,7 @@ export default async function SourcesPage() {
     <AdminAutomation
       kind="source_collection"
       localMode={isLocalDevelopment()}
+      localRealAiMode={isLocalRealAi()}
       configured={configured && !stateResult.loadError}
       executionEnabled={automationExecutionConfigured('source_collection')}
       executionReadiness={automationExecutionReadiness('source_collection')}

@@ -66,7 +66,13 @@ export interface GeneratedCandidateInput {
   resources?: GeneratedResourceDraft[];
 }
 export type GenerationIssue =
-  'needs_public_evidence' | 'needs_person_evidence' | 'needs_event_time';
+  'needs_public_evidence' | 'needs_person_evidence' | 'needs_event_time' | 'needs_resource_details';
+/** Coverage only; callers must separately validate candidate and resource structure/evidence. */
+export function missingGenerationResources(
+  candidate: Pick<GeneratedCandidateInput, 'persons' | 'organizations'> & {
+    resources: GeneratedResourceDraft[];
+  },
+): { type: 'person' | 'organization'; name: string }[];
 export interface GeneratedCandidate extends GeneratedCandidateInput {
   index: number;
   classification: 'private';

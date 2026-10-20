@@ -19,7 +19,7 @@ import {
 } from '../admin-ai-core';
 import { invokeAiProbe } from '../ai-provider';
 import { createAiAdminExecutor } from '../admin-ai-service';
-import { isLocalDevelopment } from '../local-development';
+import { isLocalDevelopment, isLocalMockAi } from '../local-development';
 
 let pool: pg.Pool | undefined;
 let poolUrl: string | undefined;
@@ -118,7 +118,7 @@ export async function executeAiAdmin(
   operation: AiAdminOperation,
   command: Record<string, unknown>,
 ): Promise<unknown> {
-  if (isLocalDevelopment() && operation === 'run-probe') {
+  if (isLocalMockAi() && operation === 'run-probe') {
     throw Object.assign(new Error('local_provider_disabled'), { code: 'local_provider_disabled' });
   }
   const config = readAiBackendConfiguration(process.env);
@@ -127,7 +127,7 @@ export async function executeAiAdmin(
     keyring: config.keyring,
     allowedHosts: config.allowedHosts,
     invoke: invokeAiProbe,
-    localConfigurationDrafts: isLocalDevelopment(),
+    localConfigurationDrafts: isLocalMockAi(),
   });
   return execute(operation, command);
 }

@@ -104,6 +104,13 @@ test('review renders private evidence safely with confirmation-only publication 
   assert.match(taskHtml, new RegExp(`href="/admin/signal-review/${id}/3"`));
   assert.match(taskHtml, /aria-label="审核候选 4"/);
   assert.doesNotMatch(taskHtml, new RegExp(`/admin/signal-review/${id}/0`));
+  const incompleteHtml = render(
+    { id, status: 'completed' },
+    { ...result, candidates: [{ ...candidate, issues: ['needs_resource_details'] }] },
+  );
+  assert.match(incompleteHtml, /原始候选待补全：缺少部分人物或组织的资源资料/);
+  assert.match(incompleteHtml, /原始快照不会随补全改写/);
+  assert.match(incompleteHtml, new RegExp(`href="/admin/signal-review/${id}/3"`));
   for (const status of ['pending', 'running', 'failed', 'unknown', 'cancelled'])
     assert.doesNotMatch(render({ id, status }), /aria-label="审核候选/);
   for (const index of [undefined, -1, 5, 0.5, '3'])

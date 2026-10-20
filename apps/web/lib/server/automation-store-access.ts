@@ -1,6 +1,7 @@
 import 'server-only';
 import pg from 'pg';
 import { readRuntimeReaderConfig } from '../runtime-reader-core';
+import { isLocalRealAutomationEnabled } from '../local-development';
 import { assertAutomationRole } from '../../../../packages/database/src/automation-role.mjs';
 import {
   AutomationError,
@@ -8,9 +9,10 @@ import {
 } from '../../../../packages/database/src/automation-store.mjs';
 
 export function automationDatabaseConfiguration(reader = false) {
-  // Local configuration storage is not permission to run paid automation or
-  // publish insights, even if an execution flag is accidentally enabled.
-  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1') throw new AutomationError('execution_disabled');
+  // Local source collection requires the complete real-AI isolation contract.
+  // Public insight reads/publication are not enabled by this exception.
+  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1' && (reader || !isLocalRealAutomationEnabled()))
+    throw new AutomationError('execution_disabled');
   if (process.env[reader ? 'HZENSE_TOPIC_INSIGHTS_ENABLED' : 'HZENSE_AUTOMATION_ENABLED'] !== '1')
     throw new AutomationError('not_configured');
   return automationStorageConfiguration(reader);

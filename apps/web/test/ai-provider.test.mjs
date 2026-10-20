@@ -445,6 +445,93 @@ test('models only returns bounded strict IDs, not arbitrary provider metadata', 
   assert.ok(Buffer.byteLength(JSON.stringify(bounded.result)) < 16384);
 });
 
+test('OpenRouter catalog skips unsupported @ aliases without discarding supported models', async () => {
+  const supported = Array.from({ length: 240 }, (_, index) => ({ id: `vendor/model-${index}` }));
+  const aliases = Array.from({ length: 12 }, (_, index) => ({ id: `@preset/model-${index}` }));
+  let calls = 0;
+  const invoke = createAiProbeInvoker({
+    resolve,
+    request: async (request) => {
+      calls++;
+      assert.equal(request.method, 'GET');
+      assert.equal(request.url.pathname, '/api/v1/models');
+      return Response.json({
+        data: [
+          ...supported.slice(0, 121),
+          ...aliases,
+          ...supported.slice(121),
+          { id: '@preset/after-cap' },
+        ],
+      });
+    },
+  });
+  const input = fixture('models');
+  input.connection.base_url = 'https://openrouter.ai/api/v1';
+  input.allowedHosts = ['openrouter.ai'];
+  const result = await invoke(input);
+  assert.equal(result.success, true);
+  assert.deepEqual(result.result, {
+    models: supported.slice(0, 200),
+    count: 200,
+    truncated: true,
+    skipped_count: 13,
+  });
+  assert.equal(calls, 1);
+  assert.equal(validAiModelId('@preset/model-0'), false);
+  assert.ok(Buffer.byteLength(JSON.stringify(result.result)) < 16384);
+});
+
+test('unsupported alias discovery stays scoped and never admits unsafe IDs', async () => {
+  const input = fixture('models');
+  input.connection.base_url = 'https://openrouter.ai/api/v1';
+  input.allowedHosts = ['openrouter.ai'];
+  for (const id of [
+    `@${apiKey}`,
+    '@preset/[REDACTED]',
+    '@preset/model\n',
+    '@preset/model\u0000',
+    '@preset/模型',
+    '@preset/model?key=value',
+    '@preset/model#fragment',
+    '@preset/model%2fencoded',
+    '@preset/model\\path',
+    '@preset/model with spaces',
+    '@preset/model+variant',
+    '@preset/@nested',
+    '@',
+    `@${'x'.repeat(200)}`,
+    null,
+    42,
+  ]) {
+    const invoke = createAiProbeInvoker({
+      resolve,
+      request: async () =>
+        Response.json({
+          data: [
+            ...Array.from({ length: 200 }, (_, index) => ({ id: `vendor/model-${index}` })),
+            { id },
+          ],
+        }),
+    });
+    const result = await invoke(input);
+    assert.equal(result.success, false);
+    assert.equal(result.error_code, 'invalid_response');
+    assert.deepEqual(result.result, {});
+    assert.equal(JSON.stringify(result).includes(apiKey), false);
+  }
+  const aliasOnly = createAiProbeInvoker({
+    resolve,
+    request: async () => Response.json({ data: [{ id: '@preset/unsupported' }] }),
+  });
+  assert.equal((await aliasOnly(fixture('models'))).error_code, 'invalid_response');
+  assert.deepEqual((await aliasOnly(input)).result, {
+    models: [],
+    count: 0,
+    truncated: false,
+    skipped_count: 1,
+  });
+});
+
 test('catalog aliases retain a single leading tilde through parsing and exact model invocation', async () => {
   const aliases = [
     '~openai/gpt-astra-latest',

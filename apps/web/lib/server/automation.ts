@@ -60,7 +60,12 @@ export function automationExecutionReadiness(kind: AutomationConfig['kind']) {
   };
   const checks = [
     check('storage', automationStorageConfigured),
-    check('execution', automationConfigured),
+    check(
+      'execution',
+      () =>
+        !(process.env.HZENSE_LOCAL_DEVELOPMENT === '1' && kind !== 'source_collection') &&
+        automationConfigured(),
+    ),
     check('budget', automationLimits),
     ...(kind === 'source_collection'
       ? [check('import', importsConfigured), check('generation', generationConfigured)]
@@ -155,6 +160,9 @@ export async function automationRunDetail(owner: string, id: string) {
 }
 export async function saveAutomation(owner: string, request: store.SaveAutomationRequest) {
   const config = normalizeAutomationConfig(request.config);
+  // No local scheduler is installed. Never silently turn saved drafts into paid schedules.
+  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1' && config.enabled)
+    throw new store.AutomationError('execution_disabled');
   // Saving an inactive configuration neither enables execution nor needs its
   // budgets/import/generation services. Enabling a schedule remains protected.
   if (config.enabled) assertExecutionConfiguration(config.kind);
@@ -258,6 +266,8 @@ export async function triggerAutomation(owner: string, request: store.TriggerAut
   return result;
 }
 export async function dispatchDueAutomations() {
+  // Local real AI exposes manual source collection, not unattended paid schedules.
+  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1') return { dispatched: 0, failed: 0 };
   const kinds = (['source_collection', 'topic_insight'] as const).filter(
     automationExecutionConfigured,
   );
@@ -277,6 +287,8 @@ export async function dispatchDueAutomations() {
   return { dispatched, failed };
 }
 export async function publishAutomationInsight(owner: string, id: string, confirm: boolean) {
+  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1')
+    throw new store.AutomationError('execution_disabled');
   if (confirm) {
     const run = await store.readAutomationRun({ pool: automationPool, owner, id });
     if (!currentInsight(run.result, await readTaskPublicSignals()))
