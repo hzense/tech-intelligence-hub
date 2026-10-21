@@ -89,7 +89,7 @@ test('unified operations share one validated connection, but recheck ACL and rea
       state.queries.map(({ id }) => id),
       [1, 1, 2, 2, 3, 3, 4, 4],
     );
-    assert.match(state.queries[3].sql, /WHERE signal_id = \$1 LIMIT 2/);
+    assert.match(state.queries[3].sql, /WHERE u.signal_id = \$1 LIMIT 2/);
     assert.deepEqual(state.queries[3].parameters, ['missing-public-id']);
     assert.match(state.queries[5].sql, /LIMIT 1$/);
     assert.deepEqual(state.releases, [false, false, false, false]);

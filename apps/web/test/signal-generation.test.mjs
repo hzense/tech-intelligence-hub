@@ -26,6 +26,7 @@ import {
   normalizeGeneratedCandidates,
   GENERATION_METADATA_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
+  GENERATION_SOURCE_PUBLICATION_CONTRACT,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
@@ -1152,6 +1153,7 @@ test('creation pins enabled topics without AI; execution uses that snapshot desp
     candidates: [
       {
         ...candidate,
+        date_basis: 'source_published',
         topic_ids: ['semiconductors'],
         signal_type: 'product',
         resources: [
@@ -1185,19 +1187,20 @@ test('creation pins enabled topics without AI; execution uses that snapshot desp
     consent: true,
   });
   assert.deepEqual(f.run().snapshot.topics, topicCatalog);
-  assert.equal(f.run().snapshot.output_contract, GENERATION_RESOURCES_CONTRACT);
+  assert.equal(f.run().snapshot.output_contract, GENERATION_SOURCE_PUBLICATION_CONTRACT);
   assert.equal(provider.calls.length, 0);
   const createdInput = generationInput(
     source,
     stage.prompt,
     topicCatalog,
-    GENERATION_RESOURCES_CONTRACT,
+    GENERATION_SOURCE_PUBLICATION_CONTRACT,
   );
   assert.ok(f.run().reserveMicrousd >= createdInput.inputTokens);
   const dto = await f.execute('admin', { action: 'run', id });
   assert.equal(dto.status, 'completed');
   assert.deepEqual(f.finishes[0].result.candidates[0].topic_ids, ['semiconductors']);
   assert.equal(f.finishes[0].result.candidates[0].signal_type, 'product');
+  assert.equal(f.finishes[0].result.candidates[0].date_basis, 'source_published');
   assert.deepEqual(f.finishes[0].result.candidates[0].resources, [
     {
       type: 'person',
@@ -1245,7 +1248,7 @@ test('mixed output saves valid siblings; all-rejected output saves private diagn
     const bad = {
       ...candidate,
       title: 'x'.repeat(81),
-      event_date_evidence: candidate.claims[0].evidence,
+      event_date_evidence: [{ fragment_id: 'fragment-1', quote: 'invented date quote' }],
     };
     const provider = providerFixture({
       candidates: mixed ? [bad, candidate] : [bad],
@@ -1262,6 +1265,26 @@ test('mixed output saves valid siblings; all-rejected output saves private diagn
     assert.equal(provider.calls.length, 1);
     assert.ok(f.finishes[0].chargedMicrousd > 0);
   }
+});
+test('unknown-date auxiliary quotes retain a private candidate in one paid call with usage intact', async () => {
+  const value = { ...candidate, event_date_evidence: candidate.claims[0].evidence };
+  const provider = providerFixture({ candidates: [value], reason: 'synthetic' });
+  const f = coreFixture({ invoke: () => provider.invoke() });
+  const dto = await f.execute('admin', { action: 'run', id: f.run().id });
+  assert.equal(dto.status, 'completed');
+  assert.equal(dto.error_code, null);
+  assert.equal(dto.result.candidates.length, 1);
+  const saved = dto.result.candidates[0];
+  assert.equal(saved.event_date, null);
+  assert.deepEqual(saved.event_date_evidence, value.event_date_evidence);
+  assert.ok(saved.issues.includes('needs_event_time'));
+  assert.equal(saved.classification, 'private');
+  assert.equal(saved.status, 'needs_review');
+  assert.deepEqual(dto.result.rejected, []);
+  assert.deepEqual(dto.result.usage, { input_tokens: 200, output_tokens: 100 });
+  assert.equal(provider.calls.length, 1);
+  assert.equal(f.finishes.length, 1);
+  assert.ok(f.finishes[0].chargedMicrousd > 0);
 });
 test('missing date, person and claim evidence fails once and preserves provider usage and cost', async () => {
   const unsupported = {

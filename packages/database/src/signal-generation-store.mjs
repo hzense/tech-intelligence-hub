@@ -7,6 +7,8 @@ import {
   normalizeGenerationTopics,
   GENERATION_METADATA_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
+  GENERATION_SOURCE_PUBLICATION_CONTRACT,
+  hasGenerationResources,
   REJECTED_CANDIDATES_REASON,
 } from '../../ingestion/src/signal-generation-contract.mjs';
 import { isGenerationValidationDetail } from '../../ingestion/src/signal-generation-validation-diagnostics.mjs';
@@ -182,6 +184,7 @@ function validateAssessedResult(result, outcome) {
       ...(Object.hasOwn(candidate, 'topic_ids') ? ['topic_ids'] : []),
       ...(Object.hasOwn(candidate, 'signal_type') ? ['signal_type'] : []),
       ...(Object.hasOwn(candidate, 'resources') ? ['resources'] : []),
+      ...(Object.hasOwn(candidate, 'date_basis') ? ['date_basis'] : []),
     ]);
     index(candidate.index);
     if (candidate.classification !== 'private' || candidate.status !== 'needs_review') invalid();
@@ -242,7 +245,11 @@ function validateSavedCandidates(result, snapshot) {
     const outputContract = snapshot.output_contract;
     if (
       outputContract !== undefined &&
-      ![GENERATION_METADATA_CONTRACT, GENERATION_RESOURCES_CONTRACT].includes(outputContract)
+      ![
+        GENERATION_METADATA_CONTRACT,
+        GENERATION_RESOURCES_CONTRACT,
+        GENERATION_SOURCE_PUBLICATION_CONTRACT,
+      ].includes(outputContract)
     )
       fail('invalid_result');
     if (
@@ -251,7 +258,7 @@ function validateSavedCandidates(result, snapshot) {
     )
       fail('invalid_result');
     if (
-      outputContract !== GENERATION_RESOURCES_CONTRACT &&
+      !hasGenerationResources(outputContract) &&
       result.rejected?.some(({ errors }) => errors.some(({ field }) => field === 'resources'))
     )
       fail('invalid_result');
@@ -417,9 +424,11 @@ function inputs(owner, request, snapshot, configuration) {
   const safe = bounded(snapshot, 1200000, 'invalid_snapshot');
   if (
     Object.hasOwn(safe, 'output_contract') &&
-    (![GENERATION_METADATA_CONTRACT, GENERATION_RESOURCES_CONTRACT].includes(
-      safe.output_contract,
-    ) ||
+    (![
+      GENERATION_METADATA_CONTRACT,
+      GENERATION_RESOURCES_CONTRACT,
+      GENERATION_SOURCE_PUBLICATION_CONTRACT,
+    ].includes(safe.output_contract) ||
       !Object.hasOwn(safe, 'topics'))
   )
     fail('invalid_snapshot');

@@ -584,6 +584,9 @@ export async function materialPublicationPreview(
       // confirmation and never upgrades this to an independent verification.
       editorialPrefill: {
         eventDate: editorial.candidate.event_date,
+        ...(editorial.candidate.date_basis === 'source_published'
+          ? { dateBasis: 'source_published' as const }
+          : {}),
         persons: editorial.candidate.persons.map((person) => person.name),
         organizations: [
           ...new Set([

@@ -14,7 +14,7 @@ import type { AiProfile, AiConnection } from '../../../packages/database/src/ai-
 import {
   buildGenerationSource,
   normalizeGenerationTopics,
-  GENERATION_RESOURCES_CONTRACT,
+  GENERATION_SOURCE_PUBLICATION_CONTRACT,
   type GenerationTopic,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import {
@@ -233,7 +233,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
         source,
         stage.prompt,
         topics,
-        GENERATION_RESOURCES_CONTRACT,
+        GENERATION_SOURCE_PUBLICATION_CONTRACT,
       );
       // One UTF-8 byte per input token plus framing/schema allowance: conservative, not a provider bill.
       const inputBound =
@@ -261,7 +261,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
             profile: access.profile,
             connection: access.connection,
             topics,
-            output_contract: GENERATION_RESOURCES_CONTRACT,
+            output_contract: GENERATION_SOURCE_PUBLICATION_CONTRACT,
           },
           reserveMicrousd,
           ...(retryOf ? { retryOf } : {}),

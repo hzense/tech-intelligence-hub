@@ -13,6 +13,7 @@ import { signalGenerationSourceHash } from '../../../packages/database/src/signa
 import {
   buildGenerationSource,
   GENERATION_RESOURCES_CONTRACT,
+  GENERATION_SOURCE_PUBLICATION_CONTRACT,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 
 const secret = 'a'.repeat(64);
@@ -95,6 +96,22 @@ test('ordinary imported documents never masquerade as generated AI analysis', as
     assert.equal(result.output_tokens, 0);
     assert.equal('provider_cost_microusd' in result, false);
   }
+});
+
+test('new local simulations use the explicit article publication date without reinterpreting historical fixtures', async () => {
+  const request = { ...input(template), outputContract: GENERATION_SOURCE_PUBLICATION_CONTRACT };
+  const result = await invokeLocalGeneration(request, env);
+  assert.equal(result.output.candidates[0].event_date, '2026-10-19');
+  assert.equal(result.output.candidates[0].date_basis, 'source_published');
+  assert.match(result.output.candidates[0].event_date_evidence[0].quote, /^原文发布日期：/u);
+  const legacy = await invokeLocalGeneration(input(template), env);
+  assert.equal(legacy.output.candidates[0].event_date, '2026-10-18');
+  assert.equal('date_basis' in legacy.output.candidates[0], false);
+  const missing = await invokeLocalGeneration(
+    { ...request, source: input(template.replace('原文发布日期：2026-10-19', '')).source },
+    env,
+  );
+  assert.equal(missing.output.candidates.length, 0);
 });
 
 test('checked-in fixture produces a valid candidate with literal source evidence and zero real model calls', async (t) => {

@@ -130,6 +130,7 @@ export function normalizeEditorialContent(value) {
     'persons',
     'topics',
     'sourceUrls',
+    ...(Object.hasOwn(value ?? {}, 'dateBasis') ? ['dateBasis'] : []),
     ...(Object.hasOwn(value ?? {}, 'signalType') ? ['signalType'] : []),
     ...(Object.hasOwn(value ?? {}, 'resources') ? ['resources'] : []),
   ]);
@@ -140,6 +141,7 @@ export function normalizeEditorialContent(value) {
   )
     editorialFail();
   const eventDate = value.eventDate;
+  if (Object.hasOwn(value, 'dateBasis') && value.dateBasis !== 'source_published') editorialFail();
   if (
     eventDate !== null &&
     (typeof eventDate !== 'string' ||
@@ -152,6 +154,7 @@ export function normalizeEditorialContent(value) {
     title: editorialText(value.title, 80),
     summary: editorialText(value.summary, 500),
     eventDate,
+    ...(Object.hasOwn(value, 'dateBasis') ? { dateBasis: value.dateBasis } : {}),
     organizations: list(value.organizations, 24, (item) => editorialText(item, 200)),
     persons: list(value.persons, 12, (item) => editorialText(item, 200)),
     topics: list(
@@ -245,6 +248,9 @@ export function normalizeEditorialRequest(request, material, { checkPublication 
   // and the historical request hash stable, then check current policy only when
   // the store has established that this is a new request, not a committed replay.
   if (checkPublication) {
+    // Preserve historical request hashes, while preventing new writes from
+    // dropping or inventing the date policy pinned to the original candidate.
+    if (content.dateBasis !== material.dateBasis) editorialFail('material_changed');
     if (request.action === 'publish' && material.missingResourceDetails?.length)
       editorialFail('resource_details_incomplete');
     if (request.action !== 'withdraw' && content.persons.some(isExcludedPublicPerson))

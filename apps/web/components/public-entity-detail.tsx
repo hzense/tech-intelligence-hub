@@ -128,7 +128,7 @@ export function PublicEntityDetail({
         <section className={styles.detailSection} aria-labelledby="resource-signals">
           <h2 id="resource-signals">关联信号 · {entity.signals.length}</h2>
           <p className={styles.note}>
-            全部公开记录按事件发生时间排序，各信号保留自身的来源和发布状态。
+            全部公开记录按信号日期排序，各信号保留自身的来源和发布状态。
           </p>
           {entity.signals.length ? (
             <PublicSignalCards signals={entity.signals} />

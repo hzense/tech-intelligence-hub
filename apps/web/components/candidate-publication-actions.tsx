@@ -319,6 +319,10 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
           // Definite rejection permits a fresh confirmation after an explicit refresh.
           // Network/503 uncertainty keeps the original request identity instead.
           delete pending.current[action];
+          if (body.error === 'source_publication_requires_manual_confirmation')
+            throw new Error(
+              '此候选使用原文发布日期，请返回人工确认发布入口；不能继续历史事件日期核验流程。',
+            );
           if (body.error === 'review_revision_required')
             throw new Error('重新发布需要新的审核修订和独立核验，不能重复使用旧版本。');
           throw new Error('版本或状态已变化。请刷新状态后重新确认。');

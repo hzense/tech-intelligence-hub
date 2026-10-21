@@ -46,6 +46,8 @@ export type SignalEntry = (
       novelty?: never;
     })
 ) & {
+  /** Explicit only for new original-article publication dates; legacy values remain untagged. */
+  date_basis?: 'source_published';
   public_version?: number;
   publication_revision?: number;
   analysis?: string;

@@ -322,7 +322,7 @@ export function EditorialPublicationEditor({
               </select>
             </label>
             <label>
-              事件日期
+              {data.content.dateBasis === 'source_published' ? '原文发布日期' : '事件日期'}
               <input
                 type="date"
                 value={data.content.eventDate ?? ''}
@@ -333,6 +333,11 @@ export function EditorialPublicationEditor({
                   })
                 }
               />
+              {data.content.dateBasis === 'source_published' ? (
+                <span>
+                  填写原始新闻或文章的发布日期，不是事件发生日、更新时间或本站确认发布日。
+                </span>
+              ) : null}
             </label>
             <label>
               组织

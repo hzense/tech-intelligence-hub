@@ -224,6 +224,9 @@ export function createEditorialReviewService(deps: {
         materialHash: material.materialHash,
         title: material.content.title,
         summary: material.content.summary,
+        ...(material.content.dateBasis === undefined
+          ? {}
+          : { dateBasis: material.content.dateBasis }),
         sourceUrls: material.content.sourceUrls,
         sourceOptions: material.sourceOptions ?? material.content.sourceUrls,
         ...(material.resources === undefined

@@ -29,6 +29,7 @@ const safeErrors = new Set([
   'worker_busy',
   'budget_exceeded',
   'configuration_changed',
+  'source_publication_requires_manual_confirmation',
 ]);
 export function createCandidateReviewHandler(deps: {
   session(): Promise<{ user: { id: string } } | null>;

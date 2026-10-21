@@ -111,6 +111,43 @@ test('review renders private evidence safely with confirmation-only publication 
   assert.match(incompleteHtml, /原始候选待补全：缺少部分人物或组织的资源资料/);
   assert.match(incompleteHtml, /原始快照不会随补全改写/);
   assert.match(incompleteHtml, new RegExp(`href="/admin/signal-review/${id}/3"`));
+  const unknownDateHtml = render(
+    { id, status: 'completed' },
+    {
+      ...result,
+      candidates: [
+        {
+          ...candidate,
+          event_date: null,
+          event_date_evidence: [{ fragment_id: 'fragment-1', quote: 'earlier this week' }],
+          issues: ['needs_event_time'],
+        },
+      ],
+    },
+  );
+  assert.match(unknownDateHtml, /原始候选待补全：事件日期尚未确认/);
+  assert.match(unknownDateHtml, /引用不代表日期已确定/);
+  assert.match(unknownDateHtml, /日期相关辅助引用（日期待确认）/);
+  assert.match(unknownDateHtml, /earlier this week/);
+  assert.match(unknownDateHtml, new RegExp(`href="/admin/signal-review/${id}/3"`));
+  const sourceDateHtml = render(
+    { id, status: 'completed' },
+    {
+      ...result,
+      candidates: [{ ...candidate, date_basis: 'source_published', event_date: '2026-10-20' }],
+    },
+  );
+  assert.match(sourceDateHtml, /原文发布日期：2026-10-20/);
+  assert.match(sourceDateHtml, /核对原文发布日期的来源依据/);
+  assert.doesNotMatch(sourceDateHtml, /事件发生时间：/);
+  const missingSourceDateHtml = render(
+    { id, status: 'completed' },
+    {
+      ...result,
+      candidates: [{ ...candidate, date_basis: 'source_published', event_date: null }],
+    },
+  );
+  assert.match(missingSourceDateHtml, /原始候选待补全：原文发布日期尚未确认/);
   for (const status of ['pending', 'running', 'failed', 'unknown', 'cancelled'])
     assert.doesNotMatch(render({ id, status }), /aria-label="审核候选/);
   for (const index of [undefined, -1, 5, 0.5, '3'])

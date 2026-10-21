@@ -117,18 +117,28 @@ export function prepareCandidateReview(
 ): CandidateReviewPreparation {
   const blockers: string[] = [];
   const checks: CandidateEnrichmentCheck[] = [];
+  const sourcePublished = candidate.date_basis === 'source_published';
+  const dateLabel = sourcePublished ? '原文发布日期' : '事件日期';
+  if (sourcePublished)
+    blockers.push(
+      '此候选使用原文发布日期，请返回人工确认发布入口；不能新建历史事件日期核验或转换。',
+    );
   if (!candidate.event_date) {
-    blockers.push('候选缺少有原文依据的事件发生日期。');
+    blockers.push(
+      sourcePublished ? '候选缺少有原文依据的发布日期。' : '候选缺少有原文依据的事件发生日期。',
+    );
     checks.push({
       category: 'event_date',
-      label: '事件日期',
+      label: dateLabel,
       status: 'missing',
-      detail: '候选原文没有可确认的事件发生日期。',
+      detail: sourcePublished
+        ? '候选原文没有可确认的发布日期。'
+        : '候选原文没有可确认的事件发生日期。',
     });
   } else {
     checks.push({
       category: 'event_date',
-      label: '事件日期',
+      label: dateLabel,
       status: 'matched',
       detail: candidate.event_date,
     });

@@ -27,6 +27,8 @@ export type EditorialContent = {
   title: string;
   summary: string;
   eventDate: string | null;
+  /** Original news/article publication date; absent on legacy event-date records. */
+  dateBasis?: 'source_published';
   organizations: string[];
   persons: string[];
   topics: Array<{ id: string; title: string }>;
@@ -34,6 +36,21 @@ export type EditorialContent = {
   signalType?: GenerationSignalType | null;
   resources?: EditorialResource[];
 };
+/** Supplementary verification plans historically describe event dates only. */
+export function editorialCandidateDate(
+  dateBasis: EditorialContent['dateBasis'],
+  candidateDate: string | null,
+  historicalPrefill?: string | null,
+  prefillDateBasis?: EditorialContent['dateBasis'],
+): Pick<EditorialContent, 'eventDate' | 'dateBasis'> {
+  return dateBasis === 'source_published'
+    ? {
+        eventDate:
+          candidateDate ?? (prefillDateBasis === dateBasis ? (historicalPrefill ?? null) : null),
+        dateBasis,
+      }
+    : { eventDate: historicalPrefill ?? candidateDate };
+}
 export type EditorialDashboard = {
   configured: boolean;
   materialHash: string;
@@ -66,7 +83,7 @@ export function editorialMissing(
     !Number.isFinite(Date.parse(date)) ||
     new Date(date).toISOString().slice(0, 10) !== date
   )
-    missing.push('事件日期');
+    missing.push(content.dateBasis === 'source_published' ? '原文发布日期' : '事件日期');
   if (!content.organizations.length || content.organizations.some((name) => !name.trim()))
     missing.push('组织');
   if (
