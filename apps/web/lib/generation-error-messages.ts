@@ -53,6 +53,7 @@ const generationErrorMessages: Record<string, string> = {
   connection_unavailable: '所选 AI 连接暂不可用，请核对连接状态与授权。',
   worker_busy: '当前连接正在处理其他任务。请查询当前状态，稍后再手动操作。',
   configuration_changed: '任务创建后模型配置发生变化，本次结果不能直接采用。',
+  publication_policy_changed: '自动发布设置已变化，请刷新页面重新确认本次生成的发布方式。',
   source_changed: '原资料在任务创建后发生变化，请先核对来源与任务状态。',
   stale_attempt: '任务处理资格已失效，请查询最新状态，不要重复调用模型。',
   commit_unknown: '服务端尚无法确认任务记录，请保持原编号并查询，不要新建重复任务。',

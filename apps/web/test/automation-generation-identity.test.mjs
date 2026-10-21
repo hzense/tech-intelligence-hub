@@ -395,6 +395,8 @@ test('real automation workflow carries its unchanged hash IDs through the real g
   const workflowUrl = new URL('../workflows/automation.ts', import.meta.url);
   const workflowSource = await readFile(workflowUrl, 'utf8');
   const adapters = {
+    './automatic-publication':
+      'export async function runAutomaticPublicationStep(){return {state:"disabled"}}',
     workflow: 'export async function sleep(){throw Error("unexpected sleep")}',
     'workflow/api':
       'export async function start(_workflow,args){globalThis.__identityWorkflow.dispatches.push(args)}',
@@ -402,6 +404,8 @@ test('real automation workflow carries its unchanged hash IDs through the real g
       'export function automationLimits(){return {batch:1000000,daily:5000000,reserve:500000}}',
     '../lib/server/automation-store-access': 'export const automationPool={};',
     '../../../packages/database/src/automation-store.mjs': `
+      export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
+      export async function rejectAutomaticPublicationBeforeClaim(){throw Error('unexpected automatic rejection')}
       export async function claimAutomationRun(args){const f=globalThis.__identityWorkflow;f.checkOwner(args.owner);if(f.run.status!=='queued')return null;f.run.status='running';return structuredClone(f.run)}
       export async function readAutomationRun(args){const f=globalThis.__identityWorkflow;f.checkOwner(args.owner);return structuredClone(f.run)}
       export async function updateAutomationRun(args){const f=globalThis.__identityWorkflow;f.checkOwner(args.owner);if(args.token!==f.run.lease_token)throw Error('stale_attempt');f.updates.push(structuredClone(args));f.run.result=args.result;f.run.phase=args.phase;f.run.status=args.status??f.run.status;return structuredClone(f.run)}

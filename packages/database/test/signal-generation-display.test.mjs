@@ -59,6 +59,7 @@ describe('snapshot-free generation display reads', () => {
     expect(detail.result).toEqual(f.row.result);
     expect(detail.generation_version).toBe(f.row.generation_version);
     expect(detail.status).toBe('completed');
+    expect(detail.automatic_publication).toBe(false);
     expect(detail.lease_until).toBeNull();
     expect(detail.charged_microusd).toBe('42');
     expect(JSON.stringify(detail)).not.toMatch(
@@ -69,7 +70,9 @@ describe('snapshot-free generation display reads', () => {
     expect(select.sql).toContain('WHERE id=$1 AND owner_id=$2 AND deleted_at IS NULL');
     expect(select.sql).toContain('generation_version');
     expect(select.sql).toContain('result');
-    expect(select.sql).not.toMatch(/snapshot|configuration|lease_token|SELECT \*/);
+    expect(select.sql).not.toMatch(/snapshot\s*,|configuration|lease_token|SELECT \*/);
+    expect(select.sql).toContain("snapshot#>>'{publication,mode}'='automatic'");
+    expect(select.sql).toContain("snapshot#>>'{publication,policy}'='auto-publication-v1'");
     expect(f.queries[0].sql).toBe('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     expect(f.queries.some((q) => /^(UPDATE|INSERT|DELETE)/.test(q.sql))).toBe(false);
     expect(f.queries.at(-1).sql).toBe('COMMIT');
@@ -92,7 +95,7 @@ describe('snapshot-free generation display reads', () => {
     expect(select.values).toEqual(['owner', batchId, itemId]);
     expect(select.sql).toContain('WHERE owner_id=$1 AND deleted_at IS NULL');
     expect(select.sql).toContain('ORDER BY created_at DESC,id DESC LIMIT 50');
-    expect(select.sql).not.toMatch(/snapshot|configuration|lease_token|SELECT \*/);
+    expect(select.sql).not.toMatch(/snapshot\s*,|configuration|lease_token|SELECT \*/);
     expect(f.queries[0].sql).toBe('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
     expect(f.queries.some((q) => /^(UPDATE|INSERT|DELETE)/.test(q.sql))).toBe(false);
   });
@@ -107,6 +110,19 @@ describe('snapshot-free generation display reads', () => {
       expect(query.sql).toContain(
         'NULL::text AS progress_phase,NULL::timestamptz AS progress_at,NULL::timestamptz AS started_at',
       );
+  });
+  it('exposes only a strict boolean for automatic policy, never source URLs or snapshot', async () => {
+    for (const [value, expected] of [
+      [true, true],
+      [false, false],
+      [undefined, false],
+      ['true', false],
+    ]) {
+      const f = fixture({ automatic_publication: value });
+      const detail = await getSignalGenerationDisplay({ pool: f.pool, owner: 'owner', id });
+      expect(detail.automatic_publication).toBe(expected);
+      expect(detail).not.toHaveProperty('snapshot');
+    }
   });
 
   it('does not display foreign or deleted tasks', async () => {

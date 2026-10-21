@@ -82,7 +82,7 @@ export function generationSummaryLabel(task: GenerationSummary): string {
   if (task.status === 'completed')
     return task.candidate_count === null
       ? '生成完成，候选数量待核对'
-      : `已生成 ${task.candidate_count} 条私有候选`;
+      : `已生成 ${task.candidate_count} 条候选`;
   if (task.status === 'failed') return '生成失败，需核对原任务';
   if (task.status === 'cancelled') return '已取消';
   if (task.status === 'unavailable') return '记录不可读取或已隐藏，请核对原任务';
@@ -160,5 +160,5 @@ export function sourceAutomationLabel(run: SourceAutomationRun): string {
   if (progress.failed || progress.cancelled)
     return progress.completed ? '部分生成完成' : '生成未完成';
   if (!progress.candidateCountComplete) return '候选数量待核对';
-  return progress.knownCandidates > 0 ? '私有候选已生成' : '生成完成（无合格候选）';
+  return progress.knownCandidates > 0 ? '候选已生成' : '生成完成（无合格候选）';
 }

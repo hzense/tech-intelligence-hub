@@ -38,16 +38,21 @@ test('short steps poll detached work and never replay an uncertain invocation', 
         name: 'synthetic-workflow',
         setup(builder) {
           builder.onResolve(
-            { filter: /^(workflow|\.\.\/lib\/server\/(signal-generation|generation-sandbox))$/ },
+            {
+              filter:
+                /^(workflow|\.\/automatic-publication|\.\.\/lib\/server\/(signal-generation|generation-sandbox))$/,
+            },
             (args) => ({ path: args.path, namespace: 'fixture' }),
           );
           builder.onLoad({ filter: /.*/, namespace: 'fixture' }, (args) => ({
             contents:
-              args.path === 'workflow'
-                ? 'export async function sleep(value){globalThis.__workflowTest.waits.push(value);}'
-                : args.path.endsWith('/signal-generation')
-                  ? "export async function failQueuedGeneration(owner,id,queuedAt){const f=globalThis.__workflowTest;f.failed.push([owner,id,queuedAt]);if(f.row?.status==='pending'&&f.row.queuedAt===queuedAt)f.row.status='failed';}"
-                  : "export async function startGenerationSandbox(owner,id,queuedAt){const f=globalThis.__workflowTest;f.calls.push([owner,id,queuedAt]);if(f.startError)throw new Error('secret');return f.noStart?null:{sandboxName:'sandbox',commandId:'command'};} export async function pollGenerationSandbox(handle){const f=globalThis.__workflowTest;f.polls.push(handle);const n=f.next.shift();if(n instanceof Error)throw n;if(f.pollError)throw new Error('query unavailable');return n??f.fallback??'finished';} export async function stopGenerationSandbox(handle){globalThis.__workflowTest.stops.push(handle);}",
+              args.path === './automatic-publication'
+                ? 'export async function runAutomaticPublicationStep(owner,id){globalThis.__workflowTest.publications.push([owner,id]);}'
+                : args.path === 'workflow'
+                  ? 'export async function sleep(value){globalThis.__workflowTest.waits.push(value);}'
+                  : args.path.endsWith('/signal-generation')
+                    ? "export async function failQueuedGeneration(owner,id,queuedAt){const f=globalThis.__workflowTest;f.failed.push([owner,id,queuedAt]);if(f.row?.status==='pending'&&f.row.queuedAt===queuedAt)f.row.status='failed';}"
+                    : "export async function startGenerationSandbox(owner,id,queuedAt){const f=globalThis.__workflowTest;f.calls.push([owner,id,queuedAt]);if(f.startError)throw new Error('secret');return f.noStart?null:{sandboxName:'sandbox',commandId:'command'};} export async function pollGenerationSandbox(handle){const f=globalThis.__workflowTest;f.polls.push(handle);const n=f.next.shift();if(n instanceof Error)throw n;if(f.pollError)throw new Error('query unavailable');return n??f.fallback??'finished';} export async function stopGenerationSandbox(handle){globalThis.__workflowTest.stops.push(handle);}",
           }));
         },
       },
@@ -64,6 +69,7 @@ test('short steps poll detached work and never replay an uncertain invocation', 
       failed: [],
       polls: [],
       stops: [],
+      publications: [],
       ...extra,
     });
   try {

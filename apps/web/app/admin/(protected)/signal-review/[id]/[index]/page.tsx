@@ -7,7 +7,7 @@ import { isLocalDevelopment, isLocalRealAi } from '@/lib/local-development';
 import controls from '@/components/admin-controls.module.css';
 
 export const metadata: Metadata = {
-  title: '候选确认发布',
+  title: '信号管理',
   robots: { index: false, follow: false },
 };
 export const dynamic = 'force-dynamic';
@@ -27,7 +27,7 @@ export default async function CandidateReviewDetailPage({
   }
   return (
     <main className="section-shell">
-      <h1>候选确认发布</h1>
+      <h1>信号管理</h1>
       {packet ? (
         <CandidateReview
           packet={packet}

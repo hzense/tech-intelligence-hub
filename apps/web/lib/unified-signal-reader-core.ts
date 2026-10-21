@@ -36,14 +36,19 @@ export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
       )
         throw new PublicSignalReaderError();
       seen.add(row.signal_id);
-      const manual =
-        row.origin === 'ai_generation' && row.publication_basis === 'manual_confirmation';
-      if (!manual && !(row.origin === 'legacy_seed' && row.publication_basis === 'legacy_import'))
+      const editorial =
+        row.origin === 'ai_generation' &&
+        (row.publication_basis === 'manual_confirmation' ||
+          row.publication_basis === 'automatic_checks');
+      if (
+        !editorial &&
+        !(row.origin === 'legacy_seed' && row.publication_basis === 'legacy_import')
+      )
         throw new PublicSignalReaderError();
       if (
         row.date_basis !== undefined &&
         row.date_basis !== null &&
-        (!manual || row.date_basis !== 'source_published')
+        (!editorial || row.date_basis !== 'source_published')
       )
         throw new PublicSignalReaderError();
       const c = assertUnifiedSignalContent(row.content, { historical: true });
@@ -85,13 +90,13 @@ export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
         title: c.title,
         summary: c.summary,
         status: 'accepted' as const,
-        occurred_at: date(c.occurred_at, !manual),
+        occurred_at: date(c.occurred_at, !editorial),
         ...(row.date_basis === 'source_published'
           ? { date_basis: 'source_published' as const }
           : {}),
-        // Compatibility DTO: manual records previously exposed publication time here.
+        // Compatibility DTO: editorial records expose publication time here.
         // The stored unified captured_at remains null, never changed by this reader.
-        captured_at: manual ? date(row.recorded_at) : date(c.captured_at, true),
+        captured_at: editorial ? date(row.recorded_at) : date(c.captured_at, true),
         source_id: sources[0]?.id ?? '',
         source_url: sources[0]?.url ?? '',
         topics: c.topics.map((t: (typeof c.topics)[number]) => t.id),
@@ -102,18 +107,18 @@ export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
         public_organizations: organizations,
         public_sources: sources,
         public_topics: c.topics,
-        ...(manual
+        ...(editorial
           ? { publication_revision: Number(row.version) }
           : { legacy_related_entities: c.related_entities }),
         // Presence means reviewed identities to the entity-link projector. Older
         // name-only editorial revisions must still resolve unique catalog names;
         // an empty array would incorrectly bypass that read-only projection.
-        ...(!manual || resources.length ? { public_resources: resources } : {}),
+        ...(!editorial || resources.length ? { public_resources: resources } : {}),
       };
-      if (manual)
+      if (editorial)
         return {
           ...common,
-          publication_basis: 'manual_confirmation',
+          publication_basis: row.publication_basis,
           type: c.type ?? 'editorial',
         } as SignalEntry;
       if (c.type === null || c.importance === null || c.confidence === null || c.novelty === null)

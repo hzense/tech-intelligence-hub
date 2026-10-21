@@ -25,6 +25,7 @@ export interface EditorialSignalRecord {
   revision: number;
   material_hash: string;
   action: 'draft' | 'publish' | 'withdraw';
+  publication_basis?: 'manual_confirmation' | 'automatic_checks';
   content: EditorialContent;
   created_at: Date | string;
 }
@@ -34,6 +35,8 @@ export function saveEditorialSignal(input: {
   request: EditorialRequest;
   material: EditorialMaterial;
   unified?: boolean;
+  /** Server-only; never forward a request-body flag. */
+  automatic?: boolean;
 }): Promise<EditorialSignalRecord>;
 export function readEditorialSignal(input: {
   pool: unknown;
@@ -48,6 +51,7 @@ export interface EditorialSignalStatus {
     revision: number;
     action: 'draft' | 'publish' | 'withdraw';
     public_id: string | null;
+    publication_basis?: 'manual_confirmation' | 'automatic_checks';
   }>;
 }
 export function readEditorialSignalStatuses(input: {

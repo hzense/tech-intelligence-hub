@@ -212,7 +212,11 @@ export function contentReadiness(content) {
   if (!content.signalType) missing.push('signalType');
   return { ready: missing.length === 0, missing };
 }
-export function normalizeEditorialRequest(request, material, { checkPublication = true } = {}) {
+export function normalizeEditorialRequest(
+  request,
+  material,
+  { checkPublication = true, automatic = false } = {},
+) {
   editorialObject(request, [
     'requestId',
     'runId',
@@ -240,8 +244,9 @@ export function normalizeEditorialRequest(request, material, { checkPublication 
   const content = normalizeEditorialContent(request.content);
   if (
     request.materialHash !== material?.materialHash ||
-    content.title !== editorialText(material.title, 80) ||
-    content.summary !== editorialText(material.summary, 500)
+    (automatic &&
+      (content.title !== editorialText(material.title, 80) ||
+        content.summary !== editorialText(material.summary, 500)))
   )
     editorialFail('material_changed');
   // Publication policy can change after a successful write. Keep normalization
@@ -286,7 +291,15 @@ export function normalizeEditorialRequest(request, material, { checkPublication 
           JSON.stringify(material.sourceUrls.map((url) => editorialText(url, 2048))))
     )
       editorialFail('material_changed');
-    if (request.action !== 'draft' && !request.consent) editorialFail('confirmation_required');
+    if (automatic) {
+      if (
+        request.action !== 'publish' ||
+        request.expectedRevision !== 0 ||
+        request.consent !== false
+      )
+        editorialFail('automatic_publication_invalid');
+    } else if (request.action !== 'draft' && !request.consent)
+      editorialFail('confirmation_required');
     if (request.action === 'publish' && !contentReadiness(content).ready)
       editorialFail('confirmation_required');
   }

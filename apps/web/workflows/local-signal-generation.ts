@@ -1,10 +1,13 @@
 import { isLocalDevelopment } from '../lib/local-development';
 import { executeGeneration, failQueuedGeneration } from '../lib/server/signal-generation';
+import { runAutomaticPublicationStep } from './automatic-publication';
 
 /** Uses Workflow's local filesystem world; only task identifiers enter its log. */
 export async function localSignalGenerationWorkflow(owner: string, id: string, queuedAt: string) {
   'use workflow';
-  return runLocalGenerationStep(owner, id, queuedAt);
+  const result = await runLocalGenerationStep(owner, id, queuedAt);
+  if (result.status === 'completed') await runAutomaticPublicationStep(owner, id);
+  return result;
 }
 
 async function runLocalGenerationStep(owner: string, id: string, queuedAt: string) {

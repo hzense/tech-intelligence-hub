@@ -66,7 +66,7 @@ test('editorial material auto-selects generated topics unless supplemental selec
       '../../../../packages/database/src/editorial-signal-store.mjs': `export const saveEditorialSignal = async ({pool,owner,request,material}) => { if(pool.role !== 'writer') throw new Error('publication must use writer'); globalThis.__editorialGenerationTopicsTest.writes.push({owner,request,material}); return {request_id:request.requestId,revision:1,action:request.action,content:request.content}; };
          export const readEditorialSignal = async ({pool}) => { if(pool.role !== 'writer') throw new Error('revision reads must use writer'); return globalThis.__editorialGenerationTopicsTest.saved; };
          export const previewEditorialResources = args => globalThis.__editorialGenerationTopicsTest.previewEditorialResources(args);`,
-      './signal-generation': `export const generationRecord = async () => ({owner_id:'owner',batch_id:'${runId}',item_id:'${runId}',source_fence:1,source_hash:'b'.repeat(64)});`,
+      './signal-generation': `export const generationRecord = async () => ({owner_id:'owner',batch_id:'${runId}',item_id:'${runId}',source_fence:1,source_hash:'b'.repeat(64),snapshot:{}});`,
       '../candidate-review': `
         export const buildCandidateReview = () => ({
           materialHash: 'a'.repeat(64),

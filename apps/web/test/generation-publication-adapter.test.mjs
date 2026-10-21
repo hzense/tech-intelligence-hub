@@ -28,8 +28,10 @@ export class Pool {
 export const editorialPool={async connect(){return {release(){},async query(sql,values){
   queries.push({kind:'editorial',sql,values});
   if(publication.fail)throw new Error('PRIVATE_CONNECTION_ERROR');
+  if(sql.includes("a.attname='publication_basis'"))return {rows:[{available:true}]};
   if(values[0]!=='admin')throw new Error('Wrong owner');
   return {rows:publication.missing?[]:[{run_id:id,candidate_index:0,revision:2,action:publication.action,
+    publication_basis:'automatic_checks',
     public_id:publication.action==='publish'?'editorial-'+ 'a'.repeat(32):null}]};
 }}}};
 `;
@@ -102,7 +104,12 @@ test('list and detail project publication history with spend and publication wri
   const dashboard = await service.generationDashboard('admin');
   assert.equal(dashboard.runs[0].publication.candidates[0].status, 'published');
   assert.equal(dashboard.runs[0].result.candidates[0].status, 'needs_review');
-  assert.equal(service.queries.filter((query) => query.kind === 'editorial').length, 1);
+  assert.equal(service.queries.filter((query) => query.kind === 'editorial').length, 2);
+  assert.ok(
+    service.queries.some(
+      (query) => query.kind === 'editorial' && query.sql.includes('r.publication_basis'),
+    ),
+  );
   service.publication.action = 'withdraw';
   assert.equal(
     (await service.generationDetail('admin', service.id)).publication.candidates[0].status,

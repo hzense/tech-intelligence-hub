@@ -125,9 +125,12 @@ suite('unified Signal additive PostgreSQL storage', () => {
     await client.query(
       await readFile(new URL('0029_unified_signal_storage.sql', directory), 'utf8'),
     );
-    await client.query(
-      await readFile(new URL('0030_unified_signal_cutover.sql', directory), 'utf8'),
-    );
+    // The reviewed catalog describes the current schema. Preserve the pre-0029
+    // fixture above, then apply every later migration before comparing it.
+    for (const name of (await readdir(directory))
+      .filter((name) => /^00\d\d_.*\.sql$/.test(name) && name >= '0030')
+      .sort())
+      await client.query(await readFile(new URL(name, directory), 'utf8'));
     await client.query('COMMIT');
     const catalog = await loadSeedCatalog(
       fileURLToPath(new URL('../../../data/seed/', import.meta.url)),
@@ -186,8 +189,9 @@ suite('unified Signal additive PostgreSQL storage', () => {
       ).rows;
       const actual = rows.map((row) => canonicalPublicationControlCheck(row.definition));
       expect(actual).toHaveLength(forms.length);
-      for (const alternatives of forms)
-        expect(actual.some((value) => alternatives.includes(value))).toBe(true);
+      expect(
+        forms.filter((alternatives) => !actual.some((value) => alternatives.includes(value))),
+      ).toEqual([]);
     }
     const owner = (await client.query('SELECT current_user AS name')).rows[0].name;
     expect(await collectSignalImmutabilityProblems(client, owner)).toEqual([]);

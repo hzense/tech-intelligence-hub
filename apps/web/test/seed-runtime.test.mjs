@@ -127,6 +127,9 @@ test('unified mode suppresses non-empty legacy Radar snapshots even if the old r
               `,
               './public-signal-reader-core.ts': `
                 export function readSignalReadMode() { return 'legacy'; }
+                export function isEditorialSignal(signal) {
+                  return ['manual_confirmation', 'automatic_checks'].includes(signal.publication_basis);
+                }
               `,
               './legacy-signal-projection.ts': `
                 export function projectLegacySignalEntries() { return []; }

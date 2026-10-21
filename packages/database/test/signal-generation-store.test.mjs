@@ -170,6 +170,26 @@ function input() {
   };
 }
 describe('private generation input boundaries', () => {
+  it('rejects forged automatic policies and private or credential-bearing pinned sources', async () => {
+    for (const publication of [
+      null,
+      { mode: 'automatic', policy: 'other', sourceUrls: [] },
+      { mode: 'manual', policy: 'auto-publication-v1', sourceUrls: [] },
+      { mode: 'automatic', policy: 'auto-publication-v1', sourceUrls: ['http://example.com'] },
+      {
+        mode: 'automatic',
+        policy: 'auto-publication-v1',
+        sourceUrls: ['https://secret@example.com'],
+      },
+      { mode: 'automatic', policy: 'auto-publication-v1', sourceUrls: [], consent: true },
+    ]) {
+      const value = input();
+      value.snapshot.publication = publication;
+      await expect(createSignalGeneration(value)).rejects.toMatchObject({
+        code: 'invalid_snapshot',
+      });
+    }
+  });
   it('rejects invalid topic snapshots before contacting the database', async () => {
     const topic = { id: 'topic-ai', title: 'Artificial Intelligence' };
     for (const topics of [
@@ -212,6 +232,11 @@ describe('private generation input boundaries', () => {
       const value = input();
       value.snapshot.topics = [{ id: 'topic-ai', title: 'Artificial Intelligence' }];
       value.snapshot.output_contract = contract;
+      value.snapshot.publication = {
+        mode: 'automatic',
+        policy: 'auto-publication-v1',
+        sourceUrls: ['https://example.com/news'],
+      };
       let savedSnapshot;
       value.pool = {
         connect: async () => ({
@@ -248,6 +273,15 @@ describe('private generation input boundaries', () => {
           ...value.snapshot,
           ...(savedTopics === undefined ? {} : { topics: savedTopics }),
           ...(savedContract === undefined ? {} : { output_contract: savedContract }),
+          ...(savedContract === GENERATION_SOURCE_PUBLICATION_CONTRACT
+            ? {
+                publication: {
+                  mode: 'automatic',
+                  policy: 'auto-publication-v1',
+                  sourceUrls: ['https://example.com/original'],
+                },
+              }
+            : {}),
         };
         const savedConfig = { ...value.configuration };
         const { id: requestId, ...requestIdentity } = value.request;
@@ -284,7 +318,15 @@ describe('private generation input boundaries', () => {
         };
         value.snapshot.topics = incomingTopics;
         value.snapshot.output_contract = GENERATION_RESOURCES_CONTRACT;
+        value.snapshot.publication = {
+          mode: 'automatic',
+          policy: 'auto-publication-v1',
+          sourceUrls: ['https://example.com/news'],
+        };
         value.configuration.reserveMicrousd = 20;
+        expect(await createSignalGeneration(value)).toEqual(row);
+        expect(writes).toHaveLength(0);
+        delete value.snapshot.publication;
         expect(await createSignalGeneration(value)).toEqual(row);
         expect(writes).toHaveLength(0);
         row.deleted_at = new Date();

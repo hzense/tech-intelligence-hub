@@ -70,6 +70,7 @@ test(
     let profileWarnings = [];
     let mismatchedCreate = false;
     let dashboardRequests = 0;
+    let automaticPublicationEnabled = false;
     let detailRequestMethods = [];
     let progressRequests = [];
     let progressResponse;
@@ -153,6 +154,7 @@ test(
           res.end(
             JSON.stringify({
               runs,
+              automaticPublicationEnabled,
               dailyUsage: {
                 day: '2026-09-21',
                 charged_microusd: '1234567',
@@ -380,6 +382,7 @@ test(
       profileWarnings = [];
       mismatchedCreate = false;
       dashboardRequests = 0;
+      automaticPublicationEnabled = false;
       detailRequestMethods = [];
       progressRequests = [];
       progressResponse = undefined;
@@ -449,6 +452,61 @@ test(
     }
 
     await t.test(
+      'new-task authorization reflects automatic publication without authorizing simulated output',
+      async () => {
+        const page = await newPage();
+        automaticPublicationEnabled = true;
+        try {
+          await page.goto(origin);
+          await selectInput(page);
+          await expect(page.getByRole('checkbox')).toHaveAccessibleName(
+            /生成后自动检查，合格的公开网页资料直接发布/,
+          );
+          await expect(page.getByRole('checkbox')).not.toBeChecked();
+          assert.equal(
+            commands.length,
+            0,
+            'loading the enabled policy does not generate or publish',
+          );
+          await page.getByRole('checkbox').check();
+          await page
+            .getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true })
+            .click();
+          await expect
+            .poll(() => commands.filter((command) => command.action === 'create').length)
+            .toBe(1);
+          assert.equal(
+            commands.find((command) => command.action === 'create').automaticPublicationConsent,
+            true,
+          );
+          const savedRequest = await page.evaluate(
+            (key) => JSON.parse(globalThis.sessionStorage.getItem(key)),
+            storageKey,
+          );
+          assert.equal(
+            savedRequest.automaticPublicationConsent,
+            true,
+            'recovery keeps the original authorization policy',
+          );
+          await page.reload();
+          await expect(page.getByRole('checkbox')).not.toBeChecked();
+          assert.equal(commands.filter((command) => command.action === 'run').length, 0);
+          await page.evaluate(() => globalThis.sessionStorage.clear());
+          runs = [];
+          await page.goto(`${origin}?local-mock`);
+          await expect(page.getByRole('checkbox')).toHaveAccessibleName(
+            /仅生成本机私有候选，不授权发布/,
+          );
+          await expect(
+            page.getByText(/普通资料仍可解析，但不会冒充真实 AI 分析；生成不会自动发布/),
+          ).toBeVisible();
+        } finally {
+          await page.close();
+        }
+      },
+    );
+
+    await t.test(
       'local real generation keeps provider consent and distinguishes mixed historical task modes',
       async () => {
         const page = await newPage();
@@ -495,6 +553,176 @@ test(
     );
 
     await t.test(
+      'automatic publication is re-read after generation completion, then polling stops when published',
+      async () => {
+        const page = await newPage();
+        const completedAt = '2026-10-21T10:00:00Z';
+        await page.clock.install({ time: new Date(completedAt) });
+        const task = publicationRun();
+        runs = [
+          {
+            ...task,
+            automatic_publication: true,
+            finished_at: completedAt,
+            publication: {
+              state: 'available',
+              candidates: task.publication.candidates.map((candidate) => ({
+                ...candidate,
+                status: 'unpublished',
+                publicId: null,
+              })),
+            },
+          },
+        ];
+        try {
+          await page.goto(`${origin}/?off`);
+          await expect(page.getByLabel('自动发布状态刷新')).toContainText('正在短时核对');
+          runs = [
+            {
+              ...runs[0],
+              publication: {
+                state: 'available',
+                candidates: task.publication.candidates.map((candidate) => ({
+                  ...candidate,
+                  status: 'published',
+                  publicId: `editorial-${'a'.repeat(32)}`,
+                })),
+              },
+            },
+          ];
+          await page.clock.runFor(15_001);
+          await expect(page.getByRole('table', { name: /生成任务/ })).toContainText('已发布 4 条');
+          assert.deepEqual(detailRequestMethods, ['GET']);
+          await expect(page.getByLabel('自动发布状态刷新')).toHaveCount(0);
+          await page.clock.runFor(600_000);
+          assert.deepEqual(detailRequestMethods, ['GET']);
+          assert.equal(
+            dashboardRequests,
+            1,
+            'publication refresh never reloads the whole dashboard',
+          );
+          assert.equal(
+            commands.some((command) => command.action !== 'detail'),
+            false,
+          );
+        } finally {
+          await page.close();
+        }
+      },
+    );
+
+    await t.test(
+      'incomplete auto publication makes at most three delayed readbacks and preserves manual refresh',
+      async () => {
+        const page = await newPage();
+        const completedAt = '2026-10-21T10:00:00Z';
+        await page.clock.install({ time: new Date(completedAt) });
+        const task = publicationRun();
+        runs = [{ ...task, automatic_publication: true, finished_at: completedAt }];
+        try {
+          await page.goto(`${origin}/?off`);
+          await expect(page.getByLabel('自动发布状态刷新')).toContainText('正在短时核对');
+          for (const [index, delay] of [15_001, 30_001, 60_001].entries()) {
+            await page.clock.runFor(delay);
+            await expect.poll(() => detailRequestMethods.length).toBe(index + 1);
+          }
+          await expect(page.getByLabel('自动发布状态刷新')).toContainText('自动刷新已结束');
+          await page.clock.runFor(3_600_000);
+          assert.deepEqual(detailRequestMethods, ['GET', 'GET', 'GET']);
+          await expect(page.getByRole('button', { name: '手动刷新列表' })).toBeEnabled();
+          assert.equal(dashboardRequests, 1);
+          assert.equal(
+            commands.some((command) => command.action !== 'detail'),
+            false,
+          );
+        } finally {
+          await page.close();
+        }
+      },
+    );
+
+    await t.test(
+      'old automatic tasks do not restart background publication polling on page load',
+      async () => {
+        const page = await newPage();
+        await page.clock.install({ time: new Date('2026-10-21T10:00:00Z') });
+        runs = [
+          { ...publicationRun(), automatic_publication: true, finished_at: '2026-10-21T09:00:00Z' },
+        ];
+        try {
+          await page.goto(`${origin}/?off`);
+          await expect(page.getByLabel('自动发布状态刷新')).toContainText('自动刷新已结束');
+          await page.clock.runFor(600_000);
+          assert.deepEqual(detailRequestMethods, []);
+          assert.equal(dashboardRequests, 1);
+        } finally {
+          await page.close();
+        }
+      },
+    );
+
+    await t.test(
+      'task detail continues bounded publication readback after AI completion and pauses while hidden',
+      async () => {
+        const page = await newPage();
+        const completedAt = '2026-10-21T10:00:00Z';
+        await page.clock.install({ time: new Date(completedAt) });
+        runs = [{ id: liveDetailId, status: 'running', progress_phase: 'generating' }];
+        try {
+          await page.goto(`${origin}/?live-detail`);
+          await expect(page.getByText('模型生成中', { exact: true })).toBeVisible();
+          const task = publicationRun();
+          runs = [{ ...task, automatic_publication: true, finished_at: completedAt }];
+          await page.clock.runFor(15_001);
+          await expect(page.getByLabel('自动发布状态刷新')).toContainText('正在短时核对');
+          assert.deepEqual(detailRequestMethods, ['GET']);
+          await page.evaluate(() => {
+            Object.defineProperty(globalThis.document, 'visibilityState', {
+              configurable: true,
+              value: 'hidden',
+            });
+            globalThis.document.dispatchEvent(new globalThis.Event('visibilitychange'));
+          });
+          await page.clock.runFor(120_000);
+          assert.deepEqual(detailRequestMethods, ['GET']);
+          runs = [
+            {
+              ...runs[0],
+              publication: {
+                state: 'available',
+                candidates: task.publication.candidates.map((candidate) => ({
+                  ...candidate,
+                  status: 'withdrawn',
+                  publicId: null,
+                })),
+              },
+            },
+          ];
+          await page.evaluate(() => {
+            Object.defineProperty(globalThis.document, 'visibilityState', {
+              configurable: true,
+              value: 'visible',
+            });
+            globalThis.document.dispatchEvent(new globalThis.Event('visibilitychange'));
+          });
+          await page.clock.runFor(15_001);
+          await expect(page.getByText(/已撤回 4 条/)).toBeVisible();
+          await expect(page.getByLabel('自动发布状态刷新')).toHaveCount(0);
+          await page.clock.runFor(600_000);
+          assert.deepEqual(detailRequestMethods, ['GET', 'GET']);
+          assert.equal(progressRequests.length, 1, 'AI progress polling stays stopped');
+          await expect(page.getByRole('button', { name: '刷新任务与发布状态' })).toBeEnabled();
+          assert.equal(
+            commands.some((command) => command.action !== 'detail'),
+            false,
+          );
+        } finally {
+          await page.close();
+        }
+      },
+    );
+
+    await t.test(
       'publication summaries and sparse candidate badges reflect persisted state with read-only details',
       async () => {
         const page = await newPage();
@@ -518,10 +746,9 @@ test(
           'href',
           '/signals/editorial-11111111111141118111111111111111',
         );
-        await expect(published.getByRole('link', { name: '查看候选 1 发布记录' })).toHaveAttribute(
-          'href',
-          `/admin/signal-review/${liveDetailId}/0`,
-        );
+        await expect(
+          published.getByRole('link', { name: '修改或撤回候选 1 对应信号' }),
+        ).toHaveAttribute('href', `/admin/signal-review/${liveDetailId}/0`);
         await expect(page.getByRole('link', { name: '查看正式信号' })).toHaveCount(1);
         await expect(page.getByText('待审核 · 未发布', { exact: true })).toHaveCount(0);
         assert.deepEqual(commands, [{ action: 'detail', id: liveDetailId }]);

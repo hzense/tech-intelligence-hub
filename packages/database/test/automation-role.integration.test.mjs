@@ -20,6 +20,7 @@ import {
   deleteAutomationConfig,
   enqueueDueAutomations,
   publishAutomationInsight,
+  rejectAutomaticPublicationBeforeClaim,
 } from '../src/automation-store.mjs';
 
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
@@ -743,14 +744,20 @@ suite('automation role isolation and publication boundary', () => {
     ['completed', randomUUID(), new Date(0)],
     ['failed', null, new Date(Date.now() + 60_000)],
     ['cancelled', randomUUID(), null],
+    ['unknown', randomUUID(), null, true],
+    ['unknown', null, new Date(Date.now() + 60_000), true],
+    ['unknown', null, new Date(0), true],
+    ['unknown', randomUUID(), new Date(0), true],
+    ['queued', null, null, true],
+    ['running', null, null, true],
   ])(
     'refuses deletion while a %s task or unreleased lease requires reconciliation',
-    async (status, leaseToken, leaseUntil) => {
+    async (status, leaseToken, leaseUntil, finished = false) => {
       const operator = `blocked-${randomUUID()}`;
       const config = await save(operator);
       const id = randomUUID();
       await owner.query(
-        "INSERT INTO public.automation_runs(id,config_id,owner_id,config_revision,snapshot,slot,trigger,status,phase,lease_token,lease_until,created_at) VALUES($1,$2,$3,1,$4::jsonb,$5,'manual',$6,'fixture',$7,$8,clock_timestamp()-interval '3 hours')",
+        "INSERT INTO public.automation_runs(id,config_id,owner_id,config_revision,snapshot,slot,trigger,status,phase,lease_token,lease_until,created_at,finished_at) VALUES($1,$2,$3,1,$4::jsonb,$5,'manual',$6,'fixture',$7,$8,clock_timestamp()-interval '3 hours',CASE WHEN $9 THEN clock_timestamp() ELSE NULL END)",
         [
           id,
           config.id,
@@ -760,15 +767,160 @@ suite('automation role isolation and publication boundary', () => {
           status,
           leaseToken,
           leaseUntil,
+          finished,
         ],
       );
+      const before = (await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [id]))
+        .rows[0];
       await expect(deletion(config, operator)).rejects.toThrow('config_in_use');
       expect((await readAutomationDashboard({ pool, owner: operator })).configs).toHaveLength(1);
+      expect(
+        (await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [id])).rows[0],
+      ).toEqual(before);
       await owner.query(
         "UPDATE public.automation_runs SET status='failed',lease_token=NULL,lease_until=NULL WHERE id=$1",
         [id],
       );
       await deletion(config, operator);
+    },
+  );
+  it.each([
+    ['settled provider receipt', 'provider', 27000],
+    ['unreconciled reservation', 'reserve', 500000],
+  ])(
+    'hides a finished unknown task configuration while preserving its %s and history',
+    async (_label, costSource, expectedBudget) => {
+      const operator = `finished-unknown-${randomUUID()}`;
+      const config = await save(operator, { publicationMode: 'automatic' });
+      const probeConfig = await save(`${operator}-probe`);
+      const probeId = randomUUID();
+      const id = randomUUID();
+      const generationIds = [randomUUID(), randomUUID()];
+      const result = {
+        generationIds,
+        failed: 1,
+        discovery: { articles: [{ url: 'https://example.com/synthetic-source' }] },
+        discoveryCostSource: costSource,
+        discoveryCostMicrousd: 27000,
+      };
+      const frozenInputs = { sources: [{ id: randomUUID(), content: 'Synthetic private source' }] };
+      try {
+        await enqueueAutomation({
+          pool,
+          owner: probeConfig.owner_id,
+          request: {
+            configId: probeConfig.id,
+            expectedRevision: probeConfig.revision,
+            requestId: probeId,
+            consent: true,
+          },
+        });
+        // Run the real admission/budget query, rolling back only this synthetic
+        // probe's claim. No ledger rows belonging to another case are changed.
+        const budgetUsage = async () => {
+          let used;
+          const probePool = {
+            connect: async () => ({
+              query: async (statement, values) => {
+                const output = await adminRole.query(
+                  statement === 'COMMIT' ? 'ROLLBACK' : statement,
+                  values,
+                );
+                if (statement.startsWith('SELECT COALESCE(sum(CASE'))
+                  used = Number(output.rows[0].used);
+                return output;
+              },
+              release() {},
+            }),
+          };
+          await claimAutomationRun({
+            pool: probePool,
+            owner: probeConfig.owner_id,
+            id: probeId,
+            limits: { batch: 1, daily: 50000000, reserve: 1 },
+          });
+          expect(used).toBeTypeOf('number');
+          expect(
+            await readAutomationRun({ pool, owner: probeConfig.owner_id, id: probeId }),
+          ).toMatchObject({ status: 'queued', budget_day: null, reserved_microusd: 0 });
+          return used;
+        };
+        const originalBudget = await budgetUsage();
+        await owner.query(
+          `INSERT INTO public.automation_runs(
+            id,config_id,owner_id,config_revision,snapshot,slot,trigger,status,phase,
+            result,frozen_inputs,reserved_microusd,charged_microusd,cost_source,
+            budget_day,started_at,finished_at,error_code
+          ) VALUES($1,$2,$3,1,$4::jsonb,$5,'manual','unknown','source_failed',
+            $6::jsonb,$7::jsonb,500000,27000,$8,
+            (clock_timestamp() AT TIME ZONE 'UTC')::date,
+            clock_timestamp()-interval '2 hours',clock_timestamp(),'outcome_unknown')`,
+          [
+            id,
+            config.id,
+            operator,
+            JSON.stringify(config.config),
+            `manual:${id}`,
+            JSON.stringify(result),
+            JSON.stringify(frozenInputs),
+            costSource,
+          ],
+        );
+        const before = (await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [id]))
+          .rows[0];
+        const beforeBudget = await budgetUsage();
+        expect(beforeBudget - originalBudget).toBe(expectedBudget);
+        const deleted = await deletion(config, operator);
+        expect(deleted.deleted_at).toBeInstanceOf(Date);
+        expect(await deletion(config, operator)).toEqual(deleted);
+        expect(
+          (await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [id])).rows[0],
+        ).toEqual(before);
+        expect(await budgetUsage()).toBe(beforeBudget);
+        const dashboard = await readAutomationDashboard({ pool, owner: operator });
+        expect(dashboard.configs).toEqual([]);
+        expect(dashboard.runs).toHaveLength(1);
+        expect(dashboard.runs[0]).toMatchObject({
+          id,
+          status: 'unknown',
+          phase: 'source_failed',
+          error_code: 'outcome_unknown',
+          charged_microusd: 27000,
+          cost_source: costSource,
+          snapshot: {
+            name: config.config.name,
+            kind: 'source_collection',
+            publicationMode: 'automatic',
+          },
+          result: { generationIds, failed: 1 },
+        });
+        expect(await readAutomationRunDetail({ pool, owner: operator, id })).toMatchObject({
+          status: 'unknown',
+          result,
+          charged_microusd: 27000,
+          cost_source: costSource,
+        });
+        expect(await readAutomationRun({ pool, owner: operator, id })).toMatchObject({
+          status: 'unknown',
+          snapshot: config.config,
+          result,
+          frozen_inputs: frozenInputs,
+          reserved_microusd: 500000,
+          charged_microusd: 27000,
+          cost_source: costSource,
+        });
+        await expect(
+          readAutomationRunDetail({ pool, owner: `${operator}-other`, id }),
+        ).rejects.toThrow('not_found');
+      } finally {
+        const configIds = [config.id, probeConfig.id];
+        await owner.query('DELETE FROM public.automation_runs WHERE config_id=ANY($1::uuid[])', [
+          configIds,
+        ]);
+        await owner.query('DELETE FROM public.automation_configs WHERE id=ANY($1::uuid[])', [
+          configIds,
+        ]);
+      }
     },
   );
   it('preserves task results, frozen inputs, fees, owner access and publication after deletion', async () => {
@@ -801,7 +953,11 @@ suite('automation role isolation and publication boundary', () => {
     ).toEqual(before);
     expect((await readAutomationDashboard({ pool, owner: operator })).runs).toHaveLength(1);
     const summary = (await readAutomationDashboard({ pool, owner: operator })).runs[0];
-    expect(summary.snapshot).toEqual({ name: snapshot.name, kind: 'topic_insight' });
+    expect(summary.snapshot).toEqual({
+      name: snapshot.name,
+      kind: 'topic_insight',
+      publicationMode: 'manual',
+    });
     expect(summary.result).not.toHaveProperty('inputs');
     expect(summary.result).not.toHaveProperty('title');
     expect(summary).not.toHaveProperty('frozen_inputs');
@@ -880,7 +1036,11 @@ suite('automation role isolation and publication boundary', () => {
       failed: 2,
       discovery: { articleCount: 0, rejected: 8, duplicates: 0 },
     });
-    expect(summary.snapshot).toEqual({ name: config.config.name, kind: 'source_collection' });
+    expect(summary.snapshot).toEqual({
+      name: config.config.name,
+      kind: 'source_collection',
+      publicationMode: 'manual',
+    });
     expect(JSON.stringify(summary).length).toBeLessThan(2000);
     const detail = await readAutomationRunDetail({ pool, owner: operator, id });
     expect(detail.result).toEqual(result);
@@ -1128,5 +1288,311 @@ suite('automation role isolation and publication boundary', () => {
         .rows,
     ).toEqual([before]);
     await assertAutomationRole(adminRole, 'admin');
+  });
+
+  async function withPublicationFixtures(work) {
+    const operator = `publication-${randomUUID()}`;
+    const configIds = [];
+    const createConfig = async (overrides = {}) => {
+      const config = await save(operator, overrides);
+      configIds.push(config.id);
+      return config;
+    };
+    try {
+      return await work({ operator, createConfig });
+    } finally {
+      // Only these synthetic rows in the suite's disposable database are removed.
+      // Do not reset shared budgets, existing schedules, roles or unrelated fixtures.
+      if (configIds.length) {
+        await owner.query(
+          'DELETE FROM public.automation_runs WHERE owner_id=$1 AND config_id=ANY($2::uuid[])',
+          [operator, configIds],
+        );
+        await owner.query(
+          'DELETE FROM public.automation_configs WHERE owner_id=$1 AND id=ANY($2::uuid[])',
+          [operator, configIds],
+        );
+      }
+    }
+  }
+
+  it('settles an explicit automatic capability refusal before claim with no charge and stable replay', async () => {
+    await withPublicationFixtures(async ({ operator, createConfig }) => {
+      const config = await createConfig({ publicationMode: 'automatic' });
+      const request = {
+        configId: config.id,
+        expectedRevision: config.revision,
+        requestId: randomUUID(),
+        consent: true,
+      };
+      await enqueueAutomation({ pool, owner: operator, request });
+      const args = { pool, owner: operator, id: request.requestId };
+      expect(await rejectAutomaticPublicationBeforeClaim(args)).toBe(true);
+      const settled = await readAutomationRun(args);
+      expect(settled).toMatchObject({
+        status: 'failed',
+        phase: 'automatic_publication_unavailable',
+        error_code: 'automatic_publication_unavailable',
+        reserved_microusd: 0,
+        charged_microusd: 0,
+        cost_source: null,
+        budget_day: null,
+        lease_token: null,
+        lease_until: null,
+        started_at: null,
+        snapshot: config.config,
+      });
+      expect(settled.finished_at).not.toBeNull();
+      expect(await rejectAutomaticPublicationBeforeClaim(args)).toBe(false);
+      const replay = await enqueueAutomation({ pool, owner: operator, request });
+      expect(replay).toEqual({ run: settled, created: false });
+      expect(await claimAutomationRun(args)).toBeNull();
+      expect(await readAutomationRun(args)).toEqual(settled);
+      await assertAutomationRole(adminRole, 'admin');
+    });
+  });
+
+  it.each([
+    ['different owner', null, true],
+    ['historical snapshot', { snapshot: { kind: 'source_collection' } }],
+    ['manual snapshot', { snapshot: { kind: 'source_collection', publicationMode: 'manual' } }],
+    ['insight snapshot', { snapshot: { kind: 'topic_insight', publicationMode: 'automatic' } }],
+    ['running outcome', { status: 'running' }],
+    ['unknown outcome', { status: 'unknown' }],
+    ['completed outcome', { status: 'completed' }],
+    ['nonqueued phase', { phase: 'discovering' }],
+    ['started timestamp', { started_at: new Date(0) }],
+    ['finished timestamp', { finished_at: new Date(0) }],
+    ['lease token', { lease_token: randomUUID() }],
+    ['lease expiry', { lease_until: new Date(0) }],
+    ['budget reservation', { reserved_microusd: 1 }],
+    ['nonzero charge', { charged_microusd: 1 }],
+    ['zero provider receipt', { cost_source: 'provider' }],
+    ['budget day', { budget_day: '2026-10-21' }],
+    ['saved result', { result: {} }],
+    ['frozen inputs', { frozen_inputs: {} }],
+    ['published row', { publication_status: 'published' }],
+    ['publication timestamp', { published_at: new Date(0) }],
+  ])('does not settle %s as an unpaid automatic refusal', async (_name, changes, wrongOwner) => {
+    await withPublicationFixtures(async ({ operator, createConfig }) => {
+      const config = await createConfig({ publicationMode: 'automatic' });
+      const id = randomUUID();
+      await enqueueAutomation({
+        pool,
+        owner: operator,
+        request: { configId: config.id, expectedRevision: 1, requestId: id, consent: true },
+      });
+      if (changes) {
+        // Keys are static fixture definitions above, never request-supplied SQL.
+        const entries = Object.entries(changes);
+        await owner.query(
+          `UPDATE public.automation_runs SET ${entries.map(([key], index) => `${key}=$${index + 2}`).join(',')} WHERE id=$1`,
+          [id, ...entries.map(([, value]) => value)],
+        );
+      }
+      const before = (await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [id]))
+        .rows[0];
+      expect(
+        await rejectAutomaticPublicationBeforeClaim({
+          pool,
+          owner: wrongOwner ? `${operator}-other` : operator,
+          id,
+        }),
+      ).toBe(false);
+      expect(
+        (await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [id])).rows[0],
+      ).toEqual(before);
+    });
+  });
+
+  it('serializes a pre-claim refusal against a concurrent claim without rewriting a claimed run', async () => {
+    await withPublicationFixtures(async ({ operator, createConfig }) => {
+      const config = await createConfig({ publicationMode: 'automatic' });
+      const id = randomUUID();
+      await enqueueAutomation({
+        pool,
+        owner: operator,
+        request: { configId: config.id, expectedRevision: 1, requestId: id, consent: true },
+      });
+      const other = new pg.Client({ connectionString: url('hzense_automation_admin') });
+      await other.connect();
+      const competingPool = {
+        connect: async () => ({ query: (...args) => other.query(...args), release() {} }),
+      };
+      try {
+        const [rejected, claimed] = await Promise.all([
+          rejectAutomaticPublicationBeforeClaim({ pool, owner: operator, id }),
+          claimAutomationRun({
+            pool: competingPool,
+            owner: operator,
+            id,
+            limits: { batch: 1, daily: 50000000, reserve: 1 },
+          }),
+        ]);
+        expect(rejected).toBe(claimed === null);
+        const final = await readAutomationRun({ pool, owner: operator, id });
+        expect(final.status).toBe(rejected ? 'failed' : 'running');
+        expect(final.charged_microusd).toBe(0);
+        expect(await rejectAutomaticPublicationBeforeClaim({ pool, owner: operator, id })).toBe(
+          false,
+        );
+        expect(await readAutomationRun({ pool, owner: operator, id })).toEqual(final);
+      } finally {
+        await other.end();
+      }
+    });
+  });
+
+  it.each([undefined, 'manual', 'automatic'])(
+    'freezes publication mode %s across config edits and same-request replay with exact column ACL',
+    async (mode) => {
+      await withPublicationFixtures(async ({ operator, createConfig }) => {
+        const config = await createConfig(mode === undefined ? {} : { publicationMode: mode });
+        expect(Object.hasOwn(config.config, 'publicationMode')).toBe(mode !== undefined);
+        const request = {
+          configId: config.id,
+          expectedRevision: config.revision,
+          requestId: randomUUID(),
+          consent: true,
+        };
+        const first = await enqueueAutomation({ pool, owner: operator, request });
+        expect(first.run.snapshot).toEqual(config.config);
+        const before = (
+          await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [request.requestId])
+        ).rows[0];
+        const revisedMode = mode === 'automatic' ? 'manual' : 'automatic';
+        const revised = await saveAutomationConfig({
+          pool,
+          owner: operator,
+          request: {
+            id: config.id,
+            expectedRevision: config.revision,
+            consent: true,
+            config: { ...config.config, publicationMode: revisedMode },
+          },
+        });
+        expect(revised.revision).toBe(config.revision + 1);
+        expect(revised.config.publicationMode).toBe(revisedMode);
+        const replay = await enqueueAutomation({
+          pool,
+          owner: operator,
+          request,
+          beforeEnqueue: () => {
+            throw new Error('A replay must not receive fresh publication authorization');
+          },
+        });
+        expect(replay.created).toBe(false);
+        expect(replay.run.snapshot).toEqual(config.config);
+        expect(replay.run.config_revision).toBe(config.revision);
+        await expect(
+          adminRole.query(
+            "UPDATE public.automation_runs SET snapshot=jsonb_set(snapshot,'{publicationMode}','\"automatic\"'::jsonb) WHERE id=$1",
+            [request.requestId],
+          ),
+        ).rejects.toMatchObject({ code: '42501' });
+        expect(
+          (
+            await owner.query('SELECT * FROM public.automation_runs WHERE config_id=$1', [
+              config.id,
+            ])
+          ).rows,
+        ).toEqual([before]);
+
+        const dashboard = await readAutomationDashboard({ pool, owner: operator });
+        expect(dashboard.configs[0].config.publicationMode).toBe(revisedMode);
+        const detail = await readAutomationRunDetail({
+          pool,
+          owner: operator,
+          id: request.requestId,
+        });
+        for (const display of [dashboard.runs[0], detail]) {
+          expect(display.snapshot).toEqual({
+            name: config.config.name,
+            kind: 'source_collection',
+            publicationMode: mode ?? 'manual',
+          });
+          expect(Object.keys(display.snapshot).sort()).toEqual(['kind', 'name', 'publicationMode']);
+          expect(display).not.toHaveProperty('config_snapshot');
+          expect(display).not.toHaveProperty('frozen_inputs');
+          expect(display).not.toHaveProperty('lease_token');
+        }
+        await assertAutomationRole(adminRole, 'admin');
+      });
+    },
+  );
+
+  it('filters unavailable automatic publication before scheduler LIMIT without starving a manual schedule', async () => {
+    await withPublicationFixtures(async ({ operator, createConfig }) => {
+      const automatic = await createConfig({
+        enabled: true,
+        frequency: 'daily',
+        publicationMode: 'automatic',
+      });
+      const manual = await createConfig({
+        enabled: true,
+        frequency: 'daily',
+        publicationMode: 'manual',
+      });
+      // Put only our two fixtures before all other suite schedules, without
+      // disabling/backdating unrelated rows. The earlier automatic row is excluded.
+      await owner.query(
+        "UPDATE public.automation_configs SET next_run_at=clock_timestamp()-CASE WHEN id=$1 THEN interval '2 years' ELSE interval '1 year' END WHERE owner_id=$2 AND id=ANY($3::uuid[])",
+        [automatic.id, operator, [automatic.id, manual.id]],
+      );
+      const beforeAutomatic = (
+        await owner.query('SELECT * FROM public.automation_configs WHERE id=$1', [automatic.id])
+      ).rows[0];
+      const runs = await enqueueDueAutomations({
+        pool,
+        limit: 1,
+        kinds: ['source_collection'],
+        allowAutomaticPublication: false,
+      });
+      expect(runs).toHaveLength(1);
+      expect(runs[0]).toMatchObject({
+        created: true,
+        run: { config_id: manual.id, snapshot: { publicationMode: 'manual' } },
+      });
+      expect(
+        (await owner.query('SELECT * FROM public.automation_configs WHERE id=$1', [automatic.id]))
+          .rows[0],
+      ).toEqual(beforeAutomatic);
+      expect(
+        (
+          await owner.query('SELECT id FROM public.automation_runs WHERE config_id=$1', [
+            automatic.id,
+          ])
+        ).rows,
+      ).toEqual([]);
+      expect(
+        (
+          await owner.query(
+            'SELECT next_run_at>clock_timestamp() AS advanced FROM public.automation_configs WHERE id=$1',
+            [manual.id],
+          )
+        ).rows[0].advanced,
+      ).toBe(true);
+
+      const enabled = await enqueueDueAutomations({
+        pool,
+        limit: 1,
+        kinds: ['source_collection'],
+        allowAutomaticPublication: true,
+      });
+      expect(enabled).toHaveLength(1);
+      expect(enabled[0]).toMatchObject({
+        created: true,
+        run: { config_id: automatic.id, snapshot: { publicationMode: 'automatic' } },
+      });
+      expect(
+        (
+          await owner.query(
+            'SELECT count(*)::int AS n FROM public.automation_runs WHERE owner_id=$1',
+            [operator],
+          )
+        ).rows[0].n,
+      ).toBe(2);
+      await assertAutomationRole(adminRole, 'admin');
+    });
   });
 });

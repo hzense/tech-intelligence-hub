@@ -30,7 +30,17 @@ type ConfigView = Pick<
   'id' | 'revision' | 'config' | 'enabled' | 'next_run_at' | 'created_at' | 'updated_at'
 >;
 type RunView = AutomationRunView & { generationProgress?: AutomationGenerationProgress };
-type Dashboard = { configs: ConfigView[]; runs: RunView[]; configDeletionAvailable: boolean };
+type Dashboard = {
+  configs: ConfigView[];
+  runs: RunView[];
+  configDeletionAvailable: boolean;
+  automaticPublicationAvailable?: boolean;
+};
+const publicationMode = (config: {
+  publicationMode?: 'manual' | 'automatic';
+}): 'manual' | 'automatic' => (config.publicationMode === 'automatic' ? 'automatic' : 'manual');
+const publicationLabel = (config: { publicationMode?: 'manual' | 'automatic' }) =>
+  publicationMode(config) === 'automatic' ? '检查合格后自动发布' : '人工审核后发布';
 const blank = (kind: Kind): AutomationConfig => ({
   name: '',
   kind,
@@ -41,17 +51,19 @@ const blank = (kind: Kind): AutomationConfig => ({
   profileId: null,
   profileRevision: null,
   ...(kind === 'source_collection'
-    ? { discovery: { keywords: [], lookbackDays: 2, maxSources: 5 } }
+    ? { discovery: { keywords: [], lookbackDays: 2, maxSources: 5 }, publicationMode: 'manual' }
     : {}),
 });
 const errors: Record<string, string> = {
   not_configured: '此功能尚未完成数据库、权限和预算配置。',
   execution_disabled: '配置可保存，但采集执行尚未启用；本次未启动任务。',
+  automatic_publication_unavailable:
+    '自动发布服务尚未就绪。可以关闭定时并保存配置；启用服务后再启动，或改为人工审核后发布。',
   revision_conflict: '配置已由其他会话修改，请刷新后核对。',
   request_id_conflict: '请求编号与已有任务不匹配，请先核对任务。',
   task_active: '该配置已有正在执行的任务，请查看列表。',
   config_in_use:
-    '该配置还有排队、执行中、结果未知或未释放执行锁的任务，暂不能删除。请先核对原任务和费用。',
+    '该配置还有排队、执行中、尚未结束的结果未知任务，或未释放的执行锁，暂不能删除。已结束且无执行锁的历史待核对任务不会阻止删除。',
   config_deletion_unavailable: '删除功能尚未完成数据库升级和权限核验；现有配置仍可保存。',
   not_found: '配置不存在或已被删除，请刷新列表核对。',
   commit_unknown: '操作提交结果未确认，请刷新列表核对，不要新建替代配置。',
@@ -258,10 +270,10 @@ function SourceResult({
           · 待核对 {progress.unknown + progress.unavailable} 项。
           <br />
           {progress.knownCandidates > 0 || progress.candidateCountComplete
-            ? `已确认生成 ${progress.knownCandidates} 条私有候选`
+            ? `已确认生成 ${progress.knownCandidates} 条候选`
             : '候选数量尚未确认'}
           {progress.candidateCountComplete ? '。' : '（仅统计已读取的完成结果，其余结果待核对）。'}
-          候选仍需人工确认发布。
+          是否自动发布取决于任务创建时的发布方式；检查未通过的候选在任务内处理。请以最新发布状态为准。
         </p>
       ) : null}
       {summaryOnly ? (
@@ -270,7 +282,7 @@ function SourceResult({
             const task = progress?.tasks.find((row) => row.id === id);
             return (
               <li key={id}>
-                <Link href={`/admin/signal-generation/${id}`}>查看私有候选任务 · {id}</Link>
+                <Link href={`/admin/signal-generation/${id}`}>查看生成任务 · {id}</Link>
                 <span>{task ? generationSummaryLabel(task) : '已登记，结果待核对'}</span>
               </li>
             );
@@ -283,7 +295,7 @@ function SourceResult({
       result.failed > 0 ? (
         <p>
           资料或候选登记未完成：{result.failed} 项。
-          {ids.length ? '候选任务仍需各自完成生成与审核。' : ''}
+          {ids.length ? '候选任务仍需各自完成生成与发布检查。' : ''}
         </p>
       ) : null}
     </div>
@@ -388,7 +400,11 @@ export function AdminAutomation({
   const localSourceManual = localMode && localRealAiMode && kind === 'source_collection';
   const manualExecutionAllowed = executionEnabled && (!localMode || localSourceManual);
   function draftForMode(config: AutomationConfig): AutomationConfig {
-    return localMode ? { ...config, enabled: false, frequency: 'manual' } : config;
+    const normalized =
+      config.kind === 'source_collection'
+        ? { ...config, publicationMode: publicationMode(config) }
+        : config;
+    return localMode ? { ...normalized, enabled: false, frequency: 'manual' } : normalized;
   }
   function profileReady(row: ConfigView): boolean {
     return profiles.some(
@@ -399,7 +415,14 @@ export function AdminAutomation({
     );
   }
   function canRun(row: ConfigView): boolean {
-    return configured && manualExecutionAllowed && (!localMode || profileReady(row));
+    return (
+      configured &&
+      manualExecutionAllowed &&
+      (!localMode || profileReady(row)) &&
+      (row.config.kind !== 'source_collection' ||
+        publicationMode(row.config) !== 'automatic' ||
+        state.automaticPublicationAvailable === true)
+    );
   }
   const [state, setState] = useState(initial);
   const [editing, setEditing] = useState<ConfigView | null>(null);
@@ -409,7 +432,9 @@ export function AdminAutomation({
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [summaryReadFailures, setSummaryReadFailures] = useState(0);
   const createId = useRef<string | null>(null);
-  const requestIds = useRef<Record<string, string>>({});
+  const requestIds = useRef<
+    Record<string, { id: string; revision: number; publicationMode: 'manual' | 'automatic' }>
+  >({});
   const refreshSequence = useRef(0);
   async function refresh() {
     const sequence = ++refreshSequence.current;
@@ -457,6 +482,14 @@ export function AdminAutomation({
     event.preventDefault();
     if (busy || !configured) return;
     const savedDraft = draftForMode(draft);
+    if (
+      savedDraft.kind === 'source_collection' &&
+      publicationMode(savedDraft) === 'automatic' &&
+      !window.confirm(
+        `确认将“${savedDraft.name}”保存为自动发布？之后按此配置新建的任务会将检查合格的公开网页信号直接发布到${localMode ? '本地信号列表' : '网站'}，无需逐条审核；上传原件、受保护链接及未通过检查的候选不会自动公开。历史任务不变。本次仅保存配置，不立即启动采集、调用 AI 或发布。`,
+      )
+    )
+      return;
     createId.current ??= crypto.randomUUID();
     setBusy(true);
     setMessage('');
@@ -482,6 +515,7 @@ export function AdminAutomation({
         },
       });
       createId.current = null;
+      delete requestIds.current[result.config.id];
       setEditing(result.config);
       setDraft(draftForMode(result.config.config));
       await refresh();
@@ -498,12 +532,23 @@ export function AdminAutomation({
       !canRun(row) ||
       !window.confirm(
         localSourceManual
-          ? `确认启动本地采集“${row.config.name}”？将联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索和模型费用。结果仅保存在本地，不同步生产、不自动发布；本次仅手动执行，不开启定时。`
-          : `确认启动“${row.config.name}”？运行可能产生导入或模型费用，结果需在任务列表中核对。`,
+          ? `确认启动本地采集“${row.config.name}”？将联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索和模型费用。结果仅保存在本地，不同步生产；${publicationMode(row.config) === 'automatic' ? '检查合格的公开网页信号会直接发布到本地信号列表，无需逐条审核' : '生成候选需人工审核后发布'}。本次仅手动执行，不开启定时。`
+          : `确认启动“${row.config.name}”？运行可能产生导入或模型费用。${row.config.kind === 'source_collection' && publicationMode(row.config) === 'automatic' ? '检查合格的公开网页信号会直接发布，无需逐条审核。' : '结果需人工确认后发布。'}结果需在任务列表中核对。`,
       )
     )
       return;
-    requestIds.current[row.id] ??= crypto.randomUUID();
+    const previous = requestIds.current[row.id];
+    if (
+      !previous ||
+      previous.revision !== row.revision ||
+      previous.publicationMode !== publicationMode(row.config)
+    ) {
+      requestIds.current[row.id] = {
+        id: crypto.randomUUID(),
+        revision: row.revision,
+        publicationMode: publicationMode(row.config),
+      };
+    }
     setBusy(true);
     setMessage('');
     try {
@@ -512,7 +557,7 @@ export function AdminAutomation({
         request: {
           configId: row.id,
           expectedRevision: row.revision,
-          requestId: requestIds.current[row.id],
+          requestId: requestIds.current[row.id]!.id,
           consent: true,
         },
       });
@@ -531,7 +576,7 @@ export function AdminAutomation({
       !configured ||
       !state.configDeletionAvailable ||
       !window.confirm(
-        `确认删除“${row.config.name}”吗？配置将从列表隐藏并停止后续调度，不能在页面恢复。历史任务、结果和费用仍然保留，不会撤回已公开的专题。若有排队、执行中或结果未知的任务，将拒绝删除。本操作不调用 AI。`,
+        `确认删除“${row.config.name}”吗？配置将从列表隐藏并停止后续调度，不能在页面恢复。历史任务、候选、结果和费用仍然保留，不会撤回已公开的信号或专题，也不会取消已有子任务。已结束且无执行锁的历史待核对任务允许保留后删除配置；删除不表示这些任务已核对成功。若有排队、执行中、尚未结束的结果未知任务，或未释放的执行锁，将拒绝删除。本操作不调用 AI。`,
       )
     )
       return;
@@ -633,7 +678,7 @@ export function AdminAutomation({
         {localMode ? (
           <p role="status">
             {localSourceManual
-              ? '本地真实采集：手动启动会联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索与模型费用。配置、资料和候选仅保存在本地，不同步生产、不自动发布。本地定时保持关闭；保存配置不会启动采集。'
+              ? '本地真实采集：手动启动会联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索与模型费用。配置、资料和候选仅保存在本地，不同步生产；是否发布到本地信号列表由配置中的发布方式决定。本地定时保持关闭；保存配置不会启动采集。'
               : '本地配置模式：可选择未完成能力测试的模型草稿，保存和修订仅写入本机数据库。当前模式不执行采集、专题生成或定时任务；不会联网搜索、调用 AI 或同步生产。'}
           </p>
         ) : null}
@@ -646,7 +691,7 @@ export function AdminAutomation({
         {!localMode ? (
           <p>
             {kind === 'source_collection'
-              ? '选择 AI 配置，自动搜索网站科技范围内的互联网信息、获取原文、去重并生成私有候选；无需指定领域或填写网址。候选经人工确认后发布。'
+              ? '选择 AI 配置，自动搜索网站科技范围内的互联网信息、获取原文、去重并生成候选；无需指定领域或填写网址。可选择人工审核后发布，或检查合格后自动发布。'
               : '按专题选择当前公开信号，生成附有引用的私有报告，确认后公开。'}
           </p>
         ) : null}
@@ -746,6 +791,44 @@ export function AdminAutomation({
                 ))}
             </select>
           </label>
+          {kind === 'source_collection' ? (
+            <>
+              <label>
+                发布方式
+                <select
+                  aria-label="发布方式"
+                  aria-describedby="publication-mode-help"
+                  value={publicationMode(draft)}
+                  onChange={(event) =>
+                    setDraft({
+                      ...draft,
+                      publicationMode: event.target.value === 'automatic' ? 'automatic' : 'manual',
+                    })
+                  }
+                >
+                  <option value="manual">人工审核后发布</option>
+                  <option value="automatic">检查合格后自动发布</option>
+                </select>
+              </label>
+              <div
+                id="publication-mode-help"
+                className={`${styles.full} ${styles.publicationHelp}`}
+              >
+                <p>
+                  自动发布仅适用于新任务中检查合格的公开网页信号；原件、受保护链接和缺项候选不会自动公开。
+                  {localMode ? '本地发布仅写入本机数据库，不同步生产。' : ''}
+                  保存配置不会立即启动任务或发布。历史任务只遵循创建时的配置快照。
+                </p>
+                {publicationMode(draft) === 'automatic' &&
+                state.automaticPublicationAvailable !== true ? (
+                  <p role="status">
+                    自动发布服务尚未就绪：仍可保存配置，但不能启动该配置或开启定时执行。
+                    {draft.enabled ? '请先取消“允许定时执行”再保存。' : ''}
+                  </p>
+                ) : null}
+              </div>
+            </>
+          ) : null}
           {localSourceManual ? (
             <p className={styles.full}>
               可保存未验证的模型草稿；立即运行必须选用当前修订已通过能力测试的配置。修改模型配置后，请重新选择并保存当前修订。
@@ -813,8 +896,8 @@ export function AdminAutomation({
                 每次最多搜索 3
                 次。原文获取失败或没有新信息时不编造候选。采集、导入、生成分别遵守服务器配置的预算；
                 {localMode
-                  ? '本地定时关闭，手动启动前仍需确认联网与计费，不自动发布。'
-                  : '启用计划即授权按此范围定期执行，不自动发布。'}
+                  ? '本地定时关闭，手动启动前仍需确认联网与计费；是否发布到本地信号列表按发布方式执行。'
+                  : '启用计划即授权按此范围和发布方式定期执行。'}
               </p>
             </>
           ) : null}
@@ -854,7 +937,15 @@ export function AdminAutomation({
             <input
               type="checkbox"
               checked={draft.enabled}
-              disabled={localMode || !configured || (!executionEnabled && !draft.enabled)}
+              disabled={
+                localMode ||
+                !configured ||
+                (!draft.enabled &&
+                  (!executionEnabled ||
+                    (kind === 'source_collection' &&
+                      publicationMode(draft) === 'automatic' &&
+                      state.automaticPublicationAvailable !== true)))
+              }
               onChange={(e) => setDraft({ ...draft, enabled: e.target.checked })}
             />
             允许定时执行（可能产生费用）
@@ -889,6 +980,7 @@ export function AdminAutomation({
                 <tr>
                   <th>名称</th>
                   <th>频率</th>
+                  {kind === 'source_collection' ? <th>发布方式</th> : null}
                   <th>状态</th>
                   <th>操作</th>
                 </tr>
@@ -905,6 +997,7 @@ export function AdminAutomation({
                       ) : null}
                     </td>
                     <td>{localMode ? 'manual' : row.config.frequency}</td>
+                    {kind === 'source_collection' ? <td>{publicationLabel(row.config)}</td> : null}
                     <td>
                       {localSourceManual
                         ? !profileReady(row)
@@ -917,6 +1010,11 @@ export function AdminAutomation({
                           : row.enabled
                             ? '定时开启'
                             : '仅手动'}
+                      {kind === 'source_collection' &&
+                      publicationMode(row.config) === 'automatic' &&
+                      state.automaticPublicationAvailable !== true ? (
+                        <small>自动发布未就绪 · 不能运行</small>
+                      ) : null}
                     </td>
                     <td>
                       <button type="button" disabled={busy} onClick={() => edit(row)}>
@@ -989,7 +1087,12 @@ export function AdminAutomation({
                       {time(row.created_at)}
                       <small>{row.id}</small>
                     </td>
-                    <td>{row.snapshot.name}</td>
+                    <td>
+                      <span>{row.snapshot.name}</span>
+                      {kind === 'source_collection' ? (
+                        <small>任务快照：{publicationLabel(row.snapshot)}</small>
+                      ) : null}
+                    </td>
                     <td>
                       {kind === 'source_collection'
                         ? sourceAutomationLabel(row)

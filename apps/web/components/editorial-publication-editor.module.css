@@ -45,6 +45,15 @@
 .topics {
   min-width: 0;
 }
+.fullWidth {
+  grid-column: 1 / -1;
+}
+.automatic {
+  border-inline-start: 3px solid #6b7280;
+  padding-inline-start: 1rem;
+  margin-block: 1rem;
+  overflow-wrap: anywhere;
+}
 .resources {
   grid-column: 1 / -1;
   min-width: 0;

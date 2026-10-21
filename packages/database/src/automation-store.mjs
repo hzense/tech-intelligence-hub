@@ -27,7 +27,9 @@ const runColumns =
 // results. Project small public metadata in PostgreSQL, before network transfer.
 const publicRunColumns = `id,status,phase,error_code,created_at,finished_at,
   charged_microusd,cost_source,publication_status,
-  jsonb_build_object('name',snapshot->'name','kind',snapshot->'kind') AS snapshot`;
+  jsonb_build_object('name',snapshot->'name','kind',snapshot->'kind',
+    'publicationMode',CASE WHEN snapshot->>'publicationMode'='automatic'
+      AND snapshot->>'kind'='source_collection' THEN 'automatic' ELSE 'manual' END) AS snapshot`;
 const runSummaryResult = `CASE WHEN result IS NULL THEN NULL ELSE jsonb_build_object(
   'generationIds',COALESCE((
     SELECT jsonb_agg(ids.value ORDER BY ids.first_seen) FROM (
@@ -176,12 +178,14 @@ export async function deleteAutomationConfig({ pool, owner, request }) {
       return { id: existing.id, revision: existing.revision, deleted_at: existing.deleted_at };
     }
     if (existing.revision !== request.expectedRevision) fail('revision_conflict');
-    // Keep unknown outcomes and even malformed/stale leases visible for reconciliation.
+    // Finished, lease-free unknown outcomes remain in history for reconciliation;
+    // hiding their configuration must not rewrite their status, results or costs.
+    // Unfinished unknowns and even malformed/stale leases still block deletion.
     // Enqueue and scheduler use the same config lock, so no new task can race this check.
     if (
       (
         await client.query(
-          "SELECT 1 FROM public.automation_runs WHERE config_id=$1 AND (status IN ('queued','running','unknown') OR lease_token IS NOT NULL OR lease_until IS NOT NULL) LIMIT 1",
+          "SELECT 1 FROM public.automation_runs WHERE config_id=$1 AND (status IN ('queued','running') OR (status='unknown' AND finished_at IS NULL) OR lease_token IS NOT NULL OR lease_until IS NOT NULL) LIMIT 1",
           [id],
         )
       ).rows.length
@@ -324,8 +328,14 @@ export async function enqueueAutomation({ pool, owner, request, beforeEnqueue })
     });
   });
 }
-export async function enqueueDueAutomations({ pool, limit = 5, kinds }) {
+export async function enqueueDueAutomations({
+  pool,
+  limit = 5,
+  kinds,
+  allowAutomaticPublication = false,
+}) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 5) fail();
+  if (typeof allowAutomaticPublication !== 'boolean') fail();
   if (
     kinds !== undefined &&
     (!Array.isArray(kinds) ||
@@ -339,12 +349,17 @@ export async function enqueueDueAutomations({ pool, limit = 5, kinds }) {
   if (kinds?.length === 0) return [];
   const allowedKinds = kinds === undefined ? undefined : [...kinds];
   const kindFilter = allowedKinds ? " AND config->>'kind'=ANY($2::text[])" : '';
+  // Do not enqueue or advance an automatic schedule while its publication
+  // capability is off. Apply before LIMIT and again under the config lock.
+  const publicationFilter = allowAutomaticPublication
+    ? ''
+    : " AND config->>'publicationMode' IS DISTINCT FROM 'automatic'";
   return transaction(pool, async (client) => {
     await lock(client, 'scheduler');
     const shape = await configShape(client);
     const configs = (
       await client.query(
-        `SELECT ${shape.columns} FROM public.automation_configs WHERE enabled AND next_run_at<=clock_timestamp()${shape.active}${kindFilter} ORDER BY next_run_at,id LIMIT $1`,
+        `SELECT ${shape.columns} FROM public.automation_configs WHERE enabled AND next_run_at<=clock_timestamp()${shape.active}${kindFilter}${publicationFilter} ORDER BY next_run_at,id LIMIT $1`,
         allowedKinds ? [limit, allowedKinds] : [limit],
       )
     ).rows;
@@ -353,7 +368,7 @@ export async function enqueueDueAutomations({ pool, limit = 5, kinds }) {
       await lock(client, candidate.id);
       const config = (
         await client.query(
-          `SELECT ${shape.columns} FROM public.automation_configs WHERE id=$1 AND enabled AND next_run_at<=clock_timestamp()${shape.active}${kindFilter} FOR UPDATE`,
+          `SELECT ${shape.columns} FROM public.automation_configs WHERE id=$1 AND enabled AND next_run_at<=clock_timestamp()${shape.active}${kindFilter}${publicationFilter} FOR UPDATE`,
           allowedKinds ? [candidate.id, allowedKinds] : [candidate.id],
         )
       ).rows[0];
@@ -600,4 +615,26 @@ export async function failAutomationDispatch({ pool, owner, id }) {
       [id, owner],
     ),
   );
+}
+/** A known capability refusal before claim is not an unknown paid outcome. */
+export async function rejectAutomaticPublicationBeforeClaim({ pool, owner, id }) {
+  owner = automationText(owner);
+  automationUuid(id);
+  return transaction(pool, async (client) => {
+    const result = await client.query(
+      `UPDATE public.automation_runs SET status='failed',
+        phase='automatic_publication_unavailable',error_code='automatic_publication_unavailable',
+        finished_at=clock_timestamp()
+      WHERE id=$1 AND owner_id=$2 AND status='queued' AND phase='queued'
+        AND snapshot->>'kind'='source_collection' AND snapshot->>'publicationMode'='automatic'
+        AND started_at IS NULL AND finished_at IS NULL
+        AND lease_token IS NULL AND lease_until IS NULL
+        AND budget_day IS NULL AND reserved_microusd=0 AND charged_microusd=0 AND cost_source IS NULL
+        AND result IS NULL AND frozen_inputs IS NULL
+        AND publication_status='private' AND published_at IS NULL
+      RETURNING id`,
+      [id, owner],
+    );
+    return result.rows.length === 1;
+  });
 }

@@ -20,6 +20,7 @@ const migration = [
   '0028_legacy_signal_archive.sql',
   '0029_unified_signal_storage.sql',
   '0030_unified_signal_cutover.sql',
+  '0032_automatic_signal_publication.sql',
 ]
   .map((name) => readFileSync(new URL(`../../../db/migrations/${name}`, import.meta.url), 'utf8'))
   .join('\n');
@@ -101,17 +102,20 @@ export function editorialPublicSignalViewFixture(owner = 'hzense_migrator') {
       ['revision', 'integer'],
       ['content', 'jsonb'],
       ['published_at', 'timestamp with time zone'],
+      ['publication_basis', 'text'],
     ],
     definition: ` SELECT 'editorial-'::text || md5((run_id::text || ':'::text) || candidate_index::text) AS signal_id,
     revision,
     content,
-    created_at AS published_at
+    created_at AS published_at,
+    publication_basis
    FROM ( SELECT DISTINCT ON (editorial_signal_revisions.run_id, editorial_signal_revisions.candidate_index) editorial_signal_revisions.run_id,
             editorial_signal_revisions.candidate_index,
             editorial_signal_revisions.revision,
             editorial_signal_revisions.action,
             editorial_signal_revisions.content,
-            editorial_signal_revisions.created_at
+            editorial_signal_revisions.created_at,
+            editorial_signal_revisions.publication_basis
            FROM editorial_signal_revisions
           ORDER BY editorial_signal_revisions.run_id, editorial_signal_revisions.candidate_index, editorial_signal_revisions.revision DESC) latest
   WHERE action = 'publish'::text;`,

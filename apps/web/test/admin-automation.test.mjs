@@ -89,6 +89,18 @@ test('execution-disabled response is explicit and does not block configuration s
   assert.equal(response.status, 409);
   assert.deepEqual(await response.json(), { error: 'execution_disabled' });
 });
+test('automatic publication unavailable is an explicit safe conflict while inactive settings remain savable', async () => {
+  const handler = createAutomationHandler({
+    ...deps(),
+    trigger: async () => {
+      throw new AutomationError('automatic_publication_unavailable');
+    },
+  });
+  assert.equal((await handler(request('POST', { action: 'save', request: {} }))).status, 200);
+  const response = await handler(request('POST', { action: 'trigger', request: {} }));
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'automatic_publication_unavailable' });
+});
 test('automation admin API checks session and origin before execution', async () => {
   let calls = 0;
   const handler = createAutomationHandler({

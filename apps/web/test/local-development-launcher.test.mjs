@@ -98,11 +98,13 @@ test('real provider mode is opt-in via a validated local launch argument', () =>
     port: 3000,
     check: false,
     aiMode: 'mock',
+    automaticPublication: false,
   });
   assert.deepEqual(parseLocalDevelopmentArguments(['--ai=real', '--port=3001', '--check']), {
     port: 3001,
     check: true,
     aiMode: 'real',
+    automaticPublication: false,
   });
   for (const args of [
     ['--ai=invalid'],
@@ -117,6 +119,7 @@ test('real provider mode is opt-in via a validated local launch argument', () =>
     { ...launch, aiMode: 'real' },
   );
   assert.equal(env.HZENSE_LOCAL_AI_MODE, 'real');
+  assert.equal(env.HZENSE_AUTOMATIC_PUBLICATION_ENABLED, '0');
   assert.equal(env.HZENSE_AUTOMATION_ENABLED, '1');
   assert.equal(env.HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD, '5000000');
   assert.equal(env.HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD, '10000000');
@@ -130,6 +133,39 @@ test('real provider mode is opt-in via a validated local launch argument', () =>
   assert.ok(isLocalDevelopment(env));
   assert.throws(() =>
     buildLocalDevelopmentEnvironment({}, credentials(), { ...launch, aiMode: 'unknown' }),
+  );
+});
+
+test('automatic publication is separately opted into and cannot run in local mock mode', () => {
+  assert.deepEqual(parseLocalDevelopmentArguments(['--ai=real', '--auto-publish']), {
+    port: 3000,
+    check: false,
+    aiMode: 'real',
+    automaticPublication: true,
+  });
+  assert.throws(() => parseLocalDevelopmentArguments(['--auto-publish', '--auto-publish']));
+  assert.throws(() =>
+    buildLocalDevelopmentEnvironment({}, credentials(), {
+      ...launch,
+      aiMode: 'mock',
+      automaticPublication: true,
+    }),
+  );
+  const inherited = { HZENSE_AUTOMATIC_PUBLICATION_ENABLED: '1' };
+  assert.equal(
+    buildLocalDevelopmentEnvironment(inherited, credentials(), {
+      ...launch,
+      aiMode: 'real',
+    }).HZENSE_AUTOMATIC_PUBLICATION_ENABLED,
+    '0',
+  );
+  assert.equal(
+    buildLocalDevelopmentEnvironment({}, credentials(), {
+      ...launch,
+      aiMode: 'real',
+      automaticPublication: true,
+    }).HZENSE_AUTOMATIC_PUBLICATION_ENABLED,
+    '1',
   );
 });
 

@@ -12,6 +12,7 @@ import { AdminGenerationPreflight } from './admin-generation-preflight';
 import { PrivateResult } from './private-generation-result';
 import type { GenerationPublication } from '../lib/generation-publication';
 import { GenerationPublicationSummary } from './generation-publication-status';
+import { AutomaticPublicationRefresh } from './automatic-publication-refresh';
 import { GenerationProgress, generationIsActive } from './generation-progress';
 import { isGenerationRecordId } from '../lib/signal-generation-id';
 import { startVisiblePolling } from '../lib/visible-polling';
@@ -42,6 +43,7 @@ type GenerationRun = GenerationUiMode & {
   profile_revision: number;
   result?: unknown;
   publication?: GenerationPublication;
+  automatic_publication?: boolean;
   created_at: string;
   error_code?: string | null;
   reserved_microusd: number | string;
@@ -61,12 +63,14 @@ type PendingRequest = {
   profileId: string;
   profileRevision: number;
   retryOf?: string;
+  automaticPublicationConsent?: boolean;
 };
 type ListResponse = {
   runs: GenerationRun[];
   profiles: Profile[];
   batches: ImportBatch[];
   dailyUsage?: SignalGenerationDailyUsage | null;
+  automaticPublicationEnabled?: boolean;
 };
 const storageKey = 'hzense.signal-generation.pending.v1';
 const recoveryKey = 'hzense.signal-generation.rejection.v1';
@@ -84,6 +88,7 @@ const rejectionCodes = [
   'task_active',
   'not_found',
   'limit_exceeded',
+  'publication_policy_changed',
 ] as const;
 type CreateRejection = {
   request: PendingRequest;
@@ -114,7 +119,21 @@ function pendingRequest(value: unknown): PendingRequest | null {
   const row = value as Record<string, unknown>;
   if (
     Object.keys(row).sort().join(',') !==
-      `batchId,id,itemId,profileId,profileRevision${Object.hasOwn(row, 'retryOf') ? ',retryOf' : ''}` ||
+      [
+        'batchId',
+        'id',
+        'itemId',
+        'profileId',
+        'profileRevision',
+        ...(Object.hasOwn(row, 'retryOf') ? ['retryOf'] : []),
+        ...(Object.hasOwn(row, 'automaticPublicationConsent')
+          ? ['automaticPublicationConsent']
+          : []),
+      ]
+        .sort()
+        .join(',') ||
+    (Object.hasOwn(row, 'automaticPublicationConsent') &&
+      typeof row.automaticPublicationConsent !== 'boolean') ||
     (Object.hasOwn(row, 'retryOf') &&
       (!isGenerationRecordId(row.retryOf) || row.retryOf === row.id)) ||
     !['id', 'batchId', 'itemId'].every((key) => isGenerationRecordId(row[key])) ||
@@ -317,6 +336,12 @@ export function AdminSignalGeneration({
   const [pollError, setPollError] = useState(false);
 
   useEffect(() => {
+    // A changed publication policy needs fresh authorization; a prior check
+    // must never silently authorize a newly enabled public side effect.
+    setConsent(false);
+  }, [data.automaticPublicationEnabled]);
+
+  useEffect(() => {
     if (!retryDraft) return;
     retryDraftRef.current?.focus({ preventScroll: true });
     retryDraftRef.current?.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -469,17 +494,35 @@ export function AdminSignalGeneration({
     )
       return;
     await perform(async () => {
+      const publicationAuthorization =
+        !localSimulation && data.automaticPublicationEnabled === true
+          ? { automaticPublicationConsent: true }
+          : {};
       const request = retry
-        ? { ...pending!, id: crypto.randomUUID(), retryOf: retryTarget! }
+        ? {
+            id: crypto.randomUUID(),
+            batchId: pending!.batchId,
+            itemId: pending!.itemId,
+            profileId: pending!.profileId,
+            profileRevision: pending!.profileRevision,
+            retryOf: retryTarget!,
+            ...publicationAuthorization,
+          }
         : (pending ??
           (retryDraft
-            ? { ...requestFor(retryDraft), id: crypto.randomUUID(), retryOf: retryDraft.id }
+            ? {
+                ...requestFor(retryDraft),
+                id: crypto.randomUUID(),
+                retryOf: retryDraft.id,
+                ...publicationAuthorization,
+              }
             : {
                 id: crypto.randomUUID(),
                 batchId,
                 itemId,
                 profileId,
                 profileRevision: profile!.revision,
+                ...publicationAuthorization,
               }));
       if (!(retry ? replacePending(pending!, request) : storePending(request))) {
         setStorageReady(false);
@@ -566,7 +609,7 @@ export function AdminSignalGeneration({
       if (action === 'run') {
         const run = data.runs.find((entry) => entry.id === id);
         if (!run || run.status !== 'pending') return;
-        const request = requestFor(run);
+        const request = pending?.id === run.id ? pending : requestFor(run);
         if (!storePending(request)) {
           setStorageReady(false);
           setMessage('请求 ID 保存失败，未调用 AI。');
@@ -579,7 +622,7 @@ export function AdminSignalGeneration({
       setMessage(
         action === 'detail'
           ? '已查询原任务，不触发 AI 调用。'
-          : '任务状态已更新。结果仅管理员可见，不会发布。',
+          : '任务状态已更新。发布按任务创建时保存的策略执行；请以最新发布记录为准。',
       );
     }, action === 'detail');
   }
@@ -745,8 +788,16 @@ export function AdminSignalGeneration({
       <p>
         {localSimulation
           ? '请导入 docs/fixtures/local-signal.md，从本地联调模板生成确定性模拟候选，用于验证导入、审核、发布和撤回。普通资料仍可解析，但不会冒充真实 AI 分析；生成不会自动发布。'
-          : '从已完成解析的私有资料生成候选信号。创建任务与调用 AI 分开执行，不自动重试，不发布到网站。'}
+          : data.automaticPublicationEnabled
+            ? '从已解析资料生成信号。新任务生成后自动检查，合格的公开网页资料直接发布；缺项或冲突保留为待处理，后台可修改或撤回。上传原件和受保护链接不会自动公开。'
+            : '从已完成解析的私有资料生成候选信号。创建任务与调用 AI 分开执行，不自动重试；自动发布未开启，生成后仍保留为私有候选。'}
       </p>
+      {!localSimulation && (
+        <p>
+          历史任务遵循创建时保存的发布策略，开启自动发布不会追溯发布历史候选。重新检查发布不会再次调用
+          AI。
+        </p>
+      )}
       <details className={styles.diagnostics}>
         <summary>诊断与使用说明</summary>
         <AdminGenerationPreflight />
@@ -939,7 +990,9 @@ export function AdminSignalGeneration({
         <span>
           {localSimulation
             ? '我确认使用所选本地资料执行确定性模拟；不请求供应商、不调用真实 AI，仅生成本机私有候选，不授权发布。'
-            : '我允许把所选资料的私有解析文本发送给对应任务模型配置中的 AI 供应商，并了解手动执行可能产生费用；仅生成私有候选，不授权发布。'}
+            : data.automaticPublicationEnabled
+              ? '我允许把所选资料的解析文本发送给任务配置中的 AI 供应商，并了解可能产生费用；生成后自动检查，合格的公开网页资料直接发布。不公开上传原件、私人资料或受保护链接。'
+              : '我允许把所选资料的私有解析文本发送给对应任务模型配置中的 AI 供应商，并了解手动执行可能产生费用；仅生成私有候选，不授权发布。'}
         </span>
       </label>
       <p>
@@ -1119,6 +1172,20 @@ export function AdminSignalGeneration({
                       <GenerationPublicationSummary
                         status={run.status}
                         publication={run.publication}
+                      />
+                      <AutomaticPublicationRefresh
+                        run={run}
+                        onUpdate={(next) => {
+                          setData((current) => ({
+                            ...current,
+                            runs: current.runs.map((entry) =>
+                              entry.id === next.id ? { ...entry, ...next } : entry,
+                            ),
+                          }));
+                          setDetail((current) =>
+                            current?.id === next.id ? { ...current, ...next } : current,
+                          );
+                        }}
                       />
                     </td>
                     <td>

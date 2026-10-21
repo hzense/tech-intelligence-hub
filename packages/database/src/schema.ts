@@ -448,7 +448,9 @@ export const signalVersions = pgTable(
       .notNull(),
     legacyStatus: signalStatus('legacy_status'),
     content: jsonb('content'),
-    publicationBasis: text('publication_basis').$type<'legacy_import' | 'manual_confirmation'>(),
+    publicationBasis: text('publication_basis').$type<
+      'legacy_import' | 'manual_confirmation' | 'automatic_checks'
+    >(),
     lifecycleStatus: text('lifecycle_status').$type<'draft' | 'published' | 'withdrawn'>(),
     recordedAt: timestamp('recorded_at', { withTimezone: true }),
     sourceRecord: jsonb('source_record'),
@@ -520,7 +522,7 @@ export const signalVersions = pgTable(
           AND ((${t.lifecycleStatus} = 'draft' AND ${t.publicationBasis} IS NULL)
             OR (${t.lifecycleStatus} IN ('published', 'withdrawn') AND
               ((${t.origin} = 'legacy_seed' AND ${t.publicationBasis} = 'legacy_import')
-                OR (${t.origin} = 'ai_generation' AND ${t.publicationBasis} = 'manual_confirmation'))))
+                OR (${t.origin} = 'ai_generation' AND ${t.publicationBasis} IN ('manual_confirmation','automatic_checks')))))
           AND (${t.recordedAt} IS NULL OR isfinite(${t.recordedAt}))
           AND jsonb_typeof(${t.sourceRecord}) = 'object'
           AND ${t.sourceRecordHash} COLLATE "C" ~ '^[a-f0-9]{64}$')
@@ -1785,6 +1787,7 @@ export const editorialSignalRevisions = pgTable(
     action: text('action').notNull(),
     content: jsonb('content').notNull(),
     unifiedContent: jsonb('unified_content'),
+    publicationBasis: text('publication_basis').notNull().default('manual_confirmation'),
     requestHash: text('request_hash').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1817,6 +1820,10 @@ export const editorialSignalRevisions = pgTable(
       sql`${t.action} IN ('draft','publish','withdraw')`,
     ),
     check('editorial_signal_revisions_content_check', sql`jsonb_typeof(${t.content}) = 'object'`),
+    check(
+      'editorial_signal_revisions_publication_basis_ck',
+      sql`${t.publicationBasis} = 'manual_confirmation' OR (${t.publicationBasis} = 'automatic_checks' AND ${t.action} = 'publish' AND ${t.revision} = 1)`,
+    ),
   ],
 );
 export const editorialPublicSignals = pgView('editorial_public_signals', {
@@ -1824,6 +1831,7 @@ export const editorialPublicSignals = pgView('editorial_public_signals', {
   revision: integer('revision'),
   content: jsonb('content'),
   publishedAt: timestamp('published_at', { withTimezone: true }),
+  publicationBasis: text('publication_basis'),
 }).existing();
 
 export const legacySignalArchive = pgTable(

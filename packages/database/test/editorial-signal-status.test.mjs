@@ -43,9 +43,10 @@ describe('batched editorial publication status', () => {
       },
       { run_id: id(2), candidates: [] },
     ]);
-    expect(f.queries).toHaveLength(1);
-    expect(f.queries[0].values).toEqual(['owner', [id(1), id(2), id(3)]]);
-    const sql = f.queries[0].sql;
+    expect(f.queries).toHaveLength(2);
+    expect(f.queries[0].sql).toContain('has_column_privilege');
+    expect(f.queries[1].values).toEqual(['owner', [id(1), id(2), id(3)]]);
+    const sql = f.queries[1].sql;
     expect(sql).toContain(
       "owner_id=$1 AND id=ANY($2::uuid[]) AND status='completed' AND deleted_at IS NULL",
     );

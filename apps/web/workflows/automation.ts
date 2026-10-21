@@ -13,6 +13,7 @@ import { start } from 'workflow/api';
 import { signalGenerationWorkflow } from './signal-generation';
 import { localSignalGenerationWorkflow } from './local-signal-generation';
 import { isLocalRealAutomationEnabled } from '../lib/local-development';
+import { automaticPublicationAvailable } from '../lib/automatic-publication';
 import { discoverSources } from '../lib/server/source-discovery';
 import {
   appendAutomationSourceFailure,
@@ -42,6 +43,14 @@ function assertLocalAutomationExecution(kind?: 'source_collection' | 'topic_insi
 function assertLocalAutomationRun(run: Pick<store.AutomationRun, 'snapshot' | 'trigger'>) {
   if (assertLocalAutomationExecution(run.snapshot.kind) && run.trigger !== 'manual')
     throw new Error('execution_disabled');
+  // The saved run snapshot is the only consent source, including workflow
+  // resumption. Changing a configuration or global flag cannot upgrade it.
+  if (
+    run.snapshot.kind === 'source_collection' &&
+    run.snapshot.publicationMode === 'automatic' &&
+    !automaticPublicationAvailable(process.env)
+  )
+    throw new store.AutomationError('automatic_publication_unavailable');
 }
 
 export async function automationWorkflow(owner: string, id: string) {
@@ -119,7 +128,7 @@ export async function automationWorkflow(owner: string, id: string) {
     let dispatchError: unknown;
     for (const generation of generationDispatches) {
       try {
-        if (!(await dispatchGeneration(owner, generation))) failed++;
+        if (!(await dispatchGeneration(owner, run.id, generation))) failed++;
       } catch (error) {
         // A failed cleanup must remain visible, but it must not strand the
         // other queue receipts that this run has already persisted.
@@ -150,10 +159,19 @@ export async function automationWorkflow(owner: string, id: string) {
 
 async function claim(owner: string, id: string) {
   'use step';
-  if (assertLocalAutomationExecution()) {
-    // Reject unsupported historic/misdispatched local tasks before reserving money.
-    const pending = await store.readAutomationRun({ pool: automationPool, owner, id });
+  assertLocalAutomationExecution();
+  // Reject unavailable automatic publication or unsupported local tasks before
+  // reserving money. This reads the immutable run, not its current configuration.
+  const pending = await store.readAutomationRun({ pool: automationPool, owner, id });
+  try {
     assertLocalAutomationRun(pending);
+  } catch (error) {
+    if (
+      error instanceof store.AutomationError &&
+      error.code === 'automatic_publication_unavailable'
+    )
+      await store.rejectAutomaticPublicationBeforeClaim({ pool: automationPool, owner, id });
+    throw error;
   }
   const run = await store.claimAutomationRun({
     pool: automationPool,
@@ -166,12 +184,11 @@ async function claim(owner: string, id: string) {
 claim.maxRetries = 0;
 async function findSources(owner: string, id: string) {
   'use step';
-  if (assertLocalAutomationExecution('source_collection')) {
-    // A resumed Workflow may reuse its completed claim step. Recheck the
-    // persisted trigger before any discovery call can cross its paid fence.
-    const run = await store.readAutomationRun({ pool: automationPool, owner, id });
-    assertLocalAutomationRun(run);
-  }
+  assertLocalAutomationExecution('source_collection');
+  // A resumed workflow may reuse its completed claim step. Recheck the saved
+  // policy and execution capability before crossing the paid discovery fence.
+  const run = await store.readAutomationRun({ pool: automationPool, owner, id });
+  assertLocalAutomationRun(run);
   return discoverSources(owner, id);
 }
 findSources.maxRetries = 0;
@@ -278,6 +295,9 @@ async function createPrivateGeneration(
       profileId: run.snapshot.profileId,
       profileRevision: run.snapshot.profileRevision,
       consent: true,
+      // Only the immutable collection snapshot authorizes publication; absent
+      // (historical) and manual modes stay private even if the global flag is on.
+      automaticPublicationConsent: run.snapshot.publicationMode === 'automatic',
     });
   } catch (error) {
     // Only explicit, pre-commit refusals can be counted as a failed source.
@@ -412,9 +432,12 @@ async function failSourceRun(owner: string, id: string, token: string) {
     .catch(() => undefined);
 }
 failSourceRun.maxRetries = 0;
-async function dispatchGeneration(owner: string, generation: GenerationDispatch) {
+async function dispatchGeneration(owner: string, runId: string, generation: GenerationDispatch) {
   'use step';
   try {
+    assertLocalAutomationExecution('source_collection');
+    const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
+    assertLocalAutomationRun(run);
     if (assertLocalAutomationExecution('source_collection'))
       await start(localSignalGenerationWorkflow, [owner, generation.id, generation.queuedAt]);
     else await start(signalGenerationWorkflow, [owner, generation.id, generation.queuedAt]);

@@ -1,10 +1,9 @@
 import 'server-only';
 import { Buffer } from 'node:buffer';
 import { isDeepStrictEqual } from 'node:util';
-import pg from 'pg';
 import type { GenerationSource } from '../../../../packages/ingestion/src/signal-generation-contract.mjs';
 import * as store from '../../../../packages/database/src/candidate-enrichment-store.mjs';
-import { assertCandidateEnrichmentRole } from '../../../../packages/database/src/signal-generation-role.mjs';
+import { candidateEnrichmentPool } from './generation-database';
 import { signalGenerationProfileIdentity } from '../../../../packages/database/src/signal-generation-store.mjs';
 import { aiUuid } from '../../../../packages/database/src/ai-config-contract.mjs';
 import { generationRecordId } from '../signal-generation-id';
@@ -27,36 +26,7 @@ import {
 } from '../material-enrichment';
 import type { CandidateSourceBundle } from '../../../../packages/ingestion/src/candidate-source-bundle.mjs';
 
-let pool: pg.Pool | undefined;
-let poolUrl: string | undefined;
-export const candidateEnrichmentPool = {
-  async connect() {
-    const config = readGenerationDatabaseConfiguration(process.env);
-    if (poolUrl && poolUrl !== config.connectionString) throw new GenerationError('not_configured');
-    if (!pool) {
-      poolUrl = config.connectionString;
-      pool = new pg.Pool({
-        connectionString: poolUrl,
-        max: 1,
-        idleTimeoutMillis: 10000,
-        connectionTimeoutMillis: 3500,
-        query_timeout: 15000,
-        allowExitOnIdle: true,
-        enableChannelBinding: true,
-        application_name: 'hzense-candidate-enrichment',
-      });
-      pool.on('error', () => console.error('candidate_enrichment_pool_unavailable'));
-    }
-    const client = await pool.connect();
-    try {
-      await assertCandidateEnrichmentRole(client);
-      return client;
-    } catch (error) {
-      client.release(true);
-      throw error;
-    }
-  },
-};
+export { candidateEnrichmentPool };
 
 export function candidateEnrichmentConfigured() {
   try {

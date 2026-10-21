@@ -6,7 +6,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-test('review renders private evidence safely with confirmation-only publication actions', async () => {
+test('signal management renders private evidence safely without performing publication on read', async () => {
   const compiled = await build({
     stdin: {
       contents: `export { CandidateReview } from './components/candidate-review'; export { PrivateResult } from './components/private-generation-result';`,
@@ -65,8 +65,8 @@ test('review renders private evidence safely with confirmation-only publication 
       },
     }),
   );
-  assert.match(html, /确认发布/);
-  assert.match(html, /生成的资源草稿将在确认发布时一并保存并建立关联/);
+  assert.match(html, /信号管理/);
+  assert.match(html, /已发布信号可修改或撤回/);
   assert.match(html, /候选 3/);
   assert.match(html, /辅助资料与原始 AI 候选/);
   assert.doesNotMatch(html, /正式发布前待办|审核确认与正式发布/);
@@ -172,7 +172,8 @@ test('review renders private evidence safely with confirmation-only publication 
   });
   assert.match(published, /data-publication="published">已发布/);
   assert.match(published, new RegExp(`href="/signals/${publicId}"`));
-  assert.match(published, /查看发布记录/);
+  assert.match(published, /修改或撤回信号/);
+  assert.match(published, /原始候选：/);
   assert.doesNotMatch(published, /待审核 · 未发布|尚未审核或发布/);
   const withdrawn = render({ id, status: 'completed', publication: publication('withdrawn') });
   assert.match(withdrawn, /data-publication="withdrawn">已撤回/);

@@ -1,10 +1,6 @@
 import 'server-only';
-import pg from 'pg';
 import * as store from '../../../../packages/database/src/signal-generation-store.mjs';
-import {
-  assertGenerationRole,
-  assertGenerationHistoryRole,
-} from '../../../../packages/database/src/signal-generation-role.mjs';
+import { generationPool, generationHistoryPool } from './generation-database';
 import {
   getImportBatch,
   getImportItemLabels,
@@ -34,47 +30,17 @@ import { editorialPool } from './editorial-database';
 import { withGenerationPublications } from '../generation-publication';
 import { isLocalDevelopment, isLocalMockAi, isLocalRealAi } from '../local-development';
 import {
+  automaticPublicationAvailable,
+  automaticPublicationEnabled,
+} from '../automatic-publication';
+import { readEditorialSourceOptions } from '../editorial-source-options';
+import { readMaterialSupplement } from '../material-source-reader';
+import {
   invokeLocalGeneration,
   localGenerationAccess,
   LOCAL_GENERATION_PROFILE_ID,
 } from '../local-generation';
 
-let pool: pg.Pool | undefined;
-let poolUrl: string | undefined;
-function makeGenerationPool(history = false) {
-  return {
-    async connect() {
-      // A database connection authorizes neither task mutation nor provider spending.
-      const config = readGenerationDatabaseConfiguration(process.env);
-      if (poolUrl && poolUrl !== config.connectionString)
-        throw new GenerationError('not_configured');
-      if (!pool) {
-        poolUrl = config.connectionString;
-        pool = new pg.Pool({
-          connectionString: poolUrl,
-          max: 1,
-          idleTimeoutMillis: 10000,
-          connectionTimeoutMillis: 3500,
-          query_timeout: 15000,
-          allowExitOnIdle: true,
-          enableChannelBinding: true,
-          application_name: 'hzense-private-generation',
-        });
-        pool.on('error', () => console.error('generation_pool_unavailable'));
-      }
-      const client = await pool.connect();
-      try {
-        await (history ? assertGenerationHistoryRole : assertGenerationRole)(client);
-        return client;
-      } catch (error) {
-        client.release(true);
-        throw error;
-      }
-    },
-  };
-}
-const generationPool = makeGenerationPool();
-const generationHistoryPool = makeGenerationPool(true);
 const historyOptions = () => ({
   pool: generationHistoryPool,
   readOnly: true,
@@ -153,7 +119,13 @@ export async function generationDashboard(owner: string) {
   // History does not depend on import, AI credentials, budgets or the spend switch.
   if (!generationConfigured()) {
     const runs = await store.listSignalGenerationDisplays({ ...historyOptions(), owner });
-    return { runs: await historyDtos(owner, runs), profiles: [], batches: [], dailyUsage };
+    return {
+      runs: await historyDtos(owner, runs),
+      profiles: [],
+      batches: [],
+      dailyUsage,
+      automaticPublicationEnabled: false,
+    };
   }
   const [runs, ai, batches] = await Promise.all([
     store.listSignalGenerationDisplays({ ...historyOptions(), owner }),
@@ -165,6 +137,7 @@ export async function generationDashboard(owner: string) {
   ]);
   return {
     runs: await historyDtos(owner, runs),
+    automaticPublicationEnabled: automaticPublicationEnabled(process.env),
     dailyUsage,
     profiles: (ai?.profiles ?? []).map(({ id, revision, name, readiness, stages }) => {
       const connection = ai?.connections.find((item) => item.id === stages.extract.connection_id);
@@ -270,6 +243,8 @@ export async function executeGeneration(owner: string, body: unknown, queuedAt?:
     progress: (owner, id, token, phase) =>
       store.updateSignalGenerationProgress({ pool: generationPool, owner, id, token, phase }),
     create: async (owner, args) => {
+      if (args.automaticPublicationConsent && !automaticPublicationAvailable(process.env))
+        throw new GenerationError('publication_policy_changed');
       if (isLocalDevelopment() && args.retryOf)
         assertLocalGenerationMode(
           await store.getSignalGeneration({ pool: generationPool, owner, id: args.retryOf }),
@@ -278,7 +253,28 @@ export async function executeGeneration(owner: string, body: unknown, queuedAt?:
         pool: generationPool,
         owner,
         request: args.request,
-        snapshot: args.snapshot,
+        snapshot: {
+          ...args.snapshot,
+          ...(args.automaticPublicationConsent && automaticPublicationAvailable(process.env)
+            ? {
+                publication: {
+                  mode: 'automatic' as const,
+                  policy: 'auto-publication-v1' as const,
+                  sourceUrls: await readEditorialSourceOptions(
+                    owner,
+                    {
+                      owner_id: owner,
+                      batch_id: args.request.batchId,
+                      item_id: args.request.itemId,
+                      source_fence: args.request.sourceFence,
+                      source_hash: args.request.sourceHash,
+                    },
+                    (o, b, i) => readMaterialSupplement(importPool, o, b, i),
+                  ),
+                },
+              }
+            : {}),
+        },
         ...(args.retryOf ? { retryOf: args.retryOf } : {}),
         configuration: {
           version: mock

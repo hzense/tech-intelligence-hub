@@ -53,7 +53,7 @@ export type AutomationRunView = Pick<
   | 'charged_microusd'
   | 'cost_source'
   | 'publication_status'
-> & { snapshot: Pick<AutomationConfig, 'name' | 'kind'> };
+> & { snapshot: Pick<AutomationConfig, 'name' | 'kind' | 'publicationMode'> };
 export interface SaveAutomationRequest {
   id: string;
   expectedRevision: number;
@@ -106,6 +106,7 @@ export function enqueueDueAutomations(input: {
   pool: unknown;
   limit?: number;
   kinds?: AutomationConfig['kind'][];
+  allowAutomaticPublication?: boolean;
 }): Promise<{ run: AutomationRun; created: boolean }[]>;
 export function claimAutomationRun(input: {
   pool: unknown;
@@ -142,6 +143,11 @@ export function failAutomationDispatch(input: {
   owner: string;
   id: string;
 }): Promise<unknown>;
+export function rejectAutomaticPublicationBeforeClaim(input: {
+  pool: unknown;
+  owner: string;
+  id: string;
+}): Promise<boolean>;
 export function freezeAutomationInputs(input: {
   pool: unknown;
   owner: string;

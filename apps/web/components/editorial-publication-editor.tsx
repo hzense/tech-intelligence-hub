@@ -33,8 +33,8 @@ const messages: Record<string, string> = {
   resource_source_required: '请为每项资源勾选至少一条对应的公开来源，作为资料依据。',
   resource_details_incomplete:
     '人物或组织的资源资料仍有缺项，请先完成候选补全或补证，再重新读取并确认发布。',
-  not_configured: '人工发布尚未配置完成。',
-  invalid_request: '字段格式不正确，请检查日期和名称长度。',
+  not_configured: '信号发布尚未配置完成。',
+  invalid_request: '字段格式不正确，请检查标题、摘要、日期和名称长度。',
   excluded_person: '人物不收录国家元首或政府首脑，请移除该人物；不要用无事件依据的人物替代。',
 };
 
@@ -70,9 +70,11 @@ export function EditorialPublicationEditor({
   const [pending, setPending] = useState<Submission | null>(null);
   const [needsRefresh, setNeedsRefresh] = useState(false);
   const lock = useRef(false);
+  const savedContent = useRef<EditorialDashboard['content'] | null>(null);
   const endpoint = `/api/admin/editorial-signals?runId=${encodeURIComponent(runId)}&candidateIndex=${candidateIndex}`;
 
   function adopt(next: EditorialDashboard) {
+    savedContent.current = next.content;
     setData(next);
     setOrganizationText(next.content.organizations.join('\n'));
     setPersonText(next.content.persons.join('\n'));
@@ -144,16 +146,23 @@ export function EditorialPublicationEditor({
       expectedRevision: data.revision,
       materialHash: data.materialHash,
       action,
-      content: {
-        ...data.content,
-        signalType: data.content.signalType ?? null,
-        organizations:
-          data.content.resources === undefined
-            ? editorialNames(organizationText)
-            : data.content.organizations,
-        persons:
-          data.content.resources === undefined ? editorialNames(personText) : data.content.persons,
-      },
+      content:
+        action === 'withdraw' && savedContent.current
+          ? savedContent.current
+          : {
+              ...data.content,
+              title: data.content.title.trim(),
+              summary: data.content.summary.trim(),
+              signalType: data.content.signalType ?? null,
+              organizations:
+                data.content.resources === undefined
+                  ? editorialNames(organizationText)
+                  : data.content.organizations,
+              persons:
+                data.content.resources === undefined
+                  ? editorialNames(personText)
+                  : data.content.persons,
+            },
       consent: action !== 'draft',
     };
     lock.current = true;
@@ -196,7 +205,9 @@ export function EditorialPublicationEditor({
           current.body.requestId !== receipt.requestId
             ? '原请求已保存；已读取后续修订，请以当前状态为准。'
             : current.body.action === 'publish'
-              ? '已确认发布。'
+              ? request.expectedRevision > 0 && data.action === 'publish'
+                ? '修改已保存，正式信号已更新。'
+                : '已确认发布。'
               : current.body.action === 'withdraw'
                 ? '已撤回发布。'
                 : '补充信息已保存，尚未发布。',
@@ -206,6 +217,44 @@ export function EditorialPublicationEditor({
       }
     } catch {
       setNotice('保存结果尚未确认，原请求已保留。请核对状态，不要重复创建新请求。');
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function retryAutomaticPublication() {
+    if (!data || lock.current || !data.automaticPublication?.eligible) return;
+    if (
+      savedContent.current &&
+      JSON.stringify(content) !== JSON.stringify(savedContent.current) &&
+      !window.confirm(
+        '重新检查只使用已保存的资料，不采用尚未保存的修改。继续后将读取服务器最新状态，是否继续？',
+      )
+    )
+      return;
+    lock.current = true;
+    setBusy(true);
+    setNeedsRefresh(true);
+    setNotice('正在重新检查发布条件，不调用 AI…');
+    try {
+      const result = await api('/api/admin/signals/auto-publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId }),
+      });
+      if (!result.response.ok) throw new Error('automatic_publication_unconfirmed');
+      const current = await api(endpoint, { cache: 'no-store' });
+      if (!current.response.ok) throw new Error('publication_read_failed');
+      adopt(current.body as EditorialDashboard);
+      setNeedsRefresh(false);
+      setNotice(
+        current.body.action === 'publish'
+          ? '已核对最新发布状态。'
+          : '检查已完成；未发布项请根据下方原因处理。',
+      );
+    } catch {
+      setNotice('重新检查的结果尚未确认。请核对已保存状态；不会再次调用 AI。');
     } finally {
       lock.current = false;
       setBusy(false);
@@ -239,13 +288,19 @@ export function EditorialPublicationEditor({
         ),
     ) ?? [];
   const disabled = busy || !!pending || needsRefresh || !data?.configured;
+  const invalidText =
+    !!content &&
+    (!content.title.trim() ||
+      [...content.title.trim()].length > 80 ||
+      !content.summary.trim() ||
+      [...content.summary.trim()].length > 500);
   const resourcePublicationBlocked =
     !!content?.resources?.length && data?.resourcePublicationReady !== true;
   return (
     <section className={styles.panel} aria-labelledby="editorial-heading">
-      <h2 id="editorial-heading">确认发布</h2>
+      <h2 id="editorial-heading">信号管理</h2>
       <p>
-        核对事件类型、日期、组织、人物、领域和来源。生成的资源草稿将在确认发布时一并保存并建立关联。
+        已发布信号可修改或撤回；未发布项只需处理缺项。开启自动发布后，新任务通过检查的公开网页资料会直接发布。
       </p>
       {notice ? <p role="status">{notice}</p> : null}
       {!data ? (
@@ -265,7 +320,7 @@ export function EditorialPublicationEditor({
           </article>
           {!data.configured ? (
             <p role="alert">
-              人工发布尚未启用：需完成数据库迁移、专用权限及环境配置。目前不会发布。
+              信号发布尚未启用：需完成数据库迁移、专用权限及环境配置。目前不会发布。
             </p>
           ) : null}
           {data.configured && resourcePublicationBlocked ? (
@@ -286,15 +341,93 @@ export function EditorialPublicationEditor({
             {needsRefresh
               ? '当前发布状态待核对'
               : data.action === 'publish'
-                ? '已发布 · 管理员确认'
-                : missing.length
-                  ? `待补充：${missing.join('、')}`
-                  : resourcePublicationBlocked
-                    ? '资料已就绪，等待启用资源发布'
-                    : '待确认发布'}
+                ? data.publicationBasis === 'automatic_checks'
+                  ? '已发布 · 自动检查通过'
+                  : '已发布 · 管理员确认'
+                : data.action === 'withdraw'
+                  ? '已撤回 · 不会自动重新发布'
+                  : missing.length
+                    ? `待补充：${missing.join('、')}`
+                    : resourcePublicationBlocked
+                      ? '资料已就绪，等待启用资源发布'
+                      : '待确认发布'}
           </p>
+          {data.automaticPublication && !needsRefresh && data.action !== 'publish' ? (
+            <section className={styles.automatic} aria-label="自动发布状态">
+              <h3>
+                {data.automaticPublication.status === 'needs_attention'
+                  ? '发布待处理'
+                  : '自动发布状态'}
+              </h3>
+              <p>
+                {
+                  {
+                    disabled: '自动发布未开启，仍可人工发布。',
+                    pending: '等待执行自动发布检查。',
+                    published: '请核对当前发布记录。',
+                    needs_attention: '未通过自动发布检查，原候选仍保留。',
+                    skipped: '本条不自动发布，已有人工操作和历史候选不会被自动覆盖。',
+                  }[data.automaticPublication.status]
+                }
+              </p>
+              {data.automaticPublication.reasons.length > 0 ? (
+                <ul>
+                  {data.automaticPublication.reasons.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {data.automaticPublication.eligible &&
+              data.action === null &&
+              ['pending', 'needs_attention'].includes(data.automaticPublication.status) ? (
+                <button
+                  type="button"
+                  className={controls.button}
+                  disabled={disabled}
+                  onClick={() => void retryAutomaticPublication()}
+                >
+                  重新检查本任务并发布（不调用 AI）
+                </button>
+              ) : null}
+            </section>
+          ) : null}
           <fieldset disabled={disabled} className={styles.fields}>
             <legend>发布信息</legend>
+            <label className={styles.fullWidth}>
+              标题
+              <input
+                aria-label="标题"
+                value={data.content.title}
+                aria-invalid={
+                  !data.content.title.trim() || [...data.content.title.trim()].length > 80
+                }
+                aria-describedby="editorial-title-length"
+                onChange={(event) =>
+                  setData({ ...data, content: { ...data.content, title: event.target.value } })
+                }
+              />
+              <span id="editorial-title-length">
+                {[...data.content.title.trim()].length} / 80 字符
+              </span>
+            </label>
+            <label className={styles.fullWidth}>
+              摘要
+              <textarea
+                aria-label="摘要"
+                rows={7}
+                value={data.content.summary}
+                aria-invalid={
+                  !data.content.summary.trim() || [...data.content.summary.trim()].length > 500
+                }
+                aria-describedby="editorial-summary-length"
+                onChange={(event) =>
+                  setData({ ...data, content: { ...data.content, summary: event.target.value } })
+                }
+              />
+              <span id="editorial-summary-length">
+                {[...data.content.summary.trim()].length} / 500 字符
+              </span>
+            </label>
             <label>
               事件类型
               <select
@@ -621,7 +754,9 @@ export function EditorialPublicationEditor({
             </div>
           </fieldset>
           <p>
-            确认发布会公开上方标题、摘要、发布信息及勾选的来源链接。
+            {data.action === 'publish'
+              ? '保存修改会更新公开信号的标题、摘要、发布信息及勾选的来源链接。'
+              : '确认发布会公开上方标题、摘要、发布信息及勾选的来源链接。'}
             {data.content.resources?.length ? '同时保存资源档案并建立信号关联。' : ''}
             原始文件和未勾选的来源不会公开。
           </p>
@@ -631,19 +766,20 @@ export function EditorialPublicationEditor({
               className={controls.button}
               disabled={
                 disabled ||
+                invalidText ||
                 resourcePublicationBlocked ||
                 missing.length > 0 ||
                 invalidTopics.length > 0
               }
               onClick={() => void submit('publish')}
             >
-              {data.action === 'publish' ? '确认更新发布' : '确认发布'}
+              {data.action === 'publish' ? '保存修改' : '确认发布'}
             </button>
             {data.action !== 'publish' ? (
               <button
                 type="button"
                 className={controls.button}
-                disabled={disabled}
+                disabled={disabled || invalidText}
                 onClick={() => void submit('draft')}
               >
                 保存补充
@@ -668,7 +804,11 @@ export function EditorialPublicationEditor({
               className={controls.button}
               disabled={busy}
               onClick={() => {
-                if (pending || window.confirm('重新读取会替换尚未保存的输入，是否继续？'))
+                if (
+                  pending ||
+                  needsRefresh ||
+                  window.confirm('重新读取会替换尚未保存的输入，是否继续？')
+                )
                   void reread();
               }}
             >

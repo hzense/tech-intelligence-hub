@@ -637,9 +637,16 @@ describe('Signal 3.0.0 private storage foundation', () => {
           .sqlToQuery(constraint.value)
           .sql.replace(/"[a-z_]+"\."([a-z_]+)"/g, '$1')
           .replace(/\s+/g, ' ');
-        expect(latestMigrationCheck(`${migration}\n${unifiedMigration}`, constraint.name)).toEqual(
-          checkTokens(expression),
+        const automaticMigration = await readFile(
+          new URL('../../../db/migrations/0032_automatic_signal_publication.sql', import.meta.url),
+          'utf8',
         );
+        expect(
+          latestMigrationCheck(
+            `${migration}\n${unifiedMigration}\n${automaticMigration}`,
+            constraint.name,
+          ),
+        ).toEqual(checkTokens(expression));
         expect(constraint.name.length).toBeLessThanOrEqual(63);
       }
       for (const foreignKey of config.foreignKeys) {

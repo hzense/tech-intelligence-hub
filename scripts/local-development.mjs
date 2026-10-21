@@ -22,14 +22,19 @@ import { isLocalDevelopment } from '../apps/web/lib/local-development.ts';
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export function parseLocalDevelopmentArguments(args = []) {
+  const autoArgs = args.filter((argument) => argument === '--auto-publish');
+  if (autoArgs.length > 1) throw new LocalSiteError('--auto-publish 只能指定一次。');
   const aiArgs = args.filter(
     (argument) => typeof argument === 'string' && argument.startsWith('--ai='),
   );
   if (aiArgs.length > 1 || (aiArgs.length === 1 && !['--ai=mock', '--ai=real'].includes(aiArgs[0])))
     throw new LocalSiteError('AI 模式仅支持一次 --ai=mock 或 --ai=real；默认 mock 不调用供应商。');
   return {
-    ...parseLocalArguments(args.filter((argument) => !aiArgs.includes(argument))),
+    ...parseLocalArguments(
+      args.filter((argument) => !aiArgs.includes(argument) && argument !== '--auto-publish'),
+    ),
     aiMode: aiArgs[0] === '--ai=real' ? 'real' : 'mock',
+    automaticPublication: autoArgs.length === 1,
   };
 }
 
@@ -57,9 +62,11 @@ export function assertLocalDevelopmentLaunchEnvironment(environment) {
 export function buildLocalDevelopmentEnvironment(
   parent,
   credentials,
-  { root = repositoryRoot, port = 3000, aiMode = 'mock' } = {},
+  { root = repositoryRoot, port = 3000, aiMode = 'mock', automaticPublication = false } = {},
 ) {
   if (!['mock', 'real'].includes(aiMode)) throw new LocalSiteError('AI 模式必须为 mock 或 real。');
+  if (automaticPublication && aiMode !== 'real')
+    throw new LocalSiteError('自动发布仅用于 --ai=real 的公开网页资料，模拟任务不会自动发布。');
   if (credentials.version !== 3)
     throw new LocalSiteError('本地后台凭据尚未初始化，请先执行 pnpm local:db:init。');
   const env = {
@@ -81,6 +88,7 @@ export function buildLocalDevelopmentEnvironment(
     HZENSE_GENERATION_WORKFLOW_ENABLED: '1',
     HZENSE_REVIEW_ENABLED: '1',
     HZENSE_EDITORIAL_PUBLICATION_ENABLED: '1',
+    HZENSE_AUTOMATIC_PUBLICATION_ENABLED: automaticPublication ? '1' : '0',
     HZENSE_GENERATION_BATCH_LIMIT_MICROUSD: '5000000',
     HZENSE_GENERATION_DAILY_LIMIT_MICROUSD: '10000000',
     // Separately approved source-discovery ledger; generation keeps its own budget.
@@ -109,7 +117,7 @@ async function requirePrivateDirectory(path) {
 }
 
 export async function main(args = process.argv.slice(2), options = {}) {
-  const { port, check, aiMode } = parseLocalDevelopmentArguments(args);
+  const { port, check, aiMode, automaticPublication } = parseLocalDevelopmentArguments(args);
   const parent = options.environment ?? process.env;
   const root = options.repositoryRoot ?? repositoryRoot;
   const log = options.log ?? console.log;
@@ -130,6 +138,7 @@ export async function main(args = process.argv.slice(2), options = {}) {
     root,
     port,
     aiMode,
+    automaticPublication,
   });
   log(
     aiMode === 'real'

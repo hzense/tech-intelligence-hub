@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import console from 'node:console';
 import { Buffer } from 'node:buffer';
+import { URL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import {
   assessGeneratedCandidates,
@@ -44,13 +45,24 @@ const displayFields = [
   'progress_phase',
   'progress_at',
   'started_at',
+  'automatic_publication',
 ];
-const displayColumns = displayFields.join(',');
+const automaticPublicationProjection =
+  "COALESCE(snapshot#>>'{publication,mode}'='automatic' AND snapshot#>>'{publication,policy}'='auto-publication-v1',false) AS automatic_publication";
+const displayColumns = displayFields
+  .map((field) => (field === 'automatic_publication' ? automaticPublicationProjection : field))
+  .join(',');
 const legacyDisplayColumns = displayColumns.replace(
   'progress_phase,progress_at,started_at',
   'NULL::text AS progress_phase,NULL::timestamptz AS progress_at,NULL::timestamptz AS started_at',
 );
-const displayRow = (row) => Object.fromEntries(displayFields.map((field) => [field, row[field]]));
+const displayRow = (row) =>
+  Object.fromEntries(
+    displayFields.map((field) => [
+      field,
+      field === 'automatic_publication' ? row[field] === true : row[field],
+    ]),
+  );
 const errorCodes = new Set([
   'published_candidate_delete_forbidden',
   'task_deleted',
@@ -333,7 +345,8 @@ function matchesGenerationIdentity(row, parsed) {
   // without changing its inputs or authorizing another AI call.
   const generatedInputsChanged =
     !isDeepStrictEqual(identity.snapshot.topics, parsed.identity.snapshot.topics) ||
-    identity.snapshot.output_contract !== parsed.identity.snapshot.output_contract;
+    identity.snapshot.output_contract !== parsed.identity.snapshot.output_contract ||
+    !isDeepStrictEqual(identity.snapshot.publication, parsed.identity.snapshot.publication);
   let replayIdentity = parsed.identity;
   if (generatedInputsChanged) {
     const snapshot = { ...parsed.identity.snapshot };
@@ -342,6 +355,9 @@ function matchesGenerationIdentity(row, parsed) {
     if (Object.hasOwn(identity.snapshot, 'output_contract'))
       snapshot.output_contract = identity.snapshot.output_contract;
     else delete snapshot.output_contract;
+    if (Object.hasOwn(identity.snapshot, 'publication'))
+      snapshot.publication = identity.snapshot.publication;
+    else delete snapshot.publication;
     replayIdentity = {
       ...parsed.identity,
       snapshot,
@@ -366,7 +382,14 @@ function matchesGenerationIdentity(row, parsed) {
       if (key === 'snapshot' || key === 'configuration') return false;
       return !isDeepStrictEqual(identity[key], parsed.identity[key]);
     });
-    for (const key of ['source', 'profile', 'connection', 'topics', 'output_contract']) {
+    for (const key of [
+      'source',
+      'profile',
+      'connection',
+      'topics',
+      'output_contract',
+      'publication',
+    ]) {
       const normalize = key === 'profile' ? signalGenerationProfileIdentity : (value) => value;
       if (
         !isDeepStrictEqual(
@@ -418,10 +441,38 @@ function inputs(owner, request, snapshot, configuration) {
       'connection',
       ...(snapshot && Object.hasOwn(snapshot, 'topics') ? ['topics'] : []),
       ...(snapshot && Object.hasOwn(snapshot, 'output_contract') ? ['output_contract'] : []),
+      ...(snapshot && Object.hasOwn(snapshot, 'publication') ? ['publication'] : []),
     ],
     'invalid_snapshot',
   );
   const safe = bounded(snapshot, 1200000, 'invalid_snapshot');
+  if (Object.hasOwn(safe, 'publication')) {
+    object(safe.publication, ['mode', 'policy', 'sourceUrls'], 'invalid_snapshot');
+    if (
+      safe.publication.mode !== 'automatic' ||
+      safe.publication.policy !== 'auto-publication-v1' ||
+      !Array.isArray(safe.publication.sourceUrls) ||
+      safe.publication.sourceUrls.length > 30 ||
+      new Set(safe.publication.sourceUrls).size !== safe.publication.sourceUrls.length
+    )
+      fail('invalid_snapshot');
+    for (const value of safe.publication.sourceUrls) {
+      try {
+        const url = new URL(value);
+        if (
+          typeof value !== 'string' ||
+          value.length > 2048 ||
+          url.protocol !== 'https:' ||
+          url.username ||
+          url.password ||
+          url.hash
+        )
+          fail('invalid_snapshot');
+      } catch {
+        fail('invalid_snapshot');
+      }
+    }
+  }
   if (
     Object.hasOwn(safe, 'output_contract') &&
     (![
@@ -643,7 +694,7 @@ export async function getSignalGeneration({
     readOnly,
   );
 }
-/** Saved task display; never reads execution snapshots or changes task state. */
+/** Saved task display; only derives a policy boolean in SQL, never returns snapshots or changes state. */
 export async function getSignalGenerationDisplay({ pool, owner, id, legacyReadOnly = false }) {
   ownerId(owner);
   uuid(id);

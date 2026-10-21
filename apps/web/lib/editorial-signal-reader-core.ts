@@ -18,6 +18,18 @@ export const editorialSignalListQuery = `SELECT signal_id, revision, content, pu
 FROM public.editorial_public_signals ORDER BY published_at DESC, signal_id LIMIT $1`;
 export const editorialSignalByIdQuery = `SELECT signal_id, revision, content, published_at
 FROM public.editorial_public_signals WHERE signal_id = $1`;
+// Probe only catalog metadata, so pre-0032 deployments can still read the old
+// view. Once the column exists it must be readable: never relabel an automatic
+// publication as an administrator confirmation during a partial ACL rollout.
+export const editorialPublicationBasisCapabilityQuery = `SELECT
+has_column_privilege(c.oid,a.attnum,'SELECT') AS available
+FROM pg_catalog.pg_class c
+JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid
+WHERE n.nspname='public' AND c.relname='editorial_public_signals'
+AND a.attname='publication_basis' AND NOT a.attisdropped`;
+const withPublicationBasis = (sql: string) =>
+  sql.replace('content, published_at\n', 'content, published_at, publication_basis\n');
 
 const fail = (): never => {
   throw new PublicSignalReaderError();
@@ -61,6 +73,10 @@ export function mapEditorialSignalRows(rows: unknown[]): SignalEntry[] {
   if (!Array.isArray(rows) || rows.length > publicSignalMaximumEntries) return fail();
   return rows.map((value) => {
     const row = object(value);
+    const publicationBasis =
+      row.publication_basis === undefined ? 'manual_confirmation' : row.publication_basis;
+    if (publicationBasis !== 'manual_confirmation' && publicationBasis !== 'automatic_checks')
+      return fail();
     const signalId = text(row.signal_id);
     if (
       !editorialSignalIdPattern.test(signalId) ||
@@ -151,7 +167,7 @@ export function mapEditorialSignalRows(rows: unknown[]): SignalEntry[] {
       title: text(content.title),
       summary: text(content.summary),
       type: signalType as GenerationSignalType | 'editorial',
-      publication_basis: 'manual_confirmation',
+      publication_basis: publicationBasis,
       status: 'accepted',
       occurred_at: occurred.toISOString(),
       ...(content.dateBasis === 'source_published'
@@ -197,7 +213,21 @@ export function mapEditorialSignalRows(rows: unknown[]): SignalEntry[] {
 export function createEditorialSignalReader(client: PublicSignalQueryClient) {
   async function read(sql: string, parameters: unknown[]) {
     try {
-      return mapEditorialSignalRows((await client.query(sql, parameters)).rows);
+      const capability = (await client.query(editorialPublicationBasisCapabilityQuery, [])).rows;
+      if (capability.length > 1) return fail();
+      if (capability.length && object(capability[0]).available !== true) return fail();
+      const projection = capability.length ? withPublicationBasis(sql) : sql;
+      const rows = (await client.query(projection, parameters)).rows;
+      if (
+        capability.length &&
+        rows.some(
+          (row) =>
+            !Object.hasOwn(object(row), 'publication_basis') ||
+            typeof object(row).publication_basis !== 'string',
+        )
+      )
+        return fail();
+      return mapEditorialSignalRows(rows);
     } catch {
       return fail();
     }

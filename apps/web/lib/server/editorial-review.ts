@@ -24,6 +24,12 @@ import { readEditorialSourceOptions } from '../editorial-source-options';
 import { getResourceEntries } from '../seed-runtime';
 import { localFixtureSourceOptions } from '../local-generation';
 import { missingGenerationResources } from '../../../../packages/ingestion/src/signal-generation-contract.mjs';
+import {
+  automaticPublicationAvailable,
+  automaticPublicationPolicy,
+  automaticPublicationPreview,
+  createAutomaticPublisher,
+} from '../automatic-publication';
 
 async function material(owner: string, runId: string, index: number) {
   const run = await generationRecord(owner, runId);
@@ -154,17 +160,38 @@ const service = createEditorialReviewService({
   topics: editorialTopicOptions,
   read: (owner, runId, candidateIndex) =>
     readEditorialSignal({ pool: editorialPool, owner, runId, candidateIndex }),
-  save: (owner, request, bound) =>
+  save: (owner, request, bound, options) =>
     saveEditorialSignal({
       pool: editorialPool,
       owner,
       request,
       material: bound,
       unified: unifiedSignalEnabled(process.env),
+      ...(options?.automatic ? { automatic: true } : {}),
     }),
   resources: (resources, catalog) =>
     previewEditorialResources({ pool: candidateReviewPool, resources, catalog }),
   resourcePublicationReady: editorialResourcePublicationReady,
 });
-export const editorialDashboard = service.read;
-export const writeEditorialReview = service.write;
+export async function editorialDashboard(owner: string, runId: string, index: number) {
+  const [dashboard, run] = await Promise.all([
+    service.read(owner, runId, index),
+    generationRecord(owner, runId),
+  ]);
+  return {
+    ...dashboard,
+    automaticPublication: automaticPublicationPreview(
+      dashboard,
+      automaticPublicationPolicy(run.snapshot.publication),
+      automaticPublicationAvailable(process.env),
+    ).state,
+  };
+}
+// The HTTP adapter cannot select the trusted automatic write path.
+export const writeEditorialReview = (owner: string, value: unknown) => service.write(owner, value);
+export const publishGeneratedSignals = createAutomaticPublisher({
+  enabled: () => automaticPublicationAvailable(process.env),
+  run: generationRecord,
+  read: service.read,
+  publish: (owner, request) => service.write(owner, request, { automatic: true }),
+});

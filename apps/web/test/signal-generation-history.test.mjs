@@ -131,13 +131,25 @@ test('disabled generation history is owner-scoped, read-only and independent of 
     /PRIVATE_SOURCE|PRIVATE_LEASE|owner_id|snapshot|configuration/,
   );
   const dashboard = await service.generationDashboard('admin');
-  assert.deepEqual(dashboard, { runs: [detail], profiles: [], batches: [], dailyUsage: undefined });
+  assert.deepEqual(dashboard, {
+    runs: [detail],
+    profiles: [],
+    batches: [],
+    dailyUsage: undefined,
+    automaticPublicationEnabled: false,
+  });
   const initialDisplaySelects = service.queries.filter((q) =>
     q.sql.startsWith('SELECT id,batch_id,item_id,'),
   );
   assert.equal(initialDisplaySelects.length, 2);
   for (const query of initialDisplaySelects) {
-    assert.doesNotMatch(query.sql, /snapshot|configuration|lease_token/);
+    const publicPolicyProjection =
+      "COALESCE(snapshot#>>'{publication,mode}'='automatic' AND snapshot#>>'{publication,policy}'='auto-publication-v1',false) AS automatic_publication";
+    assert.ok(query.sql.includes(publicPolicyProjection));
+    assert.doesNotMatch(
+      query.sql.replace(publicPolicyProjection, ''),
+      /snapshot|configuration|lease_token/,
+    );
     assert.match(query.sql, /generation_version/);
     assert.match(query.sql, /result/);
   }
@@ -196,6 +208,7 @@ test('disabled generation history is owner-scoped, read-only and independent of 
       profiles: [],
       batches: [],
       dailyUsage: undefined,
+      automaticPublicationEnabled: false,
     });
     assert.doesNotMatch(JSON.stringify(value), /PRIVATE_AI_ERROR|PRIVATE_IMPORT_ERROR/);
   }

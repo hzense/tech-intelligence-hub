@@ -18,7 +18,7 @@ export const unifiedCutoverChecks = {
 };
 export const unifiedCutoverFunctionHashes = {
   hzense_write_unified_editorial:
-    'd4e579356bc049c84d762b29e0d312026b1ec061971c76aecf133a4cdf4df3f4',
+    '26751a2eb074c7d508038e7d6fa02cc78e1bffce7b14c1d87e85d84e020df2c0',
   hzense_require_unified_editorial:
     '3de02de840b3b1557caf53214a4d5516aa1c99022da570309a06037cb10ffb55',
 };

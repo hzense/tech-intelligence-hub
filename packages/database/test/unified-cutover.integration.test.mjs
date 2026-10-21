@@ -92,7 +92,7 @@ suite('unified cutover writes and public reads', () => {
     readerCreated = true;
     await client.query(
       `GRANT USAGE ON SCHEMA public TO "${role}","${readerRole}";
-      GRANT INSERT(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash,created_at,unified_content), SELECT(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash,created_at) ON public.editorial_signal_revisions TO "${role}"`,
+      GRANT INSERT(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash,created_at,unified_content), SELECT(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash,created_at,publication_basis) ON public.editorial_signal_revisions TO "${role}"`,
     );
     connection.username = role;
     connection.password = writerPassword;

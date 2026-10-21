@@ -22,7 +22,7 @@ export default async function AdminHomePage() {
         <h1 className={styles.title} id="admin-home-title">
           {local ? '本地开发后台' : '管理员身份已验证'}
         </h1>
-        <p className={styles.copy}>管理文档导入、信号候选审核、自动采集、专题洞察和 AI 配置。</p>
+        <p className={styles.copy}>管理文档导入、信号发布与修改、自动采集、专题洞察和 AI 配置。</p>
         {local && isLocalRealAi() ? (
           <p className={styles.copy}>
             当前为本地真实 AI 模式：AI

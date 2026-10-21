@@ -545,6 +545,8 @@ test('local Workflow carries only identifiers and never retries a failed generat
     (await readFile(new URL('../workflows/local-signal-generation.ts', import.meta.url), 'utf8')) +
       '\nexport { runLocalGenerationStep };',
     {
+      './automatic-publication':
+        'export async function runAutomaticPublicationStep(){throw Error("failed generation must not publish")}',
       '../lib/server/signal-generation': `
       export async function executeGeneration(...args){globalThis.__localWorkflowCalls.push(args);throw Error('Synthetic failure');}
       export async function failQueuedGeneration(...args){globalThis.__localWorkflowCalls.push(['fail',...args]);}

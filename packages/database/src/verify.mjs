@@ -22,6 +22,7 @@ import {
   editorialPrimaryKeys,
   editorialForeignKeys,
   editorialChecks,
+  automaticEditorialChecks,
   editorialDefaults,
   editorialUniqueIndexes,
   editorialPublicColumns,
@@ -297,6 +298,7 @@ const expectedColumns = {
 expectedColumns.editorial_signal_revisions = {
   ...expectedColumns.editorial_signal_revisions,
   unified_content: ['jsonb', false],
+  publication_basis: ['text', true],
 };
 for (const [tableName, columns] of Object.entries(unifiedStorageColumns)) {
   Object.assign(expectedColumns[tableName], columns);
@@ -438,6 +440,10 @@ const expectedCheckExpressions = {
   ...materialProposalChecks,
   ...candidateReviewChecks,
   ...editorialChecks,
+  editorial_signal_revisions: [
+    ...editorialChecks.editorial_signal_revisions,
+    automaticEditorialChecks,
+  ],
   ...legacyArchiveChecks,
   ...unifiedCutoverChecks,
   ...automationChecks,
@@ -505,6 +511,7 @@ const expectedDefaults = new Map([
   ...materialProposalDefaults,
   ...candidateReviewDefaults,
   ...editorialDefaults,
+  ['editorial_signal_revisions.publication_basis', new Set(["'manual_confirmation'"])],
   ...legacyArchiveDefaults,
   ['unified_signal_cutover.ready', new Set(['false'])],
   ...automationDefaults,
