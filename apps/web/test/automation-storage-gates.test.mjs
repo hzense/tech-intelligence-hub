@@ -113,6 +113,11 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     replay: true,
     config: null,
     dueKinds: [],
+    dueAutomaticPolicies: [],
+    automaticPublicationAvailable: false,
+    afterEnqueueAvailable: undefined,
+    dispatchFailures: 0,
+    publicationRefusals: 0,
     runs: [],
     summaryCalls: [],
     summariesUnavailable: false,
@@ -128,9 +133,9 @@ test('inactive configuration saves without execution budgets, while enable/trigg
         export async function deleteAutomationConfig(x){if(x.pool.kind!=='config')throw Error('wrong_pool');globalThis.__automationService.deletions.push(x);return {id:x.request.id,revision:2,deleted_at:'2026-10-02T10:00:00Z'}}
         export async function readAutomationDashboard(x){if(x.pool.kind!=='config')throw Error('wrong_pool');return {configs:[],runs:globalThis.__automationService.runs,configDeletionAvailable:true}}
         export async function readAutomationRunDetail(x){if(x.pool.kind!=='config')throw Error('wrong_pool');return {id:x.id,owner:x.owner,result:{report:{title:'Private report'}}}}
-        export async function enqueueAutomation(x){const f=globalThis.__automationService;if(!f.replay)await x.beforeEnqueue(f.config);f.enqueued++;return {created:!f.replay,run:{id:'existing'}}}
-        export async function enqueueDueAutomations(x){globalThis.__automationService.due++;globalThis.__automationService.dueKinds.push(x.kinds);return []}
-        export async function readAutomationRun(){return {snapshot:globalThis.__automationService.config}} export async function failAutomationDispatch(){} export async function publishAutomationInsight(){throw Error('unexpected_publish')}`,
+        export async function enqueueAutomation(x){const f=globalThis.__automationService;if(!f.replay)await x.beforeEnqueue(f.config);f.enqueued++;if(f.afterEnqueueAvailable!==undefined)f.automaticPublicationAvailable=f.afterEnqueueAvailable;return {created:!f.replay,run:{id:'existing'}}}
+        export async function enqueueDueAutomations(x){const f=globalThis.__automationService;f.due++;f.dueKinds.push(x.kinds);f.dueAutomaticPolicies.push(x.allowAutomaticPublication);return []}
+        export async function readAutomationRun(){return {snapshot:globalThis.__automationService.config}} export async function failAutomationDispatch(){globalThis.__automationService.dispatchFailures++} export async function rejectAutomaticPublicationBeforeClaim(){globalThis.__automationService.publicationRefusals++;return true} export async function publishAutomationInsight(){throw Error('unexpected_publish')}`,
       '../../../../packages/database/src/automation-contract.mjs':
         'export const normalizeAutomationConfig=x=>x;',
       './automation-store-access': `export const automationConfigPool={kind:'config'},automationPool={kind:'execution'};
@@ -142,6 +147,8 @@ test('inactive configuration saves without execution budgets, while enable/trigg
         export async function validateLocalAiProfileReference(id,revision){const f=globalThis.__automationService;f.localProfileChecks.push({id,revision});if(id!=='profile')throw Object.assign(Error('not_found'),{code:'not_found'});if(revision!==1)throw Object.assign(Error('revision_conflict'),{code:'revision_conflict'})}`,
       '../local-development':
         'export const isLocalDevelopment=()=>globalThis.__automationService.local;',
+      '../automatic-publication':
+        'export const automaticPublicationAvailable=()=>globalThis.__automationService.automaticPublicationAvailable===true;',
       './import-service':
         'export const importsConfigured=()=>globalThis.__automationService.imports;',
       './signal-generation': `export const generationConfigured=()=>globalThis.__automationService.generation;
@@ -364,6 +371,46 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     assert.equal(degraded.runs[0].generationProgress.rows, null);
     assert.equal(degraded.runs[0].status, 'completed');
     assert.equal(f.starts, 0);
+
+    // Automatic settings can be saved before execution capability is enabled.
+    // Starting/scheduling one cannot silently fall back to private candidates.
+    const automaticConfig = { ...config, publicationMode: 'automatic' };
+    await mod.saveAutomation('owner', { ...request, config: automaticConfig });
+    assert.equal(f.writes.at(-1).request.config.publicationMode, 'automatic');
+    assert.equal((await mod.automationDashboard('owner')).automaticPublicationAvailable, false);
+    await assert.rejects(
+      mod.saveAutomation('owner', { ...request, config: { ...automaticConfig, enabled: true } }),
+      { code: 'automatic_publication_unavailable' },
+    );
+    f.config = automaticConfig;
+    const beforeAutomatic = f.enqueued;
+    await assert.rejects(mod.triggerAutomation('owner', {}), {
+      code: 'automatic_publication_unavailable',
+    });
+    assert.equal(f.enqueued, beforeAutomatic);
+    assert.equal(f.starts, 0);
+    await mod.dispatchDueAutomations();
+    assert.equal(f.dueAutomaticPolicies.at(-1), false);
+    f.automaticPublicationAvailable = true;
+    assert.equal((await mod.automationDashboard('owner')).automaticPublicationAvailable, true);
+    await mod.saveAutomation('owner', {
+      ...request,
+      config: { ...automaticConfig, enabled: true },
+    });
+    await mod.dispatchDueAutomations();
+    assert.equal(f.dueAutomaticPolicies.at(-1), true);
+    // A capability change after enqueue is rechecked against the saved run by dispatch.
+    f.afterEnqueueAvailable = false;
+    await assert.rejects(mod.triggerAutomation('owner', {}), {
+      code: 'automatic_publication_unavailable',
+    });
+    assert.equal(f.enqueued, beforeAutomatic + 1);
+    assert.equal(f.dispatchFailures, 0);
+    assert.equal(f.publicationRefusals, 1);
+    assert.equal(f.starts, 0);
+    f.afterEnqueueAvailable = undefined;
+    f.config = config;
+
     f.enabled = f.imports = f.generation = false;
     for (const key of ['BATCH_LIMIT', 'DAILY_LIMIT', 'RESERVE'])
       delete process.env[`HZENSE_AUTOMATION_${key}_MICROUSD`];

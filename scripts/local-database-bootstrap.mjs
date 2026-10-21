@@ -54,6 +54,10 @@ GRANT SELECT(source_id,source_type,title,summary,href,keywords,body,document_dat
   normalized_title,normalized_summary,normalized_keywords,normalized_body)
   ON public.search_documents TO hzense_runtime;
 GRANT INSERT(unified_content) ON public.editorial_signal_revisions TO hzense_editorial_writer;
+GRANT SELECT(publication_basis),INSERT(publication_basis)
+  ON public.editorial_signal_revisions TO hzense_editorial_writer;
+GRANT SELECT(snapshot) ON public.signal_generation_runs TO hzense_editorial_writer;
+GRANT SELECT(publication_basis) ON public.editorial_public_signals TO hzense_editorial_reader;
 GRANT SELECT(signal_id,version,origin,publication_basis,content,recorded_at)
   ON public.unified_public_signals TO hzense_editorial_reader;
 GRANT SELECT(ready) ON public.unified_public_status TO hzense_editorial_reader;

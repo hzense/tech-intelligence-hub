@@ -31,10 +31,10 @@ test('actual editorial catalog discards query failures but releases local valida
       '../../../../packages/database/src/editorial-signal-role.mjs':
         'export async function assertEditorialRole() {}',
       '../editorial-review-service':
-        'export const createEditorialReviewService = (deps) => ({ read: deps.topics, write: () => {} });',
+        'export const createEditorialReviewService = (deps) => ({ read: async () => ({ content: {}, action: null, revision: 0, topicOptions: await deps.topics() }), write: () => {} });',
       '../candidate-review-config':
         "export const readCandidateRoleConfiguration = () => 'synthetic-not-a-real-connection';",
-      './signal-generation': 'export const generationRecord = () => {};',
+      './signal-generation': 'export const generationRecord = async () => ({ snapshot: {} });',
       '../candidate-review':
         'export const buildCandidateReview = () => {}; export const buildEnrichedCandidateReview = () => {};',
       './candidate-enrichment': 'export const listCandidateEnrichmentDtos = () => {};',
@@ -67,7 +67,7 @@ test('actual editorial catalog discards query failures but releases local valida
     const { editorialDashboard } = await import(
       `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`
     );
-    assert.deepEqual(await editorialDashboard(), []);
+    assert.deepEqual((await editorialDashboard()).topicOptions, []);
     assert.equal(state.releases.at(-1), false);
     state.queryFails = true;
     await assert.rejects(editorialDashboard(), /synthetic query timeout/);
@@ -77,7 +77,7 @@ test('actual editorial catalog discards query failures but releases local valida
     await assert.rejects(editorialDashboard(), /editorial_catalog_unavailable/);
     assert.equal(state.releases.at(-1), false);
     state.rows = [];
-    assert.deepEqual(await editorialDashboard(), []);
+    assert.deepEqual((await editorialDashboard()).topicOptions, []);
     assert.deepEqual(state.releases, [false, true, false, false]);
   } finally {
     if (previous === undefined) delete process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED;

@@ -1,4 +1,4 @@
-import type { SignalEntry } from './public-signal-reader-core.ts';
+import { isEditorialSignal, type SignalEntry } from './public-signal-reader-core.ts';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 
 /** The public contract is independent of the historical storage path. */
@@ -12,7 +12,7 @@ export interface UnifiedSignal {
   dateBasis?: 'source_published';
   capturedAt: string;
   publication: {
-    basis: 'legacy_seed' | 'source_evidence' | 'manual_confirmation';
+    basis: 'legacy_seed' | 'source_evidence' | 'manual_confirmation' | 'automatic_checks';
     state: 'archive' | 'published';
     version: number | null;
     revision: number | null;
@@ -32,10 +32,10 @@ export interface UnifiedSignal {
 }
 
 export function signalPublication(entry: SignalEntry): UnifiedSignal['publication'] {
-  const manual = entry.publication_basis === 'manual_confirmation';
-  const current = manual || entry.public_version !== undefined;
+  const editorial = isEditorialSignal(entry);
+  const current = editorial || entry.public_version !== undefined;
   return {
-    basis: manual ? 'manual_confirmation' : current ? 'source_evidence' : 'legacy_seed',
+    basis: editorial ? entry.publication_basis : current ? 'source_evidence' : 'legacy_seed',
     state: current ? 'published' : 'archive',
     version: entry.public_version ?? null,
     revision: entry.publication_revision ?? null,
@@ -44,20 +44,19 @@ export function signalPublication(entry: SignalEntry): UnifiedSignal['publicatio
 
 export function toUnifiedSignal(entry: SignalEntry): UnifiedSignal {
   const publication = signalPublication(entry);
-  const manual = publication.basis === 'manual_confirmation';
-  const assessment =
-    entry.publication_basis === 'manual_confirmation'
-      ? null
-      : {
-          importance: entry.importance,
-          confidence: entry.confidence,
-          novelty: entry.novelty,
-        };
+  const editorial = isEditorialSignal(entry);
+  const assessment = isEditorialSignal(entry)
+    ? null
+    : {
+        importance: entry.importance,
+        confidence: entry.confidence,
+        novelty: entry.novelty,
+      };
   const participants = (rows: NonNullable<SignalEntry['public_people']>) =>
     rows.map((row) => ({
       // Positional editorial IDs are display-only. Only an explicit catalog
       // match may turn a published name into a link to an existing identity.
-      id: manual ? (row.canonical_entity_id ?? null) : row.id,
+      id: editorial ? (row.canonical_entity_id ?? null) : row.id,
       name: row.name,
       eventRole: row.event_role,
     }));

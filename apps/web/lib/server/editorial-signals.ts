@@ -59,23 +59,31 @@ export async function queryEditorialPublicData(sql: string, parameters: unknown[
   return withEditorialPublicReader((client) => client.query(sql, parameters));
 }
 
-function reader() {
-  return createEditorialSignalReader({ query: queryEditorialPublicData });
+async function read<T>(
+  operation: (reader: ReturnType<typeof createEditorialSignalReader>) => Promise<T>,
+) {
+  try {
+    return await withEditorialPublicReader((client) =>
+      operation(createEditorialSignalReader(client)),
+    );
+  } catch {
+    throw new PublicSignalReaderError();
+  }
 }
 
 // Only the connection pool is reused. Never cache published content or failures.
 export async function getEditorialSignals(): Promise<SignalEntry[]> {
   if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED !== '1') return [];
   await connection();
-  return reader().list();
+  return read((reader) => reader.list());
 }
 /** Background workers have no Next request context; same public view and ACL. */
 export async function readEditorialSignalsForTask(): Promise<SignalEntry[]> {
   if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED !== '1') return [];
-  return reader().list();
+  return read((reader) => reader.list());
 }
 export async function getEditorialSignalById(id: string): Promise<SignalEntry | undefined> {
   if (process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED !== '1') return undefined;
   await connection();
-  return reader().byId(id);
+  return read((reader) => reader.byId(id));
 }

@@ -212,7 +212,7 @@ test('only actual completed candidates produce totals, including a valid empty r
         phase: 'candidate_tasks_queued',
         generationProgress: p,
       }),
-      candidate_count ? '私有候选已生成' : '生成完成（无合格候选）',
+      candidate_count ? '候选已生成' : '生成完成（无合格候选）',
     );
   }
   const p = summarizeAutomationGenerations(result, [
@@ -229,4 +229,21 @@ test('only actual completed candidates produce totals, including a valid empty r
     '部分生成完成',
   );
   assert.equal(p.knownCandidates, 2);
+});
+
+test('generation summaries remain neutral about publication for every task policy', () => {
+  const task = { id: id(1), status: 'completed', progress_phase: 'completed', candidate_count: 3 };
+  const progress = summarizeAutomationGenerations({ generationIds: [id(1)] }, [task]);
+  for (const publicationMode of [undefined, 'manual', 'automatic']) {
+    const row = {
+      status: 'completed',
+      phase: 'candidate_tasks_queued',
+      snapshot: { publicationMode },
+      generationProgress: progress,
+    };
+    assert.equal(sourceAutomationLabel(row), '候选已生成');
+    assert.equal(generationSummaryLabel(task), '已生成 3 条候选');
+    assert.doesNotMatch(sourceAutomationLabel(row), /私有|已发布|未发布/);
+    assert.doesNotMatch(generationSummaryLabel(task), /私有|已发布|未发布/);
+  }
 });

@@ -216,6 +216,7 @@ suite('private AI generation PostgreSQL ledger', () => {
     expect(rows).toEqual([detail]);
     expect(detail.result).toEqual(full.result);
     expect(detail.generation_version).toBe(full.generation_version);
+    expect(detail.automatic_publication).toBe(false);
     expect(detail.charged_microusd).toBe(full.charged_microusd);
     expect(detail).not.toHaveProperty('snapshot');
     expect(detail).not.toHaveProperty('configuration');
@@ -281,6 +282,22 @@ suite('private AI generation PostgreSQL ledger', () => {
     expect(saved.status).toBe('running');
     expect(saved.error_code).toBeNull();
     expect(saved.reserved_microusd).toBe(claimed.run.reserved_microusd);
+  });
+  it('derives the pinned automatic policy as a boolean without returning its source snapshot', async () => {
+    const value = input();
+    value.snapshot.publication = {
+      mode: 'automatic',
+      policy: 'auto-publication-v1',
+      sourceUrls: ['https://example.com/news'],
+    };
+    const task = await createSignalGeneration(value);
+    const detail = await getSignalGenerationDisplay(args(task));
+    expect(detail.automatic_publication).toBe(true);
+    expect(detail).not.toHaveProperty('snapshot');
+    expect(JSON.stringify(detail)).not.toContain('https://example.com/news');
+    expect((await listSignalGenerationDisplays({ pool, owner }))[0].automatic_publication).toBe(
+      true,
+    );
   });
   it('queues without spending and fences monotonic progress across duplicate delivery and completion', async () => {
     const task = await createSignalGeneration(input());

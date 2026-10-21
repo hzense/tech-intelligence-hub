@@ -67,6 +67,7 @@ export interface GenerationDependencies {
       snapshot: SignalGenerationSnapshot;
       reserveMicrousd: number;
       retryOf?: string;
+      automaticPublicationConsent?: boolean;
     },
   ): Promise<SignalGenerationRun>;
   get(owner: string, id: string): Promise<SignalGenerationRun>;
@@ -133,15 +134,22 @@ export function generationAiMode(
 }
 
 /** Excludes source text, credentials, lease tokens, owner and internal configuration. */
-export function generationDto(run: SignalGenerationDisplay) {
+export function generationDto(run: SignalGenerationDisplay | SignalGenerationRun) {
   // Unknown provider outcomes are failed tasks for users. Keep the stored
   // diagnostic and accounting state intact. Retries need a separate explicit request.
   const leaseReleased =
     run.lease_until === null || new Date(run.lease_until).getTime() <= Date.now();
   const expired = run.status === 'running' && leaseReleased;
   const aiMode = generationAiMode(run);
+  const automaticPublication =
+    'automatic_publication' in run
+      ? run.automatic_publication === true
+      : 'snapshot' in run &&
+        run.snapshot.publication?.mode === 'automatic' &&
+        run.snapshot.publication?.policy === 'auto-publication-v1';
   return {
     id: run.id,
+    automatic_publication: automaticPublication,
     ...(aiMode ? { ai_mode: aiMode } : {}),
     retry_of: run.generation_version?.split('/retry/')[1] ?? null,
     batch_id: run.batch_id,
@@ -203,6 +211,9 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
             'profileRevision',
             'consent',
             ...(Object.hasOwn(body, 'retryOf') ? ['retryOf'] : []),
+            ...(Object.hasOwn(body, 'automaticPublicationConsent')
+              ? ['automaticPublicationConsent']
+              : []),
           ]
         : ['action', 'id'];
     if (
@@ -215,7 +226,9 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
       if (
         body.consent !== true ||
         !Number.isSafeInteger(body.profileRevision) ||
-        Number(body.profileRevision) < 1
+        Number(body.profileRevision) < 1 ||
+        (Object.hasOwn(body, 'automaticPublicationConsent') &&
+          typeof body.automaticPublicationConsent !== 'boolean')
       )
         return fail();
       const batchId = generationRecordId(body.batchId),
@@ -265,6 +278,9 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
           },
           reserveMicrousd,
           ...(retryOf ? { retryOf } : {}),
+          ...(body.automaticPublicationConsent === true
+            ? { automaticPublicationConsent: true }
+            : {}),
         }),
       );
     }

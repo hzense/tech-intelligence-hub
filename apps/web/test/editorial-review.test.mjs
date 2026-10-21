@@ -225,11 +225,11 @@ test('source choices are private until selected; saved links survive source remo
     'withdraw',
   );
 });
-test('service rejects immutable text changes, missing confirmation, missing fields and unknown payload', async () => {
+test('service rejects invalid text, missing confirmation, missing fields and unknown payload', async () => {
   const { service, calls } = setup();
   for (const modify of [
     (r) => {
-      r.content.title = '篡改标题';
+      r.content.title = '长'.repeat(81);
     },
     (r) => {
       r.content.sourceUrls = ['https://private.example/a'];

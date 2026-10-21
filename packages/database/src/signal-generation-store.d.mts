@@ -29,6 +29,8 @@ export interface SignalGenerationSnapshot {
   connection: unknown;
   topics?: GenerationTopic[];
   output_contract?: GenerationOutputContract;
+  /** Server-owned, pinned at first admission; never upgraded by replay. */
+  publication?: { mode: 'automatic'; policy: 'auto-publication-v1'; sourceUrls: string[] };
 }
 export interface SignalGenerationRun {
   id: string;
@@ -98,7 +100,7 @@ export type SignalGenerationDisplay = Omit<
   | 'fingerprint'
   | 'lease_token'
   | 'budget_day'
->;
+> & { automatic_publication?: boolean };
 export function getSignalGenerationDisplay(
   args: RunArgs & { legacyReadOnly?: boolean },
 ): Promise<SignalGenerationDisplay>;

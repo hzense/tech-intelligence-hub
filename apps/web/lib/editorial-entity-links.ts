@@ -1,5 +1,9 @@
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
-import type { PublicSignalPerson, SignalEntry } from './public-signal-reader-core.ts';
+import {
+  isEditorialSignal,
+  type PublicSignalPerson,
+  type SignalEntry,
+} from './public-signal-reader-core.ts';
 
 export type EditorialEntityCatalogEntry = {
   id: string;
@@ -55,8 +59,7 @@ export function projectEditorialEntityLinks(
       if (!excludedIds.has(resource.id))
         add(resource.type === 'person' ? 'person' : 'organization', resource.id, [resource.name]);
     }
-    if (signal.publication_basis === 'manual_confirmation' || signal.public_version === undefined)
-      continue;
+    if (isEditorialSignal(signal) || signal.public_version === undefined) continue;
     for (const person of signal.public_people ?? []) {
       if (!excludedIds.has(person.id)) add('person', person.id, [person.name]);
     }
@@ -65,7 +68,7 @@ export function projectEditorialEntityLinks(
     }
   }
   return signals.map((signal) => {
-    if (signal.publication_basis !== 'manual_confirmation') return signal;
+    if (!isEditorialSignal(signal)) return signal;
     // Explicit reviewed identity choices must survive an ambiguous name catalog.
     // Only the public reader can attach public_resources; name-only rows still
     // take the unique-match path below and cannot smuggle a canonical marker.

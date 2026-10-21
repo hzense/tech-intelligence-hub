@@ -11,6 +11,7 @@ import type {
 } from '../../../packages/database/src/editorial-signal-contract.mjs';
 
 type Row = {
+  publication_basis?: 'manual_confirmation' | 'automatic_checks';
   request_id: string;
   revision: number;
   action: 'draft' | 'publish' | 'withdraw';
@@ -61,7 +62,12 @@ export function createEditorialReviewService(deps: {
   material(owner: string, runId: string, index: number): Promise<Material>;
   topics(): Promise<EditorialContent['topics']>;
   read(owner: string, runId: string, index: number): Promise<Row | null>;
-  save(owner: string, request: EditorialRequest, material: EditorialMaterial): Promise<Row>;
+  save(
+    owner: string,
+    request: EditorialRequest,
+    material: EditorialMaterial,
+    options?: { automatic?: true },
+  ): Promise<Row>;
   resources?(
     resources: NonNullable<EditorialMaterial['resources']>,
     catalog: NonNullable<EditorialMaterial['resourceCatalog']>,
@@ -198,9 +204,10 @@ export function createEditorialReviewService(deps: {
         warnings,
         requestId: saved?.request_id ?? null,
         publicId: saved?.action === 'publish' ? editorialPublicId(runId, index) : null,
+        ...(saved?.publication_basis ? { publicationBasis: saved.publication_basis } : {}),
       };
     },
-    async write(owner: string, value: unknown) {
+    async write(owner: string, value: unknown, options?: { automatic?: true }) {
       if (!deps.enabled()) fail('not_configured');
       if (
         !value ||
@@ -217,6 +224,10 @@ export function createEditorialReviewService(deps: {
         String(request.runId),
         Number(request.candidateIndex),
       );
+      // Automatic preview and persistence read independently. A failed refresh
+      // must not silently replace reviewed supplementary material with the
+      // original candidate. Manual edits retain the explicit-confirmation path.
+      if (options?.automatic && material.warnings.length) fail('material_changed');
       if (request.materialHash !== material.materialHash) fail('material_changed');
       // The store rechecks ownership, immutable material, live topic catalog,
       // readiness, explicit consent, request idempotency and revision in one transaction.
@@ -242,14 +253,19 @@ export function createEditorialReviewService(deps: {
       // existing matching request receipt before applying those checks to new writes.
       const record = await deps.save(
         owner,
-        normalizeEditorialRequest(request, bound, { checkPublication: false }),
+        normalizeEditorialRequest(request, bound, {
+          checkPublication: false,
+          automatic: options?.automatic === true,
+        }),
         bound,
+        options,
       );
       return {
         revision: record.revision,
         action: record.action,
         content: record.content,
         requestId: record.request_id,
+        ...(record.publication_basis ? { publicationBasis: record.publication_basis } : {}),
         publicId:
           record.action === 'publish'
             ? editorialPublicId(String(request.runId), Number(request.candidateIndex))

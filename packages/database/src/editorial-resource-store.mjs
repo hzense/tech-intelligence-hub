@@ -108,6 +108,7 @@ export async function registerEditorialResources({
   priorResources,
   runId,
   candidateIndex,
+  automatic = false,
 }) {
   await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
     'material-registration:catalog',
@@ -126,7 +127,7 @@ export async function registerEditorialResources({
     if (resource.entity_id !== null && resource.entity_id !== '__new__') {
       selected = matches.find((row) => row.id === resource.entity_id);
       if (!selected) fail('entity_reference_invalid');
-    } else if (resource.entity_id === null) {
+    } else if (resource.entity_id === null || automatic) {
       // A preview of no match is not consent to reuse a person discovered by
       // another concurrent publication. Require an explicit identity choice.
       if (blocked || matches.length) fail('resource_identity_ambiguous');

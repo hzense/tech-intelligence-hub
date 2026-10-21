@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   mapEditorialSignalRows,
   createEditorialSignalReader,
+  editorialPublicationBasisCapabilityQuery,
 } from '../lib/editorial-signal-reader-core.ts';
 import { projectEditorialEntityLinks } from '../lib/editorial-entity-links.ts';
 import {
@@ -121,7 +122,11 @@ test('only current published revisions supply resource profiles; withdrawal remo
   });
   older.content.resources[1].introduction = 'The earlier evidenced introduction.';
   let published = [older, newer];
-  const reader = createEditorialSignalReader({ query: async () => ({ rows: published }) });
+  const reader = createEditorialSignalReader({
+    query: async (sql) => ({
+      rows: sql === editorialPublicationBasisCapabilityQuery ? [] : published,
+    }),
+  });
   const directory = async () => buildPublicEntityDirectory(await reader.list());
   assert.equal(
     resourceIntroduction((await directory()).find((entity) => entity.type === 'company')),

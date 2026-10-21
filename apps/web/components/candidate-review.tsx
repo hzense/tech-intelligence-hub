@@ -24,7 +24,9 @@ export function CandidateReview({
       />
       <details>
         <summary>{localSimulation ? '辅助资料与原始模拟候选' : '辅助资料与原始 AI 候选'}</summary>
-        <p>以下保留生成时的原始结果。原始缺项提示不会阻止补齐发布信息后的人工确认发布。</p>
+        <p>
+          以下保留生成时的原始结果，不代表当前正式信号。当前发布内容和缺项以上方信号管理为准，修改不会覆盖原始快照。
+        </p>
         <PrivateResult
           localMode={localMode}
           localRealAi={localRealAi}

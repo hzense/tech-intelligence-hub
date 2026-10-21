@@ -10,6 +10,8 @@ const owner = 'synthetic-owner';
 
 async function loadDispatchers() {
   const adapters = {
+    './automatic-publication':
+      'export async function runAutomaticPublicationStep(){return {state:"disabled"}}',
     workflow: 'export async function sleep(){}',
     'workflow/api': `export async function start(_workflow,args){return globalThis.__dispatchFailure.start(args)}`,
     '../lib/server/automation': 'export function automationLimits(){return {}}',
@@ -17,6 +19,8 @@ async function loadDispatchers() {
     '../../../packages/database/src/automation-contract.mjs':
       'export function automationStableId(value){return value.itemId??"batch"}',
     '../../../packages/database/src/automation-store.mjs': `
+      export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
+      export async function rejectAutomaticPublicationBeforeClaim(){throw Error('unexpected automatic rejection')}
       export async function claimAutomationRun(){const f=globalThis.__dispatchFailure;if(f.run.status!=='queued')return null;f.run.status='running';return structuredClone(f.run)}
       export async function readAutomationRun(){return structuredClone(globalThis.__dispatchFailure.run)}
       export async function updateAutomationRun(args){const f=globalThis.__dispatchFailure;f.updates.push(structuredClone(args));f.run={...f.run,result:args.result,phase:args.phase,status:args.status??f.run.status};return structuredClone(f.run)}
@@ -219,7 +223,7 @@ test('automation cleanup failure retains the original dispatch error and does no
     f.create('first');
     f.queue(owner, 'first');
     await assert.rejects(
-      workflow.dispatchGeneration(owner, { id: 'first', queuedAt }),
+      workflow.dispatchGeneration(owner, f.run.id, { id: 'first', queuedAt }),
       (actual) => actual === original,
     );
     f.dispatches.length = 0;

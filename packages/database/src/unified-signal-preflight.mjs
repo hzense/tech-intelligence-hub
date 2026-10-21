@@ -8,8 +8,9 @@ import { buildUnifiedSignalPlan, previewUnifiedPublicSignals } from './unified-s
 
 export const unifiedEditorialHistoryQuery = `SELECT request_id,run_id,owner_id,candidate_index,
   revision,material_hash,action,content,request_hash,
-  to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at
-FROM public.editorial_signal_revisions ORDER BY run_id,candidate_index,revision`;
+  to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
+  to_jsonb(r)->>'publication_basis' AS publication_basis
+FROM public.editorial_signal_revisions r ORDER BY run_id,candidate_index,revision`;
 export const unifiedCoreInventoryQuery = `SELECT
   (SELECT count(*)::text FROM public.signals) AS signal_count,
   (SELECT count(*)::text FROM public.signal_versions) AS version_count`;
@@ -24,7 +25,14 @@ export async function readUnifiedSignalSources(client) {
     ...payload,
     plan_hash: createHash('sha256').update(canonicalLegacyArchiveJson(payload)).digest('hex'),
   });
-  const editorialRevisions = (await client.query(unifiedEditorialHistoryQuery)).rows;
+  const editorialRevisions = (await client.query(unifiedEditorialHistoryQuery)).rows.map((row) => {
+    if (row.publication_basis === 'automatic_checks') return row;
+    if (row.publication_basis != null && row.publication_basis !== 'manual_confirmation')
+      throw new Error('invalid_editorial_history');
+    const historical = { ...row };
+    delete historical.publication_basis;
+    return historical;
+  });
   return { archivePlan, editorialRevisions };
 }
 

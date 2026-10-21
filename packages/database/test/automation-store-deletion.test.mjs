@@ -89,7 +89,10 @@ describe('automation configuration deletion transaction contract', () => {
     const taskGuard = calls.find(({ sql }) =>
       sql.startsWith('SELECT 1 FROM public.automation_runs'),
     );
-    expect(taskGuard.sql).toContain("status IN ('queued','running','unknown')");
+    expect(taskGuard.sql).toContain("status IN ('queued','running')");
+    expect(taskGuard.sql).toContain("(status='unknown' AND finished_at IS NULL)");
+    expect(taskGuard.sql).not.toContain("status IN ('queued','running','unknown')");
+    expect(taskGuard.params).toEqual([id]);
     expect(taskGuard.sql).toContain('lease_token IS NOT NULL OR lease_until IS NOT NULL');
     const writes = calls.filter(({ sql }) => /^(UPDATE|INSERT|DELETE) /.test(sql));
     expect(writes).toHaveLength(1);

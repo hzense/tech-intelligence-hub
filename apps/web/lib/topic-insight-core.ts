@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { SignalEntry } from './public-signal-reader-core.ts';
+import { isEditorialSignal, type SignalEntry } from './public-signal-reader-core.ts';
 
 export interface InsightInput {
   id: string;
@@ -52,7 +52,7 @@ export function selectInsightSignals(signals: SignalEntry[], topicIds: string[],
   for (const signal of signals) {
     const date = Date.parse(signal.occurred_at);
     if (
-      !(signal.public_version || signal.publication_basis === 'manual_confirmation') ||
+      !(signal.public_version || isEditorialSignal(signal)) ||
       date < startMs ||
       date > endMs ||
       !Number.isFinite(date) ||
@@ -165,7 +165,7 @@ export function currentInsight(value: unknown, current: SignalEntry[]): TopicIns
       return null;
     const map = new Map(
       current
-        .filter((s) => s.public_version || s.publication_basis === 'manual_confirmation')
+        .filter((s) => s.public_version || isEditorialSignal(s))
         .map((s) => [s.id, insightInput(s)]),
     );
     const inputs = row.inputs.map((value) => {

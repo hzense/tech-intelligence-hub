@@ -1146,6 +1146,44 @@ function coreFixture(overrides = {}) {
     finishes,
   };
 }
+test('automatic publication requires explicit per-request consent and is not inferred for old clients', async () => {
+  for (const consent of [undefined, false, true]) {
+    let saved;
+    const f = coreFixture({
+      create: async (_owner, args) => {
+        saved = args;
+        return { ...f.run(), ...args };
+      },
+    });
+    await f.execute('admin', {
+      action: 'create',
+      id: f.run().id,
+      batchId: f.run().batch_id,
+      itemId: f.run().item_id,
+      profileId: profile.id,
+      profileRevision: 1,
+      consent: true,
+      ...(consent === undefined ? {} : { automaticPublicationConsent: consent }),
+    });
+    assert.equal(saved.automaticPublicationConsent, consent === true ? true : undefined);
+    assert.equal(f.calls(), 0);
+  }
+  const f = coreFixture();
+  await assert.rejects(
+    f.execute('admin', {
+      action: 'create',
+      id: f.run().id,
+      batchId: f.run().batch_id,
+      itemId: f.run().item_id,
+      profileId: profile.id,
+      profileRevision: 1,
+      consent: true,
+      automaticPublicationConsent: 'true',
+    }),
+    { code: 'invalid_request' },
+  );
+});
+
 test('creation pins enabled topics without AI; execution uses that snapshot despite later catalog changes', async () => {
   let catalogReads = 0;
   const provider = providerFixture({
@@ -1420,6 +1458,21 @@ test('committed admission precedes one model call, replay and detail never regen
   await f.execute('admin', { action: 'detail', id });
   assert.equal(f.calls(), 1);
   const dto = generationDto(f.run());
+  assert.equal(dto.automatic_publication, false);
+  assert.equal(
+    generationDto({
+      ...f.run(),
+      snapshot: {
+        ...f.run().snapshot,
+        publication: { mode: 'automatic', policy: 'auto-publication-v1', sourceUrls: [] },
+      },
+    }).automatic_publication,
+    true,
+  );
+  assert.equal(
+    generationDto({ ...f.run(), automatic_publication: true }).automatic_publication,
+    true,
+  );
   for (const key of ['owner_id', 'snapshot', 'lease_token', 'source_hash'])
     assert.equal(key in dto, false);
 });

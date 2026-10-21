@@ -47,11 +47,19 @@ export function normalizeAutomationConfig(value) {
     'profileId',
     'profileRevision',
     ...(Object.hasOwn(value ?? {}, 'discovery') ? ['discovery'] : []),
+    ...(Object.hasOwn(value ?? {}, 'publicationMode') ? ['publicationMode'] : []),
   ]);
   if (
     !['source_collection', 'topic_insight'].includes(value.kind) ||
     typeof value.enabled !== 'boolean' ||
     !['manual', 'daily', 'weekly'].includes(value.frequency)
+  )
+    automationFail();
+  // Keep legacy JSON unchanged: an absent mode means manual review, never an
+  // implicit opt-in from current server settings or a later config revision.
+  if (
+    Object.hasOwn(value, 'publicationMode') &&
+    (value.kind !== 'source_collection' || !['manual', 'automatic'].includes(value.publicationMode))
   )
     automationFail();
   if (
@@ -118,6 +126,7 @@ export function normalizeAutomationConfig(value) {
     topicIds,
     profileId: value.profileId,
     profileRevision: value.profileRevision,
+    ...(Object.hasOwn(value, 'publicationMode') ? { publicationMode: value.publicationMode } : {}),
     ...(discovery ? { discovery } : {}),
   };
 }

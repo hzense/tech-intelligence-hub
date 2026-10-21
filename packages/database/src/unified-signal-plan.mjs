@@ -168,6 +168,9 @@ export function buildUnifiedSignalPlan({ archivePlan, editorialRevisions }) {
       !Number.isInteger(row.revision) ||
       row.revision < 1 ||
       !['draft', 'publish', 'withdraw'].includes(row.action) ||
+      (row.publication_basis !== undefined && row.publication_basis !== 'automatic_checks') ||
+      (row.publication_basis === 'automatic_checks' &&
+        (row.action !== 'publish' || row.revision !== 1)) ||
       !/^[a-f0-9]{64}$/.test(row.material_hash) ||
       !/^[a-f0-9]{64}$/.test(row.request_hash) ||
       requestIds.has(row.request_id)
@@ -198,7 +201,7 @@ export function buildUnifiedSignalPlan({ archivePlan, editorialRevisions }) {
           id,
           revision: row.revision,
           origin: 'ai_generation',
-          basis: row.action === 'draft' ? null : 'manual_confirmation',
+          basis: row.action === 'draft' ? null : (row.publication_basis ?? 'manual_confirmation'),
           status: { draft: 'draft', publish: 'published', withdraw: 'withdrawn' }[row.action],
           recordedAt: createdAt,
           source: { table: 'editorial_signal_revisions', key: row.request_id },

@@ -11,6 +11,7 @@
   margin: 0.4rem 0;
 }
 .card {
+  min-width: 0;
   border: 1px solid #d7dce6;
   border-radius: 18px;
   background: #fff;
@@ -60,6 +61,17 @@
 .full {
   grid-column: 1/-1;
 }
+.publicationHelp {
+  padding: 0.75rem 1rem;
+  border-left: 3px solid #75809a;
+  background: #f7f8fb;
+  border-radius: 0 10px 10px 0;
+  overflow-wrap: anywhere;
+}
+.publicationHelp p {
+  margin: 0.25rem 0;
+  line-height: 1.6;
+}
 .topics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -76,6 +88,7 @@
 }
 .tableWrap table {
   width: 100%;
+  min-width: 680px;
   border-collapse: collapse;
   text-align: left;
 }

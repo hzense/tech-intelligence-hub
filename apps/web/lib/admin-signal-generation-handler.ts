@@ -22,6 +22,7 @@ const exposed = new Set([
   'budget_exceeded',
   'source_changed',
   'configuration_changed',
+  'publication_policy_changed',
   'stale_attempt',
   'commit_unknown',
   'source_unavailable',

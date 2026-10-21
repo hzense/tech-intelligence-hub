@@ -1,5 +1,6 @@
 import { sleep } from 'workflow';
 import { failQueuedGeneration } from '../lib/server/signal-generation';
+import { runAutomaticPublicationStep } from './automatic-publication';
 import {
   startGenerationSandbox,
   pollGenerationSandbox,
@@ -13,7 +14,10 @@ export async function signalGenerationWorkflow(owner: string, id: string, queued
   'use workflow';
   for (let attempt = 0; attempt < 60; attempt++) {
     const handle = await runGenerationStep(owner, id, queuedAt);
-    if (!handle) return 'already_started_or_finished';
+    if (!handle) {
+      await runAutomaticPublicationStep(owner, id);
+      return 'already_started_or_finished';
+    }
     let status = 'running';
     for (let poll = 0; poll < 64; poll++) {
       await sleep('30s');
@@ -31,6 +35,7 @@ export async function signalGenerationWorkflow(owner: string, id: string, queued
       // It cannot overwrite a paid result or a newer dispatch. Do not relaunch
       // or stop an unobserved process; the Sandbox has its own bounded lifetime.
       await failQueuedStep(owner, id, queuedAt);
+      await runAutomaticPublicationStep(owner, id);
       return 'observation_unconfirmed';
     }
     // Stop only after the command has positively reported an exit code.
@@ -38,6 +43,7 @@ export async function signalGenerationWorkflow(owner: string, id: string, queued
     // Only a worker's explicit pre-claim capacity rejection permits another launch.
     if (status !== 'busy') {
       await failQueuedStep(owner, id, queuedAt);
+      await runAutomaticPublicationStep(owner, id);
       return status;
     }
     await sleep('30s');

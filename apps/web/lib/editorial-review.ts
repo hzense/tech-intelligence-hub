@@ -52,6 +52,12 @@ export function editorialCandidateDate(
     : { eventDate: historicalPrefill ?? candidateDate };
 }
 export type EditorialDashboard = {
+  publicationBasis?: 'manual_confirmation' | 'automatic_checks';
+  automaticPublication?: {
+    eligible: boolean;
+    status: 'disabled' | 'pending' | 'published' | 'needs_attention' | 'skipped';
+    reasons: string[];
+  };
   configured: boolean;
   materialHash: string;
   revision: number;

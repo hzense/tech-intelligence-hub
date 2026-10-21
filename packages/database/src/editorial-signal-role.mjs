@@ -9,7 +9,11 @@ export const editorialRoleColumns = {
     signal_generation_runs: ['id', 'owner_id', 'status', 'deleted_at'],
     topics: ['id', 'title', 'runtime_enabled', 'status'],
   },
-  reader: { editorial_public_signals: editorialPublicColumns.map(([column]) => column) },
+  reader: {
+    editorial_public_signals: editorialPublicColumns
+      .map(([column]) => column)
+      .filter((column) => column !== 'publication_basis'),
+  },
 };
 export const editorialResourceRoleColumns = {
   entities: ['id', 'name', 'type', 'status', 'aliases'],
@@ -29,6 +33,17 @@ export async function assertEditorialRole(client, role) {
     ]),
   );
   if (role === 'writer') {
+    const automatic = (
+      await client.query(
+        "SELECT has_column_privilege(c.oid,a.attnum,'SELECT') AS available FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname='public' AND c.relname='editorial_signal_revisions' AND a.attname='publication_basis' AND NOT a.attisdropped",
+      )
+    ).rows[0]?.available;
+    if (automatic)
+      capabilities.push(
+        'editorial_signal_revisions|publication_basis|SELECT',
+        'editorial_signal_revisions|publication_basis|INSERT',
+        'signal_generation_runs|snapshot|SELECT',
+      );
     const unified = (
       await client.query(
         "SELECT has_column_privilege(c.oid,a.attnum,'INSERT') AS available FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname='public' AND c.relname='editorial_signal_revisions' AND a.attname='unified_content' AND NOT a.attisdropped",
@@ -48,6 +63,12 @@ export async function assertEditorialRole(client, role) {
           capabilities.push(`${table}|${name}|SELECT`, `${table}|${name}|INSERT`);
   }
   if (role === 'reader') {
+    const automatic = (
+      await client.query(
+        "SELECT has_column_privilege(c.oid,a.attnum,'SELECT') AS available FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname='public' AND c.relname='editorial_public_signals' AND a.attname='publication_basis' AND NOT a.attisdropped",
+      )
+    ).rows[0]?.available;
+    if (automatic) capabilities.push('editorial_public_signals|publication_basis|SELECT');
     const unified = (
       await client.query(
         "SELECT has_column_privilege(c.oid,a.attnum,'SELECT') AS available FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname='public' AND c.relname='unified_public_status' AND a.attname='ready' AND NOT a.attisdropped",

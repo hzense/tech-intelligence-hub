@@ -36,10 +36,11 @@ export interface PublicSignalResource {
   introduction: string | null;
   source_urls: string[];
 }
+export type EditorialPublicationBasis = 'manual_confirmation' | 'automatic_checks';
 export type SignalEntry = (
   | (SeedSignal & { publication_basis?: 'source_evidence' })
   | (Omit<SeedSignal, 'type' | 'importance' | 'confidence' | 'novelty'> & {
-      publication_basis: 'manual_confirmation';
+      publication_basis: EditorialPublicationBasis;
       type: SeedSignal['type'] | 'editorial';
       importance?: never;
       confidence?: never;
@@ -59,6 +60,16 @@ export type SignalEntry = (
   /** Historical Seed links to models, papers, products and other non-participant entities. */
   legacy_related_entities?: { id: string; name: string; type: string }[];
 };
+
+/** These publications have explicit provenance but no independently assigned scores. */
+export function isEditorialSignal(
+  entry: SignalEntry,
+): entry is Extract<SignalEntry, { publication_basis: EditorialPublicationBasis }> {
+  return (
+    entry.publication_basis === 'manual_confirmation' ||
+    entry.publication_basis === 'automatic_checks'
+  );
+}
 
 export class PublicSignalReaderError extends Error {
   constructor() {

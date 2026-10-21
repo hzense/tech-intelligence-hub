@@ -29,6 +29,8 @@ test('source discovery orchestrates originals and private candidates without dro
     '../../../packages/database/src/automation-contract.mjs':
       'export function automationStableId(x){return x.itemId ?? "batch-id"}',
     '../../../packages/database/src/automation-store.mjs': `
+      export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
+      export async function rejectAutomaticPublicationBeforeClaim(){throw Error('unexpected automatic rejection')}
       export async function claimAutomationRun(){const f=globalThis.__sourceFlow;f.claims++;if(f.run.status!=='queued')return null;f.run.status='running';return structuredClone(f.run)}
       export async function readAutomationRun(){const f=globalThis.__sourceFlow;f.reads++;return structuredClone(f.run)}
       export async function updateAutomationRun(args){const f=globalThis.__sourceFlow;if(f.run.status!=='running')throw Error('stale_attempt');f.updates.push(args);f.run.result=args.result;f.run.phase=args.phase;f.run.status=args.status??'running';f.run.charged_microusd=args.costMicrousd??f.run.charged_microusd;return structuredClone(f.run)}
@@ -447,7 +449,7 @@ test('source discovery orchestrates originals and private candidates without dro
     assert.deepEqual(f.importAttempts, []);
     assert.deepEqual(f.generated, []);
     assert.equal(
-      await steps.dispatchGeneration('owner', {
+      await steps.dispatchGeneration('owner', 'run', {
         id: 'item',
         queuedAt: '2026-10-02T12:00:00.123Z',
       }),

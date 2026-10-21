@@ -186,6 +186,7 @@ export function inspectSignalImmutabilityCatalog({ triggers, routines, stamps },
         [
           'hzense_guard_qualified_publication_receipt',
           'hzense_guard_editorial_generation_delete',
+          'hzense_guard_automatic_editorial',
           'hzense_write_unified_editorial',
           'hzense_require_unified_editorial',
         ].includes(name) ||

@@ -10,6 +10,7 @@ import {
   editorialReaderConnectionString,
   editorialSignalListQuery,
   editorialSignalByIdQuery,
+  editorialPublicationBasisCapabilityQuery,
   mapEditorialSignalRows,
   searchSignalEntries,
 } from '../lib/editorial-signal-reader-core.ts';
@@ -169,6 +170,7 @@ test('every read hits the public view and observes withdrawal immediately across
   const reader = createEditorialSignalReader({
     query: async (sql, parameters) => {
       calls.push({ sql, parameters });
+      if (sql === editorialPublicationBasisCapabilityQuery) return { rows: [] };
       return { rows };
     },
   });
@@ -185,12 +187,13 @@ test('every read hits the public view and observes withdrawal immediately across
     mergeCurrentSignalSearch(stale, searchSignalEntries(await reader.list(), 'editorial')),
     [],
   );
-  assert.equal(calls[0].sql, editorialSignalListQuery);
-  assert.deepEqual(calls[0].parameters, [10001]);
-  assert.equal(calls[1].sql, editorialSignalByIdQuery);
-  assert.deepEqual(calls[1].parameters, [signalId]);
+  const contentCalls = calls.filter(({ sql }) => sql !== editorialPublicationBasisCapabilityQuery);
+  assert.equal(contentCalls[0].sql, editorialSignalListQuery);
+  assert.deepEqual(contentCalls[0].parameters, [10001]);
+  assert.equal(contentCalls[1].sql, editorialSignalByIdQuery);
+  assert.deepEqual(contentCalls[1].parameters, [signalId]);
   assert.equal(await reader.byId("' OR true--"), undefined);
-  for (const { sql } of calls) {
+  for (const { sql } of contentCalls) {
     assert.match(sql, /FROM public\.editorial_public_signals/);
     assert.doesNotMatch(sql, /private|search_documents|SELECT \*/);
   }
@@ -198,8 +201,9 @@ test('every read hits the public view and observes withdrawal immediately across
 test('query outage fails closed and never returns a previous success', async () => {
   let healthy = true;
   const reader = createEditorialSignalReader({
-    query: async () => {
+    query: async (sql) => {
       if (!healthy) throw new Error('private connection credential');
+      if (sql === editorialPublicationBasisCapabilityQuery) return { rows: [] };
       return { rows: [row()] };
     },
   });
@@ -222,10 +226,7 @@ test('server entrypoints gate readers, bind requests, and remove old indexed sig
   assert.equal((search.match(/mergeCurrentSignalSearch\(/g) ?? []).length, 2);
   assert.equal((search.match(/return mergeCurrentResourceSearch\(/g) ?? []).length, 2);
   assert.match(search, /visibleTopicInsights\(signals\)/);
-  assert.match(
-    await source('../lib/search-runtime.ts'),
-    /publication_basis !== 'manual_confirmation'/,
-  );
+  assert.match(await source('../lib/search-runtime.ts'), /!isEditorialSignal\(signal\)/);
   const detail = await source('../app/signals/[id]/page.tsx');
   assert.match(detail, /export const dynamic = 'force-dynamic'/);
   assert.doesNotMatch(detail, /generateStaticParams/);
@@ -465,10 +466,11 @@ test('actual server reader is disabled by default, uses only its reader pool, an
                   const state = globalThis.__editorialReaderTest;
                   return {
                     checked: false,
-                    async query() {
+                    async query(sql) {
                       if (!this.checked) throw new Error('query before ACL check');
                       state.queries++;
                       if (state.queryFails) throw new Error('private query error');
+                      if (sql.includes("a.attname='publication_basis'")) return { rows: [] };
                       return { rows: state.rows };
                     },
                     release(discard) { state.releases.push(discard); },
@@ -518,7 +520,7 @@ test('actual server reader is disabled by default, uses only its reader pool, an
     state.rows = [];
     assert.deepEqual(await api.getEditorialSignals(), []);
     assert.equal(await api.getEditorialSignalById(signalId), undefined);
-    assert.equal(state.queries, 4);
+    assert.equal(state.queries, 8);
     assert.equal(state.connections, 5);
     assert.equal(state.checks, 4);
     assert.deepEqual(state.releases, [false, false, false, false]);
@@ -532,7 +534,7 @@ test('actual server reader is disabled by default, uses only its reader pool, an
         message: 'Public signals are unavailable',
       });
     }
-    assert.equal(state.queries, 4, 'ACL drift must stop before any public query');
+    assert.equal(state.queries, 8, 'ACL drift must stop before any public query');
     assert.equal(state.checks, 6, 'do not cache a previously successful ACL check');
     assert.deepEqual(state.releases.slice(-2), [true, true]);
     state.aclValid = true;
@@ -541,10 +543,10 @@ test('actual server reader is disabled by default, uses only its reader pool, an
     assert.equal(state.releases.at(-1), true);
     state.queryFails = false;
     assert.deepEqual(await api.getEditorialSignals(), []);
-    assert.equal(state.queries, 6);
+    assert.equal(state.queries, 11);
     delete process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED;
     assert.deepEqual(await api.getEditorialSignals(), []);
-    assert.equal(state.queries, 6);
+    assert.equal(state.queries, 11);
   } finally {
     if (previousFlag === undefined) delete process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED;
     else process.env.HZENSE_EDITORIAL_PUBLICATION_ENABLED = previousFlag;

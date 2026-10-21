@@ -75,5 +75,5 @@ export function contentReadiness(content: EditorialContent): { ready: boolean; m
 export function normalizeEditorialRequest(
   request: unknown,
   material: EditorialMaterial,
-  options?: { checkPublication?: boolean },
+  options?: { checkPublication?: boolean; automatic?: boolean },
 ): EditorialRequest;

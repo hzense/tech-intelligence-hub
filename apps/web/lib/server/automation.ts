@@ -12,6 +12,7 @@ import {
 } from './automation-store-access';
 import { aiStageAccess, generationAiAccess, validateLocalAiProfileReference } from './admin-ai';
 import { isLocalDevelopment } from '../local-development';
+import { automaticPublicationAvailable } from '../automatic-publication';
 import { importsConfigured } from './import-service';
 import { generationConfigured, generationSummaries } from './signal-generation';
 import { currentInsight } from '../topic-insight-core';
@@ -79,6 +80,14 @@ function assertExecutionConfiguration(kind: AutomationConfig['kind']) {
     throw new store.AutomationError('execution_disabled');
   if (!readiness.ready) throw new store.AutomationError('not_configured');
 }
+function assertPublicationConfiguration(config: AutomationConfig) {
+  if (
+    config.kind === 'source_collection' &&
+    config.publicationMode === 'automatic' &&
+    !automaticPublicationAvailable(process.env)
+  )
+    throw new store.AutomationError('automatic_publication_unavailable');
+}
 export function automationLimits() {
   const limits = {
     batch: Number(process.env.HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD),
@@ -110,6 +119,7 @@ export async function automationDashboard(owner: string) {
     ? await generationSummaries(owner, generationIds).catch(() => null)
     : [];
   return {
+    automaticPublicationAvailable: automaticPublicationAvailable(process.env),
     configDeletionAvailable: state.configDeletionAvailable,
     configs: state.configs.map(
       ({ id, revision, config, enabled, next_run_at, created_at, updated_at }) => ({
@@ -165,7 +175,10 @@ export async function saveAutomation(owner: string, request: store.SaveAutomatio
     throw new store.AutomationError('execution_disabled');
   // Saving an inactive configuration neither enables execution nor needs its
   // budgets/import/generation services. Enabling a schedule remains protected.
-  if (config.enabled) assertExecutionConfiguration(config.kind);
+  if (config.enabled) {
+    assertExecutionConfiguration(config.kind);
+    assertPublicationConfiguration(config);
+  }
   if (isLocalDevelopment() && !config.enabled) {
     try {
       await validateLocalAiProfileReference(config.profileId!, config.profileRevision!);
@@ -216,13 +229,23 @@ async function dispatch(owner: string, id: string) {
   try {
     const run = await store.readAutomationRun({ pool: automationPool, owner, id });
     assertExecutionConfiguration(run.snapshot.kind);
+    assertPublicationConfiguration(run.snapshot);
     await validateAutomationProfile(run.snapshot);
     const [{ start }, { automationWorkflow }] = await Promise.all([
       import('workflow/api'),
       import('../../workflows/automation'),
     ]);
     await start(automationWorkflow, [owner, id]);
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof store.AutomationError &&
+      error.code === 'automatic_publication_unavailable'
+    ) {
+      // This is a definite refusal before start(), not an uncertain dispatch.
+      // The store's queued-only guard preserves any concurrently claimed work.
+      await store.rejectAutomaticPublicationBeforeClaim({ pool: automationPool, owner, id });
+      throw error;
+    }
     await store.failAutomationDispatch({ pool: automationPool, owner, id }).catch(() => undefined);
     throw new store.AutomationError('dispatch_unknown');
   }
@@ -236,6 +259,7 @@ export async function triggerAutomation(owner: string, request: store.TriggerAut
     request,
     beforeEnqueue: async (config) => {
       assertExecutionConfiguration(config.kind);
+      assertPublicationConfiguration(config);
       try {
         await validateAutomationProfile(config);
       } catch (error) {
@@ -272,7 +296,11 @@ export async function dispatchDueAutomations() {
     automationExecutionConfigured,
   );
   if (!kinds.length) return { dispatched: 0, failed: 0 };
-  const tasks = await store.enqueueDueAutomations({ pool: automationPool, kinds });
+  const tasks = await store.enqueueDueAutomations({
+    pool: automationPool,
+    kinds,
+    allowAutomaticPublication: automaticPublicationAvailable(process.env),
+  });
   let dispatched = 0,
     failed = 0;
   for (const task of tasks)

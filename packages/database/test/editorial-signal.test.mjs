@@ -60,7 +60,6 @@ describe('editorial confirmation contract', () => {
       { extra: true },
       { consent: 'true' },
       { materialHash: 'b'.repeat(64) },
-      { content: { ...request.content, title: 'Changed' } },
       { content: { ...request.content, sourceUrls: ['javascript:alert(1)'] } },
       { content: { ...request.content, signalType: 'made_up' } },
     ])
@@ -100,6 +99,7 @@ describe('editorial confirmation contract', () => {
       connect: async () => ({
         query: async (sql) => {
           queries.push(sql);
+          if (sql.includes('pg_catalog.pg_attribute')) return { rows: [] };
           if (sql.startsWith('SELECT id FROM public.signal_generation_runs'))
             return { rows: [{ id: request.runId }] };
           if (sql.includes('WHERE request_id=$1')) return { rows: [old] };
@@ -383,7 +383,12 @@ describe('editorial confirmation contract', () => {
       { secret: 'raw source' },
     ])
       expect(() => normalizeEditorialContent({ ...content, ...patch })).toThrow();
-    for (const patch of [{ title: 'Changed' }, { summary: 'Changed' }, { sourceUrls: [] }])
+    for (const patch of [{ title: 'Changed' }, { summary: 'Changed' }])
+      expect(
+        normalizeEditorialRequest({ ...request, content: { ...content, ...patch } }, material)
+          .content,
+      ).toMatchObject(patch);
+    for (const patch of [{ sourceUrls: [] }])
       expect(() =>
         normalizeEditorialRequest({ ...request, content: { ...content, ...patch } }, material),
       ).toThrow('material_changed');

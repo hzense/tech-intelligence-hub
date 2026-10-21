@@ -9,6 +9,7 @@ import { PrivateResult } from './private-generation-result';
 import controls from './admin-controls.module.css';
 import type { GenerationPublication } from '../lib/generation-publication';
 import { GenerationPublicationSummary } from './generation-publication-status';
+import { AutomaticPublicationRefresh } from './automatic-publication-refresh';
 import { generationFailureMessage } from '../lib/generation-error-messages';
 import { startVisiblePolling } from '../lib/visible-polling';
 import { fetchGenerationProgress } from '../lib/generation-progress-client';
@@ -17,6 +18,7 @@ import { isLocalSimulationRecord } from '../lib/generation-ui-mode';
 type GenerationDetailRun = GenerationProgressRun & {
   result?: unknown;
   publication?: GenerationPublication;
+  automatic_publication?: boolean;
   error_code?: string | null;
   reserved_microusd?: number | string;
   charged_microusd?: number | string;
@@ -151,6 +153,7 @@ export function GenerationLiveDetail({
           <GenerationPublicationSummary status={run.status} publication={run.publication} />
         </p>
       )}
+      <AutomaticPublicationRefresh run={run} onUpdate={setRun} />
       <button
         className={controls.button}
         type="button"

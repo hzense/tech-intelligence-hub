@@ -12,11 +12,37 @@ export { previewEditorialResources } from './editorial-resource-store.mjs';
 export { EditorialSignalError } from './editorial-signal-contract.mjs';
 const columns =
   'request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,created_at';
-export async function saveEditorialSignal({ pool, owner, request, material, unified = false }) {
+async function hasPublicationBasis(client) {
+  const row = (
+    await client.query(
+      "SELECT has_column_privilege(c.oid,a.attnum,'SELECT') AS available FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE n.nspname='public' AND c.relname='editorial_signal_revisions' AND a.attname='publication_basis' AND NOT a.attisdropped",
+    )
+  ).rows[0];
+  // Only an absent column denotes the old manual-only schema. If the column
+  // exists but ACL is incomplete, do not mislabel automatic publications.
+  if (row?.available === false) fail('automatic_publication_unavailable');
+  return row?.available === true;
+}
+export async function saveEditorialSignal({
+  pool,
+  owner,
+  request,
+  material,
+  unified = false,
+  automatic = false,
+}) {
   owner = editorialText(owner, 200);
-  const r = normalizeEditorialRequest(request, material, { checkPublication: false });
+  const r = normalizeEditorialRequest(request, material, { checkPublication: false, automatic });
+  if (automatic && (r.action !== 'publish' || r.expectedRevision !== 0 || r.consent !== false))
+    fail('automatic_publication_invalid');
   const requestHash = createHash('sha256')
-    .update(JSON.stringify({ owner, ...r }))
+    .update(
+      JSON.stringify({
+        owner,
+        ...r,
+        ...(automatic ? { publicationBasis: 'automatic_checks' } : {}),
+      }),
+    )
     .digest('hex');
   const client = await pool.connect();
   let committing = false;
@@ -28,16 +54,30 @@ export async function saveEditorialSignal({ pool, owner, request, material, unif
     await client.query("SET LOCAL statement_timeout='15s'");
     await client.query("SET LOCAL idle_in_transaction_session_timeout='20s'");
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [r.runId]);
+    const basisAvailable = await hasPublicationBasis(client);
+    if (automatic && !basisAvailable) fail('automatic_publication_unavailable');
+    const selectedColumns = columns + (basisAvailable ? ',publication_basis' : '');
     const run = (
       await client.query(
-        "SELECT id FROM public.signal_generation_runs WHERE id=$1 AND owner_id=$2 AND status='completed' AND deleted_at IS NULL",
+        `SELECT id${automatic ? ',snapshot' : ''} FROM public.signal_generation_runs WHERE id=$1 AND owner_id=$2 AND status='completed' AND deleted_at IS NULL`,
         [r.runId, owner],
       )
     ).rows[0];
     if (!run) fail('not_found');
+    if (automatic) {
+      const policy = run.snapshot?.publication;
+      if (policy?.mode !== 'automatic' || policy?.policy !== 'auto-publication-v1')
+        fail('automatic_publication_not_authorized');
+      if (
+        !Array.isArray(policy.sourceUrls) ||
+        !r.content.sourceUrls.length ||
+        r.content.sourceUrls.some((url) => !policy.sourceUrls.includes(url))
+      )
+        fail('automatic_publication_source_invalid');
+    }
     const old = (
       await client.query(
-        `SELECT ${columns},request_hash FROM public.editorial_signal_revisions WHERE request_id=$1`,
+        `SELECT ${selectedColumns},request_hash FROM public.editorial_signal_revisions WHERE request_id=$1`,
         [r.requestId],
       )
     ).rows[0];
@@ -50,25 +90,29 @@ export async function saveEditorialSignal({ pool, owner, request, material, unif
     }
     const latest = (
       await client.query(
-        `SELECT ${columns} FROM public.editorial_signal_revisions WHERE run_id=$1 AND candidate_index=$2 AND owner_id=$3 ORDER BY revision DESC LIMIT 1`,
+        `SELECT ${selectedColumns} FROM public.editorial_signal_revisions WHERE run_id=$1 AND candidate_index=$2 AND owner_id=$3 ORDER BY revision DESC LIMIT 1`,
         [r.runId, r.candidateIndex, owner],
       )
     ).rows[0];
     if ((latest?.revision ?? 0) !== r.expectedRevision) fail('revision_conflict');
     if (r.action === 'draft' && latest?.action === 'publish') fail('published_draft_forbidden');
     if (r.action === 'withdraw' && latest?.action !== 'publish') fail('not_published');
-    normalizeEditorialRequest(r, {
-      ...material,
-      // Only the committed latest revision may retain a previously selected
-      // source after its import becomes unavailable. Read it under this lock,
-      // never trust a stale service read or the caller's source selection.
-      sourceOptions: [
-        ...new Set([
-          ...(material.sourceOptions ?? material.sourceUrls),
-          ...(latest?.content.sourceUrls ?? []),
-        ]),
-      ],
-    });
+    normalizeEditorialRequest(
+      r,
+      {
+        ...material,
+        // Only the committed latest revision may retain a previously selected
+        // source after its import becomes unavailable. Read it under this lock,
+        // never trust a stale service read or the caller's source selection.
+        sourceOptions: [
+          ...new Set([
+            ...(material.sourceOptions ?? material.sourceUrls),
+            ...(latest?.content.sourceUrls ?? []),
+          ]),
+        ],
+      },
+      { automatic },
+    );
     let content = r.action === 'withdraw' ? latest.content : r.content;
     if (r.action !== 'withdraw') {
       const topics = (
@@ -99,12 +143,13 @@ export async function saveEditorialSignal({ pool, owner, request, material, unif
                 : undefined,
             runId: r.runId,
             candidateIndex: r.candidateIndex,
+            automatic,
           }),
         };
     }
     const row = (
       await client.query(
-        `INSERT INTO public.editorial_signal_revisions(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash${unified ? ',unified_content' : ''}) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9${unified ? ',$10::jsonb' : ''}) RETURNING ${columns}`,
+        `INSERT INTO public.editorial_signal_revisions(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash${unified ? ',unified_content' : ''}${automatic ? ',publication_basis' : ''}) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9${unified ? ',$10::jsonb' : ''}${automatic ? ",'automatic_checks'" : ''}) RETURNING ${selectedColumns}`,
         [
           r.requestId,
           r.runId,
@@ -146,10 +191,12 @@ export async function readEditorialSignal({ pool, owner, runId, candidateIndex }
   const client = await pool.connect();
   let discard = false;
   try {
+    const selectedColumns =
+      columns + ((await hasPublicationBasis(client)) ? ',publication_basis' : '');
     return (
       (
         await client.query(
-          `SELECT ${columns
+          `SELECT ${selectedColumns
             .split(',')
             .map((column) => `r.${column}`)
             .join(
@@ -176,6 +223,7 @@ export async function readEditorialSignalStatuses({ pool, owner, runIds }) {
   const client = await pool.connect();
   let discard = false;
   try {
+    const basisAvailable = await hasPublicationBasis(client);
     const rows = (
       await client.query(
         `WITH owned_runs AS (
@@ -183,12 +231,12 @@ export async function readEditorialSignalStatuses({ pool, owner, runIds }) {
           WHERE owner_id=$1 AND id=ANY($2::uuid[]) AND status='completed' AND deleted_at IS NULL
         ), latest AS (
           SELECT DISTINCT ON (r.run_id,r.candidate_index)
-            r.run_id,r.candidate_index,r.revision,r.action
+            r.run_id,r.candidate_index,r.revision,r.action${basisAvailable ? ',r.publication_basis' : ''}
           FROM public.editorial_signal_revisions r JOIN owned_runs g ON g.id=r.run_id
           WHERE r.owner_id=$1
           ORDER BY r.run_id,r.candidate_index,r.revision DESC
         )
-        SELECT g.id AS run_id,r.candidate_index,r.revision,r.action,
+        SELECT g.id AS run_id,r.candidate_index,r.revision,r.action,${basisAvailable ? 'r.publication_basis,' : ''}
           CASE WHEN r.action='publish' THEN 'editorial-' || md5(g.id::text || ':' || r.candidate_index::text)
             ELSE NULL END AS public_id
         FROM owned_runs g LEFT JOIN latest r ON r.run_id=g.id
@@ -211,6 +259,8 @@ export async function readEditorialSignalStatuses({ pool, owner, runIds }) {
           !Number.isSafeInteger(row.revision) ||
           row.revision < 1 ||
           !['draft', 'publish', 'withdraw'].includes(row.action) ||
+          (basisAvailable &&
+            !['manual_confirmation', 'automatic_checks'].includes(row.publication_basis)) ||
           entry.candidates.some((candidate) => candidate.candidate_index === row.candidate_index) ||
           (row.action === 'publish'
             ? typeof row.public_id !== 'string' || !/^editorial-[a-f0-9]{32}$/.test(row.public_id)
@@ -222,6 +272,7 @@ export async function readEditorialSignalStatuses({ pool, owner, runIds }) {
           revision: row.revision,
           action: row.action,
           public_id: row.public_id,
+          ...(basisAvailable ? { publication_basis: row.publication_basis } : {}),
         });
       }
       statuses.set(row.run_id, entry);

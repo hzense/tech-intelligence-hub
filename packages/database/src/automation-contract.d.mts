@@ -7,6 +7,8 @@ export interface AutomationConfig {
   topicIds: string[];
   profileId: string | null;
   profileRevision: number | null;
+  /** Source collection only. Missing on older configs/runs means manual review. */
+  publicationMode?: 'manual' | 'automatic';
   discovery?: { keywords: string[]; lookbackDays: number; maxSources: number };
 }
 export class AutomationError extends Error {

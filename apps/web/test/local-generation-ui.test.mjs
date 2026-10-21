@@ -100,7 +100,7 @@ test('server-selected local UI explains simulation and technical reservation wit
     reviewTask: { ...initialRun, ai_mode: 'local-real' },
     localMode: true,
   });
-  assert.match(realCandidate, /本地页面或发布记录为准，未同步生产/);
+  assert.match(realCandidate, /信号管理或本地正式页面查看，未同步生产/);
   assert.doesNotMatch(realCandidate, /原始模拟候选|不代表真实 AI 分析/);
   const mockSnapshot = render(PrivateResult, {
     result: { classification: 'private', candidates: [] },

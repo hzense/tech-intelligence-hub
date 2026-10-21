@@ -11,7 +11,7 @@ const { structuredClone } = globalThis;
 test(
   'publication metadata UI: manual completion, one-click publication, reread, withdrawal and same-key recovery',
   { skip: process.env.HZENSE_CANDIDATE_REVIEW_BROWSER_TEST !== '1' },
-  async () => {
+  async (t) => {
     const compiled = await build({
       stdin: {
         contents: `import {createRoot} from 'react-dom/client';import {EditorialPublicationEditor} from './components/editorial-publication-editor';createRoot(document.getElementById('root')).render(<EditorialPublicationEditor runId="11111111-1111-4111-8111-111111111111" candidateIndex={0}/>);`,
@@ -182,7 +182,7 @@ test(
       assert.deepEqual(posts[0].content.sourceUrls, ['https://example.com/article?id=42']);
       assert.deepEqual(posts[0].content.persons, ['测试人物']);
       await page.reload();
-      await expect(page.getByRole('button', { name: '确认更新发布' })).toBeVisible();
+      await expect(page.getByRole('button', { name: '保存修改' })).toBeVisible();
       assert.deepEqual(errors, []);
       await page.screenshot({ path: '/tmp/hzense-editorial-before-withdraw.png', fullPage: true });
       // A local incomplete edit must not prevent withdrawing the saved public revision.
@@ -215,7 +215,7 @@ test(
       await page.setViewportSize({ width: 1280, height: 900 });
       await page.screenshot({ path: '/tmp/hzense-editorial-desktop.png', fullPage: true });
       concurrentWithdraw = true;
-      await page.getByRole('button', { name: '确认更新发布' }).click();
+      await page.getByRole('button', { name: '保存修改' }).click();
       await expect(page.getByRole('button', { name: '重试原请求' })).toBeEnabled();
       await page.getByRole('button', { name: '重试原请求' }).click();
       await expect(
@@ -427,15 +427,162 @@ test(
       data.resourceOptions = data.resourceOptions.filter((option) => option.type !== 'person');
       await page.reload();
       await expect(page.getByText('原文未提取到可支持的人物', { exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: '确认更新发布', exact: true })).toBeEnabled();
+      await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
       await page.setViewportSize({ width: 390, height: 844 });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= 390), true);
       data.resourceSourceOptions = [];
       await page.reload();
-      await expect(page.getByRole('button', { name: '确认更新发布', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
       await expect(
         page.getByText('没有可供公开的对应来源，请补充资料或核对来源状态后重新读取。').first(),
       ).toBeVisible();
+
+      // Automatic publication is truthfully labeled, and title/summary edits
+      // operate on the saved public version rather than the AI snapshot.
+      data = {
+        ...resourceScenario,
+        revision: 1,
+        action: 'publish',
+        publicationBasis: 'automatic_checks',
+        publicId: `editorial-${'b'.repeat(32)}`,
+        content: {
+          ...resourceScenario.content,
+          resources: [],
+          persons: [],
+          sourceUrls: [...resourceScenario.sourceOptions],
+        },
+        resourceOptions: [],
+        resourceSourceOptions: [],
+        automaticPublication: { eligible: true, status: 'published', reasons: [] },
+      };
+      await page.reload();
+      await expect(page.getByText('已发布 · 自动检查通过', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('标题', { exact: true })).toHaveValue(data.content.title);
+      await page.getByLabel('标题', { exact: true }).fill('改'.repeat(81));
+      await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
+      await page.getByLabel('标题', { exact: true }).fill('修改后的正式信号');
+      await page.getByLabel('摘要', { exact: true }).fill('摘'.repeat(501));
+      await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeDisabled();
+      await page.getByLabel('摘要', { exact: true }).fill('更新后的公开摘要。');
+      await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
+      await page.getByRole('button', { name: '保存修改', exact: true }).click();
+      await expect(page.getByText('修改已保存，正式信号已更新。', { exact: true })).toBeVisible();
+      assert.equal(posts.at(-1).content.title, '修改后的正式信号');
+      assert.equal(posts.at(-1).content.summary, '更新后的公开摘要。');
+      await t.test(
+        'publication trims boundary whitespace consistently with displayed text limits',
+        async () => {
+          const title = '题'.repeat(80);
+          const summary = '摘'.repeat(500);
+          await page.getByLabel('标题', { exact: true }).fill(`  ${title}  `);
+          await page.getByLabel('摘要', { exact: true }).fill(` \n${summary}\n `);
+          await expect(page.getByText('80 / 80 字符', { exact: true })).toBeVisible();
+          await expect(page.getByText('500 / 500 字符', { exact: true })).toBeVisible();
+          await expect(page.getByRole('button', { name: '保存修改', exact: true })).toBeEnabled();
+          const previousPosts = posts.length;
+          await page.getByRole('button', { name: '保存修改', exact: true }).click();
+          await expect(page.getByLabel('标题', { exact: true })).toHaveValue(title);
+          await expect(page.getByLabel('摘要', { exact: true })).toHaveValue(summary);
+          assert.equal(posts.length, previousPosts + 1);
+          assert.equal(posts.at(-1).content.title, title);
+          assert.equal(posts.at(-1).content.summary, summary);
+        },
+      );
+      const savedContent = structuredClone(data.content);
+      await page.getByLabel('标题', { exact: true }).fill('');
+      page.once('dialog', (dialog) => dialog.accept());
+      await page.getByRole('button', { name: '撤回发布', exact: true }).click();
+      await expect(page.getByText('已撤回 · 不会自动重新发布', { exact: true })).toBeVisible();
+      assert.deepEqual(
+        posts.at(-1).content,
+        savedContent,
+        'withdraw uses saved data, not invalid unsaved edits',
+      );
+      await expect(
+        page.getByRole('button', { name: '重新检查本任务并发布（不调用 AI）' }),
+      ).toHaveCount(0);
+
+      // Opening/refreshing only reads. A dedicated POST retries publication
+      // without creating or running an AI task, then confirms the stored state.
+      let automaticPosts = 0;
+      let failAutomatic = false;
+      await page.route('**/api/admin/signals/auto-publish', async (route) => {
+        assert.equal(route.request().method(), 'POST');
+        assert.deepEqual(route.request().postDataJSON(), {
+          runId: '11111111-1111-4111-8111-111111111111',
+        });
+        automaticPosts++;
+        if (failAutomatic) {
+          await route.fulfill({ status: 503, json: { error: 'commit_unknown' } });
+          return;
+        }
+        data = {
+          ...data,
+          revision: 1,
+          action: 'publish',
+          publicationBasis: 'automatic_checks',
+          publicId: `editorial-${'b'.repeat(32)}`,
+          automaticPublication: { eligible: true, status: 'published', reasons: [] },
+        };
+        await route.fulfill({
+          json: {
+            state: 'processed',
+            candidates: [{ index: 0, status: 'published', reasons: [] }],
+          },
+        });
+      });
+      data = {
+        ...data,
+        revision: 0,
+        action: null,
+        publicId: null,
+        automaticPublication: {
+          eligible: true,
+          status: 'needs_attention',
+          reasons: ['原文发布日期缺失'],
+        },
+      };
+      await page.reload();
+      await expect(page.getByText('原文发布日期缺失', { exact: true })).toBeVisible();
+      assert.equal(automaticPosts, 0);
+      await page.getByRole('button', { name: '重新检查本任务并发布（不调用 AI）' }).click();
+      await expect(page.getByText('已核对最新发布状态。', { exact: true })).toBeVisible();
+      await expect(page.getByText('已发布 · 自动检查通过', { exact: true })).toBeVisible();
+      assert.equal(automaticPosts, 1);
+
+      data = {
+        ...data,
+        revision: 0,
+        action: null,
+        publicId: null,
+        automaticPublication: { eligible: true, status: 'pending', reasons: [] },
+      };
+      failAutomatic = true;
+      await page.reload();
+      await page.getByRole('button', { name: '重新检查本任务并发布（不调用 AI）' }).click();
+      await expect(
+        page.getByText('重新检查的结果尚未确认。请核对已保存状态；不会再次调用 AI。', {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+      await page.getByRole('button', { name: '核对已保存状态' }).click();
+      await expect(page.getByRole('button', { name: '确认发布', exact: true }))
+        .toBeEnabled()
+        .catch(async (error) => {
+          throw new Error(`${error.message}\n${await page.locator('body').innerText()}`);
+        });
+      data.automaticPublication = {
+        eligible: false,
+        status: 'skipped',
+        reasons: ['历史任务不自动发布'],
+      };
+      await page.reload();
+      await expect(page.getByText('历史任务不自动发布', { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: '重新检查本任务并发布（不调用 AI）' }),
+      ).toHaveCount(0);
+      assert.equal(automaticPosts, 2);
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

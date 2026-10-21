@@ -35,7 +35,7 @@ import {
   type SearchType,
 } from '@hzense/search/ranking';
 import type { TopicInsightResult } from './topic-insight-core.ts';
-import type { SignalEntry } from './public-signal-reader-core.ts';
+import { isEditorialSignal, type SignalEntry } from './public-signal-reader-core.ts';
 
 export {
   isSearchType,
@@ -245,7 +245,7 @@ export async function getSearchDocumentProjections(
     ),
     ...topicEntries.map((entry) => topicCandidate(entry, topicTitleMap)),
     ...signalEntries
-      .filter((signal): signal is SeedSignal => signal.publication_basis !== 'manual_confirmation')
+      .filter((signal): signal is SeedSignal => !isEditorialSignal(signal))
       .map((signal) =>
         signalCandidate(
           signal,
@@ -281,6 +281,6 @@ export async function searchPublishedContent(
     type,
   );
   if (!includeSignals || (type && type !== 'signal')) return legacy;
-  const editorial = signals.filter((entry) => entry.publication_basis === 'manual_confirmation');
+  const editorial = signals.filter(isEditorialSignal);
   return [...legacy, ...searchSignalEntries(editorial, query)].sort(compareSearchResults);
 }

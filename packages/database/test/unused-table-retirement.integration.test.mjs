@@ -25,6 +25,7 @@ const tables = ['content_registry', 'entity_topics', 'radar_snapshots', 'radar_s
 const name = '0031_retire_unused_tables.sql';
 const dir = new URL('../../../db/migrations/', import.meta.url);
 const retirementSql = await readFile(new URL(name, dir), 'utf8');
+const currentMigrations = await loadMigrations(dir.pathname);
 const quote = (identifier) => {
   if (!/^[a-z][a-z0-9_]+$/.test(identifier)) throw new Error('Unsafe retirement fixture name');
   return `"${identifier}"`;
@@ -131,7 +132,7 @@ suite('empty-only retirement of four unused business tables', () => {
     async () => {
       expect(await catalog()).toHaveLength(4);
       await expect(runDatabasePreflight(options())).resolves.toMatchObject({
-        pendingMigrations: [name],
+        pendingMigrations: currentMigrations.filter((m) => m.name >= name).map((m) => m.name),
       });
     },
   );
@@ -277,15 +278,15 @@ suite('empty-only retirement of four unused business tables', () => {
     );
     await runMigrations(migrationOptions());
     const history = await ledger();
-    expect(history).toHaveLength(noVector ? 31 : 32);
-    expect(history.at(-1).name).toBe(name);
+    expect(history).toHaveLength(noVector ? 31 : currentMigrations.length);
+    expect(history.at(-1).name).toBe(noVector ? name : currentMigrations.at(-1).name);
     expect(await catalog()).toEqual([]);
     expect(
       (await client.query("SELECT title FROM topics WHERE id='retirement-keep-topic'")).rows,
     ).toEqual([{ title: 'Retained topic' }]);
     if (!noVector) {
       await expect(verifyDatabaseContract(options())).resolves.toMatchObject({
-        migrationCount: 32,
+        migrationCount: currentMigrations.length,
         tableCount: expectedTableNames.size,
       });
       await expect(runDatabasePreflight(options())).resolves.toMatchObject({

@@ -24,6 +24,8 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
     ),
   );
   const fixtures = {
+    automaticPublication:
+      'export async function runAutomaticPublicationStep(){return {state:"disabled"}}',
     workflow: 'export async function sleep(){}',
     api: `export async function start(workflow,args){
       const f=globalThis.__automationTicket;
@@ -36,6 +38,8 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
     pool: 'export const automationPool={};',
     ids: 'export function automationStableId(value){return value.itemId??"batch-id"}',
     store: `
+      export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
+      export async function rejectAutomaticPublicationBeforeClaim(){throw Error('unexpected automatic rejection')}
       export async function claimAutomationRun(){const f=globalThis.__automationTicket;if(f.run.status!=='queued')return null;f.run.status='running';return structuredClone(f.run)}
       export async function readAutomationRun(){return structuredClone(globalThis.__automationTicket.run)}
       export async function updateAutomationRun(args){const f=globalThis.__automationTicket;f.run={...f.run,result:args.result,phase:args.phase,status:args.status??'running'};return structuredClone(f.run)}
@@ -72,6 +76,7 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
     empty: '',
   };
   const mappings = {
+    './automatic-publication': 'automaticPublication',
     workflow: 'workflow',
     'workflow/api': 'api',
     '../lib/server/automation': 'limits',

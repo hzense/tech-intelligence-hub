@@ -273,17 +273,32 @@ test(
       for (const error of ['config_in_use', 'commit_unknown']) {
         deletionError = error;
         page.once('dialog', (dialog) => {
-          assert.match(dialog.message(), /历史任务、结果和费用仍然保留/);
+          assert.match(dialog.message(), /历史任务、候选、结果和费用仍然保留/);
+          assert.match(dialog.message(), /已结束且无执行锁的历史待核对任务允许保留后删除配置/);
+          assert.match(dialog.message(), /删除不表示这些任务已核对成功/);
+          assert.match(dialog.message(), /不会取消已有子任务/);
           return dialog.accept();
         });
         await remove.click();
         await expect(page.getByRole('status')).toContainText(
           error === 'config_in_use' ? '暂不能删除' : '提交结果未确认',
         );
+        if (error === 'config_in_use')
+          await expect(page.getByRole('status')).toContainText(
+            '已结束且无执行锁的历史待核对任务不会阻止删除',
+          );
         await expect(remove).toBeEnabled();
       }
       assert.equal(posts.length, 5); // Unknown results never automatically replay a deletion.
       deletionError = null;
+      initial.runs[0].status = 'unknown';
+      initial.runs[0].phase = 'source_failed';
+      initial.runs[0].finished_at = '2026-10-02T00:01:00Z';
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(
+        page.getByRole('cell', { name: '采集结果未知，请核对原任务', exact: false }),
+      ).toBeVisible();
+      const retainedHistory = globalThis.structuredClone(initial.runs);
       await page.getByRole('button', { name: '编辑', exact: true }).click();
       page.once('dialog', (dialog) => dialog.accept());
       await remove.click();
@@ -292,6 +307,10 @@ test(
       await expect(page.getByRole('heading', { name: '新建配置' })).toBeVisible();
       await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue('');
       await expect(page.getByText('历史采集任务', { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole('cell', { name: '采集结果未知，请核对原任务', exact: false }),
+      ).toBeVisible();
+      assert.deepEqual(initial.runs, retainedHistory, 'deleting a config does not settle history');
       await expect(
         page.getByRole('cell', { name: '$0.1000 provider', exact: false }),
       ).toBeVisible();
@@ -304,6 +323,7 @@ test(
       // generation receipts, preserve unsaved form edits, and never call AI.
       const generationId = '22222222-2222-4222-8222-222222222222';
       const run = initial.runs[0];
+      run.status = 'completed';
       run.phase = 'candidate_tasks_queued';
       run.result = { generationIds: [generationId], failed: 0 };
       run.generationProgress = summarizeAutomationGenerations(run.result, [
@@ -353,10 +373,10 @@ test(
         'HTTP failures stop automatic reads until an explicit refresh',
       );
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
-      await expect(page.getByRole('cell', { name: '私有候选已生成', exact: false })).toBeVisible();
-      await expect(page.getByText('已生成 3 条私有候选', { exact: true })).toBeVisible();
+      await expect(page.getByRole('cell', { name: '候选已生成', exact: false })).toBeVisible();
+      await expect(page.getByText('已生成 3 条候选', { exact: true })).toBeVisible();
       await expect(
-        page.getByRole('link', { name: `查看私有候选任务 · ${generationId}` }),
+        page.getByRole('link', { name: `查看生成任务 · ${generationId}` }),
       ).toHaveAttribute('href', `/admin/signal-generation/${generationId}`);
       await expect(page.getByRole('alert')).toHaveCount(0);
       await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue('保留未保存修改');

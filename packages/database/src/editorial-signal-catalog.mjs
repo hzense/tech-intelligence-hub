@@ -23,6 +23,9 @@ export const editorialUniqueIndexes = [
   'editorial_signal_revisions|run_id,candidate_index,revision',
 ];
 export const editorialDefaults = [['editorial_signal_revisions.created_at', new Set(['now'])]];
+export const automaticEditorialChecks = forms(
+  "((publication_basis = 'manual_confirmation'::text) OR ((publication_basis = 'automatic_checks'::text) AND (action = 'publish'::text) AND (revision = 1)))",
+);
 export const editorialChecks = {
   editorial_signal_revisions: [
     forms('((length(owner_id) >= 1) AND (length(owner_id) <= 200))'),
@@ -36,12 +39,20 @@ export const editorialChecks = {
   ],
 };
 export const editorialFunctionHashes = {
+  hzense_guard_automatic_editorial:
+    '7b69c11eb57a5f42bc415d31047a7eebbe612f63807c785994192027bd7c4ff0',
   hzense_guard_editorial_history:
     'abb695b26cee521fbc608bf60d83886f9620164dfd0dfb5128a25595f127c060',
   hzense_guard_editorial_generation_delete:
     '73441b19bfbd3c032a1234c21fe07d7262b11599ce083ad68fe66637fa718b86',
 };
 export const editorialTriggers = [
+  {
+    table_name: 'editorial_signal_revisions',
+    name: 'editorial_automatic_guard_trg',
+    trigger_type: 7,
+    routine_name: 'hzense_guard_automatic_editorial',
+  },
   {
     table_name: 'signal_generation_runs',
     name: 'signal_generation_editorial_delete_guard_trg',
@@ -66,8 +77,9 @@ export const editorialPublicColumns = [
   ['revision', 'integer'],
   ['content', 'jsonb'],
   ['published_at', 'timestamp with time zone'],
+  ['publication_basis', 'text'],
 ];
 // Independently reviewed PostgreSQL 18 view definition, never derived at runtime.
 export const editorialPublicViewHashes = new Set([
-  'f6fbb873f1758b54e87a80ff35b7bcf567600b114e125dd3a442bc9ee42f6c1f',
+  '3b7e36ce868a851b6c1ead4b0e5c68924205f9eb75f752f0527c01991e3422a7',
 ]);

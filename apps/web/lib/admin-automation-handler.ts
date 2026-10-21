@@ -16,6 +16,7 @@ type Dependencies = {
   publish(owner: string, id: string, confirm: boolean): Promise<unknown>;
 };
 const exposed = new Set([
+  'automatic_publication_unavailable',
   'invalid_request',
   'not_configured',
   'execution_disabled',

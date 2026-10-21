@@ -3,7 +3,11 @@ import process from 'node:process';
 import { cache } from 'react';
 import { unifiedSignalEnabled } from './unified-signal-mode.ts';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
-import { readSignalReadMode, type SignalEntry } from './public-signal-reader-core.ts';
+import {
+  isEditorialSignal,
+  readSignalReadMode,
+  type SignalEntry,
+} from './public-signal-reader-core.ts';
 import { projectLegacySignalEntries } from './legacy-signal-projection.ts';
 import { readLegacySignalArchiveMode } from './legacy-signal-archive-reader-core.ts';
 import { projectEditorialEntityLinks } from './editorial-entity-links.ts';
@@ -65,7 +69,7 @@ export const getSignalEntryById = cache(async function getSignalEntryById(
     // Older name-only publications resolve identities against every current
     // public resource. Keep that compatibility path without loading the whole
     // catalog for revisions that already contain reviewed resource identities.
-    if (signal.publication_basis === 'manual_confirmation' && signal.public_resources === undefined)
+    if (isEditorialSignal(signal) && signal.public_resources === undefined)
       return (await getSignalEntries()).find((entry) => entry.id === id);
     return projectEditorialEntityLinks([signal], await getResourceEntries())[0];
   }

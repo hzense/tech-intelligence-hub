@@ -97,8 +97,8 @@ export function PrivateResult({
           {localSimulation
             ? '发布标记来自本机人工发布记录；下方正文为原始模拟候选，不代表真实 AI 分析或公开事实。'
             : localMode
-              ? '发布标记来自本机人工发布记录；下方正文为原始 AI 候选，人工修订后的内容以本地页面或发布记录为准，未同步生产。'
-              : '发布标记来自最新人工发布记录；下方正文为原始 AI 候选，人工修订后的内容以正式页面或发布记录为准。'}
+              ? '发布标记来自本机最新发布记录；下方正文为原始 AI 候选，当前内容请进入信号管理或本地正式页面查看，未同步生产。'
+              : '发布标记来自最新发布记录；下方正文为原始 AI 候选快照。当前内容请进入信号管理或正式页面查看，快照不随后续修改更新。'}
         </p>
       )}
       {row.validation_version === 1 && (
@@ -164,6 +164,9 @@ export function PrivateResult({
                 <span>候选 {candidateNumber}</span>
               </div>
               <h4 className={preview.title}>
+                {publication?.status === 'published' || publication?.status === 'withdrawn'
+                  ? '原始候选：'
+                  : ''}
                 {typeof data.title === 'string' ? data.title : `候选信号 ${candidateNumber}`}
               </h4>
               <p className={preview.date}>
@@ -178,13 +181,13 @@ export function PrivateResult({
               {needsResourceDetails && (
                 <p className={preview.missing}>
                   原始候选待补全：缺少部分人物或组织的资源资料。正文与已有证据已保留，
-                  请进入审核补齐后再确认发布；原始快照不会随补全改写。
+                  请进入信号管理查看当前缺项；原始快照不会随补全改写。
                 </p>
               )}
               {needsEventTime && (
                 <p className={preview.missing}>
                   原始候选待补全：{dateLabel}尚未确认。正文与通过原文匹配的辅助引用已保留，
-                  引用不代表日期已确定；请进入审核补齐并确认日期后再发布，不使用采集时间替代。
+                  引用不代表日期已确定；请进入信号管理补齐并确认日期后再发布，不使用采集时间替代。
                   原始快照不会随补全改写。
                 </p>
               )}
@@ -195,14 +198,18 @@ export function PrivateResult({
                     prefetch={false}
                     href={`/admin/signal-review/${reviewTask.id}/${data.index}`}
                     aria-label={
-                      publication?.status === 'published' || publication?.status === 'withdrawn'
-                        ? `查看候选 ${candidateNumber} 发布记录`
-                        : `审核候选 ${candidateNumber}`
+                      publication?.status === 'published'
+                        ? `修改或撤回候选 ${candidateNumber} 对应信号`
+                        : publication?.status === 'withdrawn'
+                          ? `查看候选 ${candidateNumber} 撤回记录`
+                          : `审核候选 ${candidateNumber}`
                     }
                   >
-                    {publication?.status === 'published' || publication?.status === 'withdrawn'
-                      ? '查看发布记录'
-                      : '审核候选'}
+                    {publication?.status === 'published'
+                      ? '修改或撤回信号'
+                      : publication?.status === 'withdrawn'
+                        ? '查看撤回记录'
+                        : '处理未发布信号'}
                   </Link>
                   {publicHref && (
                     <Link className={controls.button} prefetch={false} href={publicHref}>
@@ -210,7 +217,7 @@ export function PrivateResult({
                     </Link>
                   )}
                   <span className={preview.hint}>
-                    查看本条材料与发布待办；不调用 AI，不直接发布。
+                    读取当前发布内容与待处理原因；打开页面不调用 AI，也不改写发布状态。
                   </span>
                 </div>
               )}
