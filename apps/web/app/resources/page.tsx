@@ -72,7 +72,7 @@ export default async function ResourcesPage() {
           )}
         </section>
         <p className={styles.note}>
-          活跃度按事件发生时间统计，截至 {new Date().toISOString().slice(0, 10)}
+          活跃度按信号日期统计，截至 {new Date().toISOString().slice(0, 10)}
           （UTC）。资源图像只使用与实体 ID
           对应、来源和授权可核对的公开素材；其余为占位，不用搜索图片推测身份。
         </p>

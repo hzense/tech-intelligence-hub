@@ -75,7 +75,7 @@ const errors: Record<string, string> = {
   material_evidence_rejected: '报告引用的证据已被否决，不能通过重试恢复。',
   needs_person_evidence:
     '当前提案缺少有原文支持的关键人物。关联来源只会保存资料，不会自动提取；请在本批补证材料下确认启动 AI 补证补全，完成后再准备核验材料。仍未找到时应更换有事件依据的来源，不能猜测人物。',
-  needs_event_time: '缺少事件发生日期及引用依据；不会改用上传时间。',
+  needs_event_time: '缺少信号日期及引用依据；不会改用上传时间。',
   needs_public_evidence: '现有引用不能完整对应到公开来源，请补充准确原文链接。',
   needs_resource_details:
     '部分人物或组织缺少资源资料；候选正文已保留，请补齐对应的身份信息与原文依据后发布。',

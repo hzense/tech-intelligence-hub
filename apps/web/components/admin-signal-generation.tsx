@@ -750,7 +750,9 @@ export function AdminSignalGeneration({
       <details className={styles.diagnostics}>
         <summary>诊断与使用说明</summary>
         <AdminGenerationPreflight />
-        <p>候选中的摘要、事件发生时间、证据、人物与组织均需核验；没有足够依据时可以不生成候选。</p>
+        <p>
+          候选中的摘要、信号日期、证据、人物与组织均需核验；新任务使用原文发布日期，没有足够依据时可以不生成候选。
+        </p>
         <p>
           每次处理一份资料，输入估算上限 100,000 tokens（含提示词及 Schema），提取输出可配置至
           50,000 tokens；超限会停止，不自动截断。现有配置修订的输出额度保持不变。

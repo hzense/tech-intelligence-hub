@@ -100,7 +100,7 @@ export default async function TopicDetailPage({ params }: Props) {
         <section className={styles.catalogSection} aria-labelledby="topic-signals-heading">
           <div className={styles.sectionHeading}>
             <h2 id="topic-signals-heading">关联信号</h2>
-            <p>最近 {Math.min(topicSignals.length, 12)} 条 · 按事件发生时间排序</p>
+            <p>最近 {Math.min(topicSignals.length, 12)} 条 · 按信号日期排序</p>
           </div>
           {topicSignals.length ? (
             <div className={styles.signalLinks}>
