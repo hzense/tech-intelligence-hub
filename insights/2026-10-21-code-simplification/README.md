@@ -45,4 +45,5 @@ pnpm local:verify
 
 - 本文件：范围、取舍、风险与验收结论。
 - [sources.md](sources.md)：代码来源与保留依据。
+- [review.md](review.md)：PR #229 的独立评审范围、依据与验收局限。
 - [analysis/count-code.mjs](analysis/count-code.mjs)：同口径比较基线与当前工作区，可重复执行。
