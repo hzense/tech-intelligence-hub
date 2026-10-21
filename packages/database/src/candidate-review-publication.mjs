@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
+import { GENERATION_SOURCE_PUBLICATION_CONTRACT } from '../../ingestion/src/signal-generation-contract.mjs';
 import {
   candidateReviewMaterialHash,
   reviewOwner,
@@ -38,6 +39,7 @@ const codes = new Set([
   'trusted_verification_required',
   'database_unavailable',
   'commit_unknown',
+  'source_publication_requires_manual_confirmation',
 ]);
 export class CandidatePublicationError extends Error {
   constructor(code) {
@@ -125,7 +127,7 @@ async function bound(pool, owner, request, work, withdrawing = false) {
     if (!review || review.revision !== request.expectedReviewRevision) fail('revision_conflict');
     if (review.material_hash !== request.materialHash) fail('material_changed');
     if (review.decision !== 'submit_verification' && !withdrawing) fail('review_not_submitted');
-    const result = await work(client, review, owner);
+    const result = await work(client, review, owner, run);
     committing = true;
     await client.query('COMMIT');
     return result;
@@ -271,7 +273,7 @@ async function references(client, draft) {
 /** No model/network calls. Only reviewed text and EXISTING public evidence enter the sealed draft. */
 export async function prepareReviewedSignalCandidate({ pool, owner, request }) {
   const input = command(request, ['requestKey']);
-  return bound(pool, owner, input, async (client, review, principal) => {
+  return bound(pool, owner, input, async (client, review, principal, run) => {
     const previous = (
       await client.query(
         'SELECT request_key,review_id,signal_id,source_version FROM public.candidate_review_conversions WHERE request_key=$1 OR review_id=$2',
@@ -287,6 +289,8 @@ export async function prepareReviewedSignalCandidate({ pool, owner, request }) {
         fail('conversion_conflict');
       return { outcome: 'replay', ...previous[0] };
     }
+    if (run.snapshot.output_contract === GENERATION_SOURCE_PUBLICATION_CONTRACT)
+      fail('source_publication_requires_manual_confirmation');
     const draft = draftCheck(review.draft);
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtextextended('candidate-event:' || $1,0))",
@@ -573,7 +577,7 @@ export async function publishReviewedSignal({
     (request.expectedPublicationRevision === 0) !== (request.reasonCode === 'initial_publication')
   )
     fail('invalid_request');
-  return bound(pool, owner, request, async (client, review, principal) => {
+  return bound(pool, owner, request, async (client, review, principal, generation) => {
     const converted = await receipt(client, review, principal);
     reviewUuid(trustedControl.taskId);
     reviewUuid(trustedControl.principalId);
@@ -610,6 +614,8 @@ export async function publishReviewedSignal({
       }
       return replay;
     }
+    if (generation.snapshot.output_contract === GENERATION_SOURCE_PUBLICATION_CONTRACT)
+      fail('source_publication_requires_manual_confirmation');
     // An assembly is single-use for a publication. A new request after withdrawal
     // requires a new reviewed draft and a fresh independent verification record.
     const consumed = (

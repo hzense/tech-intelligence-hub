@@ -127,8 +127,11 @@ export function buildCandidateReview(run: SignalGenerationRun, index: number) {
         ? [
             {
               code: 'event_time',
-              label: '事件发生时间',
-              detail: '原文未确定事件时间；需补充依据，不能使用上传或生成时间。',
+              label: candidate.date_basis === 'source_published' ? '原文发布日期' : '事件发生时间',
+              detail:
+                candidate.date_basis === 'source_published'
+                  ? '原始新闻或文章的发布日期尚未确定；需补充依据，不能使用事件、更新时间、上传或生成时间代替。'
+                  : '原文未确定事件时间；需补充依据，不能使用上传或生成时间。',
             },
           ]
         : []),

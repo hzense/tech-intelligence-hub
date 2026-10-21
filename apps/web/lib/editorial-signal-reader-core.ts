@@ -69,6 +69,7 @@ export function mapEditorialSignalRows(rows: unknown[]): SignalEntry[] {
     )
       return fail();
     const content = object(row.content);
+    if (content.dateBasis !== undefined && content.dateBasis !== 'source_published') return fail();
     const signalType = content.signalType ?? 'editorial';
     if (signalType !== 'editorial' && !SIGNAL_TYPES.includes(signalType as GenerationSignalType))
       return fail();
@@ -153,6 +154,9 @@ export function mapEditorialSignalRows(rows: unknown[]): SignalEntry[] {
       publication_basis: 'manual_confirmation',
       status: 'accepted',
       occurred_at: occurred.toISOString(),
+      ...(content.dateBasis === 'source_published'
+        ? { date_basis: 'source_published' as const }
+        : {}),
       captured_at: published.toISOString(),
       source_id: sources[0]?.id ?? '',
       source_url: sources[0]?.url ?? '',

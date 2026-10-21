@@ -6,12 +6,17 @@ import {
   type PublicSignalQueryClient,
 } from './public-signal-reader-core.ts';
 
-export const unifiedPublicListQuery = `SELECT signal_id,version,origin,publication_basis,content,recorded_at
-FROM public.unified_public_signals ORDER BY signal_id COLLATE "C" LIMIT $1`;
-export const unifiedPublicByIdQuery = `SELECT signal_id,version,origin,publication_basis,content,recorded_at
-FROM public.unified_public_signals WHERE signal_id = $1 LIMIT 2`;
-export const unifiedPublicProbeQuery = `SELECT signal_id,version,origin,publication_basis,content,recorded_at
-FROM public.unified_public_signals LIMIT 1`;
+// Date policy is an additive field of the editorial source record. The unified
+// storage envelope remains unchanged; only matching published revisions may
+// contribute this public metadata, using the reader's existing view permissions.
+const unifiedPublicProjection = `SELECT u.signal_id,u.version,u.origin,u.publication_basis,u.content,u.recorded_at,
+e.content->>'dateBasis' AS date_basis
+FROM public.unified_public_signals u
+LEFT JOIN public.editorial_public_signals e ON u.origin='ai_generation'
+AND e.signal_id=u.signal_id AND e.revision=u.version`;
+export const unifiedPublicListQuery = `${unifiedPublicProjection} ORDER BY u.signal_id COLLATE "C" LIMIT $1`;
+export const unifiedPublicByIdQuery = `${unifiedPublicProjection} WHERE u.signal_id = $1 LIMIT 2`;
+export const unifiedPublicProbeQuery = `${unifiedPublicProjection} LIMIT 1`;
 export const unifiedPublicStatusQuery = 'SELECT ready FROM public.unified_public_status';
 
 export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
@@ -34,6 +39,12 @@ export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
       const manual =
         row.origin === 'ai_generation' && row.publication_basis === 'manual_confirmation';
       if (!manual && !(row.origin === 'legacy_seed' && row.publication_basis === 'legacy_import'))
+        throw new PublicSignalReaderError();
+      if (
+        row.date_basis !== undefined &&
+        row.date_basis !== null &&
+        (!manual || row.date_basis !== 'source_published')
+      )
         throw new PublicSignalReaderError();
       const c = assertUnifiedSignalContent(row.content, { historical: true });
       const participants = (items: typeof c.people, kind: string) =>
@@ -75,6 +86,9 @@ export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
         summary: c.summary,
         status: 'accepted' as const,
         occurred_at: date(c.occurred_at, !manual),
+        ...(row.date_basis === 'source_published'
+          ? { date_basis: 'source_published' as const }
+          : {}),
         // Compatibility DTO: manual records previously exposed publication time here.
         // The stored unified captured_at remains null, never changed by this reader.
         captured_at: manual ? date(row.recorded_at) : date(c.captured_at, true),

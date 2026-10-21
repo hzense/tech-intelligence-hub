@@ -39,6 +39,21 @@ export function editorialFixture() {
   };
 }
 describe('editorial confirmation contract', () => {
+  it('binds source publication semantics without changing historical event-date payloads', () => {
+    const { request, material } = editorialFixture();
+    expect(normalizeEditorialContent(request.content)).toEqual(request.content);
+    expect(normalizeEditorialContent(request.content)).not.toHaveProperty('dateBasis');
+    const current = { ...request, content: { ...request.content, dateBasis: 'source_published' } };
+    const bound = { ...material, dateBasis: 'source_published' };
+    expect(normalizeEditorialRequest(current, bound)).toEqual(current);
+    expect(() => normalizeEditorialRequest(current, material)).toThrow('material_changed');
+    expect(() => normalizeEditorialRequest(request, bound)).toThrow('material_changed');
+    expect(() =>
+      normalizeEditorialContent({ ...request.content, dateBasis: 'site_published' }),
+    ).toThrow();
+    // Historical committed replays are authenticated before checking current policy.
+    expect(normalizeEditorialRequest(request, bound, { checkPublication: false })).toEqual(request);
+  });
   it('still validates structure and immutable content before historical replay lookup', () => {
     const { request, material } = editorialFixture();
     for (const patch of [

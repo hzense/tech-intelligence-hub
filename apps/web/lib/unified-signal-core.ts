@@ -9,6 +9,7 @@ export interface UnifiedSignal {
   /** Event category; absent when the publication path did not classify it. */
   type: Exclude<SignalEntry['type'], 'editorial'> | null;
   occurredAt: string;
+  dateBasis?: 'source_published';
   capturedAt: string;
   publication: {
     basis: 'legacy_seed' | 'source_evidence' | 'manual_confirmation';
@@ -66,6 +67,7 @@ export function toUnifiedSignal(entry: SignalEntry): UnifiedSignal {
     summary: entry.summary,
     type: entry.type === 'editorial' ? null : entry.type,
     occurredAt: entry.occurred_at,
+    ...(entry.date_basis === undefined ? {} : { dateBasis: entry.date_basis }),
     capturedAt: entry.captured_at,
     publication,
     assessment,

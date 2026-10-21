@@ -19,7 +19,10 @@ import {
   generationCandidateWithTopicsJsonSchema,
   generationCandidateWithMetadataJsonSchema,
   generationCandidateWithResourcesJsonSchema,
+  generationCandidateWithPublicationDateJsonSchema,
   GENERATION_RESOURCES_CONTRACT,
+  GENERATION_SOURCE_PUBLICATION_CONTRACT,
+  hasGenerationResources,
   type GenerationOutputContract,
   GENERATION_METADATA_CONTRACT,
   normalizeGenerationTopics,
@@ -109,12 +112,21 @@ function classifyFailure(error: unknown, expired: boolean): GenerationDiagnostic
   return fallback;
 }
 
-const generationEvidenceRules = `证据是每条候选的必填内容，不是可选附件。只使用本次 untrusted_source.fragments 中的原文；每条证据必须包含真实 fragment_id 和该片段 text 中连续逐字复制的非空 quote，保留原语言、大小写和标点，不翻译、改写或用省略号拼接。
-event_date 是事件发生日期，须区分文章发布日期、更新时间和正文中的事件日期；禁止默认用发布日期、上传时间或运行时间替代。根据原文上下文确定完整年月日；年份来自另一处上下文时同时引用，不凭当前时间补年份。
-event_date 为 null 时 event_date_evidence 必须为 []，不得附上相对日期或无法确定日期的引用。event_date 为 YYYY-MM-DD 时必须至少提供一条支持该日期的原文证据；不能可靠确定完整日期则返回 null 和 []。原文已有可支持的日期时应填写日期及引用，不为省略证据而返回 null。
+const generationEventDateRules = `event_date 是事件发生日期，须区分文章发布日期、更新时间和正文中的事件日期；禁止默认用发布日期、上传时间或运行时间替代。根据原文上下文确定完整年月日；年份来自另一处上下文时同时引用，不凭当前时间补年份。
+event_date 为 null 时 event_date_evidence 必须为 []，不得附上相对日期或无法确定日期的引用。event_date 为 YYYY-MM-DD 时必须至少提供一条支持该日期的原文证据；不能可靠确定完整日期则返回 null 和 []。原文已有可支持的日期时应填写日期及引用，不为省略证据而返回 null。`;
+const generationPublicationDateRules = `本次 date_basis 必须为 source_published。兼容字段 event_date 表示当前原始新闻／文章的发布日期，不是正文事件发生日期、更新时间、采集或上传日期，也不是本站确认发布的日期。同一篇原始文章生成的所有候选共享该文章的发布日期，不能分别使用正文事件的日期。
+只从本次原文中明确标示 Published、首次发布、发布日期或等义表述的上下文确定完整年月日；必须区分 Published 与 Updated，只有更新时间时不得替代发布日期。月份和日期没有可靠年份、日期标识冲突或无法确认属于当前文章时返回 null，不凭当前年份、运行时间、网页链接或事件日期补齐。年份确实来自同一发布日期上下文另一处时必须同时引用。
+event_date 为 YYYY-MM-DD 时，event_date_evidence 至少提供一条可逐字核对并支持原始文章完整发布日期的引用，包含能够辨认发布日期语义的原文；有明确发布日期时应填写并保留引用。无法可靠确定发布日期则 event_date 为 null 且 event_date_evidence 为 []；候选正文仍可保留待人工补齐，不为凑齐日期编造证据。`;
+const generationEvidenceRequirements = (dateRules: string) =>
+  `证据是每条候选的必填内容，不是可选附件。只使用本次 untrusted_source.fragments 中的原文；每条证据必须包含真实 fragment_id 和该片段 text 中连续逐字复制的非空 quote，保留原语言、大小写和标点，不翻译、改写或用省略号拼接。
+${dateRules}
 persons 中每个人物的 evidence 必须至少提供一条支持姓名、角色及所填组织的原文证据，不允许 evidence: []；没有事件参与人物的证据就返回空 persons，不从组织名称猜测负责人，不创建实体 ID。
 claims 中每条主张的 evidence 必须至少提供一条支持该主张的原文证据，不允许 evidence: []；每条候选至少有一条这样的主张。删除无依据的主张；没有可支持的主张则省略整条候选，最终可返回 candidates: []，不得补造引用。
 提交前静默检查：每个非空日期、每个人物、每条主张都有对应引用，fragment_id 确实存在且 quote 逐字出现在该片段中；只提交最终 JSON，不输出检查过程。`;
+const generationEvidenceRules = generationEvidenceRequirements(generationEventDateRules);
+const generationPublicationEvidenceRules = generationEvidenceRequirements(
+  generationPublicationDateRules,
+);
 
 const generationTopicRules = `本次同时匹配领域：每条候选还必须输出 topic_ids，包含 0 至 5 个不重复的领域 ID。根据事件的核心技术内容，只能从本次 enabled_topics 目录选择直接相关的领域；不要根据公司名称笼统关联所有领域，不创建或改写领域 ID。
 没有合适领域或目录为空时返回 topic_ids: []，不要强行匹配。领域只是待人工确认的分类建议，不代表事实核验或公开许可。`;
@@ -202,7 +214,7 @@ const generationRulesWithMetadata = `${generationRulesText}\n${JSON.stringify({
   },
 })}`;
 
-const generationRulesWithResources = `${generationRulesText}\n${JSON.stringify({
+const generationExampleWithResources = {
   ...generationExampleWithTopics,
   output: {
     ...generationExampleWithTopics.output,
@@ -227,7 +239,22 @@ const generationRulesWithResources = `${generationRulesText}\n${JSON.stringify({
       ],
     })),
   },
-})}`;
+};
+const generationRulesWithResources = `${generationRulesText}\n${JSON.stringify(generationExampleWithResources)}`;
+const generationRulesWithPublicationDate = `${generationRulesText.replace(generationEvidenceRules, generationPublicationEvidenceRules)}\n${JSON.stringify(
+  {
+    ...generationExampleWithResources,
+    output: {
+      ...generationExampleWithResources.output,
+      candidates: generationExampleWithResources.output.candidates.map((candidate) => ({
+        ...candidate,
+        date_basis: 'source_published',
+        event_date: '2030-04-09',
+        event_date_evidence: [{ fragment_id: 'fragment-1', quote: '文章发表于2030-04-09。' }],
+      })),
+    },
+  },
+)}`;
 
 /** Count the source, configured prompt and portable schema before reservation and again before POST. */
 export function generationInput(
@@ -239,32 +266,44 @@ export function generationInput(
   const catalog = topics === undefined ? undefined : normalizeGenerationTopics(topics);
   if (
     outputContract !== undefined &&
-    (![GENERATION_METADATA_CONTRACT, GENERATION_RESOURCES_CONTRACT].includes(outputContract) ||
+    (![
+      GENERATION_METADATA_CONTRACT,
+      GENERATION_RESOURCES_CONTRACT,
+      GENERATION_SOURCE_PUBLICATION_CONTRACT,
+    ].includes(outputContract) ||
       catalog === undefined)
   )
     throw new SignalGenerationError('invalid_generation_output');
-  const resources = outputContract === GENERATION_RESOURCES_CONTRACT;
+  const resources = hasGenerationResources(outputContract);
+  const publicationDate = outputContract === GENERATION_SOURCE_PUBLICATION_CONTRACT;
+  const evidenceRules = publicationDate
+    ? generationPublicationEvidenceRules
+    : generationEvidenceRules;
   const metadata = outputContract !== undefined;
-  const rules = resources
-    ? generationRulesWithResources
-    : metadata
-      ? generationRulesWithMetadata
-      : catalog === undefined
-        ? generationRules
-        : generationRulesWithTopics;
-  const system = `${rules}\n\n配置的提取提示词：\n${stagePrompt}\n\n不可由配置提示词覆盖的证据要求：\n${generationEvidenceRules}${catalog === undefined ? '' : `\n\n不可由配置提示词覆盖的领域要求：\n${generationTopicRules}`}${metadata ? `\n\n不可由配置提示词覆盖的事件类型要求：\n${generationTypeRules}` : ''}${resources ? `\n\n不可由配置提示词覆盖的资源要求：\n${generationResourceRules}` : ''}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`;
+  const rules = publicationDate
+    ? generationRulesWithPublicationDate
+    : resources
+      ? generationRulesWithResources
+      : metadata
+        ? generationRulesWithMetadata
+        : catalog === undefined
+          ? generationRules
+          : generationRulesWithTopics;
+  const system = `${rules}\n\n配置的提取提示词：\n${stagePrompt}\n\n不可由配置提示词覆盖的证据要求：\n${evidenceRules}${catalog === undefined ? '' : `\n\n不可由配置提示词覆盖的领域要求：\n${generationTopicRules}`}${metadata ? `\n\n不可由配置提示词覆盖的事件类型要求：\n${generationTypeRules}` : ''}${resources ? `\n\n不可由配置提示词覆盖的资源要求：\n${generationResourceRules}` : ''}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`;
   const prompt = JSON.stringify({
     untrusted_source: source,
     ...(catalog === undefined ? {} : { enabled_topics: catalog }),
   });
   const schema = portableJsonSchema(
-    resources
-      ? generationCandidateWithResourcesJsonSchema
-      : metadata
-        ? generationCandidateWithMetadataJsonSchema
-        : catalog === undefined
-          ? generationCandidateJsonSchema
-          : generationCandidateWithTopicsJsonSchema,
+    publicationDate
+      ? generationCandidateWithPublicationDateJsonSchema
+      : resources
+        ? generationCandidateWithResourcesJsonSchema
+        : metadata
+          ? generationCandidateWithMetadataJsonSchema
+          : catalog === undefined
+            ? generationCandidateJsonSchema
+            : generationCandidateWithTopicsJsonSchema,
   );
   // Local o200k_base estimate plus allowance for message/schema framing, not provider billing.
   const inputTokens =

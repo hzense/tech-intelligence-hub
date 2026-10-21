@@ -11,6 +11,8 @@ test('public Signal index is a unified chronological card stream without a searc
   assert.match(page, /getPublicExploration\(\)/);
   assert.match(page, /right\.occurred_at\.localeCompare\(left\.occurred_at\)/);
   assert.match(page, /<PublicSignalCards signals=\{entries\}/);
+  assert.match(page, /新生成信号使用原文发布日期/);
+  assert.doesNotMatch(page, /按事件发生时间|最新事件在前/);
   assert.doesNotMatch(page, /<form|archive=1|当前公开信号|历史档案|应用筛选/);
 });
 

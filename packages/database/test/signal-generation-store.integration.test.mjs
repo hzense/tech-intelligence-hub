@@ -1233,7 +1233,7 @@ suite('private AI generation PostgreSQL ledger', () => {
       title: 'Synthetic',
       summary: 'Synthetic summary',
       event_date: null,
-      event_date_evidence: [],
+      event_date_evidence: [{ fragment_id: 'fragment-1', quote: 'Synthetic source' }],
       persons: [],
       organizations: [],
       claims: [
@@ -1250,12 +1250,15 @@ suite('private AI generation PostgreSQL ledger', () => {
       ),
       usage: { input_tokens: 1, output_tokens: 1 },
     };
+    expect(result.candidates[0].issues).toContain('needs_event_time');
+    expect(result.candidates[0].event_date).toBeNull();
+    expect(result.candidates[0].event_date_evidence).toEqual(candidate.event_date_evidence);
     const mutations = [
       { title: 7 },
       { title: 'x'.repeat(81) },
       { summary: 'x'.repeat(501) },
       { event_date: '2026-02-30' },
-      { event_date_evidence: candidate.claims[0].evidence },
+      { event_date_evidence: [{ fragment_id: 'fragment-1', quote: 'invented date' }] },
       { issues: ['verified'] },
       { organizations: ['duplicate', 'duplicate'] },
       {

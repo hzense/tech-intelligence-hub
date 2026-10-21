@@ -21,6 +21,8 @@ export interface EditorialContent {
   title: string;
   summary: string;
   eventDate: string | null;
+  /** Absent on historical event-date records; never inferred from their value. */
+  dateBasis?: 'source_published';
   organizations: string[];
   persons: string[];
   topics: { id: string; title: string }[];
@@ -42,6 +44,7 @@ export interface EditorialMaterial {
   materialHash: string;
   title: string;
   summary: string;
+  dateBasis?: 'source_published';
   sourceUrls: string[];
   sourceOptions?: string[];
   resources?: EditorialResourceDraft[];

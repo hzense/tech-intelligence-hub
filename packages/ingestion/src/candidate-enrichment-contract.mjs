@@ -4,6 +4,7 @@ import {
   GENERATION_LIMITS,
   GENERATION_METADATA_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
+  GENERATION_SOURCE_PUBLICATION_CONTRACT,
   generatedResourceJsonSchema,
   normalizeGeneratedCandidates,
   validateGenerationSource,
@@ -131,6 +132,7 @@ export function assessCandidateEnrichment(value, candidate, source) {
       'classification',
       'status',
       'issues',
+      ...(candidate && Object.hasOwn(candidate, 'date_basis') ? ['date_basis'] : []),
       ...(candidate && Object.hasOwn(candidate, 'topic_ids') ? ['topic_ids'] : []),
       ...(candidate && Object.hasOwn(candidate, 'signal_type') ? ['signal_type'] : []),
       ...(withResources ? ['resources'] : []),
@@ -155,6 +157,7 @@ export function assessCandidateEnrichment(value, candidate, source) {
       persons: originalPeople.length ? originalPeople : value.persons,
       organizations: [...new Set([...original.organizations, ...value.organizations])],
       claims: original.claims,
+      ...(Object.hasOwn(original, 'date_basis') ? { date_basis: original.date_basis } : {}),
       ...(Object.hasOwn(original, 'topic_ids') ? { topic_ids: original.topic_ids } : {}),
       ...(Object.hasOwn(original, 'signal_type') ? { signal_type: original.signal_type } : {}),
       ...(withResources
@@ -165,11 +168,13 @@ export function assessCandidateEnrichment(value, candidate, source) {
       { candidates: [merged], reason: '私有补全提案，待管理员审核。' },
       validatedSource,
       undefined,
-      withResources
-        ? GENERATION_RESOURCES_CONTRACT
-        : Object.hasOwn(original, 'signal_type')
-          ? GENERATION_METADATA_CONTRACT
-          : undefined,
+      original.date_basis === 'source_published'
+        ? GENERATION_SOURCE_PUBLICATION_CONTRACT
+        : withResources
+          ? GENERATION_RESOURCES_CONTRACT
+          : Object.hasOwn(original, 'signal_type')
+            ? GENERATION_METADATA_CONTRACT
+            : undefined,
     ).candidates[0];
     if (!normalized) fail('invalid_enrichment_output');
     const sourceText = validatedSource.fragments.map((fragment) => fragment.text).join('\n');

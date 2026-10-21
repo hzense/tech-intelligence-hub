@@ -1513,4 +1513,62 @@ suite('editorial publication persistence and isolated capabilities', () => {
       ).rows,
     ).toEqual([{ metadata: { keep: true } }]);
   });
+
+  it('persists source publication policy without changing site publication time or admitting a dropped marker', async () => {
+    const fixture = editorialFixture();
+    fixture.request.runId = randomUUID();
+    fixture.request.requestId = randomUUID();
+    fixture.request.content = {
+      ...fixture.content,
+      eventDate: '2026-10-20',
+      dateBasis: 'source_published',
+    };
+    fixture.material.dateBasis = 'source_published';
+    await pool.query(
+      "INSERT INTO signal_generation_runs(id,owner_id,status,deleted_at) VALUES($1,'owner','completed',NULL)",
+      [fixture.request.runId],
+    );
+    const args = {
+      pool: writer,
+      owner: 'owner',
+      request: fixture.request,
+      material: fixture.material,
+    };
+    const saved = await saveEditorialSignal(args);
+    expect(saved.content.dateBasis).toBe('source_published');
+    expect(await saveEditorialSignal(args)).toEqual(saved);
+    const publicId = `editorial-${createHash('md5').update(`${fixture.request.runId}:0`).digest('hex')}`;
+    const row = (
+      await reader.query(
+        'SELECT content,published_at FROM public.editorial_public_signals WHERE signal_id=$1',
+        [publicId],
+      )
+    ).rows[0];
+    expect(row.content.eventDate).toBe('2026-10-20');
+    expect(row.content.dateBasis).toBe('source_published');
+    expect(new Date(row.published_at).getTime()).toBeGreaterThan(
+      Date.parse('2026-10-20T00:00:00Z'),
+    );
+    const { dateBasis, ...withoutPolicy } = row.content;
+    expect(dateBasis).toBe('source_published');
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        request: {
+          ...fixture.request,
+          requestId: randomUUID(),
+          expectedRevision: 1,
+          content: withoutPolicy,
+        },
+      }),
+    ).rejects.toThrow('material_changed');
+    expect(
+      (
+        await reader.query(
+          'SELECT revision FROM public.editorial_public_signals WHERE signal_id=$1',
+          [publicId],
+        )
+      ).rows,
+    ).toEqual([{ revision: 1 }]);
+  });
 });

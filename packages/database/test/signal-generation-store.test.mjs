@@ -6,6 +6,7 @@ import {
   REJECTED_CANDIDATES_REASON,
   GENERATION_METADATA_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
+  GENERATION_SOURCE_PUBLICATION_CONTRACT,
 } from '../../ingestion/src/signal-generation-contract.mjs';
 import {
   createSignalGeneration,
@@ -201,7 +202,11 @@ describe('private generation input boundaries', () => {
     await expect(createSignalGeneration(value)).rejects.toMatchObject({ code: 'invalid_snapshot' });
   });
 
-  it.each([GENERATION_METADATA_CONTRACT, GENERATION_RESOURCES_CONTRACT])(
+  it.each([
+    GENERATION_METADATA_CONTRACT,
+    GENERATION_RESOURCES_CONTRACT,
+    GENERATION_SOURCE_PUBLICATION_CONTRACT,
+  ])(
     'persists the complete catalog and %s contract in a new generation snapshot',
     async (contract) => {
       const value = input();
@@ -233,6 +238,7 @@ describe('private generation input boundaries', () => {
         [undefined, [{ id: 'topic-new', title: 'New topic' }]],
         [[{ id: 'topic-old', title: 'Old topic' }], [], GENERATION_METADATA_CONTRACT],
         [[{ id: 'topic-old', title: 'Old topic' }], [], GENERATION_RESOURCES_CONTRACT],
+        [[{ id: 'topic-old', title: 'Old topic' }], [], GENERATION_SOURCE_PUBLICATION_CONTRACT],
         [[{ id: 'topic-old', title: 'Old topic' }], [{ id: 'topic-new', title: 'New topic' }]],
         [[{ id: 'topic-old', title: 'Old topic' }], []],
         [[{ id: 'topic-old', title: 'Old topic' }], [{ id: 'topic-old', title: 'Old topic' }]],

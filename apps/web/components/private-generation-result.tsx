@@ -59,7 +59,7 @@ export function PrivateResult({
     title_too_long: '标题超过 80 个字符（含字母、标点和空白）',
     summary_too_long: '摘要超过 500 个字符',
     unknown_date_has_evidence: '日期未知时，日期证据必须为空数组',
-    invalid_event_date: '事件日期必须是有效的 YYYY-MM-DD 或 null',
+    invalid_event_date: '日期必须是有效的 YYYY-MM-DD 或 null',
     invalid_evidence: '证据缺失、重复或引用未逐字匹配原文片段',
     invalid_candidate_shape: '候选字段缺失、类型错误或包含不允许的字段',
     invalid_field: '字段结构、长度或原文引用不符合约定',
@@ -118,6 +118,9 @@ export function PrivateResult({
         const people = objectRows(data.persons);
         const needsResourceDetails =
           Array.isArray(data.issues) && data.issues.includes('needs_resource_details');
+        const needsEventTime = data.event_date === null;
+        const sourcePublished = data.date_basis === 'source_published';
+        const dateLabel = sourcePublished ? '原文发布日期' : '事件日期';
         const claims = objectRows(data.claims);
         const candidateNumber = typeof data.index === 'number' ? data.index + 1 : index + 1;
         const publication = snapshotOnly
@@ -164,8 +167,8 @@ export function PrivateResult({
                 {typeof data.title === 'string' ? data.title : `候选信号 ${candidateNumber}`}
               </h4>
               <p className={preview.date}>
-                事件发生时间：
-                {typeof data.event_date === 'string' ? data.event_date : '来源未提供，待核对'}
+                {sourcePublished ? '原文发布日期' : '事件发生时间'}：
+                {typeof data.event_date === 'string' ? data.event_date : '日期尚未确认，待补齐'}
               </p>
               <p className={preview.summary}>
                 {typeof data.summary === 'string' && data.summary.trim()
@@ -176,6 +179,13 @@ export function PrivateResult({
                 <p className={preview.missing}>
                   原始候选待补全：缺少部分人物或组织的资源资料。正文与已有证据已保留，
                   请进入审核补齐后再确认发布；原始快照不会随补全改写。
+                </p>
+              )}
+              {needsEventTime && (
+                <p className={preview.missing}>
+                  原始候选待补全：{dateLabel}尚未确认。正文与通过原文匹配的辅助引用已保留，
+                  引用不代表日期已确定；请进入审核补齐并确认日期后再发布，不使用采集时间替代。
+                  原始快照不会随补全改写。
                 </p>
               )}
               {canOpenReview && reviewTask && (
@@ -250,7 +260,11 @@ export function PrivateResult({
                 <section>
                   <h5>时间依据</h5>
                   <details className={preview.evidence}>
-                    <summary>核对事件日期的来源依据</summary>
+                    <summary>
+                      {needsEventTime
+                        ? '查看日期相关辅助引用（日期待确认）'
+                        : `核对${dateLabel}的来源依据`}
+                    </summary>
                     <Evidence value={data.event_date_evidence} />
                   </details>
                 </section>
@@ -270,7 +284,11 @@ export function PrivateResult({
                   <h5>决策前需确认</h5>
                   <ul>
                     <li>主张是否被原文充分支持</li>
-                    <li>日期是否为事件发生时间</li>
+                    <li>
+                      {sourcePublished
+                        ? '日期是否为原始新闻或文章的发布日期，而非更新时间或本站发布时间'
+                        : '日期是否为事件发生时间'}
+                    </li>
                     <li>人物及组织是否与事件直接相关</li>
                   </ul>
                   <p>

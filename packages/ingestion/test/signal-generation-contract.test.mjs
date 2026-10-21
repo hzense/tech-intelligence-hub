@@ -221,7 +221,12 @@ test('rejected batches never retain model-provided reason text, including mixed 
 });
 
 test('partial assessment preserves good siblings and original indexes with multiple fixed field errors', () => {
-  const bad = { ...candidate(), title: 'a'.repeat(81), event_date: null };
+  const bad = {
+    ...candidate(),
+    title: 'a'.repeat(81),
+    event_date: null,
+    event_date_evidence: [ref('invented date quote')],
+  };
   const value = { candidates: [bad, candidate()], reason: 'synthetic batch' };
   const result = assessGeneratedCandidates(value, buildGenerationSource(input()));
   assert.equal(result.candidates.length, 1);
@@ -236,15 +241,95 @@ test('partial assessment preserves good siblings and original indexes with multi
         { field: 'title', code: 'title_too_long', path: 'title', reason: 'text_too_long' },
         {
           field: 'event_date_evidence',
-          code: 'unknown_date_has_evidence',
-          path: 'event_date_evidence',
-          reason: 'unknown_date_has_evidence',
+          code: 'invalid_evidence',
+          path: 'event_date_evidence[0].quote',
+          reason: 'quote_mismatch',
         },
       ],
     },
   ]);
   assert.equal(JSON.stringify(result.rejected).includes(bad.title), false);
   assert.throws(() => normalize(value));
+});
+
+test('private assessment retains exact auxiliary date quotes without inventing a date', () => {
+  const source = buildGenerationSource(input());
+  for (const outputContract of [
+    undefined,
+    GENERATION_METADATA_CONTRACT,
+    GENERATION_RESOURCES_CONTRACT,
+  ]) {
+    const unknown = {
+      ...candidate(),
+      event_date: null,
+      ...(outputContract ? { signal_type: 'research' } : {}),
+      ...(outputContract === GENERATION_RESOURCES_CONTRACT ? { resources: [] } : {}),
+    };
+    const value = {
+      candidates: [unknown, { ...unknown, event_date_evidence: [] }],
+      reason: 'private',
+    };
+    const before = JSON.stringify({ value, source });
+    const assessed = assessGeneratedCandidates(value, source, undefined, outputContract);
+    assert.equal(assessed.candidates.length, 2);
+    assert.deepEqual(assessed.rejected, []);
+    assert.deepEqual(
+      assessed.candidates.map(({ index }) => index),
+      [0, 1],
+    );
+    for (const saved of assessed.candidates) {
+      assert.equal(saved.event_date, null);
+      assert.equal(saved.classification, 'private');
+      assert.equal(saved.status, 'needs_review');
+      assert.ok(saved.issues.includes('needs_event_time'));
+      assert.ok(saved.issues.includes('needs_public_evidence'));
+    }
+    assert.deepEqual(assessed.candidates[0].event_date_evidence, unknown.event_date_evidence);
+    assert.deepEqual(assessed.candidates[1].event_date_evidence, []);
+    assert.equal(JSON.stringify({ value, source }), before);
+    assert.throws(
+      () => normalizeGeneratedCandidates(value, source, undefined, outputContract),
+      (error) => error.diagnostic?.reason === 'unknown_date_has_evidence',
+    );
+  }
+});
+
+test('unknown dates do not relax auxiliary quotation validation or other field checks', () => {
+  const source = buildGenerationSource(input());
+  for (const [evidence, reason] of [
+    [[ref('invented date quote')], 'quote_mismatch'],
+    [[{ fragment_id: 'missing-fragment', quote: '2026-09-16' }], 'unknown_fragment'],
+    [[ref('')], 'missing_value'],
+    [null, 'invalid_type'],
+    [[ref('2026-09-16'), ref('2026-09-16')], 'duplicate_reference'],
+    [Array.from({ length: GENERATION_LIMITS.references + 1 }, () => ref()), 'too_many_items'],
+  ]) {
+    const assessed = assessGeneratedCandidates(
+      {
+        candidates: [
+          { ...candidate(), event_date: null, event_date_evidence: evidence },
+          candidate(),
+        ],
+        reason: 'private',
+      },
+      source,
+    );
+    assert.deepEqual(
+      assessed.candidates.map(({ index }) => index),
+      [1],
+    );
+    assert.equal(assessed.rejected[0].errors[0].field, 'event_date_evidence');
+    assert.equal(assessed.rejected[0].errors[0].code, 'invalid_evidence');
+    assert.equal(assessed.rejected[0].errors[0].reason, reason);
+    assert.doesNotMatch(JSON.stringify(assessed.rejected), /invented date quote|missing-fragment/);
+  }
+  const datedWithoutEvidence = { ...candidate(), event_date_evidence: [] };
+  const assessed = assessGeneratedCandidates(
+    { candidates: [datedWithoutEvidence], reason: 'private' },
+    source,
+  );
+  assert.equal(assessed.candidates.length, 0);
+  assert.equal(assessed.rejected[0].errors[0].reason, 'missing_evidence');
 });
 
 test('rejected evidence records the exact nested failing position without raw model content', () => {

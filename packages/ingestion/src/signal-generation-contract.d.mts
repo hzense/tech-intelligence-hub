@@ -17,10 +17,15 @@ export const generationCandidateWithTopicsJsonSchema: Readonly<Record<string, un
 export const generationCandidateWithMetadataJsonSchema: Readonly<Record<string, unknown>>;
 export const GENERATION_METADATA_CONTRACT: 'signal-metadata-v1';
 export const GENERATION_RESOURCES_CONTRACT: 'signal-resources-v1';
+export const GENERATION_SOURCE_PUBLICATION_CONTRACT: 'signal-source-publication-v1';
+export function hasGenerationResources(contract: GenerationOutputContract | undefined): boolean;
 export type GenerationOutputContract =
-  typeof GENERATION_METADATA_CONTRACT | typeof GENERATION_RESOURCES_CONTRACT;
+  | typeof GENERATION_METADATA_CONTRACT
+  | typeof GENERATION_RESOURCES_CONTRACT
+  | typeof GENERATION_SOURCE_PUBLICATION_CONTRACT;
 export const generatedResourceJsonSchema: Readonly<Record<string, unknown>>;
 export const generationCandidateWithResourcesJsonSchema: Readonly<Record<string, unknown>>;
+export const generationCandidateWithPublicationDateJsonSchema: Readonly<Record<string, unknown>>;
 export const REJECTED_CANDIDATES_REASON: string;
 export function estimateGenerationTokens(text: string): number;
 export class SignalGenerationError extends Error {
@@ -53,6 +58,8 @@ export interface GeneratedCandidateInput {
   summary: string;
   event_date: string | null;
   event_date_evidence: GenerationReference[];
+  /** Absent on historical event-date contracts; never inferred from timestamps. */
+  date_basis?: 'source_published';
   persons: {
     name: string;
     role: string;
@@ -93,6 +100,7 @@ export interface GeneratedCandidates {
     ))[];
   }[];
 }
+/** Private drafts can retain exact auxiliary date quotes while event_date is null. */
 export function assessGeneratedCandidates(
   value: unknown,
   source: GenerationSource,

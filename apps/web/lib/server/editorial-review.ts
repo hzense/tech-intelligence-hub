@@ -10,7 +10,7 @@ import { generationRecord } from './signal-generation';
 import { buildCandidateReview, buildEnrichedCandidateReview } from '../candidate-review';
 import { listCandidateEnrichmentDtos } from './candidate-enrichment';
 import { materialPublicationPreview } from './material-registration';
-import type { EditorialContent } from '../editorial-review';
+import { editorialCandidateDate, type EditorialContent } from '../editorial-review';
 import {
   editorialPool,
   editorialPublicationEnabled,
@@ -58,7 +58,14 @@ async function material(owner: string, runId: string, index: number) {
   const content: EditorialContent = {
     title: original.candidate.title,
     summary: original.candidate.summary,
-    eventDate: prefill?.eventDate ?? candidate.event_date,
+    // Historical supplementary plans describe event dates, not source publication.
+    // Never let one overwrite the new task's pinned source-publication date.
+    ...editorialCandidateDate(
+      original.candidate.date_basis,
+      candidate.event_date,
+      prefill?.eventDate,
+      prefill?.dateBasis,
+    ),
     signalType: original.candidate.signal_type ?? null,
     organizations: prefill?.organizations ?? [
       ...new Set([

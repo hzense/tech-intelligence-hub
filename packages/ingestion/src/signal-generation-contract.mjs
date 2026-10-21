@@ -211,6 +211,11 @@ export const generationCandidateWithMetadataJsonSchema = Object.freeze({
 });
 
 export const GENERATION_RESOURCES_CONTRACT = 'signal-resources-v1';
+// Pin date semantics with the task. Never reinterpret saved event-date candidates.
+export const GENERATION_SOURCE_PUBLICATION_CONTRACT = 'signal-source-publication-v1';
+export function hasGenerationResources(contract) {
+  return [GENERATION_RESOURCES_CONTRACT, GENERATION_SOURCE_PUBLICATION_CONTRACT].includes(contract);
+}
 export const generatedResourceJsonSchema = Object.freeze({
   type: 'object',
   additionalProperties: false,
@@ -265,6 +270,36 @@ export const generationCandidateWithResourcesJsonSchema = Object.freeze({
               '与信号同一次生成的资源草稿；只能且必须精确覆盖当前候选的 persons.name 以及 organizations 与非 null 的 persons.organization 的并集，禁止集合外的额外资源。按身份去重，关联字段名称和人物/组织类型一致，不推断无原文依据的身份，不填实体 ID 或来源 URL。',
             maxItems: 36,
             items: generatedResourceJsonSchema,
+          },
+        },
+      },
+    },
+  },
+});
+
+const publicationCandidateSchema =
+  generationCandidateWithResourcesJsonSchema.properties.candidates.items;
+export const generationCandidateWithPublicationDateJsonSchema = Object.freeze({
+  ...generationCandidateWithResourcesJsonSchema,
+  properties: {
+    ...generationCandidateWithResourcesJsonSchema.properties,
+    candidates: {
+      ...generationCandidateWithResourcesJsonSchema.properties.candidates,
+      items: {
+        ...publicationCandidateSchema,
+        required: [...publicationCandidateSchema.required, 'date_basis'],
+        properties: {
+          ...publicationCandidateSchema.properties,
+          date_basis: { type: 'string', enum: ['source_published'] },
+          event_date: {
+            ...publicationCandidateSchema.properties.event_date,
+            description:
+              '原始新闻或文章的首次发布日期 YYYY-MM-DD，不是事件发生日、更新时间、采集日或本站发布日。同一篇原文的候选共用该日期；原文未明确支持完整年月日则为 null。',
+          },
+          event_date_evidence: {
+            ...publicationCandidateSchema.properties.event_date_evidence,
+            description:
+              '逐字引用本篇原文的发布日期依据。非空日期至少一条引用；缺失完整年月日返回 null 和 []，不猜年份、不使用更新时间或正文事件日期代替。',
           },
         },
       },
@@ -544,7 +579,11 @@ function normalizeResources(
 function normalizeCandidates(value, source, partial = false, topics, outputContract) {
   if (
     outputContract !== undefined &&
-    ![GENERATION_METADATA_CONTRACT, GENERATION_RESOURCES_CONTRACT].includes(outputContract)
+    ![
+      GENERATION_METADATA_CONTRACT,
+      GENERATION_RESOURCES_CONTRACT,
+      GENERATION_SOURCE_PUBLICATION_CONTRACT,
+    ].includes(outputContract)
   )
     fail('invalid_generation_output');
   const topicIds =
@@ -580,10 +619,11 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
         rejected.push({ index, classification: 'private', status: 'rejected', errors });
         return null;
       };
+      const publicationDate = outputContract === GENERATION_SOURCE_PUBLICATION_CONTRACT;
       const shape = check(
         'candidate',
-        () =>
-          record(
+        () => {
+          const value = record(
             candidate,
             [
               'title',
@@ -594,14 +634,19 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
               'organizations',
               'claims',
               ...(outputContract !== undefined ? ['signal_type'] : []),
-              ...(outputContract === GENERATION_RESOURCES_CONTRACT ? ['resources'] : []),
+              ...(hasGenerationResources(outputContract) ? ['resources'] : []),
+              ...(publicationDate ? ['date_basis'] : []),
               ...(topicIds !== undefined || (candidate && Object.hasOwn(candidate, 'topic_ids'))
                 ? ['topic_ids']
                 : []),
             ],
             undefined,
             'candidate',
-          ),
+          );
+          if (publicationDate && value.date_basis !== 'source_published')
+            fail(undefined, 'candidate', 'invalid_shape');
+          return value;
+        },
         'invalid_candidate_shape',
       );
       if (!shape) return reject();
@@ -630,11 +675,15 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
         'event_date_evidence',
         () => {
           if (
+            !partial &&
             candidate.event_date === null &&
             Array.isArray(candidate.event_date_evidence) &&
             candidate.event_date_evidence.length
           )
             fail(undefined, 'event_date_evidence', 'unknown_date_has_evidence');
+          // Private drafts may retain genuine date-related excerpts without a
+          // resolved event date. Never infer the date or skip quotation checks;
+          // needs_event_time below keeps this distinct from a complete candidate.
           return references(
             candidate.event_date_evidence,
             fragments,
@@ -642,11 +691,7 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
             'event_date_evidence',
           );
         },
-        candidate.event_date === null &&
-          Array.isArray(candidate.event_date_evidence) &&
-          candidate.event_date_evidence.length
-          ? 'unknown_date_has_evidence'
-          : 'invalid_evidence',
+        'invalid_evidence',
       );
       const persons = check('persons', () =>
         list(candidate.persons, 12, 0, undefined, 'persons')
@@ -709,18 +754,17 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
             return ids;
           })
         : undefined;
-      const resources =
-        outputContract === GENERATION_RESOURCES_CONTRACT
-          ? check('resources', () =>
-              normalizeResources(candidate.resources, persons, organizations, fragments, partial),
-            )
-          : undefined;
+      const resources = hasGenerationResources(outputContract)
+        ? check('resources', () =>
+            normalizeResources(candidate.resources, persons, organizations, fragments, partial),
+          )
+        : undefined;
       if (errors.length) return reject();
       const issues = ['needs_public_evidence'];
       if (!persons.length) issues.push('needs_person_evidence');
       if (event_date === null) issues.push('needs_event_time');
       if (
-        outputContract === GENERATION_RESOURCES_CONTRACT &&
+        hasGenerationResources(outputContract) &&
         missingGenerationResources({ persons, organizations, resources }).length
       )
         issues.push('needs_resource_details');
@@ -730,11 +774,12 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
         summary,
         event_date,
         event_date_evidence,
+        ...(publicationDate ? { date_basis: 'source_published' } : {}),
         persons,
         organizations,
         claims,
         ...(outputContract !== undefined ? { signal_type } : {}),
-        ...(outputContract === GENERATION_RESOURCES_CONTRACT ? { resources } : {}),
+        ...(hasGenerationResources(outputContract) ? { resources } : {}),
         ...(hasTopics ? { topic_ids } : {}),
         classification: 'private',
         status: 'needs_review',
@@ -758,7 +803,9 @@ export function normalizeGeneratedCandidates(value, source, topics, outputContra
 
 /**
  * Reject invalid candidates independently; retain structurally valid private drafts whose
- * resource coverage still needs completion. Diagnostics contain only server-owned codes.
+ * resource coverage or event date still needs completion. Unknown-date excerpts
+ * remain auxiliary references, not a resolved date. All quotations are checked;
+ * diagnostics contain only server-owned codes.
  */
 export function assessGeneratedCandidates(value, source, topics, outputContract) {
   return normalizeCandidates(value, source, true, topics, outputContract);

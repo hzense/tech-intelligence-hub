@@ -4,6 +4,7 @@ export type MaterialCandidate = {
   title: string;
   summary: string;
   event_date: string | null;
+  date_basis?: 'source_published';
   event_date_evidence?: MaterialReference[];
   persons: Array<{
     name: string;
@@ -122,14 +123,17 @@ export function buildPublicationMaterials(
     items: [
       {
         key: 'event_date',
-        label: '事件日期',
+        label: candidate.date_basis === 'source_published' ? '原文发布日期' : '事件日期',
         proposed: candidate.event_date ?? '未找到',
         status: candidate.event_date ? 'matched' : 'missing',
         matches: [],
         references: candidate.event_date_evidence ?? [],
-        nextStep: candidate.event_date
-          ? '使用事件发生日期；日期依据仍须独立核验。'
-          : '需补充原文中的事件时间依据，不能使用上传或生成时间。',
+        nextStep:
+          candidate.date_basis === 'source_published'
+            ? '此日期为原始文章发布日期，请使用人工确认发布入口；不能作为历史核验通道的事件发生日期。'
+            : candidate.event_date
+              ? '使用事件发生日期；日期依据仍须独立核验。'
+              : '需补充原文中的事件时间依据，不能使用上传或生成时间。',
       },
       ...candidate.persons.map((person) =>
         entityItem(

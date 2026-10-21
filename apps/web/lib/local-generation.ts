@@ -1,6 +1,7 @@
 import process from 'node:process';
 import {
   assessGeneratedCandidates,
+  GENERATION_SOURCE_PUBLICATION_CONTRACT,
   validateGenerationSource,
   type GenerationReference,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
@@ -124,7 +125,9 @@ export async function invokeLocalGeneration(
   );
   const title = field('标题'),
     summary = field('摘要'),
-    date = field('日期');
+    date = field(
+      input.outputContract === GENERATION_SOURCE_PUBLICATION_CONTRACT ? '原文发布日期' : '日期',
+    );
   const person = field('人物'),
     organization = field('组织'),
     topic = field('领域');
@@ -136,6 +139,9 @@ export async function invokeLocalGeneration(
           summary: summary.value,
           event_date: date.value,
           event_date_evidence: date.evidence,
+          ...(input.outputContract === GENERATION_SOURCE_PUBLICATION_CONTRACT
+            ? { date_basis: 'source_published' as const }
+            : {}),
           persons: [
             {
               name: person.value,

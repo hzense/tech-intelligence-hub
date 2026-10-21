@@ -40,6 +40,13 @@ async function prepareReview(
   packet: ReturnType<typeof buildCandidateReview>,
   registered: MaterialPlan | null = null,
 ) {
+  if (packet.candidate.date_basis === 'source_published')
+    return prepareCandidateReview(packet.candidate, {
+      people: [],
+      organizations: [],
+      topics: [],
+      evidence: [],
+    });
   const candidate = registered ? materialPlanCandidate(registered) : packet.candidate;
   const names = [
     ...candidate.persons.map((person) => person.name),
@@ -290,6 +297,8 @@ export async function confirmPreparedReview(owner: string, value: unknown) {
   );
   if (packet.materialHash !== request.materialHash)
     throw new CandidateReviewError('material_changed');
+  if (packet.candidate.date_basis === 'source_published')
+    throw new CandidateReviewError('source_publication_requires_manual_confirmation');
   const client = await candidateReviewPool.connect();
   let preparation;
   try {

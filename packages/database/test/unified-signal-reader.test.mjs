@@ -183,7 +183,7 @@ test('detail reads only the requested public ID and observes withdrawal on the n
     { sql: unifiedPublicStatusQuery, parameters: [] },
     { sql: unifiedPublicByIdQuery, parameters: [rows[0].signal_id] },
   ]);
-  assert.match(unifiedPublicByIdQuery, /WHERE signal_id = \$1 LIMIT 2$/);
+  assert.match(unifiedPublicByIdQuery, /WHERE u.signal_id = \$1 LIMIT 2$/);
   visible = [];
   assert.equal(await reader.byId(rows[0].signal_id), undefined);
   assert.equal(queries.length, 4);
@@ -211,7 +211,8 @@ test('bounded health probe validates readiness and a public sample without listi
     { sql: unifiedPublicStatusQuery, parameters: [] },
     { sql: unifiedPublicProbeQuery, parameters: [] },
   ]);
-  assert.match(unifiedPublicProbeQuery, /FROM public\.unified_public_signals LIMIT 1$/);
+  assert.match(unifiedPublicProbeQuery, /FROM public\.unified_public_signals u/);
+  assert.match(unifiedPublicProbeQuery, /LIMIT 1$/);
   sample = [];
   await reader.probe();
   sample = [{ ...rows[0], content: { ...rows[0].content, private: 'secret' } }];

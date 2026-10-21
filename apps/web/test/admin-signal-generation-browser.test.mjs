@@ -1348,7 +1348,7 @@ test(
             await expect(page.getByRole('heading', { name: '保留的合格候选' })).toBeVisible();
             await expect(page.getByText('未提供可核对的主张。')).toBeVisible();
             await expect(page.getByText('未识别关键人物，需补充核对。')).toBeVisible();
-            await expect(page.getByText('来源未提供，待核对', { exact: false })).toBeVisible();
+            await expect(page.getByText('日期尚未确认，待补齐', { exact: false })).toBeVisible();
             await page.getByText('核对事件日期的来源依据', { exact: true }).click();
             await expect(page.getByText('未提供原文证据，需人工补充核对。')).toBeVisible();
             await expect(
@@ -1358,6 +1358,74 @@ test(
           assert.ok(commands.every((command) => command.action === 'detail'));
           await page.close();
         }
+      },
+    );
+
+    await t.test(
+      'unknown-date private drafts expose auxiliary references and review without another AI call',
+      async () => {
+        const page = await newPage();
+        const id = '55555555-5555-4555-8555-555555555555';
+        runs = [
+          {
+            id,
+            batch_id: batchId,
+            item_id: itemId,
+            profile_id: profileId,
+            profile_revision: 2,
+            status: 'completed',
+            error_code: null,
+            result: {
+              classification: 'private',
+              validation_version: 1,
+              rejected: [],
+              reason: 'private',
+              candidates: [
+                {
+                  index: 0,
+                  classification: 'private',
+                  status: 'needs_review',
+                  title: '日期待确认的合成候选',
+                  summary: '合成测试，不调用供应商。',
+                  event_date: null,
+                  event_date_evidence: [{ fragment_id: 'fragment-1', quote: 'earlier this week' }],
+                  persons: [],
+                  organizations: [],
+                  claims: [],
+                  issues: ['needs_public_evidence', 'needs_person_evidence', 'needs_event_time'],
+                },
+              ],
+            },
+          },
+        ];
+        await page.goto(`${origin}/?off`);
+        await page.getByText('更多操作', { exact: true }).click();
+        await page.getByRole('button', { name: '查看任务与私有候选', exact: true }).click();
+        await expect(
+          page.getByText('原始候选待补全：事件日期尚未确认', { exact: false }),
+        ).toBeVisible();
+        await expect(page.getByRole('link', { name: '审核候选 1', exact: true })).toHaveAttribute(
+          'href',
+          `/admin/signal-review/${id}/0`,
+        );
+        await page.getByText('查看日期相关辅助引用（日期待确认）', { exact: true }).click();
+        await expect(page.getByText('earlier this week', { exact: true })).toBeVisible();
+        assert.ok(commands.length > 0);
+        assert.ok(commands.every((command) => command.action === 'detail'));
+        assert.equal(runs[0].result.candidates[0].event_date, null);
+        // The new contract changes the label, never the saved legacy value.
+        runs[0].result.candidates[0].date_basis = 'source_published';
+        await page.goto(`${origin}/?off`);
+        await page.getByText('更多操作', { exact: true }).click();
+        await page.getByRole('button', { name: '查看任务与私有候选', exact: true }).click();
+        await expect(
+          page.getByText('原始候选待补全：原文发布日期尚未确认', { exact: false }),
+        ).toBeVisible();
+        await expect(
+          page.getByText('日期是否为原始新闻或文章的发布日期', { exact: false }),
+        ).toBeVisible();
+        assert.ok(commands.every((command) => command.action === 'detail'));
+        await page.close();
       },
     );
 
