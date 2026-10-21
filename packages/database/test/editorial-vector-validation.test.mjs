@@ -1,7 +1,27 @@
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { assertRestrictedApplicationRole } from '../src/editorial-signal-role.mjs';
 import { editorialVectorManifest } from '../src/editorial-vector-manifest.mjs';
 import { editorialVectorValidationQuery } from '../src/editorial-vector-query.mjs';
+
+describe('reviewed vector manifest representation', () => {
+  it('expands to the exact 118-row contract pinned before deduplication', () => {
+    // Captured from 0306a61, not from the refactored helper or a live database.
+    // Covers every attribute, overload, aggregate dependency, type and row order.
+    expect(editorialVectorManifest).toHaveLength(118);
+    expect(createHash('sha256').update(JSON.stringify(editorialVectorManifest)).digest('hex')).toBe(
+      '46c69266cb15e4584b611781b7392f2a1d3e1b78edea655cf2023b064ecc9d96',
+    );
+  });
+
+  it('does not share mutable argument lists or aggregate records between entries', () => {
+    expect(new Set(editorialVectorManifest.map((row) => row.args)).size).toBe(118);
+    const aggregates = editorialVectorManifest.map((row) => row.aggregate).filter(Boolean);
+    expect(aggregates).toHaveLength(4);
+    expect(new Set(aggregates).size).toBe(4);
+    expect(new Set(aggregates.map((entry) => entry.support_functions)).size).toBe(4);
+  });
+});
 
 function clientWithVectorResult(vectorResult) {
   const calls = [];

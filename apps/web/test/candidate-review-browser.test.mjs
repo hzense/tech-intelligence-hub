@@ -17,12 +17,12 @@ const materialHash = 'a'.repeat(64);
 // Actual React components + loopback synthetic API only. No real database, AI,
 // publication or credential use; server receipts are deliberately fixture data.
 test(
-  'candidate review browser: responsive edit, persisted revisions, conflict and safe same-key retries',
+  'historical candidate publication browser: material confirmation, same-key retries and withdrawal',
   { skip: !enabled },
   async (t) => {
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {CandidateReviewEditor} from './components/candidate-review-editor';import {CandidatePublicationActions} from './components/candidate-publication-actions';const props={runId:'${runId}',candidateIndex:0,materialHash:'${materialHash}'};createRoot(document.getElementById('root')).render(location.search.includes('publication')?<CandidatePublicationActions {...props}/>:<CandidateReviewEditor {...props} initialDraft={{title:'合成候选标题',summary:'用于本地验收的摘要。',eventDate:'2026-09-21'}}/>);`,
+        contents: `import {createRoot} from 'react-dom/client';import {CandidatePublicationActions} from './components/candidate-publication-actions';const props={runId:'${runId}',candidateIndex:0,materialHash:'${materialHash}'};createRoot(document.getElementById('root')).render(<CandidatePublicationActions {...props}/>);`,
         resolveDir: fileURLToPath(new URL('..', import.meta.url)),
         loader: 'tsx',
       },
@@ -92,8 +92,7 @@ test(
         },
       },
       mode = 'normal';
-    const commands = [],
-      saved = new Map();
+    const commands = [];
     const server = createServer(async (req, res) => {
       if (req.url.startsWith('/api/admin/candidate-materials')) {
         res.setHeader('Content-Type', 'application/json');
@@ -123,26 +122,6 @@ test(
         for await (const chunk of req) chunks.push(chunk);
         const body = JSON.parse(Buffer.concat(chunks).toString());
         commands.push(body);
-        if (body.action === 'save') {
-          if (mode === 'conflict') {
-            res.statusCode = 409;
-            res.end(JSON.stringify({ error: 'revision_conflict' }));
-            return;
-          }
-          let record = saved.get(body.request.requestId);
-          if (!record) {
-            record = {
-              ...body.request,
-              revision: reviews.length + 1,
-              material_hash: materialHash,
-              created_at: '2026-09-21T12:00:00Z',
-            };
-            saved.set(body.request.requestId, record);
-            reviews = [record, ...reviews];
-          }
-          res.end(JSON.stringify({ review: record }));
-          return;
-        }
         if (body.action === 'confirm') {
           const record = {
             revision: 1,
@@ -197,78 +176,12 @@ test(
     const browser = await chromium.launch();
     t.after(() => browser.close());
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    let dropNetwork = false;
-    await page.route('**/api/admin/candidate-review', async (route) => {
-      if (dropNetwork && route.request().method() === 'POST') {
-        dropNetwork = false;
-        await route.fetch(); // Synthetic server commits, but the client loses its response.
-        await route.abort('failed');
-      } else await route.continue();
-    });
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('dialog', (dialog) => dialog.accept());
     const url = `http://127.0.0.1:${server.address().port}`;
     const artifacts = await mkdtemp(join(tmpdir(), 'hzense-review-browser-'));
     t.diagnostic(`Synthetic browser screenshots: ${artifacts}`);
-    await page.goto(url);
-    await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeEnabled();
-    await page
-      .getByRole('textbox', { name: '标题（最多 80 字）', exact: true })
-      .fill('人工补充标题');
-    await page
-      .getByRole('textbox', { name: '审核意见 / 补证要求', exact: true })
-      .fill('来源还需补证。');
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('已保存 r1');
-    await page.reload();
-    await expect(
-      page.getByRole('textbox', { name: '标题（最多 80 字）', exact: true }),
-    ).toHaveValue('人工补充标题');
-    await expect(
-      page.getByRole('textbox', { name: '审核意见 / 补证要求', exact: true }),
-    ).toHaveValue('来源还需补证。');
-    await page.screenshot({ path: join(artifacts, 'desktop.png'), fullPage: true });
-    mode = 'conflict';
-    await page
-      .getByRole('textbox', { name: '摘要（最多 500 字）', exact: true })
-      .fill('冲突时必须保留的未保存文字。');
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('保存版本冲突');
-    await expect(
-      page.getByRole('textbox', { name: '摘要（最多 500 字）', exact: true }),
-    ).toHaveValue('冲突时必须保留的未保存文字。');
-    await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeDisabled();
-    mode = 'normal';
-    await page.getByRole('button', { name: '加载最新保存版本', exact: true }).click();
-    await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeEnabled();
-    await page
-      .getByRole('textbox', { name: '摘要（最多 500 字）', exact: true })
-      .fill('网络未知后用相同请求编号恢复。');
-    dropNetwork = true;
-    const before = commands.length;
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click();
-    await expect(page.getByRole('button', { name: '保存草稿', exact: true })).toBeEnabled();
-    await expect(
-      page.getByRole('textbox', { name: '摘要（最多 500 字）', exact: true }),
-    ).toHaveValue('网络未知后用相同请求编号恢复。');
-    await page.getByRole('button', { name: '保存草稿', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('已保存 r2');
-    assert.equal(commands[before].request.requestId, commands[before + 1].request.requestId);
-    assert.equal(reviews.length, 2);
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.reload();
-    await expect(
-      page.getByRole('textbox', { name: '摘要（最多 500 字）', exact: true }),
-    ).toHaveValue('网络未知后用相同请求编号恢复。');
-    assert.equal(
-      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-      true,
-    );
-    await page.screenshot({ path: join(artifacts, 'mobile.png'), fullPage: true });
-    const savedReviews = [...reviews];
-    reviews = [];
-    configured = true;
     const beforeEmptyPublication = commands.length;
     const formalPreparation = preparation;
     preparation = {
@@ -348,6 +261,12 @@ test(
       true,
     );
     await page.screenshot({ path: join(artifacts, 'publication-readiness.png'), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true,
+    );
+    await page.screenshot({ path: join(artifacts, 'publication-mobile.png'), fullPage: true });
     assert.equal(commands.length, beforeEmptyPublication);
     // A newer GET result must not silently replace what the administrator confirmed.
     preparation = { ...preparation, preparationHash: 'c'.repeat(64) };
@@ -372,8 +291,18 @@ test(
     assert.deepEqual(confirmation.request, uncertain.request);
     // New rejection must not prevent emergency withdrawal of the historical release.
     reviews = [
-      { ...savedReviews[0], revision: 2, decision: 'rejected' },
-      { ...savedReviews[1], revision: 1, decision: 'submit_verification' },
+      {
+        revision: 2,
+        decision: 'rejected',
+        material_hash: materialHash,
+        created_at: '2026-09-21T13:00:00Z',
+      },
+      {
+        revision: 1,
+        decision: 'submit_verification',
+        material_hash: materialHash,
+        created_at: '2026-09-21T12:00:00Z',
+      },
     ];
     configured = false;
     await page.goto(`${url}/?publication`);

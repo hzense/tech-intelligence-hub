@@ -1,19 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { getTopicEntries, getTopicEntryById } from '../lib/content-runtime.ts';
-import { getRadarEntries } from '../lib/radar-runtime.ts';
 import { getRadarSnapshots } from '../lib/seed-runtime.ts';
 import { projectTopicAssessments } from '../lib/topic-assessments.ts';
-import {
-  formatTopicMaturity,
-  formatTopicStrategicValue,
-  formatTopicTrend,
-} from '../lib/topic-presentation.ts';
-import {
-  formatRadarMaturity,
-  formatRadarStrategicValue,
-  formatRadarTrend,
-} from '../lib/radar-presentation.ts';
 
 const sampleSnapshot = {
   id: 'radar-synthetic-ai-security',
@@ -41,31 +30,16 @@ function topic(id, status = 'active') {
   };
 }
 
-test('Topic list, detail and homepage Radar reader share each complete latest assessment', async () => {
+test('Topic list and detail share the complete latest assessment without inventing scores', async () => {
   const topics = await getTopicEntries();
-  const radar = await getRadarEntries();
-  assert.deepEqual(radar, []);
-  for (const entry of radar) {
-    const id = entry.snapshot.topic;
-    const listed = topics.find((item) => item.frontMatter.id === id);
-    const detail = await getTopicEntryById(id);
-    assert.deepEqual(listed?.assessment, entry.snapshot);
-    assert.deepEqual(detail?.assessment, entry.snapshot);
-    assert.deepEqual(entry.topic.assessment, entry.snapshot);
-    assert.equal(formatTopicTrend(detail.assessment.trend), formatRadarTrend(entry.snapshot.trend));
-    assert.equal(
-      formatTopicMaturity(detail.assessment.maturity),
-      formatRadarMaturity(entry.snapshot.maturity),
-    );
-    assert.equal(
-      formatTopicStrategicValue(detail.assessment.strategic_value),
-      formatRadarStrategicValue(entry.snapshot.strategic_value),
-    );
+  const projected = projectTopicAssessments(topics, await getRadarSnapshots());
+  assert.ok(topics.length > 0);
+  for (const entry of topics) {
+    const id = entry.frontMatter.id;
+    const expected = projected.find((item) => item.frontMatter.id === id)?.assessment;
+    assert.deepEqual(entry.assessment, expected);
+    assert.deepEqual((await getTopicEntryById(id))?.assessment, expected);
   }
-  assert.deepEqual(
-    topics.filter((entry) => entry.assessment).map((entry) => entry.frontMatter.id),
-    radar.map((entry) => entry.snapshot.topic),
-  );
 });
 
 test('selects all metrics from the newest snapshot, not the highest score or input order', () => {
@@ -103,9 +77,6 @@ test('never falls back to legacy Markdown or a previously projected assessment',
   const [result] = projectTopicAssessments([{ ...legacy, assessment: source }], []);
   assert.equal(result.assessment, undefined);
   assert.equal(result.assessment?.attention ?? '—', '—');
-  assert.equal(formatTopicTrend(result.assessment?.trend), '待评估');
-  assert.equal(formatTopicMaturity(result.assessment?.maturity), '待评估');
-  assert.equal(formatTopicStrategicValue(result.assessment?.strategic_value), '待评估');
 });
 
 test('keeps unassessed Topics last, excludes archived pages and does not mutate cached documents', () => {

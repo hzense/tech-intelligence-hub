@@ -94,6 +94,16 @@ async function json(response: Response) {
     );
   return body;
 }
+async function materialAction(action: string, request: unknown) {
+  return json(
+    await fetch('/api/admin/candidate-materials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, request }),
+      signal: AbortSignal.timeout(65000),
+    }),
+  );
+}
 type Props = {
   runId: string;
   candidateIndex: number;
@@ -188,14 +198,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
     const id = enrichmentIds.current[recoveryKey] ?? crypto.randomUUID();
     enrichmentIds.current[recoveryKey] = id;
     try {
-      await json(
-        await fetch('/api/admin/candidate-materials', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'enrich', request: { id, requestId, consent: true } }),
-          signal: AbortSignal.timeout(65000),
-        }),
-      );
+      await materialAction('enrich', { id, requestId, consent: true });
       setMessage(
         '补证 AI 补全任务已保存并排队。完成后点击“准备核验材料”；不要重复创建或重复调用。',
       );
@@ -224,17 +227,13 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
             .filter((item) => selected.includes(item.itemId))
             .map(({ batchId, itemId }) => ({ batchId, itemId })),
         };
-        const checked = await json(
-          await fetch('/api/admin/candidate-materials', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'inspect',
-              request: { ...proposed, runId, candidateIndex, materialHash, consent: true },
-            }),
-            signal: AbortSignal.timeout(65000),
-          }),
-        );
+        const checked = await materialAction('inspect', {
+          ...proposed,
+          runId,
+          candidateIndex,
+          materialHash,
+          consent: true,
+        });
         setCapacity(checked);
         if (kind === 'inspect') return;
         pending.current = proposed;
@@ -243,14 +242,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
         kind === 'create'
           ? { ...pending.current, runId, candidateIndex, materialHash, consent: true }
           : { requestId, reportId: report!.id, planHash: report!.planHash, consent: true };
-      await json(
-        await fetch('/api/admin/candidate-materials', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: kind, request }),
-          signal: AbortSignal.timeout(65000),
-        }),
-      );
+      await materialAction(kind, request);
       if (kind === 'create') {
         pending.current = null;
         setSelected([]);
@@ -305,14 +297,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
               proposalHash: proposal!.proposalHash,
               consent: true,
             };
-      const result = await json(
-        await fetch('/api/admin/candidate-materials', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: kind, request }),
-          signal: AbortSignal.timeout(65000),
-        }),
-      );
+      const result = await materialAction(kind, request);
       if (kind === 'prepare') {
         setOrganizationReviews((previous) => ({
           ...previous,

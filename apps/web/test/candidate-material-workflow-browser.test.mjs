@@ -90,7 +90,10 @@ test(
           await route.fulfill({ json: data });
           return;
         }
+        assert.equal(route.request().method(), 'POST');
+        assert.equal(route.request().headers()['content-type'], 'application/json');
         const body = route.request().postDataJSON();
+        assert.deepEqual(Object.keys(body).sort(), ['action', 'request']);
         if (body.action === 'inspect') {
           inspections++;
           await route.fulfill(
@@ -378,6 +381,13 @@ test(
         page.getByText('补证记录已读取，但上方发布材料刷新失败', { exact: false }),
       ).toBeVisible();
       assert.equal(commands.filter((command) => command.action === 'confirm').length, 1);
+      assert.deepEqual([...new Set(commands.map(({ action }) => action))].sort(), [
+        'approve',
+        'confirm',
+        'create',
+        'enrich',
+        'prepare',
+      ]);
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
         true,
