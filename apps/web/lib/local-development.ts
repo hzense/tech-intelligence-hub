@@ -93,7 +93,7 @@ export function isLocalRealAi(env: LocalDevelopmentEnvironment = process.env): b
   return isLocalDevelopment(env) && env.HZENSE_LOCAL_AI_MODE === 'real';
 }
 
-/** Only manually triggered source collection is available in the local real-AI world. */
+/** Source collection is available only in the isolated local real-AI world. */
 export function isLocalRealAutomationEnabled(
   env: LocalDevelopmentEnvironment = process.env,
 ): boolean {
@@ -102,6 +102,13 @@ export function isLocalRealAutomationEnabled(
     env.WORKFLOW_TARGET_WORLD === 'local' &&
     env.HZENSE_AUTOMATION_ENABLED === '1'
   );
+}
+
+/** Unattended local collection requires an additional explicit scheduler opt-in. */
+export function isLocalAutomationSchedulerEnabled(
+  env: LocalDevelopmentEnvironment = process.env,
+): boolean {
+  return isLocalRealAutomationEnabled(env) && env.HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED === '1';
 }
 
 /** Missing or unknown modes fail closed to the existing non-networked simulator. */

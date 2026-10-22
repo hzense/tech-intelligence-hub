@@ -35,6 +35,7 @@ type Dashboard = {
   runs: RunView[];
   configDeletionAvailable: boolean;
   automaticPublicationAvailable?: boolean;
+  localSchedulingAvailable?: boolean;
 };
 const publicationMode = (config: {
   publicationMode?: 'manual' | 'automatic';
@@ -105,6 +106,8 @@ async function api<T>(body?: unknown, signal?: AbortSignal, id?: string): Promis
 }
 const money = (microusd: number) => `$${(microusd / 1_000_000).toFixed(4)}`;
 const time = (date: string | Date | null) => (date ? new Date(date).toLocaleString('zh-CN') : '—');
+const utcTime = (date: string | Date) =>
+  `${new Date(date).toLocaleString('zh-CN', { timeZone: 'UTC', hour12: false })} UTC`;
 function TopicReport({ result }: { result: Record<string, unknown> }) {
   const report = result.report as
     | {
@@ -399,12 +402,16 @@ export function AdminAutomation({
 }) {
   const localSourceManual = localMode && localRealAiMode && kind === 'source_collection';
   const manualExecutionAllowed = executionEnabled && (!localMode || localSourceManual);
+  const [state, setState] = useState(initial);
+  const localSchedulingAllowed = localSourceManual && state.localSchedulingAvailable === true;
   function draftForMode(config: AutomationConfig): AutomationConfig {
     const normalized =
       config.kind === 'source_collection'
         ? { ...config, publicationMode: publicationMode(config) }
         : config;
-    return localMode ? { ...normalized, enabled: false, frequency: 'manual' } : normalized;
+    return localMode && !localSchedulingAllowed
+      ? { ...normalized, enabled: false, frequency: 'manual' }
+      : normalized;
   }
   function profileReady(row: ConfigView): boolean {
     return profiles.some(
@@ -424,7 +431,6 @@ export function AdminAutomation({
         state.automaticPublicationAvailable === true)
     );
   }
-  const [state, setState] = useState(initial);
   const [editing, setEditing] = useState<ConfigView | null>(null);
   const [draft, setDraft] = useState<AutomationConfig>(() => draftForMode(blank(kind)));
   const [message, setMessage] = useState('');
@@ -519,7 +525,9 @@ export function AdminAutomation({
       setEditing(result.config);
       setDraft(draftForMode(result.config.config));
       await refresh();
-      setMessage(`配置已保存为 r${result.config.revision}。保存配置不会启动任务。`);
+      setMessage(
+        `配置已保存为 r${result.config.revision}。${localSchedulingAllowed && result.config.enabled ? '本地定时已开启，将从下一个计划时点执行；本次保存不会立即启动任务。' : '保存配置不会启动任务。'}`,
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '保存结果未确认');
     } finally {
@@ -532,7 +540,7 @@ export function AdminAutomation({
       !canRun(row) ||
       !window.confirm(
         localSourceManual
-          ? `确认启动本地采集“${row.config.name}”？将联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索和模型费用。结果仅保存在本地，不同步生产；${publicationMode(row.config) === 'automatic' ? '检查合格的公开网页信号会直接发布到本地信号列表，无需逐条审核' : '生成候选需人工审核后发布'}。本次仅手动执行，不开启定时。`
+          ? `确认启动本地采集“${row.config.name}”？将联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索和模型费用。结果仅保存在本地，不同步生产；${publicationMode(row.config) === 'automatic' ? '检查合格的公开网页信号会直接发布到本地信号列表，无需逐条审核' : '生成候选需人工审核后发布'}。本次仅手动执行，不改变定时设置。`
           : `确认启动“${row.config.name}”？运行可能产生导入或模型费用。${row.config.kind === 'source_collection' && publicationMode(row.config) === 'automatic' ? '检查合格的公开网页信号会直接发布，无需逐条审核。' : '结果需人工确认后发布。'}结果需在任务列表中核对。`,
       )
     )
@@ -678,7 +686,7 @@ export function AdminAutomation({
         {localMode ? (
           <p role="status">
             {localSourceManual
-              ? '本地真实采集：手动启动会联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索与模型费用。配置、资料和候选仅保存在本地，不同步生产；是否发布到本地信号列表由配置中的发布方式决定。本地定时保持关闭；保存配置不会启动采集。'
+              ? `本地真实采集：运行会联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索与模型费用。配置、资料和候选仅保存在本地，不同步生产；是否发布到本地信号列表由配置中的发布方式决定。${localSchedulingAllowed ? '可自行选择频率并勾选“允许定时执行”，保存后开启本地定时；新配置默认关闭。' : '本地定时保持关闭；保存配置不会启动采集。'}`
               : '本地配置模式：可选择未完成能力测试的模型草稿，保存和修订仅写入本机数据库。当前模式不执行采集、专题生成或定时任务；不会联网搜索、调用 AI 或同步生产。'}
           </p>
         ) : null}
@@ -745,22 +753,35 @@ export function AdminAutomation({
             执行频率
             <select
               aria-label="执行频率"
-              disabled={localMode}
+              aria-describedby={localMode ? 'local-schedule-help' : undefined}
+              disabled={localMode && !localSchedulingAllowed}
               value={draft.frequency}
               onChange={(e) =>
-                setDraft({ ...draft, frequency: e.target.value as AutomationConfig['frequency'] })
+                setDraft({
+                  ...draft,
+                  frequency: e.target.value as AutomationConfig['frequency'],
+                  ...(localSchedulingAllowed && e.target.value === 'manual'
+                    ? { enabled: false }
+                    : {}),
+                })
               }
             >
               <option value="manual">仅手动</option>
-              <option value="daily">每日（UTC）</option>
-              <option value="weekly">每周一（UTC）</option>
+              <option value="daily">
+                {localSchedulingAllowed ? '每日 00:00（UTC）' : '每日（UTC）'}
+              </option>
+              <option value="weekly">
+                {localSchedulingAllowed ? '每周一 00:00（UTC）' : '每周一（UTC）'}
+              </option>
             </select>
           </label>
           {localMode ? (
-            <p className={styles.full}>
-              {localSourceManual
-                ? '本地只允许手动启动；已有配置的定时计划不会执行，保存时保持定时关闭。'
-                : '本地草稿不执行任务；已有配置的定时计划不会执行，保存时保持定时关闭。'}
+            <p id="local-schedule-help" className={styles.full}>
+              {localSchedulingAllowed
+                ? '每日在 UTC 00:00、每周在周一 UTC 00:00 执行。勾选并保存后，从下一个计划时点开始，不会立即执行。计算机和本地开发服务须保持运行；停止服务或休眠期间暂停，恢复后不会逐日补跑。选择“仅手动”会关闭定时；仍可点击“立即运行”。'
+                : localSourceManual
+                  ? '本地只允许手动启动；已有配置的定时计划不会执行，保存时保持定时关闭。'
+                  : '本地草稿不执行任务；已有配置的定时计划不会执行，保存时保持定时关闭。'}
             </p>
           ) : null}
           <label>
@@ -831,7 +852,8 @@ export function AdminAutomation({
           ) : null}
           {localSourceManual ? (
             <p className={styles.full}>
-              可保存未验证的模型草稿；立即运行必须选用当前修订已通过能力测试的配置。修改模型配置后，请重新选择并保存当前修订。
+              可保存未验证的模型草稿；立即运行{localSchedulingAllowed ? '和开启定时' : ''}
+              必须选用当前修订已通过能力测试的配置。修改模型配置后，请重新选择并保存当前修订。
             </p>
           ) : null}
           {kind === 'source_collection' && draft.discovery ? (
@@ -841,7 +863,7 @@ export function AdminAutomation({
               </p>
               {editing && !editing.config.discovery ? (
                 <p className={styles.full}>
-                  {localMode
+                  {localMode && !localSchedulingAllowed
                     ? '此为旧固定网址配置。保存后将转为联网发现并关闭原计划；本地仅支持手动启动，请确认检索范围。'
                     : '此为旧固定网址配置。保存后将转为联网发现并关闭原计划；无需指定领域，请确认检索范围及是否启用定时执行。'}
                 </p>
@@ -896,7 +918,9 @@ export function AdminAutomation({
                 每次最多搜索 3
                 次。原文获取失败或没有新信息时不编造候选。采集、导入、生成分别遵守服务器配置的预算；
                 {localMode
-                  ? '本地定时关闭，手动启动前仍需确认联网与计费；是否发布到本地信号列表按发布方式执行。'
+                  ? localSchedulingAllowed
+                    ? '本地定时须勾选并保存后才会启用；手动启动前仍需确认联网与计费。是否发布到本地信号列表按发布方式执行。'
+                    : '本地定时关闭，手动启动前仍需确认联网与计费；是否发布到本地信号列表按发布方式执行。'
                   : '启用计划即授权按此范围和发布方式定期执行。'}
               </p>
             </>
@@ -936,9 +960,11 @@ export function AdminAutomation({
           <label className={styles.check}>
             <input
               type="checkbox"
+              aria-describedby={localMode ? 'local-schedule-help' : undefined}
               checked={draft.enabled}
               disabled={
-                localMode ||
+                (localMode && !localSchedulingAllowed) ||
+                (localSchedulingAllowed && draft.frequency === 'manual') ||
                 !configured ||
                 (!draft.enabled &&
                   (!executionEnabled ||
@@ -996,14 +1022,23 @@ export function AdminAutomation({
                         </small>
                       ) : null}
                     </td>
-                    <td>{localMode ? 'manual' : row.config.frequency}</td>
+                    <td>
+                      {localMode && !localSchedulingAllowed ? 'manual' : row.config.frequency}
+                      {localSchedulingAllowed && row.enabled && row.next_run_at ? (
+                        <small>下次计划：{utcTime(row.next_run_at)}</small>
+                      ) : null}
+                    </td>
                     {kind === 'source_collection' ? <td>{publicationLabel(row.config)}</td> : null}
                     <td>
                       {localSourceManual
                         ? !profileReady(row)
                           ? '模型未就绪 · 不能运行'
                           : manualExecutionAllowed
-                            ? '本地仅手动 · 定时关闭'
+                            ? localSchedulingAllowed
+                              ? row.enabled
+                                ? '本地定时开启'
+                                : '本地定时关闭'
+                              : '本地仅手动 · 定时关闭'
                             : '执行未就绪 · 定时关闭'
                         : localMode
                           ? '本地草稿 · 不执行'

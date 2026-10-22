@@ -235,3 +235,64 @@ test('invalid local markers fail before any read, reservation or child dispatch'
   assert.equal(state.claims, 0);
   assert.deepEqual(state.starts, []);
 });
+
+test('scheduled local collection reaches worker stages only while the scheduler opt-in is active', async (t) => {
+  const { state, claim, findSources, createPrivateGeneration, dispatchGeneration } = await setup(
+    t,
+    'manual',
+    { ...local(), HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED: '1' },
+  );
+  state.run.trigger = 'scheduled';
+  await claim(owner, runId);
+  assert.equal(state.claims, 1);
+  await findSources(owner, runId);
+  assert.equal(state.discoveries, 1);
+  const generation = await createPrivateGeneration(owner, runId, 'batch', itemId);
+  await dispatchGeneration(owner, runId, generation);
+  assert.equal(state.starts[0].worker, 'localSignalGenerationWorkflow');
+  assert.equal(state.creates[0].body.automaticPublicationConsent, false);
+
+  process.env.HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED = '0';
+  for (const execute of [
+    () => claim(owner, runId),
+    () => findSources(owner, runId),
+    () => createPrivateGeneration(owner, runId, 'batch', itemId),
+  ])
+    await assert.rejects(execute(), /execution_disabled/);
+  assert.equal(await dispatchGeneration(owner, runId, generation), false);
+  assert.equal(state.claims, 1);
+  assert.equal(state.discoveries, 1);
+  assert.equal(state.creates.length, 1);
+  assert.equal(state.starts.length, 1);
+  assert.deepEqual(state.cleanups, [{ owner, id: generation.id, at: queuedAt }]);
+});
+
+test('scheduled worker admission rejects mock, production markers and local insight runs', async (t) => {
+  const { state, claim } = await setup(t, 'manual', {
+    ...local(),
+    HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED: '1',
+  });
+  state.run.trigger = 'scheduled';
+  for (const patch of [
+    { HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED: undefined },
+    { HZENSE_LOCAL_AI_MODE: 'mock' },
+    { NODE_ENV: 'production' },
+    { VERCEL: '1' },
+    { WORKFLOW_TARGET_WORLD: 'vercel' },
+    { HZENSE_RUNTIME_DATABASE_URL: 'postgresql://remote.invalid/db' },
+  ]) {
+    process.env = { ...local(), HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED: '1', ...patch };
+    await assert.rejects(claim(owner, runId), /execution_disabled/);
+  }
+  process.env = { ...local(), HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED: '1' };
+  state.run.snapshot.kind = 'topic_insight';
+  await assert.rejects(claim(owner, runId), /execution_disabled/);
+  assert.equal(state.claims, 0);
+  assert.equal(state.discoveries, 0);
+  assert.deepEqual(state.starts, []);
+
+  process.env = production();
+  state.run.snapshot.kind = 'source_collection';
+  await claim(owner, runId);
+  assert.equal(state.claims, 1, 'Production scheduled worker admission remains unchanged');
+});

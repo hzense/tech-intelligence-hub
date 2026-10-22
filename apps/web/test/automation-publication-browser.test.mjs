@@ -8,7 +8,14 @@ import { chromium, expect } from '@playwright/test';
 
 const profileId = '11111111-1111-4111-8111-111111111111';
 const configId = '22222222-2222-4222-8222-222222222222';
-function fixture({ available = true, kind = 'source_collection', legacy = true } = {}) {
+function fixture({
+  available = true,
+  kind = 'source_collection',
+  legacy = true,
+  localMode = true,
+  localRealAiMode = true,
+  localSchedulingAvailable,
+} = {}) {
   const config = {
     name: '测试采集配置',
     kind,
@@ -27,13 +34,14 @@ function fixture({ available = true, kind = 'source_collection', legacy = true }
     configured: true,
     executionEnabled: true,
     loadError: false,
-    localMode: true,
-    localRealAiMode: true,
+    localMode,
+    localRealAiMode,
     profiles: [{ id: profileId, revision: 1, name: '合成验收模型', ready: true }],
     topics: [{ id: 'ai', name: '人工智能' }],
     initial: {
       configDeletionAvailable: true,
       automaticPublicationAvailable: available,
+      ...(localSchedulingAvailable === undefined ? {} : { localSchedulingAvailable }),
       configs: legacy ? [{ id: configId, revision: 1, enabled: false, config }] : [],
       runs:
         kind === 'source_collection'
@@ -54,7 +62,7 @@ function fixture({ available = true, kind = 'source_collection', legacy = true }
 }
 
 test(
-  'automation publication settings: explicit authorization, safe defaults and snapshot-scoped triggers',
+  'automation configuration: explicit authorization, local schedules and snapshot-scoped publication',
   { skip: process.env.HZENSE_AUTOMATION_BROWSER_TEST !== '1' },
   async (t) => {
     const root = fileURLToPath(new URL('..', import.meta.url));
@@ -141,6 +149,11 @@ test(
             revision: body.request.expectedRevision + 1,
             config: body.request.config,
             enabled: body.request.config.enabled,
+            next_run_at: body.request.config.enabled
+              ? body.request.config.frequency === 'weekly'
+                ? '2026-10-26T00:00:00Z'
+                : '2026-10-23T00:00:00Z'
+              : null,
           };
           props.initial.configs = [
             ...props.initial.configs.filter((row) => row.id !== next.id),
@@ -170,6 +183,130 @@ test(
       };
     }
     try {
+      await t.test(
+        'available local schedules stay off until explicit save and retain manual publication',
+        async () => {
+          const f = await setup({ localSchedulingAvailable: true, legacy: false });
+          const { page } = f;
+          const frequency = page.getByLabel('执行频率', { exact: true });
+          const enabled = page.getByRole('checkbox', { name: '允许定时执行（可能产生费用）' });
+          await expect(frequency).toBeEnabled();
+          await expect(frequency).toHaveValue('daily');
+          await expect(enabled).not.toBeChecked();
+          await expect(page.getByText(/计算机和本地开发服务须保持运行/)).toBeVisible();
+          await expect(page.getByText(/恢复后不会逐日补跑/)).toBeVisible();
+          await page.getByLabel('配置名称', { exact: true }).fill('本地定时采集');
+          await page.getByLabel('分阶段模型配置', { exact: true }).selectOption(profileId);
+          await enabled.check();
+          assert.equal(f.posts.length, 0, 'editing does not persist or start the schedule');
+          await page.getByRole('button', { name: '保存配置', exact: true }).click();
+          await expect(
+            page.getByText(/将从下一个计划时点执行；本次保存不会立即启动任务/),
+          ).toBeVisible();
+          assert.equal(f.posts.length, 1);
+          assert.equal(f.posts[0].action, 'save');
+          assert.equal(f.posts[0].request.config.enabled, true);
+          assert.equal(f.posts[0].request.config.frequency, 'daily');
+          assert.equal(f.posts[0].request.config.publicationMode, 'manual');
+          await expect(page.getByRole('cell', { name: '本地定时开启', exact: true })).toBeVisible();
+          await expect(
+            page.getByText('下次计划：2026/10/23 00:00:00 UTC', { exact: true }),
+          ).toBeVisible();
+          await page.reload();
+          await expect(enabled).not.toBeChecked();
+          await page.getByRole('button', { name: '编辑', exact: true }).click();
+          await expect(enabled).toBeChecked();
+          await expect(frequency).toHaveValue('daily');
+          await frequency.selectOption('weekly');
+          await page.getByRole('button', { name: '保存配置', exact: true }).click();
+          await expect(page.getByText(/配置已保存为 r2/)).toBeVisible();
+          assert.equal(f.posts[1].request.config.frequency, 'weekly');
+          assert.equal(f.posts[1].request.config.enabled, true);
+          await expect(
+            page.getByText('下次计划：2026/10/26 00:00:00 UTC', { exact: true }),
+          ).toBeVisible();
+          await page.screenshot({
+            path: '/tmp/hzense-local-scheduling-mobile.png',
+            fullPage: true,
+          });
+          assert.equal(
+            await page.evaluate(() => globalThis.document.documentElement.scrollWidth <= 390),
+            true,
+          );
+          await frequency.selectOption('manual');
+          await expect(enabled).not.toBeChecked();
+          await expect(enabled).toBeDisabled();
+          await page.getByRole('button', { name: '保存配置', exact: true }).click();
+          await expect(page.getByText(/配置已保存为 r3/)).toBeVisible();
+          assert.equal(f.posts[2].request.config.enabled, false);
+          assert.equal(f.posts[2].request.config.frequency, 'manual');
+          await expect(page.getByText(/^下次计划：/)).toHaveCount(0);
+          await expect(page.getByRole('cell', { name: '本地定时关闭', exact: true })).toBeVisible();
+          await expect(page.getByRole('button', { name: '立即运行', exact: true })).toBeEnabled();
+          assert.ok(
+            f.posts.every((body) => body.action === 'save'),
+            'saving never triggers a run',
+          );
+          await f.close();
+        },
+      );
+      await t.test(
+        'local scheduling readiness is refreshed without enabling existing configs',
+        async () => {
+          const f = await setup({ localSchedulingAvailable: false });
+          const frequency = f.page.getByLabel('执行频率', { exact: true });
+          const enabled = f.page.getByRole('checkbox', { name: '允许定时执行（可能产生费用）' });
+          await expect(frequency).toBeDisabled();
+          await expect(enabled).toBeDisabled();
+          f.props.initial.localSchedulingAvailable = true;
+          await f.page.getByRole('button', { name: '刷新列表', exact: true }).click();
+          await expect(frequency).toBeEnabled();
+          await expect(frequency).toHaveValue('manual');
+          await expect(enabled).not.toBeChecked();
+          await expect(
+            f.page.getByRole('cell', { name: '本地定时关闭', exact: true }),
+          ).toBeVisible();
+          delete f.props.initial.localSchedulingAvailable;
+          await f.page.getByRole('button', { name: '刷新列表', exact: true }).click();
+          await expect(frequency).toBeDisabled();
+          await expect(enabled).toBeDisabled();
+          assert.equal(f.posts.length, 0, 'readiness changes never write or run existing configs');
+          await f.close();
+        },
+      );
+      for (const [name, options] of [
+        ['missing capability', {}],
+        ['disabled capability', { localSchedulingAvailable: false }],
+        ['mock AI', { localSchedulingAvailable: true, localRealAiMode: false }],
+        ['topic insights', { localSchedulingAvailable: true, kind: 'topic_insight' }],
+      ]) {
+        await t.test(`local schedule controls stay disabled for ${name}`, async () => {
+          const f = await setup(options);
+          await expect(f.page.getByLabel('执行频率', { exact: true })).toBeDisabled();
+          await expect(f.page.getByLabel('执行频率', { exact: true })).toHaveValue('manual');
+          const enabled = f.page.getByRole('checkbox', { name: '允许定时执行（可能产生费用）' });
+          await expect(enabled).toBeDisabled();
+          await expect(enabled).not.toBeChecked();
+          assert.equal(f.posts.length, 0);
+          await f.close();
+        });
+      }
+      await t.test('production schedule controls do not require the local capability', async () => {
+        const f = await setup({
+          localMode: false,
+          localRealAiMode: false,
+          localSchedulingAvailable: false,
+        });
+        const frequency = f.page.getByLabel('执行频率', { exact: true });
+        const enabled = f.page.getByRole('checkbox', { name: '允许定时执行（可能产生费用）' });
+        await expect(frequency).toBeEnabled();
+        await expect(enabled).toBeEnabled();
+        await expect(frequency).toHaveValue('daily');
+        await expect(enabled).not.toBeChecked();
+        await expect(f.page.getByText(/计算机和本地开发服务须保持运行/)).toHaveCount(0);
+        assert.equal(f.posts.length, 0);
+        await f.close();
+      });
       await t.test(
         'legacy configs default to manual and saving does not authorize publication',
         async () => {

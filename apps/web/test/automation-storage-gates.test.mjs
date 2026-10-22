@@ -146,7 +146,7 @@ test('inactive configuration saves without execution budgets, while enable/trigg
         export async function aiStageAccess(_id,_revision,_stage,credentials){if(credentials)throw Error('credentials_not_needed');return {}}
         export async function validateLocalAiProfileReference(id,revision){const f=globalThis.__automationService;f.localProfileChecks.push({id,revision});if(id!=='profile')throw Object.assign(Error('not_found'),{code:'not_found'});if(revision!==1)throw Object.assign(Error('revision_conflict'),{code:'revision_conflict'})}`,
       '../local-development':
-        'export const isLocalDevelopment=()=>globalThis.__automationService.local;',
+        'export const isLocalDevelopment=()=>globalThis.__automationService.local; export const isLocalAutomationSchedulerEnabled=()=>false;',
       '../automatic-publication':
         'export const automaticPublicationAvailable=()=>globalThis.__automationService.automaticPublicationAvailable===true;',
       './import-service':

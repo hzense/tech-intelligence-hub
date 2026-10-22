@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { URL } from 'node:url';
+import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   assertLocalDevelopmentLaunchEnvironment,
   buildLocalDevelopmentEnvironment,
@@ -44,6 +47,7 @@ test('development launcher discards all inherited service credentials and binds 
       HZENSE_AI_ALLOWED_HOSTS: 'untrusted.invalid',
       HZENSE_LOCAL_AI_MODE: 'real',
       HZENSE_AUTOMATION_ENABLED: '1',
+      HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED: '1',
       HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD: '999999999',
       HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD: '999999999',
       HZENSE_AUTOMATION_RESERVE_MICROUSD: '999999999',
@@ -64,6 +68,7 @@ test('development launcher discards all inherited service credentials and binds 
   assert.equal(env.HZENSE_LOCAL_AI_MODE, 'mock');
   assert.equal(env.HZENSE_SIGNAL_READ_MODE, 'database');
   assert.equal(env.HZENSE_AUTOMATION_ENABLED, '0');
+  assert.equal(env.HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED, '0');
   assert.equal(env.HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD, '5000000');
   assert.equal(env.HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD, '10000000');
   assert.equal(env.HZENSE_AUTOMATION_RESERVE_MICROUSD, '5000000');
@@ -121,6 +126,7 @@ test('real provider mode is opt-in via a validated local launch argument', () =>
   assert.equal(env.HZENSE_LOCAL_AI_MODE, 'real');
   assert.equal(env.HZENSE_AUTOMATIC_PUBLICATION_ENABLED, '0');
   assert.equal(env.HZENSE_AUTOMATION_ENABLED, '1');
+  assert.equal(env.HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED, '1');
   assert.equal(env.HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD, '5000000');
   assert.equal(env.HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD, '10000000');
   assert.equal(env.HZENSE_AUTOMATION_RESERVE_MICROUSD, '5000000');
@@ -180,11 +186,56 @@ test('real mode check warns of provider spending without starting or invoking AI
     verifyDatabase: async () => undefined,
     loadCredentials: async () => credentials(),
     runProcess: async () => assert.fail('check must not start a server'),
+    startScheduler: () => assert.fail('check must not start a scheduler'),
     log: (message) => logs.push(message),
   });
   assert.ok(logs.some((line) => line.includes('资料会发送给供应商')));
   assert.ok(logs.some((line) => line.includes('供应商费用')));
   assert.doesNotMatch(logs.join('\n'), /[a-f0-9]{64}|postgresql:/);
+});
+
+test('launcher owns scheduler lifetime in real mode, including process failure; mock never starts it', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'hzense-scheduler-launcher-')));
+  await mkdir(join(root, '.hzense-local'), { mode: 0o700 });
+  try {
+    for (const aiMode of ['mock', 'real']) {
+      for (const fail of [false, true]) {
+        const events = [];
+        const result = main([`--ai=${aiMode}`], {
+          environment: {},
+          repositoryRoot: root,
+          inspect: async () => {
+            throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+          },
+          verifyDatabase: async () => undefined,
+          loadCredentials: async () => credentials(),
+          startScheduler: ({ port }) => {
+            assert.equal(port, 3000);
+            events.push('scheduler');
+            return { stop: () => events.push('stop') };
+          },
+          runProcess: async (_command, _args, { env }) => {
+            assert.equal(
+              env.HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED,
+              aiMode === 'real' ? '1' : '0',
+            );
+            events.push('process');
+            if (fail) throw new Error('synthetic start failure');
+            return 130;
+          },
+          log: () => undefined,
+        });
+        if (fail) await assert.rejects(result, /synthetic/);
+        else assert.equal(await result, 130);
+        assert.deepEqual(
+          events,
+          aiMode === 'real' ? ['scheduler', 'process', 'stop'] : ['process'],
+        );
+      }
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('launcher requires an explicit credential upgrade before exposing local automation configuration', () => {
