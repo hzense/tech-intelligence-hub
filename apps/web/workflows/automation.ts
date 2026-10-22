@@ -12,7 +12,10 @@ import {
 import { start } from 'workflow/api';
 import { signalGenerationWorkflow } from './signal-generation';
 import { localSignalGenerationWorkflow } from './local-signal-generation';
-import { isLocalRealAutomationEnabled } from '../lib/local-development';
+import {
+  isLocalAutomationSchedulerEnabled,
+  isLocalRealAutomationEnabled,
+} from '../lib/local-development';
 import { automaticPublicationAvailable } from '../lib/automatic-publication';
 import { discoverSources } from '../lib/server/source-discovery';
 import {
@@ -41,7 +44,11 @@ function assertLocalAutomationExecution(kind?: 'source_collection' | 'topic_insi
 }
 
 function assertLocalAutomationRun(run: Pick<store.AutomationRun, 'snapshot' | 'trigger'>) {
-  if (assertLocalAutomationExecution(run.snapshot.kind) && run.trigger !== 'manual')
+  if (
+    assertLocalAutomationExecution(run.snapshot.kind) &&
+    run.trigger !== 'manual' &&
+    !(run.trigger === 'scheduled' && isLocalAutomationSchedulerEnabled())
+  )
     throw new Error('execution_disabled');
   // The saved run snapshot is the only consent source, including workflow
   // resumption. Changing a configuration or global flag cannot upgrade it.

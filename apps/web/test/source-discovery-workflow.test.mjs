@@ -22,7 +22,8 @@ test('source discovery orchestrates originals and private candidates without dro
     workflow: 'export async function sleep(){}',
     'workflow/api':
       'export async function start(workflow,args){const f=globalThis.__sourceFlow;f.dispatched.push(args[1]);f.dispatchedArgs.push(args);f.dispatchedWorkflows.push(workflow.name);if(f.dispatchErrors.includes(args[1]))throw Error("unknown");}',
-    '../lib/local-development': `export function isLocalRealAutomationEnabled(){return process.env.HZENSE_LOCAL_DEVELOPMENT==='1'&&process.env.HZENSE_LOCAL_AI_MODE==='real'&&process.env.WORKFLOW_TARGET_WORLD==='local'&&process.env.HZENSE_AUTOMATION_ENABLED==='1'&&globalThis.__sourceFlow.localIsolationValid}`,
+    '../lib/local-development': `export function isLocalRealAutomationEnabled(){return process.env.HZENSE_LOCAL_DEVELOPMENT==='1'&&process.env.HZENSE_LOCAL_AI_MODE==='real'&&process.env.WORKFLOW_TARGET_WORLD==='local'&&process.env.HZENSE_AUTOMATION_ENABLED==='1'&&globalThis.__sourceFlow.localIsolationValid}
+      export function isLocalAutomationSchedulerEnabled(){return isLocalRealAutomationEnabled()&&process.env.HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED==='1'}`,
     '../lib/server/automation':
       'export function automationLimits(){return {batch:1000000,daily:5000000,reserve:500000}}',
     '../lib/server/automation-store-access': 'export const automationPool={};',
@@ -83,6 +84,7 @@ test('source discovery orchestrates originals and private candidates without dro
     'HZENSE_LOCAL_AI_MODE',
     'WORKFLOW_TARGET_WORLD',
     'HZENSE_AUTOMATION_ENABLED',
+    'HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED',
   ];
   const savedEnvironment = Object.fromEntries(
     environmentKeys.map((key) => [key, process.env[key]]),
@@ -350,6 +352,7 @@ test('source discovery orchestrates originals and private candidates without dro
         HZENSE_LOCAL_AI_MODE: 'real',
         WORKFLOW_TARGET_WORLD: 'local',
         HZENSE_AUTOMATION_ENABLED: '1',
+        HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED: '0',
       });
     localReal();
     f = setup(['https://example.com/local']);
@@ -359,6 +362,16 @@ test('source discovery orchestrates originals and private candidates without dro
     assert.deepEqual(f.dispatchedWorkflows, ['localSignalGenerationWorkflow']);
     assert.deepEqual(f.dispatchedArgs, [['owner', 'item-0', '2026-10-02T12:00:00.123Z']]);
     assert.equal(f.run.charged_microusd, 25000);
+
+    localReal();
+    process.env.HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED = '1';
+    f = setup(['https://example.com/local-scheduled']);
+    f.run.trigger = 'scheduled';
+    assert.equal(await automationWorkflow('owner', 'run'), 'completed');
+    assert.equal(f.claims, 1);
+    assert.equal(f.topicCalls, 0);
+    assert.deepEqual(f.dispatchedWorkflows, ['localSignalGenerationWorkflow']);
+    assert.deepEqual(f.dispatchedArgs, [['owner', 'item-0', '2026-10-02T12:00:00.123Z']]);
 
     for (const overrides of [
       { HZENSE_LOCAL_AI_MODE: 'mock' },

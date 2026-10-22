@@ -11,7 +11,7 @@ import {
   automationPool,
 } from './automation-store-access';
 import { aiStageAccess, generationAiAccess, validateLocalAiProfileReference } from './admin-ai';
-import { isLocalDevelopment } from '../local-development';
+import { isLocalAutomationSchedulerEnabled, isLocalDevelopment } from '../local-development';
 import { automaticPublicationAvailable } from '../automatic-publication';
 import { importsConfigured } from './import-service';
 import { generationConfigured, generationSummaries } from './signal-generation';
@@ -120,6 +120,7 @@ export async function automationDashboard(owner: string) {
     : [];
   return {
     automaticPublicationAvailable: automaticPublicationAvailable(process.env),
+    localSchedulingAvailable: isLocalAutomationSchedulerEnabled(),
     configDeletionAvailable: state.configDeletionAvailable,
     configs: state.configs.map(
       ({ id, revision, config, enabled, next_run_at, created_at, updated_at }) => ({
@@ -170,9 +171,19 @@ export async function automationRunDetail(owner: string, id: string) {
 }
 export async function saveAutomation(owner: string, request: store.SaveAutomationRequest) {
   const config = normalizeAutomationConfig(request.config);
-  // No local scheduler is installed. Never silently turn saved drafts into paid schedules.
-  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1' && config.enabled)
+  // Local schedules require a separate opt-in and never enable topic Sandbox work.
+  if (
+    process.env.HZENSE_LOCAL_DEVELOPMENT === '1' &&
+    config.enabled &&
+    (config.kind !== 'source_collection' || !isLocalAutomationSchedulerEnabled())
+  )
     throw new store.AutomationError('execution_disabled');
+  if (
+    process.env.HZENSE_LOCAL_DEVELOPMENT === '1' &&
+    config.enabled &&
+    config.frequency === 'manual'
+  )
+    throw new store.AutomationError('invalid_request');
   // Saving an inactive configuration neither enables execution nor needs its
   // budgets/import/generation services. Enabling a schedule remains protected.
   if (config.enabled) {
@@ -290,11 +301,12 @@ export async function triggerAutomation(owner: string, request: store.TriggerAut
   return result;
 }
 export async function dispatchDueAutomations() {
-  // Local real AI exposes manual source collection, not unattended paid schedules.
-  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1') return { dispatched: 0, failed: 0 };
-  const kinds = (['source_collection', 'topic_insight'] as const).filter(
-    automationExecutionConfigured,
-  );
+  const local = process.env.HZENSE_LOCAL_DEVELOPMENT === '1';
+  if (local && !isLocalAutomationSchedulerEnabled()) return { dispatched: 0, failed: 0 };
+  const availableKinds: AutomationConfig['kind'][] = local
+    ? ['source_collection']
+    : ['source_collection', 'topic_insight'];
+  const kinds = availableKinds.filter(automationExecutionConfigured);
   if (!kinds.length) return { dispatched: 0, failed: 0 };
   const tasks = await store.enqueueDueAutomations({
     pool: automationPool,

@@ -18,6 +18,7 @@ import {
   main as databaseMain,
 } from './local-database.mjs';
 import { isLocalDevelopment } from '../apps/web/lib/local-development.ts';
+import { startLocalAutomationScheduler } from './local-automation-scheduler.mjs';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -77,6 +78,7 @@ export function buildLocalDevelopmentEnvironment(
     HZENSE_LOCAL_AI_MODE: aiMode,
     HZENSE_AI_ALLOWED_HOSTS: 'openrouter.ai,ai-gateway.vercel.sh',
     HZENSE_AUTOMATION_ENABLED: aiMode === 'real' ? '1' : '0',
+    HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED: aiMode === 'real' ? '1' : '0',
     HZENSE_TOPIC_INSIGHTS_ENABLED: '0',
     HZENSE_LOCAL_STATE_DIR: resolve(root, '.hzense-local'),
     HZENSE_RUNTIME_EXPECTED_USER: 'hzense_runtime',
@@ -142,7 +144,7 @@ export async function main(args = process.argv.slice(2), options = {}) {
   });
   log(
     aiMode === 'real'
-      ? '本地真实 AI 模式：仅连接本机 PostgreSQL；模型测试、手动启动的自动采集与生成会使用本地保存的 API Key 联网并产生供应商费用，所选资料会发送给供应商；采集每次 5 美元／UTC 每日 10 美元，生成另计。定时采集和专题自动执行关闭；发布只写本地，不会同步生产。'
+      ? '本地真实 AI 模式：仅连接本机 PostgreSQL；模型测试、手动及已启用的定时采集与生成会使用本地保存的 API Key 联网并产生供应商费用，所选资料会发送给供应商；采集每次 5 美元／UTC 每日 10 美元，生成另计。定时采集须在页面逐项启用，服务停止或电脑休眠时暂停；专题自动执行关闭，发布只写本地，不会同步生产。'
       : '本地完整开发模式：仅连接本机 PostgreSQL；不调用付费 AI，本地模拟记账不是真实费用；发布只写本地，不会同步生产。使用 --ai=real 可显式开启真实 AI。',
   );
   if (check) {
@@ -156,7 +158,15 @@ export async function main(args = process.argv.slice(2), options = {}) {
     `管理后台：http://127.0.0.1:${port}/admin；本机开发模式直接进入，无需令牌或 Google 登录。仅供可信本机使用，不要代理或暴露到局域网、公网。`,
   );
   const { command, args: commandArgs } = buildLocalCommand(parent, port);
-  return (options.runProcess ?? runLocalProcess)(command, commandArgs, { cwd: root, env });
+  const scheduler =
+    aiMode === 'real'
+      ? (options.startScheduler ?? startLocalAutomationScheduler)({ port, log })
+      : undefined;
+  try {
+    return await (options.runProcess ?? runLocalProcess)(command, commandArgs, { cwd: root, env });
+  } finally {
+    scheduler?.stop();
+  }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
