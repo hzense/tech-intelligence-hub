@@ -83,6 +83,12 @@ export async function discoverSources(owner: string, id: string): Promise<string
     const called = admitted || (error instanceof DiscoveryFailure && error.called);
     const cost =
       receipt?.costMicrousd ?? (error instanceof DiscoveryFailure ? error.costMicrousd : null);
+    // Only a typed HTTP refusal is known not to have been admitted. A generic
+    // provider_rejected string also covered 5xx historically and is not proof.
+    // Keep any actual provider charge; policy-zero is not a provider receipt.
+    const rejectedHttpStatus =
+      cost === null && error instanceof DiscoveryFailure ? error.rejectedHttpStatus : undefined;
+    const rejectedWithoutCharge = rejectedHttpStatus !== undefined;
     const code =
       error instanceof Error &&
       [
@@ -108,22 +114,33 @@ export async function discoverSources(owner: string, id: string): Promise<string
       owner,
       id,
       token: run.lease_token,
-      phase: 'discovery_failed',
-      result: receipt
-        ? {
-            discovery: receipt.result,
-            discoveryDiagnostics: receipt.diagnostics,
-            discoveryCostMicrousd: receipt.costMicrousd,
-            discoveryCostSource: receipt.costSource,
-          }
-        : error instanceof DiscoveryFailure && error.diagnostics
-          ? { discoveryDiagnostics: error.diagnostics }
-          : {},
-      status: called && cost === null ? 'unknown' : 'failed',
+      phase: rejectedWithoutCharge ? 'discovery_rejected' : 'discovery_failed',
+      result: {
+        ...(receipt
+          ? {
+              discovery: receipt.result,
+              discoveryDiagnostics: receipt.diagnostics,
+              discoveryCostMicrousd: receipt.costMicrousd,
+              discoveryCostSource: receipt.costSource,
+            }
+          : error instanceof DiscoveryFailure && error.diagnostics
+            ? { discoveryDiagnostics: error.diagnostics }
+            : {}),
+        ...(rejectedWithoutCharge
+          ? {
+              discoveryRejection: {
+                version: 1,
+                httpStatus: rejectedHttpStatus,
+                accounting: 'request_rejected',
+              },
+            }
+          : {}),
+      },
+      status: called && cost === null && !rejectedWithoutCharge ? 'unknown' : 'failed',
       errorCode: code,
       ...(cost !== null
         ? { costMicrousd: cost, costSource: receipt?.costSource ?? ('provider' as const) }
-        : !called
+        : !called || rejectedWithoutCharge
           ? { costMicrousd: 0, costSource: 'estimate' as const }
           : {}),
     });

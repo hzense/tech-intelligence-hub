@@ -7,7 +7,12 @@ import {
   discoveryTopics,
   parseDiscoveryResponse,
 } from '../lib/source-discovery-core.ts';
-import { createDiscoveryInvoker, discoveryEstimate } from '../lib/source-discovery-provider.ts';
+import {
+  createDiscoveryInvoker,
+  discoveryEstimate,
+  DiscoveryFailure,
+} from '../lib/source-discovery-provider.ts';
+import { AiProbeError } from '../lib/ai-provider-transport.ts';
 import {
   readDiscoveryDiagnostics,
   discoveryDiagnosticItems,
@@ -439,6 +444,7 @@ function harness(response = envelope(), parameters = discoveryParameters) {
         });
       assert.equal(fenced, true, 'paid request must follow persisted fence');
       if (response instanceof Error) throw response;
+      if (response instanceof globalThis.Response) return response;
       return globalThis.Response.json(response);
     },
   });
@@ -563,6 +569,83 @@ test('unsupported model and duplicate fence never call AI; network failure never
   const failed = harness(new Error('network_error'));
   await assert.rejects(failed.run(), (error) => error.called && error.costMicrousd === null);
   assert.equal(failed.calls.length, 2);
+});
+
+test('explicit HTTP request rejections retain safe refusal evidence without fabricating a provider cost', async () => {
+  for (const status of [400, 401, 402, 403, 404, 405, 413, 415, 422, 429]) {
+    const h = harness(new globalThis.Response(`private rejection ${access.apiKey}`, { status }));
+    await assert.rejects(h.run(), (error) => {
+      assert.ok(error instanceof DiscoveryFailure);
+      assert.equal(error.code, 'provider_rejected');
+      assert.equal(error.called, true);
+      assert.equal(error.costMicrousd, null, 'policy zero is not a provider cost receipt');
+      assert.equal(error.rejectedHttpStatus, status);
+      assert.equal(error.diagnostics, undefined);
+      assert.equal(JSON.stringify(error).includes(access.apiKey), false);
+      assert.equal(JSON.stringify(error).includes('private rejection'), false);
+      return true;
+    });
+    assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
+  }
+});
+
+test('timeouts, server failures and untyped rejection errors keep unknown accounting without retries', async () => {
+  for (const failure of [
+    ...[408, 500, 502, 503, 504].map((status) => new globalThis.Response('private', { status })),
+    new AiProbeError('timeout'),
+    new AiProbeError('network_error'),
+    new AiProbeError('provider_rejected'),
+    new AiProbeError('provider_rejected', '429'),
+    Object.assign(new Error('provider_rejected'), { httpStatus: 429 }),
+  ]) {
+    const h = harness(failure);
+    await assert.rejects(h.run(), (error) => {
+      assert.equal(error.called, true);
+      assert.equal(error.costMicrousd, null);
+      assert.equal(error.rejectedHttpStatus, undefined);
+      return true;
+    });
+    assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
+  }
+});
+
+test('refusal evidence is normalized and never overrides an explicit provider cost', () => {
+  for (const status of [undefined, '429', 200, 408, 500, 429.5, NaN, Infinity])
+    assert.equal(
+      new DiscoveryFailure('provider_rejected', true, null, undefined, status).rejectedHttpStatus,
+      undefined,
+    );
+  assert.equal(
+    new DiscoveryFailure('provider_rejected', true, null, undefined, 429).rejectedHttpStatus,
+    429,
+  );
+  for (const cost of [0, 25000])
+    assert.equal(
+      new DiscoveryFailure('provider_rejected', true, cost, undefined, 429).rejectedHttpStatus,
+      undefined,
+    );
+  assert.equal(
+    new DiscoveryFailure('timeout', true, null, undefined, 429).rejectedHttpStatus,
+    undefined,
+  );
+});
+
+test('HTTP-200 provider error envelopes are not pre-execution refusals and preserve returned cost', async () => {
+  for (const cost of [0, 0.01, undefined]) {
+    const h = harness({
+      error: { code: 429, message: 'private provider message' },
+      usage: { cost },
+    });
+    await assert.rejects(h.run(), (error) => {
+      assert.equal(error.code, 'discovery_provider_error');
+      assert.equal(error.called, true);
+      assert.equal(error.costMicrousd, cost === undefined ? null : Math.round(cost * 1_000_000));
+      assert.equal(error.rejectedHttpStatus, undefined);
+      assert.equal(JSON.stringify(error).includes('private provider message'), false);
+      return true;
+    });
+    assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
+  }
 });
 
 test('malformed, zero and over-limit search receipts still fail even with valid citations', () => {

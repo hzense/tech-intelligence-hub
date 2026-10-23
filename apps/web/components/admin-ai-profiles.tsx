@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import type {
   AiConnection,
   AiProfile,
@@ -42,6 +43,17 @@ function selectionsFor(profile: AiProfile | null): Record<Stage, Selection> {
   };
 }
 const noProbes: AiProbe[] = [];
+function readinessReason(reason: string) {
+  const [stage, issue] = reason.split(':');
+  const label = stages.find(([key]) => key === stage)?.[1] ?? '配置';
+  const descriptions: Record<string, string> = {
+    connection_unavailable: '连接未启用、没有密钥或绑定的连接修订已变化',
+    connection_required: '尚未通过当前连接修订与模型的基础连接测试',
+    structured_output_required: '尚未通过当前连接修订与模型的结构化输出测试',
+    tool_calling_required: '尚未通过当前连接修订与模型的工具调用测试',
+  };
+  return `${label}：${descriptions[issue ?? ''] ?? '需要核对连接与能力测试状态'}`;
+}
 
 export function AdminAiProfiles({
   connections: initialConnections,
@@ -72,6 +84,14 @@ export function AdminAiProfiles({
   const discovery = useAiModelDiscovery(initialProbes, available && !localSimulation);
   const disabled = busy || !available || discovery.loading;
   const createId = useRef<string | null>(null);
+  const editor = useRef<HTMLElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!formRevision) return;
+    nameInput.current?.focus({ preventScroll: true });
+    editor.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
+  }, [formRevision]);
 
   function edit(profile: AiProfile | null) {
     setEditing(profile);
@@ -158,7 +178,9 @@ export function AdminAiProfiles({
       setMessage(
         localSimulation
           ? `已保存本地配置草稿 r${result.profile.revision}。草稿不可执行，本次未调用 AI。`
-          : `已保存配置 r${result.profile.revision}。本次未启动任何任务。`,
+          : !result.profile.readiness.ready
+            ? `已保存配置草稿 r${result.profile.revision}，待测试后方可执行。本次未调用 AI，也未启动任何任务。`
+            : `已保存配置 r${result.profile.revision}。本次未启动任何任务。`,
       );
       await refresh();
     } catch (error) {
@@ -173,13 +195,15 @@ export function AdminAiProfiles({
       <AiAvailability configured={configured} available={available} />
       {localMode && localRealAi ? (
         <p className={styles.notice}>
-          本地真实
-          AI：配置只保存在本地数据库。选择连接会读取供应商模型列表，能力测试与执行生成可能产生费用；保存配置仍需匹配的真实能力测试证明。
+          本地真实 AI：配置只保存在本地数据库，可先新增或修订为待测试草稿。保存不调用
+          AI；选择连接可能读取模型列表，能力测试与执行生成可能产生费用。未通过测试的草稿不能执行。
         </p>
       ) : null}
       <p className={styles.notice}>
         {localSimulation ? (
           '本地配置草稿：可先保存连接、模型 ID 和提示词，无需真实 API Key 或能力测试。草稿不可执行；保存不会调用 AI，不会自动读取模型列表，也不会同步到生产。执行仍需有效的能力测试与单独授权。'
+        ) : localMode ? (
+          '填写配置名称及三个阶段的连接、模型后即可保存。缺少匹配能力测试时显示“待测试”，不会阻止保存；执行前仍须通过同一连接修订、同一模型的基础连接与结构化输出测试，要求工具能力时还需工具测试。保存不会启动采集、生成或发布。'
         ) : (
           <>
             三个阶段可以选择不同连接和模型。保存前必须通过同一连接修订、同一模型的基础连接与结构化输出测试；启用工具要求时还需通过工具调用测试。超过
@@ -270,12 +294,14 @@ export function AdminAiProfiles({
                   ? '本地配置草稿 · 不可执行'
                   : profile.readiness.ready
                     ? '测试证明有效'
-                    : '尚不可用，需要更新测试或配置'}
+                    : localMode
+                      ? '配置草稿 · 待测试，不可执行'
+                      : '尚不可用，需要更新测试或配置'}
               </p>
               {profile.readiness.reasons.length ? (
                 <ul>
                   {profile.readiness.reasons.map((reason) => (
-                    <li key={reason}>{reason}</li>
+                    <li key={reason}>{readinessReason(reason)}</li>
                   ))}
                 </ul>
               ) : null}
@@ -295,6 +321,11 @@ export function AdminAiProfiles({
                 ))}
               </dl>
               <div className={styles.actions}>
+                {!localSimulation && !profile.readiness.ready ? (
+                  <Link className={styles.button} href="/admin/ai">
+                    前往连接页完成能力测试
+                  </Link>
+                ) : null}
                 <button className={styles.button} disabled={disabled} onClick={() => edit(profile)}>
                   编辑新修订
                 </button>
@@ -327,7 +358,7 @@ export function AdminAiProfiles({
             </details>
           ) : null}
         </section>
-        <section className={styles.card} aria-labelledby="profile-edit-title">
+        <section className={styles.card} aria-labelledby="profile-edit-title" ref={editor}>
           <h2 id="profile-edit-title">
             {editing ? `编辑 ${editing.name}（当前 r${editing.revision}）` : '新建分阶段配置'}
           </h2>
@@ -340,7 +371,13 @@ export function AdminAiProfiles({
             <fieldset disabled={disabled}>
               <label>
                 配置名称
-                <input name="name" required maxLength={100} defaultValue={editing?.name ?? ''} />
+                <input
+                  ref={nameInput}
+                  name="name"
+                  required
+                  maxLength={100}
+                  defaultValue={editing?.name ?? ''}
+                />
               </label>
               {stages.map(([key, label]) => {
                 const connection = connections.find(

@@ -13,7 +13,13 @@ import { createAiAdminExecutor } from '../../../lib/admin-ai-service.ts';
 const directory = dirname(fileURLToPath(import.meta.url));
 const { Request } = globalThis;
 
-export async function startAiAdminBrowserFixture({ pool, keyring, allowedHosts, invoke }) {
+export async function startAiAdminBrowserFixture({
+  pool,
+  keyring,
+  allowedHosts,
+  invoke,
+  localProfileDrafts = false,
+}) {
   const compiled = await build({
     entryPoints: [resolve(directory, 'entry.tsx')],
     absWorkingDir: resolve(directory, '../../..'),
@@ -31,7 +37,13 @@ export async function startAiAdminBrowserFixture({ pool, keyring, allowedHosts, 
   const assets = new Map(
     compiled.outputFiles.map((file) => [`/__fixture/${file.path.split('/').at(-1)}`, file]),
   );
-  const execute = createAiAdminExecutor({ pool, keyring, allowedHosts, invoke });
+  const execute = createAiAdminExecutor({
+    pool,
+    keyring,
+    allowedHosts,
+    invoke,
+    localProfileDrafts,
+  });
   const cookie = `hzense_test_session=${randomUUID()}`;
   let origin;
   let droppedOperation;

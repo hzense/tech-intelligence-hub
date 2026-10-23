@@ -108,6 +108,39 @@ async function api<T>(body?: unknown, signal?: AbortSignal, id?: string): Promis
   return result;
 }
 const money = (microusd: number) => `$${(microusd / 1_000_000).toFixed(4)}`;
+function RunCost({ row }: { row: RunView }) {
+  const rejectedWithoutCharge =
+    row.snapshot.kind === 'source_collection' &&
+    row.status === 'failed' &&
+    row.phase === 'discovery_rejected' &&
+    row.error_code === 'provider_rejected' &&
+    row.charged_microusd === 0 &&
+    row.cost_source === 'estimate';
+  return (
+    <>
+      {money(row.charged_microusd)}
+      {rejectedWithoutCharge ? (
+        <small>请求拒绝，未计费</small>
+      ) : row.cost_source === 'reserve' ? (
+        <>
+          <small>预算暂占用</small>
+          <small>实际费用未知，尚无供应商费用回执</small>
+        </>
+      ) : (
+        <small>
+          {row.cost_source === 'provider'
+            ? '供应商回执'
+            : row.cost_source === 'estimate'
+              ? '估算'
+              : '未结算'}
+        </small>
+      )}
+      {row.snapshot.kind === 'source_collection' ? (
+        <small>仅含检索，不含导入和生成费用</small>
+      ) : null}
+    </>
+  );
+}
 const time = (date: string | Date | null) => (date ? new Date(date).toLocaleString('zh-CN') : '—');
 const utcTime = (date: string | Date) =>
   `${new Date(date).toLocaleString('zh-CN', { timeZone: 'UTC', hour12: false })} UTC`;
@@ -1177,7 +1210,7 @@ export function AdminAutomation({
                   <th>创建时间</th>
                   <th>配置</th>
                   <th>状态与阶段</th>
-                  <th>记账</th>
+                  <th>费用与预算</th>
                   <th>结果与操作</th>
                 </tr>
               </thead>
@@ -1204,11 +1237,7 @@ export function AdminAutomation({
                       ) : null}
                     </td>
                     <td>
-                      {money(row.charged_microusd)}
-                      <small>{row.cost_source ?? '未结算'}</small>
-                      {kind === 'source_collection' ? (
-                        <small>检索记账，不含导入和生成费用</small>
-                      ) : null}
+                      <RunCost row={row} />
                     </td>
                     <td>
                       {row.snapshot.kind === 'topic_insight' &&

@@ -418,6 +418,101 @@ suite('automation role isolation and publication boundary', () => {
       ).toMatchObject({ status: 'running', reserved_microusd: 5000000 });
     });
   });
+  it('settles a definite discovery refusal at zero, releases its reservation and prevents replay', async () => {
+    await withBudgetFixture(async ({ queue }) => {
+      const limits = { batch: 5000000, daily: 5000000, reserve: 5000000 };
+      const task = await queue();
+      const run = await claimAutomationRun({ pool, ...task, limits });
+      const attempt = { pool, ...task, token: run.lease_token };
+      await beginSourceDiscovery(attempt);
+      const result = {
+        discoveryRejection: {
+          version: 1,
+          httpStatus: 403,
+          accounting: 'request_rejected',
+        },
+      };
+      await updateAutomationRun({
+        ...attempt,
+        status: 'failed',
+        phase: 'discovery_rejected',
+        errorCode: 'provider_rejected',
+        result,
+        costMicrousd: 0,
+        costSource: 'estimate',
+      });
+      const saved = await readAutomationRun({ pool, ...task });
+      expect(saved).toMatchObject({
+        status: 'failed',
+        phase: 'discovery_rejected',
+        error_code: 'provider_rejected',
+        result,
+        // Preserve the original reservation as audit history, not settled spend.
+        reserved_microusd: 5000000,
+        charged_microusd: 0,
+        cost_source: 'estimate',
+        lease_token: null,
+        lease_until: null,
+      });
+      expect(saved.finished_at).not.toBeNull();
+      expect(await claimAutomationRun({ pool, ...task, limits })).toBeNull();
+      await expect(beginSourceDiscovery(attempt)).rejects.toThrow('stale_attempt');
+      expect(await readAutomationRun({ pool, ...task })).toEqual(saved);
+      expect(await claimAutomationRun({ pool, ...(await queue()), limits })).toMatchObject({
+        status: 'running',
+        reserved_microusd: 5000000,
+      });
+    });
+  });
+  it.each([
+    [
+      'unknown outcome without a receipt',
+      {
+        status: 'unknown',
+        phase: 'discovery_failed',
+        errorCode: 'provider_timeout',
+        result: {},
+      },
+      5000000,
+      'reserve',
+    ],
+    [
+      'failed task with a confirmed provider charge',
+      {
+        status: 'failed',
+        phase: 'discovery_failed',
+        errorCode: 'provider_rejected',
+        result: { discoveryCostMicrousd: 7293, discoveryCostSource: 'provider' },
+        costMicrousd: 7293,
+        costSource: 'provider',
+      },
+      7293,
+      'provider',
+    ],
+  ])('does not free budget for %s', async (_name, settlement, charged, source) => {
+    await withBudgetFixture(async ({ queue }) => {
+      const limits = { batch: 5000000, daily: 5000000, reserve: 5000000 };
+      const task = await queue();
+      const run = await claimAutomationRun({ pool, ...task, limits });
+      const attempt = { pool, ...task, token: run.lease_token };
+      await beginSourceDiscovery(attempt);
+      await updateAutomationRun({ ...attempt, ...settlement });
+      expect(await readAutomationRun({ pool, ...task })).toMatchObject({
+        status: settlement.status,
+        reserved_microusd: 5000000,
+        charged_microusd: charged,
+        cost_source: source,
+      });
+      const next = await queue();
+      expect(await claimAutomationRun({ pool, ...next, limits })).toBeNull();
+      expect(await readAutomationRun({ pool, ...next })).toMatchObject({
+        status: 'failed',
+        phase: 'budget_exceeded',
+        reserved_microusd: 0,
+        charged_microusd: 0,
+      });
+    });
+  });
   it.each(['unknown', 'running', 'completed'])(
     'accounts for a %s charge above its original reservation',
     async (status) => {

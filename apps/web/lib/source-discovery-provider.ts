@@ -2,6 +2,7 @@ import type { GenerationAccess } from './signal-generation-core.ts';
 import { generationCost } from './signal-generation-core.ts';
 import type { AutomationConfig } from '../../../packages/database/src/automation-contract.mjs';
 import {
+  AiProbeError,
   createPinnedAiFetch,
   type AiResolver,
   type AiWireRequest,
@@ -21,22 +22,34 @@ import {
   parseDiscoveryResponse,
 } from './source-discovery-core.ts';
 
+const rejectedRequestStatuses = [400, 401, 402, 403, 404, 405, 413, 415, 422, 429];
+
 export class DiscoveryFailure extends Error {
   readonly code: string;
   readonly called: boolean;
   readonly costMicrousd: number | null;
   readonly diagnostics: DiscoveryDiagnostics | undefined;
+  readonly rejectedHttpStatus: number | undefined;
   constructor(
     code: string,
     called = false,
     costMicrousd: number | null = null,
     diagnostics?: DiscoveryDiagnostics,
+    rejectedHttpStatus?: number,
   ) {
     super(code);
     this.code = code;
     this.called = called;
     this.costMicrousd = costMicrousd;
     this.diagnostics = diagnostics;
+    this.rejectedHttpStatus =
+      code === 'provider_rejected' &&
+      costMicrousd === null &&
+      typeof rejectedHttpStatus === 'number' &&
+      Number.isInteger(rejectedHttpStatus) &&
+      rejectedRequestStatuses.includes(rejectedHttpStatus)
+        ? rejectedHttpStatus
+        : undefined;
   }
 }
 export function assertDiscoveryConnection(access: GenerationAccess) {
@@ -179,7 +192,18 @@ export function createDiscoveryInvoker(
         ].includes(error.message)
           ? error.message
           : 'discovery_unavailable';
-      throw new DiscoveryFailure(code, called, cost, diagnostics);
+      // Only explicit pre-execution HTTP rejections can release a reservation.
+      // Timeouts, server failures and HTTP-200 error envelopes may follow paid work.
+      // Keep this separate from a provider cost receipt: zero is accounting policy,
+      // not an amount returned by the provider.
+      const rejectedHttpStatus =
+        cost === null &&
+        error instanceof AiProbeError &&
+        error.code === 'provider_rejected' &&
+        rejectedRequestStatuses.includes(error.httpStatus ?? 0)
+          ? error.httpStatus
+          : undefined;
+      throw new DiscoveryFailure(code, called, cost, diagnostics, rejectedHttpStatus);
     } finally {
       clearTimeout(timer);
       controller.abort();
