@@ -14,6 +14,7 @@ import {
   discoveryValidationItems,
 } from '../lib/source-discovery-diagnostics';
 import { automationSourceFailureItems } from '../lib/automation-source-failures';
+import { readAutomationSourceFallbacks } from '../lib/automation-source-fallbacks';
 import { parseImportRecoveryBatchId } from '../lib/import-recovery';
 import controls from './admin-controls.module.css';
 import {
@@ -168,7 +169,12 @@ function SourceResult({
         searchEvidence?: 'search_count' | 'provider_url_citations';
         duplicates?: number;
         rejected?: number;
-        articles?: { url: string; title: string; publishedAt: string }[];
+        articles?: {
+          url: string;
+          title: string;
+          publishedAt: string;
+          alternatives?: { url: string; title: string; publishedAt: string }[];
+        }[];
         articleCount?: number | null;
         validation?: unknown;
       }
@@ -181,8 +187,11 @@ function SourceResult({
     Number.isSafeInteger(discovery.rejected) &&
     discovery.rejected > validation.rejections.length;
   const sourceFailures = automationSourceFailureItems(result.sourceFailures);
+  const sourceFallbacks = readAutomationSourceFallbacks(result.sourceFallbacks);
   const recoveryBatchId = parseImportRecoveryBatchId(result.batchId);
-  const hasFailedSources = typeof result.failed === 'number' && result.failed > 0;
+  // A recorded failed attempt may have been replaced; only the final unresolved
+  // source count requires manual recovery. Receipts remain available below.
+  const hasUnresolvedSources = typeof result.failed === 'number' && result.failed > 0;
   const searchRequests = discovery?.searchRequests;
   const knownSearchCount =
     typeof searchRequests === 'number' &&
@@ -250,6 +259,19 @@ function SourceResult({
                     {article.title}
                   </a>{' '}
                   · {article.publishedAt}
+                  {article.alternatives?.length ? (
+                    <ul>
+                      {article.alternatives.map((alternative) => (
+                        <li key={alternative.url}>
+                          同事件备用来源：
+                          <a href={alternative.url} target="_blank" rel="noopener noreferrer">
+                            {alternative.title}
+                          </a>{' '}
+                          · {alternative.publishedAt}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -258,10 +280,38 @@ function SourceResult({
       ) : null}
       {!summaryOnly && recoveryBatchId ? (
         <Link className={controls.button} href={`/admin/imports?batchId=${recoveryBatchId}`}>
-          {hasFailedSources ? '查看失败资料 / 导入替代来源' : '查看导入批次'} · {recoveryBatchId}
+          {hasUnresolvedSources ? '查看失败资料 / 导入替代来源' : '查看导入批次'} ·{' '}
+          {recoveryBatchId}
         </Link>
       ) : null}
-      {!summaryOnly && hasFailedSources && recoveryBatchId ? (
+      {!summaryOnly && sourceFallbacks.length ? (
+        <details>
+          <summary>查看备用来源尝试（{sourceFallbacks.length} 项）</summary>
+          <ul>
+            {sourceFallbacks.map((fallback) => (
+              <li key={`${fallback.primaryItemId}:${fallback.batchId}`}>
+                原始来源：
+                <a href={fallback.originalUrl} target="_blank" rel="noopener noreferrer">
+                  {fallback.originalUrl}
+                </a>
+                <br />
+                备用来源：
+                <a href={fallback.url} target="_blank" rel="noopener noreferrer">
+                  {fallback.url}
+                </a>{' '}
+                <Link href={`/admin/imports?batchId=${fallback.batchId}`}>
+                  查看备用导入批次 · {fallback.batchId}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <p>
+            备用来源来自同一次检索，每个事件最多尝试 2 个，不追加付费搜索。此处仅记录导入尝试，
+            不表示候选已生成或已发布；请以关联生成任务的最新状态为准。原始失败记录继续保留。
+          </p>
+        </details>
+      ) : null}
+      {!summaryOnly && hasUnresolvedSources && recoveryBatchId ? (
         <p>
           仅处理未完成的资料，无需重新执行联网检索。可导入可访问的替代链接，或上传获准使用的文档；
           解析完成后再选择资料并确认生成。原采集任务与费用保留，不会自动改为成功或自动调用 AI。
@@ -914,7 +964,7 @@ export function AdminAutomation({
                 </select>
               </label>
               <label>
-                每次最多读取原文数量
+                每次最多采集事件数量
                 <input
                   type="number"
                   min={1}
@@ -930,8 +980,9 @@ export function AdminAutomation({
                 />
               </label>
               <p className={styles.full}>
-                每次最多搜索 3
-                次。原文获取失败或没有新信息时不编造候选。采集、导入、生成分别遵守服务器配置的预算；
+                每次最多搜索 3 次。每事件读取 1 篇首选原文，访问失败后最多依次尝试 2
+                篇同次检索的备用原文，成功即停止；不追加付费检索，也不重复创建该事件的生成任务。
+                原文均不可用或没有新信息时不编造候选。采集、导入、生成分别遵守服务器配置的预算；
                 {localMode
                   ? localSchedulingAllowed
                     ? '本地定时须勾选并保存后才会启用；手动启动前仍需确认联网与计费。是否发布到本地信号列表按发布方式执行。'

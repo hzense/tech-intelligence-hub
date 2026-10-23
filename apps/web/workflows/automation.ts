@@ -22,8 +22,16 @@ import {
   appendAutomationSourceFailure,
   appendAutomationImportFailure,
   automationSourceFailureCode,
+  readAutomationSourceFailures,
   type AutomationSourceFailureCode,
 } from '../lib/automation-source-failures';
+import {
+  canTrySourceFallback,
+  readAutomationSourceFallbacks,
+  sourceFallbackLimit,
+  sourceFallbackUrls,
+  type AutomationSourceFallback,
+} from '../lib/automation-source-fallbacks';
 import {
   startTopicInsightSandbox,
   pollTopicInsightSandbox,
@@ -41,7 +49,7 @@ type SourceItem = {
 };
 type SourceBatch = { id: string; items: SourceItem[] };
 type GenerationDispatch = { id: string; queuedAt: string };
-type QueuedSource = { url: string; generationId: string; queuedAt: string };
+type QueuedSource = { url: string; originalUrl?: string; generationId: string; queuedAt: string };
 
 /** Called only from steps: a local marker must never fall back to cloud execution. */
 function assertLocalAutomationExecution(kind?: 'source_collection' | 'topic_insight') {
@@ -108,20 +116,45 @@ export async function automationWorkflow(owner: string, id: string) {
     let failed = 0;
     for (const item of batch.items) {
       if (item.kind !== 'url') continue;
-      const status =
+      let selectedItem = item;
+      let selectedBatchId = batch.id;
+      let status =
         item.status === 'completed'
           ? 'completed'
           : await importSourceItem(owner, batch.id, item.id, run.id);
+      for (let attempt = 0; status === 'failed' && attempt < sourceFallbackLimit; attempt++) {
+        const fallback = await createFallbackSourceBatch(
+          owner,
+          run.id,
+          batch.id,
+          item.id,
+          item.url,
+          attempt,
+        );
+        if (!fallback) break;
+        selectedBatchId = fallback.id;
+        selectedItem = fallback.items[0]!;
+        status =
+          selectedItem.status === 'completed'
+            ? 'completed'
+            : await importSourceItem(owner, selectedBatchId, selectedItem.id, run.id);
+      }
       if (status !== 'completed') {
         failed++;
         continue;
       }
-      const generation = await createPrivateGeneration(owner, run.id, batch.id, item.id);
+      const generation = await createPrivateGeneration(
+        owner,
+        run.id,
+        selectedBatchId,
+        selectedItem.id,
+      );
       if (generation) {
         generationIds.push(generation.id);
         generationDispatches.push(generation);
         queuedSources.push({
-          url: item.url,
+          url: selectedItem.url,
+          ...(selectedItem.id !== item.id ? { originalUrl: item.url } : {}),
           generationId: generation.id,
           queuedAt: generation.queuedAt,
         });
@@ -245,6 +278,82 @@ async function createSourceBatch(
   };
 }
 createSourceBatch.maxRetries = 0;
+async function createFallbackSourceBatch(
+  owner: string,
+  runId: string,
+  primaryBatchId: string,
+  primaryItemId: string,
+  primaryUrl: string,
+  attempt: number,
+): Promise<SourceBatch | null> {
+  'use step';
+  assertLocalAutomationExecution('source_collection');
+  const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
+  assertLocalAutomationRun(run);
+  if (
+    run.status !== 'running' ||
+    run.result?.batchId !== primaryBatchId ||
+    !Number.isInteger(attempt) ||
+    attempt < 0 ||
+    attempt >= sourceFallbackLimit
+  )
+    throw new Error('stale_attempt');
+  const receipts = readAutomationSourceFallbacks(run.result?.sourceFallbacks);
+  const prior = receipts.filter((entry) => entry.primaryItemId === primaryItemId);
+  // A previous unacknowledged create is not an invitation to try another URL.
+  if (prior.length !== attempt) throw new Error('source_outcome_unknown');
+  const failedItemId = attempt === 0 ? primaryItemId : prior[attempt - 1]?.itemId;
+  if (!failedItemId) throw new Error('source_outcome_unknown');
+  const failure = readAutomationSourceFailures(run.result?.sourceFailures).find(
+    (entry) => entry.itemId === failedItemId,
+  );
+  if (!canTrySourceFallback(failure)) return null;
+  const url = sourceFallbackUrls(run.result?.discovery, primaryUrl)[attempt];
+  if (!url || receipts.some((entry) => entry.url === url)) return null;
+  const batchId = automationStableId({
+    runId,
+    itemId: primaryItemId,
+    kind: 'import_fallback',
+    attempt,
+  });
+  const receipt = { primaryItemId, originalUrl: primaryUrl, batchId, url };
+  // Pin provenance and deterministic identity BEFORE the import commit boundary.
+  // A lost acknowledgement leaves a read-only reconciliation trail, never a new search.
+  const sourceFallbacks: AutomationSourceFallback[] = [...receipts, receipt];
+  await store.updateAutomationRun({
+    pool: automationPool,
+    owner,
+    id: runId,
+    token: run.lease_token!,
+    phase: 'importing_sources',
+    result: { ...run.result, sourceFallbacks },
+  });
+  const batch = (await executeImportAdmin(owner, 'POST', {
+    action: 'create',
+    request: { id: batchId, intent: 'preview', manifest: { files: [], urlLines: url } },
+  })) as SourceBatch;
+  if (batch.id !== batchId || batch.items.length !== 1 || batch.items[0]?.kind !== 'url')
+    throw new Error('source_outcome_unknown');
+  const item = batch.items[0]!;
+  sourceFallbacks[sourceFallbacks.length - 1] = { ...receipt, itemId: item.id };
+  await store.updateAutomationRun({
+    pool: automationPool,
+    owner,
+    id: runId,
+    token: run.lease_token!,
+    phase: 'importing_sources',
+    result: { ...run.result, sourceFallbacks },
+  });
+  console.info('automation_source_fallback', {
+    runId,
+    primaryItemId,
+    batchId,
+    itemId: item.id,
+    attempt,
+  });
+  return { id: batchId, items: [{ id: item.id, status: item.status, kind: item.kind, url }] };
+}
+createFallbackSourceBatch.maxRetries = 0;
 async function importSourceItem(owner: string, batchId: string, itemId: string, runId?: string) {
   'use step';
   assertLocalAutomationExecution('source_collection');
@@ -270,7 +379,10 @@ async function importSourceItem(owner: string, batchId: string, itemId: string, 
     // reconciliation; it must never trigger another fetch or paid search.
     const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
     assertLocalAutomationRun(run);
-    if (run.status !== 'running' || run.result?.batchId !== batchId)
+    const fallbackBatch = readAutomationSourceFallbacks(run.result?.sourceFallbacks).some(
+      (entry) => entry.batchId === batchId && entry.itemId === itemId,
+    );
+    if (run.status !== 'running' || (run.result?.batchId !== batchId && !fallbackBatch))
       throw new Error('stale_attempt');
     await store.updateAutomationRun({
       pool: automationPool,
