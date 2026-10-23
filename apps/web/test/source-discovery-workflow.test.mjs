@@ -38,8 +38,8 @@ test('source discovery orchestrates originals and private candidates without dro
     `,
     '../lib/server/source-discovery': `export async function discoverSources(){const f=globalThis.__sourceFlow;f.discoveries++;f.run.result={discovery:{articles:f.urls.map(url=>({url,title:'原文',publishedAt:'2026-09-30'}))},discoveryCostMicrousd:25000,discoveryCostSource:'provider'};if(f.discoveryFailure){Object.assign(f.run,f.discoveryFailure);throw Error(f.discoveryFailure.error_code)}return f.urls;}`,
     '../lib/server/import-service': `
-      export async function executeImportAdmin(_owner,_method,body){const f=globalThis.__sourceFlow;f.imports.push(body);return {id:'batch-id',items:f.urls.map((_url,i)=>({id:f.itemIds?.[i]??'item-'+i,status:body.action==='detail'?(f.readbackStates[f.itemIds?.[i]??'item-'+i]??'unknown'):'pending',kind:'url'}))}}
-      export async function runImportItem(_owner,_batch,id){const f=globalThis.__sourceFlow;f.importAttempts.push(id);if(f.thrownItems.includes(id))throw Error('unconfirmed');return {status:f.returnedStates[id]??(f.failedItems.includes(id)?'failed':'completed')}}
+      export async function executeImportAdmin(_owner,_method,body){const f=globalThis.__sourceFlow;f.imports.push(body);return {id:'batch-id',items:f.urls.map((_url,i)=>({id:f.itemIds?.[i]??'item-'+i,status:body.action==='detail'?(f.readbackStates[f.itemIds?.[i]??'item-'+i]??'unknown'):'pending',kind:'url',...(body.action==='detail'?f.importErrors[f.itemIds?.[i]??'item-'+i]:{})}))}}
+      export async function runImportItem(_owner,_batch,id){const f=globalThis.__sourceFlow;f.importAttempts.push(id);if(f.thrownItems.includes(id))throw Error('unconfirmed');return {status:f.returnedStates[id]??(f.failedItems.includes(id)?'failed':'completed'),...f.importErrors[id]}}
     `,
     '../lib/server/signal-generation': `
       export async function executeGeneration(_owner,request){const f=globalThis.__sourceFlow;if(!f.run.result.generationIds.includes(request.id))throw Error('request id not pinned');f.generated.push(request);if(f.createErrors[request.id])throw Object.assign(Error('private creation rejection'),{code:f.createErrors[request.id],raw:'private-secret'});return {id:f.createdIds[request.id]??request.id,status:'pending'}}
@@ -106,6 +106,7 @@ test('source discovery orchestrates originals and private candidates without dro
       thrownItems: [],
       returnedStates: {},
       readbackStates: {},
+      importErrors: {},
       importAttempts: [],
       queueReceipts: {},
       queueErrors: {},
@@ -300,6 +301,63 @@ test('source discovery orchestrates originals and private candidates without dro
       '22222222-2222-4222-8222-222222222222',
       '33333333-3333-4333-8333-333333333333',
     ];
+    for (const lostAck of [false, true]) {
+      f = setup(['https://example.com/denied']);
+      f.itemIds = [itemIds[0]];
+      f.failedItems = [itemIds[0]];
+      f.importErrors[itemIds[0]] = {
+        error_code: 'fetch_failed',
+        fetch_diagnostic: {
+          reason: 'http_status',
+          status: 403,
+          body: 'private-body',
+          url: 'private-url',
+        },
+      };
+      if (lostAck) {
+        f.thrownItems = [itemIds[0]];
+        f.readbackStates[itemIds[0]] = 'failed';
+      }
+      await automationWorkflow('owner', 'run');
+      assert.equal(f.run.status, 'failed');
+      assert.equal(f.run.phase, 'source_failed');
+      assert.deepEqual(f.run.result.sourceFailures, [
+        {
+          itemId: itemIds[0],
+          phase: 'import_source',
+          code: 'fetch_failed',
+          fetchDiagnostic: { reason: 'http_status', status: 403 },
+        },
+      ]);
+      assert.equal(f.run.charged_microusd, 25000);
+      assert.equal(f.run.result.discoveryCostSource, 'provider');
+      assert.equal(f.run.result.failed, 1);
+      assert.deepEqual(f.generated, []);
+      assert.deepEqual(f.queued, []);
+      assert.deepEqual(f.dispatched, []);
+      assert.equal(JSON.stringify(f.run.result).includes('private'), false);
+      await automationWorkflow('owner', 'run');
+      assert.equal(f.discoveries, 1, 'a failed source must not restart paid discovery');
+      assert.deepEqual(f.importAttempts, [itemIds[0]], '403 is not blindly fetched again');
+    }
+
+    f = setup(['https://example.com/denied', 'https://example.com/allowed']);
+    f.itemIds = itemIds.slice(0, 2);
+    f.failedItems = [itemIds[0]];
+    f.importErrors[itemIds[0]] = {
+      error_code: 'fetch_failed',
+      fetch_diagnostic: { reason: 'http_status', status: 403 },
+    };
+    await automationWorkflow('owner', 'run');
+    assert.equal(f.run.status, 'completed');
+    assert.equal(f.run.result.failed, 1);
+    assert.equal(f.run.result.sourceFailures[0].fetchDiagnostic.status, 403);
+    assert.deepEqual(
+      f.dispatched,
+      [itemIds[1]],
+      'an inaccessible source must not block usable sources',
+    );
+
     f = setup(itemIds.map((_, index) => `https://example.com/${index}`));
     f.itemIds = itemIds;
     for (const itemId of itemIds) f.createErrors[itemId] = 'invalid_request';

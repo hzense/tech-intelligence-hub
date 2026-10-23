@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   appendAutomationSourceFailure,
+  appendAutomationImportFailure,
   automationSourceFailureCode,
   automationSourceFailureItems,
   readAutomationSourceFailures,
@@ -38,6 +39,63 @@ test('source failure receipts expose only bounded allowlisted fields and confirm
   assert.equal(JSON.stringify(labels).includes('private'), false);
   assert.deepEqual(automationSourceFailureItems(undefined), []);
   assert.deepEqual(readAutomationSourceFailures([{ ...receipt, itemId: `${itemId}\n` }]), []);
+});
+
+test('confirmed import failures carry only sanitized diagnostics and retain candidate refusals', () => {
+  const otherId = '22222222-2222-4222-8222-222222222222';
+  const failures = appendAutomationImportFailure([receipt], otherId, {
+    status: 'failed',
+    error_code: 'fetch_failed',
+    fetch_diagnostic: {
+      reason: 'http_status',
+      status: 403,
+      body: 'private-body',
+      url: 'private-url',
+    },
+  });
+  assert.deepEqual(failures, [
+    receipt,
+    {
+      itemId: otherId,
+      phase: 'import_source',
+      code: 'fetch_failed',
+      fetchDiagnostic: { reason: 'http_status', status: 403 },
+    },
+  ]);
+  const labels = automationSourceFailureItems(failures);
+  assert.match(labels[1], /403/);
+  assert.equal(JSON.stringify(failures).includes('private'), false);
+  assert.equal(JSON.stringify(labels).includes('private'), false);
+  for (const status of ['running', 'unknown', 'queued']) {
+    assert.deepEqual(appendAutomationImportFailure(failures, otherId, { status }), failures);
+  }
+  const legacy = appendAutomationImportFailure([], otherId, {
+    status: 'failed',
+    error_code: 'fetch_failed',
+  });
+  assert.deepEqual(legacy, [{ itemId: otherId, phase: 'import_source', code: 'fetch_failed' }]);
+  assert.match(automationSourceFailureItems(legacy)[0], /未.*记录|未.*保存/);
+  assert.deepEqual(
+    readAutomationSourceFailures([
+      {
+        itemId: otherId,
+        phase: 'import_source',
+        code: 'parse_failed',
+        fetchDiagnostic: { reason: 'http_status', status: 403 },
+      },
+    ]),
+    [{ itemId: otherId, phase: 'import_source', code: 'parse_failed' }],
+  );
+  assert.deepEqual(
+    readAutomationSourceFailures([
+      {
+        itemId: otherId,
+        phase: 'import_source',
+        code: 'outcome_unknown',
+      },
+    ]),
+    [],
+  );
 });
 
 test('source failure append keeps at most eight unique item receipts without mutating history', () => {

@@ -14,7 +14,7 @@ test(
   async (t) => {
     const compiled = await build({
       stdin: {
-        contents: `import {createRoot} from 'react-dom/client';import {AdminImports} from './components/admin-imports';createRoot(document.getElementById('root')).render(<AdminImports configured={!location.search.includes('off')} diagnostics={{enabled:!location.search.includes('off'),valid:true,issues:[]}} />);`,
+        contents: `import {createRoot} from 'react-dom/client';import {AdminImports} from './components/admin-imports';createRoot(document.getElementById('root')).render(<AdminImports configured={!location.search.includes('off')} recoveryBatchId={new URLSearchParams(location.search).get('batchId')??undefined} diagnostics={{enabled:!location.search.includes('off'),valid:true,issues:[]}} />);`,
         resolveDir: fileURLToPath(new URL('..', import.meta.url)),
         loader: 'tsx',
       },
@@ -64,6 +64,18 @@ test(
         for await (const chunk of req) chunks.push(chunk);
         const value = JSON.parse(Buffer.concat(chunks).toString());
         commands.push(value);
+        if (value.action === 'detail') {
+          if (value.batchId === '11111111-1111-1111-1111-111111111111') {
+            res.end(JSON.stringify(batches[0]));
+            return;
+          }
+          const batch = batches.find((entry) => entry.id === value.batchId);
+          if (!batch) {
+            res.statusCode = 404;
+            res.end(JSON.stringify({ error: 'not_found' }));
+          } else res.end(JSON.stringify(batch));
+          return;
+        }
         if (value.action === 'create') {
           batches = [
             {
@@ -80,6 +92,7 @@ test(
                 },
               ],
             },
+            ...batches,
           ];
           res.end(JSON.stringify(batches[0]));
           return;
@@ -219,6 +232,10 @@ test(
       'true',
     );
     await expect(page.getByRole('button', { name: '取消未完成项' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: '前往生成页选择资料' })).toHaveAttribute(
+      'href',
+      '/admin/signal-generation',
+    );
     await page.getByRole('button', { name: '查看私有解析结果' }).click();
     await expect(page.getByRole('heading', { name: '私有解析结果' })).toBeVisible();
     await expect(page.getByRole('dialog')).toBeVisible();
@@ -341,6 +358,122 @@ test(
     await expect(page.getByRole('heading', { name: '重复副本.txt', exact: true })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: '原始资料.txt', exact: true })).toBeVisible();
     assert.equal(commands.filter((command) => command.action === 'delete').length, 1);
+
+    const recoveryId = '3d6f8ed7-022c-9dcf-b52b-eea13542a727';
+    const failedBatch = {
+      id: recoveryId,
+      status: 'failed',
+      cancelled: false,
+      items: [
+        {
+          id: '7868dc87-8180-49a3-b513-4d0daa4f1de0',
+          kind: 'url',
+          status: 'failed',
+          error_code: 'fetch_failed',
+          fetch_diagnostic: { reason: 'http_status', status: 403 },
+          declaration: { url: 'https://example.com/older-blocked-source' },
+        },
+        {
+          id: '7868dc87-8180-49a3-b513-4d0daa4f1de1',
+          kind: 'url',
+          status: 'failed',
+          error_code: 'fetch_failed',
+          declaration: { url: 'https://example.com/older-unknown-source' },
+        },
+      ],
+    };
+    batches = [
+      ...Array.from({ length: 51 }, (_, index) => ({
+        id: `newer-batch-${index}`,
+        status: 'queued',
+        cancelled: false,
+        items: [
+          {
+            id: `newer-item-${index}`,
+            kind: 'url',
+            status: 'queued',
+            declaration: { url: `https://example.com/newer-${index}` },
+          },
+        ],
+      })),
+      failedBatch,
+    ];
+    const beforeRecoveryCommands = commands.length;
+    await page.goto(`${origin}/?batchId=${recoveryId}`);
+    const recovery = page.getByRole('region', { name: '采集来源处理' });
+    await expect(recovery).toBeVisible();
+    await expect(
+      recovery.getByText('https://example.com/older-blocked-source', { exact: true }),
+    ).toBeVisible();
+    await expect(recovery.getByText(/原文网站拒绝程序访问（HTTP 403）/)).toBeVisible();
+    await expect(recovery.getByText(/该记录未保存具体 HTTP 或网络原因/)).toBeVisible();
+    assert.deepEqual(commands.slice(beforeRecoveryCommands), [
+      { action: 'detail', batchId: recoveryId },
+    ]);
+    await expect(page.getByText(`批次 ${recoveryId}`, { exact: true })).toHaveCount(0);
+    await recovery.getByRole('link', { name: '导入替代来源或文档' }).click();
+    await expect(page).toHaveURL(new RegExp('#import-new-batch$'));
+    assert.equal(
+      commands.length,
+      beforeRecoveryCommands + 1,
+      'Opening recovery never creates, retries, parses or calls AI',
+    );
+    await page.getByLabel('HTTPS 链接').fill('https://example.com/replacement-source');
+    await page.getByRole('button', { name: '创建并上传' }).click();
+    await expect(
+      page.getByText('原件已接收。点击「处理」执行隔离解析；不会自动发布。'),
+    ).toBeVisible();
+    assert.equal(
+      batches.find((entry) => entry.id === recoveryId),
+      failedBatch,
+    );
+    assert.equal(
+      failedBatch.status,
+      'failed',
+      'Original batch history is not rewritten by replacement import',
+    );
+    const recoveryWrites = commands
+      .slice(beforeRecoveryCommands)
+      .filter((command) => command.action !== 'detail');
+    assert.equal(recoveryWrites.length, 1);
+    assert.equal(recoveryWrites[0].action, 'create');
+    assert.equal(recoveryWrites[0].request.intent, 'preview');
+
+    failedBatch.items.forEach((item) => {
+      item.status = 'unknown';
+      delete item.error_code;
+      delete item.fetch_diagnostic;
+    });
+    await page.goto(`${origin}/?batchId=${recoveryId}`);
+    await expect(
+      recovery.getByText('该资料尚未确认结束，请先核对原任务，不要为它重复导入或调用 AI。').first(),
+    ).toBeVisible();
+    await expect(recovery.getByRole('link', { name: '导入替代来源或文档' })).toHaveCount(0);
+
+    await page.goto(`${origin}/?batchId=11111111-1111-1111-1111-111111111111`);
+    await expect(page.getByText('无法读取原批次；可能已删除或不属于当前账号。')).toBeVisible();
+    await expect(recovery.getByText('https://example.com/research', { exact: true })).toHaveCount(
+      0,
+    );
+
+    const beforeMissing = commands.length;
+    await page.goto(`${origin}/?batchId=00000000-0000-0000-0000-000000000000`);
+    await expect(page.getByText('无法读取原批次；可能已删除或不属于当前账号。')).toBeVisible();
+    await expect(page.getByRole('link', { name: '导入替代来源或文档' })).toHaveCount(0);
+    assert.deepEqual(
+      commands.slice(beforeMissing).map((command) => command.action),
+      ['detail'],
+    );
+    const beforeInvalid = commands.length;
+    await page.goto(`${origin}/?batchId=invalid`);
+    await expect(page.getByRole('heading', { name: '文档与链接批量导入' })).toBeVisible();
+    await expect(page.getByRole('region', { name: '采集来源处理' })).toHaveCount(0);
+    assert.equal(commands.length, beforeInvalid);
+    await page.goto(`${origin}/?off&batchId=${recoveryId}`);
+    await expect(
+      page.getByText('导入服务未就绪，暂不能读取原批次。请先完成配置，不会自动执行任何任务。'),
+    ).toBeVisible();
+    assert.equal(commands.length, beforeInvalid);
     assert.deepEqual(errors, []);
   },
 );

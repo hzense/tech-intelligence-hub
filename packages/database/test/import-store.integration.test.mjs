@@ -73,6 +73,35 @@ async function ready(overrides = {}) {
   return b;
 }
 const output = { fragments: [{ text: 'hello', locator: { paragraph: 1 } }] };
+async function removePaidDiagnosticFixture(b) {
+  // Restore only this fixture's contribution, never reset another test's usage.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `WITH fixture_usage AS (
+        SELECT budget_day,
+          sum(CASE WHEN status='running' THEN reserved_microusd ELSE 0 END) AS reserved,
+          sum(charged_microusd) AS charged
+        FROM public.import_attempts WHERE item_id=$1 GROUP BY budget_day
+      ) UPDATE public.import_daily_usage u
+        SET reserved_microusd=u.reserved_microusd-f.reserved,
+            charged_microusd=u.charged_microusd-f.charged
+        FROM fixture_usage f WHERE u.day=f.budget_day`,
+      [b.items[0].id],
+    );
+    await client.query('DELETE FROM public.import_audit WHERE batch_id=$1', [b.id]);
+    await client.query('DELETE FROM public.import_attempts WHERE item_id=$1', [b.items[0].id]);
+    await client.query('DELETE FROM public.import_items WHERE batch_id=$1', [b.id]);
+    await client.query('DELETE FROM public.import_batches WHERE id=$1', [b.id]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
 suite('private import PostgreSQL persistence', () => {
   it('deduplicates parsed content across batches, isolates owners, and promotes a remaining copy after deletion', async () => {
@@ -440,6 +469,86 @@ suite('private import PostgreSQL persistence', () => {
     const current = await getImportBatch({ pool, owner, id: b.id });
     expect(current.items[0].status).toBe('failed');
     expect(current.items[0].fence).toBe(2);
+  });
+  it('persists fetch diagnostics with the existing schema and keeps retry fences and charges intact', async () => {
+    const b = await created({
+      request: {
+        id: randomUUID(),
+        intent: 'preview',
+        manifest: { urlLines: 'https://example.com/fetch-diagnostics' },
+      },
+      configuration: { parserVersion: 'text/v1', batchLimitMicrousd: 200 },
+    });
+    try {
+      await claimImportItem({
+        ...args(b),
+        parserVersion: 'text/v1',
+        reserveMicrousd: 100,
+        dailyLimitMicrousd: 100000000,
+      });
+      const finished = await finishImportAttempt({
+        ...args(b),
+        fence: 1,
+        outcome: 'failed',
+        errorCode: 'fetch_failed',
+        chargedMicrousd: 100,
+        fetchDiagnostic: { reason: 'http_status', status: 403, url: 'private-url' },
+      });
+      expect(finished).toMatchObject({
+        status: 'failed',
+        error_code: 'fetch_failed',
+        fetch_diagnostic: { reason: 'http_status', status: 403 },
+      });
+      const saved = await getImportBatch({ pool, owner, id: b.id });
+      expect(saved.items[0]).toMatchObject({
+        status: 'failed',
+        fence: 1,
+        error_code: 'fetch_failed',
+        fetch_diagnostic: { reason: 'http_status', status: 403 },
+      });
+      expect(JSON.stringify(saved)).not.toContain('private-url');
+      expect(
+        (
+          await pool.query(
+            'SELECT error_code,charged_microusd FROM public.import_attempts WHERE item_id=$1 AND fence=1',
+            [b.items[0].id],
+          )
+        ).rows[0],
+      ).toEqual({ error_code: 'fetch_failed:http_status:403', charged_microusd: '100' });
+      await retryImportItem(args(b));
+      await claimImportItem({
+        ...args(b),
+        parserVersion: 'text/v1',
+        reserveMicrousd: 100,
+        dailyLimitMicrousd: 100000000,
+      });
+      const running = await getImportBatch({ pool, owner, id: b.id });
+      expect(running.items[0].fence).toBe(2);
+      expect(running.items[0].fetch_diagnostic).toBeUndefined();
+      await expect(
+        finishImportAttempt({
+          ...args(b),
+          fence: 1,
+          outcome: 'failed',
+          errorCode: 'fetch_failed',
+          fetchDiagnostic: { reason: 'timeout' },
+        }),
+      ).rejects.toMatchObject({ code: 'stale_attempt' });
+      await finishImportAttempt({
+        ...args(b),
+        fence: 2,
+        outcome: 'failed',
+        errorCode: 'fetch_failed',
+      });
+      const legacy = await getImportBatch({ pool, owner, id: b.id });
+      expect(legacy.items[0].error_code).toBe('fetch_failed');
+      expect(legacy.items[0].fetch_diagnostic).toBeUndefined();
+    } finally {
+      // This paid fixture must not change the shared daily ledger expected by
+      // subsequent budget tests. Remove only this item's actual contribution,
+      // including a running reservation if an assertion failed before finish.
+      await removePaidDiagnosticFixture(b);
+    }
   });
   it('atomically enforces global budgets across batches and preserves unknown charges', async () => {
     const configuration = { parserVersion: 'ocr/v1', batchLimitMicrousd: 100 };
