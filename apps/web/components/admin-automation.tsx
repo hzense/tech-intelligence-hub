@@ -14,6 +14,8 @@ import {
   discoveryValidationItems,
 } from '../lib/source-discovery-diagnostics';
 import { automationSourceFailureItems } from '../lib/automation-source-failures';
+import { parseImportRecoveryBatchId } from '../lib/import-recovery';
+import controls from './admin-controls.module.css';
 import {
   automationGenerationIds,
   generationSummaryLabel,
@@ -179,6 +181,8 @@ function SourceResult({
     Number.isSafeInteger(discovery.rejected) &&
     discovery.rejected > validation.rejections.length;
   const sourceFailures = automationSourceFailureItems(result.sourceFailures);
+  const recoveryBatchId = parseImportRecoveryBatchId(result.batchId);
+  const hasFailedSources = typeof result.failed === 'number' && result.failed > 0;
   const searchRequests = discovery?.searchRequests;
   const knownSearchCount =
     typeof searchRequests === 'number' &&
@@ -252,8 +256,19 @@ function SourceResult({
           </details>
         </>
       ) : null}
-      {!summaryOnly && typeof result.batchId === 'string' ? (
-        <Link href="/admin/imports">查看导入批次 · {result.batchId}</Link>
+      {!summaryOnly && recoveryBatchId ? (
+        <Link className={controls.button} href={`/admin/imports?batchId=${recoveryBatchId}`}>
+          {hasFailedSources ? '查看失败资料 / 导入替代来源' : '查看导入批次'} · {recoveryBatchId}
+        </Link>
+      ) : null}
+      {!summaryOnly && hasFailedSources && recoveryBatchId ? (
+        <p>
+          仅处理未完成的资料，无需重新执行联网检索。可导入可访问的替代链接，或上传获准使用的文档；
+          解析完成后再选择资料并确认生成。原采集任务与费用保留，不会自动改为成功或自动调用 AI。
+          {!sourceFailures.length
+            ? '此历史任务未保存逐条处理原因，请查看原导入批次；不会重新抓取来补诊断。'
+            : ''}
+        </p>
       ) : null}
       {!summaryOnly && sourceFailures.length ? (
         <details>
@@ -263,7 +278,7 @@ function SourceResult({
               <li key={failure}>{failure}</li>
             ))}
           </ul>
-          <p>仅显示已确认的创建拒绝原因；查看不会重新导入或调用 AI。</p>
+          <p>仅显示已确认的原文导入失败或候选创建拒绝原因；查看不会重新导入或调用 AI。</p>
         </details>
       ) : null}
       {summaryOnly && progress?.total ? (

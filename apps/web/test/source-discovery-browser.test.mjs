@@ -649,10 +649,39 @@ test(
       ).toBeVisible();
       assert.equal(posts.length, 6, 'reading source refusals never creates or retries a task');
 
+      const failedBatchId = '33333333-3333-4333-8333-333333333333';
+      await page.getByRole('button', { name: '收起详情', exact: true }).click();
+      run.result.batchId = failedBatchId;
+      run.result.failed = 1;
+      run.result.sourceFailures = [
+        {
+          itemId: '11111111-1111-4111-8111-111111111111',
+          phase: 'import_source',
+          code: 'fetch_failed',
+          fetchDiagnostic: {
+            reason: 'http_status',
+            status: 403,
+            body: 'must-not-display-private-body',
+          },
+        },
+      ];
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await readDetails();
+      await page.getByText('查看来源处理失败原因（脱敏）', { exact: true }).click();
+      await expect(page.getByText('HTTP 403', { exact: false })).toBeVisible();
+      await expect(page.getByText('must-not-display-private', { exact: false })).toHaveCount(0);
+      await expect(
+        page.getByRole('link', { name: /查看失败资料 \/ 导入替代来源/ }),
+      ).toHaveAttribute('href', `/admin/imports?batchId=${failedBatchId}`);
+      await expect(page.getByText(/原采集任务与费用保留/)).toBeVisible();
+      assert.equal(posts.length, 6, 'reading a failed source creates no import or paid AI work');
+
       delete run.result.sourceFailures;
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
       await readDetails();
       await expect(page.getByText('查看来源处理失败原因（脱敏）', { exact: true })).toHaveCount(0);
+      await expect(page.getByText(/此历史任务未保存逐条处理原因/)).toBeVisible();
+      await expect(page.getByText('HTTP 403', { exact: false })).toHaveCount(0);
 
       // Failed discovery diagnostics are private structural readbacks, not a retry action.
       delete run.generationProgress;

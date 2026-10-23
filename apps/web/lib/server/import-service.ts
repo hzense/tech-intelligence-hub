@@ -272,7 +272,9 @@ export async function runImportItem(owner: string, batchId: string, itemId: stri
     fetch: (url) =>
       fetchImportURL(url, undefined, {
         onDiagnostic: (diagnostic) =>
-          console.error(JSON.stringify({ event: 'import_fetch_failed', ...diagnostic })),
+          console.error(
+            JSON.stringify({ event: 'import_fetch_failed', batchId, itemId, ...diagnostic }),
+          ),
       }),
     parse: parseIsolated,
     confirm: (document, fence) => store.confirmImportDocument({ ...args, document, fence }),

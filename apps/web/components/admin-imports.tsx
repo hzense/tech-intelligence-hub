@@ -8,6 +8,7 @@ import type { ImportOutput } from '../../../packages/ingestion/src/import-task-c
 import { validateImportManifest } from '../../../packages/ingestion/src/import-manifest.mjs';
 import styles from './admin-imports.module.css';
 import controls from './admin-controls.module.css';
+import { importFetchFailureMessage, parseImportRecoveryBatchId } from '../lib/import-recovery';
 import {
   ImportClientError,
   canUploadAfterConfirmError,
@@ -47,15 +48,25 @@ async function api(body?: unknown, before?: string, view: TaskView = 'current') 
   if (!response.ok) throw new ImportClientError(result.error ?? 'unavailable', result.reason);
   return result;
 }
+async function readRecoveryBatch(id: string): Promise<ImportBatch> {
+  const batch = await api({ action: 'detail', batchId: id });
+  if (batch?.id !== id) throw new Error('recovery_batch_mismatch');
+  return batch;
+}
 export function AdminImports({
   configured,
   diagnostics,
   local = false,
+  recoveryBatchId,
 }: {
   configured: boolean;
   diagnostics?: { enabled: boolean; valid: boolean; issues: string[] };
   local?: boolean;
+  recoveryBatchId?: string;
 }) {
+  const recoveryId = parseImportRecoveryBatchId(recoveryBatchId);
+  const [recoveryBatch, setRecoveryBatch] = useState<ImportBatch | null>(null);
+  const [recoveryMessage, setRecoveryMessage] = useState('');
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [files, setFiles] = useState<File[]>([]),
     [urls, setUrls] = useState('');
@@ -85,7 +96,17 @@ export function AdminImports({
     urlLines: urls,
   };
   const validation = validateImportManifest(manifest, { capabilities });
-  const refresh = async () => setBatches((await api(undefined, pageCursors.at(-1), view)).batches);
+  const refresh = async () => {
+    const [list, recovered] = await Promise.all([
+      api(undefined, pageCursors.at(-1), view),
+      recoveryId ? readRecoveryBatch(recoveryId).catch(() => null) : null,
+    ]);
+    setBatches(list.batches);
+    if (recoveryId) {
+      setRecoveryBatch(recovered);
+      setRecoveryMessage(recovered ? '' : '无法读取原批次；可能已删除或不属于当前账号。');
+    }
+  };
   async function changeView(next: TaskView) {
     setBusy(true);
     try {
@@ -137,6 +158,27 @@ export function AdminImports({
       active = false;
     };
   }, [configured]);
+  useEffect(() => {
+    let active = true;
+    setRecoveryBatch(null);
+    setRecoveryMessage('');
+    if (configured && recoveryId) {
+      setRecoveryMessage('正在只读核对原批次…');
+      void readRecoveryBatch(recoveryId)
+        .then((batch) => {
+          if (active) {
+            setRecoveryBatch(batch);
+            setRecoveryMessage('');
+          }
+        })
+        .catch(() => {
+          if (active) setRecoveryMessage('无法读取原批次；可能已删除或不属于当前账号。');
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [configured, recoveryId]);
   async function action(body: unknown) {
     setBusy(true);
     setMessage('正在处理…');
@@ -260,7 +302,57 @@ export function AdminImports({
           生产导入尚未配置。需专用数据库权限、私有 Blob、隔离解析镜像及预算后启用。
         </p>
       )}
-      <fieldset disabled={!configured || busy} className={styles.panel}>
+      {recoveryId && (
+        <section className={styles.panel} aria-labelledby="import-recovery-title">
+          <h2 id="import-recovery-title">采集来源处理</h2>
+          <p>
+            原批次 {recoveryId}。查看只读取状态，不会重新联网检索、解析或调用 AI；原任务记录保留。
+          </p>
+          {!configured && (
+            <p>导入服务未就绪，暂不能读取原批次。请先完成配置，不会自动执行任何任务。</p>
+          )}
+          {recoveryMessage && <p role="status">{recoveryMessage}</p>}
+          {recoveryBatch && (
+            <>
+              <ul>
+                {recoveryBatch.items.map((item) => (
+                  <li key={item.id}>
+                    <p className={styles.name}>{item.declaration.name ?? item.declaration.url}</p>
+                    <p>{labels[item.status] ?? item.status}</p>
+                    {item.error_code === 'fetch_failed' && (
+                      <p>{importFetchFailureMessage(item.fetch_diagnostic)}</p>
+                    )}
+                    {item.error_code && item.error_code !== 'fetch_failed' && (
+                      <p>资料处理未完成，请核对原任务后再操作。</p>
+                    )}
+                    {['queued', 'running', 'unknown'].includes(item.status) && (
+                      <p>该资料尚未确认结束，请先核对原任务，不要为它重复导入或调用 AI。</p>
+                    )}
+                    {item.status === 'completed' && (
+                      <Link className={controls.button} href="/admin/signal-generation">
+                        前往生成页选择资料
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {recoveryBatch.items.some((item) => item.status === 'failed') && (
+                <>
+                  <p>
+                    对已确认失败的资料，可在下方新建批次中输入可访问的替代链接，或上传获准使用的文档。
+                    新批次解析后，在 AI
+                    信号生成页选择资料、模型并确认预算；不会自动恢复原采集任务或沿用自动发布授权。
+                  </p>
+                  <a className={controls.button} href="#import-new-batch">
+                    导入替代来源或文档
+                  </a>
+                </>
+              )}
+            </>
+          )}
+        </section>
+      )}
+      <fieldset id="import-new-batch" disabled={!configured || busy} className={styles.panel}>
         <legend>新建批次</legend>
         <div className={styles.uploadGrid}>
           <div className={styles.uploadZone}>
@@ -433,6 +525,9 @@ export function AdminImports({
                         {labels[item.status] ?? item.status}
                         {item.error_code ? ` · ${item.error_code}` : ''}
                       </p>
+                      {item.error_code === 'fetch_failed' && (
+                        <p>{importFetchFailureMessage(item.fetch_diagnostic)}</p>
+                      )}
                       {item.status === 'queued' && !batch.cancelled && (
                         <button
                           disabled={busy}
@@ -486,6 +581,11 @@ export function AdminImports({
                         >
                           确认已上传原件
                         </button>
+                      )}
+                      {item.status === 'completed' && (
+                        <Link className={controls.button} href="/admin/signal-generation">
+                          前往生成页选择资料
+                        </Link>
                       )}
                       {item.status === 'completed' && (
                         <button

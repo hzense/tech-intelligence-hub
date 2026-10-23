@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { importRoleColumns } from './import-role-columns.mjs';
+import { readImportFetchDiagnostic } from '../../ingestion/src/import-fetch-diagnostic.mjs';
 // Match the pinned ACL projection: future columns must not leak or break reads.
 const selectColumns = (table, alias = '') =>
   importRoleColumns[table].SELECT.map((column) => `${alias}${column}`).join(',');
@@ -76,6 +77,26 @@ const canonicalItems = (ownerParameter) => `canonical_items AS MATERIALIZED (
     AND i.status='completed'
   WINDOW identical AS (PARTITION BY o.content->'fragments' ORDER BY i.created_at,i.id)
 )`;
+// The existing attempt error_code text stores this bounded internal suffix so
+// failed fetches retain diagnostics without a schema/ACL migration. Public store
+// reads always normalize it back to fetch_failed plus a whitelisted diagnostic.
+function publicImportItem(row) {
+  if (typeof row.error_code !== 'string' || !row.error_code.startsWith('fetch_failed:')) return row;
+  const match = /^fetch_failed:(http_status:[1-5][0-9]{2}|dns|timeout|encoding|network)$/.exec(
+    row.error_code,
+  );
+  const diagnostic = match
+    ? readImportFetchDiagnostic({
+        reason: match[1].split(':')[0],
+        status: Number(match[1].split(':')[1]),
+      })
+    : undefined;
+  return {
+    ...row,
+    error_code: 'fetch_failed',
+    ...(diagnostic ? { fetch_diagnostic: diagnostic } : {}),
+  };
+}
 async function details(client, rows, owner) {
   if (!rows.length) return [];
   const items = (
@@ -94,7 +115,7 @@ async function details(client, rows, owner) {
   const byBatch = new Map();
   for (const item of items) {
     if (!byBatch.has(item.batch_id)) byBatch.set(item.batch_id, []);
-    byBatch.get(item.batch_id).push(item);
+    byBatch.get(item.batch_id).push(publicImportItem(item));
   }
   return rows.map((row) => {
     const items = byBatch.get(row.id) ?? [];
@@ -407,6 +428,7 @@ export async function finishImportAttempt({
   output,
   chargedMicrousd = 0,
   errorCode = null,
+  fetchDiagnostic: suppliedFetchDiagnostic,
 }) {
   money(chargedMicrousd);
   if (
@@ -426,6 +448,15 @@ export async function finishImportAttempt({
       ].includes(errorCode))
   )
     importFail();
+  const diagnostic = readImportFetchDiagnostic(suppliedFetchDiagnostic);
+  if (
+    suppliedFetchDiagnostic !== undefined &&
+    (!diagnostic || outcome !== 'failed' || errorCode !== 'fetch_failed')
+  )
+    importFail();
+  const storedErrorCode = diagnostic
+    ? `fetch_failed:${diagnostic.reason}${diagnostic.reason === 'http_status' ? `:${diagnostic.status}` : ''}`
+    : errorCode;
   const content = outcome === 'completed' ? parseImportOutput(output) : null;
   return transaction(pool, async (client) => {
     const b = await batch(client, batchId, owner, true),
@@ -450,11 +481,16 @@ export async function finishImportAttempt({
       );
     await client.query(
       'UPDATE public.import_attempts SET status=$3,error_code=$4,charged_microusd=$5,finished_at=now() WHERE item_id=$1 AND fence=$2',
-      [i.id, fence, outcome, errorCode, charge.toString()],
+      [i.id, fence, outcome, storedErrorCode, charge.toString()],
     );
     await client.query('UPDATE public.import_items SET status=$2 WHERE id=$1', [i.id, outcome]);
     await audit(client, b.id, i.id, outcome);
-    return { item_id: i.id, status: outcome };
+    return {
+      item_id: i.id,
+      status: outcome,
+      ...(errorCode ? { error_code: errorCode } : {}),
+      ...(diagnostic ? { fetch_diagnostic: diagnostic } : {}),
+    };
   });
 }
 

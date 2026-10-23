@@ -111,6 +111,50 @@ test('failed URL cleanup finishes before a retry can observe the committed faile
   assert.equal(original, 'new-retry-original');
   assert.equal(removals, 1);
 });
+test('failed fetch persists only sanitized diagnostics and never parses or uploads the response', async () => {
+  for (const diagnostic of [
+    { reason: 'http_status', status: 403 },
+    { reason: 'dns' },
+    { reason: 'timeout' },
+    { reason: 'encoding' },
+    { reason: 'network' },
+  ]) {
+    const { deps, events } = fixture({
+      fetch: async () => {
+        throw new ImportIOError('fetch_failed', {
+          ...diagnostic,
+          url: 'https://secret.example/?token=private',
+          body: 'private response',
+        });
+      },
+    });
+    const result = await runImportProcessing(path, 100, deps);
+    assert.equal(result.outcome, 'failed');
+    assert.equal(result.errorCode, 'fetch_failed');
+    assert.deepEqual(result.fetchDiagnostic, diagnostic);
+    assert.equal(result.chargedMicrousd, 100);
+    assert.equal(events.includes('parse'), false);
+    assert.equal(events.includes('put'), false);
+    assert.equal(JSON.stringify(result).includes('private'), false);
+  }
+});
+test('legacy or invalid fetch diagnostics do not invent a reason', async () => {
+  for (const diagnostic of [
+    undefined,
+    { reason: 'http_status', status: 999 },
+    { reason: 'private' },
+  ]) {
+    const { deps } = fixture({
+      fetch: async () => {
+        throw new ImportIOError('fetch_failed', diagnostic);
+      },
+    });
+    const result = await runImportProcessing(path, 100, deps);
+    assert.equal(result.outcome, 'failed');
+    assert.equal(result.errorCode, 'fetch_failed');
+    assert.equal(Object.hasOwn(result, 'fetchDiagnostic'), false);
+  }
+});
 test('immutable receipt mismatch prevents parse; unknown external errors require reconciliation', async () => {
   const { events, deps } = fixture({
     read: async () => ({ bytes, sha256: 'incorrect', version: 'v1' }),

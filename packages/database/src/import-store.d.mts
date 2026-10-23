@@ -1,4 +1,6 @@
 import type { ImportCapabilities } from '../../ingestion/src/import-manifest.mjs';
+import type { ImportFetchDiagnostic } from '../../ingestion/src/import-fetch-diagnostic.mjs';
+export type { ImportFetchDiagnostic } from '../../ingestion/src/import-fetch-diagnostic.mjs';
 export interface ImportItem {
   id: string;
   batch_id: string;
@@ -17,6 +19,7 @@ export interface ImportItem {
   duplicate_of?: string | null;
   duplicate_batch_id?: string | null;
   error_code?: string | null;
+  fetch_diagnostic?: ImportFetchDiagnostic;
   sha256?: string | null;
   lease_until?: string | null;
 }
@@ -78,8 +81,14 @@ export function finishImportAttempt(
     output?: unknown;
     chargedMicrousd?: number;
     errorCode?: string | null;
+    fetchDiagnostic?: ImportFetchDiagnostic;
   },
-): Promise<{ item_id: string; status: string }>;
+): Promise<{
+  item_id: string;
+  status: string;
+  error_code?: string;
+  fetch_diagnostic?: ImportFetchDiagnostic;
+}>;
 export function retryImportItem(args: ItemArgs): Promise<{ item_id: string; status: string }>;
 export function expireImportAttempt(args: ItemArgs): Promise<{ changed: boolean; status?: string }>;
 export function getImportQueue(args: {

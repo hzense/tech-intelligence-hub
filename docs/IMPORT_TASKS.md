@@ -9,7 +9,7 @@
 | `import_batches`     | 管理员归属、请求指纹、意图、冻结配置、取消标志   | 请求 UUID 主键；不引用公开内容     |
 | `import_items`       | 输入声明、逐项状态、fencing 版本                 | UUID；关联批次；批次内位置唯一     |
 | `import_documents`   | 固定原件：私有对象键、版本、实测哈希／大小／类型 | 输入项主键；改变原件须新建项       |
-| `import_attempts`    | 解析器版本、租约、状态、预算                     | 输入项＋递增 fence 主键            |
+| `import_attempts`    | 解析器版本、租约、状态、预算、脱敏抓取错误       | 输入项＋递增 fence 主键            |
 | `import_outputs`     | 私有正文与页／段／单元格／区域定位               | 引用原件及具体尝试；成功结果不覆盖 |
 | `import_audit`       | 创建、接收、领取、结束、取消及重试事件           | UUID；关联批次及可选项；不记录正文 |
 | `import_daily_usage` | UTC 日全局预留与保守计费                         | 日期主键；无损 bigint              |

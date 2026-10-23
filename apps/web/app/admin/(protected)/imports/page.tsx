@@ -4,15 +4,22 @@ import { importConfigurationDiagnostics } from '@/lib/server/import-service';
 import { importConfigurationMessages } from '@/lib/import-config';
 import { AdminImports } from '@/components/admin-imports';
 import { isLocalDevelopment } from '@/lib/local-development';
+import { parseImportRecoveryBatchId } from '@/lib/import-recovery';
 export const metadata: Metadata = { title: '批量导入', robots: { index: false, follow: false } };
 export const dynamic = 'force-dynamic';
-export default async function ImportsPage() {
+export default async function ImportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ batchId?: string | string[] }>;
+}) {
   await requireAdminSession();
   const diagnostics = importConfigurationDiagnostics();
+  const recoveryBatchId = parseImportRecoveryBatchId((await searchParams).batchId);
   return (
     <AdminImports
       local={isLocalDevelopment(process.env)}
       configured={diagnostics.ready}
+      {...(recoveryBatchId ? { recoveryBatchId } : {})}
       diagnostics={{
         enabled: diagnostics.enabled,
         valid: diagnostics.valid,

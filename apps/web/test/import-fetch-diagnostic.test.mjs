@@ -196,5 +196,5 @@ test('URL fetch emits a safe diagnostic once and logging failures preserve the o
     { reason: 'http_status', status: 429 },
   ]);
   const service = readFileSync(new URL('../lib/server/import-service.ts', import.meta.url), 'utf8');
-  assert.match(service, /event: 'import_fetch_failed', \.\.\.diagnostic/);
+  assert.match(service, /event: 'import_fetch_failed', batchId, itemId, \.\.\.diagnostic/);
 });

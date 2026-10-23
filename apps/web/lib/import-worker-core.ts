@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ImportDocument, ImportItem } from '../../../packages/database/src/import-store.mjs';
-import { ImportIOError } from './import-io.ts';
+import { ImportIOError, importFetchDiagnostic, type ImportFetchDiagnostic } from './import-io.ts';
 import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
 interface ObjectReceipt {
   bytes: Buffer;
@@ -12,6 +12,7 @@ interface Completion {
   outcome: string;
   output?: unknown;
   errorCode?: string;
+  fetchDiagnostic?: ImportFetchDiagnostic;
   chargedMicrousd: number;
 }
 export interface ImportWorkerDependencies {
@@ -101,10 +102,12 @@ export async function runImportProcessing(
         'ocr_required',
         'source_unavailable',
       ].includes(errorCode);
+    const fetchDiagnostic = importFetchDiagnostic(error);
     completion = {
       fence: claim.attempt.fence,
       outcome: known ? 'failed' : 'unknown',
       errorCode: known ? errorCode : 'outcome_unknown',
+      ...(fetchDiagnostic ? { fetchDiagnostic } : {}),
       chargedMicrousd:
         known && errorCode === 'source_unavailable' && !processingStarted ? 0 : reserve,
     };

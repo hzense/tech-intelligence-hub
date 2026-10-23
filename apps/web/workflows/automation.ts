@@ -20,6 +20,7 @@ import { automaticPublicationAvailable } from '../lib/automatic-publication';
 import { discoverSources } from '../lib/server/source-discovery';
 import {
   appendAutomationSourceFailure,
+  appendAutomationImportFailure,
   automationSourceFailureCode,
   type AutomationSourceFailureCode,
 } from '../lib/automation-source-failures';
@@ -30,7 +31,14 @@ import {
   type TopicInsightSandboxHandle,
 } from '../lib/server/topic-insight-sandbox';
 
-type SourceItem = { id: string; status: string; kind: string; url: string };
+type SourceItem = {
+  id: string;
+  status: string;
+  kind: string;
+  url: string;
+  error_code?: string | null;
+  fetch_diagnostic?: unknown;
+};
 type SourceBatch = { id: string; items: SourceItem[] };
 type GenerationDispatch = { id: string; queuedAt: string };
 type QueuedSource = { url: string; generationId: string; queuedAt: string };
@@ -103,7 +111,7 @@ export async function automationWorkflow(owner: string, id: string) {
       const status =
         item.status === 'completed'
           ? 'completed'
-          : await importSourceItem(owner, batch.id, item.id);
+          : await importSourceItem(owner, batch.id, item.id, run.id);
       if (status !== 'completed') {
         failed++;
         continue;
@@ -237,12 +245,15 @@ async function createSourceBatch(
   };
 }
 createSourceBatch.maxRetries = 0;
-async function importSourceItem(owner: string, batchId: string, itemId: string) {
+async function importSourceItem(owner: string, batchId: string, itemId: string, runId?: string) {
   'use step';
   assertLocalAutomationExecution('source_collection');
+  let outcome: Pick<SourceItem, 'status' | 'error_code' | 'fetch_diagnostic'> | undefined;
   try {
-    const result = (await runImportItem(owner, batchId, itemId)) as unknown as { status: string };
-    if (['completed', 'failed', 'cancelled'].includes(result.status)) return result.status;
+    const result = (await runImportItem(owner, batchId, itemId)) as unknown as NonNullable<
+      typeof outcome
+    >;
+    if (['completed', 'failed', 'cancelled'].includes(result.status)) outcome = result;
   } catch {
     // A thrown transport/commit error is not proof that the item failed. Read
     // back its durable result once; do not retry a fetch, parser or AI call.
@@ -251,9 +262,29 @@ async function importSourceItem(owner: string, batchId: string, itemId: string) 
       batchId,
     })) as SourceBatch;
     const item = batch.items.find((row) => row.id === itemId);
-    if (item && ['completed', 'failed', 'cancelled'].includes(item.status)) return item.status;
+    if (item && ['completed', 'failed', 'cancelled'].includes(item.status)) outcome = item;
   }
-  throw new Error('source_outcome_unknown');
+  if (!outcome) throw new Error('source_outcome_unknown');
+  if (runId && outcome.status !== 'completed') {
+    // Persist only a confirmed, sanitized failure. A lost receipt write stops
+    // reconciliation; it must never trigger another fetch or paid search.
+    const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
+    assertLocalAutomationRun(run);
+    if (run.status !== 'running' || run.result?.batchId !== batchId)
+      throw new Error('stale_attempt');
+    await store.updateAutomationRun({
+      pool: automationPool,
+      owner,
+      id: runId,
+      token: run.lease_token!,
+      phase: 'importing_sources',
+      result: {
+        ...run.result,
+        sourceFailures: appendAutomationImportFailure(run.result?.sourceFailures, itemId, outcome),
+      },
+    });
+  }
+  return outcome.status;
 }
 importSourceItem.maxRetries = 0;
 async function createPrivateGeneration(
