@@ -113,6 +113,141 @@ test('only cited public recent originals survive; tracking variants and existing
   );
   assert.equal(discoveryUrl('https://user:secret@example.com/'), null);
 });
+test('same-search alternatives retain source metadata without changing the event count', () => {
+  const first = article('https://partner.example.com/news');
+  const second = article('https://reporter.example.com/news');
+  const rows = [{ ...article(), alternatives: [first, second] }];
+  const result = parseDiscoveryResponse(
+    envelope(rows, [article().url, first.url, second.url]),
+    config,
+    window,
+    [],
+  );
+  assert.deepEqual(result.articles, rows);
+  assert.equal(result.articles.length, 1);
+  assert.equal(result.rejected, 0);
+  assert.deepEqual(result.alternativeValidation, {
+    version: 1,
+    returnedCount: 2,
+    acceptedCount: 2,
+    rejections: [],
+  });
+  const legacy = parseDiscoveryResponse(envelope(), config, window, []);
+  assert.deepEqual(legacy.articles, [article()]);
+  assert.equal(Object.hasOwn(legacy, 'alternativeValidation'), false);
+});
+test('invalid alternatives are individually discarded without losing valid main sources', () => {
+  const valid = article('https://partner.example.com/news');
+  for (const [invalid, reason] of [
+    [null, 'invalid_article'],
+    [article('http://127.0.0.1/private'), 'invalid_url'],
+    [article('https://private:password@example.com/news'), 'invalid_url'],
+    [article('https://example.com/uncited'), 'uncited_url'],
+    [{ ...valid, title: 'private\u0000title' }, 'invalid_title'],
+    [{ ...valid, publishedAt: 'private-date' }, 'invalid_date_format'],
+    [article(valid.url, '2026-02-30'), 'invalid_date'],
+    [article(valid.url, '2026-08-01'), 'date_out_of_window'],
+    [article(valid.url, '2026-10-01'), 'date_out_of_window'],
+    [{ ...valid, alternatives: [] }, 'unexpected_fields'],
+    [{ ...valid, privateText: 'private-body' }, 'unexpected_fields'],
+  ]) {
+    const rows = [{ ...article(), alternatives: [invalid, valid] }];
+    const result = parseDiscoveryResponse(
+      envelope(rows, [article().url, valid.url]),
+      config,
+      window,
+      [],
+    );
+    assert.deepEqual(result.articles, [{ ...article(), alternatives: [valid] }]);
+    assert.equal(result.rejected, 0);
+    assert.deepEqual(result.alternativeValidation, {
+      version: 1,
+      returnedCount: 2,
+      acceptedCount: 1,
+      rejections: [{ index: 0, alternativeIndex: 0, reasons: [reason] }],
+    });
+    assert.equal(JSON.stringify(result).includes('private'), false);
+  }
+});
+test('malformed and excessive alternative collections are bounded and leave main sources usable', () => {
+  for (const [alternatives, reason, returnedCount] of [
+    [null, 'invalid_alternatives', 0],
+    ['private-value', 'invalid_alternatives', 0],
+    [{ private: 'value' }, 'invalid_alternatives', 0],
+    [Array(3).fill(article()), 'too_many_alternatives', 3],
+    [Array(100).fill({ private: 'value' }), 'too_many_alternatives', 100],
+  ]) {
+    const result = parseDiscoveryResponse(
+      envelope([{ ...article(), alternatives }]),
+      config,
+      window,
+      [],
+    );
+    assert.deepEqual(result.articles, [{ ...article(), alternatives: [] }]);
+    assert.deepEqual(result.alternativeValidation, {
+      version: 1,
+      returnedCount,
+      acceptedCount: 0,
+      rejections: [{ index: 0, alternativeIndex: null, reasons: [reason] }],
+    });
+    assert.equal(JSON.stringify(result).includes('private'), false);
+  }
+});
+test('alternatives cannot consume primary URLs, known URLs, or another event alternative', () => {
+  const second = article('https://example.com/second');
+  const third = article('https://example.com/third');
+  const fallback = article('https://partner.example.com/news');
+  const known = article('https://example.com/known?utm_source=x');
+  const rows = [
+    { ...article(), alternatives: [second, fallback] },
+    { ...second, alternatives: [fallback, known] },
+    { ...third, alternatives: [article(), article(`${fallback.url}?utm_source=x`)] },
+  ];
+  const result = parseDiscoveryResponse(
+    envelope(rows, [...rows.map((row) => row.url), fallback.url, known.url]),
+    config,
+    window,
+    ['https://example.com/known'],
+  );
+  assert.deepEqual(result.articles, [
+    { ...article(), alternatives: [fallback] },
+    { ...second, alternatives: [] },
+    { ...third, alternatives: [] },
+  ]);
+  assert.equal(result.rejected, 0);
+  assert.equal(result.duplicates, 0);
+  assert.deepEqual(result.alternativeValidation, {
+    version: 1,
+    returnedCount: 6,
+    acceptedCount: 1,
+    rejections: [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [2, 0],
+      [2, 1],
+    ].map(([index, alternativeIndex]) => ({
+      index,
+      alternativeIndex,
+      reasons: ['duplicate_url'],
+    })),
+  });
+});
+test('primary priority also applies beyond maxSources and to rejected primary metadata', () => {
+  const second = article('https://example.com/second');
+  const third = article('https://example.com/third', '2026-08-01');
+  const rows = [{ ...article(), alternatives: [second, article(third.url)] }, second, third];
+  const result = parseDiscoveryResponse(
+    envelope(rows),
+    { ...config, discovery: { ...config.discovery, maxSources: 1 } },
+    window,
+    [],
+  );
+  assert.deepEqual(result.articles, [{ ...article(), alternatives: [] }]);
+  assert.equal(result.rejected, 1);
+  assert.equal(result.alternativeValidation.acceptedCount, 0);
+  assert.equal(result.alternativeValidation.rejections.length, 2);
+});
 test('article validation records each rejection rule without dependent or invented reasons', () => {
   const cases = [
     [null, 'invalid_article'],
@@ -341,7 +476,19 @@ test('provider uses one bounded server-tool request with no credential or reason
   assert.deepEqual(schema.required, ['articles']);
   assert.equal(schema.properties.articles.type, 'array');
   assert.equal(schema.properties.articles.items.additionalProperties, false);
-  assert.deepEqual(schema.properties.articles.items.required, ['url', 'title', 'publishedAt']);
+  assert.deepEqual(schema.properties.articles.items.required, [
+    'url',
+    'title',
+    'publishedAt',
+    'alternatives',
+  ]);
+  const alternatives = schema.properties.articles.items.properties.alternatives;
+  assert.equal(alternatives.type, 'array');
+  assert.equal(alternatives.items.additionalProperties, false);
+  assert.deepEqual(alternatives.items.required, ['url', 'title', 'publishedAt']);
+  assert.match(alternatives.description, /maxItems: 2/);
+  assert.equal(body.tools[0].parameters.max_results, 8);
+  assert.equal(body.tools[0].parameters.max_total_results, 8);
   assert.equal(body.provider.require_parameters, true);
   assert.equal(body.max_tokens, 2048);
   assert.equal(body.tools.length, 1);
@@ -353,6 +500,16 @@ test('provider uses one bounded server-tool request with no credential or reason
   assert.equal(JSON.stringify(result).includes(access.apiKey), false);
   assert.equal(result.costMicrousd, 25000);
   assert.equal(result.costSource, 'provider');
+});
+test('provider accepts same-response alternatives without extra search or inference calls', async () => {
+  const alternate = article('https://partner.example.com/news');
+  const rows = [{ ...article(), alternatives: [alternate] }];
+  const h = harness(envelope(rows, [article().url, alternate.url]));
+  const result = await h.run();
+  assert.deepEqual(result.result.articles, rows);
+  assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
+  assert.equal(JSON.parse(h.calls[1].body).max_tokens, 2048);
+  assert.equal(result.costMicrousd, 25000);
 });
 test('all-rejected provider results retain validation and cost without another paid request', async () => {
   const rows = Array.from({ length: 8 }, (_, index) =>

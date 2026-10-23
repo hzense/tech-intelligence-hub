@@ -6,6 +6,7 @@ import {
   automationSourceFailureCode,
   automationSourceFailureItems,
   readAutomationSourceFailures,
+  automationSourceFailureLimit,
 } from '../lib/automation-source-failures.ts';
 
 const itemId = '11111111-1111-4111-8111-111111111111';
@@ -98,21 +99,25 @@ test('confirmed import failures carry only sanitized diagnostics and retain cand
   );
 });
 
-test('source failure append keeps at most eight unique item receipts without mutating history', () => {
+test('source failure append bounds all primary and fallback receipts without mutating history', () => {
   const original = [{ ...receipt, message: 'private' }];
   let failures = appendAutomationSourceFailure(original, itemId, 'profile_not_ready');
   assert.deepEqual(failures, [{ ...receipt, code: 'profile_not_ready' }]);
   assert.equal(original[0].code, 'invalid_request');
-  for (let index = 2; index <= 12; index++) {
+  assert.equal(automationSourceFailureLimit, 24);
+  for (let index = 2; index <= automationSourceFailureLimit + 4; index++) {
     failures = appendAutomationSourceFailure(
       failures,
       `11111111-1111-4111-8111-${String(index).padStart(12, '0')}`,
       'budget_exceeded',
     );
   }
-  assert.equal(failures.length, 8);
-  assert.equal(new Set(failures.map((entry) => entry.itemId)).size, 8);
-  assert.equal(readAutomationSourceFailures([...failures, ...failures]).length, 8);
+  assert.equal(failures.length, automationSourceFailureLimit);
+  assert.equal(new Set(failures.map((entry) => entry.itemId)).size, automationSourceFailureLimit);
+  assert.equal(
+    readAutomationSourceFailures([...failures, ...failures]).length,
+    automationSourceFailureLimit,
+  );
   assert.deepEqual(
     appendAutomationSourceFailure(failures, 'private-item', 'invalid_request'),
     failures,

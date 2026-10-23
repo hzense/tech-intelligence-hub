@@ -12,6 +12,7 @@ test('source discovery orchestrates originals and private candidates without dro
     'claim',
     'findSources',
     'createSourceBatch',
+    'createFallbackSourceBatch',
     'importSourceItem',
     'createPrivateGeneration',
     'dispatchGeneration',
@@ -27,18 +28,32 @@ test('source discovery orchestrates originals and private candidates without dro
     '../lib/server/automation':
       'export function automationLimits(){return {batch:1000000,daily:5000000,reserve:500000}}',
     '../lib/server/automation-store-access': 'export const automationPool={};',
-    '../../../packages/database/src/automation-contract.mjs':
-      'export function automationStableId(x){return x.itemId ?? "batch-id"}',
+    '../../../packages/database/src/automation-contract.mjs': `import {createHash} from 'node:crypto';
+      export function automationStableId(x){if(x.kind!=='import_fallback')return x.itemId??'batch-id';const hex=createHash('sha256').update(JSON.stringify(x)).digest('hex');return hex.slice(0,8)+'-'+hex.slice(8,12)+'-4'+hex.slice(13,16)+'-8'+hex.slice(17,20)+'-'+hex.slice(20,32)}`,
     '../../../packages/database/src/automation-store.mjs': `
       export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
-      export async function rejectAutomaticPublicationBeforeClaim(){throw Error('unexpected automatic rejection')}
+      export async function rejectAutomaticPublicationBeforeClaim(){const f=globalThis.__sourceFlow;f.rejectedAutomaticClaims++;f.run.status='failed'}
       export async function claimAutomationRun(){const f=globalThis.__sourceFlow;f.claims++;if(f.run.status!=='queued')return null;f.run.status='running';return structuredClone(f.run)}
       export async function readAutomationRun(){const f=globalThis.__sourceFlow;f.reads++;return structuredClone(f.run)}
       export async function updateAutomationRun(args){const f=globalThis.__sourceFlow;if(f.run.status!=='running')throw Error('stale_attempt');f.updates.push(args);f.run.result=args.result;f.run.phase=args.phase;f.run.status=args.status??'running';f.run.charged_microusd=args.costMicrousd??f.run.charged_microusd;return structuredClone(f.run)}
     `,
-    '../lib/server/source-discovery': `export async function discoverSources(){const f=globalThis.__sourceFlow;f.discoveries++;f.run.result={discovery:{articles:f.urls.map(url=>({url,title:'原文',publishedAt:'2026-09-30'}))},discoveryCostMicrousd:25000,discoveryCostSource:'provider'};if(f.discoveryFailure){Object.assign(f.run,f.discoveryFailure);throw Error(f.discoveryFailure.error_code)}return f.urls;}`,
+    '../lib/server/source-discovery': `export async function discoverSources(){const f=globalThis.__sourceFlow;f.discoveries++;f.run.result={discovery:{windowStart:'2026-09-29',windowEnd:'2026-10-02',articles:f.discoveryArticles??f.urls.map(url=>({url,title:'原文',publishedAt:'2026-09-30'}))},discoveryCostMicrousd:25000,discoveryCostSource:'provider'};if(f.discoveryFailure){Object.assign(f.run,f.discoveryFailure);throw Error(f.discoveryFailure.error_code)}return f.urls;}`,
     '../lib/server/import-service': `
-      export async function executeImportAdmin(_owner,_method,body){const f=globalThis.__sourceFlow;f.imports.push(body);return {id:'batch-id',items:f.urls.map((_url,i)=>({id:f.itemIds?.[i]??'item-'+i,status:body.action==='detail'?(f.readbackStates[f.itemIds?.[i]??'item-'+i]??'unknown'):'pending',kind:'url',...(body.action==='detail'?f.importErrors[f.itemIds?.[i]??'item-'+i]:{})}))}}
+      export async function executeImportAdmin(_owner,_method,body){
+        const f=globalThis.__sourceFlow;f.imports.push(body);
+        if(body.action==='create'){
+          const id=body.request.id;
+          if(id!=='batch-id'&&!f.run.result.sourceFallbacks?.some(row=>row.batchId===id))throw Error('fallback batch id not pinned');
+          const urls=body.request.manifest.urlLines.split('\\n');
+          const batch=f.batches[id]??{id,items:urls.map((url,i)=>({id:id==='batch-id'?(f.itemIds?.[i]??'item-'+i):f.fallbackItemIds[url],status:'pending',kind:'url',url}))};
+          f.batches[id]=batch;
+          if(f.importCreateErrors[urls[0]])throw Error('create outcome unconfirmed');
+          return structuredClone(batch);
+        }
+        const batch=f.batches[body.batchId];
+        if(!batch)throw Error('batch not found');
+        return {id:batch.id,items:batch.items.map(item=>({...item,status:f.readbackStates[item.id]??'unknown',...f.importErrors[item.id]}))};
+      }
       export async function runImportItem(_owner,_batch,id){const f=globalThis.__sourceFlow;f.importAttempts.push(id);if(f.thrownItems.includes(id))throw Error('unconfirmed');return {status:f.returnedStates[id]??(f.failedItems.includes(id)?'failed':'completed'),...f.importErrors[id]}}
     `,
     '../lib/server/signal-generation': `
@@ -53,7 +68,7 @@ test('source discovery orchestrates originals and private candidates without dro
   };
   const fixture = await build({
     stdin: {
-      contents: `${source}\nexport {findSources,createSourceBatch,importSourceItem,createPrivateGeneration,dispatchGeneration,startTopicWorker,pollTopicWorker,stopTopicWorker};`,
+      contents: `${source}\nexport {findSources,createSourceBatch,createFallbackSourceBatch,importSourceItem,createPrivateGeneration,dispatchGeneration,startTopicWorker,pollTopicWorker,stopTopicWorker};`,
       loader: 'ts',
       resolveDir: fileURLToPath(new URL('../workflows', import.meta.url)),
     },
@@ -85,6 +100,9 @@ test('source discovery orchestrates originals and private candidates without dro
     'WORKFLOW_TARGET_WORLD',
     'HZENSE_AUTOMATION_ENABLED',
     'HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED',
+    'HZENSE_EDITORIAL_PUBLICATION_ENABLED',
+    'HZENSE_UNIFIED_SIGNAL_ENABLED',
+    'HZENSE_AUTOMATIC_PUBLICATION_ENABLED',
   ];
   const savedEnvironment = Object.fromEntries(
     environmentKeys.map((key) => [key, process.env[key]]),
@@ -93,6 +111,9 @@ test('source discovery orchestrates originals and private candidates without dro
     (globalThis.__sourceFlow = {
       urls,
       imports: [],
+      batches: {},
+      fallbackItemIds: {},
+      importCreateErrors: {},
       generated: [],
       queued: [],
       dispatched: [],
@@ -113,6 +134,7 @@ test('source discovery orchestrates originals and private candidates without dro
       createErrors: {},
       createdIds: {},
       claims: 0,
+      rejectedAutomaticClaims: 0,
       reads: 0,
       topicCalls: 0,
       localIsolationValid: true,
@@ -341,6 +363,258 @@ test('source discovery orchestrates originals and private candidates without dro
       assert.deepEqual(f.importAttempts, [itemIds[0]], '403 is not blindly fetched again');
     }
 
+    const primaryUrl = 'https://example.com/original-event';
+    const fallbackUrls = [
+      'https://second.example.com/same-event',
+      'https://third.example.com/same-event',
+    ];
+    const fallbackFixture = () => {
+      const fixture = setup([primaryUrl]);
+      fixture.itemIds = [itemIds[0]];
+      fixture.fallbackItemIds = Object.fromEntries(
+        fallbackUrls.map((url, index) => [url, itemIds[index + 1]]),
+      );
+      fixture.discoveryArticles = [
+        {
+          url: primaryUrl,
+          title: '事件原始报道',
+          publishedAt: '2026-09-30',
+          alternatives: fallbackUrls.map((url) => ({
+            url,
+            title: '同一事件的备用报道',
+            publishedAt: '2026-09-30',
+          })),
+        },
+      ];
+      fixture.failedItems = [itemIds[0]];
+      fixture.importErrors[itemIds[0]] = {
+        error_code: 'fetch_failed',
+        fetch_diagnostic: { reason: 'http_status', status: 403 },
+      };
+      return fixture;
+    };
+    const createdImports = (fixture) =>
+      fixture.imports.filter((request) => request.action === 'create');
+
+    // A confirmed inaccessible original can use already-discovered alternatives,
+    // but must not repeat search, create two candidates or lose its original receipt.
+    for (const lostAck of [false, true]) {
+      f = fallbackFixture();
+      if (lostAck) {
+        f.thrownItems = [itemIds[0]];
+        f.readbackStates[itemIds[0]] = 'failed';
+      }
+      await automationWorkflow('owner', 'run');
+      assert.equal(f.run.status, 'completed');
+      assert.equal(f.run.result.failed, 0, 'one recovered event is not counted as a failed event');
+      assert.equal(f.run.result.batchId, 'batch-id', 'the original batch remains addressable');
+      assert.deepEqual(f.importAttempts, itemIds.slice(0, 2));
+      assert.equal(createdImports(f).length, 2, 'a successful first alternative stops fallback');
+      const fallbackBatch = createdImports(f)[1].request.id;
+      assert.deepEqual(createdImports(f)[1].request.manifest, {
+        files: [],
+        urlLines: fallbackUrls[0],
+      });
+      assert.equal(createdImports(f)[1].request.intent, 'preview');
+      assert.deepEqual(f.run.result.sourceFallbacks, [
+        {
+          primaryItemId: itemIds[0],
+          originalUrl: primaryUrl,
+          batchId: fallbackBatch,
+          url: fallbackUrls[0],
+          itemId: itemIds[1],
+        },
+      ]);
+      assert.deepEqual(f.run.result.sourceFailures, [
+        {
+          itemId: itemIds[0],
+          phase: 'import_source',
+          code: 'fetch_failed',
+          fetchDiagnostic: { reason: 'http_status', status: 403 },
+        },
+      ]);
+      assert.equal(f.generated.length, 1);
+      assert.equal(f.generated[0].batchId, fallbackBatch);
+      assert.equal(f.generated[0].itemId, itemIds[1]);
+      assert.equal(f.generated[0].automaticPublicationConsent, false);
+      assert.deepEqual(f.dispatched, [itemIds[1]]);
+      assert.equal(f.run.result.queuedSources[0].url, fallbackUrls[0]);
+      assert.equal(f.discoveries, 1);
+      assert.equal(f.run.charged_microusd, 25000);
+      assert.equal(f.run.result.discoveryCostSource, 'provider');
+      assert.equal(await automationWorkflow('owner', 'run'), 'already_started_or_finished');
+      assert.equal(f.discoveries, 1, 'replay cannot repeat the paid discovery');
+      assert.equal(createdImports(f).length, 2, 'replay cannot create another fallback batch');
+      assert.deepEqual(f.importAttempts, itemIds.slice(0, 2));
+      assert.deepEqual(f.dispatched, [itemIds[1]], 'replay cannot dispatch the candidate twice');
+    }
+
+    f = fallbackFixture();
+    f.failedItems = [];
+    await automationWorkflow('owner', 'run');
+    assert.equal(createdImports(f).length, 1, 'an accessible original needs no fallback batch');
+    assert.deepEqual(f.importAttempts, [itemIds[0]]);
+    assert.deepEqual(f.dispatched, [itemIds[0]]);
+    assert.equal(f.run.result.sourceFallbacks?.length ?? 0, 0);
+
+    for (const secondAlternativeSucceeds of [false, true]) {
+      f = fallbackFixture();
+      f.failedItems = secondAlternativeSucceeds ? itemIds.slice(0, 2) : itemIds;
+      for (const itemId of itemIds.slice(1))
+        f.importErrors[itemId] = {
+          error_code: 'fetch_failed',
+          fetch_diagnostic: { reason: 'http_status', status: 503 },
+        };
+      await automationWorkflow('owner', 'run');
+      assert.deepEqual(f.importAttempts, itemIds, 'each confirmed unavailable URL is tried once');
+      assert.equal(createdImports(f).length, 3);
+      assert.equal(new Set(createdImports(f).map((body) => body.request.id)).size, 3);
+      assert.equal(f.run.result.failed, secondAlternativeSucceeds ? 0 : 1);
+      assert.equal(f.run.status, secondAlternativeSucceeds ? 'completed' : 'failed');
+      assert.equal(f.run.result.batchId, 'batch-id');
+      assert.equal(f.run.result.sourceFallbacks.length, 2);
+      assert.equal(f.run.result.sourceFailures.length, secondAlternativeSucceeds ? 2 : 3);
+      assert.deepEqual(f.dispatched, secondAlternativeSucceeds ? [itemIds[2]] : []);
+      assert.equal(f.generated.length, secondAlternativeSucceeds ? 1 : 0);
+      if (secondAlternativeSucceeds) {
+        assert.equal(f.generated[0].batchId, createdImports(f)[2].request.id);
+        assert.equal(f.run.result.queuedSources[0].url, fallbackUrls[1]);
+      }
+      assert.equal(f.discoveries, 1);
+      assert.equal(f.run.charged_microusd, 25000);
+    }
+
+    for (const error of [
+      { error_code: 'parse_failed' },
+      { error_code: 'unsupported_content' },
+      { error_code: 'fetch_failed', fetch_diagnostic: { reason: 'http_status', status: 400 } },
+      { error_code: 'fetch_failed' },
+    ]) {
+      f = fallbackFixture();
+      f.importErrors[itemIds[0]] = error;
+      await automationWorkflow('owner', 'run');
+      assert.equal(f.run.status, 'failed');
+      assert.equal(
+        createdImports(f).length,
+        1,
+        'non-fetch or unclassified failure is not fallback consent',
+      );
+      assert.deepEqual(f.importAttempts, [itemIds[0]]);
+      assert.deepEqual(f.generated, []);
+    }
+    for (const status of ['cancelled', 'unknown']) {
+      f = fallbackFixture();
+      f.returnedStates[itemIds[0]] = status;
+      await automationWorkflow('owner', 'run');
+      assert.equal(f.run.status, status === 'unknown' ? 'unknown' : 'failed');
+      assert.equal(createdImports(f).length, 1);
+      assert.deepEqual(f.importAttempts, [itemIds[0]]);
+      assert.deepEqual(f.dispatched, []);
+    }
+    f = fallbackFixture();
+    f.returnedStates[itemIds[1]] = 'unknown';
+    await automationWorkflow('owner', 'run');
+    assert.equal(f.run.status, 'unknown');
+    assert.equal(
+      createdImports(f).length,
+      2,
+      'an ambiguous alternative cannot advance to the next one',
+    );
+    assert.deepEqual(f.importAttempts, itemIds.slice(0, 2));
+    assert.equal(f.run.result.sourceFallbacks[0].itemId, itemIds[1]);
+    assert.deepEqual(f.generated, []);
+    assert.equal(f.run.charged_microusd, 25000);
+
+    for (const status of ['failed', 'cancelled']) {
+      f = fallbackFixture();
+      f.returnedStates[itemIds[1]] = status;
+      f.importErrors[itemIds[1]] = { error_code: 'parse_failed' };
+      await automationWorkflow('owner', 'run');
+      assert.equal(f.run.status, 'failed');
+      assert.equal(f.run.result.failed, 1);
+      assert.equal(
+        createdImports(f).length,
+        2,
+        'parse failure or cancellation cannot select another source',
+      );
+      assert.deepEqual(f.importAttempts, itemIds.slice(0, 2));
+      assert.deepEqual(f.generated, []);
+    }
+
+    f = fallbackFixture();
+    f.importCreateErrors[fallbackUrls[0]] = true;
+    await automationWorkflow('owner', 'run');
+    assert.equal(f.run.status, 'unknown');
+    assert.equal(createdImports(f).length, 2);
+    assert.deepEqual(f.importAttempts, [itemIds[0]]);
+    assert.equal(f.run.result.sourceFallbacks[0].batchId, createdImports(f)[1].request.id);
+    assert.equal(f.run.result.sourceFallbacks[0].itemId, undefined);
+    assert.deepEqual(f.generated, []);
+    assert.equal(await automationWorkflow('owner', 'run'), 'already_started_or_finished');
+    assert.equal(
+      createdImports(f).length,
+      2,
+      'unconfirmed create stays pinned instead of being recreated',
+    );
+
+    // Recovery of the source does not grant another generation budget, permit
+    // another model call or silently expand publication authorization.
+    f = fallbackFixture();
+    f.createErrors[itemIds[1]] = 'budget_exceeded';
+    await automationWorkflow('owner', 'run');
+    assert.equal(f.run.status, 'failed');
+    assert.equal(f.run.result.failed, 1);
+    assert.equal(f.run.result.sourceFailures.at(-1).code, 'budget_exceeded');
+    assert.equal(f.generated.length, 1);
+    assert.equal(
+      createdImports(f).length,
+      2,
+      'candidate refusal cannot select another source to retry',
+    );
+    assert.deepEqual(f.queued, []);
+    assert.deepEqual(f.dispatched, []);
+    assert.equal(f.run.charged_microusd, 25000);
+    f = fallbackFixture();
+    f.dispatchErrors = [itemIds[1]];
+    await automationWorkflow('owner', 'run');
+    assert.equal(
+      createdImports(f).length,
+      2,
+      'dispatch failure cannot retry generation on an alternative',
+    );
+    assert.deepEqual(f.dispatched, [itemIds[1]]);
+    assert.deepEqual(f.closedQueues, [['owner', itemIds[1], '2026-10-02T12:00:00.123Z']]);
+
+    const publicationEnvironment = [
+      'HZENSE_EDITORIAL_PUBLICATION_ENABLED',
+      'HZENSE_UNIFIED_SIGNAL_ENABLED',
+      'HZENSE_AUTOMATIC_PUBLICATION_ENABLED',
+    ];
+    const priorPublicationEnvironment = Object.fromEntries(
+      publicationEnvironment.map((key) => [key, process.env[key]]),
+    );
+    for (const key of publicationEnvironment) process.env[key] = '1';
+    for (const publicationMode of [undefined, 'manual', 'automatic']) {
+      f = fallbackFixture();
+      f.run.snapshot.publicationMode = publicationMode;
+      await automationWorkflow('owner', 'run');
+      assert.equal(f.generated.length, 1);
+      assert.equal(f.generated[0].automaticPublicationConsent, publicationMode === 'automatic');
+      assert.equal(f.generated[0].itemId, itemIds[1]);
+    }
+    process.env.HZENSE_AUTOMATIC_PUBLICATION_ENABLED = '0';
+    f = fallbackFixture();
+    f.run.snapshot.publicationMode = 'automatic';
+    await assert.rejects(automationWorkflow('owner', 'run'), /automatic_publication_unavailable/);
+    assert.equal(f.claims, 0);
+    assert.equal(f.rejectedAutomaticClaims, 1);
+    assert.equal(f.discoveries, 0);
+    assert.deepEqual(f.imports, []);
+    for (const [key, value] of Object.entries(priorPublicationEnvironment)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+
     f = setup(['https://example.com/denied', 'https://example.com/allowed']);
     f.itemIds = itemIds.slice(0, 2);
     f.failedItems = [itemIds[0]];
@@ -482,7 +756,12 @@ test('source discovery orchestrates originals and private candidates without dro
 
       // Cached claims are not admission: persisted scheduled runs must still
       // fail before search, import creation or candidate creation on recovery.
-      for (const step of ['findSources', 'createSourceBatch', 'createPrivateGeneration']) {
+      for (const step of [
+        'findSources',
+        'createSourceBatch',
+        'createFallbackSourceBatch',
+        'createPrivateGeneration',
+      ]) {
         f = setup(['https://example.com/scheduled']);
         f.run.trigger = trigger;
         f.run.status = 'running';
@@ -510,6 +789,7 @@ test('source discovery orchestrates originals and private candidates without dro
     for (const step of [
       'findSources',
       'createSourceBatch',
+      'createFallbackSourceBatch',
       'importSourceItem',
       'createPrivateGeneration',
     ])

@@ -3,7 +3,8 @@ import type { ImportFetchDiagnostic } from '../../../packages/ingestion/src/impo
 import { importFetchFailureMessage } from './import-recovery.ts';
 
 /** Private, bounded receipts for confirmed import failures and candidate refusals. */
-export const automationSourceFailureLimit = 8;
+// Eight events, each with a primary plus at most two source fallback attempts.
+export const automationSourceFailureLimit = 24;
 const failureLabels = {
   duplicate_source: '来源已有候选任务',
   source_unavailable: '原文不可用于生成',

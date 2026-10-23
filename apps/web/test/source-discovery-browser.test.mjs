@@ -209,6 +209,8 @@ test(
       };
       await page.goto(`http://127.0.0.1:${server.address().port}`);
       await expect(page.getByText('无需指定领域或填写网址', { exact: false })).toBeVisible();
+      await expect(page.getByRole('spinbutton', { name: '每次最多采集事件数量' })).toHaveValue('5');
+      await expect(page.getByText(/不追加付费检索，也不重复创建该事件的生成任务/)).toBeVisible();
       await expect(page.locator('textarea')).toHaveCount(0);
       await expect(page.getByRole('checkbox', { name: '人工智能', exact: true })).toHaveCount(0);
       await expect(page.getByText('配置存储已就绪', { exact: false })).toBeVisible();
@@ -676,6 +678,74 @@ test(
       await expect(page.getByText(/原采集任务与费用保留/)).toBeVisible();
       assert.equal(posts.length, 6, 'reading a failed source creates no import or paid AI work');
 
+      const fallbackBatchId = '44444444-4444-4444-8444-444444444444';
+      const originalUrl = 'https://example.com/blocked-original';
+      const fallbackUrl = 'https://example.org/same-event';
+      run.status = 'completed';
+      run.phase = 'candidate_tasks_queued';
+      run.result.failed = 0;
+      run.result.sourceFallbacks = [
+        {
+          primaryItemId: '11111111-1111-4111-8111-111111111111',
+          originalUrl,
+          url: fallbackUrl,
+          batchId: fallbackBatchId,
+          itemId: '55555555-5555-4555-8555-555555555555',
+          body: 'must-not-display-private-fallback-body',
+        },
+        {
+          primaryItemId: '11111111-1111-4111-8111-111111111111',
+          originalUrl,
+          url: 'javascript:must-not-display-private-script',
+          batchId: '66666666-6666-4666-8666-666666666666',
+        },
+      ];
+      run.result.discovery.articles = [
+        {
+          title: '同事件首选来源',
+          url: originalUrl,
+          publishedAt: '2026-10-23',
+          alternatives: [{ title: '同事件备用报道', url: fallbackUrl, publishedAt: '2026-10-23' }],
+        },
+      ];
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await readDetails();
+      await page.getByText('查看备用来源尝试（1 项）', { exact: true }).click();
+      await expect(page.getByRole('link', { name: originalUrl, exact: true })).toHaveAttribute(
+        'href',
+        originalUrl,
+      );
+      await expect(page.getByRole('link', { name: fallbackUrl, exact: true })).toHaveAttribute(
+        'href',
+        fallbackUrl,
+      );
+      await expect(page.getByRole('link', { name: /查看备用导入批次/ })).toHaveAttribute(
+        'href',
+        `/admin/imports?batchId=${fallbackBatchId}`,
+      );
+      await expect(page.getByText(/此处仅记录导入尝试/)).toBeVisible();
+      await expect(page.getByText(/不表示候选已生成或已发布/)).toBeVisible();
+      await expect(page.getByRole('link', { name: /查看失败资料 \/ 导入替代来源/ })).toHaveCount(0);
+      await expect(page.getByText(/原采集任务与费用保留/)).toHaveCount(0);
+      await page.getByText('查看来源处理失败原因（脱敏）', { exact: true }).click();
+      await expect(page.getByText('HTTP 403', { exact: false })).toBeVisible();
+      await page.getByText('查看发现的来源', { exact: true }).click();
+      await expect(page.getByRole('link', { name: '同事件备用报道' })).toHaveAttribute(
+        'href',
+        fallbackUrl,
+      );
+      await expect(page.getByText('must-not-display-private', { exact: false })).toHaveCount(0);
+      assert.equal(posts.length, 6, 'fallback receipts never trigger import, search or generation');
+
+      // The same receipt is not proof of recovery: unresolved events retain the manual route.
+      run.result.failed = 1;
+      run.status = 'failed';
+      run.phase = 'source_failed';
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await readDetails();
+      await expect(page.getByRole('link', { name: /查看失败资料 \/ 导入替代来源/ })).toBeVisible();
+      await expect(page.getByText(/原采集任务与费用保留/)).toBeVisible();
+      delete run.result.sourceFallbacks;
       delete run.result.sourceFailures;
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
       await readDetails();

@@ -556,8 +556,39 @@ suite('automation role isolation and publication boundary', () => {
       'stale_attempt',
     );
     const result = {
-      discovery: { searchRequests: 1 },
-      queuedSources: [{ url: 'https://example.com/news', generationId: randomUUID() }],
+      discovery: {
+        searchRequests: 1,
+        articles: [{ url: 'https://example.com/discovered-only' }],
+      },
+      queuedSources: [
+        { url: 'https://example.com/news', generationId: randomUUID() },
+        {
+          url: 'https://example.com/partner',
+          originalUrl: 'https://example.com/blocked-original',
+          generationId: randomUUID(),
+        },
+        {
+          url: 'https://example.com/partner',
+          originalUrl: 'https://example.com/news',
+          generationId: randomUUID(),
+        },
+        ...[undefined, null, '', 'invalid-id', 123, { id: randomUUID() }].map((generationId) => ({
+          url: 'https://example.com/not-queued',
+          originalUrl: 'https://example.com/not-queued-original',
+          generationId,
+        })),
+        { generationId: randomUUID() },
+        { url: null, originalUrl: ' ', generationId: randomUUID() },
+        {
+          url: [],
+          originalUrl: { url: 'https://example.com/invalid' },
+          generationId: randomUUID(),
+        },
+      ],
+      sourceFailures: [{ url: 'https://example.com/failed-source', generationId: randomUUID() }],
+      sourceFallbacks: [
+        { url: 'https://example.com/unconfirmed-fallback', generationId: randomUUID() },
+      ],
     };
     await updateAutomationRun({
       ...args,
@@ -571,7 +602,9 @@ suite('automation role isolation and publication boundary', () => {
     expect(saved.charged_microusd).toBe(27000);
     expect(saved.publication_status).toBe('private');
     expect(await readCollectedSourceUrls({ pool, owner: operator })).toEqual([
+      'https://example.com/blocked-original',
       'https://example.com/news',
+      'https://example.com/partner',
     ]);
     expect(await readCollectedSourceUrls({ pool, owner: 'another-owner' })).toEqual([]);
     expect(

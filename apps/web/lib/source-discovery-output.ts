@@ -1,4 +1,18 @@
 export const discoveryArticleLimit = 8;
+export const discoveryAlternativeLimit = 2;
+
+const sourceProperties = {
+  url: {
+    type: 'string',
+    description: 'Original public URL present in this search response citations.',
+  },
+  title: { type: 'string', description: 'Original source title.', maxLength: 300 },
+  publishedAt: {
+    type: 'string',
+    description:
+      'Source publication date verified from search, YYYY-MM-DD, inside the requested window. Omit sources without a verified date.',
+  },
+};
 
 /** Provider schema and local decoding share the same output contract. */
 export const discoveryJsonSchema = {
@@ -13,14 +27,20 @@ export const discoveryJsonSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['url', 'title', 'publishedAt'],
+        required: ['url', 'title', 'publishedAt', 'alternatives'],
         properties: {
-          url: { type: 'string', description: 'Original public URL present in search citations.' },
-          title: { type: 'string', description: 'Original source title.', maxLength: 300 },
-          publishedAt: {
-            type: 'string',
+          ...sourceProperties,
+          alternatives: {
+            type: 'array',
+            maxItems: discoveryAlternativeLimit,
             description:
-              'Source publication date verified from search, YYYY-MM-DD, inside the requested window. Omit sources without a verified date.',
+              'Up to two other original or reliable sources about the SAME event, already cited in this search response. Return [] if unavailable; never search again solely to fill this field.',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['url', 'title', 'publishedAt'],
+              properties: sourceProperties,
+            },
           },
         },
       },

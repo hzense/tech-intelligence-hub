@@ -487,13 +487,26 @@ export async function beginSourceDiscovery({ pool, owner, id, token }) {
     if (!row) fail('stale_attempt');
   });
 }
-/** Compare only URLs already handed to generation, not every discovered/failed fetch. */
+/** A queued fallback covers both its actual source and the original event URL.
+ * Failed/discovered-only sources remain retryable; only valid generation receipts count. */
 export async function readCollectedSourceUrls({ pool, owner }) {
   automationText(owner);
   return transaction(pool, async (client) => {
     const rows = (
       await client.query(
-        "SELECT DISTINCT entry->>'url' AS url FROM public.automation_runs CROSS JOIN LATERAL jsonb_array_elements(COALESCE(result->'queuedSources','[]'::jsonb)) AS entry WHERE owner_id=$1 AND snapshot->>'kind'='source_collection' AND entry->>'generationId' IS NOT NULL",
+        `SELECT DISTINCT source.value #>> '{}' AS url
+         FROM public.automation_runs
+         CROSS JOIN LATERAL jsonb_array_elements(
+           CASE WHEN jsonb_typeof(result->'queuedSources')='array'
+             THEN result->'queuedSources' ELSE '[]'::jsonb END
+         ) AS entry
+         CROSS JOIN LATERAL (VALUES (entry->'url'),(entry->'originalUrl')) AS source(value)
+         WHERE owner_id=$1 AND snapshot->>'kind'='source_collection'
+           AND jsonb_typeof(entry->'generationId')='string'
+           AND entry->>'generationId' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+           AND jsonb_typeof(source.value)='string'
+           AND length(btrim(source.value #>> '{}')) BETWEEN 1 AND 2048
+         ORDER BY url`,
         [owner],
       )
     ).rows;
