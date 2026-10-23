@@ -19,14 +19,23 @@ export const aiProbeErrorCodes = [
 export type AiProbeErrorCode = (typeof aiProbeErrorCodes)[number];
 export class AiProbeError extends Error {
   readonly code: AiProbeErrorCode;
-  constructor(code: AiProbeErrorCode) {
+  readonly httpStatus: number | undefined;
+  constructor(code: AiProbeErrorCode, httpStatus?: number) {
     super(code);
     this.name = 'AiProbeError';
     this.code = code;
+    // Preserve only the protocol status, never provider error text, headers or URLs.
+    this.httpStatus =
+      typeof httpStatus === 'number' &&
+      Number.isInteger(httpStatus) &&
+      httpStatus >= 100 &&
+      httpStatus <= 599
+        ? httpStatus
+        : undefined;
   }
 }
-const fail = (code: AiProbeErrorCode): never => {
-  throw new AiProbeError(code);
+const fail = (code: AiProbeErrorCode, httpStatus?: number): never => {
+  throw new AiProbeError(code, httpStatus);
 };
 export const aiResponseMaximumBytes = 1_048_576;
 
@@ -229,7 +238,7 @@ export function createAiWireRequest(
       const request = makeRequest(pinnedAiRequestOptions(input), (response) => {
         const status = response.statusCode ?? 0;
         const stop = (code: AiProbeErrorCode) => {
-          finish(new AiProbeError(code));
+          finish(new AiProbeError(code, status));
           response.destroy();
           request.destroy();
         };
@@ -384,8 +393,9 @@ export function createPinnedAiFetch(
       }),
       signal,
     );
-    if (response.status >= 300 && response.status < 400) return fail('redirect_blocked');
-    if (!response.ok) return fail('provider_rejected');
+    if (response.status >= 300 && response.status < 400)
+      return fail('redirect_blocked', response.status);
+    if (!response.ok) return fail('provider_rejected', response.status);
     // The wire implementation bounds streaming bytes; this repeats the bound for
     // test/custom transports and strips all provider headers before SDK parsing.
     const body = await withAbort(response.arrayBuffer(), signal);

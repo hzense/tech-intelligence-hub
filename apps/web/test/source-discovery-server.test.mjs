@@ -54,8 +54,9 @@ test('discovery server persists safe receipts without replaying a paid search', 
     `,
     '../source-discovery-provider': `
       export class DiscoveryFailure extends Error {
-        constructor(code,called=false,costMicrousd=null,diagnostics){
+        constructor(code,called=false,costMicrousd=null,diagnostics,rejectedHttpStatus){
           super(code);this.code=code;this.called=called;this.costMicrousd=costMicrousd;this.diagnostics=diagnostics;
+          if(code==='provider_rejected'&&costMicrousd===null&&[400,401,402,403,404,405,413,415,422,429].includes(rejectedHttpStatus))this.rejectedHttpStatus=rejectedHttpStatus;
         }
       }
       export function discoveryEstimate(){return globalThis.__discoveryServer.estimate}
@@ -64,7 +65,7 @@ test('discovery server persists safe receipts without replaying a paid search', 
         if(f.preCallError)throw new DiscoveryFailure(f.preCallError);
         try{await input.beforeCall()}catch(error){throw new DiscoveryFailure(error.message)}
         f.paidCalls++;
-        if(f.failure)throw new DiscoveryFailure(f.failure.code,true,f.failure.costMicrousd,f.failure.diagnostics);
+        if(f.failure)throw new DiscoveryFailure(f.failure.code,true,f.failure.costMicrousd,f.failure.diagnostics,f.failure.rejectedHttpStatus);
         return structuredClone(f.receipt);
       }
     `,
@@ -254,6 +255,58 @@ test('discovery server persists safe receipts without replaying a paid search', 
       await assert.rejects(discoverSources('owner', f.run.id), /stale_attempt/);
       assert.equal(f.paidCalls, 1);
     });
+
+    for (const status of [400, 401, 402, 403, 404, 405, 413, 415, 422, 429]) {
+      await t.test(`explicit HTTP ${status} refusal settles zero without replay`, async () => {
+        const f = setup();
+        f.failure = { code: 'provider_rejected', costMicrousd: null, rejectedHttpStatus: status };
+        await assert.rejects(discoverSources('owner', f.run.id), /provider_rejected/);
+        assert.equal(f.run.status, 'failed');
+        assert.equal(f.run.phase, 'discovery_rejected');
+        assert.equal(f.run.charged_microusd, 0);
+        assert.equal(
+          f.run.cost_source,
+          'estimate',
+          'zero is policy accounting, not a fabricated API cost',
+        );
+        assert.deepEqual(f.run.result, {
+          discoveryRejection: { version: 1, httpStatus: status, accounting: 'request_rejected' },
+        });
+        assert.equal(f.paidCalls, 1);
+        assert.equal(f.fenceAttempts, 1);
+        await assert.rejects(discoverSources('owner', f.run.id), /stale_attempt/);
+        assert.equal(f.paidCalls, 1, 'refusal does not authorize automatic retries');
+      });
+    }
+
+    for (const status of [undefined, 408, 500, 502, 503, '403']) {
+      await t.test(`unconfirmed rejection ${status} keeps the reservation`, async () => {
+        const f = setup();
+        f.failure = { code: 'provider_rejected', costMicrousd: null, rejectedHttpStatus: status };
+        await assert.rejects(discoverSources('owner', f.run.id), /provider_rejected/);
+        assert.equal(f.run.status, 'unknown');
+        assert.equal(f.run.phase, 'discovery_failed');
+        assert.equal(Object.hasOwn(f.updates[0], 'costMicrousd'), false);
+        assert.equal(Object.hasOwn(f.updates[0], 'costSource'), false);
+        assert.equal(f.run.result.discoveryRejection, undefined);
+      });
+    }
+
+    for (const costMicrousd of [0, 64200]) {
+      await t.test(
+        `provider receipt ${costMicrousd} takes precedence over refusal policy`,
+        async () => {
+          const f = setup();
+          f.failure = { code: 'provider_rejected', costMicrousd, rejectedHttpStatus: 403 };
+          await assert.rejects(discoverSources('owner', f.run.id), /provider_rejected/);
+          assert.equal(f.run.status, 'failed');
+          assert.equal(f.run.phase, 'discovery_failed');
+          assert.equal(f.run.charged_microusd, costMicrousd);
+          assert.equal(f.run.cost_source, 'provider');
+          assert.equal(f.run.result.discoveryRejection, undefined);
+        },
+      );
+    }
 
     await t.test('a pre-call rejection does not charge or cross the paid-call fence', async () => {
       const f = setup();

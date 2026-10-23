@@ -314,7 +314,7 @@ test(
       ).toBeVisible();
       assert.deepEqual(initial.runs, retainedHistory, 'deleting a config does not settle history');
       await expect(
-        page.getByRole('cell', { name: '$0.1000 provider', exact: false }),
+        page.getByRole('cell', { name: '$0.1000 供应商回执', exact: false }),
       ).toBeVisible();
       assert.deepEqual(posts.at(-1), {
         action: 'delete',
@@ -458,7 +458,7 @@ test(
       await page.getByText('查看检索诊断（脱敏）', { exact: true }).click();
       await expect(page.getByText('搜索回执：供应商未返回搜索次数', { exact: true })).toBeVisible();
       await expect(
-        page.getByRole('cell', { name: '$0.1000 provider', exact: false }),
+        page.getByRole('cell', { name: '$0.1000 供应商回执', exact: false }),
       ).toBeVisible();
       assert.equal(posts.length, 6, 'refreshing citation-backed discovery is read-only');
 
@@ -647,7 +647,7 @@ test(
         await expect(page.getByText(secret, { exact: false })).toHaveCount(0);
       }
       await expect(
-        page.getByRole('cell', { name: '$0.1000 provider', exact: false }),
+        page.getByRole('cell', { name: '$0.1000 供应商回执', exact: false }),
       ).toBeVisible();
       assert.equal(posts.length, 6, 'reading source refusals never creates or retries a task');
 
@@ -783,7 +783,7 @@ test(
         page.getByText('供应商响应 ID：gen-1790970223-AbCd01234567', { exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByRole('cell', { name: '$0.0642 provider', exact: false }),
+        page.getByRole('cell', { name: '$0.0642 供应商回执', exact: false }),
       ).toBeVisible();
       await expect(page.getByText('must-not-display-private-body', { exact: false })).toHaveCount(
         0,
@@ -825,7 +825,7 @@ test(
       await expect(page.getByText('结构校验：', { exact: false })).toHaveCount(0);
       await expect(page.getByText('搜索回执：供应商未返回搜索次数', { exact: true })).toBeVisible();
       await expect(
-        page.getByRole('cell', { name: '$0.0642 provider', exact: false }),
+        page.getByRole('cell', { name: '$0.0642 供应商回执', exact: false }),
       ).toBeVisible();
       delete discoveryDiagnostics.outputFormat;
       delete discoveryDiagnostics.outputIssue;
@@ -844,6 +844,65 @@ test(
       await expect(page.getByText('供应商返回错误结果', { exact: false })).toBeVisible();
       await expect(page.getByText('供应商错误：429', { exact: true })).toBeVisible();
       assert.equal(posts.length, 6, 'opening failure diagnostics never creates or retries a task');
+      // A policy-zero refusal is not a provider billing receipt. Historical
+      // reservations remain untouched and must not be presented as known spend.
+      const previousAccounting = {
+        status: run.status,
+        phase: run.phase,
+        error_code: run.error_code,
+        charged_microusd: run.charged_microusd,
+        cost_source: run.cost_source,
+      };
+      Object.assign(run, {
+        status: 'failed',
+        phase: 'discovery_rejected',
+        error_code: 'provider_rejected',
+        charged_microusd: 0,
+        cost_source: 'estimate',
+      });
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      const accountingCell = page.getByRole('cell').filter({ hasText: '仅含检索' });
+      await expect(accountingCell).toContainText('$0.0000');
+      await expect(accountingCell).toContainText('请求拒绝，未计费');
+      await expect(accountingCell).not.toContainText('估算');
+      await expect(accountingCell).not.toContainText('供应商回执');
+      await expect(accountingCell).not.toContainText('estimate');
+      const refusalReceipt = globalThis.structuredClone(run);
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      assert.deepEqual(run, refusalReceipt, 'reading a zero-charge refusal never mutates it');
+
+      Object.assign(run, {
+        status: 'unknown',
+        phase: 'discovery_unknown',
+        charged_microusd: 5_000_000,
+        cost_source: 'reserve',
+      });
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(accountingCell).toContainText('$5.0000');
+      await expect(accountingCell).toContainText('预算暂占用');
+      await expect(accountingCell).toContainText('实际费用未知，尚无供应商费用回执');
+      await expect(accountingCell).not.toContainText('请求拒绝，未计费');
+      await expect(accountingCell).not.toContainText('reserve');
+      const retainedReservation = globalThis.structuredClone(run);
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      assert.deepEqual(run, retainedReservation, 'reading a historical reserve never settles it');
+
+      for (const [source, amount, label] of [
+        ['provider', 0, '供应商回执'],
+        ['provider', 7293, '供应商回执'],
+        ['estimate', 0, '估算'],
+        ['estimate', 64200, '估算'],
+        [null, 0, '未结算'],
+      ]) {
+        Object.assign(run, { cost_source: source, charged_microusd: amount });
+        await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+        await expect(accountingCell).toContainText(`$${(amount / 1_000_000).toFixed(4)}`);
+        await expect(accountingCell).toContainText(label);
+        await expect(accountingCell).not.toContainText('请求拒绝，未计费');
+        await expect(accountingCell).not.toContainText('预算暂占用');
+      }
+      assert.equal(posts.length, 6, 'checking costs does not invoke AI, retry or settle history');
+      Object.assign(run, previousAccounting);
       // Topic report bodies are also excluded from every listing, and loaded
       // only when the administrator explicitly opens a report.
       initial.runs = [

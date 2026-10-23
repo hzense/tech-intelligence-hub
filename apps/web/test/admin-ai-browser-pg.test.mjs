@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { randomUUID } from 'node:crypto';
 import process from 'node:process';
 import test from 'node:test';
 import pg from 'pg';
 import { chromium, expect } from '@playwright/test';
 import { validateConnectionTarget } from '../../../packages/database/src/connection-policy.mjs';
+import {
+  resolveAiGenerationAccess,
+  resolveAiStageAccess,
+} from '../../../packages/database/src/ai-config-store.mjs';
 import { startAiAdminBrowserFixture } from './fixtures/ai-admin-browser/server.mjs';
 import { createAiBrowserDatabase } from './fixtures/ai-admin-browser/database.mjs';
 const { fetch } = globalThis;
@@ -446,6 +451,107 @@ test(
           }
         } finally {
           await consolePage.close();
+        }
+      },
+    );
+    await t.test(
+      'local real AI HTTP saves an untested profile while production and execution stay gated',
+      async () => {
+        const callsBeforeDraft = providerCalls.length;
+        const localServer = await startAiAdminBrowserFixture({
+          pool: database.pool,
+          keyring,
+          allowedHosts: ['example.com'],
+          localProfileDrafts: true,
+          invoke: async (request) => {
+            providerCalls.push({ kind: request.kind, unexpected: true });
+            throw new Error('Saving a local profile must not invoke a provider');
+          },
+        });
+        try {
+          assert.notEqual(localServer.cookie, server.cookie);
+          const draftRequest = {
+            id: randomUUID(),
+            name: 'Untested local real AI draft',
+            stages: Object.fromEntries(
+              Object.entries(createProfileRequest.stages).map(([stage, value]) => [
+                stage,
+                {
+                  ...value,
+                  connection_id: connection.id,
+                  connection_revision: connection.revision,
+                  model_id: '~provider/untested-local-draft',
+                },
+              ]),
+            ),
+          };
+          async function send(target, resource, body) {
+            const response = await fetch(`${target.origin}/api/admin/ai/${resource}`, {
+              method: body === undefined ? 'GET' : 'POST',
+              headers: {
+                cookie: target.cookie,
+                origin: target.origin,
+                ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+              },
+              ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+            });
+            return { status: response.status, body: await response.json() };
+          }
+          assert.deepEqual(await send(server, 'profiles', draftRequest), {
+            status: 409,
+            body: { error: 'profile_not_ready' },
+          });
+          assert.deepEqual(
+            await send(server, 'profiles', { ...draftRequest, localProfileDrafts: true }),
+            { status: 400, body: { error: 'invalid_request' } },
+          );
+          const saved = await send(localServer, 'profiles', draftRequest);
+          assert.equal(saved.status, 200);
+          assert.equal(saved.body.profile.id, draftRequest.id);
+          assert.equal(saved.body.profile.revision, 1);
+          assert.equal(saved.body.profile.readiness.ready, false);
+          assert.ok(
+            saved.body.profile.readiness.reasons.includes('extract:structured_output_required'),
+          );
+          const readback = await send(localServer, 'profiles');
+          assert.equal(readback.status, 200);
+          const { readiness, ...readProfile } = readback.body.profiles.find(
+            (row) => row.id === draftRequest.id,
+          );
+          const { readiness: savedReadiness, ...savedProfile } = saved.body.profile;
+          assert.deepEqual(readProfile, savedProfile);
+          assert.equal(readiness.ready, false);
+          assert.deepEqual(readiness.warnings, savedReadiness.warnings);
+          // jsonb can reorder stage keys, so reason order is not part of readiness.
+          assert.deepEqual([...readiness.reasons].sort(), [...savedReadiness.reasons].sort());
+          const history = await send(localServer, `profiles/${draftRequest.id}/history`);
+          assert.equal(history.status, 200);
+          assert.equal(history.body.history.length, 1);
+          assert.equal(history.body.history[0].revision, 1);
+          assert.deepEqual(history.body.history[0].snapshot.stages, draftRequest.stages);
+          const persisted = await database.pool.query(
+            'SELECT revision,stages FROM public.ai_profiles WHERE id=$1',
+            [draftRequest.id],
+          );
+          assert.deepEqual(persisted.rows, [{ revision: 1, stages: draftRequest.stages }]);
+          for (const stageName of ['extract', 'verify', 'analyze']) {
+            const input = {
+              pool: database.pool,
+              id: draftRequest.id,
+              revision: 1,
+              stageName,
+              allowedHosts: ['example.com'],
+            };
+            await assert.rejects(
+              stageName === 'extract'
+                ? resolveAiGenerationAccess(input)
+                : resolveAiStageAccess(input),
+              { code: 'profile_not_ready' },
+            );
+          }
+          assert.equal(providerCalls.length, callsBeforeDraft);
+        } finally {
+          await localServer.close();
         }
       },
     );

@@ -10,6 +10,7 @@ import { chromium, expect } from '@playwright/test';
 import {
   aiProfileDefaultPrompts,
   aiProfileDefaultTemperature,
+  aiProfileDefaultOutputTokens,
 } from '../lib/admin-ai-profile-defaults.ts';
 
 const { structuredClone } = globalThis;
@@ -157,18 +158,34 @@ async function startProfilesFixture() {
       } else if (url.pathname === '/api/admin/ai/profiles') {
         if (incoming.method === 'GET') json({ profiles: state.profiles });
         else if (incoming.method === 'POST') {
-          if (!state.profileReady && !(state.localMode && !state.localRealAi)) {
+          if (!state.profileReady && !state.localMode) {
             json({ error: 'profile_not_ready' }, 409);
             return;
           }
           const previous = state.profiles.find((row) => row.id === request.body.id);
+          const ready = state.profileReady && !(state.localMode && !state.localRealAi);
+          const reasons = ready
+            ? []
+            : Object.entries(request.body.stages).flatMap(([stage, settings]) => {
+                const connection = state.connections.find(
+                  (row) => row.id === settings.connection_id,
+                );
+                if (
+                  !connection?.enabled ||
+                  !connection.has_key ||
+                  connection.revision !== settings.connection_revision
+                )
+                  return [`${stage}:connection_unavailable`];
+                return [
+                  `${stage}:connection_required`,
+                  `${stage}:structured_output_required`,
+                  ...(settings.require_tools ? [`${stage}:tool_calling_required`] : []),
+                ];
+              });
           const profile = {
             ...request.body,
             revision: previous ? previous.revision + 1 : 1,
-            readiness:
-              state.localMode && !state.localRealAi
-                ? { ready: false, reasons: ['extract:connection_unavailable'] }
-                : { ready: true, reasons: [] },
+            readiness: { ready, reasons },
           };
           delete profile.expected_revision;
           state.profiles = [...state.profiles.filter((row) => row.id !== profile.id), profile];
@@ -207,7 +224,7 @@ async function startProfilesFixture() {
       } else if (url.pathname === '/admin/ai/profiles') {
         outgoing.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         outgoing.end(
-          '<!doctype html><html lang="zh"><head><meta charset="utf-8"><link rel="stylesheet" href="/__fixture/entry.css"><title>Synthetic Profiles fixture</title></head><body><h1>Local Profiles component fixture</h1><main id="root">Loading fixture</main><script type="module" src="/__fixture/entry.js"></script></body></html>',
+          '<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/__fixture/entry.css"><title>Synthetic Profiles fixture</title></head><body><h1>Local Profiles component fixture</h1><main id="root">Loading fixture</main><script type="module" src="/__fixture/entry.js"></script></body></html>',
         );
       } else if (url.pathname === '/favicon.ico') outgoing.writeHead(204).end();
       else outgoing.writeHead(404).end();
@@ -301,10 +318,10 @@ test(
     });
     fixture = await startProfilesFixture();
     browser = await chromium.launch({ headless: true });
-    async function mount(data = {}) {
+    async function mount(data = {}, contextOptions = {}) {
       await context?.close();
       fixture.reset(data);
-      context = await browser.newContext();
+      context = await browser.newContext(contextOptions);
       context.setDefaultTimeout(8_000);
       await context.route('**/*', async (route) => {
         if (route.request().url().startsWith(`${fixture.origin}/`)) await route.continue();
@@ -341,6 +358,25 @@ test(
       await group(stage).getByRole('button', { name: '展开模型列表', exact: true }).click();
       await group(stage).getByRole('option', { name: id, exact: true }).click();
       await expect(model(stage)).toHaveValue(id);
+    }
+    async function expectNewEditorReset() {
+      await expect(
+        page.getByRole('heading', { name: '新建分阶段配置', exact: true }),
+      ).toBeInViewport();
+      await expect(page.getByLabel('配置名称', { exact: true })).toBeFocused();
+      await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue('');
+      for (const stage of Object.keys(stageLabels)) {
+        await expect(connection(stage)).toHaveValue('');
+        await expect(model(stage)).toHaveValue('');
+        await expect(model(stage)).toBeDisabled();
+        await expect(prompt(stage)).toHaveValue(aiProfileDefaultPrompts[stage]);
+        await expect(group(stage).getByRole('spinbutton', { name: '输出 token 上限' })).toHaveValue(
+          String(aiProfileDefaultOutputTokens[stage]),
+        );
+        await expect(group(stage).getByRole('checkbox')).not.toBeChecked();
+      }
+      await expect(page.getByRole('button', { name: '创建新配置', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '保存为新修订', exact: true })).toHaveCount(0);
     }
 
     await t.test(
@@ -380,7 +416,7 @@ test(
     );
 
     await t.test(
-      'local real AI discovers models and requires the normal readiness proof before saving',
+      'local real AI saves untested drafts and retains truthful readiness after refresh and reload',
       async () => {
         await mount({ localMode: true, localRealAi: true });
         await expect(page.getByText(/本地真实 AI：配置只保存在本地数据库/)).toBeVisible();
@@ -391,10 +427,71 @@ test(
           await connection(stage).selectOption(connectionA.id);
           await choose(stage, modelsA[0]);
         }
+        await group('extract').getByRole('checkbox', { name: '要求模型具备工具调用能力' }).check();
         assert.equal(posts().length, 1, 'Model list is shared across stages');
+        const response = page.waitForResponse(
+          (item) =>
+            item.url().endsWith('/api/admin/ai/profiles') && item.request().method() === 'POST',
+        );
         await page.getByRole('button', { name: '创建新配置', exact: true }).click();
-        await expect(page.getByRole('status')).toContainText('测试');
-        assert.equal(fixture.profiles.length, 0, 'Unproven real profile is rejected');
+        assert.equal((await response).status(), 200);
+        await expect(page.getByRole('status')).toContainText('已保存配置草稿 r1');
+        const row = page.getByRole('article').filter({ hasText: 'Local real profile · r1' });
+        await expect(row).toContainText('待测试');
+        await expect(row).not.toContainText('测试证明有效');
+        await expect(row.getByRole('listitem')).toHaveCount(7);
+        for (const label of Object.values(stageLabels)) {
+          await expect(row.getByRole('listitem').filter({ hasText: label })).toHaveCount(
+            label === stageLabels.extract ? 3 : 2,
+          );
+        }
+        await expect(row).toContainText('基础连接');
+        await expect(row).toContainText('结构化输出');
+        await expect(row).toContainText('工具调用');
+        await expect(row).not.toContainText(
+          /connection_required|structured_output_required|tool_calling_required/,
+        );
+        assert.equal(posts('profiles').length, 1);
+        const saved = structuredClone(fixture.profiles[0]);
+        assert.equal(saved.revision, 1);
+        assert.equal(saved.readiness.ready, false);
+        assert.deepEqual(saved.readiness.reasons, [
+          'extract:connection_required',
+          'extract:structured_output_required',
+          'extract:tool_calling_required',
+          'verify:connection_required',
+          'verify:structured_output_required',
+          'analyze:connection_required',
+          'analyze:structured_output_required',
+        ]);
+        assert.equal(Object.hasOwn(posts('profiles')[0].body, 'expected_revision'), false);
+        assert.equal(Object.hasOwn(posts('profiles')[0].body, 'localRealAi'), false);
+        await page.getByRole('button', { name: '刷新状态', exact: true }).click();
+        await expect(page.getByRole('status')).toContainText('已刷新');
+        await expect(row).toContainText('待测试');
+        await expect(model('extract')).toHaveValue(modelsA[0]);
+        await page.reload();
+        await expect(row).toContainText('待测试');
+        await expect(row).not.toContainText(
+          /connection_required|structured_output_required|tool_calling_required/,
+        );
+        await row.getByRole('button', { name: '编辑新修订', exact: true }).click();
+        await expect(model('extract')).toHaveValue(modelsA[0]);
+        await expect(group('extract').getByRole('checkbox')).toBeChecked();
+        await barrier();
+        assert.deepEqual(fixture.profiles, [saved]);
+        assert.equal(
+          posts('profiles').length,
+          1,
+          'Refresh and reload do not save another revision',
+        );
+        assert.equal(posts().length, 1, 'Saving and refreshing never run capability tests');
+      },
+    );
+
+    await t.test(
+      'local real AI continues to show valid capability proof when a saved profile is ready',
+      async () => {
         await mount({
           localMode: true,
           localRealAi: true,
@@ -411,6 +508,111 @@ test(
         assert.equal(fixture.profiles[0].readiness.ready, true);
         assert.equal(posts().length, 0, 'Saved model list is reused');
         assert.equal('localRealAi' in posts('profiles')[0].body, false);
+      },
+    );
+
+    await t.test(
+      'new configuration clears an edited revision and saves distinct rows without cloning its identity',
+      async () => {
+        await mount({
+          localMode: true,
+          localRealAi: true,
+          profiles: [historicalProfile],
+          probes: [
+            modelReceipt(),
+            modelReceipt(connectionB, { id: '52345678-1234-4123-8123-123456789abc' }),
+          ],
+        });
+        const original = page.getByRole('article').filter({ hasText: historicalProfile.name });
+        await original.getByRole('button', { name: '编辑新修订', exact: true }).click();
+        await expect(page.getByLabel('配置名称', { exact: true })).toBeFocused();
+        await page.getByLabel('配置名称', { exact: true }).fill('Unsaved replacement title');
+        for (const stage of Object.keys(stageLabels)) {
+          await connection(stage).selectOption(connectionB.id);
+          await choose(stage, modelsB[0]);
+          await prompt(stage).fill(`Discard this unsaved ${stage} prompt.`);
+          await group(stage).getByRole('spinbutton', { name: '输出 token 上限' }).fill('4096');
+          await group(stage).getByRole('checkbox').check();
+        }
+        await original.getByRole('button', { name: '版本历史', exact: true }).click();
+        await expect(page.getByText('配置版本历史', { exact: true })).toBeVisible();
+        await page.getByRole('button', { name: '新建配置', exact: true }).click();
+        await expectNewEditorReset();
+        await expect(page.getByText('配置版本历史', { exact: true })).toHaveCount(0);
+        await barrier();
+        assert.equal(posts().length, 0, 'Switching editors does not read provider models');
+        assert.equal(posts('profiles').length, 0, 'New configuration does not implicitly save');
+        assert.deepEqual(fixture.profiles, [historicalProfile]);
+
+        for (const name of ['Separate local draft', 'Another separate local draft']) {
+          await page.getByLabel('配置名称', { exact: true }).fill(name);
+          for (const stage of Object.keys(stageLabels)) {
+            await connection(stage).selectOption(connectionA.id);
+            await choose(stage, modelsA[0]);
+          }
+          await page.getByRole('button', { name: '创建新配置', exact: true }).click();
+          await expect(page.getByRole('status')).toContainText('已保存配置草稿 r1');
+          await expect(
+            page.getByRole('heading', { name: `${name} · r1`, exact: true }),
+          ).toBeVisible();
+          const request = posts('profiles').at(-1).body;
+          assert.notEqual(request.id, historicalProfile.id);
+          assert.equal(Object.hasOwn(request, 'expected_revision'), false);
+          for (const stage of Object.keys(stageLabels)) {
+            assert.equal(request.stages[stage].prompt, aiProfileDefaultPrompts[stage]);
+            assert.equal(
+              request.stages[stage].max_output_tokens,
+              aiProfileDefaultOutputTokens[stage],
+            );
+            assert.equal(request.stages[stage].require_tools, false);
+          }
+          assert.deepEqual(
+            fixture.profiles.find((profile) => profile.id === historicalProfile.id),
+            historicalProfile,
+            'Creating a separate configuration preserves the original revision',
+          );
+          await page.getByRole('button', { name: '新建配置', exact: true }).click();
+          await expectNewEditorReset();
+          await expect(page.getByRole('status')).toHaveCount(0);
+        }
+        assert.equal(posts('profiles').length, 2);
+        assert.equal(new Set(fixture.profiles.map((profile) => profile.id)).size, 3);
+        assert.equal(fixture.profiles.length, 3);
+        assert.equal(posts().length, 0);
+        await page.reload();
+        await expect(page.getByRole('article')).toHaveCount(3);
+        await expect(original).toContainText(`${historicalProfile.name} · r4`);
+      },
+    );
+
+    await t.test(
+      'new configuration scrolls below a long mobile list and focuses the reset editor',
+      async () => {
+        const profiles = Array.from({ length: 18 }, (_, index) => ({
+          ...structuredClone(historicalProfile),
+          id: `62345678-1234-4123-8123-${String(index + 1).padStart(12, '0')}`,
+          name: `Mobile synthetic profile ${index + 1}`,
+        }));
+        await mount(
+          { localMode: true, localRealAi: true, profiles, probes: [modelReceipt()] },
+          { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
+        );
+        await expect(
+          page.getByRole('heading', { name: '新建分阶段配置', exact: true }),
+        ).not.toBeInViewport();
+        await page.getByRole('button', { name: '编辑新修订', exact: true }).last().click();
+        await expect(page.getByLabel('配置名称', { exact: true })).toBeFocused();
+        await expect(page.getByLabel('配置名称', { exact: true })).toBeInViewport();
+        await page.getByLabel('配置名称', { exact: true }).fill('Unsaved mobile revision');
+        await prompt('extract').fill('Unsaved mobile prompt.');
+        await page.getByRole('button', { name: '新建配置', exact: true }).click();
+        await expectNewEditorReset();
+        await expect(page.getByLabel('配置名称', { exact: true })).toBeInViewport();
+        assert.ok(await page.evaluate(() => globalThis.scrollY > 1000));
+        await barrier();
+        assert.deepEqual(fixture.profiles, profiles);
+        assert.equal(posts('profiles').length, 0);
+        assert.equal(posts().length, 0, 'New configuration never starts a provider request');
       },
     );
 
@@ -936,10 +1138,7 @@ test(
 
     assert.deepEqual(pageErrors, []);
     assert.deepEqual(blockedRequests, []);
-    assert.deepEqual(fixture.expectedHttpErrors, [
-      { path: '/api/admin/ai/profiles', status: 409 },
-      { path: '/api/admin/ai/profiles', status: 409 },
-    ]);
+    assert.deepEqual(fixture.expectedHttpErrors, [{ path: '/api/admin/ai/profiles', status: 409 }]);
     assert.ok(
       fixture.allRequests
         .filter((request) => request.method === 'POST' && request.path === '/api/admin/ai/probes')

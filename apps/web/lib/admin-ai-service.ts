@@ -24,8 +24,10 @@ export function createAiAdminExecutor(dependencies: {
   keyring: AiKeyring;
   allowedHosts: AiAllowedHosts;
   invoke: AiProbeInvoker;
-  /** Enabled only for the trusted local mock mode; real AI keeps normal validation. */
+  /** Local mock mode permits keyless connection drafts and disables provider probes. */
   localConfigurationDrafts?: boolean;
+  /** Local profile persistence only; does not change connection, probe or execution admission. */
+  localProfileDrafts?: boolean;
 }) {
   return async (
     operation: AiAdminOperation,
@@ -50,7 +52,14 @@ export function createAiAdminExecutor(dependencies: {
       case 'list-profiles':
         return { profiles: await listAiProfiles(input) };
       case 'save-profile':
-        return { profile: await saveAiProfile(input) };
+        return {
+          profile: await saveAiProfile({
+            ...input,
+            localConfigurationDrafts:
+              dependencies.localConfigurationDrafts === true ||
+              dependencies.localProfileDrafts === true,
+          }),
+        };
       case 'profile-history':
         return { history: await getAiProfileHistory({ ...input, id: String(command.id) }) };
       case 'list-probes':

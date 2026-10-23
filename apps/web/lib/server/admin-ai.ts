@@ -128,6 +128,7 @@ export async function executeAiAdmin(
     allowedHosts: config.allowedHosts,
     invoke: invokeAiProbe,
     localConfigurationDrafts: isLocalMockAi(),
+    localProfileDrafts: isLocalDevelopment(),
   });
   return execute(operation, command);
 }

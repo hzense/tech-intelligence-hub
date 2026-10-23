@@ -197,6 +197,39 @@ test('SDK fetch cannot move credentials to another endpoint, origin, query or re
   await assert.rejects(() => redirects(`${baseUrl}/models`), { code: 'redirect_blocked' });
 });
 
+test('injected HTTP failures retain only sanitized status and discard provider error bodies', async () => {
+  for (const status of [400, 401, 402, 403, 404, 405, 408, 413, 415, 422, 429, 500, 502, 503]) {
+    let calls = 0;
+    const transport = createPinnedAiFetch(config(), {
+      resolve,
+      request: async () => {
+        calls++;
+        const rejected = new Response(`private error ${apiKey}`, {
+          status,
+          headers: { 'x-private': apiKey },
+        });
+        rejected.arrayBuffer = () => assert.fail('non-2xx body must not be read');
+        return rejected;
+      },
+    });
+    await assert.rejects(
+      transport(`${baseUrl}/chat/completions`, { method: 'POST', body: '{}' }),
+      (error) => {
+        assert.ok(error instanceof AiProbeError);
+        assert.equal(error.code, 'provider_rejected');
+        assert.equal(error.httpStatus, status);
+        assert.equal(error.message, 'provider_rejected');
+        assert.deepEqual(Object.keys(error).sort(), ['code', 'httpStatus', 'name']);
+        assert.equal(JSON.stringify(error).includes(apiKey), false);
+        return true;
+      },
+    );
+    assert.equal(calls, 1, 'rejection must not retry');
+  }
+  for (const invalid of [undefined, '429', NaN, Infinity, 0, 99, 600, 429.5, { status: 429 }])
+    assert.equal(new AiProbeError('provider_rejected', invalid).httpStatus, undefined);
+});
+
 test('transport keeps probe request limits and separately bounds generation before DNS or wire calls', async () => {
   for (const [requestPurpose, maximum] of [
     [undefined, 32768],
@@ -327,7 +360,12 @@ test('native HTTPS streaming rejects redirect/error bodies and oversized/incompl
   assert.equal(good.requests, 1);
   for (const [options, code] of [
     [{ status: 302 }, 'redirect_blocked'],
+    [{ status: 400 }, 'provider_rejected'],
+    [{ status: 401 }, 'provider_rejected'],
+    [{ status: 402 }, 'provider_rejected'],
+    [{ status: 408 }, 'provider_rejected'],
     [{ status: 429 }, 'provider_rejected'],
+    [{ status: 500 }, 'provider_rejected'],
     [{ status: 204 }, 'invalid_response'],
     [{ headers: { 'content-type': 'text/html' } }, 'invalid_response'],
     [{ headers: { 'content-encoding': 'gzip' } }, 'invalid_response'],
@@ -335,6 +373,8 @@ test('native HTTPS streaming rejects redirect/error bodies and oversized/incompl
   ]) {
     const result = await run(options);
     assert.equal(result.error.code, code);
+    assert.equal(result.error.httpStatus, options.status ?? 200);
+    assert.equal(JSON.stringify(result.error).includes(apiKey), false);
     assert.equal(result.requests, 1);
     assert.equal(result.bytesEmitted, 0);
     assert.equal(result.requestDestroyed, true);
