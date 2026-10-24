@@ -149,9 +149,9 @@ export function createDiscoveryInvoker(
               },
             ],
             max_tool_calls: discoverySearchLimit,
-            // Supplying a server tool alone allows zero searches. Require its use,
-            // retaining both loop limits (this does not promise exactly one search).
-            tool_choice: 'required',
+            // Some routes support tools but reject forced tool choice. Keep auto
+            // portable; parseDiscoveryResponse still requires search evidence.
+            tool_choice: 'auto',
             response_format: {
               type: 'json_schema',
               json_schema: {
