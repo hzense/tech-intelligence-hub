@@ -9,8 +9,10 @@ overrides:
   # This Next.js app does not import workflow/nest. Omit its unused Nest adapter
   # and SWC CLI downloader chain (GHSA-ch52-4w7c-c8xp); keep the audit enabled.
   'workflow@4.8.9>@workflow/nest': '-'
-  '@workflow/world-local>undici': '7.29.1'
-  '@workflow/world-vercel>undici': '7.29.1'
+  '@workflow/world-local>undici': '7.30.1'
+  '@workflow/world-vercel>undici': '7.30.1'
+  # Workflow/Vercel pin older Zod 4 minors; keep its major API and patch collection DoS.
+  'zod@>=4.0.0 <4.6.6': '4.6.6'
   '@workflow/core>nanoid': '5.1.16'
   # Keep Workflow's devalue 5 API while applying serialization security fixes.
   '@workflow/core>devalue': '5.9.3'
