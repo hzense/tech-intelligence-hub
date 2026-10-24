@@ -7,8 +7,10 @@ export const SIGNAL_VERSION_SCHEMA_VERSION = '3.0.0' as const;
 const id = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 // Refine rather than trim: snapshots must preserve the supplied text byte for byte.
 const nonblank = z.string().refine((value) => value.trim().length > 0, 'Must not be blank');
-const timestamp = z.iso
-  .datetime({ offset: true })
+// Zod 4.6 requires seconds by default. Explicitly retain the minute-precision
+// strings accepted by persisted snapshots; validation must not rewrite them.
+const timestamp = z
+  .union([z.iso.datetime({ offset: true }), z.iso.datetime({ offset: true, precision: -1 })])
   .refine((value) => Number.isFinite(Date.parse(value)), 'Invalid timestamp')
   .refine((value) => {
     const year = new Date(value).getUTCFullYear();

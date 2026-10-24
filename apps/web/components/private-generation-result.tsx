@@ -13,9 +13,14 @@ function objectRows(value: unknown): Record<string, unknown>[] {
     : [];
 }
 
-function Evidence({ value }: { value: unknown }) {
+function Evidence({ value, historical = false }: { value: unknown; historical?: boolean }) {
   const entries = objectRows(value);
-  if (!entries.length) return <p className={preview.missing}>未提供原文证据，需人工补充核对。</p>;
+  if (!entries.length)
+    return (
+      <p className={preview.missing}>
+        {historical ? '原始生成时未提供这项原文引用。' : '未提供原文证据，需人工补充核对。'}
+      </p>
+    );
   return (
     <ul className={preview.evidenceList}>
       {entries.map((entry, index) => (
@@ -126,6 +131,16 @@ export function PrivateResult({
         const publication = snapshotOnly
           ? undefined
           : candidatePublication(reviewTask?.publication, data.index);
+        const historical =
+          snapshotOnly ||
+          publication?.status === 'published' ||
+          publication?.status === 'withdrawn';
+        const currentContentLabel =
+          publication?.status === 'published'
+            ? '正式信号或信号管理中的已发布内容'
+            : publication?.status === 'withdrawn'
+              ? '信号管理中的撤回记录'
+              : '信号管理中的当前内容';
         const publicHref =
           publication?.status === 'published' &&
           publication.publicId &&
@@ -170,25 +185,49 @@ export function PrivateResult({
                 {typeof data.title === 'string' ? data.title : `候选信号 ${candidateNumber}`}
               </h4>
               <p className={preview.date}>
+                {historical ? '原始快照中的' : ''}
                 {sourcePublished ? '原文发布日期' : '事件发生时间'}：
-                {typeof data.event_date === 'string' ? data.event_date : '日期尚未确认，待补齐'}
+                {typeof data.event_date === 'string'
+                  ? data.event_date
+                  : historical
+                    ? '原始生成时未识别'
+                    : '日期尚未确认，待补齐'}
               </p>
               <p className={preview.summary}>
                 {typeof data.summary === 'string' && data.summary.trim()
                   ? data.summary
-                  : '摘要未提供，需人工补充。'}
+                  : historical
+                    ? '原始生成时未提供摘要。'
+                    : '摘要未提供，需人工补充。'}
               </p>
               {needsResourceDetails && (
                 <p className={preview.missing}>
-                  原始候选待补全：缺少部分人物或组织的资源资料。正文与已有证据已保留，
-                  请进入信号管理查看当前缺项；原始快照不会随补全改写。
+                  {historical ? (
+                    <>
+                      原始生成时缺少部分人物或组织的资源资料；后续补充请查看{currentContentLabel}。
+                    </>
+                  ) : (
+                    <>
+                      原始候选待补全：缺少部分人物或组织的资源资料。正文与已有证据已保留，
+                      请进入信号管理查看当前缺项；原始快照不会随补全改写。
+                    </>
+                  )}
                 </p>
               )}
               {needsEventTime && (
                 <p className={preview.missing}>
-                  原始候选待补全：{dateLabel}尚未确认。正文与通过原文匹配的辅助引用已保留，
-                  引用不代表日期已确定；请进入信号管理补齐并确认日期后再发布，不使用采集时间替代。
-                  原始快照不会随补全改写。
+                  {historical ? (
+                    <>
+                      原始生成时未识别{dateLabel}，此处保留当时的快照。当前日期请查看
+                      {currentContentLabel}。
+                    </>
+                  ) : (
+                    <>
+                      原始候选待补全：{dateLabel}尚未确认。正文与通过原文匹配的辅助引用已保留，
+                      引用不代表日期已确定；请进入信号管理补齐并确认日期后再发布，不使用采集时间替代。
+                      原始快照不会随补全改写。
+                    </>
+                  )}
                 </p>
               )}
               {canOpenReview && reviewTask && (
@@ -226,7 +265,11 @@ export function PrivateResult({
               <section className={preview.body} aria-label="信号要点与证据">
                 <h5>核心要点</h5>
                 <p className={preview.hint}>以下为候选主张；展开证据，对照原文判断是否成立。</p>
-                {claims.length === 0 && <p className={preview.missing}>未提供可核对的主张。</p>}
+                {claims.length === 0 && (
+                  <p className={preview.missing}>
+                    {historical ? '原始生成时未提供可核对的主张。' : '未提供可核对的主张。'}
+                  </p>
+                )}
                 {claims.map((claim, claimIndex) => (
                   <section key={claimIndex} className={preview.claim}>
                     <p className={preview.claimText}>
@@ -238,7 +281,7 @@ export function PrivateResult({
                         核对要点 {claimIndex + 1} 的原文证据（{objectRows(claim.evidence).length}{' '}
                         条引用）
                       </summary>
-                      <Evidence value={claim.evidence} />
+                      <Evidence value={claim.evidence} historical={historical} />
                     </details>
                   </section>
                 ))}
@@ -248,7 +291,9 @@ export function PrivateResult({
                   <h5>关键人物与组织</h5>
                   <p className={preview.hint}>来源提及，关系尚待核实。</p>
                   {people.length === 0 && (
-                    <p className={preview.missing}>未识别关键人物，需补充核对。</p>
+                    <p className={preview.missing}>
+                      {historical ? '原始生成时未识别关键人物。' : '未识别关键人物，需补充核对。'}
+                    </p>
                   )}
                   {people.map((person, personIndex) => (
                     <div key={personIndex} className={preview.person}>
@@ -259,7 +304,7 @@ export function PrivateResult({
                       </p>
                       <details className={preview.evidence}>
                         <summary>核对人物 {personIndex + 1} 的来源依据</summary>
-                        <Evidence value={person.evidence} />
+                        <Evidence value={person.evidence} historical={historical} />
                       </details>
                     </div>
                   ))}
@@ -269,14 +314,16 @@ export function PrivateResult({
                   <details className={preview.evidence}>
                     <summary>
                       {needsEventTime
-                        ? '查看日期相关辅助引用（日期待确认）'
+                        ? historical
+                          ? '查看原始生成时的日期辅助引用'
+                          : '查看日期相关辅助引用（日期待确认）'
                         : `核对${dateLabel}的来源依据`}
                     </summary>
-                    <Evidence value={data.event_date_evidence} />
+                    <Evidence value={data.event_date_evidence} historical={historical} />
                   </details>
                 </section>
                 <section>
-                  <h5>相关组织（待核对）</h5>
+                  <h5>{historical ? '原始候选关联的组织' : '相关组织（待核对）'}</h5>
                   {organizations.length > 0 ? (
                     <ul className={preview.organizations}>
                       {organizations.map((name, organizationIndex) => (
@@ -284,11 +331,13 @@ export function PrivateResult({
                       ))}
                     </ul>
                   ) : (
-                    <p>未识别相关组织，需补充核对。</p>
+                    <p>
+                      {historical ? '原始生成时未识别相关组织。' : '未识别相关组织，需补充核对。'}
+                    </p>
                   )}
                 </section>
                 <section className={preview.reviewNote}>
-                  <h5>决策前需确认</h5>
+                  <h5>{historical ? '原始候选核对提示' : '决策前需确认'}</h5>
                   <ul>
                     <li>主张是否被原文充分支持</li>
                     <li>

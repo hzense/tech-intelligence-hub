@@ -92,12 +92,44 @@ test(
       let historicalReceipt = null;
       let hangNext = false;
       let hangingRoute;
+      const organizationPreviews = [];
+      let failOrganizationPreview = false;
+      let manualPreview = null;
       await page.route('**/api/admin/editorial-signals**', async (route) => {
         if (route.request().method() === 'GET') {
           await route.fulfill({ json: data });
           return;
         }
         const body = route.request().postDataJSON();
+        if (body.action === 'preview_organization') {
+          organizationPreviews.push(body);
+          if (failOrganizationPreview) {
+            failOrganizationPreview = false;
+            await route.fulfill({ status: 503, json: { error: 'unavailable' } });
+            return;
+          }
+          manualPreview = {
+            resource: {
+              ...body.organization,
+              basis: 'manual_confirmation',
+              introduction: null,
+              event_role: null,
+              evidence: [],
+              entity_id: 'example-university',
+            },
+            option: {
+              ...body.organization,
+              status: 'reuse',
+              matches: [
+                { id: 'example-university', type: 'institution', name: 'Example University' },
+              ],
+            },
+            sourceUrls: ['https://example.com/article?id=42'],
+          };
+          // Preview only matches metadata; it does not persist a revision or draft.
+          await route.fulfill({ json: manualPreview });
+          return;
+        }
         posts.push(body);
         if (hangNext) {
           hangNext = false;
@@ -121,6 +153,23 @@ test(
           content: body.action === 'withdraw' ? data.content : body.content,
           publicId: body.action === 'publish' ? `editorial-${'b'.repeat(32)}` : null,
         };
+        if (
+          manualPreview &&
+          data.content.resources?.some((resource) => resource.basis === 'manual_confirmation')
+        ) {
+          data = {
+            ...data,
+            resourceOptions: [manualPreview.option],
+            resourceSourceOptions: [
+              {
+                name: manualPreview.resource.name,
+                type: manualPreview.resource.type,
+                sourceUrls: manualPreview.sourceUrls,
+              },
+            ],
+            sourceOptions: manualPreview.sourceUrls,
+          };
+        }
         if (concurrentWithdraw) {
           concurrentWithdraw = false;
           historicalReceipt = {
@@ -583,6 +632,168 @@ test(
         page.getByRole('button', { name: '重新检查本任务并发布（不调用 AI）' }),
       ).toHaveCount(0);
       assert.equal(automaticPosts, 2);
+      await t.test(
+        'source date and manually confirmed organization can complete an empty candidate without hidden writes',
+        async () => {
+          data = {
+            configured: true,
+            resourcePublicationReady: true,
+            materialHash: 'c'.repeat(64),
+            revision: 0,
+            action: null,
+            requestId: null,
+            publicId: null,
+            warnings: [],
+            content: {
+              title: '研究机构公开模型评估报告',
+              summary: '隔离测试资料，用于验证管理员补充发布日期和组织。',
+              eventDate: null,
+              dateBasis: 'source_published',
+              signalType: 'research',
+              organizations: [],
+              persons: [],
+              resources: [],
+              sourceUrls: [],
+              topics: [{ id: 'ai', title: '人工智能' }],
+            },
+            topicOptions: [{ id: 'ai', title: '人工智能' }],
+            sourceOptions: [],
+            resourceOptions: [],
+            resourceSourceOptions: [],
+            missingResourceDetails: [{ type: 'organization', name: 'Example University' }],
+            publicationDateSuggestion: {
+              date: '2026-10-23',
+              evidence: [{ fragment_id: 'f1', quote: 'Published on October 23, 2026' }],
+            },
+          };
+          const previousPosts = posts.length;
+          await page.reload();
+          await expect(page.getByLabel('原文发布日期', { exact: true })).toHaveValue('');
+          await expect(
+            page.getByText('Published on October 23, 2026', { exact: true }),
+          ).toBeVisible();
+          await page.getByRole('button', { name: '采用原文发布日期', exact: true }).click();
+          await expect(page.getByLabel('原文发布日期', { exact: true })).toHaveValue('2026-10-23');
+          await expect(
+            page.getByRole('button', { name: '采用原文发布日期', exact: true }),
+          ).toHaveCount(0);
+          assert.equal(data.content.eventDate, null, 'adopting a suggestion only changes the form');
+          assert.equal(posts.length, previousPosts);
+          assert.equal(organizationPreviews.length, 0);
+
+          await page.getByLabel('补录组织名称', { exact: true }).fill('Example University');
+          await page.getByLabel('补录组织类型', { exact: true }).selectOption('institution');
+          failOrganizationPreview = true;
+          await page.getByRole('button', { name: '添加组织', exact: true }).click();
+          await expect(
+            page.getByText('组织匹配失败，输入仍保留。请重试或重新读取。', { exact: true }),
+          ).toBeVisible();
+          await expect(page.getByLabel('补录组织名称', { exact: true })).toHaveValue(
+            'Example University',
+          );
+          await expect(page.getByLabel('原文发布日期', { exact: true })).toHaveValue('2026-10-23');
+          await expect(page.getByRole('button', { name: '重试原请求' })).toHaveCount(0);
+          assert.equal(
+            posts.length,
+            previousPosts,
+            'preview failure does not issue a publication request',
+          );
+          assert.equal(Object.hasOwn(organizationPreviews[0], 'requestId'), false);
+          await page.getByRole('button', { name: '添加组织', exact: true }).click();
+          await expect(page.getByLabel('组织', { exact: true })).toHaveValue('Example University');
+          await expect(page.getByText('管理员补录 · 人工确认', { exact: true })).toBeVisible();
+          await expect(page.getByLabel('Example University 的资源身份')).toHaveValue(
+            'example-university',
+          );
+          await expect(page.getByText(/候选正文已保留，但关联资源资料尚未齐全/)).toHaveCount(0);
+          await expect(page.locator('summary').filter({ hasText: '查看原文证据' })).toHaveCount(0);
+          assert.deepEqual(data.content.resources, [], 'matching does not save a draft');
+          assert.deepEqual(organizationPreviews[1], {
+            action: 'preview_organization',
+            runId: '11111111-1111-4111-8111-111111111111',
+            candidateIndex: 0,
+            materialHash: data.materialHash,
+            organization: { name: 'Example University', type: 'institution' },
+          });
+          const source = page.getByRole('checkbox', {
+            name: '公开来源：https://example.com/article?id=42',
+          });
+          await expect(source).not.toBeChecked();
+          await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+          await page
+            .getByLabel('补录组织名称', { exact: true })
+            .fill('  ＥＸＡＭＰＬＥ UNIVERSITY  ');
+          await page.getByLabel('补录组织类型', { exact: true }).selectOption('company');
+          await page.getByRole('button', { name: '添加组织', exact: true }).click();
+          await expect(
+            page.getByText('该组织已在关联资源中，请核对现有资料，无需重复添加。', { exact: true }),
+          ).toBeVisible();
+          assert.equal(
+            organizationPreviews.length,
+            2,
+            'normalized duplicates do not call the preview endpoint',
+          );
+          await page.getByRole('button', { name: '移除人工组织 Example University' }).click();
+          await expect(page.getByLabel('组织', { exact: true })).toHaveValue('');
+          await expect(page.getByLabel('Example University 的资源身份')).toHaveCount(0);
+          await expect(page.getByText(/待补充：.*Example University 的组织资源资料/)).toBeVisible();
+          await page.getByLabel('补录组织名称', { exact: true }).fill('Example University');
+          await page.getByLabel('补录组织类型', { exact: true }).selectOption('institution');
+          await page.getByRole('button', { name: '添加组织', exact: true }).click();
+          await expect(source).not.toBeChecked();
+          await source.check();
+          await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
+          assert.equal(
+            posts.length,
+            previousPosts,
+            'date and organization completion never autosave',
+          );
+          await page.getByRole('button', { name: '确认发布', exact: true }).click();
+          await expect(page.getByText('已确认发布。', { exact: true })).toBeVisible();
+          assert.equal(posts.length, previousPosts + 1);
+          assert.equal(posts.at(-1).action, 'publish');
+          assert.equal(posts.at(-1).consent, true);
+          assert.equal(posts.at(-1).content.eventDate, '2026-10-23');
+          assert.deepEqual(posts.at(-1).content.organizations, ['Example University']);
+          assert.deepEqual(posts.at(-1).content.resources, [manualPreview.resource]);
+          assert.deepEqual(posts.at(-1).content.sourceUrls, manualPreview.sourceUrls);
+          await page.reload();
+          await expect(page.getByLabel('组织', { exact: true })).toHaveValue('Example University');
+          await expect(page.getByText('管理员补录 · 人工确认', { exact: true })).toBeVisible();
+          await expect(source).toBeChecked();
+          await expect(page.getByLabel('Example University 的资源身份')).toHaveValue(
+            'example-university',
+          );
+          await expect(page.getByLabel('原文发布日期', { exact: true })).toHaveValue('2026-10-23');
+          await expect(
+            page.getByRole('button', { name: '采用原文发布日期', exact: true }),
+          ).toHaveCount(0);
+          assert.equal(
+            await page.evaluate(() => document.documentElement.scrollWidth <= 390),
+            true,
+          );
+
+          data.publicationDateSuggestion.date = '2026-10-22';
+          await page.reload();
+          await expect(page.getByLabel('原文发布日期', { exact: true })).toHaveValue('2026-10-23');
+          await expect(
+            page.getByRole('button', { name: '采用原文发布日期', exact: true }),
+          ).toHaveCount(0);
+          unknown = true;
+          await page.getByRole('button', { name: '保存修改', exact: true }).click();
+          await expect(page.getByRole('button', { name: '重试原请求' })).toBeVisible();
+          await expect(page.getByLabel('补录组织名称', { exact: true })).toBeDisabled();
+          await expect(page.getByLabel('补录组织类型', { exact: true })).toBeDisabled();
+          await expect(
+            page.getByRole('button', { name: '移除人工组织 Example University' }),
+          ).toBeDisabled();
+          await page.getByRole('button', { name: '重试原请求' }).click();
+          await expect(
+            page.getByText('修改已保存，正式信号已更新。', { exact: true }),
+          ).toBeVisible();
+          assert.deepEqual(posts.at(-1), posts.at(-2));
+        },
+      );
       assert.deepEqual(errors, []);
     } finally {
       await browser?.close();

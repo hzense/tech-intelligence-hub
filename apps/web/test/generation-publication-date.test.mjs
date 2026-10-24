@@ -5,8 +5,11 @@ import {
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
   generationCandidateWithResourcesJsonSchema,
+  assessGeneratedCandidates,
   normalizeGeneratedCandidates,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
+import { candidateReviewMaterialHash } from '../../../packages/database/src/candidate-review-contract.mjs';
+import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
 import { portableJsonSchema } from '../lib/ai-model-compatibility.ts';
 import {
   createSignalGenerationInvoker,
@@ -112,6 +115,7 @@ test('legacy task contracts retain event-date rules, examples and schemas withou
     assert.doesNotMatch(input.system, /date_basis|source_published/);
     assert.equal(example(input).output.candidates[0].event_date, '2030-04-08');
     assert.equal(input.schema.properties.candidates.items.properties.date_basis, undefined);
+    assert.equal(JSON.parse(input.prompt).publication_date_hints, undefined);
   }
   const legacy = generationInput(source, '历史配置', topics, GENERATION_RESOURCES_CONTRACT);
   assert.deepEqual(legacy.schema, portableJsonSchema(generationCandidateWithResourcesJsonSchema));
@@ -123,7 +127,7 @@ test('legacy task contracts retain event-date rules, examples and schemas withou
   );
 });
 
-async function invokeFixture(result) {
+async function invokeFixture(result, sourceInput = source) {
   const calls = [];
   const connection = {
     id: '11111111-1111-4111-8111-111111111111',
@@ -150,7 +154,7 @@ async function invokeFixture(result) {
     },
   });
   const response = await invoke({
-    source,
+    source: sourceInput,
     topics,
     outputContract: GENERATION_SOURCE_PUBLICATION_CONTRACT,
     stage: {
@@ -213,4 +217,143 @@ test('new provider contract rejects missing or conflicting date semantics withou
     assert.equal(calls.length, 1);
     assert.equal(response.output?.candidates.length ?? 0, 0);
   }
+});
+
+const cardSource = {
+  classification: 'private',
+  fragments: [
+    { id: 'fragment-1', text: 'Oct 24, 2026 | Technology newsletter', locator: { paragraph: 1 } },
+    ...['Alpha', 'Beta', 'Gamma', 'Delta'].map((name, index) => ({
+      id: `fragment-${index + 2}`,
+      text: `${name} releases a model\n\n${name} announced its first model.\n\n3 min read\n\nOct ${index === 3 ? '22' : '23'}, 2026`,
+      locator: { paragraph: index * 4 + 2 },
+    })),
+    { id: 'fragment-6', text: '© 2026 Newsletter', locator: { paragraph: 18 } },
+  ],
+};
+const cardCandidates = ['Alpha', 'Beta', 'Gamma', 'Delta'].map((name, index) => ({
+  ...candidate,
+  title: `${name} 发布模型`,
+  summary: `${name} 发布首个模型。`,
+  event_date: null,
+  event_date_evidence: [],
+  organizations: [name],
+  claims: [
+    {
+      text: `${name} 发布首个模型。`,
+      evidence: [
+        { fragment_id: `fragment-${index + 2}`, quote: `${name} announced its first model.` },
+      ],
+    },
+  ],
+  resources: [
+    {
+      type: 'company',
+      name,
+      introduction: null,
+      event_role: null,
+      evidence: [
+        { fragment_id: `fragment-${index + 2}`, quote: `${name} announced its first model.` },
+      ],
+    },
+  ],
+}));
+
+test('new generation fills omitted dates from the cited news cards without another AI call or changing the source', async () => {
+  const original = JSON.stringify(cardSource);
+  const hash = signalGenerationSourceHash(cardSource);
+  const { response, calls } = await invokeFixture(
+    { candidates: cardCandidates, reason: '候选' },
+    cardSource,
+  );
+  assert.equal(response.success, true);
+  assert.equal(calls.length, 1);
+  assert.equal(response.input_tokens, 200);
+  assert.equal(response.output_tokens, 100);
+  assert.deepEqual(
+    response.output.candidates.map((item) => item.event_date),
+    ['2026-10-23', '2026-10-23', '2026-10-23', '2026-10-22'],
+  );
+  const payload = JSON.parse(
+    JSON.parse(calls[0].body).messages.find(({ role }) => role === 'user').content,
+  );
+  assert.deepEqual(payload.untrusted_source, cardSource);
+  assert.equal(payload.publication_date_hints.length, 4);
+  for (const item of response.output.candidates) {
+    assert.ok(!item.issues.includes('needs_event_time'));
+    assert.equal(item.status, 'needs_review');
+    assert.equal(item.classification, 'private');
+    for (const reference of item.event_date_evidence) {
+      assert.ok(
+        cardSource.fragments
+          .find(({ id }) => id === reference.fragment_id)
+          .text.includes(reference.quote),
+      );
+    }
+    // The same assessment used by database finish/read must reproduce the saved result.
+    const { index, classification, status, issues, ...raw } = item;
+    const normalized = assessGeneratedCandidates(
+      { candidates: [raw], reason: response.output.reason },
+      cardSource,
+      topics,
+      GENERATION_SOURCE_PUBLICATION_CONTRACT,
+    );
+    assert.deepEqual(
+      { ...normalized.candidates[0], index },
+      { ...raw, index, classification, status, issues },
+    );
+  }
+  assert.equal(JSON.stringify(cardSource), original);
+  assert.equal(signalGenerationSourceHash(cardSource), hash);
+});
+
+test('publication-date completion does not resurrect rejected candidates or renumber survivors', async () => {
+  const invalid = {
+    ...cardCandidates[0],
+    claims: [
+      { text: '伪造主张', evidence: [{ fragment_id: 'fragment-2', quote: 'not in the source' }] },
+    ],
+  };
+  const { response, calls } = await invokeFixture(
+    { candidates: [invalid, cardCandidates[1]], reason: '候选' },
+    cardSource,
+  );
+  assert.equal(response.success, true);
+  assert.equal(calls.length, 1);
+  assert.equal(response.output.rejected[0].index, 0);
+  assert.equal(response.output.candidates.length, 1);
+  assert.equal(response.output.candidates[0].index, 1);
+  assert.equal(response.output.candidates[0].event_date, '2026-10-23');
+});
+
+test('read-only assessment and material hashes of saved undated candidates remain unchanged', async () => {
+  const oldResult = assessGeneratedCandidates(
+    { candidates: cardCandidates, reason: '已保存候选' },
+    cardSource,
+    topics,
+    GENERATION_SOURCE_PUBLICATION_CONTRACT,
+  );
+  const run = {
+    id: '11111111-1111-4111-8111-111111111111',
+    owner_id: 'owner',
+    status: 'completed',
+    source_hash: signalGenerationSourceHash(cardSource),
+    snapshot: {
+      source: cardSource,
+      topics,
+      output_contract: GENERATION_SOURCE_PUBLICATION_CONTRACT,
+    },
+    result: oldResult,
+  };
+  const before = JSON.stringify(run);
+  const hash = candidateReviewMaterialHash(run, 0);
+  const { response } = await invokeFixture(
+    { candidates: cardCandidates, reason: '新响应' },
+    cardSource,
+  );
+  assert.equal(response.output.candidates[0].event_date, '2026-10-23');
+  assert.equal(oldResult.candidates[0].event_date, null);
+  assert.ok(oldResult.candidates[0].issues.includes('needs_event_time'));
+  assert.equal(candidateReviewMaterialHash(run, 0), hash);
+  assert.equal(JSON.stringify(run), before);
 });

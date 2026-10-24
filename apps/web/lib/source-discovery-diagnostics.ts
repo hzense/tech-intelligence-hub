@@ -141,6 +141,7 @@ const rejectionLabels: Record<DiscoveryRejectionReason, string> = {
   invalid_article: '条目不是有效对象',
   invalid_url: '来源网址无效或不安全',
   uncited_url: '来源网址与供应商引用不匹配',
+  non_article_url: '来源是列表或订阅页，需要单篇原文地址',
   unexpected_fields: '条目包含不允许的字段',
   invalid_title: '标题为空、过长或含控制字符',
   invalid_date_format: '发布日期须为 YYYY-MM-DD 格式',

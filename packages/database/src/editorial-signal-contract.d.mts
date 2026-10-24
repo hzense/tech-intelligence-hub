@@ -5,6 +5,8 @@ export interface EditorialResourceDraft {
   introduction: string | null;
   event_role: string | null;
   evidence: { fragment_id: string; quote: string }[];
+  /** Only hand-entered company/institution assertions; evidence is empty. */
+  basis?: 'manual_confirmation';
 }
 export interface EditorialResource extends EditorialResourceDraft {
   entity_id: string | null;
@@ -65,11 +67,11 @@ export function normalizeEditorialContent(value: unknown): EditorialContent;
 export function editorialResourceName(name: string): string;
 export function normalizeEditorialResources(
   value: unknown,
-  options?: { generated?: false },
+  options?: { generated?: false; allowManual?: boolean },
 ): EditorialResource[];
 export function normalizeEditorialResources(
   value: unknown,
-  options: { generated: true },
+  options: { generated: true; allowManual?: boolean },
 ): EditorialResourceDraft[];
 export function contentReadiness(content: EditorialContent): { ready: boolean; missing: string[] };
 export function normalizeEditorialRequest(

@@ -2,6 +2,7 @@ export const discoveryRejectionReasons = [
   'invalid_article',
   'invalid_url',
   'uncited_url',
+  'non_article_url',
   'unexpected_fields',
   'invalid_title',
   'invalid_date_format',

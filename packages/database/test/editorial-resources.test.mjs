@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeEditorialContent,
   normalizeEditorialRequest,
+  normalizeEditorialResources,
 } from '../src/editorial-signal-contract.mjs';
 import { previewEditorialResources } from '../src/editorial-signal-store.mjs';
 import { editorialFixture } from './editorial-signal.test.mjs';
@@ -37,6 +38,150 @@ export function resourceFixture(suffix = '') {
   }));
   return fixture;
 }
+
+export function manualOrganizationFixture(suffix = '') {
+  const fixture = resourceFixture(suffix);
+  fixture.material.resources = [];
+  fixture.material.resourceSourceOptions = [];
+  fixture.material.sourceOptions = [...fixture.content.sourceUrls];
+  fixture.content.persons = [];
+  fixture.content.resources = [
+    {
+      type: 'institution',
+      name: `Manual organization${suffix}`,
+      introduction: null,
+      event_role: null,
+      evidence: [],
+      basis: 'manual_confirmation',
+      entity_id: null,
+    },
+  ];
+  fixture.content.organizations = [fixture.content.resources[0].name];
+  return fixture;
+}
+
+describe('manual organization publication contract', () => {
+  it('records administrator assertions with no fabricated evidence and requires explicit consent', () => {
+    const { request, material } = manualOrganizationFixture();
+    expect(normalizeEditorialRequest(request, material)).toEqual(request);
+    expect(() => normalizeEditorialRequest({ ...request, consent: false }, material)).toThrow(
+      'confirmation_required',
+    );
+    expect(
+      normalizeEditorialRequest({ ...request, action: 'draft', consent: false }, material).action,
+    ).toBe('draft');
+    expect(() =>
+      normalizeEditorialRequest({ ...request, consent: false }, material, { automatic: true }),
+    ).toThrow('automatic_publication_invalid');
+    expect(() => normalizeEditorialRequest(request, { ...material, resources: undefined })).toThrow(
+      'material_changed',
+    );
+    const original = resourceFixture();
+    expect(normalizeEditorialRequest(original.request, original.material)).toEqual(
+      original.request,
+    );
+    expect(normalizeEditorialContent(original.content).resources[0]).not.toHaveProperty('basis');
+  });
+  it('does not permit manual people, fake quotations, generated basis markers or duplicate organizations', () => {
+    const { request, material } = manualOrganizationFixture();
+    const resource = request.content.resources[0];
+    for (const patch of [
+      { type: 'person' },
+      { basis: 'automatic_checks' },
+      { evidence: [{ fragment_id: 'fragment-1', quote: 'An invented quote' }] },
+      { basis: undefined },
+    ])
+      expect(() => normalizeEditorialResources([{ ...resource, ...patch }])).toThrow();
+    expect(() =>
+      normalizeEditorialResources(
+        [
+          {
+            ...material.resources[0],
+            ...resource,
+          },
+        ],
+        { generated: true },
+      ),
+    ).toThrow();
+    const { entity_id: id, ...draft } = resource;
+    expect(id).toBe(null);
+    expect(() => normalizeEditorialResources([draft], { generated: true })).toThrow();
+    expect(normalizeEditorialResources([draft], { generated: true, allowManual: true })).toEqual([
+      draft,
+    ]);
+    expect(() =>
+      normalizeEditorialContent({
+        ...request.content,
+        resources: [resource, { ...resource, name: resource.name.toUpperCase() }],
+        organizations: [resource.name, resource.name.toUpperCase()],
+      }),
+    ).toThrow();
+  });
+  it('allows only exact organization gap completion and cannot replace a generated resource', () => {
+    const manual = manualOrganizationFixture();
+    manual.material.missingResourceDetails = [
+      { type: 'organization', name: manual.content.organizations[0] },
+    ];
+    expect(normalizeEditorialRequest(manual.request, manual.material)).toEqual(manual.request);
+    for (const gap of [
+      { type: 'person', name: manual.content.organizations[0] },
+      { type: 'organization', name: 'Other organization' },
+    ]) {
+      expect(() =>
+        normalizeEditorialRequest(manual.request, {
+          ...manual.material,
+          missingResourceDetails: [gap],
+        }),
+      ).toThrow('resource_details_incomplete');
+    }
+    const generated = resourceFixture();
+    generated.content.resources[0] = {
+      ...generated.content.resources[0],
+      evidence: [],
+      basis: 'manual_confirmation',
+    };
+    expect(() => normalizeEditorialRequest(generated.request, generated.material)).toThrow(
+      'material_changed',
+    );
+    const extra = manual.content.resources[0];
+    const intact = resourceFixture();
+    intact.content.resources.push(extra);
+    intact.content.organizations.push(extra.name);
+    expect(normalizeEditorialRequest(intact.request, intact.material)).toEqual(intact.request);
+  });
+  it('previews manual organizations only through the explicit server option', async () => {
+    const { content } = manualOrganizationFixture();
+    const { entity_id: id, ...resource } = content.resources[0];
+    expect(id).toBe(null);
+    const pool = {
+      connect: async () => ({
+        query: async () => ({
+          rows: [
+            {
+              id: 'institution-existing',
+              type: 'institution',
+              name: resource.name,
+              status: 'active',
+              aliases: [],
+            },
+          ],
+        }),
+        release() {},
+      }),
+    };
+    await expect(previewEditorialResources({ pool, resources: [resource] })).rejects.toThrow();
+    await expect(
+      previewEditorialResources({ pool, resources: [resource], allowManual: true }),
+    ).resolves.toEqual([
+      {
+        name: resource.name,
+        type: 'institution',
+        status: 'reuse',
+        matches: [{ id: 'institution-existing', name: resource.name, type: 'institution' }],
+      },
+    ]);
+  });
+});
 
 describe('generated resource publication contract', () => {
   it('blocks new publication of incomplete server-bound resources, but permits drafts and withdrawal', () => {

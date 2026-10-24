@@ -48,7 +48,10 @@ function list(value, max, normalize, key = (item) => item) {
 }
 export const editorialResourceName = (name) =>
   name.normalize('NFKC').trim().toLocaleLowerCase('en-US');
-export function normalizeEditorialResources(value, { generated = false } = {}) {
+export function normalizeEditorialResources(
+  value,
+  { generated = false, allowManual = !generated } = {},
+) {
   return list(
     value,
     36,
@@ -59,11 +62,18 @@ export function normalizeEditorialResources(value, { generated = false } = {}) {
         'introduction',
         'event_role',
         'evidence',
+        ...(allowManual && Object.hasOwn(item ?? {}, 'basis') ? ['basis'] : []),
         ...(generated
           ? []
           : ['entity_id', ...(Object.hasOwn(item ?? {}, 'source_urls') ? ['source_urls'] : [])]),
       ]);
       if (!['person', 'company', 'institution'].includes(item.type)) editorialFail();
+      const manual = Object.hasOwn(item, 'basis');
+      if (
+        manual &&
+        (item.basis !== 'manual_confirmation' || !['company', 'institution'].includes(item.type))
+      )
+        editorialFail();
       const evidence = list(
         item.evidence,
         8,
@@ -76,7 +86,9 @@ export function normalizeEditorialResources(value, { generated = false } = {}) {
         },
         (entry) => `${entry.fragment_id}\0${entry.quote}`,
       );
-      if (!evidence.length) editorialFail();
+      // Manual organizations are administrator assertions, not manufactured AI
+      // quotations. Generated resources keep their original evidence contract.
+      if (manual ? evidence.length !== 0 : !evidence.length) editorialFail();
       const entityId = generated ? undefined : item.entity_id;
       if (
         !generated &&
@@ -93,6 +105,7 @@ export function normalizeEditorialResources(value, { generated = false } = {}) {
         introduction: item.introduction === null ? null : editorialText(item.introduction, 500),
         event_role: item.event_role === null ? null : editorialText(item.event_role, 200),
         evidence,
+        ...(manual ? { basis: 'manual_confirmation' } : {}),
         ...(generated ? {} : { entity_id: entityId }),
         ...(!generated && Object.hasOwn(item, 'source_urls')
           ? {
@@ -256,7 +269,23 @@ export function normalizeEditorialRequest(
     // Preserve historical request hashes, while preventing new writes from
     // dropping or inventing the date policy pinned to the original candidate.
     if (content.dateBasis !== material.dateBasis) editorialFail('material_changed');
-    if (request.action === 'publish' && material.missingResourceDetails?.length)
+    const manualResources = (content.resources ?? []).filter(
+      (resource) => resource.basis === 'manual_confirmation',
+    );
+    if (automatic && manualResources.length) editorialFail('automatic_publication_invalid');
+    if (manualResources.length && material.resources === undefined)
+      editorialFail('material_changed');
+    const manuallyCompletedOrganizations = new Set(
+      manualResources.map((resource) => editorialResourceName(resource.name)),
+    );
+    if (
+      request.action === 'publish' &&
+      material.missingResourceDetails?.some(
+        (resource) =>
+          resource.type !== 'organization' ||
+          !manuallyCompletedOrganizations.has(editorialResourceName(resource.name)),
+      )
+    )
       editorialFail('resource_details_incomplete');
     if (request.action !== 'withdraw' && content.persons.some(isExcludedPublicPerson))
       editorialFail('excluded_person');
@@ -265,18 +294,20 @@ export function normalizeEditorialRequest(
         material.resources === undefined
           ? undefined
           : normalizeEditorialResources(material.resources, { generated: true });
-      const actual = content.resources?.map(({ entity_id: entityId, ...resource }, index) => {
-        delete resource.source_urls;
-        const original = expected?.[index];
-        // An explicit canonical organization selection can correct company vs
-        // institution. The store verifies that ID and its type under the lock.
-        return entityId &&
-          entityId !== '__new__' &&
-          ['company', 'institution'].includes(resource.type) &&
-          ['company', 'institution'].includes(original?.type)
-          ? { ...resource, type: original.type }
-          : resource;
-      });
+      const actual = content.resources
+        ?.filter((resource) => resource.basis !== 'manual_confirmation')
+        .map(({ entity_id: entityId, ...resource }, index) => {
+          delete resource.source_urls;
+          const original = expected?.[index];
+          // An explicit canonical organization selection can correct company vs
+          // institution. The store verifies that ID and its type under the lock.
+          return entityId &&
+            entityId !== '__new__' &&
+            ['company', 'institution'].includes(resource.type) &&
+            ['company', 'institution'].includes(original?.type)
+            ? { ...resource, type: original.type }
+            : resource;
+        });
       if (JSON.stringify(actual) !== JSON.stringify(expected)) editorialFail('material_changed');
       if (content.resources) {
         if (request.action === 'publish' && content.resources.length && !content.sourceUrls.length)

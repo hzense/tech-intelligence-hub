@@ -48,6 +48,14 @@ describe('private publisher and public Signal 3.0.0 hash compatibility', () => {
     ['UTC day', {}],
     ['offset day', { occurred_at: '2026-09-13T02:00:00+02:00' }],
     ['minute precision', { occurred_at: '2026-09-13T00:00Z', captured_at: '2026-09-14T12:34Z' }],
+    [
+      'positive minute offset',
+      { occurred_at: '2026-09-13T02:30+02:30', captured_at: '2026-09-14T14:34+02:00' },
+    ],
+    [
+      'negative minute offset',
+      { occurred_at: '2026-09-12T19:30-04:30', captured_at: '2026-09-14T08:34-04:00' },
+    ],
     ['seconds precision', { captured_at: '2026-09-14T12:34:56Z' }],
     ['tenths', { captured_at: '2026-09-14T12:34:56.1Z' }],
     ['hundredths', { captured_at: '2026-09-14T12:34:56.12Z' }],

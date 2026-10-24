@@ -7,7 +7,12 @@ import { loadTaxonomy, validateSeedTopicProjection, type TaxonomyCatalog } from 
 
 const id = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 const seedDate = z.iso.date();
-const seedDateTime = z.iso.datetime({ offset: true });
+// Keep historical minute precision alongside seconds/fractions without
+// accepting timezone-less values or normalizing the original Seed strings.
+const seedDateTime = z.union([
+  z.iso.datetime({ offset: true }),
+  z.iso.datetime({ offset: true, precision: -1 }),
+]);
 const httpsUrl = z.url({ protocol: /^https$/ });
 
 function toUtcDate(value: string): string {

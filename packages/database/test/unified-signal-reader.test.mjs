@@ -3,7 +3,10 @@ import { test } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { URL } from 'node:url';
 import { unifiedBackfillFixture } from './fixtures/unified-signal-backfill.mjs';
-import { previewUnifiedPublicSignals } from '../src/unified-signal-plan.mjs';
+import {
+  editorialUnifiedContent,
+  previewUnifiedPublicSignals,
+} from '../src/unified-signal-plan.mjs';
 import {
   mapUnifiedSignalRows,
   createUnifiedSignalReader,
@@ -55,6 +58,57 @@ test('editorial public contracts preserve identity, publication revision and unk
   }
   assert.equal(mapped.length, 112);
   assert.equal(new Set(mapped.map((r) => r.id)).size, 112);
+});
+test('manual organization assertions remain readable through both public projections without fabricated verification', () => {
+  const row = rows.find((r) => r.origin === 'ai_generation');
+  const revision = fixture.sources.editorialRevisions.find(
+    (r) => r.candidate_index === 0 && r.revision === 1,
+  );
+  const sourceUrls = revision.content.sourceUrls;
+  const content = {
+    ...revision.content,
+    persons: [],
+    organizations: ['管理员确认组织'],
+    resources: [
+      {
+        type: 'institution',
+        name: '管理员确认组织',
+        introduction: null,
+        event_role: null,
+        evidence: [],
+        basis: 'manual_confirmation',
+        entity_id: 'institution-manually-confirmed',
+        source_urls: sourceUrls,
+      },
+    ],
+  };
+  const old = mapEditorialSignalRows([
+    {
+      signal_id: row.signal_id,
+      revision: row.version,
+      content,
+      published_at: row.recorded_at,
+    },
+  ])[0];
+  const unified = mapUnifiedSignalRows([
+    { ...row, content: editorialUnifiedContent(content), publication_basis: 'manual_confirmation' },
+  ])[0];
+  assert.deepEqual(toUnifiedSignal(unified), toUnifiedSignal(old));
+  assert.equal(unified.publication_basis, 'manual_confirmation');
+  assert.deepEqual(unified.public_people, []);
+  assert.deepEqual(unified.public_resources, [
+    {
+      id: 'institution-manually-confirmed',
+      name: '管理员确认组织',
+      type: 'institution',
+      introduction: null,
+      source_urls: sourceUrls,
+    },
+  ]);
+  assert.equal(content.resources[0].basis, 'manual_confirmation');
+  assert.deepEqual(content.resources[0].evidence, []);
+  assert.equal(Object.hasOwn(unified.public_resources[0], 'evidence'), false);
+  assert.equal(Object.hasOwn(unified.public_resources[0], 'verified'), false);
 });
 test('name-only editorial versions retain catalog links after unified projection without changing storage', () => {
   const row = rows.find((r) => r.origin === 'ai_generation');

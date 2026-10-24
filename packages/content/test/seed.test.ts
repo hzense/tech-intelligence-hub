@@ -9,6 +9,7 @@ const temporaryRoots: string[] = [];
 async function createSeedRoot(
   occurredAt: string,
   signalSourceId = 'source-example',
+  capturedAt = '2026-08-20T00:00:00Z',
 ): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'hzense-seed-'));
   temporaryRoots.push(root);
@@ -38,7 +39,7 @@ cross_domain_relations: []
   title: Example signal
   type: technology
   occurred_at: ${occurredAt}
-  captured_at: 2026-08-20T00:00:00Z
+  captured_at: ${capturedAt}
   status: reviewed
   source_id: ${signalSourceId}
   source_url: https://example.com/signal
@@ -198,6 +199,39 @@ describe('historical Signal entity roles', () => {
 });
 
 describe('seed datetime validation', () => {
+  it.each([
+    '2026-09-13T00:00Z',
+    '2026-09-13T02:30+02:30',
+    '2026-09-12T19:30-04:30',
+    '2026-09-13T00:00:00Z',
+    '2026-09-13T00:00:00.1Z',
+    '2026-09-13T00:00:00.12Z',
+    '2026-09-13T02:30:00.123+02:30',
+  ])('retains original datetime precision and offset for %s', async (value) => {
+    const root = await createSeedRoot(value, 'source-example', value);
+    const result = await loadFixtureCatalog(root);
+    expect(result.signals[0]?.occurred_at).toBe(value);
+    expect(result.signals[0]?.captured_at).toBe(value);
+  });
+
+  it.each([
+    '2026-02-29T00:00Z',
+    '2026-02-30T00:00Z',
+    '2026-09-13T24:00Z',
+    '2026-09-13T00:60Z',
+    '2026-09-13T00:00+24:00',
+    '2026-09-13T00:00+02:60',
+    '2026-09-13T00:00+0200',
+    '2026-09-13T00:00',
+    '2026-09-13T00:00.1Z',
+    '2026-09-13T00Z',
+  ])('rejects invalid minute timestamp %s in either Seed field', async (value) => {
+    const invalidOccurrence = await createSeedRoot(value);
+    const invalidCapture = await createSeedRoot('2026-09-13T00:00:00Z', 'source-example', value);
+    await expect(loadFixtureCatalog(invalidOccurrence)).rejects.toThrow();
+    await expect(loadFixtureCatalog(invalidCapture)).rejects.toThrow();
+  });
+
   it('accepts a valid leap-day ISO datetime', async () => {
     const root = await createSeedRoot('2024-02-29T00:00:00Z');
 

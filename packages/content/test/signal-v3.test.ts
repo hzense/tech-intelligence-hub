@@ -158,6 +158,32 @@ describe('Signal 3.0.0 snapshot contract', () => {
   });
 
   it.each([
+    '2026-09-01T00:00Z',
+    '2026-09-01T02:30+02:30',
+    '2026-08-31T19:30-04:30',
+    '2026-09-01T00:00:00Z',
+    '2026-09-01T00:00:00.1Z',
+    '2026-09-01T00:00:00.12Z',
+    '2026-09-01T02:30:00.123+02:30',
+  ])('preserves timestamp spelling and canonical hash for %s', (value) => {
+    const original = content({
+      occurred_at: value,
+      captured_at: value,
+      date_precision: 'instant',
+    });
+    const result = createSignalVersionSnapshot(original);
+    const normalized = createSignalVersionSnapshot({
+      ...original,
+      occurred_at: new Date(value).toISOString(),
+      captured_at: new Date(value).toISOString(),
+    });
+    expect(result.occurred_at).toBe(value);
+    expect(result.captured_at).toBe(value);
+    expect(signalVersionSnapshotSchema.parse(result)).toEqual(result);
+    expect(result.content_hash).toBe(normalized.content_hash);
+  });
+
+  it.each([
     ['unexpected property', { unexpected: true }],
     ['DB created_at', { created_at: '2026-09-03T00:00:00Z' }],
     ['publication status', { status: 'published' }],
@@ -173,9 +199,21 @@ describe('Signal 3.0.0 snapshot contract', () => {
     ['wrong schema version', { schema_version: '2.0.0' }],
     ['unknown Signal type', { type: 'unknown' }],
     ['impossible date', { occurred_at: '2026-02-30T00:00:00Z' }],
+    ['impossible minute date', { occurred_at: '2026-02-30T00:00Z' }],
+    ['non-leap minute date', { occurred_at: '2026-02-29T00:00Z' }],
+    ['minute hour overflow', { captured_at: '2026-09-03T24:00Z' }],
+    ['minute overflow', { captured_at: '2026-09-03T12:60Z' }],
+    ['minute offset hour overflow', { captured_at: '2026-09-03T12:34+24:00' }],
+    ['minute offset minute overflow', { captured_at: '2026-09-03T12:34+02:60' }],
+    ['minute basic offset', { captured_at: '2026-09-03T12:34+0200' }],
+    ['minute timezone missing', { captured_at: '2026-09-03T12:34' }],
+    ['fractional minute', { captured_at: '2026-09-03T12:34.1Z' }],
+    ['minute below PostgreSQL year range', { captured_at: '0001-01-01T00:00+02:00' }],
+    ['minute above PostgreSQL year range', { captured_at: '9999-12-31T23:59-02:00' }],
     ['timezone missing', { captured_at: '2026-09-03T12:00:00' }],
     ['invalid capture', { captured_at: 'infinity' }],
     ['day with nonzero UTC time', { occurred_at: '2026-09-01T12:00:00Z' }],
+    ['minute day with nonzero UTC time', { occurred_at: '2026-09-01T00:01Z' }],
     ['day with sub-millisecond fraction', { occurred_at: '2026-09-01T00:00:00.000001Z' }],
     ['capture with microsecond precision', { captured_at: '2026-09-01T00:00:00.123456Z' }],
     ['zero fraction exceeding milliseconds', { occurred_at: '2026-09-01T00:00:00.0000Z' }],
