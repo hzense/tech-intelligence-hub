@@ -445,6 +445,7 @@ function harness(response = envelope(), parameters = discoveryParameters) {
       assert.equal(fenced, true, 'paid request must follow persisted fence');
       if (response instanceof Error) throw response;
       if (response instanceof globalThis.Response) return response;
+      if (typeof response === 'function') return response(request);
       return globalThis.Response.json(response);
     },
   });
@@ -474,7 +475,7 @@ test('provider uses one bounded server-tool request with no credential or reason
   assert.equal(body.tools[0].parameters.engine, 'exa');
   assert.equal(body.tools[0].parameters.max_uses, 3);
   assert.equal(body.max_tool_calls, 3);
-  assert.equal(body.tool_choice, 'required');
+  assert.equal(body.tool_choice, 'auto');
   assert.equal(body.response_format.type, 'json_schema');
   assert.equal(body.response_format.json_schema.strict, true);
   const schema = body.response_format.json_schema.schema;
@@ -506,6 +507,58 @@ test('provider uses one bounded server-tool request with no credential or reason
   assert.equal(JSON.stringify(result).includes(access.apiKey), false);
   assert.equal(result.costMicrousd, 25000);
   assert.equal(result.costSource, 'provider');
+});
+test('auto-only provider routes succeed on one POST instead of rejecting required tool choice', async () => {
+  for (const searchEvidence of ['search_count', 'provider_url_citations']) {
+    const response = envelope();
+    if (searchEvidence === 'provider_url_citations') delete response.usage.server_tool_use;
+    const h = harness((request) => {
+      const body = JSON.parse(request.body);
+      if (body.tool_choice === 'required')
+        return globalThis.Response.json(
+          { error: { code: 404, message: 'No endpoints support required tool choice' } },
+          { status: 404 },
+        );
+      assert.equal(body.tool_choice, 'auto');
+      assert.equal(body.provider.require_parameters, true);
+      assert.equal(body.response_format.json_schema.strict, true);
+      return globalThis.Response.json(response);
+    });
+    const receipt = await h.run();
+    assert.deepEqual(receipt.result.articles, [article()]);
+    assert.equal(receipt.result.searchEvidence, searchEvidence);
+    assert.equal(receipt.costMicrousd, 25000);
+    assert.equal(receipt.costSource, 'provider');
+    assert.equal(h.calls.length, 2, 'one catalog check followed by one paid request');
+    assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
+  }
+});
+test('auto tool choice still rejects absent or zero search evidence without retrying or losing costs', async () => {
+  for (const [searchCount, citations] of [
+    [undefined, []],
+    [0, []],
+    [0, [article().url]],
+  ]) {
+    const response = envelope([article()], citations);
+    if (searchCount === undefined) delete response.usage.server_tool_use;
+    else response.usage.server_tool_use.web_search_requests = searchCount;
+    const h = harness(response);
+    await assert.rejects(h.run(), (error) => {
+      assert.ok(error instanceof DiscoveryFailure);
+      assert.equal(error.code, 'discovery_search_unconfirmed');
+      assert.equal(error.called, true);
+      assert.equal(error.costMicrousd, 25000);
+      assert.equal(error.rejectedHttpStatus, undefined);
+      assert.equal(
+        error.diagnostics.searchCountStatus,
+        searchCount === undefined ? 'missing' : 'zero',
+      );
+      return true;
+    });
+    assert.equal(JSON.parse(h.calls[1].body).tool_choice, 'auto');
+    assert.equal(h.calls.length, 2, 'one catalog check and one paid attempt; no auto retry');
+    assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
+  }
 });
 test('provider accepts same-response alternatives without extra search or inference calls', async () => {
   const alternate = article('https://partner.example.com/news');
