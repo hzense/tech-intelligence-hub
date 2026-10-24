@@ -26,6 +26,7 @@ export function createEditorialHandler(deps: {
   origin(): string | undefined;
   read(owner: string, runId: string, candidateIndex: number): Promise<unknown>;
   write(owner: string, request: unknown): Promise<unknown>;
+  previewOrganization?(owner: string, request: unknown): Promise<unknown>;
 }) {
   return async (request: Request) => {
     try {
@@ -58,6 +59,15 @@ export function createEditorialHandler(deps: {
       // Resource evidence is bounded by the content contract (36 resources,
       // at most 8 excerpts each). Keep room for maximum-length UTF-8 text.
       const body = await readImportJSON(request, 1048576);
+      if (
+        body &&
+        typeof body === 'object' &&
+        'action' in body &&
+        body.action === 'preview_organization'
+      ) {
+        if (!deps.previewOrganization) return importResponse({ error: 'not_configured' }, 503);
+        return importResponse(await deps.previewOrganization(session.user.id, body));
+      }
       return importResponse(await deps.write(session.user.id, body));
     } catch (error) {
       const raw = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';

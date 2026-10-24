@@ -136,6 +136,7 @@ export async function saveEditorialSignal({
             resources: content.resources,
             catalog: material.resourceCatalog,
             sourceOptions: material.resourceSourceOptions,
+            manualSourceOptions: material.sourceOptions ?? material.sourceUrls,
             sourceUrls: content.sourceUrls,
             priorResources:
               latest?.action === 'publish' || latest?.action === 'withdraw'

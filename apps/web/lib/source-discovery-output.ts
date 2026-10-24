@@ -4,7 +4,8 @@ export const discoveryAlternativeLimit = 2;
 const sourceProperties = {
   url: {
     type: 'string',
-    description: 'Original public URL present in this search response citations.',
+    description:
+      'Direct public URL of one complete news article, paper, official announcement or project page, present in this search response citations. Never return tag/category/archive/search/feed listings. If search finds a listing, find and cite its specific article within the same search budget; do not invent an uncited detail URL.',
   },
   title: { type: 'string', description: 'Original source title.', maxLength: 300 },
   publishedAt: {
@@ -23,7 +24,8 @@ export const discoveryJsonSchema = {
     articles: {
       type: 'array',
       maxItems: discoveryArticleLimit,
-      description: 'Recent original sources from the search citations; return [] if none qualify.',
+      description:
+        'Recent complete original articles or official project pages from the search citations, not collections of news cards. Return [] if none qualify.',
       items: {
         type: 'object',
         additionalProperties: false,
@@ -34,7 +36,7 @@ export const discoveryJsonSchema = {
             type: 'array',
             maxItems: discoveryAlternativeLimit,
             description:
-              'Up to two other original or reliable sources about the SAME event, already cited in this search response. Return [] if unavailable; never search again solely to fill this field.',
+              'Up to two other complete original articles or reliable reports about the SAME event, already cited in this search response. No tag/category/archive/search/feed listings. Return [] if unavailable; never search again solely to fill this field.',
             items: {
               type: 'object',
               additionalProperties: false,

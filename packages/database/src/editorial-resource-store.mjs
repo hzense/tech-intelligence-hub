@@ -67,8 +67,8 @@ function resolveResource(resource, entries) {
     .sort((a, b) => a.id.localeCompare(b.id));
   return { matches, blocked: named.length > 0 && matches.length === 0 };
 }
-export async function previewEditorialResources({ pool, resources, catalog }) {
-  const rows = normalizeEditorialResources(resources, { generated: true });
+export async function previewEditorialResources({ pool, resources, catalog, allowManual = false }) {
+  const rows = normalizeEditorialResources(resources, { generated: true, allowManual });
   const client = await pool.connect();
   let discard = false;
   try {
@@ -104,6 +104,7 @@ export async function registerEditorialResources({
   resources,
   catalog,
   sourceOptions,
+  manualSourceOptions,
   sourceUrls,
   priorResources,
   runId,
@@ -116,6 +117,8 @@ export async function registerEditorialResources({
   const entries = await catalogEntries(client, catalog);
   const result = [];
   for (const resource of resources) {
+    if (automatic && resource.basis === 'manual_confirmation')
+      fail('automatic_publication_invalid');
     if (resource.type === 'person' && isExcludedPublicPerson(resource)) fail('excluded_person');
     const { matches, blocked } = resolveResource(resource, entries);
     const provenance = sourceOptions?.find(
@@ -166,6 +169,7 @@ export async function registerEditorialResources({
         row.entity_id === selected.id &&
         row.type === selected.type &&
         row.name === resource.name &&
+        row.basis === resource.basis &&
         row.introduction === resource.introduction &&
         row.event_role === resource.event_role &&
         row.evidence?.length === resource.evidence.length &&
@@ -175,8 +179,10 @@ export async function registerEditorialResources({
             entry.quote === resource.evidence[index].quote,
         ),
     );
-    const resourceUrls = sourceUrls.filter(
-      (url) => provenance?.sourceUrls.includes(url) || prior?.source_urls?.includes(url),
+    const resourceUrls = sourceUrls.filter((url) =>
+      resource.basis === 'manual_confirmation'
+        ? manualSourceOptions?.includes(url) || prior?.source_urls?.includes(url)
+        : provenance?.sourceUrls.includes(url) || prior?.source_urls?.includes(url),
     );
     if (!resourceUrls.length) fail('resource_source_required');
     if (!selected.inDatabase) {

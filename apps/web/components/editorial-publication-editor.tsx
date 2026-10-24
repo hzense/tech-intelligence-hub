@@ -7,6 +7,8 @@ import {
   editorialNames,
   editorialResourceSameKind,
   type EditorialDashboard,
+  type EditorialResource,
+  type EditorialResourceOption,
 } from '@/lib/editorial-review';
 import { signalTypeLabels } from '@/lib/signal-presentation';
 import controls from './admin-controls.module.css';
@@ -38,6 +40,15 @@ const messages: Record<string, string> = {
   excluded_person: '人物不收录国家元首或政府首脑，请移除该人物；不要用无事件依据的人物替代。',
 };
 
+const normalizedResourceName = (name: string) =>
+  name.normalize('NFKC').trim().toLocaleLowerCase('en-US');
+const sameResource = (
+  left: Pick<EditorialResource, 'name' | 'type'>,
+  right: Pick<EditorialResource, 'name' | 'type'>,
+) =>
+  normalizedResourceName(left.name) === normalizedResourceName(right.name) &&
+  editorialResourceSameKind(left, right);
+
 async function api(url: string, options: RequestInit = {}) {
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -64,6 +75,10 @@ export function EditorialPublicationEditor({
   const [data, setData] = useState<EditorialDashboard | null>(null);
   const [organizationText, setOrganizationText] = useState('');
   const [personText, setPersonText] = useState('');
+  const [manualOrganizationName, setManualOrganizationName] = useState('');
+  const [manualOrganizationType, setManualOrganizationType] = useState<'company' | 'institution'>(
+    'company',
+  );
   const [topicSearch, setTopicSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('正在读取发布信息…');
@@ -261,6 +276,109 @@ export function EditorialPublicationEditor({
     }
   }
 
+  async function previewOrganization() {
+    if (!data || disabled || lock.current || data.content.resources === undefined) return;
+    const organization = { name: manualOrganizationName.trim(), type: manualOrganizationType };
+    if (!organization.name || [...organization.name].length > 200) return;
+    if (data.content.resources.some((resource) => sameResource(resource, organization))) {
+      setNotice('该组织已在关联资源中，请核对现有资料，无需重复添加。');
+      return;
+    }
+    lock.current = true;
+    setBusy(true);
+    setNotice('正在匹配组织身份，不保存或发布…');
+    try {
+      const { response, body } = await api('/api/admin/editorial-signals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview_organization',
+          runId,
+          candidateIndex,
+          materialHash: data.materialHash,
+          organization,
+        }),
+      });
+      if (!response.ok) {
+        if (body.error === 'material_changed') setNeedsRefresh(true);
+        setNotice(messages[body.error] ?? '组织匹配失败，输入仍保留。请重试或重新读取。');
+        return;
+      }
+      const { resource, option, sourceUrls } = body as {
+        resource: EditorialResource;
+        option: EditorialResourceOption;
+        sourceUrls: string[];
+      };
+      if (
+        !resource ||
+        resource.basis !== 'manual_confirmation' ||
+        resource.type !== organization.type ||
+        typeof resource.name !== 'string' ||
+        !sameResource(resource, organization) ||
+        !Array.isArray(resource.evidence) ||
+        resource.evidence.length !== 0 ||
+        !option ||
+        typeof option.name !== 'string' ||
+        !sameResource(option, resource) ||
+        !Array.isArray(option.matches) ||
+        !Array.isArray(sourceUrls) ||
+        !sourceUrls.every((url) => typeof url === 'string')
+      )
+        throw new Error('invalid_organization_preview');
+      const resources = [...data.content.resources, resource];
+      const organizations = resources
+        .filter((entry) => entry.type !== 'person')
+        .map((entry) => entry.name);
+      setData({
+        ...data,
+        content: { ...data.content, resources, organizations },
+        resourceOptions: [...(data.resourceOptions ?? []), option],
+        resourceSourceOptions: [
+          ...(data.resourceSourceOptions ?? []),
+          { name: resource.name, type: resource.type, sourceUrls },
+        ],
+        sourceOptions: [...new Set([...(data.sourceOptions ?? []), ...sourceUrls])],
+      });
+      setOrganizationText(organizations.join('\n'));
+      setManualOrganizationName('');
+      setNotice('组织已加入待确认内容，尚未保存或发布。请核对身份并勾选对应公开来源。');
+    } catch {
+      setNotice('组织匹配失败，输入仍保留。请重试或重新读取。');
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
+  function removeManualOrganization(resource: EditorialResource) {
+    if (
+      !data ||
+      disabled ||
+      lock.current ||
+      resource.basis !== 'manual_confirmation' ||
+      resource.type === 'person'
+    )
+      return;
+    const resources = (data.content.resources ?? []).filter(
+      (entry) => !sameResource(entry, resource),
+    );
+    const organizations = resources
+      .filter((entry) => entry.type !== 'person')
+      .map((entry) => entry.name);
+    setData({
+      ...data,
+      content: { ...data.content, resources, organizations },
+      resourceOptions: (data.resourceOptions ?? []).filter(
+        (entry) => !sameResource(entry, resource),
+      ),
+      resourceSourceOptions: (data.resourceSourceOptions ?? []).filter(
+        (entry) => !sameResource(entry, resource),
+      ),
+    });
+    setOrganizationText(organizations.join('\n'));
+    setNotice('已从待确认内容中移除人工补录组织，尚未保存。');
+  }
+
   const content = data
     ? {
         ...data.content,
@@ -280,6 +398,16 @@ export function EditorialPublicationEditor({
         data?.missingResourceDetails,
       )
     : [];
+  const unresolvedResourceDetails = data?.missingResourceDetails?.filter(
+    (resource) =>
+      resource.type !== 'organization' ||
+      !content?.resources?.some(
+        (entry) =>
+          entry.basis === 'manual_confirmation' &&
+          entry.type !== 'person' &&
+          normalizedResourceName(entry.name) === normalizedResourceName(resource.name),
+      ),
+  );
   const invalidTopics =
     data?.content.topics.filter(
       (selected) =>
@@ -331,9 +459,9 @@ export function EditorialPublicationEditor({
           {data.warnings.map((warning) => (
             <p key={warning}>{warning}</p>
           ))}
-          {!!data.missingResourceDetails?.length && (
+          {!!unresolvedResourceDetails?.length && (
             <p role="alert">
-              候选正文已保留，但关联资源资料尚未齐全。请在本页的候选补全或补证区补齐后重新读取；
+              候选正文已保留，但关联资源资料尚未齐全。组织可在下方手工补录；人物请在候选补全或补证区补齐后重新读取。
               当前不能发布，也不会删除原候选中的人物或组织。
             </p>
           )}
@@ -458,6 +586,9 @@ export function EditorialPublicationEditor({
               {data.content.dateBasis === 'source_published' ? '原文发布日期' : '事件日期'}
               <input
                 type="date"
+                aria-label={
+                  data.content.dateBasis === 'source_published' ? '原文发布日期' : '事件日期'
+                }
                 value={data.content.eventDate ?? ''}
                 onChange={(event) =>
                   setData({
@@ -472,6 +603,32 @@ export function EditorialPublicationEditor({
                 </span>
               ) : null}
             </label>
+            {data.content.dateBasis === 'source_published' &&
+            !data.content.eventDate &&
+            data.publicationDateSuggestion ? (
+              <section className={styles.dateSuggestion} aria-label="原文发布日期建议">
+                <p>原文发布日期建议：{data.publicationDateSuggestion.date}</p>
+                {data.publicationDateSuggestion.evidence.map((evidence, index) => (
+                  <blockquote key={`${evidence.fragment_id}:${index}`}>
+                    <p>{evidence.quote}</p>
+                    <cite>原文片段 {evidence.fragment_id}</cite>
+                  </blockquote>
+                ))}
+                <button
+                  type="button"
+                  className={controls.button}
+                  onClick={() =>
+                    setData({
+                      ...data,
+                      content: { ...data.content, eventDate: data.publicationDateSuggestion!.date },
+                    })
+                  }
+                >
+                  采用原文发布日期
+                </button>
+                <p>仅填入当前表单；核对后再保存或确认发布。</p>
+              </section>
+            ) : null}
             <label>
               组织
               <textarea
@@ -481,8 +638,15 @@ export function EditorialPublicationEditor({
                 value={organizationText}
                 readOnly={data.content.resources !== undefined}
                 onChange={(event) => setOrganizationText(event.target.value)}
-                placeholder="填写组织名称，多项用换行或逗号分隔"
+                placeholder={
+                  data.content.resources !== undefined
+                    ? '尚未关联组织，请在下方补录'
+                    : '填写组织名称，多项用换行或逗号分隔'
+                }
               />
+              {data.content.resources !== undefined ? (
+                <span>此处汇总关联组织；需要添加时，请使用下方“补录组织名称”。</span>
+              ) : null}
             </label>
             <label>
               人物
@@ -493,7 +657,11 @@ export function EditorialPublicationEditor({
                 value={personText}
                 readOnly={data.content.resources !== undefined}
                 onChange={(event) => setPersonText(event.target.value)}
-                placeholder="填写人物姓名，多项用换行或逗号分隔"
+                placeholder={
+                  data.content.resources !== undefined
+                    ? '暂无关联人物'
+                    : '填写人物姓名，多项用换行或逗号分隔'
+                }
               />
               {data.content.resources !== undefined && data.content.persons.length === 0 ? (
                 <span>
@@ -511,9 +679,45 @@ export function EditorialPublicationEditor({
               <div className={styles.resources}>
                 <h3>关联资源</h3>
                 <p>
-                  以下资料与原文绑定。已存在的身份复用，缺失的身份在确认发布时创建；此处不会再次调用
+                  生成的资源保留原文引用；缺失组织可由管理员补录。已有身份复用，缺失身份在确认发布时创建；此处不调用
                   AI。
                 </p>
+                <div className={styles.manualOrganization}>
+                  <label>
+                    补录组织名称
+                    <input
+                      aria-label="补录组织名称"
+                      value={manualOrganizationName}
+                      aria-invalid={[...manualOrganizationName.trim()].length > 200}
+                      onChange={(event) => setManualOrganizationName(event.target.value)}
+                      placeholder="填写公司或机构名称"
+                    />
+                  </label>
+                  <label>
+                    补录组织类型
+                    <select
+                      aria-label="补录组织类型"
+                      value={manualOrganizationType}
+                      onChange={(event) =>
+                        setManualOrganizationType(event.target.value as 'company' | 'institution')
+                      }
+                    >
+                      <option value="company">公司</option>
+                      <option value="institution">机构</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className={controls.button}
+                    disabled={
+                      !manualOrganizationName.trim() ||
+                      [...manualOrganizationName.trim()].length > 200
+                    }
+                    onClick={() => void previewOrganization()}
+                  >
+                    添加组织
+                  </button>
+                </div>
                 {data.content.resources.map((resource, index) => {
                   const option = data.resourceOptions?.find(
                     (entry) =>
@@ -542,6 +746,9 @@ export function EditorialPublicationEditor({
                       <h4>
                         {resource.name} · {typeLabel}
                       </h4>
+                      {resource.basis === 'manual_confirmation' ? (
+                        <p>管理员补录 · 人工确认</p>
+                      ) : null}
                       <p>
                         {resource.entity_id === '__new__'
                           ? '发布时新建独立身份'
@@ -612,8 +819,18 @@ export function EditorialPublicationEditor({
                       ) ? (
                         <p>已有同名资源的类型与生成资料不一致，需核对原文后重新生成。</p>
                       ) : null}
-                      <p>简介：{resource.introduction ?? '原文未提供足够资料'}</p>
-                      <p>本次事件角色：{resource.event_role ?? '原文未明确'}</p>
+                      <p>
+                        简介：
+                        {resource.introduction ??
+                          (resource.basis === 'manual_confirmation'
+                            ? '未补录'
+                            : '原文未提供足够资料')}
+                      </p>
+                      <p>
+                        本次事件角色：
+                        {resource.event_role ??
+                          (resource.basis === 'manual_confirmation' ? '未补录' : '原文未明确')}
+                      </p>
                       <div>
                         <p>{resource.name} 的资料对应来源：</p>
                         {sources.length ? (
@@ -640,15 +857,32 @@ export function EditorialPublicationEditor({
                           <p>没有可供公开的对应来源，请补充资料或核对来源状态后重新读取。</p>
                         )}
                       </div>
-                      <details>
-                        <summary>查看原文证据（{resource.evidence.length} 条）</summary>
-                        {resource.evidence.map((evidence, evidenceIndex) => (
-                          <blockquote key={`${evidence.fragment_id}:${evidenceIndex}`}>
-                            <p>{evidence.quote}</p>
-                            <cite>原文片段 {evidence.fragment_id}</cite>
-                          </blockquote>
-                        ))}
-                      </details>
+                      {resource.basis === 'manual_confirmation' ? (
+                        <>
+                          <p>
+                            此组织由管理员补录，未声明 AI
+                            原文证据；请核对身份和对应公开来源后确认发布。
+                          </p>
+                          <button
+                            type="button"
+                            className={controls.button}
+                            aria-label={`移除人工组织 ${resource.name}`}
+                            onClick={() => removeManualOrganization(resource)}
+                          >
+                            移除人工组织
+                          </button>
+                        </>
+                      ) : (
+                        <details>
+                          <summary>查看原文证据（{resource.evidence.length} 条）</summary>
+                          {resource.evidence.map((evidence, evidenceIndex) => (
+                            <blockquote key={`${evidence.fragment_id}:${evidenceIndex}`}>
+                              <p>{evidence.quote}</p>
+                              <cite>原文片段 {evidence.fragment_id}</cite>
+                            </blockquote>
+                          ))}
+                        </details>
+                      )}
                     </article>
                   );
                 })}

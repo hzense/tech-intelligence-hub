@@ -4,7 +4,10 @@ import type {
   EditorialDashboard,
   EditorialResourceOption,
 } from './editorial-review';
-import { normalizeEditorialRequest } from '../../../packages/database/src/editorial-signal-contract.mjs';
+import {
+  normalizeEditorialRequest,
+  normalizeEditorialResources,
+} from '../../../packages/database/src/editorial-signal-contract.mjs';
 import type {
   EditorialRequest,
   EditorialMaterial,
@@ -26,6 +29,7 @@ type Material = {
   resources?: EditorialMaterial['resources'];
   missingResourceDetails?: EditorialMaterial['missingResourceDetails'];
   resourceCatalog?: EditorialMaterial['resourceCatalog'];
+  publicationDateSuggestion?: EditorialDashboard['publicationDateSuggestion'];
   resourceSourceOptions?: Array<{
     name: string;
     type: 'person' | 'company' | 'institution';
@@ -36,15 +40,24 @@ const resourceKind = (type: string) => (type === 'person' ? 'person' : 'organiza
 const resourceKey = (resource: { type: string; name: string }) =>
   `${resourceKind(resource.type)}:${resource.name.normalize('NFKC').trim().toLocaleLowerCase('en-US')}`;
 const resourcePayload = (resource: NonNullable<EditorialContent['resources']>[number]) => ({
+  ...(resource.basis ? { basis: resource.basis } : {}),
   type: resourceKind(resource.type),
   name: resource.name,
   introduction: resource.introduction,
   event_role: resource.event_role,
   evidence: resource.evidence.map(({ fragment_id, quote }) => ({ fragment_id, quote })),
 });
-const fail = (code: string): never => {
+const resourceDraft = (resource: NonNullable<EditorialContent['resources']>[number]) => ({
+  ...(resource.basis ? { basis: resource.basis } : {}),
+  type: resource.type,
+  name: resource.name,
+  introduction: resource.introduction,
+  event_role: resource.event_role,
+  evidence: resource.evidence,
+});
+function fail(code: string): never {
   throw Object.assign(new Error(code), { code });
-};
+}
 export const editorialPublicId = (runId: string, index: number) =>
   `editorial-${createHash('md5').update(`${runId}:${index}`).digest('hex')}`;
 function identity(runId: unknown, index: unknown) {
@@ -79,12 +92,9 @@ export function createEditorialReviewService(deps: {
       identity(runId, index);
       const material = await deps.material(owner, runId, index);
       const configured = deps.enabled();
-      const [saved, topicOptions, resourceOptions, resourcePublicationReady] = await Promise.all([
+      const [saved, topicOptions, resourcePublicationReady] = await Promise.all([
         configured ? deps.read(owner, runId, index) : null,
         deps.topics(),
-        configured && material.resources && deps.resources
-          ? deps.resources(material.resources, material.resourceCatalog ?? [])
-          : [],
         configured && material.resources !== undefined && deps.resourcePublicationReady
           ? deps.resourcePublicationReady()
           : false,
@@ -119,6 +129,16 @@ export function createEditorialReviewService(deps: {
             entity_id: existing?.entity_id ?? null,
           };
         });
+        // Manual additions are saved publication material, not generated source
+        // evidence. Preserve them across refresh/enrichment unless the same
+        // organization is now covered by the newly bound generated resources.
+        const generatedKeys = new Set(resources.map(resourceKey));
+        resources.push(
+          ...(selected.resources ?? []).filter(
+            (resource) =>
+              resource.basis === 'manual_confirmation' && !generatedKeys.has(resourceKey(resource)),
+          ),
+        );
         if (
           JSON.stringify(selected.resources?.map(resourcePayload)) !==
           JSON.stringify(resources.map(resourcePayload))
@@ -140,6 +160,17 @@ export function createEditorialReviewService(deps: {
           };
         }
       }
+      const generatedKeys = new Set((material.resources ?? []).map(resourceKey));
+      const manual = (selected.resources ?? [])
+        .filter(
+          (resource) =>
+            resource.basis === 'manual_confirmation' && !generatedKeys.has(resourceKey(resource)),
+        )
+        .map(resourceDraft);
+      const resourceOptions =
+        configured && material.resources !== undefined && deps.resources
+          ? await deps.resources([...material.resources, ...manual], material.resourceCatalog ?? [])
+          : [];
       const content = selected.resources
         ? {
             ...selected,
@@ -177,7 +208,9 @@ export function createEditorialReviewService(deps: {
           type: resource.type,
           sourceUrls: [
             ...new Set([
-              ...(current?.sourceUrls ?? []),
+              ...(resource.basis === 'manual_confirmation'
+                ? (material.sourceOptions ?? material.content.sourceUrls)
+                : (current?.sourceUrls ?? [])),
               ...(retained?.source_urls ?? []).filter((url) =>
                 saved?.content.sourceUrls.includes(url),
               ),
@@ -204,7 +237,68 @@ export function createEditorialReviewService(deps: {
         warnings,
         requestId: saved?.request_id ?? null,
         publicId: saved?.action === 'publish' ? editorialPublicId(runId, index) : null,
+        ...(content.dateBasis === 'source_published' &&
+        content.eventDate === null &&
+        material.publicationDateSuggestion
+          ? { publicationDateSuggestion: material.publicationDateSuggestion }
+          : {}),
         ...(saved?.publication_basis ? { publicationBasis: saved.publication_basis } : {}),
+      };
+    },
+    async previewOrganization(owner: string, value: unknown) {
+      if (!deps.enabled() || !deps.resources) fail('not_configured');
+      if (
+        !value ||
+        typeof value !== 'object' ||
+        Array.isArray(value) ||
+        Object.keys(value).sort().join(',') !==
+          'action,candidateIndex,materialHash,organization,runId'
+      )
+        fail('invalid_request');
+      const request = value as Record<string, unknown>;
+      identity(request.runId, request.candidateIndex);
+      if (request.action !== 'preview_organization') fail('invalid_request');
+      const organization = request.organization as { type?: unknown; name?: unknown } | undefined;
+      if (
+        !organization ||
+        typeof organization !== 'object' ||
+        Array.isArray(organization) ||
+        Object.keys(organization).sort().join(',') !== 'name,type' ||
+        !['company', 'institution'].includes(String(organization.type))
+      )
+        fail('invalid_request');
+      const material = await deps.material(
+        owner,
+        String(request.runId),
+        Number(request.candidateIndex),
+      );
+      if (request.materialHash !== material.materialHash || material.resources === undefined)
+        fail('material_changed');
+      const [resource] = normalizeEditorialResources([
+        {
+          type: organization.type,
+          name: organization.name,
+          basis: 'manual_confirmation',
+          introduction: null,
+          event_role: null,
+          evidence: [],
+          entity_id: null,
+        },
+      ]);
+      if (!resource) fail('invalid_request');
+      if (material.resources.some((entry) => resourceKey(entry) === resourceKey(resource)))
+        fail('invalid_request');
+      const [option] = await deps.resources(
+        [resourceDraft(resource)],
+        material.resourceCatalog ?? [],
+      );
+      if (!option) fail('unavailable');
+      const match =
+        option.status === 'reuse' && option.matches.length === 1 ? option.matches[0] : undefined;
+      return {
+        resource: { ...resource, entity_id: match?.id ?? null },
+        option,
+        sourceUrls: material.sourceOptions ?? material.content.sourceUrls,
       };
     },
     async write(owner: string, value: unknown, options?: { automatic?: true }) {

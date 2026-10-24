@@ -22,7 +22,7 @@ import {
 } from '../src/editorial-vector-query.mjs';
 import { editorialVectorManifest } from '../src/editorial-vector-manifest.mjs';
 import { editorialFixture } from './editorial-signal.test.mjs';
-import { resourceFixture } from './editorial-resources.test.mjs';
+import { resourceFixture, manualOrganizationFixture } from './editorial-resources.test.mjs';
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
 const suite = adminUrl ? describe.sequential : describe.skip;
@@ -1570,5 +1570,146 @@ suite('editorial publication persistence and isolated capabilities', () => {
         )
       ).rows,
     ).toEqual([{ revision: 1 }]);
+  });
+  it('saves manual organizations as explicit assertions, then publishes and replays without trusting client provenance', async () => {
+    const fixture = manualOrganizationFixture('-manual-confirmation');
+    fixture.request.runId = randomUUID();
+    fixture.request.requestId = randomUUID();
+    fixture.content.resources[0].source_urls = ['https://forged.example/not-authorized'];
+    await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+      fixture.request.runId,
+    ]);
+    const args = { pool: writer, owner: 'owner', material: fixture.material };
+    const draft = await saveEditorialSignal({
+      ...args,
+      request: { ...fixture.request, action: 'draft', consent: false },
+    });
+    expect(draft.content.resources[0]).toMatchObject({
+      basis: 'manual_confirmation',
+      evidence: [],
+      entity_id: null,
+    });
+    expect(
+      (
+        await pool.query('SELECT id FROM entities WHERE name=$1', [
+          fixture.content.organizations[0],
+        ])
+      ).rows,
+    ).toEqual([]);
+    const request = { ...fixture.request, requestId: randomUUID(), expectedRevision: 1 };
+    const published = await saveEditorialSignal({ ...args, request });
+    expect(published.content.resources[0]).toMatchObject({
+      basis: 'manual_confirmation',
+      evidence: [],
+      source_urls: fixture.content.sourceUrls,
+    });
+    expect(published.content.resources[0].entity_id).toMatch(/^institution-generated-/);
+    expect(
+      await saveEditorialSignal({
+        ...args,
+        request,
+        material: { ...fixture.material, sourceOptions: [] },
+      }),
+    ).toEqual(published);
+    const publicId = `editorial-${createHash('md5').update(`${fixture.request.runId}:0`).digest('hex')}`;
+    expect(
+      (
+        await reader.query('SELECT content FROM editorial_public_signals WHERE signal_id=$1', [
+          publicId,
+        ])
+      ).rows[0].content,
+    ).toEqual(published.content);
+    const withdrawn = await saveEditorialSignal({
+      ...args,
+      request: {
+        ...request,
+        requestId: randomUUID(),
+        expectedRevision: 2,
+        action: 'withdraw',
+        content: published.content,
+      },
+    });
+    expect(withdrawn.content.resources).toEqual(published.content.resources);
+    const unavailable = { ...fixture.material, sourceOptions: [] };
+    const republish = {
+      ...request,
+      requestId: randomUUID(),
+      expectedRevision: 3,
+      content: withdrawn.content,
+    };
+    const restored = await saveEditorialSignal({
+      ...args,
+      material: unavailable,
+      request: republish,
+    });
+    expect(restored.content.resources).toEqual(published.content.resources);
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        material: unavailable,
+        request: {
+          ...republish,
+          requestId: randomUUID(),
+          expectedRevision: 4,
+          content: {
+            ...restored.content,
+            resources: [{ ...restored.content.resources[0], event_role: 'Changed assertion' }],
+          },
+        },
+      }),
+    ).rejects.toThrow('resource_source_required');
+  });
+
+  it('manual organizations cannot borrow sources from drafts, omit source consent or bypass live identity matching', async () => {
+    const fixture = manualOrganizationFixture('-manual-draft-source');
+    fixture.request.runId = randomUUID();
+    fixture.request.requestId = randomUUID();
+    await pool.query("INSERT INTO signal_generation_runs VALUES($1,'owner','completed',NULL)", [
+      fixture.request.runId,
+    ]);
+    const args = { pool: writer, owner: 'owner', material: fixture.material };
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        request: { ...fixture.request, content: { ...fixture.content, sourceUrls: [] } },
+      }),
+    ).rejects.toThrow('resource_source_required');
+    await saveEditorialSignal({
+      ...args,
+      request: { ...fixture.request, action: 'draft', consent: false },
+    });
+    const publish = { ...fixture.request, requestId: randomUUID(), expectedRevision: 1 };
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        material: { ...fixture.material, sourceOptions: [] },
+        request: publish,
+      }),
+    ).rejects.toThrow('resource_source_required');
+    await pool.query(
+      "INSERT INTO entities(id,type,name,status) VALUES('institution-manual-concurrent','institution',$1,'active')",
+      [fixture.content.organizations[0]],
+    );
+    await expect(saveEditorialSignal({ ...args, request: publish })).rejects.toThrow(
+      'resource_identity_ambiguous',
+    );
+    const selected = {
+      ...publish,
+      content: {
+        ...publish.content,
+        resources: [
+          { ...publish.content.resources[0], entity_id: 'institution-manual-concurrent' },
+        ],
+      },
+    };
+    const result = await saveEditorialSignal({ ...args, request: selected });
+    expect(result.content.resources[0].entity_id).toBe('institution-manual-concurrent');
+    expect(
+      (
+        await pool.query('SELECT id FROM entities WHERE name=$1', [
+          fixture.content.organizations[0],
+        ])
+      ).rows,
+    ).toHaveLength(1);
   });
 });

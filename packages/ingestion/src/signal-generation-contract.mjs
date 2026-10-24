@@ -104,7 +104,7 @@ export const generationCandidateJsonSchema = Object.freeze({
           persons: {
             type: 'array',
             description:
-              '只列有原文证据的事件参与人物。没有证据则返回 []；不得保留 evidence 为空的人物。',
+              '主动检查同一事件原文的论文作者、共同作者、研发者和研究团队；只列有证据的参与人物，不漏掉标题摘要之外的明确作者。报道记者、编辑或转载署名不等于研究作者。单位未知时保留人物并设 organization:null；没有证据则返回 []，不得保留 evidence 为空的人物。',
             maxItems: 12,
             items: {
               type: 'object',
@@ -112,21 +112,31 @@ export const generationCandidateJsonSchema = Object.freeze({
               required: ['name', 'role', 'organization', 'evidence'],
               properties: {
                 name: { type: 'string', minLength: 1, maxLength: 150 },
-                role: { type: 'string', minLength: 1, maxLength: 200 },
+                role: {
+                  type: 'string',
+                  minLength: 1,
+                  maxLength: 200,
+                  description:
+                    '原文支持的事件角色，可为论文作者、共同作者或研发者；没有正式职称时不猜测负责人、第一作者或任职。',
+                },
                 organization: {
+                  description:
+                    '原文明示的该人物所属组织；作者与单位对应不清楚时为 null，仍保留有证据的人物，不把媒体或发表平台当作所属单位。',
                   anyOf: [{ type: 'string', minLength: 1, maxLength: 200 }, { type: 'null' }],
                 },
                 evidence: {
                   ...referencesSchema,
                   minItems: 1,
                   description:
-                    '每个人物必须至少 1 条逐字原文证据，支持姓名、角色以及填写的所属组织；不得返回 []。无依据时从 persons 中省略该人物。',
+                    '每个人物必须至少 1 条逐字原文证据，全部引用合起来支持姓名、角色以及填写的所属组织；可分别引用同一事件不同片段，每条 quote 仍连续逐字，不拼接或借用其他新闻。不得返回 []；无人物依据时从 persons 中省略该人物。',
                 },
               },
             },
           },
           organizations: {
             type: 'array',
+            description:
+              '本次事件有原文依据的参与组织，包括研究团队所属大学、研究院、实验室或研发公司。主动检查单位署名；记者、媒体、期刊、会议或预印本平台只作为来源时不加入，不将其他新闻或背景实体移入当前候选。',
             maxItems: 12,
             // Enforce uniqueness in runtime validation; some providers reject uniqueItems.
             items: { type: 'string', minLength: 1, maxLength: 200 },

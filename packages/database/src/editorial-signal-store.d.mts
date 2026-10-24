@@ -16,6 +16,8 @@ export function previewEditorialResources(input: {
   pool: unknown;
   resources: EditorialResourceDraft[];
   catalog?: EditorialResourceCatalogEntry[];
+  /** Permit saved administrator-entered organization drafts, never model input. */
+  allowManual?: boolean;
 }): Promise<EditorialResourcePreview[]>;
 export interface EditorialSignalRecord {
   request_id: string;

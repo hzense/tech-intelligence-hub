@@ -24,6 +24,7 @@ import { readEditorialSourceOptions } from '../editorial-source-options';
 import { getResourceEntries } from '../seed-runtime';
 import { localFixtureSourceOptions } from '../local-generation';
 import { missingGenerationResources } from '../../../../packages/ingestion/src/signal-generation-contract.mjs';
+import { completeSourcePublicationDates } from '../../../../packages/ingestion/src/source-publication-date.mjs';
 import {
   automaticPublicationAvailable,
   automaticPublicationPolicy,
@@ -34,6 +35,14 @@ import {
 async function material(owner: string, runId: string, index: number) {
   const run = await generationRecord(owner, runId);
   const original = buildCandidateReview(run, index);
+  const dated = completeSourcePublicationDates(
+    { classification: 'private', candidates: [original.candidate], reason: '日期建议' },
+    { classification: 'private', fragments: original.fragments },
+  ).candidates[0];
+  const publicationDateSuggestion =
+    original.candidate.event_date === null && dated && dated.event_date !== null
+      ? { date: dated.event_date, evidence: dated.event_date_evidence }
+      : undefined;
   let candidate = original.candidate;
   const warnings: string[] = [];
   try {
@@ -134,6 +143,7 @@ async function material(owner: string, runId: string, index: number) {
     materialHash: original.materialHash,
     content,
     warnings,
+    ...(publicationDateSuggestion ? { publicationDateSuggestion } : {}),
     sourceOptions: [...new Set([...originalSourceOptions, ...(prefill?.sourceOptions ?? [])])],
     ...(resources === undefined
       ? {}
@@ -170,7 +180,7 @@ const service = createEditorialReviewService({
       ...(options?.automatic ? { automatic: true } : {}),
     }),
   resources: (resources, catalog) =>
-    previewEditorialResources({ pool: candidateReviewPool, resources, catalog }),
+    previewEditorialResources({ pool: candidateReviewPool, resources, catalog, allowManual: true }),
   resourcePublicationReady: editorialResourcePublicationReady,
 });
 export async function editorialDashboard(owner: string, runId: string, index: number) {
@@ -189,6 +199,8 @@ export async function editorialDashboard(owner: string, runId: string, index: nu
 }
 // The HTTP adapter cannot select the trusted automatic write path.
 export const writeEditorialReview = (owner: string, value: unknown) => service.write(owner, value);
+export const previewEditorialOrganization = (owner: string, value: unknown) =>
+  service.previewOrganization(owner, value);
 export const publishGeneratedSignals = createAutomaticPublisher({
   enabled: () => automaticPublicationAvailable(process.env),
   run: generationRecord,

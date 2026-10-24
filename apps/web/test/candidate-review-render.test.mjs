@@ -175,6 +175,57 @@ test('signal management renders private evidence safely without performing publi
   assert.match(published, /修改或撤回信号/);
   assert.match(published, /原始候选：/);
   assert.doesNotMatch(published, /待审核 · 未发布|尚未审核或发布/);
+  const incompleteSnapshot = {
+    ...result,
+    candidates: [
+      {
+        ...candidate,
+        summary: '',
+        date_basis: 'source_published',
+        event_date: null,
+        event_date_evidence: [],
+        persons: [],
+        organizations: [],
+        issues: ['needs_event_time', 'needs_resource_details'],
+      },
+    ],
+  };
+  const snapshotBefore = JSON.stringify(incompleteSnapshot);
+  for (const status of ['published', 'withdrawn']) {
+    const historical = render(
+      {
+        id,
+        status: 'completed',
+        publication: publication(status, status === 'published' ? publicId : null),
+      },
+      incompleteSnapshot,
+    );
+    assert.match(historical, /原始快照中的原文发布日期：原始生成时未识别/);
+    assert.match(historical, /原始生成时缺少部分人物或组织的资源资料/);
+    assert.match(historical, /原始生成时未识别原文发布日期，此处保留当时的快照/);
+    assert.match(historical, /查看原始生成时的日期辅助引用/);
+    assert.match(historical, /原始生成时未识别关键人物/);
+    assert.match(historical, /原始生成时未识别相关组织/);
+    assert.doesNotMatch(
+      historical,
+      /日期尚未确认，待补齐|原始候选待补全|日期待确认|补齐并确认日期后再发布|需人工补充|需补充核对/,
+    );
+    assert.match(
+      historical,
+      status === 'published' ? /正式信号或信号管理中的已发布内容/ : /信号管理中的撤回记录/,
+    );
+  }
+  // Unknown, draft and unpublished states must not hide genuine outstanding work.
+  for (const status of ['draft', 'unpublished', undefined]) {
+    const outstanding = render(
+      { id, status: 'completed', ...(status ? { publication: publication(status) } : {}) },
+      incompleteSnapshot,
+    );
+    assert.match(outstanding, /原始候选待补全：原文发布日期尚未确认/);
+    assert.match(outstanding, /请进入信号管理补齐并确认日期后再发布/);
+    assert.match(outstanding, /原始候选待补全：缺少部分人物或组织的资源资料/);
+  }
+  assert.equal(JSON.stringify(incompleteSnapshot), snapshotBefore);
   const withdrawn = render({ id, status: 'completed', publication: publication('withdrawn') });
   assert.match(withdrawn, /data-publication="withdrawn">已撤回/);
   assert.doesNotMatch(withdrawn, /查看正式信号/);
@@ -211,6 +262,12 @@ test('signal management renders private evidence safely without performing publi
   );
   assert.match(snapshotHtml, /原始 AI 候选快照/);
   assert.doesNotMatch(snapshotHtml, /data-publication="published"|查看正式信号/);
+  const historicalOnly = renderToStaticMarkup(
+    createElement(module.exports.PrivateResult, { result: incompleteSnapshot, snapshotOnly: true }),
+  );
+  assert.match(historicalOnly, /原始生成时未识别原文发布日期/);
+  assert.match(historicalOnly, /信号管理中的当前内容/);
+  assert.doesNotMatch(historicalOnly, /原始候选待补全|补齐并确认日期后再发布/);
 
   const diagnosticHtml = render(undefined, {
     classification: 'private',

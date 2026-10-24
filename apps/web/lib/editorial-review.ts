@@ -1,5 +1,7 @@
 import type { GenerationSignalType } from '../../../packages/ingestion/src/signal-types.mjs';
 export type EditorialResource = {
+  /** Explicit administrator assertion, never an AI or verified quotation. */
+  basis?: 'manual_confirmation';
   type: 'person' | 'company' | 'institution';
   name: string;
   introduction: string | null;
@@ -68,6 +70,10 @@ export type EditorialDashboard = {
   resourceOptions?: EditorialResourceOption[];
   resourceSourceOptions?: EditorialResourceSourceOption[];
   resourcePublicationReady?: boolean;
+  publicationDateSuggestion?: {
+    date: string;
+    evidence: Array<{ fragment_id: string; quote: string }>;
+  };
   missingResourceDetails?: { type: 'person' | 'organization'; name: string }[];
   warnings: string[];
   requestId: string | null;
@@ -120,8 +126,19 @@ export function editorialMissing(
     )
       missing.push(`${option.name} 的资源身份`);
   }
-  for (const resource of missingResourceDetails)
-    missing.push(`${resource.name} 的${resource.type === 'person' ? '人物' : '组织'}资源资料`);
+  for (const resource of missingResourceDetails) {
+    const covered =
+      resource.type === 'organization' &&
+      content.resources?.some(
+        (entry) =>
+          entry.basis === 'manual_confirmation' &&
+          entry.type !== 'person' &&
+          entry.name.normalize('NFKC').trim().toLocaleLowerCase('en-US') ===
+            resource.name.normalize('NFKC').trim().toLocaleLowerCase('en-US'),
+      );
+    if (!covered)
+      missing.push(`${resource.name} 的${resource.type === 'person' ? '人物' : '组织'}资源资料`);
+  }
   return missing;
 }
 

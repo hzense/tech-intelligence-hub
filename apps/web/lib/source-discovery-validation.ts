@@ -1,5 +1,6 @@
 import type { DiscoveryRejectionReason } from './source-discovery-rejections.ts';
 import { discoveryAlternativeLimit } from './source-discovery-output.ts';
+import { isExplicitNonArticleUrl } from './source-discovery-url-kind.ts';
 
 export interface DiscoverySource {
   url: string;
@@ -37,7 +38,10 @@ export function validateDiscoverySource(
   const url = context.normalizeUrl(entry.url);
   const reasons: DiscoveryRejectionReason[] = [];
   if (!url) reasons.push('invalid_url');
-  else if (!context.cited.has(url)) reasons.push('uncited_url');
+  else {
+    if (!context.cited.has(url)) reasons.push('uncited_url');
+    if (isExplicitNonArticleUrl(url)) reasons.push('non_article_url');
+  }
   const fields = ['url', 'title', 'publishedAt', ...(allowAlternatives ? ['alternatives'] : [])];
   if (Object.keys(entry).some((key) => !fields.includes(key))) reasons.push('unexpected_fields');
   if (
