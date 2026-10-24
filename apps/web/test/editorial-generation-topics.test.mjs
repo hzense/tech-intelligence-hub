@@ -4,10 +4,18 @@ import { Buffer } from 'node:buffer';
 import { URL } from 'node:url';
 import { build } from 'esbuild';
 import { previewEditorialResources } from '../../../packages/database/src/editorial-resource-store.mjs';
+import { validateGenerationSource } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 
 const runId = '11111111-1111-4111-8111-111111111111';
 test('editorial material auto-selects generated topics unless supplemental selections already exist', async () => {
   const state = {
+    source: validateGenerationSource({
+      classification: 'private',
+      fragments: [
+        { id: 'fragment-1', text: '示例公司提供云产品。', locator: { paragraph: 1 } },
+        { id: 'fragment-2', text: '示例人物介绍产品。', locator: { paragraph: 2 } },
+      ],
+    }),
     prefill: undefined,
     saved: null,
     resources: undefined,
@@ -66,10 +74,11 @@ test('editorial material auto-selects generated topics unless supplemental selec
       '../../../../packages/database/src/editorial-signal-store.mjs': `export const saveEditorialSignal = async ({pool,owner,request,material}) => { if(pool.role !== 'writer') throw new Error('publication must use writer'); globalThis.__editorialGenerationTopicsTest.writes.push({owner,request,material}); return {request_id:request.requestId,revision:1,action:request.action,content:request.content}; };
          export const readEditorialSignal = async ({pool}) => { if(pool.role !== 'writer') throw new Error('revision reads must use writer'); return globalThis.__editorialGenerationTopicsTest.saved; };
          export const previewEditorialResources = args => globalThis.__editorialGenerationTopicsTest.previewEditorialResources(args);`,
-      './signal-generation': `export const generationRecord = async () => ({owner_id:'owner',batch_id:'${runId}',item_id:'${runId}',source_fence:1,source_hash:'b'.repeat(64),snapshot:{}});`,
+      './signal-generation': `export const generationRecord = async () => ({owner_id:'owner',batch_id:'${runId}',item_id:'${runId}',source_fence:1,source_hash:'b'.repeat(64),snapshot:{source:globalThis.__editorialGenerationTopicsTest.source}});`,
       '../candidate-review': `
         export const buildCandidateReview = () => ({
           materialHash: 'a'.repeat(64),
+          fragments: globalThis.__editorialGenerationTopicsTest.source.fragments,
           candidate: {
             title: '合成标题', summary: '测试摘要', event_date: '2026-10-03',
             organizations: [], persons: [], topic_ids: ['topic-ai', 'topic-disabled'],
@@ -138,14 +147,14 @@ test('editorial material auto-selects generated topics unless supplemental selec
         name: '示例公司',
         introduction: '示例公司提供云产品。',
         event_role: '发布产品',
-        evidence: [{ fragment_id: 'f1', quote: '示例公司提供云产品。' }],
+        evidence: [{ fragment_id: 'fragment-1', quote: '示例公司提供云产品。' }],
       },
       {
         type: 'person',
         name: '示例人物',
         introduction: null,
         event_role: '介绍产品',
-        evidence: [{ fragment_id: 'f2', quote: '示例人物介绍产品。' }],
+        evidence: [{ fragment_id: 'fragment-2', quote: '示例人物介绍产品。' }],
       },
     ];
     const resources = await read();
