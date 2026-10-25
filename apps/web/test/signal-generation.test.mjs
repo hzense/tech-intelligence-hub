@@ -1550,8 +1550,39 @@ test('stable profile/connection changes and revoked readiness still stop or reje
       assert.equal(f.calls(), phase === 'preflight' ? 0 : 1);
       assert.equal(f.finishes.length, 1);
       assert.equal(f.finishes[0].result, undefined);
+      assert.equal(f.finishes[0].providerNotInvoked, phase === 'preflight' ? true : undefined);
     }
   }
+});
+test('preflight source or progress failures settle as no-call without pretending to have an API bill', async () => {
+  for (const dependency of ['source', 'progress']) {
+    const f = coreFixture({
+      [dependency]: async () => {
+        throw new Error('synthetic dependency unavailable');
+      },
+    });
+    const value = await f.execute('admin', { action: 'run', id: f.run().id });
+    assert.equal(value.status, 'failed');
+    assert.equal(f.calls(), 0);
+    assert.equal(f.finishes.length, 1);
+    assert.equal(f.finishes[0].errorCode, 'preflight_failed');
+    assert.equal(f.finishes[0].providerNotInvoked, true);
+    assert.equal(f.finishes[0].providerCostMicrousd, undefined);
+  }
+});
+test('an uncertain provider invocation never carries no-call settlement evidence', async () => {
+  let calls = 0;
+  const f = coreFixture({
+    invoke: async () => {
+      calls++;
+      throw new Error('lost response');
+    },
+  });
+  const value = await f.execute('admin', { action: 'run', id: f.run().id });
+  assert.equal(value.status, 'failed'); // UI hides the internal unknown state.
+  assert.equal(calls, 1);
+  assert.equal(f.finishes[0].outcome, 'unknown');
+  assert.equal(f.finishes[0].providerNotInvoked, undefined);
 });
 test('duplicate eligibility only controls creation and cannot discard an in-flight result', async () => {
   let duplicate = false;

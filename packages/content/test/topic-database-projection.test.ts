@@ -49,6 +49,10 @@ describe('Topic database projection', () => {
       new Set(seed.topics.filter((topic) => topic.status !== 'archived').map((topic) => topic.id)),
     );
     expect(new Set(projection.map((topic) => topic.id))).toEqual(seed.taxonomy.topicIds);
+    // Discovery searches every root, so all those domains need a publishable label.
+    const roots = projection.filter((topic) => topic.parentId === null);
+    expect(roots).toHaveLength(10);
+    expect(roots.every((topic) => topic.runtimeEnabled && topic.status !== 'archived')).toBe(true);
   });
 
   it('projects the complete Taxonomy in deterministic id order with Seed runtime state', () => {

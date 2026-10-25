@@ -81,6 +81,7 @@ export interface GenerationDependencies {
       result?: Record<string, unknown>;
       chargedMicrousd?: number;
       providerCostMicrousd?: number;
+      providerNotInvoked?: true;
       errorCode?: string;
     },
   ): Promise<SignalGenerationRun>;
@@ -422,6 +423,7 @@ export function createGenerationExecutor(deps: GenerationDependencies) {
         id,
         token: run.lease_token!,
         outcome: sent ? 'unknown' : 'failed',
+        ...(!sent ? { providerNotInvoked: true as const } : {}),
         ...(charged === undefined ? {} : { chargedMicrousd: charged }),
         ...(providerCost === undefined ? {} : { providerCostMicrousd: providerCost }),
         errorCode: code,

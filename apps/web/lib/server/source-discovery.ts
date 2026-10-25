@@ -4,6 +4,8 @@ import { loadTaxonomy } from '@hzense/content';
 import { aiStageAccess } from './admin-ai';
 import { getSignalEntries } from '../seed-runtime';
 import { discoveryTopics } from '../source-discovery-core';
+import { unavailableDiscoveryTopics } from '../source-discovery-topics';
+import { editorialTopicOptions } from './editorial-topics';
 import { readAiBackendConfiguration } from '../admin-ai-core';
 import { automationPool } from './automation-store-access';
 import * as store from '../../../../packages/database/src/automation-store.mjs';
@@ -22,15 +24,22 @@ export async function discoverSources(owner: string, id: string): Promise<string
   if (!config.discovery) return config.sourceUrls;
   if (run.phase !== 'preparing') throw new Error('stale_attempt');
   let admitted = false;
+  let missingTopics: Array<{ id: string; name: string }> = [];
   let receipt: Awaited<ReturnType<typeof invokeSourceDiscovery>> | undefined;
   try {
-    const [access, taxonomy, signals, previousUrls] = await Promise.all([
+    const [access, taxonomy, signals, previousUrls, publishableTopics] = await Promise.all([
       aiStageAccess(config.profileId!, config.profileRevision!, 'analyze', true),
       loadTaxonomy(resolve(process.cwd(), '../../data/taxonomy/taxonomy.yaml')),
       getSignalEntries(),
       store.readCollectedSourceUrls({ pool: automationPool, owner }),
+      editorialTopicOptions(),
     ]);
     const selected = discoveryTopics(config.topicIds, taxonomy.topics);
+    // Do not pay to discover a domain that generation/publication cannot classify.
+    // Keep the complete requested scope; a stale database projection must be synced,
+    // not silently replaced by the narrower enabled catalog.
+    missingTopics = unavailableDiscoveryTopics(selected, publishableTopics);
+    if (missingTopics.length) throw new Error('discovery_topics_not_ready');
     if (discoveryEstimate(access) > run.reserved_microusd) throw new Error('budget_exceeded');
     const completion = await invokeSourceDiscovery({
       access,
@@ -106,6 +115,7 @@ export async function discoverSources(owner: string, id: string): Promise<string
         'timeout',
         'budget_exceeded',
         'discovery_topic_invalid',
+        'discovery_topics_not_ready',
         'profile_not_ready',
         'revision_conflict',
       ].includes(error.message)
@@ -118,6 +128,7 @@ export async function discoverSources(owner: string, id: string): Promise<string
       token: run.lease_token,
       phase: rejectedWithoutCharge ? 'discovery_rejected' : 'discovery_failed',
       result: {
+        ...(missingTopics.length ? { discoveryMissingTopics: missingTopics } : {}),
         ...(receipt
           ? {
               discovery: receipt.result,

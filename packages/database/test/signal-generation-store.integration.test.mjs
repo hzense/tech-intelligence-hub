@@ -1086,6 +1086,85 @@ suite('private AI generation PostgreSQL ledger', () => {
       expect(saved.reserved_microusd).toBe('10');
     },
   );
+  it('confirmed no-call failure records zero and releases budget without erasing the reservation', async () => {
+    const value = input();
+    value.configuration.reserveMicrousd = 100;
+    const a = await claimed(value);
+    const saved = await finishSignalGeneration({
+      ...args(a),
+      token: a.lease_token,
+      outcome: 'failed',
+      errorCode: 'preflight_failed',
+      providerNotInvoked: true,
+    });
+    expect(saved.charged_microusd).toBe('0');
+    expect(saved.reserved_microusd).toBe('100');
+    expect(await getSignalGenerationDailyUsage({ pool, owner })).toMatchObject({
+      charged_microusd: '0',
+      budget_used_microusd: '0',
+    });
+    const next = input();
+    next.request.batchId = a.batch_id;
+    next.configuration.reserveMicrousd = 100;
+    expect((await claimSignalGeneration(args(await createSignalGeneration(next)))).claimed).toBe(
+      true,
+    );
+  });
+  it.each(['completed', 'failed'])(
+    'settled %s API cost frees batch/day capacity in production and local-real scopes',
+    async (outcome) => {
+      for (const budgetMode of [undefined, 'local-real']) {
+        await pool.query('TRUNCATE public.signal_generation_runs');
+        const value = input();
+        value.configuration.reserveMicrousd = 100;
+        const a = await claimed(value);
+        await finishSignalGeneration({
+          ...args(a),
+          token: a.lease_token,
+          outcome,
+          ...(outcome === 'completed' ? { result } : { errorCode: 'generation_invalid_output' }),
+          providerCostMicrousd: 1,
+        });
+        expect(await getSignalGenerationDailyUsage({ pool, owner, budgetMode })).toMatchObject({
+          charged_microusd: '1',
+          budget_used_microusd: '1',
+        });
+        const next = input();
+        next.request.batchId = a.batch_id;
+        next.configuration.reserveMicrousd = 99;
+        const task = await createSignalGeneration(next);
+        expect((await claimSignalGeneration({ ...args(task), budgetMode })).claimed).toBe(true);
+      }
+    },
+  );
+  it('unknown and cancelled calls retain budget even when their recorded charge is smaller', async () => {
+    for (const status of ['unknown', 'cancelled']) {
+      await pool.query('TRUNCATE public.signal_generation_runs');
+      const value = input();
+      value.configuration.reserveMicrousd = 100;
+      const a = await claimed(value);
+      if (status === 'unknown') {
+        await finishSignalGeneration({
+          ...args(a),
+          token: a.lease_token,
+          outcome: 'unknown',
+          errorCode: 'generation_postflight_failed',
+          providerCostMicrousd: 1,
+        });
+      } else await cancelSignalGeneration(args(a));
+      await pool.query(
+        "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+        [a.id],
+      );
+      expect(await getSignalGenerationDailyUsage({ pool, owner })).toMatchObject({
+        budget_used_microusd: '100',
+      });
+      const next = await createSignalGeneration(input());
+      await expect(claimSignalGeneration(args(next))).rejects.toMatchObject({
+        code: 'budget_exceeded',
+      });
+    }
+  });
   it('retains max(reserved, estimate) for failures and prohibits a new paid retry', async () => {
     const a = await claimed();
     const failed = await finishSignalGeneration({

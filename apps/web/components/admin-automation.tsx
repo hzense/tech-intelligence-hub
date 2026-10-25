@@ -16,6 +16,7 @@ import {
 import { automationSourceFailureItems } from '../lib/automation-source-failures';
 import { readAutomationSourceFallbacks } from '../lib/automation-source-fallbacks';
 import { parseImportRecoveryBatchId } from '../lib/import-recovery';
+import { discoveryMissingTopicNames } from '../lib/source-discovery-topics';
 import controls from './admin-controls.module.css';
 import {
   automationGenerationIds,
@@ -78,6 +79,8 @@ const errors: Record<string, string> = {
   discovery_connection_unsupported:
     '自动联网发现需要分阶段配置的“分析”模型使用 OpenRouter 连接；生成使用“提取”模型。',
   discovery_topic_invalid: '所选领域已失效，请重新选择。',
+  discovery_topics_not_ready:
+    '采集领域尚未全部启用，未调用 AI。请查看任务详情中的缺失领域，同步领域目录后重新启动。',
   discovery_search_unconfirmed:
     '供应商未确认实际联网检索，已停止后续生成；请核对原任务，不要重复调用。',
   discovery_invalid_output: '检索结果格式不符合要求，未用于生成；费用仍保留。',
@@ -215,6 +218,7 @@ function SourceResult({
     | undefined;
   const ids = automationGenerationIds(result);
   const diagnostics = discoveryDiagnosticItems(result.discoveryDiagnostics);
+  const missingTopics = discoveryMissingTopicNames(result.discoveryMissingTopics);
   const validation = discoveryValidationItems(discovery?.validation);
   const missingRejectionReasons =
     typeof discovery?.rejected === 'number' &&
@@ -233,6 +237,9 @@ function SourceResult({
     searchRequests >= 0;
   return (
     <div className={styles.report}>
+      {!summaryOnly && missingTopics.length ? (
+        <p>尚未启用的领域：{missingTopics.join('、')}。本次未调用 AI，采集范围没有缩小。</p>
+      ) : null}
       {summaryOnly && allSourcesRejected ? (
         <p>来源全部未通过校验，未启动资料导入和候选生成。</p>
       ) : null}

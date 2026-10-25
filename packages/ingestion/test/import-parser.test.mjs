@@ -139,6 +139,28 @@ test('DOCX title styles delimit groups and preserve original paragraph numbers',
   assert.equal(out.fragments[0].locator.region, 'paragraphs 1-3');
   assert.equal(out.fragments[1].locator.paragraph, 4);
 });
+test('DOCX preserves run tabs and line breaks without separating styled word fragments', () => {
+  const xml =
+    '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>' +
+    '<w:pPr><w:tabs><w:tab w:val="left" w:pos="720"/></w:tabs></w:pPr>' +
+    '<w:r><w:t>Author Alice</w:t><w:tab/><w:t>Exam</w:t></w:r>' +
+    '<w:r><w:rPr><w:b/></w:rPr><w:t>ple University</w:t><w:br/>' +
+    '<w:t>New research result.</w:t><w:cr/><w:t>Second line.</w:t></w:r>' +
+    '</w:p></w:body></w:document>';
+  const out = parseImportOutput(
+    parse(
+      'docx',
+      xml,
+      "z=zipfile.ZipFile('input','w'); z.writestr('word/document.xml',source); z.close()",
+    ).output,
+  );
+  assert.equal(out.fragments.length, 1);
+  assert.equal(
+    out.fragments[0].text,
+    'Author Alice\tExample University\nNew research result.\nSecond line.',
+  );
+  assert.deepEqual(out.warnings, []);
+});
 test('parser fails closed on hostile XML, oversized fragments and unsupported content', () => {
   assert.equal(
     parse(

@@ -20,6 +20,7 @@ import {
   ReviewConfigurationError,
 } from '../candidate-review-config';
 import { requireReviewWrites } from './candidate-review';
+import { unifiedSignalEnabled } from '../unified-signal-mode';
 
 function rolePool(variable: string, role: CandidatePipelineRole) {
   let pool: pg.Pool | undefined, url: string | undefined;
@@ -136,6 +137,9 @@ export async function operateCandidateReview(
       },
     };
   }
+  // Historical receipts remain readable, but every legacy mutation (including
+  // withdrawal) must stop once the unified editorial workflow is authoritative.
+  if (unifiedSignalEnabled(process.env)) throw new ReviewConfigurationError();
   if (action !== 'withdraw') requireReviewWrites();
   const requestKey = String(request.requestKey);
   if (action === 'prepare') {

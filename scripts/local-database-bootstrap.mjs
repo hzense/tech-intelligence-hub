@@ -270,23 +270,27 @@ export async function initializeLocalDatabase({ credentials, root = localDatabas
     await prepareServiceRoles(admin, client, credentials, root);
     await prepareLocalBackendRoles({ admin, client, credentials, root });
     await assertMinimumRoles(client);
+    const content = await import(
+      pathToFileURL(resolve(root, 'packages/content/dist/src/index.js')).href
+    );
+    const catalog = await content.loadSeedCatalog(
+      resolve(root, 'data/seed'),
+      resolve(root, 'data/taxonomy/taxonomy.yaml'),
+    );
+    // Explicit local init also updates the runtime catalog after initial cutover.
+    // Existing Signals are not re-imported; the Topic sync is locked and idempotent.
+    await syncTopics(
+      client,
+      content.buildTopicDatabaseProjection(catalog.taxonomy, catalog.topics),
+      {
+        dryRun: false,
+      },
+    );
     if (!state?.ready) {
-      const content = await import(
-        pathToFileURL(resolve(root, 'packages/content/dist/src/index.js')).href
-      );
       const { projectLegacySignalEntries } = await import(
         pathToFileURL(resolve(root, 'apps/web/lib/legacy-signal-projection.ts')).href
       );
-      const catalog = await content.loadSeedCatalog(
-        resolve(root, 'data/seed'),
-        resolve(root, 'data/taxonomy/taxonomy.yaml'),
-      );
       const plan = buildLegacySignalArchivePlan(catalog, projectLegacySignalEntries(catalog));
-      await syncTopics(
-        client,
-        content.buildTopicDatabaseProjection(catalog.taxonomy, catalog.topics),
-        { dryRun: false },
-      );
       await client.query('BEGIN');
       try {
         await applyLegacySignalArchive(client, plan);
