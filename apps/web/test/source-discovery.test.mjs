@@ -476,6 +476,8 @@ test('provider uses one bounded server-tool request with no credential or reason
   assert.equal(body.tools[0].parameters.max_uses, 3);
   assert.equal(body.max_tool_calls, 3);
   assert.equal(body.tool_choice, 'auto');
+  assert.deepEqual(body.plugins, [{ id: 'response-healing' }]);
+  assert.equal(body.stream, false);
   assert.equal(body.response_format.type, 'json_schema');
   assert.equal(body.response_format.json_schema.strict, true);
   const schema = body.response_format.json_schema.schema;
@@ -507,6 +509,82 @@ test('provider uses one bounded server-tool request with no credential or reason
   assert.equal(JSON.stringify(result).includes(access.apiKey), false);
   assert.equal(result.costMicrousd, 25000);
   assert.equal(result.costSource, 'provider');
+});
+test('healing-enabled requests still fail closed on unrepaired JSON and retain safe billed receipts', async () => {
+  // Stub the provider response; this does not simulate the external healing algorithm.
+  const response = envelope(
+    [],
+    Array.from({ length: 8 }, (_, index) => `https://private.invalid/source-${index}`),
+  );
+  response.id = 'gen-1792882802-AbCd01234567';
+  response.usage = { cost: 0.008127 };
+  response.choices[0].message.content = `private malformed provider answer ${access.apiKey}`;
+  response.choices[0].message.reasoning = 'private provider reasoning';
+  const h = harness(response);
+  await assert.rejects(h.run(), (error) => {
+    assert.ok(error instanceof DiscoveryFailure);
+    assert.equal(error.code, 'discovery_invalid_output');
+    assert.equal(error.called, true);
+    assert.equal(error.costMicrousd, 8127);
+    assert.equal(error.rejectedHttpStatus, undefined);
+    assert.deepEqual(error.diagnostics, {
+      version: 1,
+      responseId: response.id,
+      searchRequests: null,
+      searchCountStatus: 'missing',
+      finishReason: 'stop',
+      choiceCount: 1,
+      annotationCount: 8,
+      providerError: false,
+      providerErrorCode: null,
+      outputFormat: 'invalid',
+      outputIssue: 'invalid_json',
+    });
+    const saved = JSON.stringify(error);
+    for (const privateValue of [
+      access.apiKey,
+      'private malformed',
+      'private provider',
+      'private.invalid',
+    ])
+      assert.equal(saved.includes(privateValue), false);
+    return true;
+  });
+  const posts = h.calls.filter((call) => call.method === 'POST');
+  assert.equal(posts.length, 1, 'malformed output must not trigger a second paid request');
+  assert.equal(h.calls.length, 2, 'one model catalog check and one paid request');
+  assert.deepEqual(JSON.parse(posts[0].body).plugins, [{ id: 'response-healing' }]);
+});
+test('valid JSON returned with healing enabled still passes citation and publication-date checks', async () => {
+  // Already-valid provider JSON is checked locally; no plugin repair behavior is mocked.
+  const rows = [
+    article(),
+    article('https://example.com/uncited'),
+    article('https://example.com/old', '2026-08-01'),
+    article('https://example.com/impossible-date', '2026-02-30'),
+  ];
+  const response = envelope(
+    rows,
+    rows.filter((row) => !row.url.endsWith('uncited')).map((row) => row.url),
+  );
+  response.usage = { cost: 0.008127 };
+  const h = harness(response);
+  const receipt = await h.run();
+  assert.deepEqual(receipt.result.articles, [article()]);
+  assert.equal(receipt.result.rejected, 3);
+  assert.deepEqual(receipt.result.validation.reasonCounts, {
+    uncited_url: 1,
+    date_out_of_window: 1,
+    invalid_date: 1,
+  });
+  assert.equal(receipt.result.searchEvidence, 'provider_url_citations');
+  assert.equal(receipt.result.searchRequests, null);
+  assert.equal(receipt.diagnostics.outputIssue, null);
+  assert.equal(receipt.costMicrousd, 8127);
+  assert.equal(receipt.costSource, 'provider');
+  const posts = h.calls.filter((call) => call.method === 'POST');
+  assert.equal(posts.length, 1);
+  assert.deepEqual(JSON.parse(posts[0].body).plugins, [{ id: 'response-healing' }]);
 });
 test('auto-only provider routes succeed on one POST instead of rejecting required tool choice', async () => {
   for (const searchEvidence of ['search_count', 'provider_url_citations']) {

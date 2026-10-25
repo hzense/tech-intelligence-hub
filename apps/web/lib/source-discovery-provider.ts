@@ -160,6 +160,9 @@ export function createDiscoveryInvoker(
                 schema: portableJsonSchema(discoveryJsonSchema),
               },
             },
+            // Endpoint-level strict output support varies. Repair syntax upstream
+            // within this request; local schema and search evidence checks still apply.
+            plugins: [{ id: 'response-healing' }],
             max_tokens: discoveryOutputTokens,
             stream: false,
             ...options,
