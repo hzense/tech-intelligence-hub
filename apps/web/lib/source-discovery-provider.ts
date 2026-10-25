@@ -9,6 +9,13 @@ import {
 } from './ai-provider-transport.ts';
 import { openRouterOptions, portableJsonSchema } from './ai-model-compatibility.ts';
 import { discoveryArticleLimit, discoveryJsonSchema } from './source-discovery-output.ts';
+import {
+  createDiscoverySearchPlan,
+  publicDiscoveryExclusions,
+  discoverySearchResultLimit,
+  discoveryInputTokens,
+  discoveryRequestByteLimit,
+} from './source-discovery-plan.ts';
 import { readApiCostMicrousd } from './ai-response-cost.ts';
 import {
   readDiscoveryDiagnostics,
@@ -63,11 +70,13 @@ export function assertDiscoveryConnection(access: GenerationAccess) {
     throw new DiscoveryFailure('discovery_connection_unsupported');
 }
 export function discoveryEstimate(access: GenerationAccess) {
-  // Up to four inference passes, eight excerpts of <=1,000 characters plus tool/prompt overhead.
+  // Up to four inference passes. Input allowance includes 24 x 1,000-character
+  // excerpts (up to 96K UTF-8 bytes), the bounded 16K request and tool overhead.
+  // This remains an estimate, not an enforceable provider-side context/spend cap.
   // Search fee is an estimate, not a contractual provider price cap (reviewed 2026-09-30).
   return (
     generationCost(
-      30000 * (discoverySearchLimit + 1),
+      discoveryInputTokens * (discoverySearchLimit + 1),
       discoveryOutputTokens * (discoverySearchLimit + 1),
       access.connection.settings,
     ) +
@@ -83,6 +92,7 @@ export function createDiscoveryInvoker(
     now: Date | string;
     topics: { id: string; name: string }[];
     knownUrls: string[];
+    publicKnownUrls?: string[];
     allowedHosts: readonly string[];
     beforeCall(): Promise<void>;
   }) => {
@@ -105,69 +115,77 @@ export function createDiscoveryInvoker(
         },
         dependencies,
       );
+      const window = discoveryWindow(input.config, input.now);
+      const request = {
+        model: profile.stages.analyze.model_id,
+        messages: [
+          { role: 'system', content: discoveryRules },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              topics: input.topics,
+              keywords: input.config.discovery.keywords,
+              ...window,
+              maxSources: input.config.discovery.maxSources,
+              searchPlan: createDiscoverySearchPlan(
+                input.topics,
+                input.now,
+                profile.stages.analyze.model_id,
+              ),
+              excludedSourceUrls: publicDiscoveryExclusions(input.publicKnownUrls ?? []),
+            }),
+          },
+        ],
+        tools: [
+          {
+            type: 'openrouter:web_search',
+            parameters: {
+              engine: 'exa',
+              mode: 'fast',
+              max_uses: discoverySearchLimit,
+              max_results: discoveryArticleLimit,
+              max_total_results: discoverySearchResultLimit,
+              max_characters: 1000,
+            },
+          },
+        ],
+        max_tool_calls: discoverySearchLimit,
+        // Some routes support tools but reject forced tool choice. Keep auto
+        // portable; parseDiscoveryResponse still requires search evidence.
+        tool_choice: 'auto',
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'source_discovery',
+            strict: true,
+            schema: portableJsonSchema(discoveryJsonSchema),
+          },
+        },
+        // Endpoint-level strict output support varies. Repair syntax upstream
+        // within this request; local schema and search evidence checks still apply.
+        plugins: [{ id: 'response-healing' }],
+        max_tokens: discoveryOutputTokens,
+        stream: false,
+      };
+      if (Buffer.byteLength(JSON.stringify(request), 'utf8') > discoveryRequestByteLimit)
+        throw new Error('discovery_input_too_large');
       const options = await openRouterOptions(
         connection.base_url,
         profile.stages.analyze.model_id,
         transport,
         ['tools', 'structured'],
-        { inputTokens: 30000, outputTokens: discoveryOutputTokens },
+        { inputTokens: discoveryInputTokens, outputTokens: discoveryOutputTokens },
       );
-      const window = discoveryWindow(input.config, input.now);
+      const serializedRequest = JSON.stringify({ ...request, ...options });
+      if (Buffer.byteLength(serializedRequest, 'utf8') > discoveryRequestByteLimit)
+        throw new Error('discovery_input_too_large');
       await input.beforeCall();
       called = true;
       // Raw compatible transport is intentional: SDK tool conversion must not strip the
       // OpenRouter-owned server tool, annotations, search usage or account cost receipt.
       const response = await transport(
         `${connection.base_url.replace(/\/$/, '')}/chat/completions`,
-        {
-          method: 'POST',
-          body: JSON.stringify({
-            model: profile.stages.analyze.model_id,
-            messages: [
-              { role: 'system', content: discoveryRules },
-              {
-                role: 'user',
-                content: JSON.stringify({
-                  topics: input.topics,
-                  keywords: input.config.discovery.keywords,
-                  ...window,
-                  maxSources: input.config.discovery.maxSources,
-                }),
-              },
-            ],
-            tools: [
-              {
-                type: 'openrouter:web_search',
-                parameters: {
-                  engine: 'exa',
-                  mode: 'fast',
-                  max_uses: discoverySearchLimit,
-                  max_results: discoveryArticleLimit,
-                  max_total_results: discoveryArticleLimit,
-                  max_characters: 1000,
-                },
-              },
-            ],
-            max_tool_calls: discoverySearchLimit,
-            // Some routes support tools but reject forced tool choice. Keep auto
-            // portable; parseDiscoveryResponse still requires search evidence.
-            tool_choice: 'auto',
-            response_format: {
-              type: 'json_schema',
-              json_schema: {
-                name: 'source_discovery',
-                strict: true,
-                schema: portableJsonSchema(discoveryJsonSchema),
-              },
-            },
-            // Endpoint-level strict output support varies. Repair syntax upstream
-            // within this request; local schema and search evidence checks still apply.
-            plugins: [{ id: 'response-healing' }],
-            max_tokens: discoveryOutputTokens,
-            stream: false,
-            ...options,
-          }),
-        },
+        { method: 'POST', body: serializedRequest },
       );
       cost = await readApiCostMicrousd(response, connection.base_url);
       const body: unknown = await response.json();
@@ -187,6 +205,7 @@ export function createDiscoveryInvoker(
           'discovery_invalid_output',
           'discovery_provider_error',
           'discovery_output_truncated',
+          'discovery_input_too_large',
           'capability_failed',
           'invalid_model',
           'provider_rejected',

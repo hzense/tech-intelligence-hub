@@ -55,7 +55,7 @@ const blank = (kind: Kind): AutomationConfig => ({
   profileId: null,
   profileRevision: null,
   ...(kind === 'source_collection'
-    ? { discovery: { keywords: [], lookbackDays: 2, maxSources: 5 }, publicationMode: 'manual' }
+    ? { discovery: { keywords: [], lookbackDays: 2, maxSources: 8 }, publicationMode: 'manual' }
     : {}),
 });
 const errors: Record<string, string> = {
@@ -74,6 +74,7 @@ const errors: Record<string, string> = {
   budget_exceeded: '今日或单次预算不足，任务未启动。',
   profile_not_ready: '所选模型配置未就绪。',
   source_url_invalid: '来源链接格式或地址不符合导入规则。',
+  discovery_input_too_large: '本次检索范围或排除提示过长，未调用 AI；请缩小关键词范围后重试。',
   discovery_connection_unsupported:
     '自动联网发现需要分阶段配置的“分析”模型使用 OpenRouter 连接；生成使用“提取”模型。',
   discovery_topic_invalid: '所选领域已失效，请重新选择。',
@@ -573,7 +574,7 @@ export function AdminAutomation({
                 ...row.config,
                 sourceUrls: [],
                 enabled: false,
-                discovery: { keywords: [], lookbackDays: 2, maxSources: 5 },
+                discovery: { keywords: [], lookbackDays: 2, maxSources: 8 },
               }
             : row.config
           : blank(kind),
@@ -1012,6 +1013,10 @@ export function AdminAutomation({
                   }
                 />
               </label>
+              <p className={styles.full}>
+                每次采集累计最多 24 条搜索候选，从中选入最多 8
+                篇原文；数量为上限，合格后才生成／发布，所有领域由系统安排。
+              </p>
               <p className={styles.full}>
                 每次最多搜索 3 次。每事件读取 1 篇首选原文，访问失败后最多依次尝试 2
                 篇同次检索的备用原文，成功即停止；不追加付费检索，也不重复创建该事件的生成任务。

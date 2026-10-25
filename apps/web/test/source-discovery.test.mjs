@@ -431,7 +431,7 @@ const discoveryParameters = [
   'response_format',
   'structured_outputs',
 ];
-function harness(response = envelope(), parameters = discoveryParameters) {
+function harness(response = envelope(), parameters = discoveryParameters, model = {}) {
   const calls = [];
   let fenced = false;
   const invoke = createDiscoveryInvoker({
@@ -440,7 +440,14 @@ function harness(response = envelope(), parameters = discoveryParameters) {
       calls.push(request);
       if (request.method === 'GET')
         return globalThis.Response.json({
-          data: [{ id: 'test/model', supported_parameters: parameters, context_length: 128000 }],
+          data: [
+            {
+              id: 'test/model',
+              supported_parameters: parameters,
+              context_length: 128000,
+              ...model,
+            },
+          ],
         });
       assert.equal(fenced, true, 'paid request must follow persisted fence');
       if (response instanceof Error) throw response;
@@ -497,9 +504,9 @@ test('provider uses one bounded server-tool request with no credential or reason
   assert.deepEqual(alternatives.items.required, ['url', 'title', 'publishedAt']);
   assert.match(alternatives.description, /maxItems: 2/);
   assert.equal(body.tools[0].parameters.max_results, 8);
-  assert.equal(body.tools[0].parameters.max_total_results, 8);
+  assert.equal(body.tools[0].parameters.max_total_results, 24);
   assert.equal(body.provider.require_parameters, true);
-  assert.equal(body.max_tokens, 2048);
+  assert.equal(body.max_tokens, 4096);
   assert.equal(body.tools.length, 1);
   assert.equal(body.reasoning.exclude, true);
   assert.equal(
@@ -509,6 +516,113 @@ test('provider uses one bounded server-tool request with no credential or reason
   assert.equal(JSON.stringify(result).includes(access.apiKey), false);
   assert.equal(result.costMicrousd, 25000);
   assert.equal(result.costSource, 'provider');
+});
+test('requests cover every topic and expose only explicitly public exclusions; private history still deduplicates locally', async () => {
+  const privateUrl = 'https://example.com/private-unpublished-source';
+  const publicUrl = 'https://example.com/published-source';
+  const topics = Array.from({ length: 7 }, (_, index) => ({
+    id: `topic-${index}`,
+    name: `科技领域 ${index}`,
+  }));
+  const h = harness(envelope([article(privateUrl), article()]));
+  const receipt = await h.run({
+    topics,
+    knownUrls: [privateUrl, 'https://example.com/owner-only-import'],
+    publicKnownUrls: [
+      publicUrl,
+      'https://example.com/published-source?token=private-exclusion-token',
+      'https://example.com/published-source#private-exclusion-fragment',
+      'https://private-user:private-password@example.com/published-source',
+    ],
+  });
+  const posts = h.calls.filter((call) => call.method === 'POST');
+  assert.equal(posts.length, 1);
+  const body = JSON.parse(posts[0].body);
+  const input = JSON.parse(body.messages.find((message) => message.role === 'user').content);
+  assert.deepEqual(input.excludedSourceUrls, [publicUrl]);
+  assert.ok(input.searchPlan.length > 0 && input.searchPlan.length <= 3);
+  assert.deepEqual(
+    input.searchPlan.flatMap((group) => group.topics).sort((a, b) => a.id.localeCompare(b.id)),
+    topics,
+  );
+  for (const privateValue of [
+    'private-unpublished-source',
+    'owner-only-import',
+    'private-exclusion-token',
+    'private-exclusion-fragment',
+    'private-user',
+    'private-password',
+  ])
+    assert.equal(posts[0].body.includes(privateValue), false);
+  assert.deepEqual(receipt.result.articles, [article()]);
+  assert.equal(receipt.result.duplicates, 1);
+});
+test('private known URLs never become outbound exclusions when public history is absent', async () => {
+  const h = harness();
+  await h.run({ knownUrls: ['https://example.com/private-owner-import'] });
+  const post = h.calls.find((call) => call.method === 'POST');
+  const input = JSON.parse(
+    JSON.parse(post.body).messages.find((message) => message.role === 'user').content,
+  );
+  assert.deepEqual(input.excludedSourceUrls, []);
+  assert.equal(post.body.includes('private-owner-import'), false);
+});
+test('24 search candidates do not raise the eight-article output limit', async () => {
+  const rows = Array.from({ length: 24 }, (_, index) =>
+    article(`https://example.com/article-${index}`),
+  );
+  const expanded = { ...config, discovery: { ...config.discovery, maxSources: 8 } };
+  const citations = rows.map((row) => row.url);
+  const valid = harness(envelope(rows.slice(0, 8), citations));
+  const receipt = await valid.run({ config: expanded });
+  assert.deepEqual(receipt.result.articles, rows.slice(0, 8));
+  assert.equal(receipt.result.validation.validCitationCount, 24);
+  const overflow = harness(envelope(rows.slice(0, 9), citations));
+  await assert.rejects(overflow.run({ config: expanded }), (error) => {
+    assert.equal(error.code, 'discovery_invalid_output');
+    assert.equal(error.called, true);
+    assert.equal(error.costMicrousd, 25000);
+    assert.equal(error.diagnostics.outputIssue, 'too_many_articles');
+    return true;
+  });
+  assert.equal(overflow.calls.filter((call) => call.method === 'POST').length, 1);
+});
+test('discovery capacity checks reserve 120000 input tokens and 4096 output tokens before the paid fence', async () => {
+  const supported = harness(envelope(), discoveryParameters, { context_length: 124096 });
+  await supported.run();
+  assert.equal(supported.calls.filter((call) => call.method === 'POST').length, 1);
+  for (const model of [
+    { context_length: 124095 },
+    { context_length: 128000, top_provider: { context_length: 124095 } },
+    { context_length: 128000, top_provider: { max_completion_tokens: 4095 } },
+  ]) {
+    const h = harness(envelope(), discoveryParameters, model);
+    await assert.rejects(
+      h.run({
+        beforeCall: async () => assert.fail('incompatible model must not consume the fence'),
+      }),
+      (error) => error.code === 'capability_failed' && error.called === false,
+    );
+    assert.equal(h.calls.length, 1, 'only the read-only model catalog is requested');
+    assert.equal(h.calls[0].method, 'GET');
+  }
+});
+test('oversized serialized discovery input fails before catalog access, reservation or paid request', async () => {
+  const h = harness();
+  await assert.rejects(
+    h.run({
+      topics: [{ id: 'topic-oversized', name: '科'.repeat(4000) }],
+      beforeCall: async () => assert.fail('oversized input must not consume the fence'),
+    }),
+    (error) => {
+      assert.ok(error instanceof DiscoveryFailure);
+      assert.equal(error.code, 'discovery_input_too_large');
+      assert.equal(error.called, false);
+      assert.equal(error.costMicrousd, null);
+      return true;
+    },
+  );
+  assert.deepEqual(h.calls, []);
 });
 test('healing-enabled requests still fail closed on unrepaired JSON and retain safe billed receipts', async () => {
   // Stub the provider response; this does not simulate the external healing algorithm.
@@ -645,7 +759,7 @@ test('provider accepts same-response alternatives without extra search or infere
   const result = await h.run();
   assert.deepEqual(result.result.articles, rows);
   assert.equal(h.calls.filter((call) => call.method === 'POST').length, 1);
-  assert.equal(JSON.parse(h.calls[1].body).max_tokens, 2048);
+  assert.equal(JSON.parse(h.calls[1].body).max_tokens, 4096);
   assert.equal(result.costMicrousd, 25000);
 });
 test('all-rejected provider results retain validation and cost without another paid request', async () => {
@@ -674,6 +788,10 @@ test('cost receipt survives invalid output; missing cost uses bounded estimate',
   const result = await harness(missing).run();
   assert.equal(result.costMicrousd, discoveryEstimate(access));
   assert.equal(result.costSource, 'estimate');
+});
+test('fallback estimate covers four 120000-token input passes, four 4096-token outputs and three searches', () => {
+  // Fixture prices are $1/M input and $2/M output; total estimated reservation is $0.533768.
+  assert.equal(discoveryEstimate(access), 533768);
 });
 test('unsupported model and duplicate fence never call AI; network failure never retries', async () => {
   for (const missing of discoveryParameters) {

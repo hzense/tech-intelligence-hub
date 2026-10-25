@@ -209,7 +209,10 @@ test(
       };
       await page.goto(`http://127.0.0.1:${server.address().port}`);
       await expect(page.getByText('无需指定领域或填写网址', { exact: false })).toBeVisible();
-      await expect(page.getByRole('spinbutton', { name: '每次最多采集事件数量' })).toHaveValue('5');
+      await expect(page.getByRole('spinbutton', { name: '每次最多采集事件数量' })).toHaveValue('8');
+      await expect(
+        page.getByText(/每次采集累计最多 24 条搜索候选，从中选入最多 8 篇原文/),
+      ).toBeVisible();
       await expect(page.getByText(/不追加付费检索，也不重复创建该事件的生成任务/)).toBeVisible();
       await expect(page.locator('textarea')).toHaveCount(0);
       await expect(page.getByRole('checkbox', { name: '人工智能', exact: true })).toHaveCount(0);
@@ -228,7 +231,7 @@ test(
       assert.deepEqual(posts[0].request.config.discovery, {
         keywords: [],
         lookbackDays: 2,
-        maxSources: 5,
+        maxSources: 8,
       });
       assert.equal(posts[0].request.config.enabled, false);
       await page.getByLabel('关注关键词', { exact: false }).fill('芯片，英伟达');
