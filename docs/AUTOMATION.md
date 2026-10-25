@@ -17,6 +17,16 @@
 - 结果未知的任务必须先核对账本和原任务；不会为追求成功自动重做付费调用。专题依据的任一信号撤回或内容变化后，旧报告停止公开。
 - 配置列表提供“删除配置”：确认后停止未来调度并隐藏配置。历史任务、结果、费用以及已公开的专题报告不会随之删除或撤回。软删除不能通过页面恢复；如确需重新建计划，需显式新建配置。
 
+## 采集 JSON 输出兼容（2026-10-25，本地修复）
+
+`daily_testing_claude` 在上一轮工具选择修复后，两次请求均进入响应解析，失败码为 `discovery_invalid_output`，诊断为 `outputIssue: invalid_json`；两次都是单个响应、正常结束标记 `stop`、8 条供应商引用。对应供应商费用为 $0.008211 与 $0.008127。历史回执未保存原始回答，不能确定具体是混合说明文字还是 JSON 语法缺陷，也不能根据引用数量推断搜索次数。
+
+- 发现请求保持非流式 `json_schema / strict: true`，增加 `plugins: [{ id: 'response-healing' }]`。依据 [OpenRouter 结构化输出说明](https://openrouter.ai/docs/guides/features/structured-outputs)及[Response Healing 文档](https://openrouter.ai/docs/guides/features/plugins/response-healing)，该插件可尝试修复格式，但不是业务结构或事实正确性的保证。
+- 修复在同一供应商请求内进行；本地仍执行原有 JSON 结构、搜索证据、逐条引用、日期窗口、数量、安全网址及去重校验。无法修复的输出继续失败，不放宽本地解析器、不自动追加付费重试。
+- 有实际费用回执的解析失败继续保留供应商费用，不能按请求被拒绝记为 $0；历史任务、配置和定时计划保持原状。
+
+本轮使用合成响应验证请求契约和失败边界，未执行真实付费采集。插件不能修复所有输出；完整真实采集是否恢复需后续单次运行确认。
+
 ## 联网工具选择兼容（2026-10-24，本地修复）
 
 `daily_testing_claude` 最近一次运行在联网发现阶段约 2 秒即被 HTTP 404 拒绝，未进入原文抓取或候选生成，系统按明确请求拒绝记账 $0。只读核对发现其分析模型为 `anthropic/claude-haiku-5.5`；[OpenRouter 端点目录](https://openrouter.ai/api/v1/models/anthropic/claude-haiku-5.5/endpoints)在本次查询时列出的 10 个端点均支持 `tool_choice: auto`，但不支持 `required`。旧请求固定使用 `required`，存在明确的路由兼容冲突。历史回执只保存 HTTP 状态，没有供应商错误正文，因此不声称已证实该次拒绝的唯一原因。
