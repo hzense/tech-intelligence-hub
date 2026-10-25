@@ -61,7 +61,7 @@ test('discovery server persists safe receipts without replaying a paid search', 
       }
       export function discoveryEstimate(){return globalThis.__discoveryServer.estimate}
       export async function invokeSourceDiscovery(input){
-        const f=globalThis.__discoveryServer;f.invocations++;f.knownUrls=input.knownUrls;
+        const f=globalThis.__discoveryServer;f.invocations++;f.knownUrls=input.knownUrls;f.publicKnownUrls=input.publicKnownUrls;
         if(f.preCallError)throw new DiscoveryFailure(f.preCallError);
         try{await input.beforeCall()}catch(error){throw new DiscoveryFailure(error.message)}
         f.paidCalls++;
@@ -308,17 +308,20 @@ test('discovery server persists safe receipts without replaying a paid search', 
       );
     }
 
-    await t.test('a pre-call rejection does not charge or cross the paid-call fence', async () => {
-      const f = setup();
-      f.preCallError = 'capability_failed';
-      await assert.rejects(discoverSources('owner', f.run.id), /capability_failed/);
-      assert.equal(f.run.status, 'failed');
-      assert.equal(f.run.charged_microusd, 0);
-      assert.equal(f.run.cost_source, 'estimate');
-      assert.equal(f.paidCalls, 0);
-      assert.equal(f.fenceAttempts, 0);
-      assert.equal(f.run.result.discoveryDiagnostics, undefined);
-    });
+    for (const code of ['capability_failed', 'discovery_input_too_large']) {
+      await t.test(`pre-call ${code} does not charge or cross the paid-call fence`, async () => {
+        const f = setup();
+        f.preCallError = code;
+        await assert.rejects(discoverSources('owner', f.run.id), new RegExp(code));
+        assert.equal(f.run.status, 'failed');
+        assert.equal(f.updates.at(-1).errorCode, code);
+        assert.equal(f.run.charged_microusd, 0);
+        assert.equal(f.run.cost_source, 'estimate');
+        assert.equal(f.paidCalls, 0);
+        assert.equal(f.fenceAttempts, 0);
+        assert.equal(f.run.result.discoveryDiagnostics, undefined);
+      });
+    }
 
     await t.test('budget rejection happens before any provider invocation', async () => {
       const f = setup();
@@ -382,6 +385,7 @@ test('discovery server persists safe receipts without replaying a paid search', 
           'https://example.com/collected',
           'https://example.com/published',
         ]);
+        assert.deepEqual(f.publicKnownUrls, ['https://example.com/published']);
         await assert.rejects(discoverSources('owner', f.run.id), /stale_attempt/);
         assert.equal(f.paidCalls, 1);
       },

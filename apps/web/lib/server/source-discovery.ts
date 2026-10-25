@@ -37,6 +37,7 @@ export async function discoverSources(owner: string, id: string): Promise<string
       config,
       now: run.created_at,
       topics: selected,
+      publicKnownUrls: signals.flatMap((s) => (s.public_sources ?? []).map((source) => source.url)),
       knownUrls: [
         ...previousUrls,
         ...signals.flatMap((s) => (s.public_sources ?? []).map((source) => source.url)),
@@ -96,6 +97,7 @@ export async function discoverSources(owner: string, id: string): Promise<string
         'discovery_invalid_output',
         'discovery_provider_error',
         'discovery_output_truncated',
+        'discovery_input_too_large',
         'discovery_all_sources_rejected',
         'discovery_connection_unsupported',
         'capability_failed',
