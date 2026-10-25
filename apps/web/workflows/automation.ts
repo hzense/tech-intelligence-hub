@@ -114,75 +114,81 @@ export async function automationWorkflow(owner: string, id: string) {
     const generationDispatches: GenerationDispatch[] = [];
     const queuedSources: QueuedSource[] = [];
     let failed = 0;
-    for (const item of batch.items) {
-      if (item.kind !== 'url') continue;
-      let selectedItem = item;
-      let selectedBatchId = batch.id;
-      let status =
-        item.status === 'completed'
-          ? 'completed'
-          : await importSourceItem(owner, batch.id, item.id, run.id);
-      for (let attempt = 0; status === 'failed' && attempt < sourceFallbackLimit; attempt++) {
-        const fallback = await createFallbackSourceBatch(
-          owner,
-          run.id,
-          batch.id,
-          item.id,
-          item.url,
-          attempt,
-        );
-        if (!fallback) break;
-        selectedBatchId = fallback.id;
-        selectedItem = fallback.items[0]!;
-        status =
-          selectedItem.status === 'completed'
-            ? 'completed'
-            : await importSourceItem(owner, selectedBatchId, selectedItem.id, run.id);
-      }
-      if (status !== 'completed') {
-        failed++;
-        continue;
-      }
-      const generation = await createPrivateGeneration(
-        owner,
-        run.id,
-        selectedBatchId,
-        selectedItem.id,
-      );
-      if (generation) {
-        generationIds.push(generation.id);
-        generationDispatches.push(generation);
-        queuedSources.push({
-          url: selectedItem.url,
-          ...(selectedItem.id !== item.id ? { originalUrl: item.url } : {}),
-          generationId: generation.id,
-          queuedAt: generation.queuedAt,
-        });
-        await markSourceDispatch(owner, run.id, run.lease_token!, {
-          batchId: batch.id,
-          generationIds,
-          queuedSources,
-          failed,
-        });
-      } else failed++;
-    }
-    await markSourceDispatch(owner, run.id, run.lease_token!, {
-      batchId: batch.id,
-      generationIds,
-      queuedSources,
-      failed,
-    });
     let dispatchUnconfirmed = false;
     let dispatchError: unknown;
-    for (const generation of generationDispatches) {
-      try {
-        if (!(await dispatchGeneration(owner, run.id, generation))) failed++;
-      } catch (error) {
-        // A failed cleanup must remain visible, but it must not strand the
-        // other queue receipts that this run has already persisted.
-        failed++;
-        if (!dispatchUnconfirmed) dispatchError = error;
-        dispatchUnconfirmed = true;
+    try {
+      for (const item of batch.items) {
+        if (item.kind !== 'url') continue;
+        let selectedItem = item;
+        let selectedBatchId = batch.id;
+        let status =
+          item.status === 'completed'
+            ? 'completed'
+            : await importSourceItem(owner, batch.id, item.id, run.id);
+        for (let attempt = 0; status === 'failed' && attempt < sourceFallbackLimit; attempt++) {
+          const fallback = await createFallbackSourceBatch(
+            owner,
+            run.id,
+            batch.id,
+            item.id,
+            item.url,
+            attempt,
+          );
+          if (!fallback) break;
+          selectedBatchId = fallback.id;
+          selectedItem = fallback.items[0]!;
+          status =
+            selectedItem.status === 'completed'
+              ? 'completed'
+              : await importSourceItem(owner, selectedBatchId, selectedItem.id, run.id);
+        }
+        if (status !== 'completed') {
+          failed++;
+          continue;
+        }
+        const generation = await createPrivateGeneration(
+          owner,
+          run.id,
+          selectedBatchId,
+          selectedItem.id,
+        );
+        if (generation) {
+          generationIds.push(generation.id);
+          generationDispatches.push(generation);
+          queuedSources.push({
+            url: selectedItem.url,
+            ...(selectedItem.id !== item.id ? { originalUrl: item.url } : {}),
+            generationId: generation.id,
+            queuedAt: generation.queuedAt,
+          });
+          await markSourceDispatch(owner, run.id, run.lease_token!, {
+            batchId: batch.id,
+            generationIds,
+            queuedSources,
+            failed,
+          });
+        } else failed++;
+      }
+      await markSourceDispatch(owner, run.id, run.lease_token!, {
+        batchId: batch.id,
+        generationIds,
+        queuedSources,
+        failed,
+      });
+    } finally {
+      // A later source or receipt write can fail after earlier tasks were queued.
+      // Dispatch each confirmed queue receipt exactly once before leaving this run;
+      // never retry the uncertain source or erase its pinned request ID.
+      for (const generation of generationDispatches) {
+        try {
+          if (!(await dispatchGeneration(owner, run.id, generation))) failed++;
+        } catch (error) {
+          // A failed cleanup must remain visible, but it must not strand the
+          // other queue receipts that this run has already persisted.
+          failed++;
+          if (!dispatchUnconfirmed) dispatchError = error;
+          dispatchUnconfirmed = true;
+        }
       }
     }
     await markSourceDispatch(owner, run.id, run.lease_token!, {

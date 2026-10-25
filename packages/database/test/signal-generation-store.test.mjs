@@ -122,6 +122,35 @@ it.each([undefined, 0, 1, 30])(
     expect(saved[4]).toBe(String(amount ?? 10));
   },
 );
+it('rejects contradictory no-call settlement claims before connecting', async () => {
+  const connect = vi.fn(() => {
+    throw new Error('must not connect');
+  });
+  for (const change of [
+    { providerNotInvoked: false },
+    { providerNotInvoked: 'true' },
+    { outcome: 'completed' },
+    { outcome: 'unknown' },
+    { errorCode: 'generation_unknown' },
+    { chargedMicrousd: 1 },
+    { providerCostMicrousd: 0 },
+    { result: {} },
+  ]) {
+    await expect(
+      finishSignalGeneration({
+        pool: { connect },
+        owner: 'admin',
+        id: randomUUID(),
+        token: randomUUID(),
+        outcome: 'failed',
+        errorCode: 'preflight_failed',
+        providerNotInvoked: true,
+        ...change,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_request' });
+  }
+  expect(connect).not.toHaveBeenCalled();
+});
 const source = {
   classification: 'private',
   fragments: [{ index: 0, text: 'safe source', locator: { paragraph: 1 } }],

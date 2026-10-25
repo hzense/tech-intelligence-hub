@@ -186,6 +186,36 @@ test('historical withdrawal bypasses enable switches, database read mode and pub
   assert.equal(f.calls[0].args.request.expectedReviewRevision, 1);
   assert.equal(f.writeChecks, 0);
 });
+test('unified mode blocks every legacy mutation before business writes but keeps historical receipts readable', async () => {
+  for (const readMode of ['database', 'seed']) {
+    for (const action of ['prepare', 'verify', 'assemble', 'publish', 'withdraw']) {
+      const f = fixture({ HZENSE_UNIFIED_SIGNAL_ENABLED: '1', HZENSE_SIGNAL_READ_MODE: readMode });
+      const extra =
+        action === 'verify'
+          ? { envelope: {} }
+          : action === 'assemble'
+            ? { verificationId: '44444444-4444-4444-8444-444444444444' }
+            : ['publish', 'withdraw'].includes(action)
+              ? { expectedPublicationRevision: 1, reasonCode: 'operator_request' }
+              : {};
+      await assert.rejects(f.operate(owner, action, request(extra)), { code: 'not_configured' });
+      assert.deepEqual(f.calls, []);
+      assert.equal(f.writeChecks, 0);
+    }
+  }
+  const f = fixture({
+    HZENSE_UNIFIED_SIGNAL_ENABLED: '1',
+    HZENSE_CANDIDATE_PIPELINE_ENABLED: '0',
+    HZENSE_REVIEW_ENABLED: '0',
+  });
+  const response = await f.operate(owner, 'inspect', request());
+  assert.equal(response.readiness.status, 'published');
+  assert.deepEqual(
+    f.calls.map((call) => call.name),
+    ['inspectReviewedCandidate'],
+  );
+  assert.equal(f.writeChecks, 0);
+});
 test('publication requires both enable gates and database public read mode before any business write', async () => {
   for (const env of [
     { HZENSE_CANDIDATE_PIPELINE_ENABLED: '0' },

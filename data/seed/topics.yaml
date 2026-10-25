@@ -135,3 +135,9 @@
 - id: topic-robotics
   title: Robotics
   status: active
+- id: topic-quantum
+  title: Quantum
+  status: watching
+- id: topic-biotechnology
+  title: Biotechnology
+  status: watching

@@ -149,6 +149,7 @@ export function finishSignalGeneration(
     result?: unknown;
     chargedMicrousd?: number;
     providerCostMicrousd?: number;
+    providerNotInvoked?: true;
     errorCode?: string | null;
   },
 ): Promise<SignalGenerationRun>;

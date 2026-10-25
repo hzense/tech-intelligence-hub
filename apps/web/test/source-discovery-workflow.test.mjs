@@ -278,8 +278,18 @@ test('source discovery orchestrates originals and private candidates without dro
       assert.equal(f.run.result.batchId, 'batch-id');
       assert.deepEqual(f.run.result.generationIds, ['item-0']);
       assert.deepEqual(f.importAttempts, ['item-0', 'item-1']);
-      assert.deepEqual(f.dispatched, [], 'an unknown item is not retried or treated as failed');
+      assert.deepEqual(
+        f.dispatched,
+        ['item-0'],
+        'the earlier confirmed queue is dispatched; the unknown item is never retried',
+      );
+      assert.deepEqual(f.dispatchedArgs, [['owner', 'item-0', '2026-10-02T12:00:00.123Z']]);
+      assert.deepEqual(f.closedQueues, []);
+      assert.equal(f.run.result.failed, 0, 'an unknown source is not a confirmed failure');
       assert.equal(f.run.charged_microusd, 25000);
+      assert.equal(await automationWorkflow('owner', 'run'), 'already_started_or_finished');
+      assert.deepEqual(f.dispatched, ['item-0']);
+      assert.deepEqual(f.importAttempts, ['item-0', 'item-1']);
     }
     f = setup(['https://example.com/a']);
     f.returnedStates['item-0'] = 'unknown';
@@ -296,7 +306,13 @@ test('source discovery orchestrates originals and private candidates without dro
       assert.deepEqual(f.run.result.generationIds, ['item-0', 'item-1']);
       assert.equal(f.run.result.queuedSources[0].generationId, 'item-0');
       assert.equal(f.run.charged_microusd, 25000);
-      assert.deepEqual(f.dispatched, []);
+      assert.deepEqual(
+        f.dispatched,
+        ['item-0'],
+        'only the acknowledged queue receipt is dispatched; the uncertain item ID stays pinned',
+      );
+      assert.deepEqual(f.dispatchedArgs, [['owner', 'item-0', '2026-10-02T12:00:00.123Z']]);
+      assert.deepEqual(f.closedQueues, []);
       assert.equal(f.generated.filter((value) => value.id === 'item-1').length, 1);
       assert.equal(
         f.queued.filter((id) => id === 'item-1').length,
@@ -304,6 +320,8 @@ test('source discovery orchestrates originals and private candidates without dro
       );
       await automationWorkflow('owner', 'run');
       assert.equal(f.generated.filter((value) => value.id === 'item-1').length, 1);
+      assert.deepEqual(f.dispatched, ['item-0'], 'replay cannot dispatch either item again');
+      assert.deepEqual(f.run.result.generationIds, ['item-0', 'item-1']);
     }
     f = setup(['https://example.com/a', 'https://example.com/b']);
     f.createErrors['item-0'] = 'duplicate_source';

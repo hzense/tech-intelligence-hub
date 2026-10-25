@@ -121,7 +121,15 @@ try:
   for i,p in enumerate(root.iter(ns+'p'),1):
    style=p.find(ns+'pPr/'+ns+'pStyle')
    heading=style is not None and bool(re.match(r'(?i)^(heading|title)',style.get(ns+'val','')))
-   items.append((i,''.join(t.text or '' for t in p.iter(ns+'t')),heading))
+   parts=[]
+   # Walk run contents in document order: formatting can split a word across runs.
+   # Only run tabs are text; paragraph tab-stop settings must not add characters.
+   for run in p.iter(ns+'r'):
+    for node in run:
+     if node.tag==ns+'t': parts.append(node.text or '')
+     elif node.tag==ns+'tab': parts.append('\t')
+     elif node.tag in (ns+'br',ns+'cr'): parts.append('\n')
+   items.append((i,''.join(parts),heading))
   blocks(items)
  elif fmt=='xlsx':
   z=archive(data); ns={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}

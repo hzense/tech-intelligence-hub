@@ -3,6 +3,7 @@ import console from 'node:console';
 import { Buffer } from 'node:buffer';
 import { URL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import { generationBudgetSql } from './generation-budget.mjs';
 import {
   assessGeneratedCandidates,
   normalizeGenerationTopics,
@@ -832,7 +833,7 @@ export async function getSignalGenerationDailyUsage({ pool, owner, budgetMode })
       SELECT (statement_timestamp() AT TIME ZONE 'UTC')::date AS day
     ) SELECT today.day::text AS day,
       COALESCE(sum(r.charged_microusd),0)::text AS charged_microusd,
-      COALESCE(sum(greatest(r.reserved_microusd,r.charged_microusd)),0)::text AS budget_used_microusd
+      COALESCE(sum(${generationBudgetSql('r')}),0)::text AS budget_used_microusd
       FROM today LEFT JOIN public.signal_generation_runs r
         ON r.budget_day=today.day AND r.owner_id=$1 AND ${localFilter}
       GROUP BY today.day`
@@ -840,19 +841,19 @@ export async function getSignalGenerationDailyUsage({ pool, owner, budgetMode })
               ? `WITH today AS (
       SELECT (statement_timestamp() AT TIME ZONE 'UTC')::date AS day
     ), ledger AS (
-      SELECT owner_id,budget_day,charged_microusd,reserved_microusd FROM public.signal_generation_runs
+      SELECT owner_id,budget_day,status,charged_microusd,reserved_microusd FROM public.signal_generation_runs
       UNION ALL
-      SELECT owner_id,budget_day,charged_microusd,reserved_microusd FROM public.candidate_enrichment_runs
+      SELECT owner_id,budget_day,status,charged_microusd,reserved_microusd FROM public.candidate_enrichment_runs
     ) SELECT today.day::text AS day,
       COALESCE(sum(r.charged_microusd),0)::text AS charged_microusd,
-      COALESCE(sum(greatest(r.reserved_microusd,r.charged_microusd)),0)::text AS budget_used_microusd
+      COALESCE(sum(${generationBudgetSql('r')}),0)::text AS budget_used_microusd
       FROM today LEFT JOIN ledger r ON r.budget_day=today.day AND r.owner_id=$1
       GROUP BY today.day`
               : `WITH today AS (
       SELECT (statement_timestamp() AT TIME ZONE 'UTC')::date AS day
     ) SELECT today.day::text AS day,
       COALESCE(sum(r.charged_microusd),0)::text AS charged_microusd,
-      COALESCE(sum(greatest(r.reserved_microusd,r.charged_microusd)),0)::text AS budget_used_microusd
+      COALESCE(sum(${generationBudgetSql('r')}),0)::text AS budget_used_microusd
       FROM today LEFT JOIN public.signal_generation_runs r
         ON r.budget_day=today.day AND r.owner_id=$1
       GROUP BY today.day`,
@@ -996,18 +997,18 @@ export async function claimSignalGeneration({
       await client.query(
         localFilter
           ? `SELECT
-      COALESCE(sum(greatest(r.reserved_microusd,r.charged_microusd)) FILTER (WHERE r.budget_day=$1::date),0)::text AS daily,
-      COALESCE(sum(greatest(r.reserved_microusd,r.charged_microusd)) FILTER (WHERE r.batch_id=$2),0)::text AS batch
+      COALESCE(sum(${generationBudgetSql('r')}) FILTER (WHERE r.budget_day=$1::date),0)::text AS daily,
+      COALESCE(sum(${generationBudgetSql('r')}) FILTER (WHERE r.batch_id=$2),0)::text AS batch
       FROM public.signal_generation_runs r WHERE ${localFilter}`
           : enrichment
             ? `SELECT
-      (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.signal_generation_runs WHERE budget_day=$1::date) +
-      (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.candidate_enrichment_runs WHERE budget_day=$1::date) AS daily,
-      (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.signal_generation_runs WHERE batch_id=$2) +
-      (SELECT COALESCE(sum(greatest(e.reserved_microusd,e.charged_microusd)),0) FROM public.candidate_enrichment_runs e JOIN public.signal_generation_runs g ON g.id=e.run_id WHERE g.batch_id=$2) AS batch`
+      (SELECT COALESCE(sum(${generationBudgetSql('')}),0) FROM public.signal_generation_runs WHERE budget_day=$1::date) +
+      (SELECT COALESCE(sum(${generationBudgetSql('')}),0) FROM public.candidate_enrichment_runs WHERE budget_day=$1::date) AS daily,
+      (SELECT COALESCE(sum(${generationBudgetSql('')}),0) FROM public.signal_generation_runs WHERE batch_id=$2) +
+      (SELECT COALESCE(sum(${generationBudgetSql('e')}),0) FROM public.candidate_enrichment_runs e JOIN public.signal_generation_runs g ON g.id=e.run_id WHERE g.batch_id=$2) AS batch`
             : `SELECT
-      COALESCE(sum(greatest(reserved_microusd,charged_microusd)) FILTER (WHERE budget_day=$1::date),0)::text AS daily,
-      COALESCE(sum(greatest(reserved_microusd,charged_microusd)) FILTER (WHERE batch_id=$2),0)::text AS batch
+      COALESCE(sum(${generationBudgetSql('')}) FILTER (WHERE budget_day=$1::date),0)::text AS daily,
+      COALESCE(sum(${generationBudgetSql('')}) FILTER (WHERE batch_id=$2),0)::text AS batch
       FROM public.signal_generation_runs`,
         [day, row.batch_id],
       )
@@ -1041,11 +1042,24 @@ export async function finishSignalGeneration({
   result,
   chargedMicrousd = 0,
   providerCostMicrousd,
+  providerNotInvoked,
   errorCode = null,
 }) {
   uuid(token);
   integer(chargedMicrousd);
   if (providerCostMicrousd !== undefined) integer(providerCostMicrousd);
+  // Trusted executor evidence, never a client-supplied billing override. Do not
+  // infer this from a zero estimate, an error message or an expired lease.
+  if (
+    providerNotInvoked !== undefined &&
+    (providerNotInvoked !== true ||
+      outcome !== 'failed' ||
+      errorCode !== 'preflight_failed' ||
+      chargedMicrousd !== 0 ||
+      providerCostMicrousd !== undefined ||
+      result !== undefined)
+  )
+    fail();
   if (
     !['completed', 'failed', 'unknown'].includes(outcome) ||
     (errorCode !== null &&
@@ -1098,11 +1112,13 @@ export async function finishSignalGeneration({
     ).rows[0].live;
     if (!live) fail('stale_attempt');
     const charged =
-      providerCostMicrousd !== undefined
-        ? BigInt(providerCostMicrousd)
-        : BigInt(chargedMicrousd) > BigInt(row.reserved_microusd)
-          ? BigInt(chargedMicrousd)
-          : BigInt(row.reserved_microusd);
+      providerNotInvoked === true
+        ? 0n
+        : providerCostMicrousd !== undefined
+          ? BigInt(providerCostMicrousd)
+          : BigInt(chargedMicrousd) > BigInt(row.reserved_microusd)
+            ? BigInt(chargedMicrousd)
+            : BigInt(row.reserved_microusd);
     return (
       await client.query(
         `UPDATE public.signal_generation_runs SET status=$2,result=$3::jsonb,

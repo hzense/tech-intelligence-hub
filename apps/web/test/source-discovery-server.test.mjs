@@ -28,7 +28,14 @@ test('discovery server persists safe receipts without replaying a paid search', 
     './admin-ai': 'export async function aiStageAccess(){return {}}',
     '../seed-runtime':
       "export async function getSignalEntries(){return [{public_sources:[{url:'https://example.com/published'}]}]}",
-    '../source-discovery-core': 'export function discoveryTopics(){return []}',
+    '../source-discovery-core':
+      'export function discoveryTopics(){return globalThis.__discoveryServer.selectedTopics}',
+    '../source-discovery-topics': await readFile(
+      new URL('../lib/source-discovery-topics.ts', import.meta.url),
+      'utf8',
+    ),
+    './editorial-topics':
+      'export async function editorialTopicOptions(){return globalThis.__discoveryServer.publishableTopics}',
     '../admin-ai-core':
       "export function readAiBackendConfiguration(){return {allowedHosts:['openrouter.ai']}}",
     './automation-store-access': 'export const automationPool={};',
@@ -85,6 +92,7 @@ test('discovery server persists safe receipts without replaying a paid search', 
           );
           builder.onLoad({ filter: /.*/, namespace: 'fixture' }, (args) => ({
             contents: mocks[args.path],
+            loader: 'ts',
           }));
         },
       },
@@ -99,6 +107,8 @@ test('discovery server persists safe receipts without replaying a paid search', 
       paidCalls: 0,
       fenceAttempts: 0,
       estimate: 250000,
+      selectedTopics: [{ id: 'topic-ai', name: '人工智能' }],
+      publishableTopics: [{ id: 'topic-ai', title: '人工智能' }],
       updates: [],
       updateErrors: [],
       receipt: {
@@ -139,6 +149,24 @@ test('discovery server persists safe receipts without replaying a paid search', 
     });
 
   try {
+    await t.test(
+      'an unsynced publication domain stops before any provider invocation',
+      async () => {
+        const f = setup();
+        f.selectedTopics.push({ id: 'topic-quantum', name: 'Quantum' });
+        await assert.rejects(discoverSources('owner', f.run.id), /discovery_topics_not_ready/);
+        assert.equal(f.invocations, 0);
+        assert.equal(f.paidCalls, 0);
+        assert.equal(f.fenceAttempts, 0);
+        assert.equal(f.run.status, 'failed');
+        assert.equal(f.run.charged_microusd, 0);
+        assert.deepEqual(f.run.result.discoveryMissingTopics, [
+          { id: 'topic-quantum', name: 'Quantum' },
+        ]);
+        assert.equal(f.updates[0].errorCode, 'discovery_topics_not_ready');
+      },
+    );
+
     for (const code of [
       'discovery_search_unconfirmed',
       'discovery_invalid_output',

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Buffer } from 'node:buffer';
+import { generationBudgetSql } from './generation-budget.mjs';
 
 const columns = `id,owner_id,run_id,candidate_index,material_hash,profile_id,profile_revision,
  fingerprint,snapshot,configuration,status,lease_token,lease_until,budget_day,reserved_microusd,
@@ -287,10 +288,10 @@ export async function claimCandidateEnrichment({ pool, owner: ownerId, id, curre
     const usage = (
       await client.query(
         `SELECT
-          (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.signal_generation_runs WHERE budget_day=$1::date) +
-          (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.candidate_enrichment_runs WHERE budget_day=$1::date) AS daily,
-          (SELECT COALESCE(sum(greatest(reserved_microusd,charged_microusd)),0) FROM public.signal_generation_runs WHERE batch_id=$2) +
-          (SELECT COALESCE(sum(greatest(e.reserved_microusd,e.charged_microusd)),0) FROM public.candidate_enrichment_runs e JOIN public.signal_generation_runs g ON g.id=e.run_id WHERE g.batch_id=$2) AS batch`,
+          (SELECT COALESCE(sum(${generationBudgetSql('')}),0) FROM public.signal_generation_runs WHERE budget_day=$1::date) +
+          (SELECT COALESCE(sum(${generationBudgetSql('')}),0) FROM public.candidate_enrichment_runs WHERE budget_day=$1::date) AS daily,
+          (SELECT COALESCE(sum(${generationBudgetSql('')}),0) FROM public.signal_generation_runs WHERE batch_id=$2) +
+          (SELECT COALESCE(sum(${generationBudgetSql('e')}),0) FROM public.candidate_enrichment_runs e JOIN public.signal_generation_runs g ON g.id=e.run_id WHERE g.batch_id=$2) AS batch`,
         [context.day, context.batch_id],
       )
     ).rows[0];
