@@ -7,6 +7,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { build } from 'esbuild';
 import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { localDatabaseEnvironmentRoles } from '../lib/local-development.ts';
+import { automationStableId } from '../../../packages/database/src/automation-contract.mjs';
 
 const owner = 'synthetic-admin';
 const runId = '11111111-1111-4111-8111-111111111111';
@@ -15,6 +16,32 @@ const itemId = '33333333-3333-4333-8333-333333333333';
 const profileId = '44444444-4444-4444-8444-444444444444';
 const connectionId = '55555555-5555-4555-8555-555555555555';
 const articleUrl = 'https://news.example.com/articles/research?id=123';
+const collectionId = '66666666-6666-0666-7666-666666666666';
+const collectionRun = () => ({
+  id: collectionId,
+  owner_id: owner,
+  created_at: '2026-10-26T00:00:37.200Z',
+  snapshot: {
+    kind: 'source_collection',
+    publicationMode: 'automatic',
+    discovery: { lookbackDays: 2, maxSources: 8, keywords: [] },
+  },
+  result: {
+    batchId,
+    discovery: {
+      windowStart: '2026-10-24T00:00:37.200Z',
+      windowEnd: '2026-10-26T00:00:37.200Z',
+      articles: [{ url: articleUrl, publishedAt: '2026-10-24' }],
+    },
+  },
+});
+const collection = () => ({
+  runId: collectionId,
+  windowStart: '2026-10-24T00:00:37.200Z',
+  windowEnd: '2026-10-26T00:00:37.200Z',
+  sourceUrl: articleUrl,
+  discoveredPublishedAt: '2026-10-24',
+});
 const storePath = fileURLToPath(
   new URL('../../../packages/database/src/signal-generation-store.mjs', import.meta.url),
 );
@@ -68,6 +95,7 @@ function fixture() {
     output,
     sourceOwner: owner,
     source: { kind: 'url', fence: 1, url: articleUrl, content: output },
+    parent: null,
     profile: {
       id: profileId,
       revision: 1,
@@ -116,6 +144,11 @@ async function compile() {
         return {id:args.request.id,status:'pending',lease_until:null,
           generation_version:args.configuration.version,snapshot:args.snapshot,
           reserved_microusd:'0',charged_microusd:'0'};
+      }
+      export async function getSignalGeneration({owner,id}) {
+        const parent=globalThis.__automaticPublicationAdmission.parent;
+        if(!parent||parent.owner_id!==owner||parent.id!==id) throw Error('not_found');
+        return structuredClone(parent);
       }
     `,
     '../../../../packages/database/src/import-store.mjs': `
@@ -316,4 +349,112 @@ test('local real AI accepts explicit saved-collection consent without enabling d
     code: 'publication_policy_changed',
   });
   assert.equal(state.creates.length, 2);
+});
+
+test('internal collection admission pins the original window and imported article before generation', async (t) => {
+  const { state, executeGeneration } = await setup(t);
+  const original = collectionRun();
+  await executeGeneration(
+    owner,
+    create({
+      id: automationStableId({ runId: collectionId, itemId, kind: 'generation' }),
+      automaticPublicationConsent: true,
+    }),
+    undefined,
+    original,
+  );
+  assert.deepEqual(state.creates[0].snapshot.publication.collection, collection());
+  assert.equal(state.creates[0].snapshot.publication.sourceUrls[0], articleUrl);
+  assert.equal(state.invocations, 0);
+});
+
+test('unbound or malformed collection context cannot create an unrestricted automatic task', async (t) => {
+  const { state, executeGeneration } = await setup(t);
+  const variants = [
+    (run) => {
+      run.owner_id = 'another-owner';
+    },
+    (run) => {
+      run.result.discovery = undefined;
+    },
+    (run) => {
+      run.result.discovery.windowStart = '2026-09-26T00:00:37.200Z';
+    },
+    (run) => {
+      run.result.discovery.articles[0].url = 'https://news.example.com/other';
+    },
+    (run) => {
+      run.result.discovery.articles[0].publishedAt = '2026-10-16';
+    },
+    (run) => {
+      run.result.batchId = 'unrelated-batch';
+    },
+  ];
+  for (const change of variants) {
+    const original = collectionRun();
+    change(original);
+    await assert.rejects(
+      executeGeneration(
+        owner,
+        create({
+          id: automationStableId({ runId: collectionId, itemId, kind: 'generation' }),
+          automaticPublicationConsent: true,
+        }),
+        undefined,
+        original,
+      ),
+      { code: 'invalid_snapshot' },
+    );
+  }
+  assert.deepEqual(state.creates, []);
+  assert.equal(state.invocations, 0);
+});
+
+test('HTTP payload cannot supply publication policy or a collection window', async (t) => {
+  const { state, executeGeneration } = await setup(t);
+  for (const field of ['collection', 'collectionRun', 'publication']) {
+    await assert.rejects(
+      executeGeneration(
+        owner,
+        create({
+          automaticPublicationConsent: true,
+          [field]: collection(),
+        }),
+      ),
+      { code: 'invalid_request' },
+    );
+  }
+  assert.deepEqual(state.creates, []);
+  assert.deepEqual(state.accesses, []);
+});
+
+test('explicit UI retry inherits collection scope without a workflow context', async (t) => {
+  const { state, executeGeneration } = await setup(t);
+  const parentId = '77777777-7777-4777-8777-777777777777';
+  state.parent = {
+    id: parentId,
+    owner_id: owner,
+    snapshot: {
+      publication: {
+        mode: 'automatic',
+        policy: 'auto-publication-v1',
+        sourceUrls: [articleUrl],
+        collection: collection(),
+      },
+    },
+  };
+  await executeGeneration(owner, create({ retryOf: parentId, automaticPublicationConsent: true }));
+  assert.deepEqual(state.creates[0].snapshot.publication.collection, collection());
+  state.parent.snapshot.publication.collection.windowStart = 'invalid';
+  await assert.rejects(
+    executeGeneration(
+      owner,
+      create({
+        retryOf: parentId,
+        automaticPublicationConsent: true,
+      }),
+    ),
+    { code: 'invalid_snapshot' },
+  );
+  assert.equal(state.creates.length, 1);
 });

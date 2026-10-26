@@ -64,7 +64,7 @@ async function compile() {
     '../lib/server/import-service': `export async function executeImportAdmin(){throw Error('Unexpected import')}
       export async function runImportItem(){throw Error('Unexpected import')}`,
     '../lib/server/signal-generation': `
-      export async function executeGeneration(owner,body){const f=globalThis.${key};f.creates.push({owner,body});return {id:body.id}}
+      export async function executeGeneration(owner,body,queuedAt,collectionRun){const f=globalThis.${key};f.creates.push({owner,body,queuedAt,collectionRun});return {id:body.id}}
       export async function queueGeneration(owner,id){globalThis.${key}.queues.push({owner,id});return {id,status:'pending',progress_phase:'queued',progress_at:${JSON.stringify(queuedAt)}}}
       export async function failQueuedGeneration(owner,id,at){globalThis.${key}.cleanups.push({owner,id,at})}
     `,
@@ -164,6 +164,24 @@ test('manual snapshot still creates private candidates when production automatic
   });
   await createPrivateGeneration(owner, runId, 'batch', itemId);
   assert.equal(state.creates[0].body.automaticPublicationConsent, false);
+  assert.equal(state.creates[0].collectionRun, undefined);
+});
+test('automatic discovery passes its saved run only through the internal admission argument', async (t) => {
+  const { state, createPrivateGeneration } = await setup(t, 'automatic');
+  state.run.owner_id = owner;
+  state.run.created_at = '2026-10-26T00:00:37.200Z';
+  state.run.snapshot.discovery = { lookbackDays: 2, maxSources: 8, keywords: [] };
+  state.run.result.discovery = {
+    windowStart: '2026-10-24T00:00:37.200Z',
+    windowEnd: state.run.created_at,
+    articles: [],
+  };
+  await createPrivateGeneration(owner, runId, 'batch', itemId);
+  assert.equal(state.creates[0].collectionRun.id, runId);
+  assert.deepEqual(state.creates[0].collectionRun.snapshot.discovery, state.run.snapshot.discovery);
+  assert.equal(state.creates[0].queuedAt, undefined);
+  assert.equal(Object.hasOwn(state.creates[0].body, 'collection'), false);
+  assert.equal(Object.hasOwn(state.creates[0].body, 'collectionRun'), false);
 });
 for (const [name, env] of [
   ['production', production()],

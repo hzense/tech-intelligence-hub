@@ -443,18 +443,25 @@ async function createPrivateGeneration(
   let created;
   let refusalCode: AutomationSourceFailureCode | null = null;
   try {
-    created = await executeGeneration(owner, {
-      action: 'create',
-      id,
-      batchId,
-      itemId,
-      profileId: run.snapshot.profileId,
-      profileRevision: run.snapshot.profileRevision,
-      consent: true,
-      // Only the immutable collection snapshot authorizes publication; absent
-      // (historical) and manual modes stay private even if the global flag is on.
-      automaticPublicationConsent: run.snapshot.publicationMode === 'automatic',
-    });
+    created = await executeGeneration(
+      owner,
+      {
+        action: 'create',
+        id,
+        batchId,
+        itemId,
+        profileId: run.snapshot.profileId,
+        profileRevision: run.snapshot.profileRevision,
+        consent: true,
+        // Only the immutable collection snapshot authorizes publication; absent
+        // (historical) and manual modes stay private even if the global flag is on.
+        automaticPublicationConsent: run.snapshot.publicationMode === 'automatic',
+      },
+      undefined,
+      // This argument is internal workflow context, not part of the browser body.
+      // Keep the original snapshot and selected discovery receipts across delays.
+      run.snapshot.publicationMode === 'automatic' && run.snapshot.discovery ? run : undefined,
+    );
   } catch (error) {
     // Only explicit, pre-commit refusals can be counted as a failed source.
     // Unrecognized failures (including commit_unknown) retain the request ID

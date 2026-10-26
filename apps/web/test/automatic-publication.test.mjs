@@ -16,6 +16,13 @@ const { Request, structuredClone } = globalThis;
 const id = '11111111-1111-4111-8111-111111111111';
 const source = 'https://example.com/news';
 const policy = { mode: 'automatic', policy: 'auto-publication-v1', sourceUrls: [source] };
+const collection = {
+  runId: id,
+  windowStart: '2026-10-24T00:00:37.200Z',
+  windowEnd: '2026-10-26T00:00:37.200Z',
+  sourceUrl: source,
+  discoveredPublishedAt: '2026-10-24',
+};
 const dashboard = () => ({
   configured: true,
   materialHash: 'a'.repeat(64),
@@ -195,6 +202,63 @@ test('only pinned original links are selected; new resources can be registered w
   assert.equal(preview.content.resources[0].entity_id, '__new__');
   assert.deepEqual(preview.content.persons, []);
   assert.deepEqual(original.content.sourceUrls, []);
+});
+test('collection dates are rechecked after extraction, while source dates and private results remain intact', async () => {
+  for (const date of ['2026-10-16', '2025-10-20', '2026-10-22', '2026-10-27', null]) {
+    const { state, publish } = setup();
+    state.run.snapshot.publication = { ...policy, collection };
+    state.dashboard.content.eventDate = date;
+    const before = structuredClone(state.run.result);
+    const result = await publish('owner', id);
+    assert.equal(result.candidates[0].status, 'needs_attention');
+    assert.match(
+      result.candidates[0].reasons.join(' '),
+      /不在本次采集范围.*2026-10-24.*2026-10-26/,
+    );
+    assert.equal(state.calls.filter(([kind]) => kind === 'publish').length, 0);
+    assert.equal(state.dashboard.content.eventDate, date);
+    assert.deepEqual(state.run.result, before);
+    assert.equal(state.run.status, 'completed', 'generation remains successful and billable');
+    await publish('owner', id);
+    assert.equal(state.calls.filter(([kind]) => kind === 'publish').length, 0);
+  }
+});
+test('collection window uses inclusive UTC source dates, not execution date or discovery date equality', async () => {
+  for (const date of ['2026-10-24', '2026-10-25', '2026-10-26']) {
+    const { state, publish } = setup();
+    state.run.snapshot.publication = { ...policy, collection };
+    state.dashboard.content.eventDate = date;
+    assert.equal((await publish('owner', id)).candidates[0].status, 'published');
+    assert.equal(state.calls.filter(([kind]) => kind === 'publish').length, 1);
+  }
+});
+test('malformed or detached collection policy is never treated as an unrestricted policy', () => {
+  const bound = { ...policy, collection };
+  assert.deepEqual(automaticPublicationPolicy(bound), bound);
+  for (const value of [
+    null,
+    { ...collection, sourceUrl: 'https://example.com/other' },
+    { ...collection, windowEnd: '2026-10-23T00:00:37.200Z' },
+    { ...collection, discoveredPublishedAt: '2026-10-16' },
+  ])
+    assert.equal(automaticPublicationPolicy({ ...policy, collection: value }), null);
+});
+test('publication reread preserves already published historical records and explains storage date refusals', async () => {
+  const { state, publish } = setup();
+  state.run.snapshot.publication = { ...policy, collection };
+  state.dashboard.action = 'publish';
+  state.dashboard.revision = 1;
+  assert.equal((await publish('owner', id)).candidates[0].status, 'published');
+  assert.equal(state.calls.filter(([kind]) => kind === 'publish').length, 0);
+  state.dashboard.action = null;
+  state.dashboard.revision = 0;
+  state.dashboard.content.eventDate = '2026-10-24';
+  state.error = Object.assign(new Error('private diagnostic'), {
+    code: 'automatic_publication_date_out_of_window',
+  });
+  const result = await publish('owner', id);
+  assert.equal(result.candidates[0].status, 'needs_attention');
+  assert.match(result.candidates[0].reasons[0], /原文发布日期不在本次采集范围/);
 });
 test('missing dates, private uploads, unavailable sources and ambiguous identity remain exceptions', () => {
   const variants = [

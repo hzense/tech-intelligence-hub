@@ -1,5 +1,5 @@
 import { readFile, readdir } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { URL } from 'node:url';
 import process from 'node:process';
 import pg from 'pg';
@@ -11,6 +11,7 @@ import {
   readEditorialSignalStatuses,
 } from '../src/editorial-signal-store.mjs';
 import { editorialUnifiedContent } from '../src/unified-signal-plan.mjs';
+import { normalizeEditorialRequest } from '../src/editorial-signal-contract.mjs';
 
 const url = process.env.MIGRATION_TEST_ADMIN_URL;
 if (url) validateConnectionTarget({ connectionString: url, profile: 'local-test' });
@@ -40,12 +41,17 @@ suite('automatic publication: pinned opt-in and append-only post-publication cha
     if (created) await admin.query(`DROP DATABASE "${name}"`);
     await admin?.end();
   });
-  async function fixture({ pinned = true, sourceUrls = ['https://example.com/news'] } = {}) {
+  async function fixture({
+    pinned = true,
+    sourceUrls = ['https://example.com/news'],
+    collection,
+    eventDate = '2026-10-21',
+  } = {}) {
     const id = randomUUID();
     const content = {
       title: 'Generated title',
       summary: 'Generated summary',
-      eventDate: '2026-10-21',
+      eventDate,
       dateBasis: 'source_published',
       signalType: 'product',
       organizations: ['Example'],
@@ -54,7 +60,14 @@ suite('automatic publication: pinned opt-in and append-only post-publication cha
       sourceUrls,
     };
     const snapshot = pinned
-      ? { publication: { mode: 'automatic', policy: 'auto-publication-v1', sourceUrls } }
+      ? {
+          publication: {
+            mode: 'automatic',
+            policy: 'auto-publication-v1',
+            sourceUrls,
+            ...(collection === undefined ? {} : { collection }),
+          },
+        }
       : {};
     await pool.query(
       `INSERT INTO signal_generation_runs(id,owner_id,batch_id,item_id,source_fence,source_hash,profile_id,profile_revision,generation_version,fingerprint,snapshot,configuration,status,result)
@@ -94,6 +107,111 @@ suite('automatic publication: pinned opt-in and append-only post-publication cha
       },
     };
   }
+  const collection = {
+    runId: 'e5d586c2-d573-cc8c-0913-db0e7869fab1',
+    windowStart: '2026-10-24T00:00:37.200Z',
+    windowEnd: '2026-10-26T00:00:37.200Z',
+    sourceUrl: 'https://example.com/news',
+    discoveredPublishedAt: '2026-10-24',
+  };
+  it.each(['2026-10-16', '2025-10-20', '2026-10-22', '2026-10-27'])(
+    'blocks original date %s before any automatic publication write, preserving the candidate',
+    async (eventDate) => {
+      const args = await fixture({ collection, eventDate });
+      await expect(saveEditorialSignal(args)).rejects.toMatchObject({
+        code: 'automatic_publication_date_out_of_window',
+      });
+      expect(
+        (
+          await pool.query(
+            'SELECT count(*)::int AS n FROM editorial_signal_revisions WHERE run_id=$1',
+            [args.request.runId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      const saved = (
+        await pool.query('SELECT status,result,snapshot FROM signal_generation_runs WHERE id=$1', [
+          args.request.runId,
+        ])
+      ).rows[0];
+      expect(saved.status).toBe('completed');
+      expect(saved.result.candidates).toHaveLength(1);
+      expect(saved.snapshot.publication.collection).toEqual(collection);
+    },
+  );
+  it.each(['2026-10-24', '2026-10-25', '2026-10-26'])(
+    'publishes date %s in the pinned UTC-date window and acknowledges replay once',
+    async (eventDate) => {
+      const args = await fixture({ collection, eventDate });
+      const first = await saveEditorialSignal(args);
+      expect(first.content.eventDate).toBe(eventDate);
+      expect(await saveEditorialSignal(args)).toEqual(first);
+      expect(
+        (
+          await pool.query(
+            'SELECT count(*)::int AS n FROM editorial_signal_revisions WHERE run_id=$1',
+            [args.request.runId],
+          )
+        ).rows[0].n,
+      ).toBe(1);
+    },
+  );
+  it('rejects malformed pinned windows and selected source changes before publishing', async () => {
+    for (const [value, code] of [
+      [null, 'automatic_publication_invalid'],
+      [{ ...collection, windowEnd: collection.windowStart }, 'automatic_publication_invalid'],
+      [
+        { ...collection, sourceUrl: 'https://example.com/other' },
+        'automatic_publication_source_invalid',
+      ],
+    ]) {
+      const args = await fixture({ collection: value, eventDate: '2026-10-24' });
+      await expect(saveEditorialSignal(args)).rejects.toMatchObject({ code });
+    }
+  });
+  it('allows an explicit manual publication of an old collected candidate', async () => {
+    const args = await fixture({ collection, eventDate: '2025-10-20' });
+    const saved = await saveEditorialSignal({
+      ...args,
+      automatic: false,
+      request: { ...args.request, consent: true },
+    });
+    expect(saved.content.eventDate).toBe('2025-10-20');
+    expect(saved.publication_basis).toBe('manual_confirmation');
+  });
+  it('acknowledges a previously committed out-of-window receipt without another publication', async () => {
+    const args = await fixture({ collection, eventDate: '2026-10-16' });
+    const normalized = normalizeEditorialRequest(args.request, args.material, { automatic: true });
+    const requestHash = createHash('sha256')
+      .update(
+        JSON.stringify({ owner: args.owner, ...normalized, publicationBasis: 'automatic_checks' }),
+      )
+      .digest('hex');
+    // Simulate a receipt committed before the application date check existed.
+    await pool.query(
+      `INSERT INTO editorial_signal_revisions(request_id,run_id,owner_id,candidate_index,revision,material_hash,action,content,request_hash,unified_content,publication_basis)
+       VALUES($1,$2,'owner',0,1,$3,'publish',$4,$5,$6,'automatic_checks')`,
+      [
+        args.request.requestId,
+        args.request.runId,
+        args.request.materialHash,
+        args.request.content,
+        requestHash,
+        editorialUnifiedContent(args.request.content),
+      ],
+    );
+    const receipt = await saveEditorialSignal(args);
+    expect(receipt.content.eventDate).toBe('2026-10-16');
+    expect(receipt.revision).toBe(1);
+    expect(
+      (
+        await pool.query(
+          'SELECT count(*)::int AS n FROM editorial_signal_revisions WHERE run_id=$1',
+          [args.request.runId],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
   it('publishes once with truthful basis in audit, unified and public projections', async () => {
     const args = await fixture();
     const [one, two] = await Promise.all([saveEditorialSignal(args), saveEditorialSignal(args)]);

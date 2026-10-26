@@ -4,6 +4,7 @@ import { Buffer } from 'node:buffer';
 import { URL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { generationBudgetSql } from './generation-budget.mjs';
+import { parseCollectionPublicationWindow } from './collection-publication-window.mjs';
 import {
   assessGeneratedCandidates,
   normalizeGenerationTopics,
@@ -448,7 +449,16 @@ function inputs(owner, request, snapshot, configuration) {
   );
   const safe = bounded(snapshot, 1200000, 'invalid_snapshot');
   if (Object.hasOwn(safe, 'publication')) {
-    object(safe.publication, ['mode', 'policy', 'sourceUrls'], 'invalid_snapshot');
+    object(
+      safe.publication,
+      [
+        'mode',
+        'policy',
+        'sourceUrls',
+        ...(Object.hasOwn(safe.publication ?? {}, 'collection') ? ['collection'] : []),
+      ],
+      'invalid_snapshot',
+    );
     if (
       safe.publication.mode !== 'automatic' ||
       safe.publication.policy !== 'auto-publication-v1' ||
@@ -472,6 +482,11 @@ function inputs(owner, request, snapshot, configuration) {
       } catch {
         fail('invalid_snapshot');
       }
+    }
+    if (Object.hasOwn(safe.publication, 'collection')) {
+      const collection = parseCollectionPublicationWindow(safe.publication.collection);
+      if (!collection || !safe.publication.sourceUrls.includes(collection.sourceUrl))
+        fail('invalid_snapshot');
     }
   }
   if (
@@ -601,6 +616,17 @@ export async function createSignalGeneration({
         parent.source_hash !== request.sourceHash ||
         parent.profile_id !== request.profileId ||
         parent.profile_revision !== request.profileRevision
+      )
+        fail('request_id_conflict');
+      // An explicitly retried collection cannot shed or widen its original
+      // date window while retaining automatic-publication consent.
+      if (
+        Object.hasOwn(parent.snapshot.publication ?? {}, 'collection') &&
+        parsed.snapshot.publication &&
+        !isDeepStrictEqual(
+          parent.snapshot.publication.collection,
+          parsed.snapshot.publication.collection,
+        )
       )
         fail('request_id_conflict');
       const active = (

@@ -199,6 +199,32 @@ function input() {
   };
 }
 describe('private generation input boundaries', () => {
+  const collection = {
+    runId: 'e5d586c2-d573-cc8c-0913-db0e7869fab1',
+    windowStart: '2026-10-24T00:00:37.200Z',
+    windowEnd: '2026-10-26T00:00:37.200Z',
+    sourceUrl: 'https://example.com/news',
+    discoveredPublishedAt: '2026-10-24',
+  };
+  it('rejects malformed or unbound collection windows before contacting the database', async () => {
+    for (const saved of [
+      null,
+      {},
+      { ...collection, windowStart: collection.windowEnd },
+      { ...collection, sourceUrl: 'https://example.com/other' },
+    ]) {
+      const value = input();
+      value.snapshot.publication = {
+        mode: 'automatic',
+        policy: 'auto-publication-v1',
+        sourceUrls: ['https://example.com/news'],
+        collection: saved,
+      };
+      await expect(createSignalGeneration(value)).rejects.toMatchObject({
+        code: 'invalid_snapshot',
+      });
+    }
+  });
   it('rejects forged automatic policies and private or credential-bearing pinned sources', async () => {
     for (const publication of [
       null,
@@ -265,6 +291,7 @@ describe('private generation input boundaries', () => {
         mode: 'automatic',
         policy: 'auto-publication-v1',
         sourceUrls: ['https://example.com/news'],
+        collection,
       };
       let savedSnapshot;
       value.pool = {
@@ -308,6 +335,7 @@ describe('private generation input boundaries', () => {
                   mode: 'automatic',
                   policy: 'auto-publication-v1',
                   sourceUrls: ['https://example.com/original'],
+                  collection: { ...collection, sourceUrl: 'https://example.com/original' },
                 },
               }
             : {}),
