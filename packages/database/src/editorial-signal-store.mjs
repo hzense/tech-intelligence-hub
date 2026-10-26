@@ -8,6 +8,7 @@ import {
 } from './editorial-signal-contract.mjs';
 import { registerEditorialResources } from './editorial-resource-store.mjs';
 import { editorialUnifiedContent } from './unified-signal-plan.mjs';
+import { collectionPublicationDateIssue } from './collection-publication-window.mjs';
 export { previewEditorialResources } from './editorial-resource-store.mjs';
 export { EditorialSignalError } from './editorial-signal-contract.mjs';
 const columns =
@@ -87,6 +88,24 @@ export async function saveEditorialSignal({
       const receipt = { ...old };
       delete receipt.request_hash;
       return receipt;
+    }
+    // Existing receipts are acknowledged above without rewriting history.
+    // Every new automatic write rechecks the pinned original's actual date,
+    // including callers that bypass the read-only publication preview.
+    if (automatic && Object.hasOwn(run.snapshot.publication, 'collection')) {
+      const issue = collectionPublicationDateIssue(
+        run.snapshot.publication.collection,
+        r.content.eventDate,
+        r.content.sourceUrls,
+      );
+      if (issue)
+        fail(
+          issue === 'source_date_out_of_window'
+            ? 'automatic_publication_date_out_of_window'
+            : issue === 'collection_source_mismatch'
+              ? 'automatic_publication_source_invalid'
+              : 'automatic_publication_invalid',
+        );
     }
     const latest = (
       await client.query(

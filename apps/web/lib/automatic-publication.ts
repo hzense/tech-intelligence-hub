@@ -2,11 +2,17 @@ import { createHash } from 'node:crypto';
 import { editorialMissing, type EditorialDashboard } from './editorial-review.ts';
 import { editorialSourceUrl } from './editorial-source-options.ts';
 import { isLocalRealAi } from './local-development.ts';
+import {
+  collectionPublicationDateIssue,
+  parseCollectionPublicationWindow,
+  type CollectionPublicationWindow,
+} from '../../../packages/database/src/collection-publication-window.mjs';
 
 export type AutomaticPublicationPolicy = {
   mode: 'automatic';
   policy: 'auto-publication-v1';
   sourceUrls: string[];
+  collection?: CollectionPublicationWindow;
 };
 export type AutomaticPublicationStatus = {
   eligible: boolean;
@@ -36,7 +42,10 @@ export function automaticPublicationPolicy(value: unknown): AutomaticPublication
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const policy = value as Record<string, unknown>;
   if (
-    Object.keys(policy).sort().join(',') !== 'mode,policy,sourceUrls' ||
+    Object.keys(policy).sort().join(',') !==
+      (Object.hasOwn(policy, 'collection')
+        ? 'collection,mode,policy,sourceUrls'
+        : 'mode,policy,sourceUrls') ||
     policy.mode !== 'automatic' ||
     policy.policy !== 'auto-publication-v1' ||
     !Array.isArray(policy.sourceUrls) ||
@@ -45,6 +54,10 @@ export function automaticPublicationPolicy(value: unknown): AutomaticPublication
     policy.sourceUrls.some((url) => typeof url !== 'string' || editorialSourceUrl(url) !== url)
   )
     return null;
+  if (Object.hasOwn(policy, 'collection')) {
+    const collection = parseCollectionPublicationWindow(policy.collection);
+    if (!collection || !policy.sourceUrls.includes(collection.sourceUrl)) return null;
+  }
   return policy as AutomaticPublicationPolicy;
 }
 
@@ -94,6 +107,18 @@ export function automaticPublicationPreview(
   if (!dashboard.configured) reasons.push('发布服务尚未就绪。');
   if (dashboard.warnings.length) reasons.push('补全或补证资料读取尚未确认，请恢复读取后再发布。');
   if (content.dateBasis !== 'source_published') reasons.push('未绑定原文发布日期规则。');
+  if (policy.collection) {
+    const issue = collectionPublicationDateIssue(
+      policy.collection,
+      content.eventDate,
+      content.sourceUrls,
+    );
+    if (issue === 'source_date_out_of_window')
+      reasons.push(
+        `原文发布日期 ${content.eventDate ?? '未知'} 不在本次采集范围 ${policy.collection.windowStart.slice(0, 10)} 至 ${policy.collection.windowEnd.slice(0, 10)}（UTC）内；保留为候选，不自动发布。`,
+      );
+    else if (issue) reasons.push('采集时间范围或原文来源绑定无效，不能自动发布。');
+  }
   if (!content.sourceUrls.length) reasons.push('没有已授权公开且仍可核对的原始网页来源。');
   if (content.resources === undefined) reasons.push('缺少关联资源结构。');
   if (content.resources?.length && !dashboard.resourcePublicationReady)
@@ -202,13 +227,18 @@ export function createAutomaticPublisher(deps: {
             'automatic_publication_invalid',
             'automatic_publication_not_authorized',
             'automatic_publication_source_invalid',
+            'automatic_publication_date_out_of_window',
           ].includes(code)
         )
           throw new Error('automatic_publication_unavailable');
         candidates.push({
           index,
           status: 'needs_attention',
-          reasons: ['发布条件已变化或存在人工处理，请重新读取并核对。'],
+          reasons: [
+            code === 'automatic_publication_date_out_of_window'
+              ? '原文发布日期不在本次采集范围内；保留为候选，不自动发布。'
+              : '发布条件已变化或存在人工处理，请重新读取并核对。',
+          ],
         });
       }
     }

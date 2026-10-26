@@ -272,6 +272,30 @@ test('real server preserves manual drafts, edits and withdrawals that win after 
   assert.equal(state.writes.length, 0);
 });
 
+test('real extracted source date outside the discovery window stays private through dashboard and publication service', async (t) => {
+  const { state, editorialDashboard, publishGeneratedSignals } = await setup(t);
+  state.run.snapshot.publication.collection = {
+    runId,
+    windowStart: '2026-10-24T00:00:37.200Z',
+    windowEnd: '2026-10-26T00:00:37.200Z',
+    sourceUrl,
+    discoveredPublishedAt: '2026-10-24',
+  };
+  const original = structuredClone(state.run.result);
+  const dashboard = await editorialDashboard(owner, runId, 0);
+  assert.equal(dashboard.content.eventDate, '2026-10-20');
+  assert.equal(dashboard.automaticPublication.status, 'needs_attention');
+  assert.match(
+    dashboard.automaticPublication.reasons.join(' '),
+    /2026-10-20.*2026-10-24.*2026-10-26/,
+  );
+  const result = await publishGeneratedSignals(owner, runId);
+  assert.equal(result.candidates[0].status, 'needs_attention');
+  assert.equal(state.writes.length, 0);
+  assert.equal(state.saved, null);
+  assert.deepEqual(state.run.result, original);
+});
+
 test('automatic server write does not publish when supplementary reads fail after a successful preview', async (t) => {
   const { state, publishGeneratedSignals } = await setup(t);
   state.enrichmentFailAfter = 1;

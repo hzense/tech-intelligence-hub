@@ -36,6 +36,11 @@ import {
 import { readEditorialSourceOptions } from '../editorial-source-options';
 import { readMaterialSupplement } from '../material-source-reader';
 import {
+  bindCollectionPublicationWindow,
+  type CollectionPublicationRun,
+} from '../collection-publication-admission';
+import { parseCollectionPublicationWindow } from '../../../../packages/database/src/collection-publication-window.mjs';
+import {
   invokeLocalGeneration,
   localGenerationAccess,
   LOCAL_GENERATION_PROFILE_ID,
@@ -226,7 +231,12 @@ function assertLocalGenerationMode(run: store.SignalGenerationRun) {
     throw new GenerationError('configuration_changed');
 }
 
-export async function executeGeneration(owner: string, body: unknown, queuedAt?: string) {
+export async function executeGeneration(
+  owner: string,
+  body: unknown,
+  queuedAt?: string,
+  collectionRun?: CollectionPublicationRun,
+) {
   if (!generationConfigured()) throw new GenerationError('not_configured');
   const config = readGenerationConfiguration(process.env);
   const mock = isLocalMockAi();
@@ -245,35 +255,47 @@ export async function executeGeneration(owner: string, body: unknown, queuedAt?:
     create: async (owner, args) => {
       if (args.automaticPublicationConsent && !automaticPublicationAvailable(process.env))
         throw new GenerationError('publication_policy_changed');
-      if (isLocalDevelopment() && args.retryOf)
-        assertLocalGenerationMode(
-          await store.getSignalGeneration({ pool: generationPool, owner, id: args.retryOf }),
+      const parent = args.retryOf
+        ? await store.getSignalGeneration({ pool: generationPool, owner, id: args.retryOf })
+        : undefined;
+      if (isLocalDevelopment() && parent) assertLocalGenerationMode(parent);
+      let publication: store.SignalGenerationSnapshot['publication'];
+      if (args.automaticPublicationConsent) {
+        const sourceUrls = await readEditorialSourceOptions(
+          owner,
+          {
+            owner_id: owner,
+            batch_id: args.request.batchId,
+            item_id: args.request.itemId,
+            source_fence: args.request.sourceFence,
+            source_hash: args.request.sourceHash,
+          },
+          (o, b, i) => readMaterialSupplement(importPool, o, b, i),
         );
+        const inherited = parent?.snapshot.publication?.collection;
+        const collection = collectionRun
+          ? bindCollectionPublicationWindow(collectionRun, owner, args.request, sourceUrls)
+          : inherited === undefined
+            ? undefined
+            : parseCollectionPublicationWindow(inherited);
+        // Invalid/missing discovery evidence cannot silently become unrestricted
+        // publication. Browser retries retain the predecessor's original window.
+        if (collection === null || (collection && !sourceUrls.includes(collection.sourceUrl)))
+          throw new GenerationError('invalid_snapshot');
+        publication = {
+          mode: 'automatic',
+          policy: 'auto-publication-v1',
+          sourceUrls,
+          ...(collection ? { collection } : {}),
+        };
+      }
       return store.createSignalGeneration({
         pool: generationPool,
         owner,
         request: args.request,
         snapshot: {
           ...args.snapshot,
-          ...(args.automaticPublicationConsent && automaticPublicationAvailable(process.env)
-            ? {
-                publication: {
-                  mode: 'automatic' as const,
-                  policy: 'auto-publication-v1' as const,
-                  sourceUrls: await readEditorialSourceOptions(
-                    owner,
-                    {
-                      owner_id: owner,
-                      batch_id: args.request.batchId,
-                      item_id: args.request.itemId,
-                      source_fence: args.request.sourceFence,
-                      source_hash: args.request.sourceHash,
-                    },
-                    (o, b, i) => readMaterialSupplement(importPool, o, b, i),
-                  ),
-                },
-              }
-            : {}),
+          ...(publication ? { publication } : {}),
         },
         ...(args.retryOf ? { retryOf: args.retryOf } : {}),
         configuration: {

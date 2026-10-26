@@ -5,6 +5,7 @@ import { fileURLToPath, URL } from 'node:url';
 import process from 'node:process';
 import { build } from 'esbuild';
 import { chromium, expect } from '@playwright/test';
+import { automaticPublicationPreview } from '../lib/automatic-publication.ts';
 const { structuredClone } = globalThis;
 /* global document */
 
@@ -792,6 +793,64 @@ test(
             page.getByText('修改已保存，正式信号已更新。', { exact: true }),
           ).toBeVisible();
           assert.deepEqual(posts.at(-1), posts.at(-2));
+        },
+      );
+      await t.test(
+        'collection date refusal explains the old date and keeps the candidate on recheck',
+        async () => {
+          data = {
+            ...data,
+            revision: 0,
+            action: null,
+            requestId: null,
+            publicId: null,
+            warnings: [],
+            content: { ...data.content, eventDate: '2026-10-16', dateBasis: 'source_published' },
+          };
+          const policy = {
+            mode: 'automatic',
+            policy: 'auto-publication-v1',
+            sourceUrls: ['https://example.com/article?id=42'],
+            collection: {
+              runId: '11111111-1111-4111-8111-111111111111',
+              windowStart: '2026-10-24T00:00:37.200Z',
+              windowEnd: '2026-10-26T00:00:37.200Z',
+              sourceUrl: 'https://example.com/article?id=42',
+              discoveredPublishedAt: '2026-10-24',
+            },
+          };
+          data.automaticPublication = automaticPublicationPreview(data, policy, true).state;
+          assert.equal(data.automaticPublication.status, 'needs_attention');
+          let rechecks = 0;
+          await page.route('**/api/admin/signals/auto-publish', async (route) => {
+            assert.deepEqual(route.request().postDataJSON(), { runId: policy.collection.runId });
+            rechecks++;
+            await route.fulfill({
+              json: {
+                state: 'processed',
+                candidates: [
+                  {
+                    index: 0,
+                    status: 'needs_attention',
+                    reasons: data.automaticPublication.reasons,
+                  },
+                ],
+              },
+            });
+          });
+          const previousPosts = posts.length;
+          await page.reload();
+          const section = page.getByRole('region', { name: '自动发布状态' });
+          await expect(
+            section.getByText(/原文发布日期 2026-10-16 不在本次采集范围 2026-10-24 至 2026-10-26/),
+          ).toBeVisible();
+          await expect(page.getByLabel('原文发布日期', { exact: true })).toHaveValue('2026-10-16');
+          await section.getByRole('button', { name: '重新检查本任务并发布（不调用 AI）' }).click();
+          await expect(section.getByText(/保留为候选，不自动发布/)).toBeVisible();
+          assert.equal(rechecks, 1);
+          assert.equal(posts.length, previousPosts, 'recheck does not issue a manual publication');
+          assert.equal(data.content.eventDate, '2026-10-16');
+          assert.equal(data.action, null);
         },
       );
       assert.deepEqual(errors, []);

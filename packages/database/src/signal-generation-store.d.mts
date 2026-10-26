@@ -1,4 +1,5 @@
 import type { ImportPool } from './import-store.mjs';
+import type { CollectionPublicationWindow } from './collection-publication-window.mjs';
 import type {
   GenerationTopic,
   GenerationOutputContract,
@@ -30,7 +31,12 @@ export interface SignalGenerationSnapshot {
   topics?: GenerationTopic[];
   output_contract?: GenerationOutputContract;
   /** Server-owned, pinned at first admission; never upgraded by replay. */
-  publication?: { mode: 'automatic'; policy: 'auto-publication-v1'; sourceUrls: string[] };
+  publication?: {
+    mode: 'automatic';
+    policy: 'auto-publication-v1';
+    sourceUrls: string[];
+    collection?: CollectionPublicationWindow;
+  };
 }
 export interface SignalGenerationRun {
   id: string;

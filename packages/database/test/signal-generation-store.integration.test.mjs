@@ -668,6 +668,48 @@ suite('private AI generation PostgreSQL ledger', () => {
       code: 'request_id_conflict',
     });
   });
+  it('explicit automatic retry cannot shed or widen a saved collection date window', async () => {
+    const value = input();
+    const collection = {
+      runId: 'e5d586c2-d573-cc8c-0913-db0e7869fab1',
+      windowStart: '2026-10-24T00:00:37.200Z',
+      windowEnd: '2026-10-26T00:00:37.200Z',
+      sourceUrl: 'https://example.com/news',
+      discoveredPublishedAt: '2026-10-24',
+    };
+    value.snapshot.publication = {
+      mode: 'automatic',
+      policy: 'auto-publication-v1',
+      sourceUrls: [collection.sourceUrl],
+      collection,
+    };
+    const parent = await claimed(value);
+    await finishSignalGeneration({
+      ...args(parent),
+      token: parent.lease_token,
+      outcome: 'failed',
+      errorCode: 'provider_failed',
+    });
+    await pool.query(
+      "UPDATE public.signal_generation_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1",
+      [parent.id],
+    );
+    const retry = { ...value, request: { ...value.request, id: randomUUID() }, retryOf: parent.id };
+    for (const changed of [undefined, { ...collection, windowStart: '2026-10-23T00:00:37.200Z' }]) {
+      const publication = { ...value.snapshot.publication };
+      if (changed === undefined) delete publication.collection;
+      else publication.collection = changed;
+      await expect(
+        createSignalGeneration({ ...retry, snapshot: { ...value.snapshot, publication } }),
+      ).rejects.toMatchObject({ code: 'request_id_conflict' });
+    }
+    const restored = await createSignalGeneration(retry);
+    expect(restored.snapshot.publication.collection).toEqual(collection);
+    expect((await createSignalGeneration(retry)).id).toBe(restored.id);
+    expect((await getSignalGeneration(args(parent))).snapshot.publication.collection).toEqual(
+      collection,
+    );
+  });
   it('owner-bound deletion of pending runs permits a fresh request but never replays a deleted UUID', async () => {
     const value = input();
     const row = await createSignalGeneration(value);
