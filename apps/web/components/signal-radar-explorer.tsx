@@ -1,31 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import type {
-  RadarCategoryObservation,
-  RadarDomainObservation,
-  RadarResourceObservation,
-  RadarSignalIndexEntry,
-} from '@/lib/signal-radar-model';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import type { RadarResourceObservation } from '@/lib/signal-radar-model';
+import { filterRadarWindow, type RadarExplorerData, type RadarTimeRange } from '@/lib/radar-window';
 import styles from './signal-radar.module.css';
 
-type DomainNode = Pick<
-  RadarDomainObservation,
-  'id' | 'name' | 'totalCount' | 'recentCount' | 'previousCount' | 'signalIds'
->;
-
-export interface RadarExplorerData {
-  asOf: string;
-  recentStart: string;
-  totalCount: number;
-  recentCount: number;
-  previousCount: number;
-  domains: readonly DomainNode[];
-  categories: readonly RadarCategoryObservation[];
-  topResources: readonly RadarResourceObservation[];
-  signalIndex: readonly RadarSignalIndexEntry[];
-}
+type DomainNode = RadarExplorerData['domains'][number];
 
 type Selection = { kind: 'all' } | { kind: 'domain' | 'category' | 'resource'; id: string };
 type Heat = 'quiet' | 'low' | 'medium' | 'high';
@@ -65,14 +46,20 @@ const heatLabel: Record<Heat, string> = {
   high: '高',
   medium: '中',
   low: '低',
-  quiet: '暂无近期记录',
+  quiet: '所选时段无记录',
 };
 
 function resourceHref(resource: RadarResourceObservation) {
   return resource.type === 'person' ? `/persons/${resource.id}` : `/resources/${resource.id}`;
 }
 
-export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
+export function SignalRadarExplorer({ data: sourceData }: { data: RadarExplorerData }) {
+  const [range, setRange] = useState<RadarTimeRange>({ kind: 'days', days: 30 });
+  const [rangeChoice, setRangeChoice] = useState('30');
+  const [startDate, setStartDate] = useState(date(sourceData.recentStart));
+  const [endDate, setEndDate] = useState(date(sourceData.asOf));
+  const [rangeError, setRangeError] = useState('');
+  const data = useMemo(() => filterRadarWindow(sourceData, range), [sourceData, range]);
   const defaultDomain = [...data.domains].sort(
     (left, right) =>
       right.recentCount - left.recentCount ||
@@ -83,6 +70,22 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
     defaultDomain ? { kind: 'domain', id: defaultDomain.id } : { kind: 'all' },
   );
   const [visibleCount, setVisibleCount] = useState(initialLimit);
+  const applyRange = (next: RadarTimeRange) => {
+    try {
+      // Validate before replacing the active range; invalid drafts leave the radar intact.
+      filterRadarWindow(sourceData, next);
+      setRange(next);
+      setSelection({ kind: 'all' });
+      setVisibleCount(initialLimit);
+      setRangeError('');
+    } catch (error) {
+      setRangeError(error instanceof Error ? error.message : '请选择有效的时间范围。');
+    }
+  };
+  const applyCustomRange = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    applyRange({ kind: 'custom', startDate, endDate });
+  };
   const detailHeadingRef = useRef<HTMLHeadingElement>(null);
   const plotViewportRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -188,13 +191,80 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
             <p>选择领域、分类或资源，查看同一公开样本中的关联信号。</p>
           </div>
           <div className={styles.snapshot}>
-            <span>近 30 日公开信号</span>
+            <span>{data.rangeLabel}公开信号</span>
             <strong>{data.recentCount}</strong>
             <small>
-              {date(data.recentStart)} — {date(data.asOf)} UTC · 累计 {data.totalCount} 条
+              {date(data.rangeStart)} —{' '}
+              {range.kind === 'custom' ? range.endDate : date(data.rangeEnd)} UTC
+              {' · '}累计 {data.totalCount} 条
             </small>
           </div>
         </header>
+
+        <div className={styles.timeControls}>
+          <label htmlFor="radar-time-range">时间范围</label>
+          <select
+            id="radar-time-range"
+            value={rangeChoice}
+            onChange={(event) => {
+              const choice = event.target.value;
+              setRangeChoice(choice);
+              setRangeError('');
+              if (choice !== 'custom')
+                applyRange(
+                  choice === 'all' ? { kind: 'all' } : { kind: 'days', days: Number(choice) },
+                );
+            }}
+          >
+            {[7, 30, 90, 180, 365].map((days) => (
+              <option key={days} value={days}>
+                近 {days} 天
+              </option>
+            ))}
+            <option value="all">全部时间</option>
+            <option value="custom">自定义日期</option>
+          </select>
+          {rangeChoice === 'custom' && (
+            <form className={styles.customRange} onSubmit={applyCustomRange}>
+              <label>
+                开始日期
+                <input
+                  type="date"
+                  required
+                  value={startDate}
+                  max={date(sourceData.asOf)}
+                  onChange={(event) => setStartDate(event.target.value)}
+                  aria-describedby={rangeError ? 'radar-range-error' : undefined}
+                />
+              </label>
+              <label>
+                结束日期
+                <input
+                  type="date"
+                  required
+                  value={endDate}
+                  max={date(sourceData.asOf)}
+                  onChange={(event) => setEndDate(event.target.value)}
+                  aria-describedby={rangeError ? 'radar-range-error' : undefined}
+                />
+              </label>
+              <button type="submit">应用日期</button>
+            </form>
+          )}
+          <span className={styles.rangeStatus} role="status">
+            当前：{data.rangeLabel} · {data.recentCount} 条信号
+          </span>
+          {rangeError && (
+            <p id="radar-range-error" role="alert">
+              {rangeError}
+            </p>
+          )}
+        </div>
+        {data.recentCount === 0 && (
+          <p className={styles.empty} role="status">
+            所选时间范围暂无公开信号，请扩大范围或选择全部时间。
+          </p>
+        )}
 
         <div className={styles.stageBody}>
           <div className={styles.plotColumn}>
@@ -218,16 +288,17 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
                       />
                     );
                   })}
-                  {data.domains.some((domain) => domain.previousCount > 0) && (
-                    <polygon
-                      className={styles.previousShape}
-                      points={polygon(
-                        data.domains,
-                        (domain) => domain.previousCount,
-                        timelineMaximum,
-                      )}
-                    />
-                  )}
+                  {data.previousLabel !== null &&
+                    data.domains.some((domain) => domain.previousCount > 0) && (
+                      <polygon
+                        className={styles.previousShape}
+                        points={polygon(
+                          data.domains,
+                          (domain) => domain.previousCount,
+                          timelineMaximum,
+                        )}
+                      />
+                    )}
                   {data.domains.some((domain) => domain.recentCount > 0) && (
                     <polygon
                       className={styles.recentShape}
@@ -264,7 +335,7 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
                       selection.kind !== 'all'
                     }
                     aria-controls="radar-detail-panel"
-                    aria-label={`${domain.name}，近 30 日 ${domain.recentCount} 条，累计 ${domain.totalCount} 条，点击查看分类与信号`}
+                    aria-label={`${domain.name}，${data.rangeLabel} ${domain.recentCount} 条，累计 ${domain.totalCount} 条，点击查看分类与信号`}
                     onClick={() => choose({ kind: 'domain', id: domain.id })}
                   >
                     <strong>{domain.name}</strong>
@@ -283,7 +354,7 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
                     data-heat={heat(category.recentCount, categoryMaximum)}
                     aria-pressed={selectedCategory?.id === category.id}
                     aria-controls="radar-detail-panel"
-                    aria-label={`${category.name}分类，近 30 日 ${category.recentCount} 条，累计 ${category.totalCount} 条，点击查看信号`}
+                    aria-label={`${category.name}分类，${data.rangeLabel} ${category.recentCount} 条，累计 ${category.totalCount} 条，点击查看信号`}
                     onClick={() => choose({ kind: 'category', id: category.id })}
                   >
                     <strong>{category.name}</strong>
@@ -301,7 +372,7 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
                     data-kind={resource.type}
                     aria-pressed={selectedResource?.id === resource.id}
                     aria-controls="radar-detail-panel"
-                    aria-label={`资源第 ${index + 1} 名，${resource.type === 'person' ? '人物' : '公司'} ${resource.name}，近 30 日 ${resource.recentCount} 条，点击查看关联信号`}
+                    aria-label={`资源第 ${index + 1} 名，${resource.type === 'person' ? '人物' : '公司'} ${resource.name}，${data.rangeLabel} ${resource.recentCount} 条，点击查看关联信号`}
                     onClick={() => choose({ kind: 'resource', id: resource.id })}
                   >
                     <span>
@@ -318,11 +389,15 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
             </div>
             <div className={styles.plotLegend}>
               <span>
-                <i className={styles.recentKey} />近 30 日分布
+                <i className={styles.recentKey} />
+                {data.rangeLabel}分布
               </span>
-              <span>
-                <i className={styles.previousKey} />前 30 日分布
-              </span>
+              {data.previousLabel && (
+                <span>
+                  <i className={styles.previousKey} />
+                  {data.previousLabel}分布
+                </span>
+              )}
               <span>
                 <i className={styles.categoryKey} />
                 当前领域分类
@@ -341,7 +416,7 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
                 {selectionName}
               </h2>
               <p>
-                近 30 日 <strong>{selectedRecent}</strong> 条 · 累计 {selectedTotal} 条
+                {data.rangeLabel} <strong>{selectedRecent}</strong> 条 · 累计 {selectedTotal} 条
               </p>
             </div>
 
@@ -371,7 +446,11 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
             )}
 
             {selectedResource && (
-              <Link className={styles.profileLink} href={resourceHref(selectedResource)}>
+              <Link
+                className={styles.profileLink}
+                href={resourceHref(selectedResource)}
+                prefetch={false}
+              >
                 查看{selectedResource.type === 'person' ? '人物' : '公司'}资料 ↗
               </Link>
             )}
@@ -380,7 +459,7 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
               <div className={styles.categoryPanel}>
                 <div className={styles.panelSectionHeading}>
                   <h3>领域内分类</h3>
-                  <span>近 30 日热度</span>
+                  <span>{data.rangeLabel}热度</span>
                 </div>
                 <div className={styles.categoryList}>
                   {categoryChildren.map((category) => (
@@ -419,7 +498,9 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
                       <article>
                         <time dateTime={signal.occurredAt}>{date(signal.occurredAt)}</time>
                         <h4>
-                          <Link href={`/signals/${signal.id}`}>{signal.title}</Link>
+                          <Link href={`/signals/${signal.id}`} prefetch={false}>
+                            {signal.title}
+                          </Link>
                         </h4>
                         <p>{signal.summary}</p>
                       </article>
@@ -443,9 +524,13 @@ export function SignalRadarExplorer({ data }: { data: RadarExplorerData }) {
         </div>
 
         <p className={styles.footnote}>
-          热度按本站已公开、去重的信号在近 30 日内的事件数衡量；高／中／低仅相对同层节点，
-          不是全行业实时热度。资源 TOP 5
-          按全站排序，不随领域选择改变。历史信号仍计入累计；未核实身份 ID 的人物或公司不进入资源榜。
+          热度按所选时间范围内已公开、去重的信号数衡量，沿用信号日期，按 UTC 统计；累计为全部时间。
+          领域、分类、资源和关联信号使用相同范围，无信号的节点不显示。高／中／低仅相对同层节点，
+          不是全行业实时热度。资源 TOP 5 随时间范围重排，不随领域选择改变；未核实身份 ID
+          的人物或公司不进入资源榜。
+          {data.previousLabel
+            ? '虚线对比当前可见领域的上一等长时段；自定义日期包含首尾日，今天截至数据加载时刻。'
+            : '全部时间不作上一时段对比。'}
         </p>
       </section>
     </main>
