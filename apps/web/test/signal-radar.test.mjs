@@ -242,7 +242,7 @@ test('domain and every taxonomy depth expose the same ordered, deduplicated sign
   assert.equal(JSON.stringify(result).includes('NaN'), false);
 });
 
-test('top five resources rank exact public person/company identities by 30-day events', () => {
+test('top five resources rank exact public person and organization identities by 30-day events', () => {
   const entities = [
     ...Array.from({ length: 4 }, (_, index) => ({
       id: `person-${index}`,
@@ -282,7 +282,7 @@ test('top five resources rank exact public person/company identities by 30-day e
     { entities },
   );
   assert.equal(result.topResources.length, 5);
-  assert.equal(result.resources.length, 7);
+  assert.equal(result.resources.length, 8);
   assert.ok(result.resources.some((resource) => resource.id === 'person-3'));
   assert.deepEqual(
     result.topResources.map((resource) => [resource.id, resource.recentCount, resource.totalCount]),
@@ -290,8 +290,8 @@ test('top five resources rank exact public person/company identities by 30-day e
       ['company-0', 2, 2],
       ['person-0', 2, 2],
       ['company-1', 1, 2],
+      ['institution-0', 1, 2],
       ['person-1', 1, 2],
-      ['company-2', 1, 1],
     ],
   );
   assert.deepEqual(result.topResources.find((resource) => resource.id === 'person-1').signalIds, [
@@ -300,7 +300,7 @@ test('top five resources rank exact public person/company identities by 30-day e
   ]);
   assert.equal(
     result.topResources.some((resource) => resource.id === 'institution-0'),
-    false,
+    true,
   );
   assert.equal(result.exclusions.duplicateCount, 1);
   assert.equal(
@@ -372,7 +372,7 @@ new Function('require', 'module', 'exports', compiled.outputFiles[0].text)(
 const render = (model) =>
   renderToStaticMarkup(createElement(loaded.exports.SignalRadar, { model }));
 
-test('radar defaults to 30 days with accessible controls and matching signal links', () => {
+test('radial word cloud renders topics and range controls before revealing any details', () => {
   const html = render(
     compute(
       [
@@ -392,24 +392,20 @@ test('radar defaults to 30 days with accessible controls and matching signal lin
       },
     ),
   );
-  assert.match(html, /技术演进雷达/);
-  assert.match(html, /可点击的领域、分类和资源雷达/);
-  assert.match(html, /领域内分类/);
-  assert.match(html, /人工智能，近 30 日 1 条/);
-  assert.match(html, /全站人物／公司 TOP 5/);
-  assert.match(html, /资源第 1 名/);
-  assert.match(html, /aria-pressed="true"/);
-  assert.match(html, /aria-live="polite"/);
+  assert.match(html, /技术热点词云/);
+  assert.match(html, /data-hotspot-id="topic-models"/);
+  assert.match(html, /模型，近 30 日 1 条/);
+  assert.doesNotMatch(html, /<dialog|id="radar-detail-panel"/);
+  assert.doesNotMatch(html, /href="\/persons\/person-0"/);
+  assert.doesNotMatch(html, /href="\/resources\/company-0"/);
   assert.doesNotMatch(html, /href="\/signals\/archive"/);
-  assert.match(html, /href="\/signals\/current"/);
-  assert.match(html, /&lt;script&gt;/);
   assert.doesNotMatch(html, /<script>not markup/);
-  assert.match(html, /热度按所选时间范围内已公开、去重的信号/);
+  assert.doesNotMatch(html, /查看相关信号/);
   assert.match(html, /<label for="radar-time-range">时间范围<\/label>/);
   assert.match(html, /全部时间/);
   assert.match(html, /自定义日期/);
-  assert.doesNotMatch(html, /最近发生的信号|雷达概况/);
-  assert.match(render(compute([])), /该节点暂无符合当前公开口径的信号/);
+  assert.doesNotMatch(html, /全站人物／公司 TOP 5|可点击的领域、分类和资源雷达/);
+  assert.match(render(compute([])), /所选时间范围暂无公开信号/);
 });
 
 test('radar markup hides nodes outside the active range and explains the empty state', () => {

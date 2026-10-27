@@ -5,6 +5,7 @@ import {
   type PublicEntitySummary,
 } from './public-exploration-core.ts';
 import { signalPublication, toUnifiedSignal } from './unified-signal-core.ts';
+import { resourceMedia, resourceProfile, type ResourceMedia } from './resource-presentation.ts';
 
 export const radarRankingVersion = 'radar-event-time-v2';
 export const radarTrendVersion = 'radar-monthly-observation-v2';
@@ -60,11 +61,15 @@ export interface RadarCategoryObservation {
 export interface RadarResourceObservation {
   id: string;
   name: string;
-  type: 'person' | 'company';
+  type: 'person' | 'company' | 'institution';
   /** Distinct events in the trailing 30 days, not a composite industry score. */
   recentCount: number;
   totalCount: number;
   signalIds: string[];
+  /** Public, sourced profile/media only; presence does not establish technical leadership. */
+  summary?: string;
+  profileSourceUrl?: string;
+  media?: ResourceMedia;
 }
 
 export interface RadarSignalIndexEntry {
@@ -73,6 +78,19 @@ export interface RadarSignalIndexEntry {
   summary: string;
   occurredAt: string;
   domainIds: string[];
+  /** Excerpt of an existing public Signal analysis, never private provider reasoning. */
+  analysis?: string;
+  analysisTruncated?: boolean;
+}
+
+function publicAnalysisExcerpt(value: string | undefined) {
+  const analysis = value?.trim();
+  if (!analysis || /<\/?(?:think|analysis|reasoning)\b/i.test(analysis)) return {};
+  const characters = [...analysis];
+  return {
+    analysis: characters.slice(0, 1000).join(''),
+    ...(characters.length > 1000 ? { analysisTruncated: true } : {}),
+  };
 }
 
 /**
@@ -86,7 +104,10 @@ export function buildSignalRadar(
   {
     now = new Date(),
     entities = [],
-  }: { now?: Date; entities?: readonly Pick<PublicEntitySummary, 'id' | 'name' | 'type'>[] } = {},
+  }: {
+    now?: Date;
+    entities?: readonly Pick<PublicEntitySummary, 'id' | 'name' | 'type' | 'profile'>[];
+  } = {},
 ) {
   const asOf = now.getTime();
   if (!Number.isFinite(asOf)) throw new Error('Invalid radar cutoff');
@@ -218,20 +239,24 @@ export function buildSignalRadar(
       : [];
   });
   const subtopicMap = new Map(subtopics.map((topic) => [topic.id, topic]));
-  const resources: RadarResourceObservation[] = entities.flatMap((entity) =>
-    entity.type === 'person' || entity.type === 'company'
-      ? [
-          {
-            id: entity.id,
-            name: entity.name,
-            type: entity.type,
-            totalCount: 0,
-            recentCount: 0,
-            signalIds: [],
-          },
-        ]
-      : [],
-  );
+  const resources: RadarResourceObservation[] = entities.flatMap((entity) => {
+    if (entity.type !== 'person' && entity.type !== 'company' && entity.type !== 'institution')
+      return [];
+    const profile = resourceProfile(entity);
+    const media = resourceMedia(entity.id);
+    return [
+      {
+        id: entity.id,
+        name: entity.name,
+        type: entity.type,
+        totalCount: 0,
+        recentCount: 0,
+        signalIds: [],
+        ...(profile ? { summary: profile.introduction, profileSourceUrl: profile.sourceUrl } : {}),
+        ...(media ? { media } : {}),
+      },
+    ];
+  });
   const resourceMap = new Map(resources.map((resource) => [resource.id, resource]));
   const domainsBySignal = new Map<string, string[]>();
   let unmappedCount = 0;
@@ -335,6 +360,7 @@ export function buildSignalRadar(
     summary: signal.summary,
     occurredAt: signal.occurred_at,
     domainIds: domainsBySignal.get(signal.id) ?? [],
+    ...publicAnalysisExcerpt(signal.analysis),
   }));
 
   const latestSignals: RadarSignal[] = eligible.slice(0, 10).map((signal) => {

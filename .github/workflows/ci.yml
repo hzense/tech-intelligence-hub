@@ -76,6 +76,8 @@ jobs:
         run: node --test test/admin-auth-runtime.test.mjs
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
+      - name: Verify radar word cloud with isolated browser fixtures
+        run: HZENSE_RADAR_BROWSER_TEST=1 node --test apps/web/test/signal-radar-browser.test.mjs
       - name: Verify request-rendered Signal details with editorial publication on and off
         working-directory: apps/web
         env:

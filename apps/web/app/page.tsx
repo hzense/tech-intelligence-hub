@@ -6,8 +6,8 @@ import { buildSignalRadar } from '@/lib/signal-radar-model';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
-  title: '技术演进雷达',
-  description: '在交互雷达中查看公开信号的领域与分类热度、人物和公司资源，以及关联信号。',
+  title: '技术热点词云',
+  description: '通过交互词云查看技术热点、热度趋势，以及热点相关的组织、人物和公开信号。',
   alternates: { canonical: '/' },
 };
 
