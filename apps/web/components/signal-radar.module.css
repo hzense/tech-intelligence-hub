@@ -78,6 +78,67 @@
   gap: clamp(16px, 2.2vw, 32px);
 }
 
+.timeControls,
+.customRange {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.timeControls {
+  margin: 18px 0;
+  padding: 14px 0;
+  border-block: 1px solid rgba(145, 197, 229, 0.24);
+  font-size: 12px;
+}
+
+.customRange label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.timeControls select,
+.timeControls input,
+.timeControls button {
+  min-height: 40px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #56879d;
+  border-radius: 8px;
+  background: #102b44;
+  color: #eaf4fc;
+  font: inherit;
+  color-scheme: dark;
+}
+
+.timeControls select,
+.timeControls button {
+  cursor: pointer;
+}
+
+.timeControls button:hover {
+  background: #19546c;
+}
+
+.timeControls :is(select, input, button):focus-visible {
+  outline: 2px solid #ffe0a3;
+  outline-offset: 3px;
+}
+
+.rangeStatus {
+  color: #a8bed2;
+}
+
+.timeControls p[role='alert'] {
+  flex-basis: 100%;
+  margin: 0;
+  color: #ffcdad;
+}
+
 .plotColumn {
   min-width: 0;
 }

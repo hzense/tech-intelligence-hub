@@ -108,7 +108,8 @@ jobs:
 
   database-migrations:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Includes browser dependency downloads and HTTP/PostgreSQL UI fixtures.
+    timeout-minutes: 20
     services:
       postgres:
         # Same pinned Docker Hub image, via Google's public cache to avoid runner pull limits.

@@ -320,15 +320,15 @@ export function buildSignalRadar(
       right.totalCount - left.totalCount ||
       compareId(left.id, right.id),
   );
-  const topResources = resources
+  const observedResources = resources
     .filter((resource) => resource.totalCount > 0)
     .sort(
       (left, right) =>
         right.recentCount - left.recentCount ||
         right.totalCount - left.totalCount ||
         compareId(left.id, right.id),
-    )
-    .slice(0, 5);
+    );
+  const topResources = observedResources.slice(0, 5);
   const signalIndex: RadarSignalIndexEntry[] = eligible.map((signal) => ({
     id: signal.id,
     title: signal.title,
@@ -369,6 +369,7 @@ export function buildSignalRadar(
     subtopics: observedSubtopics,
     categories: observedCategories,
     topResources,
+    resources: observedResources,
     signalIndex,
     latestSignals,
     exclusions: { invalidDates, futureDates, duplicateCount },

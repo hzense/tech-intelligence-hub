@@ -8,17 +8,17 @@ HZense 科技情报网站，使用 Next.js App Router、React 和 TypeScript 构
 
 | 路由                            | 内容                                                    |
 | ------------------------------- | ------------------------------------------------------- |
-| `/`                             | 首页与内容入口                                          |
+| `/`                             | 交互雷达首页与动态时间范围                              |
 | `/insights`、`/insights/[id]`   | 洞察文章列表与正文                                      |
 | `/topics`、`/topics/[id]`       | 专题列表与关联内容                                      |
 | `/signals`、`/signals/[id]`     | 信号列表、详情与原始来源                                |
 | `/resources`、`/resources/[id]` | 资源列表、详情与关联信号                                |
-| `/radar`                        | 科技雷达、领域／成熟度／趋势筛选与评分依据              |
+| `/radar`                        | 永久跳转到首页雷达                                      |
 | `/search`                       | 公开内容搜索与类型筛选                                  |
 | `/admin/login`、`/admin`        | Google 管理员登录及最小受保护首页；不是采集或发布操作台 |
 | `/api/admin/session`            | 独立鉴权的只读管理员会话 API                            |
 
-雷达目前展示手工维护、带评分证据的结构化示例快照。新版产品方向见 [Signal-first v2 设计](../../docs/SIGNAL_FIRST_REDESIGN.md)；其中的 AI 生产、版本化业务数据与产品迁移属于待实施设计，不能据此视为当前应用已经提供的能力。
+首页雷达按已公开、去重的信号聚合领域、分类和 TOP 5 人物／公司资源。时间范围默认近 30 天，支持近 7／90／180／365 天、全部时间和自定义 UTC 日期；切换同步更新热度与关联信号，不额外查询数据库。没有信号的节点隐藏，累计数保留全部时间口径。实际交付状态和线上验收边界以 [进展看板](../../docs/PROGRESS.md) 为准。
 
 ## 管理员认证
 
@@ -44,7 +44,7 @@ pnpm --filter @hzense/web dev
 
 - [`lib/content-runtime.ts`](lib/content-runtime.ts) 通过 `@hzense/content` 读取仓库中的 `content/`、`data/seed/` 与受控分类体系（Taxonomy）。洞察仅展示 `published` 内容；专题排除 `archived` 状态。日报与周报内容和路由已移除。
 - [`lib/seed-runtime.ts`](lib/seed-runtime.ts) 读取 YAML 种子数据：公开信号接受 `accepted` 或 `reviewed` 状态，并优先按事件发生时间 `occurred_at` 排序；资源仅展示 `active` 实体。
-- [`lib/topic-assessments.ts`](lib/topic-assessments.ts) 将 Topic 正文与该专题的最新雷达快照组合成只读 `assessment`。专题列表、详情与首页／雷达的四项指标统一来自 `data/seed/radar.yaml`，不从 Markdown 回退；缺快照显示 `—`／“待评估”并排在已评分专题之后。Topic Markdown 禁止重复填写评分，现有内容校验会拦截；评分更新仍需要构建发布，不会因新增信号自动重算。
+- [`lib/signal-radar-model.ts`](lib/signal-radar-model.ts) 从公开读取入口构建去重的雷达快照；[`lib/radar-window.ts`](lib/radar-window.ts) 在同一快照上计算所选时间范围、上一等长时段及资源排名。首页不使用手工维护的 Seed 雷达评分。
 - [`lib/search-runtime.ts`](lib/search-runtime.ts) 将可公开内容转成统一搜索文档，复用 `@hzense/search` 的投影与排序规则。
 - [`lib/server/search.ts`](lib/server/search.ts) 在服务端选择搜索模式。`HZENSE_SEARCH_MODE` 支持 `in-process`、`shadow`、`database`，未设置时使用 `in-process`；`shadow` 比较两种结果并返回进程内结果，`database` 直接使用数据库查询。
 

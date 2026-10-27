@@ -282,6 +282,8 @@ test('top five resources rank exact public person/company identities by 30-day e
     { entities },
   );
   assert.equal(result.topResources.length, 5);
+  assert.equal(result.resources.length, 7);
+  assert.ok(result.resources.some((resource) => resource.id === 'person-3'));
   assert.deepEqual(
     result.topResources.map((resource) => [resource.id, resource.recentCount, resource.totalCount]),
     [
@@ -370,14 +372,17 @@ new Function('require', 'module', 'exports', compiled.outputFiles[0].text)(
 const render = (model) =>
   renderToStaticMarkup(createElement(loaded.exports.SignalRadar, { model }));
 
-test('radar renders a unified accessible visualization and links to both signal kinds', () => {
+test('radar defaults to 30 days with accessible controls and matching signal links', () => {
   const html = render(
     compute(
       [
         legacy('archive', '2026-03-03T00:00:00.000Z', {
           entities: ['person-0', 'company-0'],
         }),
-        signal('current', undefined, { title: '<script>not markup</script>' }),
+        legacy('current', '2026-09-25T12:00:00.000Z', {
+          title: '<script>not markup</script>',
+          entities: ['person-0', 'company-0'],
+        }),
       ],
       {
         entities: [
@@ -395,16 +400,19 @@ test('radar renders a unified accessible visualization and links to both signal 
   assert.match(html, /资源第 1 名/);
   assert.match(html, /aria-pressed="true"/);
   assert.match(html, /aria-live="polite"/);
-  assert.match(html, /href="\/signals\/archive"/);
+  assert.doesNotMatch(html, /href="\/signals\/archive"/);
   assert.match(html, /href="\/signals\/current"/);
   assert.match(html, /&lt;script&gt;/);
   assert.doesNotMatch(html, /<script>not markup/);
-  assert.match(html, /热度按本站已公开、去重的信号/);
+  assert.match(html, /热度按所选时间范围内已公开、去重的信号/);
+  assert.match(html, /<label for="radar-time-range">时间范围<\/label>/);
+  assert.match(html, /全部时间/);
+  assert.match(html, /自定义日期/);
   assert.doesNotMatch(html, /最近发生的信号|雷达概况/);
   assert.match(render(compute([])), /该节点暂无符合当前公开口径的信号/);
 });
 
-test('radar markup hides empty domains and categories but keeps quiet historical directions', () => {
+test('radar markup hides nodes outside the active range and explains the empty state', () => {
   const html = render(
     compute([
       legacy('old-agents', '2026-01-01T00:00:00.000Z', {
@@ -412,7 +420,9 @@ test('radar markup hides empty domains and categories but keeps quiet historical
       }),
     ]),
   );
-  assert.match(html, /人工智能，近 30 日 0 条，累计 1 条/);
+  assert.doesNotMatch(html, /人工智能，近 30 日/);
+  assert.match(html, /所选时间范围暂无公开信号/);
+  assert.match(html, /累计 1 条/);
   assert.doesNotMatch(html, /安全，近 30 日/);
   assert.doesNotMatch(html, /智能体记忆/);
 });

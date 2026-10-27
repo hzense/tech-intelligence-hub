@@ -1,5 +1,6 @@
 import type { SignalRadarModel } from '@/lib/signal-radar-model';
-import { SignalRadarExplorer, type RadarExplorerData } from './signal-radar-explorer';
+import type { RadarExplorerData } from '@/lib/radar-window';
+import { SignalRadarExplorer } from './signal-radar-explorer';
 
 /** Keep the public reader and full Signal records on the server boundary. */
 export function SignalRadar({ model }: { model: SignalRadarModel }) {
@@ -20,7 +21,7 @@ export function SignalRadar({ model }: { model: SignalRadarModel }) {
       }),
     ),
     categories: model.categories,
-    topResources: model.topResources,
+    resources: model.resources,
     signalIndex: model.signalIndex,
   };
   return <SignalRadarExplorer data={data} />;
