@@ -1,31 +1,48 @@
 import { expect, test } from '@playwright/test';
 
-test('Radar homepage renders with canonical metadata', async ({ page }) => {
+test('Radar word cloud renders with canonical metadata and opens details on demand', async ({
+  page,
+}) => {
   await page.goto('/');
-  await expect(page).toHaveTitle('技术演进雷达');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('技术演进雷达');
+  await expect(page).toHaveTitle('技术热点词云');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('技术热点词云');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://hzense.com');
-  const radar = page.locator('[aria-label="可点击的领域、分类和资源雷达"]');
-  const detail = page.locator('#radar-detail-panel');
-  await expect(radar).toBeVisible();
+  const cloud = page.locator('[data-cloud-canvas="true"]');
+  const detail = page.getByRole('dialog', { name: '热点详情' });
+  const range = page.getByLabel('时间范围', { exact: true });
+  await expect(cloud).toBeVisible();
+  await expect(cloud).toHaveAttribute('data-layout-ready', 'true');
+  await expect(detail).toHaveCount(0);
   await expect(page.locator('footer.site-footer')).toHaveCount(0);
   await expect(page.getByRole('heading', { level: 2, name: '最近发生的信号' })).toHaveCount(0);
-  const category = radar.locator('button[aria-label*="分类，近 30 日"]').first();
-  const categoryName = await category.locator('strong').innerText();
-  await category.click();
-  await expect(detail.getByRole('heading', { level: 2 })).toHaveText(categoryName);
-  const resource = radar.locator('button[data-kind]').first();
-  const resourceName = await resource.locator('strong').innerText();
-  await resource.click();
-  await expect(detail.getByRole('heading', { level: 2 })).toHaveText(resourceName);
-  await expect(radar.locator('button[aria-label*="分类，近 30 日"]')).toHaveCount(0);
-  await expect(detail.locator('a[href^="/signals/"]').first()).toBeVisible();
-  if ((page.viewportSize()?.width ?? 0) <= 620) {
-    const viewport = page.locator('[class*="plotViewport"]');
-    await expect(page.getByText('左右滑动雷达，点击节点查看关联信号。')).toBeVisible();
-    expect(await viewport.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
-    expect(await viewport.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+  // Seed dates can age out of the default 30-day view; the historical fixture
+  // should still exercise a real hotspot rather than depend on a fixed date.
+  if ((await cloud.locator('button[data-hotspot-id]').count()) === 0) {
+    await range.selectOption('all');
+    await expect(cloud).toHaveAttribute('data-layout-ready', 'true');
   }
+  const words = cloud.locator('button[data-hotspot-id]');
+  await expect(words.first()).toBeVisible();
+  const labels = await words.evaluateAll((nodes) =>
+    nodes.map((node) => node.getAttribute('aria-label')),
+  );
+  expect(labels.every((label) => / [1-9]\d* 条/.test(label ?? ''))).toBe(true);
+  const word = words.first();
+  const name = (await word.getAttribute('aria-label'))!.split('，')[0];
+  await word.click();
+  await expect(detail).toBeVisible();
+  await expect(detail.getByRole('heading', { level: 2 })).toHaveText(name!);
+  await expect(detail.getByRole('heading', { name: '技术趋势研判', exact: true })).toBeVisible();
+  await expect(detail.getByRole('heading', { name: '相关组织', exact: true })).toBeVisible();
+  await expect(detail.getByRole('heading', { name: '代表人物', exact: true })).toBeVisible();
+  await detail.getByRole('button', { name: /^查看相关信号/ }).click();
+  await expect(detail.locator('#radar-signal-list a[href^="/signals/"]').first()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(detail).toHaveCount(0);
+  await expect(word).toBeFocused();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
   if ((page.viewportSize()?.width ?? 0) > 700) {
     await expect(
       page
@@ -186,14 +203,16 @@ test('Resources show organization and person cards with linked trend details', a
   await expect(page.getByRole('heading', { level: 2, name: '技术发展趋势观察' })).toBeVisible();
 });
 
-test('legacy Radar route redirects home and explains observed heat', async ({ page, request }) => {
+test('legacy Radar route redirects to the interactive word cloud', async ({ page, request }) => {
   await page.goto('/radar');
   await expect(page).toHaveURL(/\/$/);
-  await expect(page).toHaveTitle('技术演进雷达');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('技术演进雷达');
-  await expect(page.getByText(/不是全行业实时热度/)).toBeVisible();
+  await expect(page).toHaveTitle('技术热点词云');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('技术热点词云');
+  await expect(page.locator('[data-cloud-canvas="true"]')).toBeVisible();
+  await expect(page.getByLabel('时间范围', { exact: true })).toHaveValue('30');
+  await expect(page.getByText('字号：所选时段信号量', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '热点详情' })).toHaveCount(0);
   await expect(page.locator('nav.desktop-nav a[href="/"]')).toHaveAttribute('href', '/');
-  expect(await page.locator('main ol li').count()).toBeLessThanOrEqual(8);
   const sitemapResponse = await request.get('/sitemap.xml');
   expect(await sitemapResponse.text()).toContain('https://hzense.com');
   await expect(page.getByRole('navigation', { name: '热点时间窗口' })).toHaveCount(0);
@@ -220,7 +239,7 @@ test('mobile navigation keeps every primary route reachable', async ({ page }) =
 
   await mobileNavigation.getByRole('link', { name: '雷达' }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('技术演进雷达');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('技术热点词云');
   await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
   await expect(mobileNavigation).toBeHidden();
   await menuButton.click();
