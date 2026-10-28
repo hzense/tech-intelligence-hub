@@ -1,0 +1,781 @@
+<!-- Historical embedded design mockup, archived 2026-10-28. Superseded by PR #242.
+     Synthetic data only. Carousel controls are supplied by the original host. -->
+<div id="hz-trend-options">
+  <p role="note">
+    历史方案归档（未采用）· 合成数据示意。后续交互词云方案已通过 PR #242
+    合并，本文件不代表网站现状。
+  </p>
+  <div
+    class="viz-carousel viz-dotted-background"
+    aria-label="技术趋势雷达设计方案"
+    data-previous-label="上一方案"
+    data-next-label="下一方案"
+  >
+    <section data-variant="时间热力矩阵" aria-label="时间热力矩阵方案">
+      <div class="hz-stage">
+        <header>
+          <span class="hz-brand">HZENSE / 趋势雷达</span
+          ><span class="hz-sample">合成数据 · 非本站统计</span>
+        </header>
+        <h2>热点，沿时间展开</h2>
+        <div class="hz-meta">时间热力矩阵 · 8 个完整示意周 · 去重信号数</div>
+        <div class="hz-heat" aria-label="各方向每周信号数量"></div>
+        <div class="hz-legend">
+          <span>少</span><span class="hz-ramp"></span><span>多</span><span>0 = 示例中无信号</span>
+        </div>
+        <div class="hz-detail" aria-live="polite" data-detail="heat">
+          选择一个时间格，展开该方向的信号与关联资源。
+        </div>
+      </div>
+    </section>
+    <section data-variant="分面趋势折线" aria-label="分面趋势折线方案" hidden>
+      <div class="hz-stage">
+        <header>
+          <span class="hz-brand">HZENSE / 趋势雷达</span
+          ><span class="hz-sample">合成数据 · 非本站统计</span>
+        </header>
+        <h2>持续上升，还是短期波动</h2>
+        <div class="hz-meta">分面趋势折线 · 相同数量尺度 · 点击方向查看变化</div>
+        <div class="hz-lines"></div>
+        <div class="hz-detail" aria-live="polite" data-detail="lines">
+          每个方向保留完整时间轨迹，可对比升温、平台与降温。
+        </div>
+      </div>
+    </section>
+    <section data-variant="动量气泡图" aria-label="动量气泡图方案" hidden>
+      <div class="hz-stage">
+        <header>
+          <span class="hz-brand">HZENSE / 趋势雷达</span
+          ><span class="hz-sample">合成数据 · 非本站统计</span>
+        </header>
+        <h2>既活跃，又在升温的是谁</h2>
+        <div class="hz-meta">横轴：本周数量 · 纵轴：比上周增减 · 气泡等大</div>
+        <div
+          class="hz-bubble"
+          role="img"
+          aria-label="各方向活跃度与数量变化；右上角表示数量多且继续增加"
+        ></div>
+        <div class="hz-period">
+          <label for="hz-week">观察周 <output id="hz-week-value">第 8 周</output></label
+          ><input
+            id="hz-week"
+            type="range"
+            min="2"
+            max="8"
+            value="8"
+            step="1"
+            aria-label="观察周"
+          />
+        </div>
+        <div class="hz-bubble-choices" aria-label="选择方向"></div>
+        <div class="hz-detail" aria-live="polite" data-detail="bubble">
+          拖动时间，观察同一方向的位置如何改变；细线连接上一周位置。
+        </div>
+      </div>
+    </section>
+    <section data-variant="事件演进泳道" aria-label="事件演进泳道方案" hidden>
+      <div class="hz-stage">
+        <header>
+          <span class="hz-brand">HZENSE / 趋势雷达</span
+          ><span class="hz-sample">合成事件 · 非真实新闻</span>
+        </header>
+        <h2>从研究进展，到产品应用</h2>
+        <div class="hz-meta">按时间组织事件 · 节点可展开 · 相邻事件不代表因果</div>
+        <div class="hz-lanes" aria-label="技术方向的事件时间线"></div>
+        <div class="hz-detail" aria-live="polite" data-detail="lanes">
+          点击里程碑查看事件、组织、人物及证据。此处展示示例事件子集。
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+<style>
+  #hz-trend-options {
+    --hz-bg: light-dark(#fafbff, #151b2b);
+    --hz-fg: light-dark(#15243d, #edf2ff);
+    --hz-sub: light-dark(#556581, #afbcd4);
+    --hz-line: light-dark(#d8e0ee, #34425b);
+    --hz-blue: light-dark(#335be8, #8eabff);
+    --hz-soft: light-dark(#edf2ff, #243653);
+    --hz-green: light-dark(#087d76, #5bcbbf);
+    --hz-orange: light-dark(#a8541b, #f8b480);
+    --hz-purple: light-dark(#8556ba, #c6a2f0);
+    --hz-rose: light-dark(#b54373, #f5a0c6);
+    --hz-gray: light-dark(#657389, #a5b4cc);
+    color: var(--hz-fg);
+    font-family:
+      system-ui,
+      -apple-system,
+      'PingFang SC',
+      sans-serif;
+  }
+  #hz-trend-options .hz-stage {
+    box-sizing: border-box;
+    min-height: 710px;
+    padding: 24px 24px 20px;
+    background: var(--hz-bg);
+    border: 1px solid var(--hz-line);
+    border-radius: 18px;
+  }
+  #hz-trend-options header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    align-items: center;
+    padding-right: 70px;
+    font-size: 12px;
+    color: var(--hz-sub);
+  }
+  #hz-trend-options .hz-brand {
+    font-weight: 500;
+    letter-spacing: 1px;
+  }
+  #hz-trend-options h2 {
+    font-size: 24px;
+    font-weight: 500;
+    line-height: 1.4;
+    margin: 18px 0 6px;
+  }
+  #hz-trend-options .hz-meta {
+    font-size: 13px;
+    color: var(--hz-sub);
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+  #hz-trend-options button {
+    font: inherit;
+    color: inherit;
+  }
+  #hz-trend-options .hz-detail {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid var(--hz-line);
+    font-size: 13px;
+    line-height: 1.7;
+    min-height: 64px;
+  }
+  #hz-trend-options .hz-detail strong {
+    font-weight: 500;
+  }
+  #hz-trend-options .hz-resource {
+    display: inline-block;
+    margin: 7px 8px 0 0;
+    padding: 3px 8px;
+    background: var(--hz-soft);
+    border-radius: 5px;
+  }
+  #hz-trend-options .hz-heat-row {
+    display: grid;
+    grid-template-columns: 92px repeat(8, minmax(0, 1fr));
+    gap: 5px;
+    align-items: center;
+    margin-bottom: 7px;
+  }
+  #hz-trend-options .hz-heat-label {
+    font-size: 13px;
+  }
+  #hz-trend-options .hz-heat-week {
+    text-align: center;
+    font-size: 12px;
+    color: var(--hz-sub);
+    padding-bottom: 4px;
+  }
+  #hz-trend-options .hz-cell {
+    height: 40px;
+    border: 0;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--hz-blue) var(--cell-opacity), var(--hz-bg));
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  #hz-trend-options .hz-cell[aria-pressed='true'] {
+    outline: 2px solid var(--hz-fg);
+    outline-offset: 1px;
+  }
+  #hz-trend-options .hz-legend {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--hz-sub);
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+  #hz-trend-options .hz-ramp {
+    width: 95px;
+    height: 8px;
+    background: linear-gradient(
+      to right,
+      color-mix(in srgb, var(--hz-blue) 8%, var(--hz-bg)),
+      color-mix(in srgb, var(--hz-blue) 65%, var(--hz-bg))
+    );
+    border-radius: 3px;
+  }
+  #hz-trend-options .hz-lines {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px 20px;
+  }
+  #hz-trend-options .hz-line-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 13px;
+  }
+  #hz-trend-options .hz-topic-button {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    text-align: left;
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  #hz-trend-options .hz-line-head span {
+    font-size: 12px;
+    color: var(--hz-sub);
+  }
+  #hz-trend-options svg.hz-plot {
+    display: block;
+    width: 100%;
+    overflow: visible;
+  }
+  #hz-trend-options .hz-plot text {
+    fill: var(--hz-sub);
+    font:
+      12px system-ui,
+      -apple-system,
+      'PingFang SC',
+      sans-serif;
+  }
+  #hz-trend-options .hz-period {
+    margin: 10px 0 16px;
+  }
+  #hz-trend-options .hz-period label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+  }
+  #hz-trend-options input[type='range'] {
+    width: 100%;
+    margin: 12px 0 0;
+    accent-color: var(--hz-blue);
+  }
+  #hz-trend-options .hz-bubble-choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    font-size: 12px;
+  }
+  #hz-trend-options .hz-bubble-choices button {
+    border: 0;
+    padding: 4px 0;
+    background: transparent;
+  }
+  #hz-trend-options .hz-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--series);
+    margin-right: 6px;
+  }
+  #hz-trend-options .hz-lane-axis {
+    display: grid;
+    grid-template-columns: 86px 1fr;
+    margin-bottom: 10px;
+    font-size: 12px;
+    color: var(--hz-sub);
+  }
+  #hz-trend-options .hz-lane-axis > div {
+    display: flex;
+    justify-content: space-between;
+  }
+  #hz-trend-options .hz-lane {
+    display: grid;
+    grid-template-columns: 86px 1fr;
+    align-items: center;
+    min-height: 80px;
+    border-bottom: 1px solid var(--hz-line);
+  }
+  #hz-trend-options .hz-lane-name {
+    font-size: 13px;
+  }
+  #hz-trend-options .hz-events {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    align-items: center;
+    min-height: 80px;
+    position: relative;
+  }
+  #hz-trend-options .hz-events:before {
+    content: '';
+    height: 1px;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    background: var(--hz-line);
+  }
+  #hz-trend-options .hz-event {
+    background: var(--hz-soft);
+    border: 1px solid var(--hz-line);
+    border-radius: 8px;
+    min-height: 46px;
+    padding: 6px 3px;
+    font-size: 12px;
+    line-height: 1.5;
+    position: relative;
+    z-index: 1;
+  }
+  #hz-trend-options .hz-event[aria-pressed='true'] {
+    background: var(--hz-fg);
+    color: var(--hz-bg);
+  }
+  #hz-trend-options .hz-event .hz-event-week {
+    display: none;
+  }
+  @media (max-width: 500px) {
+    #hz-trend-options .hz-stage {
+      padding: 18px 12px;
+      min-height: 1250px;
+    }
+    #hz-trend-options h2 {
+      font-size: 21px;
+    }
+    #hz-trend-options .hz-heat-row {
+      grid-template-columns: 80px repeat(4, minmax(0, 1fr));
+    }
+    #hz-trend-options .hz-cell {
+      height: 44px;
+    }
+    #hz-trend-options .hz-lines {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    #hz-trend-options .hz-line-head {
+      margin-bottom: 3px;
+    }
+    #hz-trend-options .hz-lane-axis {
+      display: none;
+    }
+    #hz-trend-options .hz-lane {
+      grid-template-columns: 1fr;
+      padding: 12px 0;
+    }
+    #hz-trend-options .hz-events {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+    #hz-trend-options .hz-event {
+      grid-column: auto !important;
+    }
+    #hz-trend-options .hz-event .hz-event-week {
+      display: block;
+    }
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<script>
+  (() => {
+    const root = document.getElementById('hz-trend-options');
+    const colors = [
+      '--hz-blue',
+      '--hz-green',
+      '--hz-orange',
+      '--hz-purple',
+      '--hz-rose',
+      '--hz-gray',
+    ];
+    const rows = [
+      { name: '智能体', v: [2, 3, 3, 5, 7, 9, 12, 15] },
+      { name: '推理效率', v: [1, 2, 3, 4, 7, 10, 13, 18] },
+      { name: '具身智能', v: [1, 1, 2, 2, 3, 5, 7, 9] },
+      { name: 'AI 安全', v: [7, 8, 7, 6, 5, 5, 4, 3] },
+      { name: '算力基础', v: [8, 8, 9, 10, 11, 9, 8, 8] },
+      { name: '隐私计算', v: [3, 2, 2, 1, 1, 0, 0, 0] },
+    ];
+    const events = [
+      { r: 0, w: 1, label: '框架研究', detail: '提出新的任务编排方式' },
+      { r: 0, w: 4, label: '工具集成', detail: '开放工具接入与状态管理' },
+      { r: 0, w: 7, label: '应用试点', detail: '在限定业务中开展应用试点' },
+      { r: 1, w: 2, label: '方法发表', detail: '提出推理计算优化方法' },
+      { r: 1, w: 5, label: '评测更新', detail: '公开基准测试与复现材料' },
+      { r: 1, w: 8, label: '产品集成', detail: '推理优化进入可用产品' },
+      { r: 2, w: 3, label: '模型研究', detail: '探索视觉与动作联合建模' },
+      { r: 2, w: 6, label: '实机验证', detail: '在真实设备上评估执行效果' },
+      { r: 3, w: 2, label: '风险研究', detail: '公布新的风险测试方法' },
+      { r: 3, w: 5, label: '评估规范', detail: '提出一组可复查的评估要求' },
+    ];
+    const saved = window.openai?.widgetState?.modelContent;
+    let week = Number.isInteger(saved?.week) && saved.week >= 2 && saved.week <= 8 ? saved.week : 8;
+    let lastWidth = 0;
+    const detail = (kind, html) => {
+      root.querySelector(`[data-detail="${kind}"]`).innerHTML = html;
+    };
+    const persist = (selection) => {
+      window.openai
+        ?.setWidgetState?.({ modelContent: { week, selection }, privateContent: null })
+        ?.catch(() => {});
+    };
+    const resourceLabels =
+      '<div><span class="hz-resource">组织甲 · 公司</span><span class="hz-resource">人物乙 · 研究者</span><span class="hz-resource">其余关联资源…</span></div>';
+    function heat() {
+      const node = root.querySelector('.hz-heat');
+      const compact = root.getBoundingClientRect().width <= 500;
+      const width = compact ? 4 : 8;
+      node.replaceChildren();
+      const head = document.createElement('div');
+      head.className = 'hz-heat-row';
+      head.innerHTML =
+        '<span class="hz-heat-label">技术方向</span>' +
+        Array.from(
+          { length: width },
+          (_, i) =>
+            `<span class="hz-heat-week">${compact ? `${i * 2 + 1}–${i * 2 + 2}周` : `第${i + 1}周`}</span>`,
+        ).join('');
+      node.append(head);
+      const values = rows.map((d) =>
+        compact ? Array.from({ length: 4 }, (_, i) => d.v[i * 2] + d.v[i * 2 + 1]) : d.v,
+      );
+      const maximum = Math.max(...values.flat());
+      rows.forEach((r, i) => {
+        const line = document.createElement('div');
+        line.className = 'hz-heat-row';
+        const label = document.createElement('span');
+        label.className = 'hz-heat-label';
+        label.textContent = r.name;
+        line.append(label);
+        values[i].forEach((value, j) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'hz-cell cursor-interaction';
+          button.textContent = String(value);
+          button.setAttribute('aria-pressed', 'false');
+          const period = compact ? `第 ${j * 2 + 1}–${j * 2 + 2} 周` : `第 ${j + 1} 周`;
+          button.setAttribute('aria-label', `${r.name}，${period}，${value} 条示例信号`);
+          button.style.setProperty(
+            '--cell-opacity',
+            `${value === 0 ? 3 : 8 + (value / maximum) * 49}%`,
+          );
+          button.onclick = () => {
+            node.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+            button.setAttribute('aria-pressed', 'true');
+            detail(
+              'heat',
+              `<strong>${r.name} · ${period} · ${value} 条示例信号</strong>${value ? '<div>展开范围：所选时间与方向的信号集合</div>' + resourceLabels : '<div>此例用于展示持续降温；真实数据需区分无信号与采集覆盖缺失。</div>'}`,
+            );
+            persist({ view: '时间热力矩阵', topic: r.name, period });
+          };
+          line.append(button);
+        });
+        node.append(line);
+      });
+    }
+    const lines = root.querySelector('.hz-lines');
+    rows.forEach((r, i) => {
+      const panel = document.createElement('div');
+      panel.className = 'hz-facet';
+      panel.innerHTML = `<div class="hz-line-head"><button type="button" class="hz-topic-button cursor-interaction">${r.name}</button><span>第 8 周：${r.v[7]} 条</span></div><div class="hz-line-chart"></div>`;
+      panel.querySelector('button').onclick = () => {
+        detail(
+          'lines',
+          `<strong>${r.name} · 第 1 周 ${r.v[0]} 条 → 第 8 周 ${r.v[7]} 条</strong><div>点击真实站点中的时间点，可查看对应信号；此处为合成变化轨迹。</div>`,
+        );
+        persist({ view: '分面趋势折线', topic: r.name });
+      };
+      lines.append(panel);
+    });
+    function drawLines() {
+      const max = d3.max(rows.flatMap((d) => d.v));
+      root.querySelectorAll('.hz-line-chart').forEach((node, i) => {
+        const width = node.clientWidth;
+        if (!width) return;
+        node.replaceChildren();
+        const height = 111,
+          left = 64,
+          right = 14,
+          top = 12,
+          bottom = 29;
+        const x = d3
+          .scaleLinear()
+          .domain([1, 8])
+          .range([left + 4, width - right - 4]);
+        const y = d3
+          .scaleLinear()
+          .domain([0, max * 1.15])
+          .range([height - bottom - 4, top + 4]);
+        const svg = d3
+          .select(node)
+          .append('svg')
+          .attr('class', 'hz-plot')
+          .attr('viewBox', `0 0 ${width} ${height}`)
+          .attr('role', 'img')
+          .attr('aria-label', `${rows[i].name}，每周信号数 ${rows[i].v.join('、')}`);
+        svg
+          .append('rect')
+          .attr('x', left)
+          .attr('y', top)
+          .attr('width', width - left - right)
+          .attr('height', height - top - bottom)
+          .attr('fill', 'none')
+          .attr('stroke', 'var(--hz-line)');
+        [0, 10, 20].forEach((t) => {
+          svg
+            .append('text')
+            .attr('x', left - 8)
+            .attr('y', y(t) + 4)
+            .attr('text-anchor', 'end')
+            .text(t);
+        });
+        [1, 4, 8].forEach((t) => {
+          svg
+            .append('text')
+            .attr('x', x(t))
+            .attr('y', height - 8)
+            .attr('text-anchor', t === 8 ? 'end' : t === 1 ? 'start' : 'middle')
+            .text(`W${t}`);
+        });
+        svg.append('text').attr('x', 2).attr('y', 12).text('条');
+        svg
+          .append('path')
+          .datum(rows[i].v)
+          .attr(
+            'd',
+            d3
+              .line()
+              .x((d, j) => x(j + 1))
+              .y((d) => y(d)),
+          )
+          .attr('fill', 'none')
+          .attr('stroke', 'var(--hz-blue)')
+          .attr('stroke-width', 2.5);
+        svg
+          .append('circle')
+          .attr('cx', x(8))
+          .attr('cy', y(rows[i].v[7]))
+          .attr('r', 3.5)
+          .attr('fill', 'var(--hz-blue)');
+      });
+    }
+    function bubbleDetails(i) {
+      const r = rows[i],
+        current = r.v[week - 1],
+        delta = current - r.v[week - 2];
+      detail(
+        'bubble',
+        `<strong>${r.name} · 第 ${week} 周 ${current} 条 · 比上周 ${delta >= 0 ? '+' : ''}${delta} 条</strong><div>同一统计口径的数量变化，不代表技术进步速度。</div>`,
+      );
+      persist({ view: '动量气泡图', topic: r.name });
+    }
+    const choices = root.querySelector('.hz-bubble-choices');
+    rows.forEach((r, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cursor-interaction';
+      b.innerHTML = `<span class="hz-dot" style="--series:var(${colors[i]})"></span>${r.name}`;
+      b.onclick = () => bubbleDetails(i);
+      choices.append(b);
+    });
+    function bubble(animate = false) {
+      const node = root.querySelector('.hz-bubble');
+      const width = node.clientWidth;
+      if (!width) return;
+      const height = 300,
+        left = 64,
+        right = 28,
+        top = 24,
+        bottom = 49;
+      const extent = d3.extent(rows.flatMap((r) => r.v.slice(1).map((n, i) => n - r.v[i])));
+      const x = d3
+        .scaleLinear()
+        .domain([-1, d3.max(rows.flatMap((r) => r.v)) * 1.16])
+        .range([left, width - right]);
+      const y = d3
+        .scaleLinear()
+        .domain([extent[0] - 1.5, extent[1] + 1.5])
+        .range([height - bottom, top]);
+      let svg = d3.select(node).select('svg');
+      if (svg.empty()) svg = d3.select(node).append('svg').attr('class', 'hz-plot');
+      svg.attr('viewBox', `0 0 ${width} ${height}`);
+      svg.selectAll('.hz-axes').remove();
+      const axes = svg.insert('g', ':first-child').attr('class', 'hz-axes');
+      axes
+        .append('rect')
+        .attr('x', left)
+        .attr('y', top)
+        .attr('width', width - left - right)
+        .attr('height', height - top - bottom)
+        .attr('fill', 'none')
+        .attr('stroke', 'var(--hz-line)');
+      axes
+        .append('line')
+        .attr('x1', left)
+        .attr('x2', width - right)
+        .attr('y1', y(0))
+        .attr('y2', y(0))
+        .attr('stroke', 'var(--hz-line)');
+      [0, 5, 10, 15].forEach((t) =>
+        axes
+          .append('text')
+          .attr('x', x(t))
+          .attr('y', height - bottom + 20)
+          .attr('text-anchor', 'middle')
+          .text(t),
+      );
+      [-2, 0, 2, 4, 6]
+        .filter((t) => t >= extent[0] - 1.5 && t <= extent[1] + 1.5)
+        .forEach((t) =>
+          axes
+            .append('text')
+            .attr('x', left - 10)
+            .attr('y', y(t) + 4)
+            .attr('text-anchor', 'end')
+            .text(t > 0 ? `+${t}` : t),
+        );
+      axes.append('text').attr('x', left).attr('y', 13).text('较上周增减（条）');
+      axes
+        .append('text')
+        .attr('x', width - right)
+        .attr('y', height - 3)
+        .attr('text-anchor', 'end')
+        .text('本周信号数（条）');
+      const data = rows.map((r, i) => ({
+        i,
+        name: r.name,
+        x: r.v[week - 1],
+        y: r.v[week - 1] - r.v[week - 2],
+        px: r.v[week - 2],
+        py: week > 2 ? r.v[week - 2] - r.v[week - 3] : 0,
+      }));
+      const trails = svg
+        .selectAll('.hz-trail')
+        .data(data, (d) => d.i)
+        .join('line')
+        .attr('class', 'hz-trail')
+        .attr('stroke', (d) => `var(${colors[d.i]})`)
+        .attr('stroke-width', 2)
+        .attr('opacity', 0.45);
+      const circles = svg
+        .selectAll('.hz-mark')
+        .data(data, (d) => d.i)
+        .join('circle')
+        .attr('class', 'hz-mark')
+        .attr('fill', (d) => `var(${colors[d.i]})`)
+        .attr('r', 8);
+      const texts = svg
+        .selectAll('.hz-point-label')
+        .data(data, (d) => d.i)
+        .join('text')
+        .attr('class', 'hz-point-label')
+        .text((d) => (width > 480 ? d.name : ''));
+      const hits = svg
+        .selectAll('.hz-hit')
+        .data(data, (d) => d.i)
+        .join('circle')
+        .attr('class', 'hz-hit cursor-interaction')
+        .attr('r', 20)
+        .attr('fill', 'transparent')
+        .on('click', (e, d) => bubbleDetails(d.i));
+      const motion = animate && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+      (motion ? trails.transition().duration(220) : trails)
+        .attr('x1', (d) => x(d.px))
+        .attr('y1', (d) => y(d.py))
+        .attr('x2', (d) => x(d.x))
+        .attr('y2', (d) => y(d.y));
+      (motion ? circles.transition().duration(220) : circles)
+        .attr('cx', (d) => x(d.x))
+        .attr('cy', (d) => y(d.y));
+      (motion ? texts.transition().duration(220) : texts)
+        .attr('x', (d) => x(d.x))
+        .attr('y', (d) => y(d.y) - 14)
+        .attr('text-anchor', (d) => (d.x > 14 ? 'end' : d.x < 3 ? 'start' : 'middle'));
+      hits.attr('cx', (d) => x(d.x)).attr('cy', (d) => y(d.y));
+      const declutter = () => {
+        const occupied = [];
+        texts.each(function () {
+          this.style.visibility = 'visible';
+          if (!this.textContent) return;
+          const box = this.getBoundingClientRect();
+          if (
+            occupied.some(
+              (b) =>
+                box.left < b.right + 4 &&
+                box.right > b.left - 4 &&
+                box.top < b.bottom + 4 &&
+                box.bottom > b.top - 4,
+            )
+          )
+            this.style.visibility = 'hidden';
+          else occupied.push(box);
+        });
+      };
+      setTimeout(declutter, motion ? 250 : 0);
+      root.querySelector('#hz-week-value').textContent = `第 ${week} 周`;
+      root.querySelector('#hz-week').value = String(week);
+    }
+    root.querySelector('#hz-week').oninput = (e) => {
+      week = Number(e.target.value);
+      bubble(true);
+      detail('bubble', `第 ${week} 周 · 选择方向可查看数量与增减。`);
+      persist({ view: '动量气泡图' });
+    };
+    const lanes = root.querySelector('.hz-lanes');
+    lanes.innerHTML =
+      '<div class="hz-lane-axis"><span>技术方向</span><div><span>第 1 周</span><span>第 4 周</span><span>第 8 周</span></div></div>';
+    rows.slice(0, 4).forEach((r, i) => {
+      const lane = document.createElement('div');
+      lane.className = 'hz-lane';
+      lane.innerHTML = `<span class="hz-lane-name">${r.name}</span><div class="hz-events"></div>`;
+      events
+        .filter((e) => e.r === i)
+        .forEach((event) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'hz-event cursor-interaction';
+          b.style.gridColumn = String(event.w);
+          b.innerHTML = `<span class="hz-event-week">第 ${event.w} 周</span>${event.label}`;
+          b.setAttribute('aria-label', `${r.name}，第${event.w}周，${event.label}`);
+          b.setAttribute('aria-pressed', 'false');
+          b.onclick = () => {
+            lanes
+              .querySelectorAll('button')
+              .forEach((x) => x.setAttribute('aria-pressed', 'false'));
+            b.setAttribute('aria-pressed', 'true');
+            detail(
+              'lanes',
+              `<strong>示例事件 · ${r.name} · 第 ${event.w} 周</strong><div>${event.detail}。展开后展示事件摘要与原始来源，供判断演进依据。</div>${resourceLabels}`,
+            );
+            persist({ view: '事件演进泳道', topic: r.name, event: event.label });
+          };
+          lane.querySelector('.hz-events').append(b);
+        });
+      lanes.append(lane);
+    });
+    heat();
+    const resize = new ResizeObserver(() => {
+      const width = root.clientWidth;
+      if (width !== lastWidth) {
+        lastWidth = width;
+        heat();
+      }
+      drawLines();
+      bubble();
+    });
+    root.querySelectorAll('.hz-stage').forEach((el) => resize.observe(el));
+    const observe = new MutationObserver(() => {
+      drawLines();
+      bubble();
+    });
+    root
+      .querySelectorAll('[data-variant]')
+      .forEach((el) => observe.observe(el, { attributes: true, attributeFilter: ['hidden'] }));
+    window.addEventListener('openai:set_globals', (event) => {
+      const state = event.detail?.globals?.widgetState?.modelContent;
+      if (Number.isInteger(state?.week) && state.week >= 2 && state.week <= 8) {
+        week = state.week;
+        bubble();
+      }
+    });
+  })();
+</script>
