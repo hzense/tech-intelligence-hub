@@ -21,6 +21,8 @@ overrides:
   # Preserve the source-map 1 API and patch indexed-map offset DoS.
   'postcss@8>source-map-js': '1.2.2'
   '@tailwindcss/node>source-map-js': '1.2.2'
+  # Patch Express's qs 6 comma-array serialization DoS (GHSA-6pq8-jhm2-2vcw).
+  'express@5>qs': '6.16.1'
   # gray-matter uses only js-yaml's library API, not its CLI. Omit the unused
   # argparse 1 -> sprintf-js chain (GHSA-hp3w-g68c-fv3c has no published fix).
   'js-yaml@3.15.2>argparse': '-'
