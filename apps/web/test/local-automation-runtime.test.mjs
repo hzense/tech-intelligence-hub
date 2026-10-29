@@ -235,26 +235,39 @@ test('local automation retains configuration storage and ACL checks without enab
   assert.deepEqual(state.releases, [true], 'Failed ACL validation destroys the connection');
 });
 
-test('local insight reader stays closed even with real AI and reader flags enabled', async (t) => {
+test('local insight reader uses its restricted role in real and mock mode', async (t) => {
   const state = isolatedState(t);
   const service = await fixture('../lib/server/automation-store-access.ts', storageModules());
+  for (const mode of ['real', 'mock']) {
+    process.env = { ...environment(), HZENSE_LOCAL_AI_MODE: mode, HZENSE_AUTOMATION_ENABLED: '0' };
+    assert.equal(
+      service.automationDatabaseConfiguration(true),
+      process.env.HZENSE_INSIGHT_READER_DATABASE_URL,
+    );
+    const client = await service.insightReaderPool.connect();
+    client.release();
+  }
+  assert.deepEqual(state.acl, ['reader', 'reader']);
+  assert.equal(state.pools[0].connectionString, environment().HZENSE_INSIGHT_READER_DATABASE_URL);
+  const before = state.connections;
   for (const patch of [
-    {},
-    { HZENSE_LOCAL_AI_MODE: 'mock' },
     { NODE_ENV: 'production' },
     { VERCEL: '1' },
+    { HZENSE_INSIGHT_READER_DATABASE_URL: 'postgresql://remote.invalid/db' },
     {
-      HZENSE_INSIGHT_READER_DATABASE_URL: `postgresql://hzense_insight_reader:${'a'.repeat(64)}@127.0.0.1:55432/hzense_local`,
+      HZENSE_INSIGHT_READER_DATABASE_URL: environment().HZENSE_INSIGHT_READER_DATABASE_URL.replace(
+        'hzense_insight_reader',
+        'hzense_automation_admin',
+      ),
     },
   ]) {
     process.env = { ...environment(), ...patch };
     assert.throws(() => service.automationDatabaseConfiguration(true), /execution_disabled/);
     await assert.rejects(service.insightReaderPool.connect(), /execution_disabled/);
   }
-  assert.equal(state.runtimeChecks, 0);
-  assert.equal(state.connections, 0);
-  assert.deepEqual(state.pools, []);
-  assert.deepEqual(state.acl, []);
+  process.env = { ...environment(), HZENSE_TOPIC_INSIGHTS_ENABLED: '0' };
+  await assert.rejects(service.insightReaderPool.connect(), /not_configured/);
+  assert.equal(state.connections, before);
 });
 
 test('local topic Sandbox start, poll and stop fail before any cloud or private-data access', async (t) => {
@@ -331,6 +344,9 @@ test('local due collection dispatches only newly queued runs and keeps disabled 
     failures: 0,
     profileChecks: 0,
     draftChecks: 0,
+    publications: [],
+    publicSignalReads: 0,
+    currentInsight: true,
     tasks: [],
     config: {
       kind: 'source_collection',
@@ -354,16 +370,17 @@ test('local due collection dispatches only newly queued runs and keeps disabled 
       export async function enqueueDueAutomations(x){const f=globalThis.${fixtureKey};f.due.push(x);return f.tasks}
       export async function readAutomationRun(){return {snapshot:globalThis.${fixtureKey}.config}}
       export async function failAutomationDispatch(){globalThis.${fixtureKey}.failures++}
+      export async function rejectInsightTopicsBeforeClaim(){throw Error('Unexpected insight rejection')}
       export async function rejectAutomaticPublicationBeforeClaim(){throw Error('Unexpected publish')}
-      export async function publishAutomationInsight(){throw Error('Unexpected publish')}`,
+      export async function publishAutomationInsight(args){globalThis.${fixtureKey}.publications.push(args);return args}`,
     '../../../../packages/database/src/automation-contract.mjs':
       'export const normalizeAutomationConfig=x=>x;',
     './automation-store-access': `export const automationConfigPool={kind:'config'},automationPool={kind:'execution'};
       export function automationStorageConfiguration(){}
-      export function automationDatabaseConfiguration(){}
+      export function automationDatabaseConfiguration(reader){if(reader&&process.env.HZENSE_TOPIC_INSIGHTS_ENABLED!=='1')throw Error('not_configured')}
       export async function freezeAutomationInputs(){}`,
     './admin-ai': `export async function generationAiAccess(){globalThis.${fixtureKey}.profileChecks++}
-      export async function aiStageAccess(){throw Error('Unexpected insight profile')}
+      export async function aiStageAccess(){globalThis.${fixtureKey}.profileChecks++}
       export async function validateLocalAiProfileReference(){globalThis.${fixtureKey}.draftChecks++}`,
     '../automatic-publication': 'export const automaticPublicationAvailable=()=>false;',
     './import-service': 'export const importsConfigured=()=>true;',
@@ -371,9 +388,9 @@ test('local due collection dispatches only newly queued runs and keeps disabled 
       'export const generationConfigured=()=>true; export async function generationSummaries(){return []}',
     '../automation-generation-status':
       'export const automationGenerationIds=()=>[]; export const summarizeAutomationGenerations=()=>({});',
-    '../topic-insight-core': 'export const currentInsight=()=>true;',
-    './task-public-signals':
-      'export async function readTaskPublicSignals(){throw Error("Unexpected public signals")}',
+    '../topic-insight-core': `export const currentInsight=()=>globalThis.${fixtureKey}.currentInsight?{inputs:[],topicIds:[]}:null;`,
+    './insight-topics': 'export async function assertInsightLeafTopics(){}',
+    './task-public-signals': `export async function readTaskPublicSignals(){globalThis.${fixtureKey}.publicSignalReads++;return []}`,
     '../content-runtime': 'export async function getTopicEntries(){return []}',
     '../source-discovery-provider': 'export function assertDiscoveryConnection(){}',
     'workflow/api': `export async function start(_workflow,args){globalThis.${fixtureKey}.starts.push(args)}`,
@@ -404,16 +421,15 @@ test('local due collection dispatches only newly queued runs and keeps disabled 
     }),
     /invalid_request/,
   );
-  await assert.rejects(
-    service.saveAutomation(owner, {
-      ...request,
-      config: { ...state.config, kind: 'topic_insight', enabled: true },
-    }),
-    /execution_disabled/,
-  );
+  await service.saveAutomation(owner, {
+    ...request,
+    config: { ...state.config, kind: 'topic_insight', enabled: true },
+  });
+  assert.equal(state.writes.at(-1).request.config.enabled, true);
+  assert.deepEqual(state.starts, [], 'Enabling an insight schedule does not run it immediately');
   state.tasks = [{ created: true, run: { id: runId, owner_id: owner } }];
   assert.deepEqual(await service.dispatchDueAutomations(), { dispatched: 1, failed: 0 });
-  assert.deepEqual(state.due.at(-1).kinds, ['source_collection']);
+  assert.deepEqual(state.due.at(-1).kinds, ['source_collection', 'topic_insight']);
   assert.equal(state.due.at(-1).allowAutomaticPublication, false);
   assert.deepEqual(state.starts, [[owner, runId]]);
   state.tasks = [{ created: false, run: { id: runId, owner_id: owner } }];
@@ -443,6 +459,37 @@ test('local due collection dispatches only newly queued runs and keeps disabled 
     assert.equal(state.due.length, before);
     process.env = active;
   }
+  const realEnvironment = process.env;
+  process.env = {
+    ...realEnvironment,
+    HZENSE_LOCAL_AI_MODE: 'mock',
+    HZENSE_AUTOMATION_ENABLED: '0',
+  };
+  const startsBeforePublication = state.starts.length;
+  await service.publishAutomationInsight(owner, runId, true);
+  await service.publishAutomationInsight(owner, runId, false);
+  assert.deepEqual(
+    state.publications.map(({ pool, confirm }) => ({ pool, confirm })),
+    [
+      { pool: { kind: 'config' }, confirm: true },
+      { pool: { kind: 'config' }, confirm: false },
+    ],
+  );
+  assert.equal(
+    state.publicSignalReads,
+    1,
+    'Publication checks current public evidence; withdrawal needs no AI or source read',
+  );
+  assert.equal(state.starts.length, startsBeforePublication);
+  state.currentInsight = false;
+  await assert.rejects(service.publishAutomationInsight(owner, runId, true), /insight_stale/);
+  assert.equal(state.publications.length, 2);
+  process.env.HZENSE_TOPIC_INSIGHTS_ENABLED = '0';
+  await assert.rejects(service.publishAutomationInsight(owner, runId, false), /not_configured/);
+  process.env = { ...realEnvironment, VERCEL: '1' };
+  await assert.rejects(service.publishAutomationInsight(owner, runId, false), /execution_disabled/);
+  assert.equal(state.publications.length, 2);
+  process.env = realEnvironment;
   delete process.env.HZENSE_LOCAL_DEVELOPMENT;
   delete process.env.HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED;
   await service.dispatchDueAutomations();

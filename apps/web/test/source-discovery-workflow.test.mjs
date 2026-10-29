@@ -32,6 +32,7 @@ test('source discovery orchestrates originals and private candidates without dro
       export function automationStableId(x){if(x.kind!=='import_fallback')return x.itemId??'batch-id';const hex=createHash('sha256').update(JSON.stringify(x)).digest('hex');return hex.slice(0,8)+'-'+hex.slice(8,12)+'-4'+hex.slice(13,16)+'-8'+hex.slice(17,20)+'-'+hex.slice(20,32)}`,
     '../../../packages/database/src/automation-store.mjs': `
       export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
+      export async function rejectInsightTopicsBeforeClaim(){throw Error('Unexpected insight rejection')}
       export async function rejectAutomaticPublicationBeforeClaim(){const f=globalThis.__sourceFlow;f.rejectedAutomaticClaims++;f.run.status='failed'}
       export async function claimAutomationRun(){const f=globalThis.__sourceFlow;f.claims++;if(f.run.status!=='queued')return null;f.run.status='running';return structuredClone(f.run)}
       export async function readAutomationRun(){const f=globalThis.__sourceFlow;f.reads++;return structuredClone(f.run)}
@@ -63,6 +64,9 @@ test('source discovery orchestrates originals and private candidates without dro
     `,
     './signal-generation': 'export async function signalGenerationWorkflow(){}',
     './local-signal-generation': 'export async function localSignalGenerationWorkflow(){}',
+    './local-topic-insight':
+      'export async function runLocalTopicInsightStep(){return "local_topic_completed"}',
+    '../lib/server/insight-topics': 'export async function assertInsightLeafTopics(){}',
     '../lib/server/topic-insight-sandbox':
       'export async function startTopicInsightSandbox(){globalThis.__sourceFlow.topicCalls++} export async function pollTopicInsightSandbox(){globalThis.__sourceFlow.topicCalls++} export async function stopTopicInsightSandbox(){globalThis.__sourceFlow.topicCalls++}',
   };
@@ -752,9 +756,9 @@ test('source discovery orchestrates originals and private candidates without dro
     localReal();
     f = setup([]);
     f.run.snapshot.kind = 'topic_insight';
-    await assert.rejects(automationWorkflow('owner', 'run'), /execution_disabled/);
+    assert.equal(await automationWorkflow('owner', 'run'), 'local_topic_completed');
     assert.equal(f.reads, 1);
-    assert.equal(f.claims, 0, 'unsupported local topics must not reserve budget');
+    assert.equal(f.claims, 1, 'local topic execution uses its dedicated local step');
     assert.equal(f.topicCalls, 0);
     for (const step of ['startTopicWorker', 'pollTopicWorker', 'stopTopicWorker'])
       await assert.rejects(steps[step]('owner', 'run'), /execution_disabled/);

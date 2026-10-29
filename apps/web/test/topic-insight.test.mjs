@@ -5,6 +5,7 @@ import {
   selectInsightSignals,
   validateInsightReport,
   currentInsight,
+  InsightReportValidationError,
 } from '../lib/topic-insight-core.ts';
 
 const signal = (id, day, overrides = {}) => ({
@@ -54,6 +55,33 @@ test('report rejects invented citations and exposed reasoning', () => {
     () => validateInsightReport({ ...report(['a']), summary: '<think>hidden</think>' }, ['a']),
     /invalid_insight/,
   );
+});
+test('empty uncertainty remains rejected with fixed field diagnostics and no report content', () => {
+  for (const value of ['', ' ', '\n\t']) {
+    assert.throws(
+      () => validateInsightReport({ ...report(['a']), uncertainties: [value] }, ['a']),
+      (error) => {
+        assert.ok(error instanceof InsightReportValidationError);
+        assert.equal(error.message, 'invalid_insight');
+        assert.equal(error.field, 'uncertainties.item');
+        assert.equal(error.reason, 'empty');
+        assert.equal(error.cause, undefined);
+        return true;
+      },
+    );
+  }
+  assert.throws(
+    () =>
+      validateInsightReport(
+        {
+          ...report(['a']),
+          sections: [{ heading: '标'.repeat(101), body: '正文', signalIds: ['a'] }],
+        },
+        ['a'],
+      ),
+    { message: 'invalid_insight', field: 'sections.heading', reason: 'too_long' },
+  );
+  assert.doesNotThrow(() => validateInsightReport(report(['a']), ['a']));
 });
 test('an edited or withdrawn source invalidates an already published insight', () => {
   const signals = [signal('a', '2026-09-20'), signal('b', '2026-09-19')];

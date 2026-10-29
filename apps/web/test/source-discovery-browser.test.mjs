@@ -67,7 +67,7 @@ test(
               loadError={false} localMode={p.has('local')} localRealAiMode={p.has('real')}
               initial={{...initial,configDeletionAvailable:!p.has('legacySchema')}}
               profiles={[{id:'${profileId}',revision:p.has('staleProfile')?2:1,name:'验收模型',ready:!p.has('draft')}]}
-              topics={[{id:'topic-ai',name:'人工智能'}]}/>
+              topics={[{id:'topic-ai',name:'人工智能'}]} insightLeafTopicIds={p.has('parentInsight')?[]:['topic-ai']}/>
           );
         `,
         resolveDir: root,
@@ -1067,7 +1067,7 @@ test(
         'local=1&real=1&discoveryConfig=1',
         'local=1&real=1&execute=1&discoveryConfig=1&staleProfile=1',
         'local=1&real=1&execute=1&discoveryConfig=1&missingStorage=1',
-        'local=1&real=1&execute=1&insight=1&withInsightConfig=1',
+        'local=1&real=1&execute=1&insight=1&withInsightConfig=1&parentInsight=1',
       ]) {
         await page.goto(`http://127.0.0.1:${server.address().port}/?${query}`);
         await expect(runButton).toBeDisabled();

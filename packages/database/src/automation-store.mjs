@@ -487,6 +487,21 @@ export async function beginSourceDiscovery({ pool, owner, id, token }) {
     if (!row) fail('stale_attempt');
   });
 }
+/** Atomic one-way admission before selecting inputs or making a paid insight call. */
+export async function beginTopicInsightExecution({ pool, owner, id, token }) {
+  automationText(owner);
+  automationUuid(id);
+  automationUuid(token);
+  return transaction(pool, async (client) => {
+    const row = (
+      await client.query(
+        "UPDATE public.automation_runs SET phase='preparing_topic' WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' AND phase='preparing' AND lease_until>clock_timestamp() AND snapshot->>'kind'='topic_insight' AND frozen_inputs IS NULL RETURNING id",
+        [id, owner, token],
+      )
+    ).rows[0];
+    if (!row) fail('stale_attempt');
+  });
+}
 /** A queued fallback covers both its actual source and the original event URL.
  * Failed/discovered-only sources remain retryable; only valid generation receipts count. */
 export async function readCollectedSourceUrls({ pool, owner }) {
@@ -548,18 +563,20 @@ export async function updateAutomationRun({
     fail();
   if (costSource !== undefined && !['provider', 'estimate', 'reserve'].includes(costSource)) fail();
   return transaction(pool, async (client) => {
+    // PostgreSQL JSONB can reorder object keys during storage. Compare inside
+    // the row lock using JSONB equality; evidence values and array order must
+    // still match exactly, and missing inputs never satisfy the fence.
     const previous = (
       await client.query(
-        "SELECT snapshot,frozen_inputs FROM public.automation_runs WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' FOR UPDATE",
-        [id, owner, token],
+        "SELECT snapshot,(frozen_inputs->'inputs'=$4::jsonb->'inputs') AS inputs_match FROM public.automation_runs WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' FOR UPDATE",
+        [id, owner, token, JSON.stringify(result)],
       )
     ).rows[0];
     if (!previous) fail('stale_attempt');
     if (
       status === 'completed' &&
       previous.snapshot.kind === 'topic_insight' &&
-      (!previous.frozen_inputs ||
-        JSON.stringify(previous.frozen_inputs.inputs) !== JSON.stringify(result.inputs))
+      previous.inputs_match !== true
     )
       fail('inputs_mismatch');
     const row = (
@@ -640,6 +657,28 @@ export async function rejectAutomaticPublicationBeforeClaim({ pool, owner, id })
         finished_at=clock_timestamp()
       WHERE id=$1 AND owner_id=$2 AND status='queued' AND phase='queued'
         AND snapshot->>'kind'='source_collection' AND snapshot->>'publicationMode'='automatic'
+        AND started_at IS NULL AND finished_at IS NULL
+        AND lease_token IS NULL AND lease_until IS NULL
+        AND budget_day IS NULL AND reserved_microusd=0 AND charged_microusd=0 AND cost_source IS NULL
+        AND result IS NULL AND frozen_inputs IS NULL
+        AND publication_status='private' AND published_at IS NULL
+      RETURNING id`,
+      [id, owner],
+    );
+    return result.rows.length === 1;
+  });
+}
+/** A stale topic scope is rejected before dispatch/claim, with no paid attempt. */
+export async function rejectInsightTopicsBeforeClaim({ pool, owner, id }) {
+  owner = automationText(owner);
+  automationUuid(id);
+  return transaction(pool, async (client) => {
+    const result = await client.query(
+      `UPDATE public.automation_runs SET status='failed',
+        phase='insight_topic_not_leaf',error_code='insight_topic_not_leaf',
+        charged_microusd=0,cost_source='estimate',finished_at=clock_timestamp()
+      WHERE id=$1 AND owner_id=$2 AND status='queued' AND phase='queued'
+        AND snapshot->>'kind'='topic_insight'
         AND started_at IS NULL AND finished_at IS NULL
         AND lease_token IS NULL AND lease_until IS NULL
         AND budget_day IS NULL AND reserved_microusd=0 AND charged_microusd=0 AND cost_source IS NULL

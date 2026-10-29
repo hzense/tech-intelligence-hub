@@ -20,6 +20,7 @@ async function loadDispatchers() {
       'export function automationStableId(value){return value.itemId??"batch"}',
     '../../../packages/database/src/automation-store.mjs': `
       export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
+      export async function rejectInsightTopicsBeforeClaim(){throw Error('Unexpected insight rejection')}
       export async function rejectAutomaticPublicationBeforeClaim(){throw Error('unexpected automatic rejection')}
       export async function claimAutomationRun(){const f=globalThis.__dispatchFailure;if(f.run.status!=='queued')return null;f.run.status='running';return structuredClone(f.run)}
       export async function readAutomationRun(){return structuredClone(globalThis.__dispatchFailure.run)}
@@ -43,6 +44,9 @@ async function loadDispatchers() {
       export async function inspectGenerationInput(){}
     `,
     './signal-generation': 'export async function signalGenerationWorkflow(){}',
+    './local-topic-insight':
+      'export async function runLocalTopicInsightStep(){return "local_topic_completed"}',
+    '../lib/server/insight-topics': 'export async function assertInsightLeafTopics(){}',
     '../lib/server/topic-insight-sandbox':
       'export async function startTopicInsightSandbox(){} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
     '@/lib/admin-signal-generation-handler':

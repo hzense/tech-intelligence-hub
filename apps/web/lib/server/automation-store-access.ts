@@ -1,7 +1,7 @@
 import 'server-only';
 import pg from 'pg';
 import { readRuntimeReaderConfig } from '../runtime-reader-core';
-import { isLocalRealAutomationEnabled } from '../local-development';
+import { isLocalDevelopment, isLocalRealAutomationEnabled } from '../local-development';
 import { assertAutomationRole } from '../../../../packages/database/src/automation-role.mjs';
 import {
   AutomationError,
@@ -9,9 +9,12 @@ import {
 } from '../../../../packages/database/src/automation-store.mjs';
 
 export function automationDatabaseConfiguration(reader = false) {
-  // Local source collection requires the complete real-AI isolation contract.
-  // Public insight reads/publication are not enabled by this exception.
-  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1' && (reader || !isLocalRealAutomationEnabled()))
+  // Reading already-published reports never needs real AI. Both branches retain
+  // the complete local target contract and their separate restricted DB roles.
+  if (
+    process.env.HZENSE_LOCAL_DEVELOPMENT === '1' &&
+    !(reader ? isLocalDevelopment() : isLocalRealAutomationEnabled())
+  )
     throw new AutomationError('execution_disabled');
   if (process.env[reader ? 'HZENSE_TOPIC_INSIGHTS_ENABLED' : 'HZENSE_AUTOMATION_ENABLED'] !== '1')
     throw new AutomationError('not_configured');

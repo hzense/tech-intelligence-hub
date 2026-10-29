@@ -9,6 +9,7 @@ import type {
 } from '../../../packages/database/src/automation-store.mjs';
 import { startVisiblePolling } from '../lib/visible-polling';
 import styles from './admin-automation.module.css';
+import { TopicInsightTags } from './topic-insight-tags';
 import {
   discoveryDiagnosticItems,
   discoveryValidationItems,
@@ -61,7 +62,7 @@ const blank = (kind: Kind): AutomationConfig => ({
 });
 const errors: Record<string, string> = {
   not_configured: '此功能尚未完成数据库、权限和预算配置。',
-  execution_disabled: '配置可保存，但采集执行尚未启用；本次未启动任务。',
+  execution_disabled: '配置可保存，但任务执行尚未启用；本次未启动任务。',
   automatic_publication_unavailable:
     '自动发布服务尚未就绪。可以关闭定时并保存配置；启用服务后再启动，或改为人工审核后发布。',
   revision_conflict: '配置已由其他会话修改，请刷新后核对。',
@@ -92,6 +93,25 @@ const errors: Record<string, string> = {
   provider_rejected: '供应商拒绝请求，请核对搜索权限、模型与账户额度。',
   timeout: '供应商响应超时，结果未知；请核对原任务和费用，不要直接重试。',
   insight_stale: '证据信号已改变或撤回，请重新生成报告。',
+  insight_topic_not_leaf:
+    '专题范围包含领域、父级或不可用方向。请重新选择当前启用的最细分专题；旧配置可停用或删除，原报告不会自动改换专题。',
+  insight_insufficient_evidence: '近 30 天内符合所选专题的公开信号不足 2 条，未调用 AI。',
+  insight_input_too_large: '专题证据超出模型输入上限，未调用 AI；请减少所选专题后重试。',
+  insight_provider_failed:
+    '专题模型准备、调用或报告校验未完成；费用及依据以本行显示为准，请核对原任务，不要直接重试。',
+  insight_output_truncated:
+    '专题报告达到输出长度上限，内容不完整。请先核对本次费用，建议将分阶段配置中“分析”的输出上限调整为 8192，再保存并选择新修订；系统不会自动重试。',
+  insight_structured_output_invalid:
+    '专题模型返回的内容不符合报告结构要求；请核对原任务与费用，系统不会自动重试。',
+  invalid_insight_citation:
+    '专题报告的信号引用未通过校验，不能公开；请核对原任务与费用，系统不会自动重试。',
+  invalid_insight: '专题报告内容未通过校验，不能公开；请核对原任务与费用，系统不会自动重试。',
+  insight_unexpected_tool_call:
+    '专题模型返回了本次分析不支持的工具调用，未取得可用报告；请核对原任务与费用，系统不会自动重试。',
+  insight_sensitive_output:
+    '专题报告未通过敏感信息检查，不能公开；请核对原任务与费用，系统不会自动重试。',
+  insight_provider_timeout:
+    '专题模型响应超时，调用结果及费用需核对；请保留原任务，系统不会自动重试。',
   dispatch_unknown: '任务已保存，但派发结果未知；请先刷新核对。',
 };
 async function api<T>(body?: unknown, signal?: AbortSignal, id?: string): Promise<T> {
@@ -148,7 +168,15 @@ function RunCost({ row }: { row: RunView }) {
 const time = (date: string | Date | null) => (date ? new Date(date).toLocaleString('zh-CN') : '—');
 const utcTime = (date: string | Date) =>
   `${new Date(date).toLocaleString('zh-CN', { timeZone: 'UTC', hour12: false })} UTC`;
-function TopicReport({ result }: { result: Record<string, unknown> }) {
+function TopicReport({
+  result,
+  topics,
+  insightLeafTopicIds,
+}: {
+  result: Record<string, unknown>;
+  topics: Topic[];
+  insightLeafTopicIds?: string[] | undefined;
+}) {
   const report = result.report as
     | {
         title?: string;
@@ -158,9 +186,21 @@ function TopicReport({ result }: { result: Record<string, unknown> }) {
       }
     | undefined;
   if (!report) return <p>报告结构不可用，请勿确认公开。</p>;
+  const topicNames = new Map(topics.map((topic) => [topic.id, topic.name]));
+  const topicIds = Array.isArray(result.topicIds)
+    ? result.topicIds.filter((id): id is string => typeof id === 'string')
+    : [];
   return (
     <div className={styles.report}>
       <h3>{report.title}</h3>
+      <TopicInsightTags
+        topics={topicIds.map((id) => ({
+          id,
+          name: topicNames.get(id),
+          isLeaf: insightLeafTopicIds?.includes(id),
+        }))}
+        linked
+      />
       <p>{report.summary}</p>
       {report.sections?.map((section, index) => (
         <section key={index}>
@@ -187,6 +227,98 @@ function TopicReport({ result }: { result: Record<string, unknown> }) {
         </>
       ) : null}
     </div>
+  );
+}
+const insightDiagnosticCodes = new Set([
+  'insight_output_truncated',
+  'insight_structured_output_invalid',
+  'invalid_insight_citation',
+  'invalid_insight',
+  'insight_unexpected_tool_call',
+  'insight_sensitive_output',
+  'insight_provider_failed',
+  'insight_provider_timeout',
+]);
+const insightDiagnosticFields: Record<string, string> = {
+  report: '整份报告',
+  title: '标题',
+  summary: '摘要',
+  sections: '报告章节',
+  'sections.item': '章节条目',
+  'sections.heading': '章节标题',
+  'sections.body': '章节正文',
+  'sections.signalIds': '章节信号引用',
+  uncertainties: '不确定性列表',
+  'uncertainties.item': '不确定性条目',
+};
+const insightDiagnosticReasons: Record<string, string> = {
+  wrong_type: '字段类型不符合要求',
+  empty: '内容为空',
+  too_long: '内容超过长度上限',
+  invalid_count: '条目数量不符合要求',
+  invalid_fields: '包含缺失或多余字段',
+  reasoning_markup: '包含不允许的思考过程标记',
+  control_character: '包含不允许的控制字符',
+  invalid_citation: '信号引用不符合要求',
+};
+const insightFinishReasons = new Set([
+  'stop',
+  'length',
+  'content-filter',
+  'tool-calls',
+  'error',
+  'other',
+]);
+function TopicResult({
+  result,
+  topics,
+  insightLeafTopicIds,
+}: {
+  result: Record<string, unknown>;
+  topics: Topic[];
+  insightLeafTopicIds?: string[] | undefined;
+}) {
+  const value = result.providerDiagnostic;
+  const diagnostic =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  const code =
+    typeof diagnostic?.code === 'string' && insightDiagnosticCodes.has(diagnostic.code)
+      ? diagnostic.code
+      : null;
+  const field =
+    typeof diagnostic?.field === 'string' &&
+    Object.hasOwn(insightDiagnosticFields, diagnostic.field)
+      ? insightDiagnosticFields[diagnostic.field]
+      : null;
+  const reason =
+    typeof diagnostic?.reason === 'string' &&
+    Object.hasOwn(insightDiagnosticReasons, diagnostic.reason)
+      ? insightDiagnosticReasons[diagnostic.reason]
+      : null;
+  const finishReason =
+    typeof diagnostic?.finishReason === 'string' &&
+    insightFinishReasons.has(diagnostic.finishReason)
+      ? diagnostic.finishReason
+      : null;
+  return (
+    <>
+      {code ? (
+        <div className={styles.report}>
+          <h3>专题分析诊断</h3>
+          <p>{errors[code]}</p>
+          {field ? <p>问题字段：{field}</p> : null}
+          {reason ? <p>校验原因：{reason}</p> : null}
+          {finishReason ? <p>供应商结束标记：{finishReason}</p> : null}
+        </div>
+      ) : null}
+      {result.report && typeof result.report === 'object' ? (
+        <TopicReport result={result} topics={topics} insightLeafTopicIds={insightLeafTopicIds} />
+      ) : (
+        <p>本次结果未保存合格报告，不能公开。</p>
+      )}
+    </>
   );
 }
 function SourceResult({
@@ -411,7 +543,17 @@ function SourceResult({
   );
 }
 
-function AutomationResultDetails({ row }: { row: RunView }) {
+function AutomationResultDetails({
+  row,
+  topics,
+  insightLeafTopicIds,
+  onDetailRead,
+}: {
+  row: RunView;
+  topics: Topic[];
+  insightLeafTopicIds?: string[] | undefined;
+  onDetailRead?: (detail: AutomationRunView) => void;
+}) {
   const [detail, setDetail] = useState<AutomationRunView | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -434,7 +576,10 @@ function AutomationResultDetails({ row }: { row: RunView }) {
       const next = await api<{ run: AutomationRunView }>(undefined, controller.signal, row.id);
       if (next?.run?.id !== row.id || next.run.snapshot?.kind !== row.snapshot.kind)
         throw new Error('返回的详情与当前任务不一致，已保留原详情；请刷新列表后核对。');
-      if (!controller.signal.aborted) setDetail(next.run);
+      if (!controller.signal.aborted) {
+        setDetail(next.run);
+        onDetailRead?.(next.run);
+      }
     } catch (failure) {
       if (!controller.signal.aborted)
         setError(failure instanceof Error ? failure.message : '详情读取失败，请重试。');
@@ -453,7 +598,11 @@ function AutomationResultDetails({ row }: { row: RunView }) {
           : detail
             ? '刷新详情'
             : row.snapshot.kind === 'topic_insight'
-              ? '阅读私有报告'
+              ? row.status === 'unknown'
+                ? '查看待核对结果'
+                : row.status === 'failed'
+                  ? '查看失败详情'
+                  : '阅读私有报告'
               : '查看采集详情'}
       </button>
       {detail ? (
@@ -467,7 +616,11 @@ function AutomationResultDetails({ row }: { row: RunView }) {
           <p>详情按需读取，不自动刷新，也不会调用 AI。</p>
           {detail.result ? (
             detail.snapshot.kind === 'topic_insight' ? (
-              <TopicReport result={detail.result} />
+              <TopicResult
+                result={detail.result}
+                topics={topics}
+                insightLeafTopicIds={insightLeafTopicIds}
+              />
             ) : (
               <SourceResult
                 result={detail.result}
@@ -492,6 +645,8 @@ export function AdminAutomation({
   initial,
   profiles,
   topics,
+  insightLeafTopicIds,
+  insightTopicsLoadError = false,
   localMode = false,
   localRealAiMode = false,
 }: {
@@ -503,13 +658,51 @@ export function AdminAutomation({
   initial: Dashboard;
   profiles: Profile[];
   topics: Topic[];
+  insightLeafTopicIds?: string[];
+  insightTopicsLoadError?: boolean;
   localMode?: boolean;
   localRealAiMode?: boolean;
 }) {
-  const localSourceManual = localMode && localRealAiMode && kind === 'source_collection';
-  const manualExecutionAllowed = executionEnabled && (!localMode || localSourceManual);
+  const localRealExecution = localMode && localRealAiMode;
+  const localSourceManual = localRealExecution && kind === 'source_collection';
+  const localTopicExecution = localRealExecution && kind === 'topic_insight';
+  const manualExecutionAllowed = executionEnabled && (!localMode || localRealExecution);
   const [state, setState] = useState(initial);
-  const localSchedulingAllowed = localSourceManual && state.localSchedulingAvailable === true;
+  const [readTopicDetails, setReadTopicDetails] = useState<Record<string, AutomationRunView>>({});
+  const localSchedulingAllowed = localRealExecution && state.localSchedulingAvailable === true;
+  const insightTopicsReady = insightLeafTopicIds !== undefined && !insightTopicsLoadError;
+  const insightLeafIds = new Set(insightLeafTopicIds ?? []);
+  const insightChoices = insightTopicsReady
+    ? topics.filter((topic) => insightLeafIds.has(topic.id))
+    : [];
+  function validInsightTopicIds(topicIds: unknown): boolean {
+    return (
+      insightTopicsReady &&
+      Array.isArray(topicIds) &&
+      topicIds.length > 0 &&
+      topicIds.length <= 5 &&
+      new Set(topicIds).size === topicIds.length &&
+      topicIds.every((id) => typeof id === 'string' && insightLeafIds.has(id))
+    );
+  }
+  function validInsightTopics(config: AutomationConfig): boolean {
+    return config.kind !== 'topic_insight' || validInsightTopicIds(config.topicIds);
+  }
+  function topicPublicationIssue(row: RunView): string | null {
+    if (!insightTopicsReady) return '最细分专题目录未就绪，暂不能确认公开；已公开报告仍可撤回。';
+    const detail = readTopicDetails[row.id];
+    if (!detail) return '请先阅读报告，核对报告的真实专题范围后再确认公开。';
+    if (
+      detail.status !== 'completed' ||
+      !detail.result?.report ||
+      typeof detail.result.report !== 'object' ||
+      Array.isArray(detail.result.report)
+    )
+      return '报告尚未完成或结构不可用，不能确认公开。';
+    if (!validInsightTopicIds(detail.result.topicIds))
+      return '报告原范围需细分或专题归属未确认，不能按原范围公开；请重新选择最细分专题生成，旧报告保留。';
+    return null;
+  }
   function draftForMode(config: AutomationConfig): AutomationConfig {
     const normalized =
       config.kind === 'source_collection'
@@ -531,6 +724,7 @@ export function AdminAutomation({
     return (
       configured &&
       manualExecutionAllowed &&
+      validInsightTopics(row.config) &&
       (!localMode || profileReady(row)) &&
       (row.config.kind !== 'source_collection' ||
         publicationMode(row.config) !== 'automatic' ||
@@ -539,6 +733,10 @@ export function AdminAutomation({
   }
   const [editing, setEditing] = useState<ConfigView | null>(null);
   const [draft, setDraft] = useState<AutomationConfig>(() => draftForMode(blank(kind)));
+  const outdatedTopicIds =
+    kind === 'topic_insight' && insightTopicsReady
+      ? draft.topicIds.filter((id) => !insightLeafIds.has(id))
+      : [];
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
@@ -592,7 +790,7 @@ export function AdminAutomation({
   }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || !configured) return;
+    if (busy || !configured || !validInsightTopics(draft)) return;
     const savedDraft = draftForMode(draft);
     if (
       savedDraft.kind === 'source_collection' &&
@@ -647,7 +845,9 @@ export function AdminAutomation({
       !window.confirm(
         localSourceManual
           ? `确认启动本地采集“${row.config.name}”？将联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索和模型费用。结果仅保存在本地，不同步生产；${publicationMode(row.config) === 'automatic' ? '检查合格的公开网页信号会直接发布到本地信号列表，无需逐条审核' : '生成候选需人工审核后发布'}。本次仅手动执行，不改变定时设置。`
-          : `确认启动“${row.config.name}”？运行可能产生导入或模型费用。${row.config.kind === 'source_collection' && publicationMode(row.config) === 'automatic' ? '检查合格的公开网页信号会直接发布，无需逐条审核。' : '结果需人工确认后发布。'}结果需在任务列表中核对。`,
+          : localTopicExecution
+            ? `确认生成本地专题洞察“${row.config.name}”？将近 30 天内所选专题的 2–100 条当前公开信号发送给所选配置的“分析”模型，可能产生模型费用，并与本地联网采集共用自动任务预算。报告先保存在本地，须阅读并单独确认后才在本地公开，不同步生产。本次仅手动执行，不改变定时设置。`
+            : `确认启动“${row.config.name}”？运行可能产生导入或模型费用。${row.config.kind === 'source_collection' && publicationMode(row.config) === 'automatic' ? '检查合格的公开网页信号会直接发布，无需逐条审核。' : '结果需人工确认后发布。'}结果需在任务列表中核对。`,
       )
     )
       return;
@@ -680,6 +880,32 @@ export function AdminAutomation({
       setMessage(`任务 ${result.run.id} 已保存，请在下方查看进度。`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '启动结果未确认');
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function disableSchedule(row: ConfigView) {
+    if (busy || !configured || !row.enabled || row.config.kind !== 'topic_insight') return;
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await api<{ config: ConfigView }>({
+        action: 'save',
+        request: {
+          id: row.id,
+          expectedRevision: row.revision,
+          config: { ...row.config, enabled: false },
+          consent: true,
+        },
+      });
+      if (editing?.id === row.id) {
+        setEditing(result.config);
+        setDraft(draftForMode(result.config.config));
+      }
+      await refresh();
+      setMessage('定时已停用，原专题范围和历史报告保留；已开始的任务不会因此取消。');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '停用结果未确认，请刷新列表核对。');
     } finally {
       setBusy(false);
     }
@@ -724,6 +950,8 @@ export function AdminAutomation({
   async function publish(row: RunView, confirm: boolean) {
     if (
       busy ||
+      row.status !== 'completed' ||
+      (confirm && topicPublicationIssue(row) !== null) ||
       !window.confirm(
         confirm ? '确认公开这份专题洞察？请先阅读报告及其引用。' : '确认撤回这份公开洞察？',
       )
@@ -779,8 +1007,8 @@ export function AdminAutomation({
   }, [shouldRefresh, kind]);
   const checkLabels: Record<string, string> = {
     storage: '配置存储',
-    execution: '自动执行开关',
-    budget: '采集预算',
+    execution: kind === 'topic_insight' ? '专题生成开关' : '自动执行开关',
+    budget: '自动任务共享预算',
     import: '资料导入服务',
     generation: '信号生成服务',
   };
@@ -793,20 +1021,24 @@ export function AdminAutomation({
           <p role="status">
             {localSourceManual
               ? `本地真实采集：运行会联网搜索、获取原文，并将资料发送给所选 AI 供应商，可能产生检索与模型费用。配置、资料和候选仅保存在本地，不同步生产；是否发布到本地信号列表由配置中的发布方式决定。${localSchedulingAllowed ? '可自行选择频率并勾选“允许定时执行”，保存后开启本地定时；新配置默认关闭。' : '本地定时保持关闭；保存配置不会启动采集。'}`
-              : '本地配置模式：可选择未完成能力测试的模型草稿，保存和修订仅写入本机数据库。当前模式不执行采集、专题生成或定时任务；不会联网搜索、调用 AI 或同步生产。'}
+              : localTopicExecution
+                ? `本地专题洞察：使用所选配置的“分析”模型，将近 30 天内所选专题的 2–100 条当前公开信号发送给 AI 供应商，可能产生模型费用。报告附信号引用，先私有保存，阅读后须单独确认公开，也可撤回；本地公开内容不自动同步生产。${localSchedulingAllowed ? '可自行选择频率并勾选“允许定时执行”，保存后开启本地定时；新配置默认关闭。' : '本地定时保持关闭；保存配置不会生成报告。'}`
+                : kind === 'topic_insight'
+                  ? '本地配置模式：可保存和修订模型草稿及专题配置，可阅读已有报告，并人工确认公开或撤回；这些操作不调用 AI。当前模式不执行专题生成或定时任务，不同步生产。'
+                  : '本地配置模式：可选择未完成能力测试的模型草稿，保存和修订仅写入本机数据库。当前模式不执行采集或定时任务；不会联网搜索、调用 AI 或同步生产。'}
           </p>
         ) : null}
-        {localSourceManual ? (
+        {localRealExecution ? (
           <p>
-            本地采集预算为每次 $5、UTC 每日 $10；信号生成另计每批 $5、UTC 每日 $10。
-            系统预算与预留不等于供应商最终账单。
+            本地联网采集与专题分析共用自动任务预算：每次 $5、UTC 每日合计 $10；专题没有额外日额度。
+            信号生成另计每批 $5、UTC 每日 $10，能力测试另计。 系统预算与预留不等于供应商最终账单。
           </p>
         ) : null}
         {!localMode ? (
           <p>
             {kind === 'source_collection'
               ? '选择 AI 配置，自动搜索网站科技范围内的互联网信息、获取原文、去重并生成候选；无需指定领域或填写网址。可选择人工审核后发布，或检查合格后自动发布。'
-              : '按专题选择当前公开信号，生成附有引用的私有报告，确认后公开。'}
+              : '选择 1–5 个专题，使用“分析”模型读取近 30 天的 2–100 条当前公开信号，生成附有引用的私有报告，阅读后单独确认公开，亦可撤回。'}
           </p>
         ) : null}
         {loadError ? (
@@ -815,7 +1047,10 @@ export function AdminAutomation({
           </p>
         ) : !configured ? (
           <p role="status">
-            配置存储尚未就绪，暂不能保存；请配置专用数据库连接并完成迁移及权限核验。填写关键词或开启执行不能解决存储问题。
+            配置存储尚未就绪，暂不能保存；请配置专用数据库连接并完成迁移及权限核验。
+            {kind === 'source_collection'
+              ? '填写关键词或开启执行不能解决存储问题。'
+              : '选择专题或开启执行不能解决存储问题。'}
           </p>
         ) : !executionEnabled ? (
           <p>
@@ -834,6 +1069,12 @@ export function AdminAutomation({
             </ul>
             <p>这里只检查服务器配置是否齐备；数据库连通性、权限和模型能力仍需实际核验。</p>
           </details>
+        ) : null}
+        {kind === 'topic_insight' && !insightTopicsReady ? (
+          <p role="alert">
+            最细分专题目录读取失败，已阻止新建、修订和生成；请刷新页面重试。
+            历史报告仍可阅读，已有配置可通过列表尝试停用或删除。
+          </p>
         ) : null}
       </header>
       <section className={styles.card} aria-labelledby="config-title">
@@ -885,7 +1126,7 @@ export function AdminAutomation({
             <p id="local-schedule-help" className={styles.full}>
               {localSchedulingAllowed
                 ? '每日在 UTC 00:00、每周在周一 UTC 00:00 执行。勾选并保存后，从下一个计划时点开始，不会立即执行。计算机和本地开发服务须保持运行；停止服务或休眠期间暂停，恢复后不会逐日补跑。选择“仅手动”会关闭定时；仍可点击“立即运行”。'
-                : localSourceManual
+                : localRealExecution
                   ? '本地只允许手动启动；已有配置的定时计划不会执行，保存时保持定时关闭。'
                   : '本地草稿不执行任务；已有配置的定时计划不会执行，保存时保持定时关闭。'}
             </p>
@@ -956,7 +1197,7 @@ export function AdminAutomation({
               </div>
             </>
           ) : null}
-          {localSourceManual ? (
+          {localRealExecution ? (
             <p className={styles.full}>
               可保存未验证的模型草稿；立即运行{localSchedulingAllowed ? '和开启定时' : ''}
               必须选用当前修订已通过能力测试的配置。修改模型配置后，请重新选择并保存当前修订。
@@ -1045,9 +1286,32 @@ export function AdminAutomation({
             </p>
           ) : (
             <fieldset className={styles.full}>
-              <legend>分析专题（至少 1 个，最多 5 个）</legend>
+              <legend>分析专题（最细分方向，至少 1 个，最多 5 个）</legend>
+              <p>只选择当前启用且没有下级的最细分方向；领域和父级不能直接生成报告。</p>
+              {outdatedTopicIds.length ? (
+                <div role="status">
+                  <p>
+                    原范围需细分：
+                    {outdatedTopicIds
+                      .map((id) => topics.find((topic) => topic.id === id)?.name ?? id)
+                      .join('、')}
+                    。
+                    请清除旧范围后重新选择；系统不会猜测子专题。只需停止原计划时，请使用列表中的“停用定时”。
+                  </p>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setDraft({ ...draft, topicIds: [], enabled: false })}
+                  >
+                    清除旧范围并重新选择
+                  </button>
+                </div>
+              ) : null}
+              {insightTopicsReady && insightChoices.length === 0 ? (
+                <p>暂无可用的最细分专题；请先核对专题目录与启用状态。</p>
+              ) : null}
               <div className={styles.topics}>
-                {topics.map((topic) => (
+                {insightChoices.map((topic) => (
                   <label key={topic.id}>
                     <input
                       type="checkbox"
@@ -1079,6 +1343,14 @@ export function AdminAutomation({
                 !configured ||
                 (!draft.enabled &&
                   (!executionEnabled ||
+                    !validInsightTopics(draft) ||
+                    (localRealExecution &&
+                      !profiles.some(
+                        (profile) =>
+                          profile.id === draft.profileId &&
+                          profile.revision === draft.profileRevision &&
+                          profile.ready,
+                      )) ||
                     (kind === 'source_collection' &&
                       publicationMode(draft) === 'automatic' &&
                       state.automaticPublicationAvailable !== true)))
@@ -1089,12 +1361,7 @@ export function AdminAutomation({
           </label>
           <button
             type="submit"
-            disabled={
-              !configured ||
-              busy ||
-              !draft.profileId ||
-              (kind === 'topic_insight' && !draft.topicIds.length)
-            }
+            disabled={!configured || busy || !draft.profileId || !validInsightTopics(draft)}
           >
             {busy ? '处理中…' : '保存配置'}
           </button>
@@ -1141,21 +1408,25 @@ export function AdminAutomation({
                     </td>
                     {kind === 'source_collection' ? <td>{publicationLabel(row.config)}</td> : null}
                     <td>
-                      {localSourceManual
-                        ? !profileReady(row)
-                          ? '模型未就绪 · 不能运行'
-                          : manualExecutionAllowed
-                            ? localSchedulingAllowed
-                              ? row.enabled
-                                ? '本地定时开启'
-                                : '本地定时关闭'
-                              : '本地仅手动 · 定时关闭'
-                            : '执行未就绪 · 定时关闭'
-                        : localMode
-                          ? '本地草稿 · 不执行'
-                          : row.enabled
-                            ? '定时开启'
-                            : '仅手动'}
+                      {kind === 'topic_insight' && !validInsightTopics(row.config)
+                        ? insightTopicsReady
+                          ? '范围需细分 · 不能运行'
+                          : '专题目录未就绪 · 不能运行'
+                        : localRealExecution
+                          ? !profileReady(row)
+                            ? '模型未就绪 · 不能运行'
+                            : manualExecutionAllowed
+                              ? localSchedulingAllowed
+                                ? row.enabled
+                                  ? '本地定时开启'
+                                  : '本地定时关闭'
+                                : '本地仅手动 · 定时关闭'
+                              : '执行未就绪 · 定时关闭'
+                          : localMode
+                            ? '本地草稿 · 不执行'
+                            : row.enabled
+                              ? '定时开启'
+                              : '仅手动'}
                       {kind === 'source_collection' &&
                       publicationMode(row.config) === 'automatic' &&
                       state.automaticPublicationAvailable !== true ? (
@@ -1173,6 +1444,15 @@ export function AdminAutomation({
                       >
                         立即运行
                       </button>
+                      {kind === 'topic_insight' && row.enabled ? (
+                        <button
+                          type="button"
+                          disabled={busy || !configured}
+                          onClick={() => void disableSchedule(row)}
+                        >
+                          停用定时
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className={styles.danger}
@@ -1253,28 +1533,50 @@ export function AdminAutomation({
                     </td>
                     <td>
                       {row.snapshot.kind === 'topic_insight' &&
-                      row.status === 'completed' &&
-                      row.result ? (
+                      (row.status === 'failed' ||
+                        ((row.status === 'completed' || row.status === 'unknown') &&
+                          row.result)) ? (
                         <>
                           <AutomationResultDetails
                             key={`${row.id}:${row.status}:${row.phase}`}
                             row={row}
+                            topics={topics}
+                            insightLeafTopicIds={
+                              insightTopicsReady ? insightLeafTopicIds : undefined
+                            }
+                            onDetailRead={(detail) =>
+                              setReadTopicDetails((current) => ({ ...current, [row.id]: detail }))
+                            }
                           />
-                          <button
-                            type="button"
-                            disabled={busy || row.publication_status === 'published'}
-                            onClick={() => void publish(row, true)}
-                          >
-                            确认公开
-                          </button>
-                          {row.publication_status === 'published' ? (
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => void publish(row, false)}
-                            >
-                              撤回
-                            </button>
+                          {row.status === 'completed' ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={
+                                  busy ||
+                                  row.publication_status === 'published' ||
+                                  topicPublicationIssue(row) !== null
+                                }
+                                onClick={() => void publish(row, true)}
+                              >
+                                确认公开
+                              </button>
+                              {row.publication_status !== 'published' &&
+                              topicPublicationIssue(row) ? (
+                                <p>{topicPublicationIssue(row)}</p>
+                              ) : null}
+                              {row.publication_status === 'published' ? (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void publish(row, false)}
+                                >
+                                  撤回
+                                </button>
+                              ) : null}
+                            </>
+                          ) : row.status === 'unknown' ? (
+                            <p>已保留结果供核对；任务结果仍未知，不能公开，请勿重复生成。</p>
                           ) : null}
                         </>
                       ) : row.snapshot.kind === 'source_collection' && row.result ? (
@@ -1290,6 +1592,8 @@ export function AdminAutomation({
                           <AutomationResultDetails
                             key={`${row.id}:${row.status}:${row.phase}`}
                             row={row}
+                            topics={topics}
+                            insightLeafTopicIds={insightLeafTopicIds}
                           />
                         </>
                       ) : (

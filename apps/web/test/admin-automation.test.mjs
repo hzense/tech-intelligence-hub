@@ -89,6 +89,23 @@ test('execution-disabled response is explicit and does not block configuration s
   assert.equal(response.status, 409);
   assert.deepEqual(await response.json(), { error: 'execution_disabled' });
 });
+test('leaf and per-topic evidence refusal codes are exposed without raw errors', async () => {
+  for (const code of ['insight_topic_not_leaf', 'insight_insufficient_evidence']) {
+    for (const action of ['save', 'trigger', 'publish']) {
+      const handler = createAutomationHandler({
+        ...deps(),
+        [action]: async () => {
+          throw new AutomationError(code);
+        },
+      });
+      const body =
+        action === 'publish' ? { action, id: 'run', confirm: true } : { action, request: {} };
+      const response = await handler(request('POST', body));
+      assert.equal(response.status, 409);
+      assert.deepEqual(await response.json(), { error: code });
+    }
+  }
+});
 test('automatic publication unavailable is an explicit safe conflict while inactive settings remain savable', async () => {
   const handler = createAutomationHandler({
     ...deps(),

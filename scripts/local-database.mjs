@@ -25,9 +25,13 @@ export const localDatabaseV2BackendRoles = Object.freeze([
   'hzense_candidate_reviewer',
   'hzense_signal_admin_reader',
 ]);
-export const localDatabaseBackendRoles = Object.freeze([
+export const localDatabaseV3BackendRoles = Object.freeze([
   ...localDatabaseV2BackendRoles,
   'hzense_automation_admin',
+]);
+export const localDatabaseBackendRoles = Object.freeze([
+  ...localDatabaseV3BackendRoles,
+  'hzense_insight_reader',
 ]);
 export const localDatabaseRoles = Object.freeze([
   ...localDatabaseBaseRoles,
@@ -181,13 +185,15 @@ export function validateLocalDatabaseCredentials(value) {
       ? localDatabaseBaseRoles
       : value?.version === 2
         ? [...localDatabaseBaseRoles, ...localDatabaseV2BackendRoles]
-        : localDatabaseRoles;
+        : value?.version === 3
+          ? [...localDatabaseBaseRoles, ...localDatabaseV3BackendRoles]
+          : localDatabaseRoles;
   const keys =
     value?.version === 1
       ? ['version', 'developmentPassword', 'testPassword', 'roles']
       : ['version', 'developmentPassword', 'testPassword', 'roles', 'aiKeyring'];
   if (
-    ![1, 2, 3].includes(value?.version) ||
+    ![1, 2, 3, 4].includes(value?.version) ||
     Object.keys(value).sort().join(',') !== keys.sort().join(',') ||
     !/^[a-f0-9]{64}$/.test(value?.developmentPassword ?? '') ||
     !/^[a-f0-9]{64}$/.test(value?.testPassword ?? '') ||
@@ -211,10 +217,10 @@ export function validateLocalDatabaseCredentials(value) {
 
 export function upgradeLocalDatabaseCredentials(value) {
   validateLocalDatabaseCredentials(value);
-  if (value.version === 3) return value;
+  if (value.version === 4) return value;
   return validateLocalDatabaseCredentials({
     ...value,
-    version: 3,
+    version: 4,
     roles: {
       ...value.roles,
       ...Object.fromEntries(
@@ -265,7 +271,7 @@ export async function loadLocalDatabaseCredentials({
   }
   await requirePrivatePath(path);
   let credentials = validateLocalDatabaseCredentials(JSON.parse(await readFile(path, 'utf8')));
-  if (create && credentials.version < 3) {
+  if (create && credentials.version < 4) {
     const lock = resolve(directory, 'database-upgrade.lock');
     const temporary = resolve(directory, `database-${randomBytes(12).toString('hex')}.tmp`);
     try {
@@ -342,9 +348,17 @@ export function localDatabaseServiceEnvironment(credentials) {
     HZENSE_GENERATION_DATABASE_URL: localDatabaseUrl(credentials, 'hzense_generation_admin'),
     HZENSE_REVIEW_DATABASE_URL: localDatabaseUrl(credentials, 'hzense_candidate_reviewer'),
     HZENSE_SIGNAL_ADMIN_DATABASE_URL: localDatabaseUrl(credentials, 'hzense_signal_admin_reader'),
-    ...(credentials.version === 3
+    ...(credentials.version >= 3
       ? {
           HZENSE_AUTOMATION_DATABASE_URL: localDatabaseUrl(credentials, 'hzense_automation_admin'),
+        }
+      : {}),
+    ...(credentials.version >= 4
+      ? {
+          HZENSE_INSIGHT_READER_DATABASE_URL: localDatabaseUrl(
+            credentials,
+            'hzense_insight_reader',
+          ),
         }
       : {}),
   };

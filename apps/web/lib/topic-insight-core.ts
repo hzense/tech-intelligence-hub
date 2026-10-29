@@ -13,6 +13,42 @@ export interface InsightReport {
   sections: { heading: string; body: string; signalIds: string[] }[];
   uncertainties: string[];
 }
+export const insightReportFields = [
+  'report',
+  'title',
+  'summary',
+  'sections',
+  'sections.item',
+  'sections.heading',
+  'sections.body',
+  'sections.signalIds',
+  'uncertainties',
+  'uncertainties.item',
+] as const;
+export const insightReportFailureReasons = [
+  'wrong_type',
+  'empty',
+  'too_long',
+  'invalid_count',
+  'invalid_fields',
+  'reasoning_markup',
+  'control_character',
+  'invalid_citation',
+] as const;
+export class InsightReportValidationError extends Error {
+  readonly field: (typeof insightReportFields)[number];
+  readonly reason: (typeof insightReportFailureReasons)[number];
+  constructor(
+    field: (typeof insightReportFields)[number],
+    reason: (typeof insightReportFailureReasons)[number],
+    code: 'invalid_insight' | 'invalid_insight_citation' = 'invalid_insight',
+  ) {
+    super(code);
+    this.name = 'InsightReportValidationError';
+    this.field = field;
+    this.reason = reason;
+  }
+}
 export interface TopicInsightResult {
   kind: 'topic_insight';
   topicIds: string[];
@@ -87,50 +123,65 @@ export const insightReportSchema = {
         additionalProperties: false,
         required: ['heading', 'body', 'signalIds'],
         properties: {
-          heading: stringSchema,
+          heading: { ...stringSchema, description: '非空小标题，最多100字。' },
           body: stringSchema,
           signalIds: { type: 'array' as const, items: stringSchema },
         },
       },
     },
-    uncertainties: { type: 'array' as const, items: stringSchema },
+    uncertainties: {
+      type: 'array' as const,
+      description: '必须给出1至8项具体且有实质内容的不确定性；不得为空数组或用空字符串占位。',
+      items: {
+        ...stringSchema,
+        description: '必须是非空的具体证据缺口、尚未确认的事实或结论成立条件，最多800字。',
+      },
+    },
   },
 };
-function object(value: unknown): Record<string, unknown> {
+function object(
+  value: unknown,
+  field: (typeof insightReportFields)[number] = 'report',
+): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error('invalid_insight');
+    throw new InsightReportValidationError(field, 'wrong_type');
   return value as Record<string, unknown>;
 }
-function text(value: unknown, max: number): string {
+function text(
+  value: unknown,
+  max: number,
+  field: (typeof insightReportFields)[number] = 'report',
+): string {
+  if (typeof value !== 'string') throw new InsightReportValidationError(field, 'wrong_type');
+  if (!value.trim()) throw new InsightReportValidationError(field, 'empty');
+  if ([...value].length > max) throw new InsightReportValidationError(field, 'too_long');
+  if (/<\/?(?:think|analysis|reasoning)\b/i.test(value))
+    throw new InsightReportValidationError(field, 'reasoning_markup');
   if (
-    typeof value !== 'string' ||
-    !value.trim() ||
-    [...value].length > max ||
-    /<\/?(?:think|analysis|reasoning)\b/i.test(value) ||
     [...value].some(
       (character) => character.charCodeAt(0) < 32 && !['\t', '\n', '\r'].includes(character),
     )
   )
-    throw new Error('invalid_insight');
+    throw new InsightReportValidationError(field, 'control_character');
   return value.trim();
 }
 export function validateInsightReport(value: unknown, inputIds: readonly string[]): InsightReport {
   const row = object(value);
-  if (
-    Object.keys(row).sort().join(',') !== 'sections,summary,title,uncertainties' ||
-    !Array.isArray(row.sections) ||
-    row.sections.length < 1 ||
-    row.sections.length > 8 ||
-    !Array.isArray(row.uncertainties) ||
-    row.uncertainties.length < 1 ||
-    row.uncertainties.length > 8
-  )
-    throw new Error('invalid_insight');
+  if (Object.keys(row).sort().join(',') !== 'sections,summary,title,uncertainties')
+    throw new InsightReportValidationError('report', 'invalid_fields');
+  if (!Array.isArray(row.sections))
+    throw new InsightReportValidationError('sections', 'wrong_type');
+  if (row.sections.length < 1 || row.sections.length > 8)
+    throw new InsightReportValidationError('sections', 'invalid_count');
+  if (!Array.isArray(row.uncertainties))
+    throw new InsightReportValidationError('uncertainties', 'wrong_type');
+  if (row.uncertainties.length < 1 || row.uncertainties.length > 8)
+    throw new InsightReportValidationError('uncertainties', 'invalid_count');
   return {
-    title: text(row.title, 100),
-    summary: text(row.summary, 800),
+    title: text(row.title, 100, 'title'),
+    summary: text(row.summary, 800, 'summary'),
     sections: row.sections.map((value) => {
-      const section = object(value);
+      const section = object(value, 'sections.item');
       if (
         Object.keys(section).sort().join(',') !== 'body,heading,signalIds' ||
         !Array.isArray(section.signalIds) ||
@@ -138,14 +189,18 @@ export function validateInsightReport(value: unknown, inputIds: readonly string[
         section.signalIds.length > 100 ||
         section.signalIds.some((id) => typeof id !== 'string' || !inputIds.includes(id))
       )
-        throw new Error('invalid_insight_citation');
+        throw new InsightReportValidationError(
+          'sections.signalIds',
+          'invalid_citation',
+          'invalid_insight_citation',
+        );
       return {
-        heading: text(section.heading, 100),
-        body: text(section.body, 4000),
+        heading: text(section.heading, 100, 'sections.heading'),
+        body: text(section.body, 4000, 'sections.body'),
         signalIds: [...new Set(section.signalIds as string[])],
       };
     }),
-    uncertainties: row.uncertainties.map((v) => text(v, 800)),
+    uncertainties: row.uncertainties.map((v) => text(v, 800, 'uncertainties.item')),
   };
 }
 /** Validate before rendering; stale/withdrawn dependencies never expose a stored report. */

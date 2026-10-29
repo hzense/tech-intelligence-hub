@@ -12,6 +12,8 @@ import {
   enqueueAutomation,
   claimAutomationRun,
   beginSourceDiscovery,
+  beginTopicInsightExecution,
+  freezeAutomationInputs,
   updateAutomationRun,
   readCollectedSourceUrls,
   readAutomationRun,
@@ -21,6 +23,7 @@ import {
   enqueueDueAutomations,
   publishAutomationInsight,
   rejectAutomaticPublicationBeforeClaim,
+  rejectInsightTopicsBeforeClaim,
 } from '../src/automation-store.mjs';
 
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
@@ -157,6 +160,31 @@ suite('automation role isolation and publication boundary', () => {
     }
   }
 
+  async function withTopicFixture(work) {
+    const operator = `topic-${randomUUID()}`;
+    const config = await save(operator, {
+      kind: 'topic_insight',
+      topicIds: ['topic-ai'],
+      discovery: undefined,
+    });
+    const id = randomUUID();
+    const token = randomUUID();
+    try {
+      await owner.query(
+        `INSERT INTO public.automation_runs(
+          id,config_id,owner_id,config_revision,snapshot,slot,trigger,status,phase,
+          lease_token,lease_until,reserved_microusd
+        ) VALUES($1,$2,$3,1,$4::jsonb,$5,'manual','running','preparing',$6,
+          clock_timestamp()+interval '10 minutes',500000)`,
+        [id, config.id, operator, JSON.stringify(config.config), `manual:${id}`, token],
+      );
+      return await work({ pool, owner: operator, id, token });
+    } finally {
+      await owner.query('DELETE FROM public.automation_runs WHERE config_id=$1', [config.id]);
+      await owner.query('DELETE FROM public.automation_configs WHERE id=$1', [config.id]);
+    }
+  }
+
   function url(role) {
     const value = new URL(adminUrl);
     value.pathname = `/${database}`;
@@ -273,6 +301,128 @@ suite('automation role isolation and publication boundary', () => {
     await owner.query('REVOKE SELECT(id) ON public.automation_runs FROM hzense_insight_reader');
     await assertAutomationRole(readerRole, 'reader');
   });
+  it('completes after JSONB reorders frozen evidence and publishes only after confirmation', async () => {
+    await withTopicFixture(async (attempt) => {
+      const inputs = [
+        { id: 'signal-one', version: 3, revision: null, digest: 'a'.repeat(64) },
+        { id: 'signal-two', version: null, revision: 7, digest: 'b'.repeat(64) },
+      ];
+      await beginTopicInsightExecution(attempt);
+      await expect(beginTopicInsightExecution(attempt)).rejects.toThrow('stale_attempt');
+      await freezeAutomationInputs({ ...attempt, snapshot: { inputs } });
+      const stored = (await readAutomationRun(attempt)).frozen_inputs.inputs;
+      expect(stored).toEqual(inputs);
+      expect(JSON.stringify(stored)).not.toBe(JSON.stringify(inputs));
+      const result = { kind: 'topic_insight', inputs, report: { title: 'JSONB roundtrip' } };
+      const completed = await updateAutomationRun({
+        ...attempt,
+        phase: 'completed',
+        status: 'completed',
+        result,
+        costMicrousd: 27000,
+        costSource: 'provider',
+      });
+      expect(completed).toMatchObject({
+        status: 'completed',
+        publication_status: 'private',
+        charged_microusd: 27000,
+        lease_token: null,
+        result,
+      });
+      const visible = () =>
+        readerRole.query('SELECT id,result FROM public.published_topic_insights WHERE id=$1', [
+          attempt.id,
+        ]);
+      expect((await visible()).rows).toEqual([]);
+      await publishAutomationInsight({ ...attempt, confirm: true });
+      expect((await visible()).rows).toEqual([{ id: attempt.id, result }]);
+      await publishAutomationInsight({ ...attempt, confirm: false });
+      expect((await visible()).rows).toEqual([]);
+    });
+  });
+
+  it.each([
+    ['id', { id: 'different-signal' }],
+    ['version', { version: 4 }],
+    ['revision', { revision: 8 }],
+    ['digest', { digest: 'c'.repeat(64) }],
+    ['value type', { version: '3' }],
+  ])(
+    'rejects a changed frozen evidence %s without completing the task',
+    async (_field, changed) => {
+      await withTopicFixture(async (attempt) => {
+        const inputs = [{ id: 'signal-one', version: 3, revision: 7, digest: 'a'.repeat(64) }];
+        await beginTopicInsightExecution(attempt);
+        await freezeAutomationInputs({ ...attempt, snapshot: { inputs } });
+        await expect(
+          updateAutomationRun({
+            ...attempt,
+            phase: 'completed',
+            status: 'completed',
+            result: { kind: 'topic_insight', inputs: [{ ...inputs[0], ...changed }] },
+          }),
+        ).rejects.toThrow('inputs_mismatch');
+        expect(await readAutomationRun(attempt)).toMatchObject({
+          status: 'running',
+          phase: 'analyzing',
+          result: null,
+          frozen_inputs: { inputs },
+        });
+      });
+    },
+  );
+
+  it('rejects missing frozen evidence and changed evidence array order', async () => {
+    await withTopicFixture(async (attempt) => {
+      const inputs = [
+        { id: 'signal-one', version: 3, revision: null, digest: 'a'.repeat(64) },
+        { id: 'signal-two', version: 4, revision: null, digest: 'b'.repeat(64) },
+      ];
+      const complete = (value) =>
+        updateAutomationRun({
+          ...attempt,
+          phase: 'completed',
+          status: 'completed',
+          result: { kind: 'topic_insight', inputs: value },
+        });
+      await expect(complete(inputs)).rejects.toThrow('inputs_mismatch');
+      await freezeAutomationInputs({ ...attempt, snapshot: { inputs } });
+      for (const value of [undefined, null, [], [...inputs].reverse()])
+        await expect(complete(value)).rejects.toThrow('inputs_mismatch');
+    });
+  });
+
+  it('fences topic execution by owner, lease, phase, kind and frozen inputs', async () => {
+    await withTopicFixture(async (attempt) => {
+      await expect(
+        beginTopicInsightExecution({ ...attempt, owner: 'other-owner' }),
+      ).rejects.toThrow('stale_attempt');
+      await expect(beginTopicInsightExecution({ ...attempt, token: randomUUID() })).rejects.toThrow(
+        'stale_attempt',
+      );
+      for (const assignment of [
+        "lease_until=clock_timestamp()-interval '1 second'",
+        "phase='analyzing'",
+        "snapshot=jsonb_set(snapshot,'{kind}','\"source_collection\"'::jsonb)",
+        'frozen_inputs=\'{"inputs":[]}\'::jsonb',
+        "status='completed'",
+      ]) {
+        await owner.query(`UPDATE public.automation_runs SET ${assignment} WHERE id=$1`, [
+          attempt.id,
+        ]);
+        await expect(beginTopicInsightExecution(attempt)).rejects.toThrow('stale_attempt');
+        await owner.query(
+          `UPDATE public.automation_runs SET lease_until=clock_timestamp()+interval '10 minutes',
+            phase='preparing',snapshot=jsonb_set(snapshot,'{kind}','"topic_insight"'::jsonb),
+            frozen_inputs=NULL,status='running' WHERE id=$1`,
+          [attempt.id],
+        );
+      }
+      await beginTopicInsightExecution(attempt);
+      expect((await readAutomationRun(attempt)).phase).toBe('preparing_topic');
+    });
+  });
+
   it('settles old source-failure provider receipts across owners without rewriting the failed tasks', async () => {
     await withBudgetFixture(async ({ queue, record }) => {
       const ids = [];
@@ -1443,6 +1593,106 @@ suite('automation role isolation and publication boundary', () => {
       }
     }
   }
+
+  it('rejects an unclaimed topic scope with zero charge and preserves the immutable snapshot on replay', async () => {
+    await withPublicationFixtures(async ({ operator, createConfig }) => {
+      const config = await createConfig({
+        kind: 'topic_insight',
+        topicIds: ['topic-old-parent'],
+        discovery: undefined,
+      });
+      const request = {
+        configId: config.id,
+        expectedRevision: config.revision,
+        requestId: randomUUID(),
+        consent: true,
+      };
+      await enqueueAutomation({ pool, owner: operator, request });
+      const args = { pool, owner: operator, id: request.requestId };
+      expect(await rejectInsightTopicsBeforeClaim(args)).toBe(true);
+      const settled = await readAutomationRun(args);
+      expect(settled).toMatchObject({
+        status: 'failed',
+        phase: 'insight_topic_not_leaf',
+        error_code: 'insight_topic_not_leaf',
+        reserved_microusd: 0,
+        charged_microusd: 0,
+        cost_source: 'estimate',
+        lease_token: null,
+        lease_until: null,
+        budget_day: null,
+        started_at: null,
+        result: null,
+        frozen_inputs: null,
+        publication_status: 'private',
+        snapshot: config.config,
+      });
+      expect(settled.finished_at).not.toBeNull();
+      expect(await rejectInsightTopicsBeforeClaim(args)).toBe(false);
+      expect(await enqueueAutomation({ pool, owner: operator, request })).toEqual({
+        run: settled,
+        created: false,
+      });
+      expect(await claimAutomationRun(args)).toBeNull();
+      expect(await readAutomationRun(args)).toEqual(settled);
+    });
+  });
+
+  it.each([
+    ['another owner', null, true],
+    ['source task', { snapshot: { kind: 'source_collection' } }],
+    ['running task', { status: 'running' }],
+    ['completed task', { status: 'completed' }],
+    ['reserved budget', { reserved_microusd: 5000000 }],
+    ['charged provider receipt', { charged_microusd: 73, cost_source: 'provider' }],
+    ['zero provider receipt', { cost_source: 'provider' }],
+    ['lease token', { lease_token: randomUUID() }],
+    ['lease expiry', { lease_until: new Date(0) }],
+    ['retained result', { result: { report: { title: 'Retained' } } }],
+    ['frozen evidence', { frozen_inputs: { inputs: [] } }],
+    ['published task', { publication_status: 'published' }],
+  ])(
+    'does not convert %s into a zero-charge topic refusal',
+    async (_label, changes, wrongOwner) => {
+      await withPublicationFixtures(async ({ operator, createConfig }) => {
+        const config = await createConfig({
+          kind: 'topic_insight',
+          topicIds: ['topic-old-parent'],
+          discovery: undefined,
+        });
+        const id = randomUUID();
+        await enqueueAutomation({
+          pool,
+          owner: operator,
+          request: {
+            configId: config.id,
+            expectedRevision: config.revision,
+            requestId: id,
+            consent: true,
+          },
+        });
+        if (changes) {
+          const entries = Object.entries(changes);
+          await owner.query(
+            `UPDATE public.automation_runs SET ${entries.map(([key], index) => `${key}=$${index + 2}`).join(',')} WHERE id=$1`,
+            [id, ...entries.map(([, value]) => value)],
+          );
+        }
+        const before = (await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [id]))
+          .rows[0];
+        expect(
+          await rejectInsightTopicsBeforeClaim({
+            pool,
+            owner: wrongOwner ? `${operator}-other` : operator,
+            id,
+          }),
+        ).toBe(false);
+        expect(
+          (await owner.query('SELECT * FROM public.automation_runs WHERE id=$1', [id])).rows[0],
+        ).toEqual(before);
+      });
+    },
+  );
 
   it('settles an explicit automatic capability refusal before claim with no charge and stable replay', async () => {
     await withPublicationFixtures(async ({ operator, createConfig }) => {

@@ -4,7 +4,13 @@ import { notFound } from 'next/navigation';
 import { SiteShell } from '@/components/site-shell';
 import { TopicInsightCard, type TopicInsightCardEntry } from '@/components/topic-insight-card';
 import styles from '@/components/topic-insight-pages.module.css';
-import { formatZhDate, getInsightsForTopic, getTopicEntryById } from '@/lib/content-runtime';
+import {
+  formatZhDate,
+  getInsightsForTopic,
+  getLeafTopicIds,
+  getTopicEntries,
+  getTopicEntryById,
+} from '@/lib/content-runtime';
 import { getSignalEntries } from '@/lib/seed-runtime';
 import { visibleTopicInsights } from '@/lib/server/topic-insights';
 
@@ -27,12 +33,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function TopicDetailPage({ params }: Props) {
   const { id } = await params;
-  const [entry, signals, editorial] = await Promise.all([
-    getTopicEntryById(id),
+  const [topics, signals, editorial, leafTopicIds] = await Promise.all([
+    getTopicEntries(),
     getSignalEntries(),
     getInsightsForTopic(id),
+    getLeafTopicIds(),
   ]);
+  const entry = topics.find((topic) => topic.frontMatter.id === id);
   if (!entry) notFound();
+  const topicTitleMap = new Map(
+    topics.map((topic) => [topic.frontMatter.id, topic.frontMatter.title]),
+  );
   const topicSignals = signals
     .filter((signal) => signal.topics.includes(id))
     .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at) || a.id.localeCompare(b.id));
@@ -48,7 +59,11 @@ export default async function TopicDetailPage({ params }: Props) {
       summary: row.result.report.summary,
       date: row.published_at.slice(0, 10),
       evidenceCount: row.result.inputs.length,
-      topics: [entry.frontMatter.title],
+      topics: row.result.topicIds.map((topicId) => ({
+        id: topicId,
+        name: topicTitleMap.get(topicId),
+        isLeaf: leafTopicIds.has(topicId),
+      })),
     })),
     ...editorial.map((report) => ({
       id: report.frontMatter.id,
@@ -59,7 +74,11 @@ export default async function TopicDetailPage({ params }: Props) {
       evidenceCount: report.frontMatter.evidence_signals.filter((signalId) =>
         readableSignalIds.has(signalId),
       ).length,
-      topics: [entry.frontMatter.title],
+      topics: report.frontMatter.topics.map((topicId) => ({
+        id: topicId,
+        name: topicTitleMap.get(topicId),
+        isLeaf: leafTopicIds.has(topicId),
+      })),
     })),
   ].sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
 

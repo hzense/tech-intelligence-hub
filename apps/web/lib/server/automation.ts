@@ -16,6 +16,7 @@ import { automaticPublicationAvailable } from '../automatic-publication';
 import { importsConfigured } from './import-service';
 import { generationConfigured, generationSummaries } from './signal-generation';
 import { currentInsight } from '../topic-insight-core';
+import { assertInsightLeafTopics } from './insight-topics';
 import { readTaskPublicSignals } from './task-public-signals';
 import { getTopicEntries } from '../content-runtime';
 import { assertDiscoveryConnection } from '../source-discovery-provider';
@@ -61,12 +62,7 @@ export function automationExecutionReadiness(kind: AutomationConfig['kind']) {
   };
   const checks = [
     check('storage', automationStorageConfigured),
-    check(
-      'execution',
-      () =>
-        !(process.env.HZENSE_LOCAL_DEVELOPMENT === '1' && kind !== 'source_collection') &&
-        automationConfigured(),
-    ),
+    check('execution', automationConfigured),
     check('budget', automationLimits),
     ...(kind === 'source_collection'
       ? [check('import', importsConfigured), check('generation', generationConfigured)]
@@ -171,11 +167,33 @@ export async function automationRunDetail(owner: string, id: string) {
 }
 export async function saveAutomation(owner: string, request: store.SaveAutomationRequest) {
   const config = normalizeAutomationConfig(request.config);
-  // Local schedules require a separate opt-in and never enable topic Sandbox work.
+  if (config.kind === 'topic_insight') {
+    // Turning off this exact saved schedule is always available without the
+    // topic catalog or AI profile. Its owner/revision are rechecked on write.
+    if (config.enabled === false && request.expectedRevision > 0) {
+      const state = await store.readAutomationDashboard({ pool: automationConfigPool, owner });
+      const previous = state.configs.find((row) => row.id === request.id);
+      if (
+        previous?.owner_id === owner &&
+        previous.revision === request.expectedRevision &&
+        previous.enabled === true &&
+        previous.config.enabled === true &&
+        JSON.stringify(normalizeAutomationConfig({ ...previous.config, enabled: false })) ===
+          JSON.stringify(config)
+      )
+        return store.saveAutomationConfig({
+          pool: automationConfigPool,
+          owner,
+          request: { ...request, config },
+        });
+    }
+    await assertInsightLeafTopics(config.topicIds);
+  }
+  // Both local task kinds require explicit scheduler opt-in; saving does not run them.
   if (
     process.env.HZENSE_LOCAL_DEVELOPMENT === '1' &&
     config.enabled &&
-    (config.kind !== 'source_collection' || !isLocalAutomationSchedulerEnabled())
+    !isLocalAutomationSchedulerEnabled()
   )
     throw new store.AutomationError('execution_disabled');
   if (
@@ -201,9 +219,11 @@ export async function saveAutomation(owner: string, request: store.SaveAutomatio
           : 'database_unavailable',
       );
     }
-    const topics = new Set((await getTopicEntries()).map((entry) => entry.frontMatter.id));
-    if (config.topicIds.some((id) => !topics.has(id)))
-      throw new store.AutomationError('discovery_topic_invalid');
+    if (config.kind === 'source_collection') {
+      const topics = new Set((await getTopicEntries()).map((entry) => entry.frontMatter.id));
+      if (config.topicIds.some((id) => !topics.has(id)))
+        throw new store.AutomationError('discovery_topic_invalid');
+    }
   } else await validateAutomationProfile(config);
   return store.saveAutomationConfig({
     pool: automationConfigPool,
@@ -234,7 +254,10 @@ async function validateAutomationProfile(config: AutomationConfig) {
       if (config.topicIds.some((id) => !topics.has(id)))
         throw new store.AutomationError('discovery_topic_invalid');
     }
-  } else await aiStageAccess(config.profileId!, config.profileRevision!, 'analyze', false);
+  } else {
+    await assertInsightLeafTopics(config.topicIds);
+    await aiStageAccess(config.profileId!, config.profileRevision!, 'analyze', false);
+  }
 }
 async function dispatch(owner: string, id: string) {
   try {
@@ -248,6 +271,10 @@ async function dispatch(owner: string, id: string) {
     ]);
     await start(automationWorkflow, [owner, id]);
   } catch (error) {
+    if (error instanceof store.AutomationError && error.code === 'insight_topic_not_leaf') {
+      await store.rejectInsightTopicsBeforeClaim({ pool: automationPool, owner, id });
+      throw error;
+    }
     if (
       error instanceof store.AutomationError &&
       error.code === 'automatic_publication_unavailable'
@@ -286,6 +313,7 @@ export async function triggerAutomation(owner: string, request: store.TriggerAut
           'database_unavailable',
           'discovery_connection_unsupported',
           'discovery_topic_invalid',
+          'insight_topic_not_leaf',
         ];
         throw new store.AutomationError(
           typeof code === 'string' && publicCodes.includes(code)
@@ -303,9 +331,7 @@ export async function triggerAutomation(owner: string, request: store.TriggerAut
 export async function dispatchDueAutomations() {
   const local = process.env.HZENSE_LOCAL_DEVELOPMENT === '1';
   if (local && !isLocalAutomationSchedulerEnabled()) return { dispatched: 0, failed: 0 };
-  const availableKinds: AutomationConfig['kind'][] = local
-    ? ['source_collection']
-    : ['source_collection', 'topic_insight'];
+  const availableKinds: AutomationConfig['kind'][] = ['source_collection', 'topic_insight'];
   const kinds = availableKinds.filter(automationExecutionConfigured);
   if (!kinds.length) return { dispatched: 0, failed: 0 };
   const tasks = await store.enqueueDueAutomations({
@@ -327,12 +353,28 @@ export async function dispatchDueAutomations() {
   return { dispatched, failed };
 }
 export async function publishAutomationInsight(owner: string, id: string, confirm: boolean) {
-  if (process.env.HZENSE_LOCAL_DEVELOPMENT === '1')
-    throw new store.AutomationError('execution_disabled');
-  if (confirm) {
-    const run = await store.readAutomationRun({ pool: automationPool, owner, id });
-    if (!currentInsight(run.result, await readTaskPublicSignals()))
-      throw new store.AutomationError('insight_stale');
+  const local = process.env.HZENSE_LOCAL_DEVELOPMENT === '1';
+  if (local) {
+    if (!isLocalDevelopment()) throw new store.AutomationError('execution_disabled');
+    // Publishing/withdrawing an existing result is an editorial operation. It
+    // does not enable paid work, including when reviewing in local mock mode.
+    automationDatabaseConfiguration(true);
   }
-  return store.publishAutomationInsight({ pool: automationPool, owner, id, confirm });
+  const pool = local ? automationConfigPool : automationPool;
+  if (confirm) {
+    const run = await store.readAutomationRun({ pool, owner, id });
+    await assertInsightLeafTopics(Array.isArray(run.result?.topicIds) ? run.result.topicIds : []);
+    const signals = await readTaskPublicSignals();
+    const validated = currentInsight(run.result, signals);
+    if (!validated) throw new store.AutomationError('insight_stale');
+    const inputIds = new Set(validated.inputs.map((input) => input.id));
+    if (
+      validated.topicIds.some(
+        (topicId) =>
+          !signals.some((signal) => inputIds.has(signal.id) && signal.topics.includes(topicId)),
+      )
+    )
+      throw new store.AutomationError('insight_insufficient_evidence');
+  }
+  return store.publishAutomationInsight({ pool, owner, id, confirm });
 }

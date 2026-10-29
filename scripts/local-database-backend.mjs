@@ -40,6 +40,7 @@ export const localBackendRolePlan = Object.freeze([
     verifyTag: 'signal_admin_reader_verify',
   },
   { role: 'hzense_automation_admin', file: 'configure_automation_config_admin.sql' },
+  { role: 'hzense_insight_reader' },
 ]);
 const stop = (message) => {
   throw new LocalDatabaseError(message);
@@ -124,9 +125,9 @@ export const localCandidateEnrichmentGrants = Object.entries(candidateEnrichment
   )
   .join('\n');
 
-// The production config-only provisioner is pinned to hzense. Do not rewrite
-// that guard or create the public insight reader locally. Apply its exported
-// column matrix only after the strict local owner check, and reuse its exact
+// The production config-only provisioner is pinned to hzense. Keep that guard
+// and apply its exported column matrix only after the strict local owner check,
+// reusing its exact
 // post-grant audit before committing. The existing deletion upgrade subsequently
 // accepts only this exact baseline or its already-upgraded column ACL.
 export const localAutomationGrants = [
@@ -137,6 +138,31 @@ export const localAutomationGrants = [
       `GRANT SELECT(${columns.join(',')}), INSERT(${columns.join(',')}), UPDATE(${automationUpdateColumns[table].join(',')}) ON public.${table} TO hzense_automation_admin;`,
   ),
 ].join('\n');
+
+// This reader has only the existing filtered publication view. Never reuse the
+// production two-role provisioner: an initialized local admin already has ACLs.
+export const localInsightReaderGrants = [
+  'GRANT CONNECT ON DATABASE hzense_local TO hzense_insight_reader;',
+  'GRANT USAGE ON SCHEMA public TO hzense_insight_reader;',
+  'GRANT SELECT(id,result,published_at) ON public.published_topic_insights TO hzense_insight_reader;',
+].join('\n');
+
+export async function prepareLocalInsightReader(client) {
+  await assertLocalBackendTarget(client);
+  await client.query('BEGIN');
+  try {
+    if (
+      (await client.query('SELECT pg_try_advisory_xact_lock(1215921955,1298498925) AS locked'))
+        .rows[0]?.locked !== true
+    )
+      stop('本地数据库维护锁忙，未修改权限');
+    await client.query(localInsightReaderGrants);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
 
 export async function prepareLocalAutomationAdmin(client, root = localDatabaseRoot) {
   await assertLocalBackendTarget(client);
@@ -214,6 +240,7 @@ async function provisionRole({ admin, client, credentials, root, descriptor }) {
     if (!row.acl) {
       if (descriptor.role === 'hzense_automation_admin')
         await prepareLocalAutomationAdmin(client, root);
+      else if (descriptor.role === 'hzense_insight_reader') await prepareLocalInsightReader(client);
       else await client.query(await readFile(resolve(root, 'db/roles', descriptor.file), 'utf8'));
     }
     if (descriptor.role === 'hzense_automation_admin') {
@@ -263,7 +290,7 @@ export async function prepareLocalBackendRoles({
   root = localDatabaseRoot,
 }) {
   validateLocalDatabaseCredentials(credentials);
-  if (credentials.version !== 3) stop('请先升级本地凭据；不会修改现有密码');
+  if (credentials.version !== 4) stop('请先升级本地凭据；不会修改现有密码');
   await assertLocalCluster(admin);
   await assertLocalBackendTarget(client);
   for (const descriptor of localBackendRolePlan)
@@ -297,7 +324,12 @@ export async function verifyLocalBackendRoles({
       ['hzense_ai_admin', async () => {}],
       ['hzense_signal_admin_reader', async () => {}],
     );
-    if (credentials.version === 3) checks.push(['hzense_automation_admin', assertAutomationRole]);
+    if (credentials.version >= 3) checks.push(['hzense_automation_admin', assertAutomationRole]);
+    if (credentials.version >= 4)
+      checks.push([
+        'hzense_insight_reader',
+        (roleClient) => assertAutomationRole(roleClient, 'reader'),
+      ]);
   }
   for (const [role, check] of checks) {
     const roleClient = await connect(localDatabaseUrl(credentials, role));
@@ -317,5 +349,5 @@ export async function verifyLocalBackendRoles({
       await roleClient.end();
     }
   }
-  return credentials.version === 3;
+  return credentials.version === 4;
 }

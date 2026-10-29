@@ -53,6 +53,7 @@ test('development launcher discards all inherited service credentials and binds 
       HZENSE_AUTOMATION_RESERVE_MICROUSD: '999999999',
       HZENSE_TOPIC_INSIGHTS_ENABLED: '1',
       HZENSE_AUTOMATION_DATABASE_URL: 'production-private',
+      HZENSE_INSIGHT_READER_DATABASE_URL: 'production-private',
       HZENSE_AUTOMATION_DISPATCH_TOKEN: 'production-private',
       CRON_SECRET: 'production-private',
     },
@@ -72,7 +73,7 @@ test('development launcher discards all inherited service credentials and binds 
   assert.equal(env.HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD, '5000000');
   assert.equal(env.HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD, '10000000');
   assert.equal(env.HZENSE_AUTOMATION_RESERVE_MICROUSD, '5000000');
-  assert.equal(env.HZENSE_TOPIC_INSIGHTS_ENABLED, '0');
+  assert.equal(env.HZENSE_TOPIC_INSIGHTS_ENABLED, '1');
   assert.equal(env.HZENSE_AI_ALLOWED_HOSTS, 'openrouter.ai,ai-gateway.vercel.sh');
   assert.equal(env.HZENSE_AUTOMATION_DISPATCH_TOKEN, undefined);
   assert.equal(env.CRON_SECRET, undefined);
@@ -87,6 +88,11 @@ test('development launcher discards all inherited service credentials and binds 
     ['hzense_automation_admin', '127.0.0.1', '55432', '/hzense_local'],
   );
   assert.ok(isLocalDevelopment(env));
+  const insightTarget = new URL(env.HZENSE_INSIGHT_READER_DATABASE_URL);
+  assert.deepEqual(
+    [insightTarget.username, insightTarget.hostname, insightTarget.port, insightTarget.pathname],
+    ['hzense_insight_reader', '127.0.0.1', '55432', '/hzense_local'],
+  );
   assert.doesNotMatch(JSON.stringify(env), /production-private|unsafe/);
   for (const key of [
     'HZENSE_LOCAL_LOGIN_EXPIRES_AT',
@@ -130,7 +136,7 @@ test('real provider mode is opt-in via a validated local launch argument', () =>
   assert.equal(env.HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD, '5000000');
   assert.equal(env.HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD, '10000000');
   assert.equal(env.HZENSE_AUTOMATION_RESERVE_MICROUSD, '5000000');
-  assert.equal(env.HZENSE_TOPIC_INSIGHTS_ENABLED, '0');
+  assert.equal(env.HZENSE_TOPIC_INSIGHTS_ENABLED, '1');
   assert.equal(env.CRON_SECRET, undefined);
   assert.equal(env.WORKFLOW_TARGET_WORLD, 'local');
   assert.equal(env.HZENSE_GENERATION_DAILY_LIMIT_MICROUSD, '10000000');
@@ -239,7 +245,7 @@ test('launcher owns scheduler lifetime in real mode, including process failure; 
 });
 
 test('launcher requires an explicit credential upgrade before exposing local automation configuration', () => {
-  for (const version of [1, 2])
+  for (const version of [1, 2, 3])
     assert.throws(
       () => buildLocalDevelopmentEnvironment({}, { ...credentials(), version }, launch),
       /local:db:init/,

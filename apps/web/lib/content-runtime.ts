@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { loadContent, type ContentEntry, type FrontMatter } from '@hzense/content';
+import { loadContent, loadTaxonomy, type ContentEntry, type FrontMatter } from '@hzense/content';
 import { getRadarSnapshots } from './seed-runtime.ts';
 import { projectTopicAssessments, type TopicEntry } from './topic-assessments.ts';
 
@@ -10,6 +10,18 @@ export type InsightEntry = ContentEntry<InsightFrontMatter>;
 export type { TopicEntry } from './topic-assessments.ts';
 
 let contentPromise: ReturnType<typeof loadContent> | undefined;
+let leafTopicIdsPromise: Promise<ReadonlySet<string>> | undefined;
+
+/** Use the complete tree, including categories without enabled content pages. */
+export function getLeafTopicIds(): Promise<ReadonlySet<string>> {
+  leafTopicIdsPromise ??= loadTaxonomy(
+    resolve(process.cwd(), '../../data/taxonomy/taxonomy.yaml'),
+  ).then(({ topics }) => {
+    const parents = new Set(topics.map((topic) => topic.parentId).filter(Boolean));
+    return new Set(topics.filter((topic) => !parents.has(topic.id)).map((topic) => topic.id));
+  });
+  return leafTopicIdsPromise;
+}
 
 function getContent() {
   contentPromise ??= loadContent({
