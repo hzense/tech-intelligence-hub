@@ -39,6 +39,10 @@ export function readRuntimeTopics(limit = 1) {
   return runtimeTopicReader.readTopics(limit);
 }
 
+export function readRuntimeLeafTopics() {
+  return runtimeTopicReader.readLeafTopics();
+}
+
 export function runtimeReaderPoolStats() {
   return runtimeTopicReader.poolStats();
 }

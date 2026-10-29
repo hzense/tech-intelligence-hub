@@ -31,6 +31,9 @@ async function compile() {
       'export async function signalGenerationWorkflow(){throw Error("unexpected worker")}',
     './local-signal-generation':
       'export async function localSignalGenerationWorkflow(){throw Error("unexpected worker")}',
+    './local-topic-insight':
+      'export async function runLocalTopicInsightStep(){return "local_topic_completed"}',
+    '../lib/server/insight-topics': 'export async function assertInsightLeafTopics(){}',
     '../lib/server/topic-insight-sandbox':
       'export async function startTopicInsightSandbox(){throw Error("unexpected sandbox")} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
     '../lib/server/source-discovery': `export async function discoverSources(){
@@ -38,6 +41,7 @@ async function compile() {
     }`,
     '../../../packages/database/src/automation-store.mjs': `
       export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
+      export async function rejectInsightTopicsBeforeClaim(){throw Error('Unexpected insight rejection')}
       export async function rejectAutomaticPublicationBeforeClaim(){throw Error('unexpected rejection')}
       export async function readAutomationRun(){return structuredClone(globalThis.${key}.run)}
       export async function claimAutomationRun(){

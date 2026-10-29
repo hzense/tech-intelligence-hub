@@ -39,6 +39,7 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
     ids: 'export function automationStableId(value){return value.itemId??"batch-id"}',
     store: `
       export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
+      export async function rejectInsightTopicsBeforeClaim(){throw Error('Unexpected insight rejection')}
       export async function rejectAutomaticPublicationBeforeClaim(){throw Error('unexpected automatic rejection')}
       export async function claimAutomationRun(){const f=globalThis.__automationTicket;if(f.run.status!=='queued')return null;f.run.status='running';return structuredClone(f.run)}
       export async function readAutomationRun(){return structuredClone(globalThis.__automationTicket.run)}
@@ -58,6 +59,9 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
     `,
     enrichment:
       'export function candidateEnrichmentConfigured(){return false} export async function candidateEnrichmentDetail(){throw Error("unused")}',
+    localTopic:
+      'export async function runLocalTopicInsightStep(){throw Error("unexpected local topic")}',
+    insightTopics: 'export async function assertInsightLeafTopics(){}',
     topic:
       'export async function startTopicInsightSandbox(){} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
     generationConfig:
@@ -77,6 +81,7 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
   };
   const mappings = {
     './automatic-publication': 'automaticPublication',
+    './local-topic-insight': 'localTopic',
     workflow: 'workflow',
     'workflow/api': 'api',
     '../lib/server/automation': 'limits',
@@ -87,6 +92,7 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
     '../lib/server/import-service': 'imports',
     '../lib/server/signal-generation': 'generationStore',
     '../lib/server/topic-insight-sandbox': 'topic',
+    '../lib/server/insight-topics': 'insightTopics',
     './candidate-enrichment': 'enrichment',
     '../signal-generation-config': 'generationConfig',
     '../admin-ai-core': 'aiConfig',

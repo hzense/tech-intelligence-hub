@@ -1,9 +1,14 @@
 import 'server-only';
 import { aiStageAccess } from './admin-ai';
+import { assertInsightLeafTopics } from './insight-topics';
 import { readAiBackendConfiguration } from '../admin-ai-core';
 import { readTaskPublicSignals } from './task-public-signals';
 import { insightInput, selectInsightSignals, type TopicInsightResult } from '../topic-insight-core';
-import { insightRules, invokeTopicInsight } from '../topic-insight-provider';
+import {
+  insightRules,
+  invokeTopicInsight,
+  TopicInsightProviderError,
+} from '../topic-insight-provider';
 import { estimateGenerationTokens } from '../../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { generationCost } from '../signal-generation-core';
 import { freezeAutomationInputs } from './automation-store-access';
@@ -21,13 +26,18 @@ export async function executeTopicInsight(owner: string, run: InsightRun) {
   if (owner !== run.owner_id || process.env.HZENSE_AUTOMATION_ENABLED !== '1')
     throw new Error('not_configured');
   const config = run.config_snapshot;
+  await assertInsightLeafTopics(config.topicIds);
   if (!config.profileId || !config.profileRevision) throw new Error('profile_not_ready');
   const input = selectInsightSignals(
     await readTaskPublicSignals(),
     config.topicIds,
     new Date(run.created_at),
   );
-  if (input.signals.length < 2) throw new Error('insight_insufficient_evidence');
+  if (
+    input.signals.length < 2 ||
+    config.topicIds.some((id) => !input.signals.some((signal) => signal.topics.includes(id)))
+  )
+    throw new Error('insight_insufficient_evidence');
   const access = await aiStageAccess(config.profileId, config.profileRevision, 'analyze', true);
   const stage = access.profile.stages.analyze;
   const prompt = JSON.stringify({
@@ -83,14 +93,39 @@ export async function executeTopicInsight(owner: string, run: InsightRun) {
     inputs: frozenInputs,
     report: generated.report,
   };
-  const measured =
-    Number.isSafeInteger(generated.inputTokens) && Number.isSafeInteger(generated.outputTokens)
-      ? generationCost(generated.inputTokens!, generated.outputTokens!, access.connection.settings)
-      : estimate;
+  // A confirmed provider receipt takes precedence over usage telemetry, which
+  // may be absent or malformed even when the response was already charged.
+  if (Number.isSafeInteger(generated.providerCostMicrousd) && generated.providerCostMicrousd! >= 0)
+    return {
+      result,
+      costMicrousd: generated.providerCostMicrousd!,
+      costSource: 'provider' as const,
+    };
+  let measured = estimate;
+  try {
+    if (
+      [generated.inputTokens, generated.outputTokens].some(
+        (tokens) =>
+          tokens !== undefined && tokens !== null && (!Number.isSafeInteger(tokens) || tokens < 0),
+      )
+    )
+      throw new Error('invalid_usage');
+    // Providers that omit usage retain the existing conservative preflight
+    // estimate. Explicitly invalid telemetry is a different, unknown outcome.
+    if (generated.inputTokens != null && generated.outputTokens != null)
+      measured = generationCost(
+        generated.inputTokens,
+        generated.outputTokens,
+        access.connection.settings,
+      );
+  } catch {
+    // This is after the paid call. Never let an estimator's error code be
+    // mistaken for a zero-cost preflight failure by the automation worker.
+    throw new TopicInsightProviderError(null, true);
+  }
   return {
     result,
-    costMicrousd: generated.providerCostMicrousd ?? measured,
-    costSource:
-      generated.providerCostMicrousd !== null ? ('provider' as const) : ('estimate' as const),
+    costMicrousd: measured,
+    costSource: 'estimate' as const,
   };
 }

@@ -12,6 +12,8 @@ import {
   runtimeHealthDurationLimitMs,
   runtimeTopicLimit,
   runtimeTopicQuery,
+  runtimeLeafTopicQuery,
+  runtimeLeafTopicMaximum,
 } from '../lib/runtime-reader-core.ts';
 
 const pooledHost = 'ep-runtime-reader-pooler.us-east-1.aws.neon.tech';
@@ -235,6 +237,40 @@ test('enforces the Topic query limit before creating a pool', async () => {
   });
   await assert.rejects(reader.readTopics(51), assertRuntimeError('invalid_limit'));
   assert.equal(poolCreations, 0);
+});
+
+test('reads the complete selectable leaf catalog beyond 50 and refuses overflow or malformed rows', async () => {
+  const rows = Array.from({ length: 75 }, (_, index) => topic({ id: `topic-${index}` }));
+  const queries = [];
+  const reader = createLazyRuntimeTopicReader({
+    environment: () => runtimeEnvironment(),
+    createPool: () => ({
+      idleCount: 1,
+      totalCount: 1,
+      waitingCount: 0,
+      query: async (sql, values) => {
+        queries.push({ sql, values });
+        return { rows };
+      },
+    }),
+  });
+  assert.deepEqual(await reader.readLeafTopics(), rows);
+  assert.deepEqual(queries, [{ sql: runtimeLeafTopicQuery, values: [1001] }]);
+  assert.match(
+    runtimeLeafTopicQuery,
+    /NOT EXISTS \(SELECT 1 FROM public\.topics AS child WHERE child\.parent_id=topic\.id\)/,
+  );
+  for (const invalid of [
+    [topic({ status: 'archived' })],
+    [topic({ runtimeEnabled: false })],
+    [topic(), topic()],
+    Array.from({ length: runtimeLeafTopicMaximum + 1 }, (_, index) =>
+      topic({ id: `topic-${index}` }),
+    ),
+  ]) {
+    rows.splice(0, rows.length, ...invalid);
+    await assert.rejects(reader.readLeafTopics(), assertRuntimeError('invalid_result'));
+  }
 });
 
 test('uses the same lazy one-connection pool for fixed parameterized database search', async () => {

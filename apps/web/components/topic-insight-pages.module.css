@@ -1,9 +1,9 @@
 .indexHero {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(230px, 0.75fr);
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 1fr);
   align-items: end;
   gap: 3rem;
-  padding: clamp(1.5rem, 4vw, 3.5rem) 0 clamp(2.2rem, 4vw, 3.5rem);
+  padding: 1rem 0 2rem;
 }
 
 .eyebrow {
@@ -26,7 +26,7 @@
 }
 
 .indexHero h1 {
-  font-size: clamp(3.2rem, 6vw, 5.4rem);
+  font-size: clamp(2.2rem, 4vw, 3.4rem);
 }
 
 .indexHero > p,
@@ -46,6 +46,90 @@
 .catalogSection {
   padding: 3.5rem 0 5rem;
   border-top: 1px solid var(--line);
+}
+
+.trackingSection {
+  padding: 2rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.trackedGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.trackedCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.trackedCard:hover {
+  border-color: var(--brand);
+}
+
+.trackedCard:focus-visible,
+.moreTrackedTopics summary:focus-visible {
+  outline: 3px solid var(--brand-bright);
+  outline-offset: 3px;
+}
+
+.trackedCardHeading,
+.trackedCardCounts {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.trackedCardHeading {
+  align-items: start;
+  color: var(--brand);
+}
+
+.trackedCardHeading h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.trackedCard > p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.trackedCardCounts {
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.moreTrackedTopics {
+  margin-top: 0.85rem;
+}
+
+.moreTrackedTopics summary {
+  width: fit-content;
+  min-height: 44px;
+  padding: 0.65rem 0;
+  color: var(--brand);
+  font-size: 0.85rem;
+  cursor: pointer;
 }
 
 .sectionHeading {
@@ -70,15 +154,13 @@
   line-height: 1.6;
 }
 
-.reportGrid,
-.topicGrid {
+.reportGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
 }
 
 .reportCard,
-.topicCard,
 .emptyState {
   min-width: 0;
   border: 1px solid var(--line);
@@ -86,8 +168,7 @@
   background: var(--surface);
 }
 
-.reportCard,
-.topicCard {
+.reportCard {
   display: flex;
   flex-direction: column;
   transition:
@@ -96,15 +177,13 @@
     box-shadow 0.2s ease;
 }
 
-.reportCard:hover,
-.topicCard:hover {
+.reportCard:hover {
   transform: translateY(-4px);
   border-color: var(--brand);
   box-shadow: var(--shadow);
 }
 
-.reportCard:focus-visible,
-.topicCard:focus-visible {
+.reportCard:focus-visible {
   outline: 3px solid var(--brand-bright);
   outline-offset: 3px;
 }
@@ -115,8 +194,7 @@
 }
 
 .reportCardTop,
-.reportCardBottom,
-.topicCardTop {
+.reportCardBottom {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
@@ -124,8 +202,7 @@
   font-size: 0.75rem;
 }
 
-.reportCardTop span,
-.topicCardTop span {
+.reportCardTop span {
   color: var(--brand);
   font-weight: 850;
   letter-spacing: 0.1em;
@@ -148,6 +225,10 @@
   color: var(--muted);
   line-height: 1.7;
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
 }
 
 .reportCardBottom {
@@ -165,32 +246,79 @@
   line-height: 1;
 }
 
-.topicCard {
-  min-height: 220px;
-  padding: clamp(1.4rem, 3vw, 2rem);
+.reportSlot {
+  display: grid;
+  min-width: 0;
 }
 
-.topicCard h3 {
-  margin: 2rem 0 0.7rem;
-  font-size: clamp(1.5rem, 2.5vw, 2rem);
-  letter-spacing: -0.05em;
+.topicNavigation {
+  margin: 1.75rem 0 2rem;
 }
 
-.topicCard p {
-  margin: 0;
+.topicNavigationLabel {
+  margin: 0 0 0.75rem;
   color: var(--muted);
-  line-height: 1.65;
+  font-size: 0.8rem;
+  font-weight: 750;
 }
 
-.topicCardFooter {
+.topicFilters {
   display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-top: auto;
-  padding-top: 1.4rem;
-  color: var(--brand);
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.topicFilters button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 100px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.topicFilters button span {
   font-size: 0.75rem;
-  font-weight: 750;
+  opacity: 0.75;
+}
+
+.topicFilters button:hover,
+.topicFilters button[aria-pressed='true'] {
+  border-color: var(--brand);
+  color: var(--brand);
+  background: var(--surface-alt, var(--surface));
+}
+
+.topicFilters button[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 1px var(--brand);
+  font-weight: 800;
+}
+
+.topicExpansion {
+  min-height: 44px;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.topicFilters button:focus-visible,
+.topicExpansion:focus-visible {
+  outline: 3px solid var(--brand-bright);
+  outline-offset: 3px;
 }
 
 .emptyState {
@@ -280,7 +408,7 @@
 @media (max-width: 720px) {
   .indexHero,
   .reportGrid,
-  .topicGrid,
+  .trackedGrid,
   .signalLinks {
     grid-template-columns: 1fr;
   }

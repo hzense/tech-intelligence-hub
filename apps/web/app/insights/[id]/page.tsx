@@ -3,9 +3,15 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { SiteShell } from '@/components/site-shell';
 import { InsightEvidenceTimeline } from '@/components/insight-evidence-timeline';
+import { TopicInsightTags } from '@/components/topic-insight-tags';
 import pageStyles from '@/components/topic-insight-pages.module.css';
 import reportStyles from '@/components/topic-insight.module.css';
-import { formatZhDate, getInsightEntryById, getTopicTitleMap } from '@/lib/content-runtime';
+import {
+  formatZhDate,
+  getInsightEntryById,
+  getLeafTopicIds,
+  getTopicTitleMap,
+} from '@/lib/content-runtime';
 import { getSignalEntries } from '@/lib/seed-runtime';
 
 interface InsightDetailProps {
@@ -39,10 +45,11 @@ export async function generateMetadata({ params }: InsightDetailProps): Promise<
 
 export default async function InsightDetailPage({ params }: InsightDetailProps) {
   const { id } = await params;
-  const [entry, topicTitleMap, signals] = await Promise.all([
+  const [entry, topicTitleMap, signals, leafTopicIds] = await Promise.all([
     getInsightEntryById(id),
     getTopicTitleMap(),
     getSignalEntries(),
+    getLeafTopicIds(),
   ]);
   if (!entry) notFound();
   const signalsById = new Map(signals.map((signal) => [signal.id, signal]));
@@ -60,14 +67,17 @@ export default async function InsightDetailPage({ params }: InsightDetailProps) 
           </Link>
           <p className={pageStyles.eyebrow}>HZENSE / 深度报告</p>
           <h1>{entry.frontMatter.title}</h1>
+          <TopicInsightTags
+            topics={entry.frontMatter.topics.map((topicId) => ({
+              id: topicId,
+              name: topicTitleMap.get(topicId),
+              isLeaf: leafTopicIds.has(topicId),
+            }))}
+            linked
+          />
           <div className={pageStyles.editionStats}>
             <span>发布于 {formatZhDate(entry.frontMatter.date)}</span>
             <span>{evidence.length} 条可公开读取的证据</span>
-            {entry.frontMatter.topics.map((topic) => (
-              <Link href={`/topics/${topic}`} key={topic}>
-                {topicTitleMap.get(topic) ?? topic}
-              </Link>
-            ))}
           </div>
         </header>
         <article className={reportStyles.report} aria-label="洞察报告正文">

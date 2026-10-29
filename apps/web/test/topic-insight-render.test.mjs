@@ -14,7 +14,7 @@ function publishedInsight() {
     published_at: '2026-09-27T10:00:00.000Z',
     result: {
       kind: 'topic_insight',
-      topicIds: ['topic-ai'],
+      topicIds: ['topic-ai', 'topic-security', 'topic-unknown'],
       windowStart: '2026-08-28T00:00:00.000Z',
       windowEnd: '2026-09-27T00:00:00.000Z',
       generatedAt: '2026-09-26T12:00:00.000Z',
@@ -41,6 +41,10 @@ const state = {
       frontMatter: { id: 'topic-ai', title: '人工智能' },
       summary: '持续跟踪人工智能。',
     },
+    {
+      frontMatter: { id: 'topic-security', title: '人工智能安全' },
+      summary: '持续跟踪人工智能安全。',
+    },
   ],
   signals: [
     {
@@ -57,6 +61,19 @@ const state = {
     },
   ],
   rows: [publishedInsight()],
+  editorial: [
+    {
+      frontMatter: {
+        id: 'editorial-insight',
+        title: '编辑专题报告',
+        date: '2026-09-20',
+        topics: ['topic-ai', 'topic-security', 'topic-unknown'],
+        evidence_signals: ['signal-one'],
+      },
+      summary: '编辑报告摘要。',
+      sections: [],
+    },
+  ],
 };
 
 async function loadPages() {
@@ -65,6 +82,8 @@ async function loadPages() {
       contents: `
         export { default as TopicsPage } from './app/topics/page';
         export { default as InsightEdition } from './app/topics/[id]/editions/[edition]/page';
+        export { default as TopicDetailPage } from './app/topics/[id]/page';
+        export { default as EditorialInsightPage } from './app/insights/[id]/page';
       `,
       resolveDir: fileURLToPath(new URL('..', import.meta.url)),
       loader: 'tsx',
@@ -96,7 +115,20 @@ async function loadPages() {
             '@/lib/content-runtime': `
               export const formatZhDate = (date) => date;
               export async function getTopicEntries() { return globalThis.__topicRenderTest.topics; }
-              export async function getInsightEntries() { return []; }
+              export async function getLeafTopicIds() { return new Set(['topic-security']); }
+              export async function getTopicTitleMap() {
+                return new Map(globalThis.__topicRenderTest.topics.map(topic => [topic.frontMatter.id, topic.frontMatter.title]));
+              }
+              export async function getTopicEntryById(id) {
+                return globalThis.__topicRenderTest.topics.find(topic => topic.frontMatter.id === id);
+              }
+              export async function getInsightEntries() { return globalThis.__topicRenderTest.editorial; }
+              export async function getInsightsForTopic(id) {
+                return globalThis.__topicRenderTest.editorial.filter(entry => entry.frontMatter.topics.includes(id));
+              }
+              export async function getInsightEntryById(id) {
+                return globalThis.__topicRenderTest.editorial.find(entry => entry.frontMatter.id === id);
+              }
             `,
             '@/lib/seed-runtime': `
               export async function getSignalEntries() { return globalThis.__topicRenderTest.signals; }
@@ -133,7 +165,7 @@ async function loadPages() {
 test('published report card and standalone report render one unified catalog with real evidence links', async () => {
   globalThis.__topicRenderTest = state;
   try {
-    const { TopicsPage, InsightEdition } = await loadPages();
+    const { TopicsPage, InsightEdition, TopicDetailPage, EditorialInsightPage } = await loadPages();
     const indexHtml = renderToStaticMarkup(await TopicsPage());
     assert.match(indexHtml, new RegExp(`href="${reportHref}"`));
     assert.match(indexHtml, /合成专题报告：智能体安全/);
@@ -154,10 +186,106 @@ test('published report card and standalone report render one unified catalog wit
     assert.match(detailHtml, /&lt;script&gt;公开证据 B&lt;\/script&gt;/);
     assert.doesNotMatch(detailHtml, /<script>公开证据 B<\/script>/);
     assert.doesNotMatch(detailHtml, /当前|历史/);
+    const topicHtml = renderToStaticMarkup(
+      await TopicDetailPage({ params: Promise.resolve({ id: 'topic-ai' }) }),
+    );
+    const editorialHtml = renderToStaticMarkup(
+      await EditorialInsightPage({ params: Promise.resolve({ id: 'editorial-insight' }) }),
+    );
+    for (const html of [indexHtml, detailHtml, topicHtml, editorialHtml]) {
+      const leaves = html.match(/<div[^>]*aria-label="所属专题：[^"]*"[^>]*>[\s\S]*?<\/div>/g);
+      const originalScopes = html.match(
+        /<div[^>]*aria-label="原生成范围（待细分）：[^"]*"[^>]*>[\s\S]*?<\/div>/g,
+      );
+      assert.ok(leaves?.length, 'every report path exposes its saved leaf topics');
+      assert.ok(
+        originalScopes?.length,
+        'broad and unknown historical topics remain visible without relabelling',
+      );
+      for (const label of leaves) {
+        assert.match(label, /人工智能安全/);
+        assert.doesNotMatch(label, /topic-unknown|>人工智能</);
+      }
+      for (const label of originalScopes) {
+        assert.match(label, />人工智能</);
+        assert.match(label, /topic-unknown/);
+        assert.doesNotMatch(label, /人工智能安全|跨领域|未标注专题/);
+      }
+    }
+    for (const html of [detailHtml, editorialHtml]) {
+      assert.match(html, /href="\/topics\/topic-ai"/);
+      assert.match(html, /href="\/topics\/topic-security"/);
+      assert.doesNotMatch(html, /href="\/topics\/topic-unknown"/);
+    }
     await assert.rejects(
       InsightEdition({ params: Promise.resolve({ id: 'topic-other', edition: reportId }) }),
       /not_found/,
     );
+  } finally {
+    delete globalThis.__topicRenderTest;
+  }
+});
+
+test('tracking topic cards include public signal-only topics and fold cards beyond six', async () => {
+  const signalOnlyTopics = Array.from({ length: 6 }, (_, index) => ({
+    frontMatter: { id: `topic-signal-only-${index + 1}`, title: `仅有信号的专题 ${index + 1}` },
+    summary: '已有公开信号，尚无公开报告。',
+  }));
+  const directoryState = globalThis.structuredClone(state);
+  directoryState.topics.push(...signalOnlyTopics, {
+    frontMatter: { id: 'topic-empty', title: '没有公开内容的专题' },
+    summary: '没有公开信号或报告。',
+  });
+  directoryState.signals.push(
+    ...signalOnlyTopics.flatMap((topic, index) =>
+      Array.from({ length: index + 1 }, (_, signalIndex) => ({
+        id: `signal-only-${index + 1}-${signalIndex + 1}`,
+        title: `公开信号 ${index + 1}-${signalIndex + 1}`,
+        occurred_at: '2026-09-25T12:00:00.000Z',
+        topics: [topic.frontMatter.id],
+      })),
+    ),
+  );
+  globalThis.__topicRenderTest = directoryState;
+  try {
+    const { TopicsPage } = await loadPages();
+    const html = renderToStaticMarkup(await TopicsPage());
+    const heading = html.indexOf('>跟踪专题</h2>');
+    assert.ok(heading >= 0, 'the tracking topic heading remains visible');
+    assert.ok(heading < html.indexOf('>洞察报告</h2>'), 'tracking cards appear before reports');
+    const section = html.slice(
+      html.lastIndexOf('<section', heading),
+      html.indexOf('</section>', heading) + '</section>'.length,
+    );
+    const folded = section.match(/<details\b[^>]*>[\s\S]*?<\/details>/)?.[0];
+    assert.ok(folded, 'additional tracking cards use native details');
+    assert.doesNotMatch(folded.match(/^<details\b[^>]*>/)?.[0] ?? '', /\sopen(?:=|\s|>)/);
+    assert.match(folded, /<summary\b[^>]*>[\s\S]*?<\/summary>/);
+    const cards = (markup) => [
+      ...markup.matchAll(/<a\b[^>]*href="\/topics\/([^"/?#]+)"[^>]*>[\s\S]*?<\/a>/g),
+    ];
+    const defaultCards = cards(section.replace(folded, ''));
+    const foldedCards = cards(folded);
+    assert.equal(defaultCards.length, 6, 'six cards are visible before expansion');
+    assert.equal(foldedCards.length, 2, 'remaining eligible cards are inside details');
+    const allCards = new Map(
+      [...defaultCards, ...foldedCards].map((match) => [match[1], match[0]]),
+    );
+    assert.equal(allCards.size, 8, 'every eligible topic appears once');
+    assert.equal(allCards.has('topic-empty'), false);
+    assert.doesNotMatch(section, /没有公开内容的专题/);
+    const expectedCounts = [
+      ['topic-ai', 2, 2],
+      ['topic-security', 0, 2],
+      ...signalOnlyTopics.map((topic, index) => [topic.frontMatter.id, index + 1, 0]),
+    ];
+    for (const [id, signalCount, reportCount] of expectedCounts) {
+      const card = allCards.get(id);
+      assert.ok(card, `topic ${id} keeps its detail link`);
+      const text = card.replace(/<[^>]*>/g, ' ');
+      assert.match(text, new RegExp(`${signalCount}\\s*条(?:关联)?信号`));
+      assert.match(text, new RegExp(`${reportCount}\\s*份(?:公开)?报告`));
+    }
   } finally {
     delete globalThis.__topicRenderTest;
   }

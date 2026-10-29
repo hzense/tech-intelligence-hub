@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getTopicEntries, getTopicEntryById } from '../lib/content-runtime.ts';
+import { getLeafTopicIds, getTopicEntries, getTopicEntryById } from '../lib/content-runtime.ts';
 import { getRadarSnapshots } from '../lib/seed-runtime.ts';
 import { projectTopicAssessments } from '../lib/topic-assessments.ts';
 
@@ -113,4 +113,29 @@ test('real Topics without Radar snapshots remain available without invented scor
       assert.equal((await getTopicEntryById(entry.frontMatter.id)).assessment, undefined);
     }
   }
+});
+
+test('insight labels use the full taxonomy leaves, not a fixed depth or the enabled content subset', async () => {
+  const leaves = await getLeafTopicIds();
+  for (const id of [
+    'topic-artificial-intelligence',
+    'topic-foundation-models',
+    'topic-ai-agents',
+    'topic-memory',
+  ]) {
+    assert.equal(
+      leaves.has(id),
+      false,
+      `${id} is still a parent even if some children have no page`,
+    );
+  }
+  for (const id of [
+    'topic-language-models',
+    'topic-agent-memory',
+    'topic-humanoid-robotics',
+    'topic-quantum',
+  ]) {
+    assert.equal(leaves.has(id), true, `${id} has no child regardless of depth`);
+  }
+  assert.equal(leaves.has('topic-not-in-taxonomy'), false);
 });

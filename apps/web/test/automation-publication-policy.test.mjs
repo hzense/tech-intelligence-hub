@@ -54,6 +54,7 @@ async function compile() {
         f.reads++;return structuredClone(f.run);
       }
       export async function claimAutomationRun(){const f=globalThis.${key};f.claims++;return structuredClone(f.run)}
+      export async function rejectInsightTopicsBeforeClaim(){throw Error('Unexpected insight rejection')}
       export async function rejectAutomaticPublicationBeforeClaim(){const f=globalThis.${key};f.refusals++;
         if(f.claimConcurrently)f.run.status='running';
         if(f.run.status!=='queued')return false;
@@ -73,6 +74,9 @@ async function compile() {
     './local-signal-generation':
       'export async function localSignalGenerationWorkflow(){throw Error("Worker must not execute")}',
     '../lib/server/source-discovery': `export async function discoverSources(){globalThis.${key}.discoveries++;return []}`,
+    './local-topic-insight':
+      'export async function runLocalTopicInsightStep(){return "local_topic_completed"}',
+    '../lib/server/insight-topics': 'export async function assertInsightLeafTopics(){}',
     '../lib/server/topic-insight-sandbox': `export async function startTopicInsightSandbox(){throw Error('Unexpected sandbox')}
       export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}`,
   };
@@ -285,7 +289,7 @@ test('scheduled local collection reaches worker stages only while the scheduler 
   assert.deepEqual(state.cleanups, [{ owner, id: generation.id, at: queuedAt }]);
 });
 
-test('scheduled worker admission rejects mock, production markers and local insight runs', async (t) => {
+test('scheduled worker admission rejects invalid local modes and admits explicitly enabled topics', async (t) => {
   const { state, claim } = await setup(t, 'manual', {
     ...local(),
     HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED: '1',
@@ -303,14 +307,15 @@ test('scheduled worker admission rejects mock, production markers and local insi
     await assert.rejects(claim(owner, runId), /execution_disabled/);
   }
   process.env = { ...local(), HZENSE_LOCAL_AUTOMATION_SCHEDULER_ENABLED: '1' };
-  state.run.snapshot.kind = 'topic_insight';
-  await assert.rejects(claim(owner, runId), /execution_disabled/);
   assert.equal(state.claims, 0);
+  state.run.snapshot.kind = 'topic_insight';
+  assert.equal((await claim(owner, runId)).local, true);
+  assert.equal(state.claims, 1);
   assert.equal(state.discoveries, 0);
   assert.deepEqual(state.starts, []);
 
   process.env = production();
   state.run.snapshot.kind = 'source_collection';
   await claim(owner, runId);
-  assert.equal(state.claims, 1, 'Production scheduled worker admission remains unchanged');
+  assert.equal(state.claims, 2, 'Production scheduled worker admission remains unchanged');
 });

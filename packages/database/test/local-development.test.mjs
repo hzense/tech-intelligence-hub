@@ -19,6 +19,7 @@ import {
   localDatabaseBaseRoles,
   localDatabaseBackendRoles,
   localDatabaseV2BackendRoles,
+  localDatabaseV3BackendRoles,
   localDatabaseProject,
   localDatabaseServiceEnvironment,
   localDatabaseUrl,
@@ -32,8 +33,10 @@ import {
   localBackendRolePlan,
   localCandidateEnrichmentGrants,
   localAutomationGrants,
+  localInsightReaderGrants,
   localRoleVerificationBlock,
   prepareLocalAutomationAdmin,
+  prepareLocalInsightReader,
   prepareLocalBackendRoles,
   prepareLocalCandidateEnrichment,
 } from '../../../scripts/local-database-backend.mjs';
@@ -210,6 +213,7 @@ describe('local development database safety', () => {
       HZENSE_REVIEW_DATABASE_URL: 'hzense_candidate_reviewer',
       HZENSE_SIGNAL_ADMIN_DATABASE_URL: 'hzense_signal_admin_reader',
       HZENSE_AUTOMATION_DATABASE_URL: 'hzense_automation_admin',
+      HZENSE_INSIGHT_READER_DATABASE_URL: 'hzense_insight_reader',
     };
     for (const [key, role] of Object.entries(services)) {
       const url = new URL(env[key]);
@@ -222,7 +226,7 @@ describe('local development database safety', () => {
       ]);
     }
     expect(JSON.parse(env.HZENSE_AI_KEYRING)).toEqual(credentials.aiKeyring);
-    expect(credentials.version).toBe(3);
+    expect(credentials.version).toBe(4);
   });
 
   it('upgrades version 1 credentials without rotating passwords, keys or changing data', async () => {
@@ -241,7 +245,7 @@ describe('local development database safety', () => {
     expect(localDatabaseServiceEnvironment(legacy).HZENSE_AI_DATABASE_URL).toBeUndefined();
     expect(() => localDatabaseUrl(legacy, 'hzense_ai_admin')).toThrow(/初始化/);
     const upgraded = await loadLocalDatabaseCredentials({ root, create: true });
-    expect(upgraded.version).toBe(3);
+    expect(upgraded.version).toBe(4);
     expect(upgraded.developmentPassword).toBe(legacy.developmentPassword);
     expect(upgraded.testPassword).toBe(legacy.testPassword);
     for (const role of localDatabaseBaseRoles)
@@ -252,44 +256,61 @@ describe('local development database safety', () => {
     expect(upgradeLocalDatabaseCredentials(upgraded)).toBe(upgraded);
   });
 
-  it('adds only the automation credential to version 2 and preserves all prior encryption material', async () => {
-    const root = await temporaryRoot();
-    const initial = await loadLocalDatabaseCredentials({ root, create: true });
-    const legacy = {
-      ...initial,
-      version: 2,
-      roles: Object.fromEntries(
-        [...localDatabaseBaseRoles, ...localDatabaseV2BackendRoles].map((role) => [
-          role,
-          initial.roles[role],
-        ]),
-      ),
-    };
-    const path = join(root, '.hzense-local/database.json');
-    await writeFile(path, JSON.stringify(legacy), { mode: 0o600 });
-    expect(await loadLocalDatabaseCredentials({ root })).toEqual(legacy);
-    expect(localDatabaseServiceEnvironment(legacy).HZENSE_AUTOMATION_DATABASE_URL).toBeUndefined();
-    expect(() => localDatabaseUrl(legacy, 'hzense_automation_admin')).toThrow(/初始化/);
-    const upgraded = await loadLocalDatabaseCredentials({ root, create: true });
-    expect(upgraded.version).toBe(3);
-    expect(upgraded.developmentPassword).toBe(legacy.developmentPassword);
-    expect(upgraded.testPassword).toBe(legacy.testPassword);
-    expect(upgraded.aiKeyring).toEqual(legacy.aiKeyring);
-    for (const [role, password] of Object.entries(legacy.roles))
-      expect(upgraded.roles[role]).toBe(password);
-    expect(upgraded.roles.hzense_automation_admin).toMatch(/^[a-f0-9]{64}$/);
-    expect(await loadLocalDatabaseCredentials({ root, create: true })).toEqual(upgraded);
-    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(upgraded);
-  });
+  it.each([2, 3])(
+    'upgrades version %s and preserves all prior encryption material',
+    async (version) => {
+      const root = await temporaryRoot();
+      const initial = await loadLocalDatabaseCredentials({ root, create: true });
+      const legacy = {
+        ...initial,
+        version,
+        roles: Object.fromEntries(
+          [
+            ...localDatabaseBaseRoles,
+            ...(version === 2 ? localDatabaseV2BackendRoles : localDatabaseV3BackendRoles),
+          ].map((role) => [role, initial.roles[role]]),
+        ),
+      };
+      const path = join(root, '.hzense-local/database.json');
+      await writeFile(path, JSON.stringify(legacy), { mode: 0o600 });
+      expect(await loadLocalDatabaseCredentials({ root })).toEqual(legacy);
+      if (version === 2) {
+        expect(
+          localDatabaseServiceEnvironment(legacy).HZENSE_AUTOMATION_DATABASE_URL,
+        ).toBeUndefined();
+        expect(() => localDatabaseUrl(legacy, 'hzense_automation_admin')).toThrow(/初始化/);
+      } else {
+        expect(
+          new URL(localDatabaseServiceEnvironment(legacy).HZENSE_AUTOMATION_DATABASE_URL).username,
+        ).toBe('hzense_automation_admin');
+      }
+      expect(
+        localDatabaseServiceEnvironment(legacy).HZENSE_INSIGHT_READER_DATABASE_URL,
+      ).toBeUndefined();
+      expect(() => localDatabaseUrl(legacy, 'hzense_insight_reader')).toThrow(/初始化/);
+      const upgraded = await loadLocalDatabaseCredentials({ root, create: true });
+      expect(upgraded.version).toBe(4);
+      expect(upgraded.developmentPassword).toBe(legacy.developmentPassword);
+      expect(upgraded.testPassword).toBe(legacy.testPassword);
+      expect(upgraded.aiKeyring).toEqual(legacy.aiKeyring);
+      for (const [role, password] of Object.entries(legacy.roles))
+        expect(upgraded.roles[role]).toBe(password);
+      expect(upgraded.roles.hzense_automation_admin).toMatch(/^[a-f0-9]{64}$/);
+      expect(upgraded.roles.hzense_insight_reader).toMatch(/^[a-f0-9]{64}$/);
+      expect(await loadLocalDatabaseCredentials({ root, create: true })).toEqual(upgraded);
+      expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(upgraded);
+    },
+  );
 
   it('rejects malformed or partial backend credentials instead of regenerating encryption keys', async () => {
     const root = await temporaryRoot();
     const valid = await loadLocalDatabaseCredentials({ root, create: true });
     for (const change of [
-      { version: 4 },
+      { version: 5 },
       { roles: { ...valid.roles, extra: '0'.repeat(64) } },
       { roles: { ...valid.roles, hzense_ai_admin: undefined } },
       { roles: { ...valid.roles, hzense_automation_admin: undefined } },
+      { roles: { ...valid.roles, hzense_insight_reader: undefined } },
       { aiKeyring: { active: 'local-v2', keys: valid.aiKeyring.keys } },
       { aiKeyring: { active: 'local-v1', keys: { 'local-v1': 'not-a-key' } } },
     ])
@@ -631,7 +652,7 @@ describe('local backend role bootstrap contracts', () => {
     }
   });
 
-  it('adds only the missing local automation role and preserves existing role passwords on repeated initialization', async () => {
+  it('adds only the missing local insight reader and preserves existing role passwords on repeated initialization', async () => {
     const credentials = upgradeLocalDatabaseCredentials({
       version: 1,
       developmentPassword: 'a'.repeat(64),
@@ -655,7 +676,7 @@ describe('local backend role bootstrap contracts', () => {
       acl: true,
       marker,
     };
-    const known = new Map(localDatabaseV2BackendRoles.map((name) => [name, { ...role }]));
+    const known = new Map(localDatabaseV3BackendRoles.map((name) => [name, { ...role }]));
     const calls = [];
     const admin = {
       query: async (statement, parameters) => {
@@ -675,7 +696,7 @@ describe('local backend role bootstrap contracts', () => {
         if (statement.includes('FROM pg_roles r WHERE rolname=$1'))
           return { rows: known.has(parameters[0]) ? [known.get(parameters[0])] : [] };
         if (statement.startsWith('CREATE ROLE'))
-          known.set('hzense_automation_admin', { ...role, acl: false });
+          known.set('hzense_insight_reader', { ...role, acl: false });
         return { rows: [] };
       },
     };
@@ -685,17 +706,39 @@ describe('local backend role bootstrap contracts', () => {
         if (statement.includes('current_setting')) return { rows: [target] };
         if (statement.includes('SELECT pg_try_advisory')) return { rows: [{ locked: true }] };
         if (statement === candidateEnrichmentRoleCheckSQL) return { rows: [{ safe: true }] };
-        if (statement === localAutomationGrants) known.get('hzense_automation_admin').acl = true;
+        if (statement === localInsightReaderGrants) known.get('hzense_insight_reader').acl = true;
         return { rows: [] };
       },
     };
     await prepareLocalBackendRoles({ admin, client, credentials });
     await prepareLocalBackendRoles({ admin, client, credentials });
     expect(calls.filter((sql) => sql.startsWith('CREATE ROLE'))).toHaveLength(1);
-    expect(calls.find((sql) => sql.startsWith('CREATE ROLE'))).toContain(
-      '"hzense_automation_admin"',
-    );
-    expect(calls.filter((sql) => sql === localAutomationGrants)).toHaveLength(1);
-    expect(calls.join('\n')).not.toMatch(/ALTER ROLE.*PASSWORD|DROP ROLE|hzense_insight_reader/);
+    expect(calls.find((sql) => sql.startsWith('CREATE ROLE'))).toContain('"hzense_insight_reader"');
+    expect(calls.filter((sql) => sql === localInsightReaderGrants)).toHaveLength(1);
+    expect(calls).not.toContain(localAutomationGrants);
+    expect(calls.join('\n')).not.toMatch(/ALTER ROLE.*PASSWORD|DROP ROLE/);
+  });
+
+  it('grants the insight reader only existing publication columns and rolls back failures', async () => {
+    expect(localInsightReaderGrants.split('\n')).toEqual([
+      'GRANT CONNECT ON DATABASE hzense_local TO hzense_insight_reader;',
+      'GRANT USAGE ON SCHEMA public TO hzense_insight_reader;',
+      'GRANT SELECT(id,result,published_at) ON public.published_topic_insights TO hzense_insight_reader;',
+    ]);
+    for (const locked of [true, false]) {
+      const calls = [];
+      const fake = {
+        query: async (statement) => {
+          calls.push(statement);
+          if (statement.includes('current_setting')) return { rows: [target] };
+          if (statement.includes('pg_try_advisory')) return { rows: [{ locked }] };
+          return { rows: [] };
+        },
+      };
+      if (locked) await prepareLocalInsightReader(fake);
+      else await expect(prepareLocalInsightReader(fake)).rejects.toThrow(/维护锁忙/);
+      expect(calls.includes(localInsightReaderGrants)).toBe(locked);
+      expect(calls.at(-1)).toBe(locked ? 'COMMIT' : 'ROLLBACK');
+    }
   });
 });

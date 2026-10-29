@@ -12,6 +12,7 @@ export const localDatabaseEnvironmentRoles: Readonly<Record<string, string>> = O
   HZENSE_REVIEW_DATABASE_URL: 'hzense_candidate_reviewer',
   HZENSE_SIGNAL_ADMIN_DATABASE_URL: 'hzense_signal_admin_reader',
   HZENSE_AUTOMATION_DATABASE_URL: 'hzense_automation_admin',
+  HZENSE_INSIGHT_READER_DATABASE_URL: 'hzense_insight_reader',
 });
 
 export class LocalDevelopmentError extends Error {
@@ -93,7 +94,7 @@ export function isLocalRealAi(env: LocalDevelopmentEnvironment = process.env): b
   return isLocalDevelopment(env) && env.HZENSE_LOCAL_AI_MODE === 'real';
 }
 
-/** Source collection is available only in the isolated local real-AI world. */
+/** Paid automation is available only in the isolated local real-AI world. */
 export function isLocalRealAutomationEnabled(
   env: LocalDevelopmentEnvironment = process.env,
 ): boolean {

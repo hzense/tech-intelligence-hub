@@ -23,6 +23,7 @@ const allowedConnectionParameters = new Set(['channel_binding', 'sslmode']);
 
 export const runtimeTopicLimitMinimum = 1;
 export const runtimeTopicLimitMaximum = 50;
+export const runtimeLeafTopicMaximum = 1000;
 export const runtimeHealthDurationLimitMs = 5_000;
 
 export const runtimeTopicQuery = `SELECT id,
@@ -33,6 +34,19 @@ export const runtimeTopicQuery = `SELECT id,
 FROM ONLY public.topics
 WHERE runtime_enabled IS TRUE
 ORDER BY id
+LIMIT $1::integer`;
+
+// Test leafhood against the complete database hierarchy. A disabled/archived
+// child still makes its parent a parent; only the selectable row is filtered.
+export const runtimeLeafTopicQuery = `SELECT topic.id,
+       topic.title,
+       topic.parent_id AS "parentId",
+       topic.status::text AS status,
+       topic.runtime_enabled AS "runtimeEnabled"
+FROM ONLY public.topics AS topic
+WHERE topic.runtime_enabled IS TRUE AND topic.status <> 'archived'
+  AND NOT EXISTS (SELECT 1 FROM public.topics AS child WHERE child.parent_id=topic.id)
+ORDER BY topic.id
 LIMIT $1::integer`;
 
 export type RuntimeReaderErrorCode =
@@ -109,6 +123,7 @@ export interface RuntimeTopicReader {
   hasPool(): boolean;
   poolStats(): RuntimeReaderPoolStats;
   readTopics(limit?: number): Promise<RuntimeTopic[]>;
+  readLeafTopics(): Promise<RuntimeTopic[]>;
   search(query: string, type?: SearchType): Promise<SearchResult[]>;
   probeSearch(): Promise<void>;
   readPublicSignals(): Promise<SignalEntry[]>;
@@ -376,6 +391,20 @@ export function createLazyRuntimeTopicReader({
       const result = await getPool().query(runtimeTopicQuery, [boundedLimit]);
       if (!result || !Array.isArray(result.rows)) fail('invalid_result');
       return runtimeTopicRows(result.rows);
+    },
+    async readLeafTopics() {
+      // One sentinel row detects overflow without silently truncating the
+      // selectable hierarchy to the runtime health query's 50-row limit.
+      const result = await getPool().query(runtimeLeafTopicQuery, [runtimeLeafTopicMaximum + 1]);
+      if (!result || !Array.isArray(result.rows) || result.rows.length > runtimeLeafTopicMaximum)
+        fail('invalid_result');
+      const topics = runtimeTopicRows(result.rows);
+      if (
+        topics.some((topic) => topic.status === 'archived') ||
+        new Set(topics.map((topic) => topic.id)).size !== topics.length
+      )
+        fail('invalid_result');
+      return topics;
     },
     async search(query, type) {
       assertSearchQuery(query);

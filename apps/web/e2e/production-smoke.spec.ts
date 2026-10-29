@@ -87,7 +87,7 @@ test('legacy Insights index redirects to Topic insights', async ({ page }) => {
   await page.goto('/insights');
   await expect(page).toHaveURL(/\/topics$/);
   await expect(page).toHaveTitle('专题洞察 · HZense');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('理解变化');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('专题洞察');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     'https://hzense.com/topics',
@@ -97,7 +97,7 @@ test('legacy Insights index redirects to Topic insights', async ({ page }) => {
 test('Topics list and detail routes connect related intelligence', async ({ page, request }) => {
   await page.goto('/topics');
   await expect(page).toHaveTitle('专题洞察 · HZense');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('理解变化');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('专题洞察');
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
     'href',
     'https://hzense.com/topics',
@@ -106,7 +106,7 @@ test('Topics list and detail routes connect related intelligence', async ({ page
   await expect(page.getByRole('heading', { level: 2, name: '跟踪专题' })).toBeVisible();
 
   const detailHref = await page
-    .locator('section[aria-labelledby="topics-heading"] a[href^="/topics/"]')
+    .locator('section[aria-labelledby="tracking-heading"] a[href^="/topics/"]')
     .first()
     .getAttribute('href');
   expect(detailHref).toMatch(/^\/topics\/[^/]+$/);

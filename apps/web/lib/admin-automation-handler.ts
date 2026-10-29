@@ -33,6 +33,8 @@ const exposed = new Set([
   'config_in_use',
   'config_deletion_unavailable',
   'insight_stale',
+  'insight_topic_not_leaf',
+  'insight_insufficient_evidence',
   'dispatch_unknown',
   'database_unavailable',
   'commit_unknown',

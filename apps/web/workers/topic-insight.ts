@@ -13,8 +13,10 @@ async function main() {
   Object.assign(process.env, env);
   const run = await readAutomationRun({ pool: automationPool, owner, id });
   if (run.status !== 'running' || run.snapshot.kind !== 'topic_insight' || !run.lease_token) return;
+  let executionCompleted = false;
   try {
     const completion = await executeTopicInsight(owner, run);
+    executionCompleted = true;
     await updateAutomationRun({
       pool: automationPool,
       owner,
@@ -32,6 +34,9 @@ async function main() {
       error instanceof Error && /^[a-z][a-z0-9_]{0,79}$/.test(error.message)
         ? error.message
         : 'outcome_unknown';
+    const topicRefusal =
+      !executionCompleted &&
+      ['insight_topic_not_leaf', 'insight_insufficient_evidence'].includes(code);
     await updateAutomationRun({
       pool: automationPool,
       owner,
@@ -39,9 +44,10 @@ async function main() {
       token: run.lease_token,
       phase: 'failed',
       result: {},
-      status: 'unknown',
+      status: topicRefusal ? 'failed' : 'unknown',
       errorCode: code,
-      costSource: 'reserve',
+      ...(topicRefusal ? { costMicrousd: 0 } : {}),
+      costSource: topicRefusal ? 'estimate' : 'reserve',
     }).catch(() => undefined);
   }
 }

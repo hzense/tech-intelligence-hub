@@ -44,7 +44,7 @@ test('configuration connections retain role checks while execution and public re
       pg: `export default {Pool: class {on(){} async connect(){globalThis.__automationStorage.connections++;return {release(){}}}}};`,
       '../runtime-reader-core': `export function readRuntimeReaderConfig(env){if(new URL(env.HZENSE_RUNTIME_DATABASE_URL).protocol!=='postgresql:')throw Error('invalid')}`,
       '../local-development':
-        'export const isLocalRealAutomationEnabled=()=>globalThis.__automationStorage.localReal===true;',
+        'export const isLocalDevelopment=()=>globalThis.__automationStorage.local===true; export const isLocalRealAutomationEnabled=()=>globalThis.__automationStorage.localReal===true;',
       '../../../../packages/database/src/automation-role.mjs': `export async function assertAutomationRole(){const f=globalThis.__automationStorage;f.acl++;if(f.deny)throw Error('role_invalid')}`,
       '../../../../packages/database/src/automation-store.mjs': `${errorClass}; export async function freezeAutomationInputs(){}`,
     });
@@ -135,7 +135,8 @@ test('inactive configuration saves without execution budgets, while enable/trigg
         export async function readAutomationRunDetail(x){if(x.pool.kind!=='config')throw Error('wrong_pool');return {id:x.id,owner:x.owner,result:{report:{title:'Private report'}}}}
         export async function enqueueAutomation(x){const f=globalThis.__automationService;if(!f.replay)await x.beforeEnqueue(f.config);f.enqueued++;if(f.afterEnqueueAvailable!==undefined)f.automaticPublicationAvailable=f.afterEnqueueAvailable;return {created:!f.replay,run:{id:'existing'}}}
         export async function enqueueDueAutomations(x){const f=globalThis.__automationService;f.due++;f.dueKinds.push(x.kinds);f.dueAutomaticPolicies.push(x.allowAutomaticPublication);return []}
-        export async function readAutomationRun(){return {snapshot:globalThis.__automationService.config}} export async function failAutomationDispatch(){globalThis.__automationService.dispatchFailures++} export async function rejectAutomaticPublicationBeforeClaim(){globalThis.__automationService.publicationRefusals++;return true} export async function publishAutomationInsight(){throw Error('unexpected_publish')}`,
+        export async function readAutomationRun(){return {snapshot:globalThis.__automationService.config}} export async function failAutomationDispatch(){globalThis.__automationService.dispatchFailures++} export async function rejectInsightTopicsBeforeClaim(){throw Error('Unexpected insight rejection')}
+      export async function rejectAutomaticPublicationBeforeClaim(){globalThis.__automationService.publicationRefusals++;return true} export async function publishAutomationInsight(args){globalThis.__automationService.publications??=[];globalThis.__automationService.publications.push(args);return args}`,
       '../../../../packages/database/src/automation-contract.mjs':
         'export const normalizeAutomationConfig=x=>x;',
       './automation-store-access': `export const automationConfigPool={kind:'config'},automationPool={kind:'execution'};
@@ -155,7 +156,8 @@ test('inactive configuration saves without execution budgets, while enable/trigg
         export async function generationSummaries(owner,ids){const f=globalThis.__automationService;f.summaryCalls.push({owner,ids});if(f.summariesUnavailable)throw Error('private failure');return f.summaryRows}`,
       '../automation-generation-status': `export const automationGenerationIds=result=>result?.generationIds??[];
         export const summarizeAutomationGenerations=(result,rows)=>({ids:result?.generationIds??[],rows});`,
-      '../topic-insight-core': 'export const currentInsight=()=>true;',
+      '../topic-insight-core': 'export const currentInsight=()=>({inputs:[],topicIds:[]});',
+      './insight-topics': 'export async function assertInsightLeafTopics(){}',
       './task-public-signals': 'export async function readTaskPublicSignals(){return []}',
       '../content-runtime':
         "export async function getTopicEntries(){return [{frontMatter:{id:'topic-ai'}}]}",
@@ -311,7 +313,7 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     assert.equal(f.starts, 0);
     f.localReal = true;
     assert.equal(mod.automationExecutionConfigured('source_collection'), true);
-    assert.equal(mod.automationExecutionConfigured('topic_insight'), false);
+    assert.equal(mod.automationExecutionConfigured('topic_insight'), true);
     // Real mode still validates profile readiness before a paid run is queued.
     await assert.rejects(mod.triggerAutomation('owner', {}), /profile_not_ready/);
     assert.equal(f.enqueued, enqueuedBeforeLocal);
@@ -324,15 +326,16 @@ test('inactive configuration saves without execution budgets, while enable/trigg
       /execution_disabled/,
     );
     f.config = { ...config, kind: 'topic_insight' };
-    await assert.rejects(mod.triggerAutomation('owner', {}), /execution_disabled/);
-    assert.equal(f.enqueued, enqueuedBeforeLocal + 1);
+    await mod.triggerAutomation('owner', {});
+    assert.equal(f.enqueued, enqueuedBeforeLocal + 2);
+    assert.equal(f.starts, 2);
     assert.deepEqual(await mod.dispatchDueAutomations(), { dispatched: 0, failed: 0 });
     assert.equal(f.due, dueBeforeLocal);
-    for (const confirm of [true, false])
-      await assert.rejects(
-        mod.publishAutomationInsight('owner', 'run', confirm),
-        /execution_disabled/,
-      );
+    for (const confirm of [true, false]) {
+      await mod.publishAutomationInsight('owner', 'run', confirm);
+      assert.equal(f.publications.at(-1).pool.kind, 'config');
+    }
+    assert.equal(f.starts, 2, 'Publishing existing reports does not start paid work');
     f.config = config;
     f.starts = 0;
     f.local = false;

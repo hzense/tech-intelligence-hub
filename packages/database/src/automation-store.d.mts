@@ -125,6 +125,12 @@ export function beginSourceDiscovery(input: {
   id: string;
   token: string;
 }): Promise<void>;
+export function beginTopicInsightExecution(input: {
+  pool: unknown;
+  owner: string;
+  id: string;
+  token: string;
+}): Promise<void>;
 export function readCollectedSourceUrls(input: { pool: unknown; owner: string }): Promise<string[]>;
 export function updateAutomationRun(input: {
   pool: unknown;
@@ -144,6 +150,11 @@ export function failAutomationDispatch(input: {
   id: string;
 }): Promise<unknown>;
 export function rejectAutomaticPublicationBeforeClaim(input: {
+  pool: unknown;
+  owner: string;
+  id: string;
+}): Promise<boolean>;
+export function rejectInsightTopicsBeforeClaim(input: {
   pool: unknown;
   owner: string;
   id: string;
