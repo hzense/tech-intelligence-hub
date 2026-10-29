@@ -95,7 +95,8 @@ const errors: Record<string, string> = {
   insight_stale: '证据信号已改变或撤回，请重新生成报告。',
   insight_topic_not_leaf:
     '专题范围包含领域、父级或不可用方向。请重新选择当前启用的最细分专题；旧配置可停用或删除，原报告不会自动改换专题。',
-  insight_insufficient_evidence: '近 30 天内符合所选专题的公开信号不足 2 条，未调用 AI。',
+  insight_insufficient_evidence:
+    '近 30 天内符合范围的公开信号不足 2 条，或部分所选专题缺少对应证据。本次检查未调用 AI。',
   insight_input_too_large: '专题证据超出模型输入上限，未调用 AI；请减少所选专题后重试。',
   insight_provider_failed:
     '专题模型准备、调用或报告校验未完成；费用及依据以本行显示为准，请核对原任务，不要直接重试。',
