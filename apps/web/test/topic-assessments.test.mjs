@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getLeafTopicIds, getTopicEntries, getTopicEntryById } from '../lib/content-runtime.ts';
+import {
+  getLeafTopicIds,
+  getNonRootLeafTopicIds,
+  getTopicEntries,
+  getTopicEntryById,
+} from '../lib/content-runtime.ts';
 import { getRadarSnapshots } from '../lib/seed-runtime.ts';
 import { projectTopicAssessments } from '../lib/topic-assessments.ts';
 
@@ -17,6 +22,27 @@ const sampleSnapshot = {
   evidence_signals: ['signal-synthetic'],
   reasoning: 'Synthetic test fixture',
 };
+
+test('tracking taxonomy excludes root domains but retains leaves with an omitted Markdown parent', async () => {
+  const tracking = await getNonRootLeafTopicIds();
+  const leaves = await getLeafTopicIds();
+  const humanoid = await getTopicEntryById('topic-humanoid-robotics');
+  assert.equal(humanoid.frontMatter.parent, undefined);
+  assert.ok(tracking.has('topic-humanoid-robotics'));
+  for (const id of tracking) assert.ok(leaves.has(id));
+  for (const id of [
+    'topic-quantum',
+    'topic-cloud-infrastructure',
+    'topic-autonomous-systems',
+    'topic-energy-technology',
+    'topic-space-technology',
+    'topic-biotechnology',
+    'topic-artificial-intelligence',
+    'topic-foundation-models',
+  ]) {
+    assert.equal(tracking.has(id), false, `${id} is a root or parent, not a fine tracking topic`);
+  }
+});
 
 function topic(id, status = 'active') {
   return {

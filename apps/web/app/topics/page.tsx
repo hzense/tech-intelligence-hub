@@ -4,7 +4,12 @@ import { SiteShell } from '@/components/site-shell';
 import { TopicInsightCard, type TopicInsightCardEntry } from '@/components/topic-insight-card';
 import { TopicInsightCatalog } from '@/components/topic-insight-catalog';
 import styles from '@/components/topic-insight-pages.module.css';
-import { getInsightEntries, getLeafTopicIds, getTopicEntries } from '@/lib/content-runtime';
+import {
+  getInsightEntries,
+  getLeafTopicIds,
+  getNonRootLeafTopicIds,
+  getTopicEntries,
+} from '@/lib/content-runtime';
 import { getSignalEntries } from '@/lib/seed-runtime';
 import { visibleTopicInsights } from '@/lib/server/topic-insights';
 
@@ -16,11 +21,12 @@ export const metadata: Metadata = {
 };
 
 export default async function TopicsPage() {
-  const [topics, signals, editorial, leafTopicIds] = await Promise.all([
+  const [topics, signals, editorial, leafTopicIds, trackingTopicIds] = await Promise.all([
     getTopicEntries(),
     getSignalEntries(),
     getInsightEntries(),
     getLeafTopicIds(),
+    getNonRootLeafTopicIds(),
   ]);
   const published = await visibleTopicInsights(signals);
   const topicTitles = new Map(
@@ -58,24 +64,29 @@ export default async function TopicsPage() {
       topicIds: entry.frontMatter.topics,
     })),
   ].sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
-  const signalCounts = new Map<string, number>();
+  const signalIdsByTopic = new Map<string, Set<string>>();
   const reportCounts = new Map<string, number>();
   for (const signal of signals) {
-    for (const id of new Set(signal.topics)) signalCounts.set(id, (signalCounts.get(id) ?? 0) + 1);
+    for (const id of signal.topics) {
+      const ids = signalIdsByTopic.get(id) ?? new Set<string>();
+      ids.add(signal.id);
+      signalIdsByTopic.set(id, ids);
+    }
   }
   for (const report of reports) {
     for (const id of new Set(report.topicIds))
       reportCounts.set(id, (reportCounts.get(id) ?? 0) + 1);
   }
   const trackedTopics = topics
+    .filter((topic) => trackingTopicIds.has(topic.frontMatter.id))
     .map((topic) => ({
       id: topic.frontMatter.id,
       title: topic.frontMatter.title,
       summary: topic.summary,
-      signalCount: signalCounts.get(topic.frontMatter.id) ?? 0,
+      signalCount: signalIdsByTopic.get(topic.frontMatter.id)?.size ?? 0,
       reportCount: reportCounts.get(topic.frontMatter.id) ?? 0,
     }))
-    .filter((topic) => topic.signalCount > 0 || topic.reportCount > 0)
+    .filter((topic) => topic.signalCount >= 10)
     .sort(
       (a, b) =>
         b.reportCount - a.reportCount ||
@@ -115,7 +126,7 @@ export default async function TopicsPage() {
         <section className={styles.trackingSection} aria-labelledby="tracking-heading">
           <div className={styles.sectionHeading}>
             <h2 id="tracking-heading">跟踪专题</h2>
-            <p>进入专题，查看关联信号与洞察报告。</p>
+            <p>按最细分领域汇总，累计至少 10 条公开信号后形成跟踪专题。</p>
           </div>
           {trackedTopics.length ? (
             <>
@@ -129,7 +140,7 @@ export default async function TopicsPage() {
             </>
           ) : (
             <div className={styles.emptyState}>
-              <p>暂无有公开信号或报告的专题。</p>
+              <p>暂无累计达到 10 条公开信号的最细分领域。</p>
             </div>
           )}
         </section>
