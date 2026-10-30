@@ -115,7 +115,8 @@ async function loadPages() {
             '@/lib/content-runtime': `
               export const formatZhDate = (date) => date;
               export async function getTopicEntries() { return globalThis.__topicRenderTest.topics; }
-              export async function getLeafTopicIds() { return new Set(['topic-security']); }
+              export async function getLeafTopicIds() { return new Set(globalThis.__topicRenderTest.leafTopicIds ?? ['topic-security']); }
+              export async function getNonRootLeafTopicIds() { return new Set(globalThis.__topicRenderTest.trackingTopicIds ?? ['topic-security']); }
               export async function getTopicTitleMap() {
                 return new Map(globalThis.__topicRenderTest.topics.map(topic => [topic.frontMatter.id, topic.frontMatter.title]));
               }
@@ -226,26 +227,68 @@ test('published report card and standalone report render one unified catalog wit
   }
 });
 
-test('tracking topic cards include public signal-only topics and fold cards beyond six', async () => {
-  const signalOnlyTopics = Array.from({ length: 6 }, (_, index) => ({
-    frontMatter: { id: `topic-signal-only-${index + 1}`, title: `仅有信号的专题 ${index + 1}` },
+test('tracking topics require non-root leaves and ten distinct public signals, then fold beyond six', async () => {
+  const signalOnlyTopics = Array.from({ length: 8 }, (_, index) => ({
+    frontMatter: {
+      id: `topic-signal-only-${index + 1}`,
+      title: `仅有信号的专题 ${index + 1}`,
+      parent: 'topic-ai',
+    },
     summary: '已有公开信号，尚无公开报告。',
   }));
   const directoryState = globalThis.structuredClone(state);
+  const excludedTopics = [
+    { id: 'topic-nine', title: '只有九条信号', parent: 'topic-ai' },
+    { id: 'topic-report-only', title: '只有报告', parent: 'topic-ai' },
+    { id: 'topic-parent', title: '父级分类', parent: 'topic-ai' },
+    { id: 'topic-root-leaf', title: '尚未细分的一级领域', parent: null },
+  ];
+  directoryState.topics.push(
+    ...excludedTopics.map((frontMatter) => ({ frontMatter, summary: frontMatter.title })),
+  );
+  directoryState.leafTopicIds = [
+    ...signalOnlyTopics.map((topic) => topic.frontMatter.id),
+    'topic-nine',
+    'topic-report-only',
+    'topic-root-leaf',
+  ];
+  directoryState.trackingTopicIds = directoryState.leafTopicIds.filter(
+    (id) => id !== 'topic-root-leaf',
+  );
+  // A valid non-root leaf can omit the optional Markdown parent field.
+  delete signalOnlyTopics[0].frontMatter.parent;
   directoryState.topics.push(...signalOnlyTopics, {
     frontMatter: { id: 'topic-empty', title: '没有公开内容的专题' },
     summary: '没有公开信号或报告。',
   });
   directoryState.signals.push(
     ...signalOnlyTopics.flatMap((topic, index) =>
-      Array.from({ length: index + 1 }, (_, signalIndex) => ({
+      Array.from({ length: index + 10 }, (_, signalIndex) => ({
         id: `signal-only-${index + 1}-${signalIndex + 1}`,
         title: `公开信号 ${index + 1}-${signalIndex + 1}`,
         occurred_at: '2026-09-25T12:00:00.000Z',
-        topics: [topic.frontMatter.id],
+        topics: [topic.frontMatter.id, topic.frontMatter.id, 'topic-ai'],
       })),
     ),
   );
+  const signalsFor = (id, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `${id}-signal-${index + 1}`,
+      title: '公开信号',
+      occurred_at: '2026-09-25T12:00:00.000Z',
+      topics: [id, id, 'topic-ai'],
+    }));
+  directoryState.signals.push(
+    ...signalsFor('topic-nine', 9),
+    ...signalsFor('topic-parent', 20),
+    ...signalsFor('topic-root-leaf', 20),
+  );
+  // Repeated labels and duplicate read rows must not push nine unique signals over the gate.
+  directoryState.signals.push(...signalsFor('topic-nine', 9));
+  directoryState.signals.push(
+    directoryState.signals.find((signal) => signal.id === 'signal-only-1-1'),
+  );
+  directoryState.editorial[0].frontMatter.topics.push('topic-nine', 'topic-report-only');
   globalThis.__topicRenderTest = directoryState;
   try {
     const { TopicsPage } = await loadPages();
@@ -257,6 +300,7 @@ test('tracking topic cards include public signal-only topics and fold cards beyo
       html.lastIndexOf('<section', heading),
       html.indexOf('</section>', heading) + '</section>'.length,
     );
+    assert.match(section, /累计至少 10 条公开信号/);
     const folded = section.match(/<details\b[^>]*>[\s\S]*?<\/details>/)?.[0];
     assert.ok(folded, 'additional tracking cards use native details');
     assert.doesNotMatch(folded.match(/^<details\b[^>]*>/)?.[0] ?? '', /\sopen(?:=|\s|>)/);
@@ -272,12 +316,17 @@ test('tracking topic cards include public signal-only topics and fold cards beyo
       [...defaultCards, ...foldedCards].map((match) => [match[1], match[0]]),
     );
     assert.equal(allCards.size, 8, 'every eligible topic appears once');
+    for (const id of ['topic-ai', 'topic-security', ...excludedTopics.map((topic) => topic.id)]) {
+      assert.equal(
+        allCards.has(id),
+        false,
+        `${id} cannot qualify through parent counts or reports`,
+      );
+    }
     assert.equal(allCards.has('topic-empty'), false);
     assert.doesNotMatch(section, /没有公开内容的专题/);
     const expectedCounts = [
-      ['topic-ai', 2, 2],
-      ['topic-security', 0, 2],
-      ...signalOnlyTopics.map((topic, index) => [topic.frontMatter.id, index + 1, 0]),
+      ...signalOnlyTopics.map((topic, index) => [topic.frontMatter.id, index + 10, 0]),
     ];
     for (const [id, signalCount, reportCount] of expectedCounts) {
       const card = allCards.get(id);
@@ -286,6 +335,25 @@ test('tracking topic cards include public signal-only topics and fold cards beyo
       assert.match(text, new RegExp(`${signalCount}\\s*条(?:关联)?信号`));
       assert.match(text, new RegExp(`${reportCount}\\s*份(?:公开)?报告`));
     }
+    assert.match(html, /合成专题报告：智能体安全/);
+    assert.match(html, /编辑专题报告/);
+  } finally {
+    delete globalThis.__topicRenderTest;
+  }
+});
+
+test('insufficient tracking evidence shows the threshold empty state and keeps report access', async () => {
+  globalThis.__topicRenderTest = state;
+  try {
+    const { TopicsPage } = await loadPages();
+    const html = renderToStaticMarkup(await TopicsPage());
+    const section = html.match(
+      /<section[^>]*aria-labelledby="tracking-heading"[^>]*>[\s\S]*?<\/section>/,
+    )?.[0];
+    assert.ok(section);
+    assert.match(section, /暂无累计达到 10 条公开信号的最细分领域/);
+    assert.doesNotMatch(section, /href="\/topics\//);
+    assert.match(html, new RegExp(`href="${reportHref}"`));
   } finally {
     delete globalThis.__topicRenderTest;
   }

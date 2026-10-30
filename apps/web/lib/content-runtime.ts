@@ -10,17 +10,31 @@ export type InsightEntry = ContentEntry<InsightFrontMatter>;
 export type { TopicEntry } from './topic-assessments.ts';
 
 let contentPromise: ReturnType<typeof loadContent> | undefined;
-let leafTopicIdsPromise: Promise<ReadonlySet<string>> | undefined;
+let topicHierarchyPromise:
+  Promise<{ leaves: ReadonlySet<string>; nonRootLeaves: ReadonlySet<string> }> | undefined;
 
-/** Use the complete tree, including categories without enabled content pages. */
-export function getLeafTopicIds(): Promise<ReadonlySet<string>> {
-  leafTopicIdsPromise ??= loadTaxonomy(
+function getTopicHierarchy() {
+  topicHierarchyPromise ??= loadTaxonomy(
     resolve(process.cwd(), '../../data/taxonomy/taxonomy.yaml'),
   ).then(({ topics }) => {
     const parents = new Set(topics.map((topic) => topic.parentId).filter(Boolean));
-    return new Set(topics.filter((topic) => !parents.has(topic.id)).map((topic) => topic.id));
+    const leaves = topics.filter((topic) => !parents.has(topic.id));
+    return {
+      leaves: new Set(leaves.map((topic) => topic.id)),
+      nonRootLeaves: new Set(leaves.filter((topic) => topic.parentId).map((topic) => topic.id)),
+    };
   });
-  return leafTopicIdsPromise;
+  return topicHierarchyPromise;
+}
+
+/** Use the complete tree, including categories without enabled content pages. */
+export async function getLeafTopicIds(): Promise<ReadonlySet<string>> {
+  return (await getTopicHierarchy()).leaves;
+}
+
+/** Tracking excludes root domains; optional Markdown parents are not authoritative. */
+export async function getNonRootLeafTopicIds(): Promise<ReadonlySet<string>> {
+  return (await getTopicHierarchy()).nonRootLeaves;
 }
 
 function getContent() {
