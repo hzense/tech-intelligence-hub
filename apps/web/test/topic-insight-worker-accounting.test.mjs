@@ -61,7 +61,11 @@ async function compile() {
 test('cloud insight worker charges zero for explicit scope/evidence refusal and preserves ambiguous post-call reserve', async (t) => {
   t.after(() => delete globalThis[key]);
   const run = await compile();
-  for (const executionError of ['insight_topic_not_leaf', 'insight_insufficient_evidence']) {
+  for (const executionError of [
+    'insight_topic_not_leaf',
+    'insight_topic_not_tracked',
+    'insight_insufficient_evidence',
+  ]) {
     const f = await run({ executionError });
     assert.equal(f.executions, 1);
     assert.equal(f.updates.length, 1);
@@ -73,6 +77,7 @@ test('cloud insight worker charges zero for explicit scope/evidence refusal and 
   for (const commitError of [
     'database_unavailable',
     'insight_topic_not_leaf',
+    'insight_topic_not_tracked',
     'insight_insufficient_evidence',
   ]) {
     const f = await run({ commitError });

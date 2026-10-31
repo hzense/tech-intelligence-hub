@@ -1,6 +1,6 @@
 import 'server-only';
 import { aiStageAccess } from './admin-ai';
-import { assertInsightLeafTopics } from './insight-topics';
+import { assertTrackedInsightTopics } from './insight-topics';
 import { readAiBackendConfiguration } from '../admin-ai-core';
 import { readTaskPublicSignals } from './task-public-signals';
 import { insightInput, selectInsightSignals, type TopicInsightResult } from '../topic-insight-core';
@@ -26,13 +26,10 @@ export async function executeTopicInsight(owner: string, run: InsightRun) {
   if (owner !== run.owner_id || process.env.HZENSE_AUTOMATION_ENABLED !== '1')
     throw new Error('not_configured');
   const config = run.config_snapshot;
-  await assertInsightLeafTopics(config.topicIds);
   if (!config.profileId || !config.profileRevision) throw new Error('profile_not_ready');
-  const input = selectInsightSignals(
-    await readTaskPublicSignals(),
-    config.topicIds,
-    new Date(run.created_at),
-  );
+  const signals = await readTaskPublicSignals();
+  await assertTrackedInsightTopics(config.topicIds, signals);
+  const input = selectInsightSignals(signals, config.topicIds, new Date(run.created_at));
   if (
     input.signals.length < 2 ||
     config.topicIds.some((id) => !input.signals.some((signal) => signal.topics.includes(id)))

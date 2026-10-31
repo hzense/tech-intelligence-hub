@@ -33,7 +33,7 @@ async function compile() {
       'export async function localSignalGenerationWorkflow(){throw Error("unexpected worker")}',
     './local-topic-insight':
       'export async function runLocalTopicInsightStep(){return "local_topic_completed"}',
-    '../lib/server/insight-topics': 'export async function assertInsightLeafTopics(){}',
+    '../lib/server/insight-topics': 'export async function assertTrackedInsightTopics(){}',
     '../lib/server/topic-insight-sandbox':
       'export async function startTopicInsightSandbox(){throw Error("unexpected sandbox")} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
     '../lib/server/source-discovery': `export async function discoverSources(){

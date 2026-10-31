@@ -90,7 +90,11 @@ test('execution-disabled response is explicit and does not block configuration s
   assert.deepEqual(await response.json(), { error: 'execution_disabled' });
 });
 test('leaf and per-topic evidence refusal codes are exposed without raw errors', async () => {
-  for (const code of ['insight_topic_not_leaf', 'insight_insufficient_evidence']) {
+  for (const code of [
+    'insight_topic_not_leaf',
+    'insight_topic_not_tracked',
+    'insight_insufficient_evidence',
+  ]) {
     for (const action of ['save', 'trigger', 'publish']) {
       const handler = createAutomationHandler({
         ...deps(),

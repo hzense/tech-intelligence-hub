@@ -18,6 +18,7 @@ function fixture({
   executionEnabled = true,
   profileReady = true,
   insightLeafTopicIds = ['ai'],
+  insightTrackedTopicIds = insightLeafTopicIds,
   insightTopicsLoadError = false,
 } = {}) {
   const config = {
@@ -51,6 +52,7 @@ function fixture({
     profiles: [{ id: profileId, revision: 1, name: '合成验收模型', ready: profileReady }],
     topics: [{ id: 'ai', name: '人工智能' }],
     insightLeafTopicIds,
+    insightTrackedTopicIds,
     insightTopicsLoadError,
     initial: {
       configDeletionAvailable: true,
@@ -904,21 +906,34 @@ test(
           await f.close();
         },
       );
-      await t.test('new insight configs offer only available leaf topics', async () => {
+      await t.test('new insight configs offer only eligible tracked topics', async () => {
         const f = await setup({
           kind: 'topic_insight',
           legacy: false,
-          insightLeafTopicIds: ['language-models'],
+          insightLeafTopicIds: ['language-models', 'low-sample-leaf', 'root-leaf'],
+          insightTrackedTopicIds: ['language-models'],
         });
         f.props.topics = [
           { id: 'ai', name: '人工智能' },
           { id: 'language-models', name: '语言模型' },
+          { id: 'low-sample-leaf', name: '未满十条的细分方向' },
+          { id: 'root-leaf', name: '没有下级的一级领域' },
         ];
         await f.page.reload();
         await expect(f.page.getByRole('checkbox', { name: '人工智能', exact: true })).toHaveCount(
           0,
         );
         await expect(f.page.getByRole('checkbox', { name: '语言模型', exact: true })).toBeVisible();
+        await expect(
+          f.page.getByRole('checkbox', { name: '未满十条的细分方向', exact: true }),
+        ).toHaveCount(0);
+        await expect(
+          f.page.getByRole('checkbox', { name: '没有下级的一级领域', exact: true }),
+        ).toHaveCount(0);
+        await expect(f.page.getByText(/累计至少 10 条直接关联的公开信号/)).toBeVisible();
+        await expect(
+          f.page.getByText(/本次分析另要求近 30 天内合计 2–100 条公开信号/),
+        ).toBeVisible();
         await f.page.getByLabel('配置名称', { exact: true }).fill('语言模型观察');
         await f.page.getByLabel('分阶段模型配置', { exact: true }).selectOption(profileId);
         await expect(f.page.getByRole('button', { name: '保存配置', exact: true })).toBeDisabled();
@@ -956,7 +971,7 @@ test(
             f.page.getByRole('button', { name: '立即运行', exact: true }),
           ).toBeDisabled();
           await f.page.getByRole('button', { name: '编辑', exact: true }).click();
-          await expect(f.page.getByText(/原范围需细分：人工智能/)).toBeVisible();
+          await expect(f.page.getByText(/专题未达跟踪条件：人工智能/)).toBeVisible();
           await expect(f.page.getByRole('checkbox', { name: '人工智能', exact: true })).toHaveCount(
             0,
           );
@@ -995,14 +1010,14 @@ test(
         },
       );
       await t.test(
-        'failed leaf directory reads block edits and execution without treating parents as leaves',
+        'failed tracking reads block edits and execution without falling back to leaf topics',
         async () => {
           const f = await setup({
             kind: 'topic_insight',
             insightTopicsLoadError: true,
             localSchedulingAvailable: true,
           });
-          await expect(f.page.getByRole('alert')).toContainText('最细分专题目录读取失败');
+          await expect(f.page.getByRole('alert')).toContainText('跟踪专题目录或公开信号读取失败');
           await expect(f.page.getByRole('checkbox', { name: '人工智能', exact: true })).toHaveCount(
             0,
           );
@@ -1017,13 +1032,89 @@ test(
             f.page.getByRole('button', { name: '删除配置 测试专题配置', exact: true }),
           ).toBeEnabled();
           f.props.insightTopicsLoadError = false;
-          delete f.props.insightLeafTopicIds;
+          delete f.props.insightTrackedTopicIds;
           await f.page.reload();
-          await expect(f.page.getByRole('alert')).toContainText('最细分专题目录读取失败');
+          await expect(f.page.getByRole('alert')).toContainText('跟踪专题目录或公开信号读取失败');
           await expect(
             f.page.getByRole('button', { name: '立即运行', exact: true }),
           ).toBeDisabled();
           assert.deepEqual(f.posts, []);
+          await f.close();
+        },
+      );
+      for (const [scenario, options] of [
+        ['a leaf below the tracking threshold', {}],
+        ['an unavailable tracking catalog', { insightTopicsLoadError: true }],
+      ]) {
+        await t.test(
+          `existing schedules for ${scenario} can still be stopped exactly`,
+          async () => {
+            const f = await setup({
+              kind: 'topic_insight',
+              insightLeafTopicIds: ['ai'],
+              insightTrackedTopicIds: [],
+              localSchedulingAvailable: true,
+              profileReady: false,
+              ...options,
+            });
+            const row = f.props.initial.configs[0];
+            row.enabled = true;
+            row.config.enabled = true;
+            row.config.frequency = 'weekly';
+            const originalConfig = globalThis.structuredClone(row.config);
+            await f.page.reload();
+            await expect(
+              f.page.getByRole('button', { name: '立即运行', exact: true }),
+            ).toBeDisabled();
+            await f.page.getByRole('button', { name: '编辑', exact: true }).click();
+            await expect(
+              f.page.getByRole('button', { name: '保存配置', exact: true }),
+            ).toBeDisabled();
+            await expect(
+              f.page.getByRole('button', { name: '删除配置 测试专题配置', exact: true }),
+            ).toBeEnabled();
+            if (!options.insightTopicsLoadError) {
+              await expect(
+                f.page.getByText('专题未达跟踪条件 · 不能运行', { exact: true }),
+              ).toBeVisible();
+              await expect(f.page.getByText(/暂无满足跟踪条件的专题/)).toBeVisible();
+              await expect(f.page.getByRole('alert')).toHaveCount(0);
+            }
+            await f.page.getByRole('button', { name: '停用定时', exact: true }).click();
+            await expect(f.page.getByText(/定时已停用，原专题范围和历史报告保留/)).toBeVisible();
+            assert.deepEqual(f.posts, [
+              {
+                action: 'save',
+                request: {
+                  id: configId,
+                  expectedRevision: 1,
+                  config: { ...originalConfig, enabled: false },
+                  consent: true,
+                },
+              },
+            ]);
+            await f.close();
+          },
+        );
+      }
+      await t.test(
+        'server tracking eligibility changes explain the rejection without retrying',
+        async () => {
+          const f = await setup({
+            kind: 'topic_insight',
+            triggerError: 'insight_topic_not_tracked',
+          });
+          f.page.once('dialog', (dialog) => dialog.accept());
+          await f.page.getByRole('button', { name: '立即运行', exact: true }).click();
+          await expect(
+            f.page
+              .getByRole('status')
+              .filter({ hasText: '专题未达跟踪条件：须为非一级的最细分专题' }),
+          ).toBeVisible();
+          assert.deepEqual(
+            f.posts.map((body) => body.action),
+            ['trigger'],
+          );
           await f.close();
         },
       );
@@ -1073,24 +1164,35 @@ test(
           await expect(
             f.page.getByRole('button', { name: '确认公开', exact: true }),
           ).toBeDisabled();
-          await expect(f.page.getByText(/报告原范围需细分或专题归属未确认/)).toBeVisible();
+          await expect(f.page.getByText(/报告专题未达当前跟踪条件，或归属未确认/)).toBeVisible();
           assert.deepEqual(f.posts, []);
           await f.close();
         },
       );
       for (const [scenario, options, topicIds, message] of [
-        ['parent result despite a leaf snapshot', {}, ['ai'], /报告原范围需细分或专题归属未确认/],
+        [
+          'parent result despite a leaf snapshot',
+          {},
+          ['ai'],
+          /报告专题未达当前跟踪条件，或归属未确认/,
+        ],
         [
           'missing result topic IDs despite a leaf snapshot',
           {},
           undefined,
-          /报告原范围需细分或专题归属未确认/,
+          /报告专题未达当前跟踪条件，或归属未确认/,
         ],
         [
-          'unavailable leaf directory',
+          'unavailable tracked topic directory',
           { insightTopicsLoadError: true },
           ['language-models'],
-          /最细分专题目录未就绪，暂不能确认公开/,
+          /跟踪专题目录未就绪，暂不能确认公开/,
+        ],
+        [
+          'a real leaf that no longer meets tracking conditions',
+          { insightTrackedTopicIds: [] },
+          ['language-models'],
+          /报告专题未达当前跟踪条件，或归属未确认/,
         ],
       ]) {
         await t.test(`publication blocks ${scenario} while preserving withdrawal`, async () => {
@@ -1099,6 +1201,10 @@ test(
             insightLeafTopicIds: ['language-models'],
             ...options,
           });
+          f.props.topics = [
+            { id: 'ai', name: '人工智能' },
+            { id: 'language-models', name: '语言模型' },
+          ];
           const row = {
             id: 'publication-scope',
             snapshot: { name: '历史报告', kind: 'topic_insight', topicIds: ['language-models'] },
@@ -1132,6 +1238,10 @@ test(
             f.page.getByRole('button', { name: '确认公开', exact: true }),
           ).toBeDisabled();
           await expect(f.page.getByText(message)).toBeVisible();
+          if (topicIds?.includes('language-models')) {
+            await expect(f.page.getByLabel(/^所属专题：/)).toContainText('语言模型');
+            await expect(f.page.getByLabel(/^原生成范围（待细分）：/)).toHaveCount(0);
+          }
           assert.deepEqual(f.detailReads, [row.id]);
           assert.deepEqual(f.posts, []);
           row.publication_status = 'published';

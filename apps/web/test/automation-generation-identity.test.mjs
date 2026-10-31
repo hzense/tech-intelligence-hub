@@ -426,7 +426,7 @@ test('real automation workflow carries its unchanged hash IDs through the real g
       'export async function discoverSources(){return ["https://example.com/original"]}',
     './local-topic-insight':
       'export async function runLocalTopicInsightStep(){return "local_topic_completed"}',
-    '../lib/server/insight-topics': 'export async function assertInsightLeafTopics(){}',
+    '../lib/server/insight-topics': 'export async function assertTrackedInsightTopics(){}',
     '../lib/server/topic-insight-sandbox':
       'export async function startTopicInsightSandbox(){throw Error("unused")} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
   };

@@ -94,7 +94,9 @@ const errors: Record<string, string> = {
   timeout: '供应商响应超时，结果未知；请核对原任务和费用，不要直接重试。',
   insight_stale: '证据信号已改变或撤回，请重新生成报告。',
   insight_topic_not_leaf:
-    '专题范围包含领域、父级或不可用方向。请重新选择当前启用的最细分专题；旧配置可停用或删除，原报告不会自动改换专题。',
+    '专题范围包含父级或不可用方向。请重新选择当前可用的跟踪专题；旧配置可停用或删除，原报告不会自动改换专题。',
+  insight_topic_not_tracked:
+    '专题未达跟踪条件：须为非一级的最细分专题，并累计至少 10 条直接关联的公开信号。请重新选择；旧配置可停用或删除，原报告及其归属保留。',
   insight_insufficient_evidence:
     '近 30 天内符合范围的公开信号不足 2 条，或部分所选专题缺少对应证据。本次检查未调用 AI。',
   insight_input_too_large: '专题证据超出模型输入上限，未调用 AI；请减少所选专题后重试。',
@@ -647,6 +649,7 @@ export function AdminAutomation({
   profiles,
   topics,
   insightLeafTopicIds,
+  insightTrackedTopicIds,
   insightTopicsLoadError = false,
   localMode = false,
   localRealAiMode = false,
@@ -660,6 +663,7 @@ export function AdminAutomation({
   profiles: Profile[];
   topics: Topic[];
   insightLeafTopicIds?: string[];
+  insightTrackedTopicIds?: string[];
   insightTopicsLoadError?: boolean;
   localMode?: boolean;
   localRealAiMode?: boolean;
@@ -671,10 +675,10 @@ export function AdminAutomation({
   const [state, setState] = useState(initial);
   const [readTopicDetails, setReadTopicDetails] = useState<Record<string, AutomationRunView>>({});
   const localSchedulingAllowed = localRealExecution && state.localSchedulingAvailable === true;
-  const insightTopicsReady = insightLeafTopicIds !== undefined && !insightTopicsLoadError;
-  const insightLeafIds = new Set(insightLeafTopicIds ?? []);
+  const insightTopicsReady = insightTrackedTopicIds !== undefined && !insightTopicsLoadError;
+  const insightTrackedIds = new Set(insightTrackedTopicIds ?? []);
   const insightChoices = insightTopicsReady
-    ? topics.filter((topic) => insightLeafIds.has(topic.id))
+    ? topics.filter((topic) => insightTrackedIds.has(topic.id))
     : [];
   function validInsightTopicIds(topicIds: unknown): boolean {
     return (
@@ -683,14 +687,14 @@ export function AdminAutomation({
       topicIds.length > 0 &&
       topicIds.length <= 5 &&
       new Set(topicIds).size === topicIds.length &&
-      topicIds.every((id) => typeof id === 'string' && insightLeafIds.has(id))
+      topicIds.every((id) => typeof id === 'string' && insightTrackedIds.has(id))
     );
   }
   function validInsightTopics(config: AutomationConfig): boolean {
     return config.kind !== 'topic_insight' || validInsightTopicIds(config.topicIds);
   }
   function topicPublicationIssue(row: RunView): string | null {
-    if (!insightTopicsReady) return '最细分专题目录未就绪，暂不能确认公开；已公开报告仍可撤回。';
+    if (!insightTopicsReady) return '跟踪专题目录未就绪，暂不能确认公开；已公开报告仍可撤回。';
     const detail = readTopicDetails[row.id];
     if (!detail) return '请先阅读报告，核对报告的真实专题范围后再确认公开。';
     if (
@@ -701,7 +705,7 @@ export function AdminAutomation({
     )
       return '报告尚未完成或结构不可用，不能确认公开。';
     if (!validInsightTopicIds(detail.result.topicIds))
-      return '报告原范围需细分或专题归属未确认，不能按原范围公开；请重新选择最细分专题生成，旧报告保留。';
+      return '报告专题未达当前跟踪条件，或归属未确认，暂不能确认公开；原报告及其真实归属保留。';
     return null;
   }
   function draftForMode(config: AutomationConfig): AutomationConfig {
@@ -736,7 +740,7 @@ export function AdminAutomation({
   const [draft, setDraft] = useState<AutomationConfig>(() => draftForMode(blank(kind)));
   const outdatedTopicIds =
     kind === 'topic_insight' && insightTopicsReady
-      ? draft.topicIds.filter((id) => !insightLeafIds.has(id))
+      ? draft.topicIds.filter((id) => !insightTrackedIds.has(id))
       : [];
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1039,7 +1043,7 @@ export function AdminAutomation({
           <p>
             {kind === 'source_collection'
               ? '选择 AI 配置，自动搜索网站科技范围内的互联网信息、获取原文、去重并生成候选；无需指定领域或填写网址。可选择人工审核后发布，或检查合格后自动发布。'
-              : '选择 1–5 个专题，使用“分析”模型读取近 30 天的 2–100 条当前公开信号，生成附有引用的私有报告，阅读后单独确认公开，亦可撤回。'}
+              : '选择 1–5 个跟踪专题，使用“分析”模型读取近 30 天的 2–100 条当前公开信号，生成附有引用的私有报告，阅读后单独确认公开，亦可撤回。'}
           </p>
         ) : null}
         {loadError ? (
@@ -1073,7 +1077,7 @@ export function AdminAutomation({
         ) : null}
         {kind === 'topic_insight' && !insightTopicsReady ? (
           <p role="alert">
-            最细分专题目录读取失败，已阻止新建、修订和生成；请刷新页面重试。
+            跟踪专题目录或公开信号读取失败，已阻止新建、修订、生成和新确认公开；请刷新页面重试。
             历史报告仍可阅读，已有配置可通过列表尝试停用或删除。
           </p>
         ) : null}
@@ -1287,17 +1291,24 @@ export function AdminAutomation({
             </p>
           ) : (
             <fieldset className={styles.full}>
-              <legend>分析专题（最细分方向，至少 1 个，最多 5 个）</legend>
-              <p>只选择当前启用且没有下级的最细分方向；领域和父级不能直接生成报告。</p>
+              <legend>跟踪专题（至少 1 个，最多 5 个）</legend>
+              <p>
+                只列出当前启用、非一级且没有下级的专题，并须累计至少 10
+                条直接关联的公开信号，按信号去重，不限日期。
+              </p>
+              <p>
+                本次分析另要求近 30 天内合计 2–100 条公开信号，且每个所选专题均有对应证据；累计达到
+                10 条不代表近期证据充足。
+              </p>
               {outdatedTopicIds.length ? (
                 <div role="status">
                   <p>
-                    原范围需细分：
+                    专题未达跟踪条件：
                     {outdatedTopicIds
                       .map((id) => topics.find((topic) => topic.id === id)?.name ?? id)
                       .join('、')}
                     。
-                    请清除旧范围后重新选择；系统不会猜测子专题。只需停止原计划时，请使用列表中的“停用定时”。
+                    请清除旧范围后重新选择；系统不会猜测或更改专题归属。只需停止原计划时，请使用列表中的“停用定时”。
                   </p>
                   <button
                     type="button"
@@ -1309,7 +1320,10 @@ export function AdminAutomation({
                 </div>
               ) : null}
               {insightTopicsReady && insightChoices.length === 0 ? (
-                <p>暂无可用的最细分专题；请先核对专题目录与启用状态。</p>
+                <p>
+                  暂无满足跟踪条件的专题；须为已启用的非一级叶子，且累计至少 10
+                  条直接关联的公开信号。
+                </p>
               ) : null}
               <div className={styles.topics}>
                 {insightChoices.map((topic) => (
@@ -1411,7 +1425,7 @@ export function AdminAutomation({
                     <td>
                       {kind === 'topic_insight' && !validInsightTopics(row.config)
                         ? insightTopicsReady
-                          ? '范围需细分 · 不能运行'
+                          ? '专题未达跟踪条件 · 不能运行'
                           : '专题目录未就绪 · 不能运行'
                         : localRealExecution
                           ? !profileReady(row)
@@ -1542,9 +1556,7 @@ export function AdminAutomation({
                             key={`${row.id}:${row.status}:${row.phase}`}
                             row={row}
                             topics={topics}
-                            insightLeafTopicIds={
-                              insightTopicsReady ? insightLeafTopicIds : undefined
-                            }
+                            insightLeafTopicIds={insightLeafTopicIds}
                             onDetailRead={(detail) =>
                               setReadTopicDetails((current) => ({ ...current, [row.id]: detail }))
                             }

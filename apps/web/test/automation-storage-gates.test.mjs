@@ -157,7 +157,7 @@ test('inactive configuration saves without execution budgets, while enable/trigg
       '../automation-generation-status': `export const automationGenerationIds=result=>result?.generationIds??[];
         export const summarizeAutomationGenerations=(result,rows)=>({ids:result?.generationIds??[],rows});`,
       '../topic-insight-core': 'export const currentInsight=()=>({inputs:[],topicIds:[]});',
-      './insight-topics': 'export async function assertInsightLeafTopics(){}',
+      './insight-topics': 'export async function assertTrackedInsightTopics(){}',
       './task-public-signals': 'export async function readTaskPublicSignals(){return []}',
       '../content-runtime':
         "export async function getTopicEntries(){return [{frontMatter:{id:'topic-ai'}}]}",

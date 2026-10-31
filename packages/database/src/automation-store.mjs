@@ -669,13 +669,19 @@ export async function rejectAutomaticPublicationBeforeClaim({ pool, owner, id })
   });
 }
 /** A stale topic scope is rejected before dispatch/claim, with no paid attempt. */
-export async function rejectInsightTopicsBeforeClaim({ pool, owner, id }) {
+export async function rejectInsightTopicsBeforeClaim({
+  pool,
+  owner,
+  id,
+  errorCode = 'insight_topic_not_leaf',
+}) {
   owner = automationText(owner);
   automationUuid(id);
+  if (!['insight_topic_not_leaf', 'insight_topic_not_tracked'].includes(errorCode)) fail();
   return transaction(pool, async (client) => {
     const result = await client.query(
       `UPDATE public.automation_runs SET status='failed',
-        phase='insight_topic_not_leaf',error_code='insight_topic_not_leaf',
+        phase=$3,error_code=$3,
         charged_microusd=0,cost_source='estimate',finished_at=clock_timestamp()
       WHERE id=$1 AND owner_id=$2 AND status='queued' AND phase='queued'
         AND snapshot->>'kind'='topic_insight'
@@ -685,7 +691,7 @@ export async function rejectInsightTopicsBeforeClaim({ pool, owner, id }) {
         AND result IS NULL AND frozen_inputs IS NULL
         AND publication_status='private' AND published_at IS NULL
       RETURNING id`,
-      [id, owner],
+      [id, owner, errorCode],
     );
     return result.rows.length === 1;
   });

@@ -34,6 +34,7 @@ const exposed = new Set([
   'config_deletion_unavailable',
   'insight_stale',
   'insight_topic_not_leaf',
+  'insight_topic_not_tracked',
   'insight_insufficient_evidence',
   'dispatch_unknown',
   'database_unavailable',

@@ -16,7 +16,7 @@ import { automaticPublicationAvailable } from '../automatic-publication';
 import { importsConfigured } from './import-service';
 import { generationConfigured, generationSummaries } from './signal-generation';
 import { currentInsight } from '../topic-insight-core';
-import { assertInsightLeafTopics } from './insight-topics';
+import { assertTrackedInsightTopics } from './insight-topics';
 import { readTaskPublicSignals } from './task-public-signals';
 import { getTopicEntries } from '../content-runtime';
 import { assertDiscoveryConnection } from '../source-discovery-provider';
@@ -187,7 +187,7 @@ export async function saveAutomation(owner: string, request: store.SaveAutomatio
           request: { ...request, config },
         });
     }
-    await assertInsightLeafTopics(config.topicIds);
+    await assertTrackedInsightTopics(config.topicIds);
   }
   // Both local task kinds require explicit scheduler opt-in; saving does not run them.
   if (
@@ -255,7 +255,7 @@ async function validateAutomationProfile(config: AutomationConfig) {
         throw new store.AutomationError('discovery_topic_invalid');
     }
   } else {
-    await assertInsightLeafTopics(config.topicIds);
+    await assertTrackedInsightTopics(config.topicIds);
     await aiStageAccess(config.profileId!, config.profileRevision!, 'analyze', false);
   }
 }
@@ -271,8 +271,16 @@ async function dispatch(owner: string, id: string) {
     ]);
     await start(automationWorkflow, [owner, id]);
   } catch (error) {
-    if (error instanceof store.AutomationError && error.code === 'insight_topic_not_leaf') {
-      await store.rejectInsightTopicsBeforeClaim({ pool: automationPool, owner, id });
+    if (
+      error instanceof store.AutomationError &&
+      (error.code === 'insight_topic_not_leaf' || error.code === 'insight_topic_not_tracked')
+    ) {
+      await store.rejectInsightTopicsBeforeClaim({
+        pool: automationPool,
+        owner,
+        id,
+        errorCode: error.code,
+      });
       throw error;
     }
     if (
@@ -314,6 +322,7 @@ export async function triggerAutomation(owner: string, request: store.TriggerAut
           'discovery_connection_unsupported',
           'discovery_topic_invalid',
           'insight_topic_not_leaf',
+          'insight_topic_not_tracked',
         ];
         throw new store.AutomationError(
           typeof code === 'string' && publicCodes.includes(code)
@@ -363,8 +372,11 @@ export async function publishAutomationInsight(owner: string, id: string, confir
   const pool = local ? automationConfigPool : automationPool;
   if (confirm) {
     const run = await store.readAutomationRun({ pool, owner, id });
-    await assertInsightLeafTopics(Array.isArray(run.result?.topicIds) ? run.result.topicIds : []);
     const signals = await readTaskPublicSignals();
+    await assertTrackedInsightTopics(
+      Array.isArray(run.result?.topicIds) ? run.result.topicIds : [],
+      signals,
+    );
     const validated = currentInsight(run.result, signals);
     if (!validated) throw new store.AutomationError('insight_stale');
     const inputIds = new Set(validated.inputs.map((input) => input.id));

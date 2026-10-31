@@ -50,7 +50,7 @@ async function compile() {
       export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
       export async function readAutomationRun(){const f=globalThis.${key};f.reads++;return structuredClone(f.run)}
       export async function claimAutomationRun(){const f=globalThis.${key};f.claims++;if(f.run.status!=='queued')return null;f.run.status='running';return structuredClone(f.run)}
-      export async function rejectInsightTopicsBeforeClaim(){const f=globalThis.${key};f.topicRefusals++;if(f.run.status==='queued'){f.run.status='failed';f.run.charged_microusd=0;}return true;}
+      export async function rejectInsightTopicsBeforeClaim({errorCode}){const f=globalThis.${key};f.topicRefusals++;f.refusalCode=errorCode;if(f.run.status==='queued'){f.run.status='failed';f.run.charged_microusd=0;}return true;}
       export async function rejectAutomaticPublicationBeforeClaim(){${unexpected}}
       export async function beginTopicInsightExecution({owner,id,token}){
         const f=globalThis.${key},r=f.run;f.fences++;
@@ -85,7 +85,7 @@ async function compile() {
     '../lib/automation-source-fallbacks':
       'export const canTrySourceFallback=()=>false,readAutomationSourceFallbacks=()=>[],sourceFallbackLimit=0,sourceFallbackUrls=()=>[];',
     '../lib/server/insight-topics': `import {AutomationError} from '../../../packages/database/src/automation-store.mjs';
-      export async function assertInsightLeafTopics(){const f=globalThis.${key};f.topicChecks++;if(f.rejectTopics)throw new AutomationError('insight_topic_not_leaf');}`,
+      export async function assertTrackedInsightTopics(){const f=globalThis.${key};f.topicChecks++;if(f.rejectTopics)throw new AutomationError(typeof f.rejectTopics==='string'?f.rejectTopics:'insight_topic_not_leaf');}`,
     '../lib/server/topic-insight-sandbox': `export async function startTopicInsightSandbox(){globalThis.${key}.sandboxes++;${unexpected}} export async function pollTopicInsightSandbox(){${unexpected}} export async function stopTopicInsightSandbox(){${unexpected}}`,
     ai: `export const Output={object:x=>x},jsonSchema=x=>x,isStepCount=x=>x;
       export class NoObjectGeneratedError extends Error {
@@ -206,6 +206,18 @@ test('local topic workflow has one fenced paid step, preserves receipts and neve
   f.rejectTopics = true;
   assert.equal(await mod.runLocalTopicInsightStep(owner, id, token), 'failed');
   assert.equal(f.executions, 0, 'A cached claim never bypasses topic scope admission');
+  assert.equal(f.run.charged_microusd, 0);
+  assert.equal(f.run.cost_source, 'estimate');
+  f = fixture();
+  f.rejectTopics = 'insight_topic_not_tracked';
+  await assert.rejects(mod.automationWorkflow(owner, id), /insight_topic_not_tracked/);
+  assert.equal(f.claims + f.executions + f.fences + f.sandboxes, 0);
+  assert.equal(f.refusalCode, 'insight_topic_not_tracked');
+  f = fixture();
+  f.run.status = 'running';
+  f.rejectTopics = 'insight_topic_not_tracked';
+  assert.equal(await mod.runLocalTopicInsightStep(owner, id, token), 'failed');
+  assert.equal(f.executions, 0);
   assert.equal(f.run.charged_microusd, 0);
   assert.equal(f.run.cost_source, 'estimate');
 

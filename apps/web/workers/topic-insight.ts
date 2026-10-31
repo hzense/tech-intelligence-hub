@@ -36,7 +36,11 @@ async function main() {
         : 'outcome_unknown';
     const topicRefusal =
       !executionCompleted &&
-      ['insight_topic_not_leaf', 'insight_insufficient_evidence'].includes(code);
+      [
+        'insight_topic_not_leaf',
+        'insight_topic_not_tracked',
+        'insight_insufficient_evidence',
+      ].includes(code);
     await updateAutomationRun({
       pool: automationPool,
       owner,

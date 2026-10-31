@@ -12,6 +12,7 @@ import {
 } from '@/lib/content-runtime';
 import { getSignalEntries } from '@/lib/seed-runtime';
 import { visibleTopicInsights } from '@/lib/server/topic-insights';
+import { countTopicSignals, trackingSignalMinimum } from '@/lib/tracking-topics';
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
@@ -64,15 +65,8 @@ export default async function TopicsPage() {
       topicIds: entry.frontMatter.topics,
     })),
   ].sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
-  const signalIdsByTopic = new Map<string, Set<string>>();
+  const signalCounts = countTopicSignals(signals);
   const reportCounts = new Map<string, number>();
-  for (const signal of signals) {
-    for (const id of signal.topics) {
-      const ids = signalIdsByTopic.get(id) ?? new Set<string>();
-      ids.add(signal.id);
-      signalIdsByTopic.set(id, ids);
-    }
-  }
   for (const report of reports) {
     for (const id of new Set(report.topicIds))
       reportCounts.set(id, (reportCounts.get(id) ?? 0) + 1);
@@ -83,10 +77,10 @@ export default async function TopicsPage() {
       id: topic.frontMatter.id,
       title: topic.frontMatter.title,
       summary: topic.summary,
-      signalCount: signalIdsByTopic.get(topic.frontMatter.id)?.size ?? 0,
+      signalCount: signalCounts.get(topic.frontMatter.id) ?? 0,
       reportCount: reportCounts.get(topic.frontMatter.id) ?? 0,
     }))
-    .filter((topic) => topic.signalCount >= 10)
+    .filter((topic) => topic.signalCount >= trackingSignalMinimum)
     .sort(
       (a, b) =>
         b.reportCount - a.reportCount ||
@@ -146,9 +140,9 @@ export default async function TopicsPage() {
         </section>
 
         <TopicInsightCatalog
-          topics={topics.map((topic) => ({
-            id: topic.frontMatter.id,
-            title: topic.frontMatter.title,
+          topics={trackedTopics.map((topic) => ({
+            id: topic.id,
+            title: topic.title,
           }))}
           reports={reports.map((report) => ({
             id: report.id,
