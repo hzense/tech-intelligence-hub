@@ -95,17 +95,28 @@ test(
     const cards = (page) => page.locator('[data-testid^="report-"]');
     const toggle = (page) => page.locator('button[aria-expanded]');
 
-    await t.test('zero reports never show categories from the topic taxonomy', async (subtest) => {
-      const topics = [topic('ai', '人工智能'), topic('robotics', '机器人')];
-      const page = await setup(subtest, { topics, reports: [] });
-      await expect(cards(page)).toHaveCount(0);
-      for (const entry of topics) await expect(topicButton(page, entry.title)).toHaveCount(0);
-      await expect(toggle(page)).toHaveCount(0);
-      assert.equal((await page.getByRole('button', { pressed: true }).count()) <= 1, true);
-    });
+    await t.test(
+      'tracked topics without reports retain their zero-count filters and detail links',
+      async (subtest) => {
+        const topics = [topic('ai', '人工智能'), topic('robotics', '机器人')];
+        const page = await setup(subtest, { topics, reports: [] });
+        await expect(cards(page)).toHaveCount(0);
+        for (const entry of topics)
+          await expect(topicButton(page, entry.title)).toHaveText(/\b0\b/);
+        await expect(toggle(page)).toHaveCount(0);
+        await topicButton(page, topics[0].title).click();
+        await expect(
+          page.getByText('人工智能尚无已公开的对应报告。', { exact: true }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('link', { name: '查看人工智能的信号与报告 →' }),
+        ).toHaveAttribute('href', '/topics/topic-ai');
+        await expect(page.getByRole('button', { pressed: true })).toHaveCount(1);
+      },
+    );
 
     await t.test(
-      'reports with no matching taxonomy do not invent empty topic filters',
+      'reports outside tracked topics retain original links in a separate collapsed section',
       async (subtest) => {
         const topics = [topic('empty', '没有报告的专题')];
         const page = await setup(subtest, {
@@ -113,8 +124,14 @@ test(
           reports: [report('outside-taxonomy', ['topic-unlisted'])],
         });
         await expect(cards(page)).toHaveCount(1);
-        await expect(topicButton(page, topics[0].title)).toHaveCount(0);
+        await expect(topicButton(page, topics[0].title)).toHaveText(/\b0\b/);
+        await expect(allButton(page)).toHaveText(/\b0\b/);
+        await expect(topicButton(page, 'topic-unlisted')).toHaveCount(0);
         await expect(toggle(page)).toHaveCount(0);
+        await expect(
+          page.getByRole('link', { name: '测试报告 outside-taxonomy' }),
+        ).not.toBeVisible();
+        await page.locator('summary').click();
         await expect(page.getByRole('link', { name: '测试报告 outside-taxonomy' })).toHaveAttribute(
           'href',
           '/topics/topic-unlisted/editions/outside-taxonomy',
@@ -137,7 +154,7 @@ test(
         await expect(allButton(page)).toHaveText(/\b2\b/);
         await expect(ai).toHaveText(/\b2\b/);
         await expect(security).toHaveText(/\b1\b/);
-        await expect(topicButton(page, '空专题')).toHaveCount(0);
+        await expect(topicButton(page, '空专题')).toHaveText(/\b0\b/);
         await expect(cards(page)).toHaveCount(2);
         await expect(page.getByTestId('report-shared')).toHaveCount(1);
         await security.click();
@@ -155,6 +172,38 @@ test(
         await expect(allButton(page)).toHaveAttribute('aria-pressed', 'true');
         await expect(page.getByRole('button', { pressed: true })).toHaveCount(1);
         await expect(cards(page)).toHaveCount(2);
+        await topicButton(page, '空专题').click();
+        await expect(cards(page)).toHaveCount(0);
+        await expect(page.getByText('空专题尚无已公开的对应报告。', { exact: true })).toBeVisible();
+        await allButton(page).click();
+        await expect(cards(page)).toHaveCount(2);
+      },
+    );
+
+    await t.test(
+      'unmatched reports never inflate tracked counts or become filters',
+      async (subtest) => {
+        const page = await setup(subtest, {
+          topics: [topic('language', '语言模型'), topic('inference', '推理基础设施')],
+          reports: [
+            report('matched', ['topic-language', 'topic-inference']),
+            report('broad', ['topic-artificial-intelligence']),
+          ],
+        });
+        await expect(allButton(page)).toHaveText(/\b1\b/);
+        await expect(topicButton(page, '语言模型')).toHaveText(/\b1\b/);
+        await expect(topicButton(page, '推理基础设施')).toHaveText(/\b1\b/);
+        await expect(topicButton(page, 'topic-artificial-intelligence')).toHaveCount(0);
+        await expect(page.getByTestId('report-matched')).toBeVisible();
+        await expect(page.getByTestId('report-broad')).not.toBeVisible();
+        await topicButton(page, '推理基础设施').click();
+        await expect(page.getByTestId('report-matched')).toBeVisible();
+        await page.locator('summary').click();
+        await expect(page.getByTestId('report-broad')).toBeVisible();
+        await expect(page.getByRole('link', { name: '测试报告 broad' })).toHaveAttribute(
+          'href',
+          '/topics/topic-artificial-intelligence/editions/broad',
+        );
       },
     );
 

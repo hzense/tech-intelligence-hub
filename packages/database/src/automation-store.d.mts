@@ -158,6 +158,7 @@ export function rejectInsightTopicsBeforeClaim(input: {
   pool: unknown;
   owner: string;
   id: string;
+  errorCode?: 'insight_topic_not_leaf' | 'insight_topic_not_tracked';
 }): Promise<boolean>;
 export function freezeAutomationInputs(input: {
   pool: unknown;

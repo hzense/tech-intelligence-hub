@@ -1,7 +1,7 @@
 import { sleep } from 'workflow';
 import { automationLimits } from '../lib/server/automation';
 import { automationPool } from '../lib/server/automation-store-access';
-import { assertInsightLeafTopics } from '../lib/server/insight-topics';
+import { assertTrackedInsightTopics } from '../lib/server/insight-topics';
 import * as store from '../../../packages/database/src/automation-store.mjs';
 import { automationStableId } from '../../../packages/database/src/automation-contract.mjs';
 import { executeImportAdmin, runImportItem } from '../lib/server/import-service';
@@ -231,10 +231,18 @@ async function claim(owner: string, id: string) {
   try {
     assertLocalAutomationRun(pending);
     if (pending.snapshot.kind === 'topic_insight')
-      await assertInsightLeafTopics(pending.snapshot.topicIds);
+      await assertTrackedInsightTopics(pending.snapshot.topicIds);
   } catch (error) {
-    if (error instanceof store.AutomationError && error.code === 'insight_topic_not_leaf')
-      await store.rejectInsightTopicsBeforeClaim({ pool: automationPool, owner, id });
+    if (
+      error instanceof store.AutomationError &&
+      (error.code === 'insight_topic_not_leaf' || error.code === 'insight_topic_not_tracked')
+    )
+      await store.rejectInsightTopicsBeforeClaim({
+        pool: automationPool,
+        owner,
+        id,
+        errorCode: error.code,
+      });
     if (
       error instanceof store.AutomationError &&
       error.code === 'automatic_publication_unavailable'

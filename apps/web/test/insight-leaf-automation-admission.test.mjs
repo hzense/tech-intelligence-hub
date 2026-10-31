@@ -41,7 +41,8 @@ async function compile() {
       export async function readAutomationRunDetail(){return globalThis.${key}.historical}
       export async function enqueueAutomation(args){const f=globalThis.${key};if(f.replay)return {created:false,run:f.historical};await args.beforeEnqueue(f.config);f.enqueues++;
         const run={id:'manual',owner_id:args.owner,snapshot:structuredClone(f.config),result:{topicIds:f.config.topicIds}};f.runs.set(run.id,run);
-        if(f.invalidateAfterEnqueue)f.denied.add('topic-leaf');return {created:true,run};}
+        if(f.invalidateAfterEnqueue)f.denied.add('topic-leaf');
+        if(f.untrackAfterEnqueue)f.untracked.add('topic-leaf');return {created:true,run};}
       export async function enqueueDueAutomations(){return globalThis.${key}.due}
       export async function readAutomationRun({id}){return globalThis.${key}.runs.get(id)}
       export async function failAutomationDispatch(args){globalThis.${key}.unknown.push(args)}
@@ -51,9 +52,10 @@ async function compile() {
     './automation-store-access': `export const automationConfigPool={kind:'config'},automationPool={kind:'execution'};
       export function automationStorageConfiguration(){} export function automationDatabaseConfiguration(){} export async function freezeAutomationInputs(){}`,
     './insight-topics': `import {AutomationError} from ${JSON.stringify(contract)};
-      export async function assertInsightLeafTopics(ids){const f=globalThis.${key};f.topicReads++;
+      export async function assertTrackedInsightTopics(ids,signals){const f=globalThis.${key};f.topicReads++;f.scopeSignals=signals;
         if(f.catalogUnavailable)throw new AutomationError('database_unavailable');
-        if(!ids.length||ids.some(id=>f.denied.has(id)))throw new AutomationError('insight_topic_not_leaf');}`,
+        if(!ids.length||ids.some(id=>f.denied.has(id)))throw new AutomationError('insight_topic_not_leaf');
+        if(ids.some(id=>f.untracked.has(id)))throw new AutomationError('insight_topic_not_tracked');}`,
     './admin-ai': `export async function aiStageAccess(){globalThis.${key}.profiles++;return {}}
       export async function generationAiAccess(){globalThis.${key}.profiles++;return {}}
       export async function validateLocalAiProfileReference(){globalThis.${key}.profiles++;}`,
@@ -64,7 +66,7 @@ async function compile() {
       'export const generationConfigured=()=>true;export async function generationSummaries(){return []}',
     '../automation-generation-status':
       'export const automationGenerationIds=()=>[],summarizeAutomationGenerations=()=>({});',
-    '../topic-insight-core': `export function currentInsight(){return globalThis.${key}.validated}`,
+    '../topic-insight-core': `export function currentInsight(_result,signals){globalThis.${key}.validationSignals=signals;return globalThis.${key}.validated}`,
     './task-public-signals': `export async function readTaskPublicSignals(){globalThis.${key}.signalReads++;return globalThis.${key}.signals}`,
     '../content-runtime':
       'export async function getTopicEntries(){return [{frontMatter:{id:"topic-parent"}}]}',
@@ -112,6 +114,7 @@ function fixture() {
     configs: [],
     config: config(),
     denied: new Set(['topic-parent', 'topic-unknown']),
+    untracked: new Set(['topic-nine', 'topic-root']),
     writes: [],
     deletes: [],
     publications: [],
@@ -158,6 +161,11 @@ test('new saves require leaf topics while exact owner/revision-bound schedule sh
         mod.saveAutomation(owner, request(config({ enabled, topicIds: ['topic-parent'] }))),
         { code: 'insight_topic_not_leaf' },
       );
+      for (const topic of ['topic-nine', 'topic-root'])
+        await assert.rejects(
+          mod.saveAutomation(owner, request(config({ enabled, topicIds: [topic] }))),
+          { code: 'insight_topic_not_tracked' },
+        );
       assert.equal(f.writes.length + f.profiles, 0);
       await mod.saveAutomation(owner, request(config({ enabled })));
       assert.equal(f.writes.length, 1);
@@ -239,19 +247,30 @@ test('manual and scheduled admission reject old parent scopes without dispatchin
   assert.equal(f.refusals.length, 1);
   assert.equal(f.unknown.length + f.starts.length, 0);
   f = fixture();
+  f.config = config({ topicIds: ['topic-nine'] });
+  await assert.rejects(mod.triggerAutomation(owner, {}), { code: 'insight_topic_not_tracked' });
+  assert.equal(f.enqueues + f.profiles + f.starts.length, 0);
+  f = fixture();
+  f.untrackAfterEnqueue = true;
+  await assert.rejects(mod.triggerAutomation(owner, {}), { code: 'insight_topic_not_tracked' });
+  assert.equal(f.enqueues, 1);
+  assert.equal(f.refusals[0].errorCode, 'insight_topic_not_tracked');
+  assert.equal(f.unknown.length + f.starts.length, 0);
+  f = fixture();
   for (const [runId, topicIds] of [
     ['old-parent', ['topic-parent']],
+    ['untracked-leaf', ['topic-nine']],
     ['valid-leaf', ['topic-leaf']],
   ]) {
     const run = { id: runId, owner_id: owner, snapshot: config({ topicIds }) };
     f.runs.set(runId, run);
     f.due.push({ created: true, run });
   }
-  assert.deepEqual(await mod.dispatchDueAutomations(), { dispatched: 1, failed: 1 });
+  assert.deepEqual(await mod.dispatchDueAutomations(), { dispatched: 1, failed: 2 });
   assert.deepEqual(f.starts, [[owner, 'valid-leaf']]);
   assert.deepEqual(
     f.refusals.map((row) => row.id),
-    ['old-parent'],
+    ['old-parent', 'untracked-leaf'],
   );
   assert.deepEqual(f.unknown, []);
 });
@@ -272,7 +291,8 @@ test('new publication requires leaf scope and evidence for every topic while old
   await assert.rejects(mod.publishAutomationInsight(owner, 'parent', true), {
     code: 'insight_topic_not_leaf',
   });
-  assert.equal(f.signalReads + f.publications.length, 0);
+  assert.equal(f.signalReads, 1);
+  assert.equal(f.publications.length, 0);
   await mod.publishAutomationInsight(owner, 'parent', false);
   assert.equal(f.publications.length, 1);
   assert.deepEqual(await mod.automationRunDetail(owner, 'history'), f.historical);
@@ -294,4 +314,37 @@ test('new publication requires leaf scope and evidence for every topic while old
   await mod.publishAutomationInsight(owner, 'multi', true);
   assert.equal(f.publications.length, 2);
   assert.equal(f.starts.length + f.profiles, 0);
+  assert.equal(
+    f.scopeSignals,
+    f.validationSignals,
+    'Qualification and fingerprint validation use the same public snapshot',
+  );
+  assert.equal(f.signalReads, 3, 'Each confirmation reads the public signal list once');
+});
+
+test('untracked completed reports remain readable and withdrawable and an exact old schedule can be stopped', async (t) => {
+  const saved = process.env;
+  process.env = { HZENSE_LOCAL_DEVELOPMENT: '1' };
+  t.after(() => {
+    process.env = saved;
+    delete globalThis[key];
+  });
+  const mod = await compile();
+  const f = fixture();
+  const old = config({ enabled: true, topicIds: ['topic-nine'] });
+  f.configs = [{ id, owner_id: owner, revision: 4, enabled: true, config: old }];
+  f.catalogUnavailable = true;
+  await mod.saveAutomation(owner, request({ ...old, enabled: false }, { expectedRevision: 4 }));
+  assert.equal(f.writes.length, 1);
+  assert.equal(f.topicReads + f.profiles, 0);
+  f.catalogUnavailable = false;
+  f.runs.set('old', { snapshot: old, result: { topicIds: ['topic-nine'] } });
+  await assert.rejects(mod.publishAutomationInsight(owner, 'old', true), {
+    code: 'insight_topic_not_tracked',
+  });
+  assert.equal(f.publications.length, 0);
+  await mod.publishAutomationInsight(owner, 'old', false);
+  assert.equal(f.publications.length, 1);
+  assert.deepEqual(await mod.automationRunDetail(owner, 'history'), f.historical);
+  assert.equal(f.starts.length, 0);
 });

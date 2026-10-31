@@ -16,15 +16,20 @@ async function compile() {
       {
         name: 'isolated-leaf-reader',
         setup(builder) {
-          builder.onResolve({ filter: /^(server-only|\.\/runtime-reader)$/ }, ({ path }) => ({
-            path,
-            namespace: 'fixture',
-          }));
+          builder.onResolve(
+            { filter: /^(server-only|\.\/runtime-reader|\.\/task-public-signals)$/ },
+            ({ path }) => ({
+              path,
+              namespace: 'fixture',
+            }),
+          );
           builder.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path }) => ({
             contents:
               path === 'server-only'
                 ? ''
-                : `export async function readRuntimeLeafTopics(){const f=globalThis.${key};f.calls++;if(f.error)throw f.error;return f.rows;}`,
+                : path === './runtime-reader'
+                  ? `export async function readRuntimeLeafTopics(){const f=globalThis.${key};f.calls++;if(f.error)throw f.error;return f.rows;}`
+                  : `export async function readTaskPublicSignals(){const f=globalThis.${key};f.signalReads++;if(f.signalError)throw f.signalError;return f.signals;}`,
           }));
         },
       },
@@ -81,4 +86,90 @@ test('shared insight topic validation accepts only 1–5 unique database leaves,
       assert.equal(error.cause, undefined);
       return true;
     });
+});
+
+test('tracked insight eligibility uses non-root database leaves and all-time unique direct public Signals', async (t) => {
+  t.after(() => delete globalThis[key]);
+  const f = (globalThis[key] = {
+    calls: 0,
+    signalReads: 0,
+    rows: [
+      { id: 'topic-ten', parentId: 'topic-parent' },
+      { id: 'topic-nine', parentId: 'topic-parent' },
+      { id: 'topic-root', parentId: null },
+      { id: 'topic-other', parentId: 'topic-other-parent' },
+    ],
+    signals: [],
+  });
+  const signals = (topic, count) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `${topic}-${i}`,
+      topics: [topic, topic, 'topic-parent'],
+      occurred_at: '2001-01-01',
+    }));
+  f.signals = [
+    ...signals('topic-ten', 10),
+    ...signals('topic-nine', 9),
+    ...signals('topic-root', 20),
+  ];
+  f.signals.push(...signals('topic-nine', 9), ...signals('topic-ten', 10));
+  const { readTrackedInsightTopics, assertTrackedInsightTopics, readInsightLeafTopics } =
+    await compile();
+  assert.deepEqual(
+    (await readTrackedInsightTopics()).map((topic) => topic.id),
+    ['topic-ten'],
+  );
+  assert.equal(
+    (await readInsightLeafTopics()).length,
+    4,
+    'Historical leaf classification is not narrowed to tracked eligibility',
+  );
+  await assertTrackedInsightTopics(['topic-ten']);
+  for (const ids of [['topic-nine'], ['topic-root'], ['topic-other'], ['topic-ten', 'topic-nine']])
+    await assert.rejects(assertTrackedInsightTopics(ids), { code: 'insight_topic_not_tracked' });
+  await assert.rejects(assertTrackedInsightTopics(['topic-parent']), {
+    code: 'insight_topic_not_leaf',
+  });
+  const before = f.signalReads;
+  const snapshot = [...f.signals, ...signals('topic-other', 10)];
+  await assertTrackedInsightTopics(['topic-ten', 'topic-other'], snapshot);
+  assert.deepEqual(
+    (await readTrackedInsightTopics(snapshot)).map((topic) => topic.id),
+    ['topic-ten', 'topic-other'],
+  );
+  assert.equal(
+    f.signalReads,
+    before,
+    'Supplied public evidence snapshot is reused without another read',
+  );
+  f.signals = f.signals.filter((signal) => signal.id !== 'topic-ten-9');
+  await assert.rejects(assertTrackedInsightTopics(['topic-ten']), {
+    code: 'insight_topic_not_tracked',
+  });
+  const reads = f.calls + f.signalReads;
+  for (const ids of [
+    [],
+    null,
+    undefined,
+    ['topic-ten', 'topic-ten'],
+    [42],
+    Array(6).fill('topic-ten'),
+  ])
+    await assert.rejects(assertTrackedInsightTopics(ids), { code: 'insight_topic_not_leaf' });
+  assert.equal(f.calls + f.signalReads, reads, 'Malformed input never reads storage');
+  f.signalError = Error('private reader credentials');
+  for (const read of [
+    () => readTrackedInsightTopics(),
+    () => assertTrackedInsightTopics(['topic-ten']),
+  ])
+    await assert.rejects(
+      read(),
+      (error) =>
+        error.code === 'database_unavailable' &&
+        error.message === 'database_unavailable' &&
+        error.cause === undefined,
+    );
+  await assertTrackedInsightTopics(['topic-ten'], snapshot);
+  f.error = Error('private catalog connection');
+  await assert.rejects(readTrackedInsightTopics(snapshot), { code: 'database_unavailable' });
 });

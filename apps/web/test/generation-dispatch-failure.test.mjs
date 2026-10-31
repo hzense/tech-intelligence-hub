@@ -46,7 +46,7 @@ async function loadDispatchers() {
     './signal-generation': 'export async function signalGenerationWorkflow(){}',
     './local-topic-insight':
       'export async function runLocalTopicInsightStep(){return "local_topic_completed"}',
-    '../lib/server/insight-topics': 'export async function assertInsightLeafTopics(){}',
+    '../lib/server/insight-topics': 'export async function assertTrackedInsightTopics(){}',
     '../lib/server/topic-insight-sandbox':
       'export async function startTopicInsightSandbox(){} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
     '@/lib/admin-signal-generation-handler':

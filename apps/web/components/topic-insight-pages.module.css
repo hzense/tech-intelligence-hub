@@ -132,6 +132,38 @@
   cursor: pointer;
 }
 
+.selectedTopicLink {
+  margin: 0 0 1rem;
+  color: var(--brand);
+  font-size: 0.9rem;
+}
+
+.unassignedReports {
+  margin-top: 2rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.unassignedReports summary {
+  min-height: 44px;
+  padding: 0.65rem 0;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.unassignedReports > p {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.unassignedReports summary:focus-visible,
+.selectedTopicLink a:focus-visible {
+  outline: 3px solid var(--brand-bright);
+  outline-offset: 3px;
+}
+
 .sectionHeading {
   display: flex;
   justify-content: space-between;

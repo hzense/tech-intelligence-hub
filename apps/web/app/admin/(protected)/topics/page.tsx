@@ -10,7 +10,7 @@ import { getAiDashboard } from '@/lib/server/admin-ai';
 import { getTopicEntries } from '@/lib/content-runtime';
 import { AdminAutomation } from '@/components/admin-automation';
 import { isLocalDevelopment, isLocalRealAi } from '@/lib/local-development';
-import { readInsightLeafTopics } from '@/lib/server/insight-topics';
+import { readInsightLeafTopics, readTrackedInsightTopics } from '@/lib/server/insight-topics';
 
 export const metadata: Metadata = {
   title: '专题洞察任务',
@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic';
 export default async function AdminTopicsPage() {
   const session = await requireAdminSession();
   const configured = automationStorageConfigured();
-  const [stateResult, ai, entries, leafTopics] = await Promise.all([
+  const [stateResult, ai, entries, leafTopics, trackedTopics] = await Promise.all([
     configured
       ? automationDashboard(session.user.id)
           .then((state) => ({ state, loadError: false }))
@@ -34,11 +34,17 @@ export default async function AdminTopicsPage() {
     readInsightLeafTopics()
       .then((topics) => ({ topics, loadError: false }))
       .catch(() => ({ topics: [], loadError: true })),
+    readTrackedInsightTopics()
+      .then((topics) => ({ topics, loadError: false }))
+      .catch(() => ({ topics: [], loadError: true })),
   ]);
   const topicNames = new Map(
     entries.map((entry) => [entry.frontMatter.id, entry.frontMatter.title]),
   );
-  for (const topic of leafTopics.topics) topicNames.set(topic.id, topic.title);
+  for (const topic of leafTopics.topics)
+    if (!topicNames.has(topic.id)) topicNames.set(topic.id, topic.title);
+  for (const topic of trackedTopics.topics)
+    if (!topicNames.has(topic.id)) topicNames.set(topic.id, topic.title);
   return (
     <AdminAutomation
       kind="topic_insight"
@@ -56,8 +62,11 @@ export default async function AdminTopicsPage() {
         ready: readiness.ready,
       }))}
       topics={Array.from(topicNames, ([id, name]) => ({ id, name }))}
-      insightLeafTopicIds={leafTopics.topics.map((topic) => topic.id)}
-      insightTopicsLoadError={leafTopics.loadError}
+      {...(!leafTopics.loadError
+        ? { insightLeafTopicIds: leafTopics.topics.map((topic) => topic.id) }
+        : {})}
+      insightTrackedTopicIds={trackedTopics.topics.map((topic) => topic.id)}
+      insightTopicsLoadError={trackedTopics.loadError}
     />
   );
 }

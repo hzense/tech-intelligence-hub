@@ -76,7 +76,7 @@ async function compile() {
     '../lib/server/source-discovery': `export async function discoverSources(){globalThis.${key}.discoveries++;return []}`,
     './local-topic-insight':
       'export async function runLocalTopicInsightStep(){return "local_topic_completed"}',
-    '../lib/server/insight-topics': 'export async function assertInsightLeafTopics(){}',
+    '../lib/server/insight-topics': 'export async function assertTrackedInsightTopics(){}',
     '../lib/server/topic-insight-sandbox': `export async function startTopicInsightSandbox(){throw Error('Unexpected sandbox')}
       export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}`,
   };

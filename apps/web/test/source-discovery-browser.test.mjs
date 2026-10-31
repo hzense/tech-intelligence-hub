@@ -67,7 +67,8 @@ test(
               loadError={false} localMode={p.has('local')} localRealAiMode={p.has('real')}
               initial={{...initial,configDeletionAvailable:!p.has('legacySchema')}}
               profiles={[{id:'${profileId}',revision:p.has('staleProfile')?2:1,name:'验收模型',ready:!p.has('draft')}]}
-              topics={[{id:'topic-ai',name:'人工智能'}]} insightLeafTopicIds={p.has('parentInsight')?[]:['topic-ai']}/>
+              topics={[{id:'topic-ai',name:'人工智能'}]} insightLeafTopicIds={p.has('parentInsight')?[]:['topic-ai']}
+              insightTrackedTopicIds={p.has('parentInsight')?[]:['topic-ai']}/>
           );
         `,
         resolveDir: root,

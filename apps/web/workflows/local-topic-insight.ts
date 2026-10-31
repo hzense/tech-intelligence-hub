@@ -4,7 +4,7 @@ import {
 } from '../lib/local-development';
 import { automationPool } from '../lib/server/automation-store-access';
 import { executeTopicInsight } from '../lib/server/topic-insight-executor';
-import { assertInsightLeafTopics } from '../lib/server/insight-topics';
+import { assertTrackedInsightTopics } from '../lib/server/insight-topics';
 import { TopicInsightProviderError } from '../lib/topic-insight-provider';
 import * as store from '../../../packages/database/src/automation-store.mjs';
 
@@ -16,6 +16,7 @@ const preflightFailures = new Set([
   'profile_not_ready',
   'insight_insufficient_evidence',
   'insight_topic_not_leaf',
+  'insight_topic_not_tracked',
   'insight_input_too_large',
   'budget_exceeded',
   'connection_unavailable',
@@ -48,7 +49,7 @@ export async function runLocalTopicInsightStep(owner: string, id: string, token:
   await store.beginTopicInsightExecution({ pool: automationPool, owner, id, token });
   let completion: Awaited<ReturnType<typeof executeTopicInsight>> | undefined;
   try {
-    await assertInsightLeafTopics(run.snapshot.topicIds);
+    await assertTrackedInsightTopics(run.snapshot.topicIds);
     completion = await executeTopicInsight(owner, run);
     await store.updateAutomationRun({
       pool: automationPool,

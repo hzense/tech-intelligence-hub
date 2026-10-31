@@ -358,3 +358,36 @@ test('insufficient tracking evidence shows the threshold empty state and keeps r
     delete globalThis.__topicRenderTest;
   }
 });
+
+test('tracking card, report filter and topic detail agree on the report association', async () => {
+  const directoryState = globalThis.structuredClone(state);
+  directoryState.trackingTopicIds = ['topic-security'];
+  directoryState.editorial = [];
+  directoryState.rows[0].result.topicIds = ['topic-security'];
+  directoryState.signals = Array.from({ length: 10 }, (_, index) => ({
+    id: `security-signal-${index}`,
+    title: '合成安全信号',
+    topics: ['topic-security'],
+    occurred_at: '2026-10-20T00:00:00.000Z',
+  }));
+  globalThis.__topicRenderTest = directoryState;
+  try {
+    const { TopicsPage, TopicDetailPage } = await loadPages();
+    const html = renderToStaticMarkup(await TopicsPage());
+    const tracking = html.match(
+      /<section[^>]*aria-labelledby="tracking-heading"[^>]*>[\s\S]*?<\/section>/,
+    )?.[0];
+    assert.match(tracking, /href="\/topics\/topic-security"/);
+    assert.match(tracking, /1 份报告/);
+    assert.match(html, /人工智能安全 <span>1<\/span>/);
+    assert.match(html, new RegExp(`href="/topics/topic-security/editions/${reportId}"`));
+    assert.doesNotMatch(html, /尚未对应跟踪专题的报告/);
+    const detail = renderToStaticMarkup(
+      await TopicDetailPage({ params: Promise.resolve({ id: 'topic-security' }) }),
+    );
+    assert.match(detail, /1 份公开报告/);
+    assert.match(detail, new RegExp(`href="/topics/topic-security/editions/${reportId}"`));
+  } finally {
+    delete globalThis.__topicRenderTest;
+  }
+});

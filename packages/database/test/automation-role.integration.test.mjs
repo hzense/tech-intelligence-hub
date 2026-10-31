@@ -1594,49 +1594,52 @@ suite('automation role isolation and publication boundary', () => {
     }
   }
 
-  it('rejects an unclaimed topic scope with zero charge and preserves the immutable snapshot on replay', async () => {
-    await withPublicationFixtures(async ({ operator, createConfig }) => {
-      const config = await createConfig({
-        kind: 'topic_insight',
-        topicIds: ['topic-old-parent'],
-        discovery: undefined,
+  it.each([undefined, 'insight_topic_not_leaf', 'insight_topic_not_tracked'])(
+    'rejects an unclaimed topic scope with reason %s, zero charge and immutable replay',
+    async (errorCode) => {
+      await withPublicationFixtures(async ({ operator, createConfig }) => {
+        const config = await createConfig({
+          kind: 'topic_insight',
+          topicIds: ['topic-old-parent'],
+          discovery: undefined,
+        });
+        const request = {
+          configId: config.id,
+          expectedRevision: config.revision,
+          requestId: randomUUID(),
+          consent: true,
+        };
+        await enqueueAutomation({ pool, owner: operator, request });
+        const args = { pool, owner: operator, id: request.requestId, errorCode };
+        expect(await rejectInsightTopicsBeforeClaim(args)).toBe(true);
+        const settled = await readAutomationRun(args);
+        expect(settled).toMatchObject({
+          status: 'failed',
+          phase: errorCode ?? 'insight_topic_not_leaf',
+          error_code: errorCode ?? 'insight_topic_not_leaf',
+          reserved_microusd: 0,
+          charged_microusd: 0,
+          cost_source: 'estimate',
+          lease_token: null,
+          lease_until: null,
+          budget_day: null,
+          started_at: null,
+          result: null,
+          frozen_inputs: null,
+          publication_status: 'private',
+          snapshot: config.config,
+        });
+        expect(settled.finished_at).not.toBeNull();
+        expect(await rejectInsightTopicsBeforeClaim(args)).toBe(false);
+        expect(await enqueueAutomation({ pool, owner: operator, request })).toEqual({
+          run: settled,
+          created: false,
+        });
+        expect(await claimAutomationRun(args)).toBeNull();
+        expect(await readAutomationRun(args)).toEqual(settled);
       });
-      const request = {
-        configId: config.id,
-        expectedRevision: config.revision,
-        requestId: randomUUID(),
-        consent: true,
-      };
-      await enqueueAutomation({ pool, owner: operator, request });
-      const args = { pool, owner: operator, id: request.requestId };
-      expect(await rejectInsightTopicsBeforeClaim(args)).toBe(true);
-      const settled = await readAutomationRun(args);
-      expect(settled).toMatchObject({
-        status: 'failed',
-        phase: 'insight_topic_not_leaf',
-        error_code: 'insight_topic_not_leaf',
-        reserved_microusd: 0,
-        charged_microusd: 0,
-        cost_source: 'estimate',
-        lease_token: null,
-        lease_until: null,
-        budget_day: null,
-        started_at: null,
-        result: null,
-        frozen_inputs: null,
-        publication_status: 'private',
-        snapshot: config.config,
-      });
-      expect(settled.finished_at).not.toBeNull();
-      expect(await rejectInsightTopicsBeforeClaim(args)).toBe(false);
-      expect(await enqueueAutomation({ pool, owner: operator, request })).toEqual({
-        run: settled,
-        created: false,
-      });
-      expect(await claimAutomationRun(args)).toBeNull();
-      expect(await readAutomationRun(args)).toEqual(settled);
-    });
-  });
+    },
+  );
 
   it.each([
     ['another owner', null, true],

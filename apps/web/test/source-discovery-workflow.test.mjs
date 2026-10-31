@@ -66,7 +66,7 @@ test('source discovery orchestrates originals and private candidates without dro
     './local-signal-generation': 'export async function localSignalGenerationWorkflow(){}',
     './local-topic-insight':
       'export async function runLocalTopicInsightStep(){return "local_topic_completed"}',
-    '../lib/server/insight-topics': 'export async function assertInsightLeafTopics(){}',
+    '../lib/server/insight-topics': 'export async function assertTrackedInsightTopics(){}',
     '../lib/server/topic-insight-sandbox':
       'export async function startTopicInsightSandbox(){globalThis.__sourceFlow.topicCalls++} export async function pollTopicInsightSandbox(){globalThis.__sourceFlow.topicCalls++} export async function stopTopicInsightSandbox(){globalThis.__sourceFlow.topicCalls++}',
   };

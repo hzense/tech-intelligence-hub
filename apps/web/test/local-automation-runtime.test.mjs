@@ -389,7 +389,7 @@ test('local due collection dispatches only newly queued runs and keeps disabled 
     '../automation-generation-status':
       'export const automationGenerationIds=()=>[]; export const summarizeAutomationGenerations=()=>({});',
     '../topic-insight-core': `export const currentInsight=()=>globalThis.${fixtureKey}.currentInsight?{inputs:[],topicIds:[]}:null;`,
-    './insight-topics': 'export async function assertInsightLeafTopics(){}',
+    './insight-topics': 'export async function assertTrackedInsightTopics(){}',
     './task-public-signals': `export async function readTaskPublicSignals(){globalThis.${fixtureKey}.publicSignalReads++;return []}`,
     '../content-runtime': 'export async function getTopicEntries(){return []}',
     '../source-discovery-provider': 'export function assertDiscoveryConnection(){}',

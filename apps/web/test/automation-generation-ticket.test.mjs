@@ -61,7 +61,7 @@ test('automation queue receipts reach real child workflow and Sandbox admission 
       'export function candidateEnrichmentConfigured(){return false} export async function candidateEnrichmentDetail(){throw Error("unused")}',
     localTopic:
       'export async function runLocalTopicInsightStep(){throw Error("unexpected local topic")}',
-    insightTopics: 'export async function assertInsightLeafTopics(){}',
+    insightTopics: 'export async function assertTrackedInsightTopics(){}',
     topic:
       'export async function startTopicInsightSandbox(){} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
     generationConfig:

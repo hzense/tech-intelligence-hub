@@ -5,25 +5,27 @@ import test from 'node:test';
 import { fileURLToPath, URL } from 'node:url';
 import { build } from 'esbuild';
 import { generationCost } from '../lib/signal-generation-core.ts';
+import { selectInsightSignals } from '../lib/topic-insight-core.ts';
 
 const key = '__topicInsightAccounting';
 const owner = 'local:accounting';
 const id = '11111111-1111-4111-8111-111111111111';
 const token = '22222222-2222-4222-8222-222222222222';
 
-async function compile() {
+async function compile({ realTopics = false } = {}) {
   const executor = new URL('../lib/server/topic-insight-executor.ts', import.meta.url);
   const provider = fileURLToPath(new URL('../lib/topic-insight-provider.ts', import.meta.url));
   const modules = {
     'server-only': '',
-    './insight-topics': `export async function assertInsightLeafTopics(){if(globalThis.${key}.rejectTopics)throw Error('insight_topic_not_leaf')}`,
-    '../lib/server/insight-topics': 'export async function assertInsightLeafTopics(){}',
+    './insight-topics': `export async function assertTrackedInsightTopics(){if(globalThis.${key}.rejectTopics)throw Error('insight_topic_not_leaf')}`,
+    './runtime-reader': `export async function readRuntimeLeafTopics(){return globalThis.${key}.leaves}`,
+    '../lib/server/insight-topics': 'export async function assertTrackedInsightTopics(){}',
     './admin-ai': `export async function aiStageAccess(){globalThis.${key}.accesses++;return globalThis.${key}.access}`,
     '../admin-ai-core':
       'export const readAiBackendConfiguration=()=>({allowedHosts:["example.com"]});',
-    './task-public-signals': 'export async function readTaskPublicSignals(){return []}',
+    './task-public-signals': `export async function readTaskPublicSignals(){const f=globalThis.${key};f.signalReads++;return f.signals}`,
     '../topic-insight-core': `export const insightInput=s=>({id:s.id});
-      export const selectInsightSignals=()=>({signals:globalThis.${key}.signals,windowStart:'2026-10-01',windowEnd:'2026-10-29'});`,
+      export function selectInsightSignals(signals,ids,end){const f=globalThis.${key};f.selectionSignals=signals;return f.useRealSelection?f.selectInsightSignals(signals,ids,end):{signals:f.signals,windowStart:'2026-10-01',windowEnd:'2026-10-29'};}`,
     '../topic-insight-provider': `export {TopicInsightProviderError} from ${JSON.stringify(provider)};
       export const insightRules='synthetic rules';
       export async function invokeTopicInsight(){const f=globalThis.${key};f.calls++;return f.generated;}`,
@@ -60,6 +62,10 @@ async function compile() {
         setup(builder) {
           builder.onResolve({ filter: /.*/ }, ({ path, importer }) => {
             if (path === provider) return { path: provider };
+            if (realTopics && path === './insight-topics')
+              return {
+                path: fileURLToPath(new URL('../lib/server/insight-topics.ts', import.meta.url)),
+              };
             if (path === '../lib/server/topic-insight-executor')
               return { path: fileURLToPath(executor) };
             // Only the executor/workflow dependencies are mocked. The diagnostic
@@ -90,6 +96,13 @@ function fixture(generated) {
     generationCost,
     calls: 0,
     accesses: 0,
+    signalReads: 0,
+    selectInsightSignals,
+    leaves: [
+      { id: 'topic-ai', parentId: 'topic-parent' },
+      { id: 'topic-security', parentId: 'topic-parent' },
+      { id: 'topic-root', parentId: null },
+    ],
     signals: [
       { id: 'a', topics: ['topic-ai'] },
       { id: 'b', topics: ['topic-ai'] },
@@ -214,4 +227,65 @@ test('topic accounting keeps provider receipts and reserves every ambiguous post
   assert.equal(overflow.calls, 1);
   assert.equal(overflow.run.charged_microusd, 500000);
   assert.equal(overflow.run.cost_source, 'reserve');
+});
+
+test('executor reuses one current public snapshot for tracked qualification and separate recent report evidence', async (t) => {
+  const previous = process.env.HZENSE_AUTOMATION_ENABLED;
+  process.env.HZENSE_AUTOMATION_ENABLED = '1';
+  t.after(() => {
+    if (previous === undefined) delete process.env.HZENSE_AUTOMATION_ENABLED;
+    else process.env.HZENSE_AUTOMATION_ENABLED = previous;
+    delete globalThis[key];
+  });
+  const mod = await compile({ realTopics: true });
+  const signals = (topic, total, recent) =>
+    Array.from({ length: total }, (_, i) => ({
+      id: `${topic}-${i}`,
+      topics: [topic, topic],
+      public_version: 1,
+      occurred_at: i < recent ? '2026-10-28T12:00:00Z' : '2001-01-01T00:00:00Z',
+    }));
+  let f = fixture({});
+  f.useRealSelection = true;
+  f.signals = signals('topic-ai', 9, 2);
+  f.signals.push(...f.signals);
+  assert.equal(await mod.runLocalTopicInsightStep(owner, id, token), 'failed');
+  assert.equal(f.update.errorCode, 'insight_topic_not_tracked');
+  assert.equal(f.calls + f.accesses, 0);
+  assert.equal(f.run.charged_microusd, 0);
+  f = fixture({});
+  f.useRealSelection = true;
+  f.signals = signals('topic-ai', 10, 2);
+  assert.equal(await mod.runLocalTopicInsightStep(owner, id, token), 'completed');
+  assert.equal(f.calls, 1);
+  assert.equal(f.signalReads, 1);
+  assert.equal(f.selectionSignals, f.signals);
+  assert.equal(
+    f.run.result.inputs.length,
+    2,
+    'All-time qualification does not change the report window to all-time',
+  );
+  f = fixture({});
+  f.useRealSelection = true;
+  f.signals = signals('topic-ai', 10, 0);
+  assert.equal(await mod.runLocalTopicInsightStep(owner, id, token), 'failed');
+  assert.equal(f.update.errorCode, 'insight_insufficient_evidence');
+  assert.equal(f.calls + f.accesses, 0);
+  assert.equal(f.run.charged_microusd, 0);
+  f = fixture({});
+  f.useRealSelection = true;
+  f.run.config_snapshot.topicIds.push('topic-security');
+  f.signals = [...signals('topic-ai', 10, 2), ...signals('topic-security', 10, 0)];
+  assert.equal(await mod.runLocalTopicInsightStep(owner, id, token), 'failed');
+  assert.equal(f.update.errorCode, 'insight_insufficient_evidence');
+  assert.equal(f.calls + f.accesses, 0);
+  assert.equal(f.run.charged_microusd, 0);
+  f = fixture({});
+  f.useRealSelection = true;
+  f.run.config_snapshot.topicIds = ['topic-root'];
+  f.signals = signals('topic-root', 20, 2);
+  assert.equal(await mod.runLocalTopicInsightStep(owner, id, token), 'failed');
+  assert.equal(f.update.errorCode, 'insight_topic_not_tracked');
+  assert.equal(f.calls + f.accesses, 0);
+  assert.equal(f.run.charged_microusd, 0);
 });
