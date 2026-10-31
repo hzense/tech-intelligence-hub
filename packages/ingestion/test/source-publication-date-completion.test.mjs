@@ -239,3 +239,130 @@ test('mixed publication and footer dates or consecutive metadata cannot masquera
     assert.deepEqual(completeSourcePublicationDates(result, source), result, text);
   }
 });
+
+const articleSource = (body, metadata, extra = []) =>
+  buildGenerationSource(
+    parseImportOutput({
+      fragments: [
+        ...body.map((text, index) => ({
+          text,
+          locator: {
+            paragraph: index + 1,
+            region: `html article 1; paragraphs ${index + 1}-${index + 1}`,
+          },
+        })),
+        ...metadata.map((text) => ({
+          text,
+          locator: { region: 'html article 1; publication metadata' },
+        })),
+        ...extra,
+      ],
+    }),
+  );
+
+test('publication metadata completes only claims inside the same semantic article across fragments', () => {
+  const body = [
+    'First company releases a new public model.',
+    'The new model improves retrieval accuracy.',
+  ];
+  const source = articleSource(body, [
+    'article:published_time: 2026-10-30T18:00:21+00:00',
+    'datePublished: 2026-10-30T14:00:21-04:00',
+  ]);
+  const result = assess(source, [
+    draft(body.map((text, index) => ref(`fragment-${index + 1}`, text))),
+  ]);
+  const before = JSON.stringify({ source, result });
+  const completed = completeSourcePublicationDates(result, source);
+  assert.equal(completed.candidates[0].event_date, '2026-10-30');
+  assert.deepEqual(completed.candidates[0].event_date_evidence, [
+    ref('fragment-3', 'article:published_time: 2026-10-30T18:00:21+00:00'),
+  ]);
+  assert.deepEqual(collectSourcePublicationDates(source), [
+    {
+      date: '2026-10-30',
+      evidence: completed.candidates[0].event_date_evidence[0],
+      kind: 'article_metadata',
+      fragment_ids: ['fragment-1', 'fragment-2'],
+    },
+  ]);
+  assert.equal(JSON.stringify({ source, result }), before);
+});
+
+test('unscoped text, other article bodies and metadata-only claims cannot inherit an article date', () => {
+  const body = 'First company releases a new public model.';
+  const other = 'Second company announces an unrelated model.';
+  const metadata = 'datePublished: 2026-10-30';
+  const source = articleSource(
+    [body],
+    [metadata],
+    [
+      { text: other, locator: { paragraph: 2 } },
+      { text: other, locator: { region: 'html article 2; paragraphs 1-1', paragraph: 1 } },
+    ],
+  );
+  for (const evidence of [
+    [ref('fragment-3', other)],
+    [ref('fragment-4', other)],
+    [ref('fragment-2', metadata)],
+    [ref('fragment-1', body), ref('fragment-3', other)],
+  ]) {
+    const result = assess(source, [draft(evidence)]);
+    assert.deepEqual(completeSourcePublicationDates(result, source), result);
+  }
+});
+
+test('claims spanning separate articles cannot share a date even when both dates are equal', () => {
+  const first = 'First company releases a new public model.';
+  const second = 'Second company announces an unrelated model.';
+  const source = articleSource(
+    [first],
+    ['datePublished: 2026-10-30'],
+    [
+      { text: second, locator: { region: 'html article 2; paragraphs 1-1', paragraph: 1 } },
+      {
+        text: 'datePublished: 2026-10-30',
+        locator: { region: 'html article 2; publication metadata' },
+      },
+    ],
+  );
+  const result = assess(source, [draft([ref('fragment-1', first), ref('fragment-3', second)])]);
+  assert.deepEqual(completeSourcePublicationDates(result, source), result);
+});
+
+test('conflicting, malformed, updated-only and document-only metadata never complete a date', () => {
+  const body = 'First company releases a new public model.';
+  for (const metadata of [
+    ['datePublished: 2026-10-30', 'article:published_time: 2026-10-29'],
+    ['datePublished: 2026-02-30'],
+    ['datePublished: 2026-10-30T25:00:00Z'],
+    ['datePublished: 2026-10-30', 'datePublished: yesterday'],
+    ['dateModified: 2026-10-30'],
+  ]) {
+    const source = articleSource([body], metadata);
+    const result = assess(source, [draft([ref('fragment-1', body)])]);
+    assert.deepEqual(collectSourcePublicationDates(source), []);
+    assert.deepEqual(completeSourcePublicationDates(result, source), result);
+  }
+  const source = sourceFor(body, 'datePublished: 2026-10-30');
+  const result = assess(source, [draft([ref('fragment-1', body)])]);
+  assert.deepEqual(completeSourcePublicationDates(result, source), result);
+  const conflicting = articleSource(
+    [`Published: Oct 29, 2026\n\n${body}`],
+    ['datePublished: 2026-10-30'],
+  );
+  assert.deepEqual(collectSourcePublicationDates(conflicting), []);
+});
+
+test('HTML publication time stays original source date and never rewrites a model-provided date', () => {
+  const body = 'First company releases a new public model.';
+  const source = articleSource([body], ['time[datetime]: 2026-10-06']);
+  const result = assess(source, [draft([ref('fragment-1', body)])]);
+  assert.equal(
+    completeSourcePublicationDates(result, source).candidates[0].event_date,
+    '2026-10-06',
+  );
+  const supplied = JSON.parse(JSON.stringify(result));
+  supplied.candidates[0].event_date = '2026-10-29';
+  assert.deepEqual(completeSourcePublicationDates(supplied, source), supplied);
+});

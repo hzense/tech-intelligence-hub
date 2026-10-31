@@ -68,9 +68,77 @@ const updateLabel =
   /^(?:(?:last\s+)?(?:updated|modified)\b|更新(?:时间|日期|于)?|最后更新|修订(?:时间|日期|于)?)/i;
 const dateMetadata = (text) => publicationLabel.test(text) || updateLabel.test(text);
 
-function scopes(source) {
-  const found = [];
+function metadataDate(value) {
+  const plain = parseDate(value);
+  if (plain) return plain;
+  const match =
+    /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,9})?)?(?:Z|[+-](?:0\d|1[0-4]):[0-5]\d)$/i.exec(
+      value,
+    );
+  // Preserve the date explicitly written by the publisher, not a timezone-shifted date.
+  return match ? parseDate(match[1]) : null;
+}
+
+function articleMetadataScopes(source) {
+  const articles = new Map();
   for (const fragment of source.fragments) {
+    const region = fragment.locator?.region;
+    const match =
+      typeof region === 'string' &&
+      /^html article ([1-9]\d{0,5}); (publication metadata|paragraphs \d+-\d+|paragraph \d+ chars \d+-\d+)$/.exec(
+        region,
+      );
+    if (!match) continue;
+    const article = articles.get(match[1]) ?? { metadata: [], body: [] };
+    article[match[2] === 'publication metadata' ? 'metadata' : 'body'].push(fragment);
+    articles.set(match[1], article);
+  }
+  const hints = [],
+    boundFragments = new Set();
+  for (const { metadata, body } of articles.values()) {
+    if (!metadata.length) continue;
+    for (const fragment of body) boundFragments.add(fragment.id);
+    const dates = new Set();
+    let evidence = null,
+      invalid = false;
+    for (const fragment of metadata) {
+      const match = /^(?:article:published_time|datePublished|time\[datetime\]): ([^\r\n]+)$/.exec(
+        fragment.text,
+      );
+      const date = match ? metadataDate(match[1]) : null;
+      if (!date || [...fragment.text].length > 500) {
+        invalid = true;
+        continue;
+      }
+      dates.add(date);
+      evidence ??= { fragment_id: fragment.id, quote: fragment.text };
+    }
+    // A contradictory visible publication label invalidates the metadata fallback.
+    for (const fragment of body) {
+      for (const part of paragraphs(fragment.text)) {
+        const match = publicationLabel.exec(part.text);
+        if (!match) continue;
+        const date = metadataDate(match[1]);
+        if (date) dates.add(date);
+        else invalid = true;
+      }
+    }
+    if (invalid || dates.size !== 1 || !evidence || !body.length) continue;
+    hints.push({
+      date: [...dates][0],
+      evidence,
+      kind: 'article_metadata',
+      fragmentIds: new Set(body.map(({ id }) => id)),
+    });
+  }
+  return { hints, boundFragments };
+}
+
+function scopes(source) {
+  const { hints: found, boundFragments } = articleMetadataScopes(source);
+  for (const fragment of source.fragments) {
+    // Conflicting article metadata cannot be bypassed by a narrower label fallback.
+    if (boundFragments.has(fragment.id)) continue;
     const parts = paragraphs(fragment.text);
     const hasCardFooter = parts.some((part) => readingTime.test(part.text));
     // A bare card-footer date cannot resolve mixed published/updated metadata.
@@ -152,13 +220,22 @@ function scopes(source) {
 }
 
 export function collectSourcePublicationDates(source) {
-  return scopes(source).map(({ date, evidence, kind }) => ({ date, evidence, kind }));
+  return scopes(source).map(({ date, evidence, kind, fragmentIds }) => ({
+    date,
+    evidence,
+    kind,
+    ...(fragmentIds ? { fragment_ids: [...fragmentIds] } : {}),
+  }));
 }
 
 function referenceDates(reference, fragments, hints) {
   const text = fragments.get(reference.fragment_id);
   if (!text || !reference.quote) return null;
-  const matching = hints.filter((hint) => hint.evidence.fragment_id === reference.fragment_id);
+  const matching = hints.filter((hint) =>
+    hint.kind === 'article_metadata'
+      ? hint.fragmentIds.has(reference.fragment_id)
+      : hint.evidence.fragment_id === reference.fragment_id,
+  );
   if (!matching.length) return null;
   const dates = new Map();
   let from = 0,
@@ -169,11 +246,12 @@ function referenceDates(reference, fragments, hints) {
     const end = start + reference.quote.length;
     const attached = matching.filter(
       (hint) =>
-        start >= hint.start &&
-        end <= hint.end &&
-        (hint.kind === 'news_card'
-          ? start < hint.bodyEnd
-          : !(start >= hint.labelStart && end <= hint.labelEnd)),
+        hint.kind === 'article_metadata' ||
+        (start >= hint.start &&
+          end <= hint.end &&
+          (hint.kind === 'news_card'
+            ? start < hint.bodyEnd
+            : !(start >= hint.labelStart && end <= hint.labelEnd))),
     );
     // Repeated quotes outside a dated card, or quotes spanning unrelated cards,
     // cannot establish which news item the claim belongs to.
@@ -194,15 +272,20 @@ export function completeSourcePublicationDates(result, source) {
     if (candidate.date_basis !== 'source_published' || candidate.event_date !== null)
       return candidate;
     const dates = new Map();
+    const articleScopes = new Set();
+    let hasLocalScope = false;
     for (const claim of candidate.claims) {
       if (!claim.evidence.length) return candidate;
       for (const reference of claim.evidence) {
         const hint = referenceDates(reference, fragments, hints);
         if (!hint) return candidate;
+        if (hint.kind === 'article_metadata') articleScopes.add(hint.evidence.fragment_id);
+        else hasLocalScope = true;
         dates.set(hint.date, hint);
       }
     }
-    if (dates.size !== 1) return candidate;
+    if (dates.size !== 1 || articleScopes.size > 1 || (articleScopes.size && hasLocalScope))
+      return candidate;
     const hint = [...dates.values()][0];
     return {
       ...candidate,

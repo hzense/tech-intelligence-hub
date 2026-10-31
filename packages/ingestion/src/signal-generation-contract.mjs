@@ -2,6 +2,7 @@ import { TextEncoder } from 'node:util';
 import { countTokens } from 'gpt-tokenizer/encoding/o200k_base';
 import { parseImportOutput } from './import-task-contract.mjs';
 import { isExcludedPublicPerson } from './person-resource-policy.mjs';
+import { completeResourceNameEvidence, resourceNameMention } from './resource-name-evidence.mjs';
 import { isGenerationValidationDetail } from './signal-generation-validation-diagnostics.mjs';
 import { SIGNAL_TYPES } from './signal-types.mjs';
 export { SIGNAL_TYPES } from './signal-types.mjs';
@@ -536,12 +537,31 @@ function normalizeResources(
         `${path}.name`,
       );
       if (name !== name.trim()) fail(undefined, `${path}.name`, 'invalid_characters');
-      const evidence = references(resource.evidence, fragments, 1, `${path}.evidence`);
-      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const left = /^[\p{Script=Latin}\p{N}]/u.test(name) ? '(?<![\\p{Script=Latin}\\p{N}_])' : '';
-      const right = /[\p{Script=Latin}\p{N}]$/u.test(name) ? '(?![\\p{Script=Latin}\\p{N}_])' : '';
-      const mention = new RegExp(`${left}${escaped}${right}`, 'iu');
-      if (!evidence.some(({ quote }) => mention.test(quote)))
+      let evidence = references(resource.evidence, fragments, 1, `${path}.evidence`);
+      const identities =
+        resource.type === 'person'
+          ? (persons ?? []).map((person) => person.name)
+          : [
+              ...(organizations ?? []),
+              ...(persons ?? []).flatMap(({ organization }) =>
+                organization === null ? [] : [organization],
+              ),
+            ];
+      // Only new private assessment may complete a name omitted from an otherwise
+      // exact quote. Historical/strict validation never rewrites saved evidence.
+      if (
+        allowMissingCoverage &&
+        identities.some((identity) => resourceNameKey(identity) === resourceNameKey(name)) &&
+        !evidence.some(({ quote }) => resourceNameMention(name, quote))
+      )
+        evidence = completeResourceNameEvidence(
+          name,
+          evidence,
+          fragments,
+          identities.filter((identity) => resourceNameKey(identity) !== resourceNameKey(name)),
+          GENERATION_LIMITS.quoteCharacters,
+        );
+      if (!evidence.some(({ quote }) => resourceNameMention(name, quote)))
         fail(undefined, `${path}.name`, 'missing_evidence');
       return {
         type: resource.type,

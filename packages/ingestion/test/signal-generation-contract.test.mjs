@@ -1238,7 +1238,7 @@ test('resource names cannot borrow a substring identity and excluded people are 
   assert.deepEqual(normalized.resources, []);
 });
 
-test('resource coverage and each resource own literal name evidence remain mandatory', () => {
+test('resource coverage and each resource own source name evidence remain mandatory', () => {
   const text = 'Ada at AMD announced a processor. Grace commented on the processor.';
   const source = {
     classification: 'private',
@@ -1282,6 +1282,26 @@ test('resource coverage and each resource own literal name evidence remain manda
       GENERATION_RESOURCES_CONTRACT,
     );
   assert.equal(assess(row).candidates.length, 1);
+  const abbreviatedQuote = {
+    ...row,
+    resources: [resources[0], { ...resources[1], evidence: [ref('announced a processor.')] }],
+  };
+  assert.throws(() =>
+    normalizeGeneratedCandidates(
+      { candidates: [abbreviatedQuote], reason: 'strict source evidence' },
+      source,
+      [],
+      GENERATION_RESOURCES_CONTRACT,
+    ),
+  );
+  assert.deepEqual(assess(abbreviatedQuote).rejected[0].errors, [
+    {
+      field: 'resources',
+      code: 'invalid_field',
+      path: 'resources[1].name',
+      reason: 'missing_evidence',
+    },
+  ]);
   for (const [value, path, reason] of [
     [
       {
@@ -1293,14 +1313,6 @@ test('resource coverage and each resource own literal name evidence remain manda
       },
       'resources[2].name',
       'unexpected_resource',
-    ],
-    [
-      {
-        ...row,
-        resources: [resources[0], { ...resources[1], evidence: [ref('announced a processor.')] }],
-      },
-      'resources[1].name',
-      'missing_evidence',
     ],
     [
       {

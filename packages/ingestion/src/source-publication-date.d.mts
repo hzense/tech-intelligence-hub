@@ -7,7 +7,9 @@ import type {
 export interface SourcePublicationDateHint {
   date: string;
   evidence: GenerationReference;
-  kind: 'label' | 'news_card';
+  kind: 'label' | 'news_card' | 'article_metadata';
+  /** Only these semantic article body fragments may use an article metadata date. */
+  fragment_ids?: string[];
 }
 
 /** Hints are derived from pinned text, never from discovery metadata or the clock. */
