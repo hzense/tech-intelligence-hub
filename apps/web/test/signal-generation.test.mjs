@@ -30,6 +30,7 @@ import {
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
+import { collectionPublicationDateIssue } from '../../../packages/database/src/collection-publication-window.mjs';
 const { Response, Request, structuredClone } = globalThis;
 const output = parseImportOutput({
   fragments: [{ text: 'Alice presented the Example processor.', locator: { paragraph: 1 } }],
@@ -2021,4 +2022,149 @@ test('resource contract generates evidence-backed resource drafts in the same si
   assert.deepEqual(retained.output.candidates[0].persons, candidate.persons);
   assert.deepEqual(retained.output.candidates[0].resources, []);
   assert.equal(incomplete.calls.length, 1, 'no additional paid repair call');
+});
+
+test('provider completes a narrow resource quote only from its own verified source sentence', async () => {
+  const generated = {
+    ...candidate,
+    topic_ids: [],
+    signal_type: 'product',
+    resources: [
+      {
+        type: 'person',
+        name: 'Alice',
+        introduction: null,
+        event_role: 'presenter',
+        evidence: [{ fragment_id: 'fragment-1', quote: 'presented the Example processor.' }],
+      },
+    ],
+  };
+  const f = providerFixture({ ...result, candidates: [generated] });
+  const value = await f.invoke({
+    topics: topicCatalog,
+    outputContract: GENERATION_RESOURCES_CONTRACT,
+  });
+  assert.equal(value.success, true);
+  assert.deepEqual(value.output.candidates[0].resources[0].evidence, [
+    { fragment_id: 'fragment-1', quote: 'Alice presented the Example processor.' },
+  ]);
+  assert.doesNotThrow(() =>
+    normalizeGeneratedCandidates(
+      {
+        ...result,
+        candidates: [{ ...generated, resources: value.output.candidates[0].resources }],
+      },
+      source,
+      topicCatalog,
+      GENERATION_RESOURCES_CONTRACT,
+    ),
+  );
+  assert.equal(f.calls.length, 1, 'evidence completion never makes a paid repair call');
+
+  const emptyClaims = providerFixture({
+    ...result,
+    candidates: [{ ...generated, claims: [] }],
+  });
+  const rejected = await emptyClaims.invoke({
+    topics: topicCatalog,
+    outputContract: GENERATION_RESOURCES_CONTRACT,
+  });
+  assert.equal(rejected.success, false);
+  assert.equal(rejected.diagnostic.code, 'generation_invalid_output');
+  assert.ok(
+    rejected.output.rejected[0].errors.some(
+      ({ path, reason }) => path === 'claims' && reason === 'missing_items',
+    ),
+  );
+  assert.equal(rejected.input_tokens, 200, 'a rejected output does not erase provider usage');
+  assert.equal(emptyClaims.calls.length, 1, 'missing claims are not fabricated or retried');
+});
+
+test('provider binds first-publication metadata to its article and preserves collection date limits', async () => {
+  const body = 'Alice presented the Example processor.';
+  const publicationCandidate = {
+    ...candidate,
+    date_basis: 'source_published',
+    topic_ids: [],
+    signal_type: 'product',
+    persons: [{ ...candidate.persons[0], evidence: [{ fragment_id: 'fragment-2', quote: body }] }],
+    claims: [
+      {
+        text: 'Alice presented a processor.',
+        evidence: [{ fragment_id: 'fragment-2', quote: body }],
+      },
+    ],
+    resources: [
+      {
+        type: 'person',
+        name: 'Alice',
+        introduction: null,
+        event_role: 'presenter',
+        evidence: [{ fragment_id: 'fragment-2', quote: body }],
+      },
+    ],
+  };
+  const url = 'https://publisher.example.com/article';
+  const collection = {
+    runId: randomUUID(),
+    windowStart: '2026-10-29T00:00:00.000Z',
+    windowEnd: '2026-10-31T00:00:00.000Z',
+    sourceUrl: url,
+    discoveredPublishedAt: '2026-10-30',
+  };
+  for (const [metadata, expected] of [
+    ['article:published_time: 2026-10-30T14:00:00-04:00', '2026-10-30'],
+    ['article:published_time: 2026-10-06T14:00:00-04:00', '2026-10-06'],
+    ['dateModified: 2026-10-30T14:00:00-04:00', null],
+  ]) {
+    const inputSource = buildGenerationSource(
+      parseImportOutput({
+        fragments: [
+          { text: metadata, locator: { region: 'html article 1; publication metadata' } },
+          { text: body, locator: { region: 'html article 1; paragraphs 1-1', paragraph: 1 } },
+        ],
+      }),
+    );
+    const f = providerFixture({ ...result, candidates: [publicationCandidate] });
+    const value = await f.invoke({
+      source: inputSource,
+      topics: topicCatalog,
+      outputContract: GENERATION_SOURCE_PUBLICATION_CONTRACT,
+    });
+    assert.equal(value.success, true);
+    const actual = value.output.candidates[0];
+    assert.equal(actual.event_date, expected);
+    assert.deepEqual(
+      actual.event_date_evidence,
+      expected ? [{ fragment_id: 'fragment-1', quote: metadata }] : [],
+    );
+    const saved = normalizeGeneratedCandidates(
+      {
+        ...result,
+        candidates: [
+          {
+            ...publicationCandidate,
+            event_date: actual.event_date,
+            event_date_evidence: actual.event_date_evidence,
+          },
+        ],
+      },
+      inputSource,
+      topicCatalog,
+      GENERATION_SOURCE_PUBLICATION_CONTRACT,
+    );
+    assert.equal(
+      saved.candidates[0].event_date,
+      expected,
+      'saved output still satisfies the strict contract',
+    );
+    assert.equal(actual.issues.includes('needs_event_time'), expected === null);
+    assert.equal(
+      collectionPublicationDateIssue(collection, actual.event_date, [url]),
+      expected === '2026-10-30' ? null : 'source_date_out_of_window',
+    );
+    assert.equal(f.calls.length, 1);
+    const prompt = JSON.parse(f.calls[0].body).messages[0].content;
+    assert.match(prompt, /dateModified、UPDATED、版权年份和网址中的日期都不能替代首次发布日期/);
+  }
 });

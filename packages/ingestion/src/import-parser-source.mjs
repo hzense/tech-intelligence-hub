@@ -30,9 +30,10 @@ def pieces(text):
  if text[offset:]: yield text[offset:],offset
 def blocks(items,base=None):
  pending=[]; start=0; last=0; size=0
+ def region(value): return ((base or {}).get('region','')+'; ' if (base or {}).get('region') else '')+value
  def flush():
   if pending:
-   loc=dict(base or {}); loc.update({'paragraph':start,'region':'paragraphs %d-%d'%(start,last)})
+   loc=dict(base or {}); loc.update({'paragraph':start,'region':region('paragraphs %d-%d'%(start,last))})
    emit('\n\n'.join(pending),loc)
  for number,text,heading in items:
   text=text.strip()
@@ -42,7 +43,7 @@ def blocks(items,base=None):
    flush(); pending=[]; size=0
   if len(text)>1600:
    for part,offset in pieces(text):
-    loc=dict(base or {}); loc.update({'paragraph':number,'region':'paragraph %d chars %d-%d'%(number,offset+1,offset+len(part))})
+    loc=dict(base or {}); loc.update({'paragraph':number,'region':region('paragraph %d chars %d-%d'%(number,offset+1,offset+len(part)))})
     emit(part,loc,trim=False)
   else:
    if not pending: start=number
@@ -79,27 +80,127 @@ def archive(data):
  if len({i.filename for i in infos})!=len(infos): fail('unsupported_content')
  return z
 class HTMLText(HTMLParser):
- def __init__(self): super().__init__(convert_charrefs=True); self.skip=0; self.parts=[]; self.items=[]; self.heading=False; self.pre=0
+ def __init__(self):
+  super().__init__(convert_charrefs=True); self.skip=0; self.parts=[]; self.items=[]; self.heading=False; self.pre=0
+  self.articles=[]; self.article_count=0; self.article_headings={}; self.mains=[]; self.main_count=0; self.main_headings={}; self.context=[]
+  self.excluded=[]; self.item_scopes=[]; self.dates=[]; self.headers=[]; self.jsonld=None; self.jsonld_scope=0; self.jsonld_articles=0
+ def scope(self):
+  if self.excluded: return None
+  return self.articles[-1] if self.articles else -self.mains[-1] if self.mains else None
+ def metadata_scope(self):
+  scope=self.scope()
+  return scope if scope is not None else None if not self.excluded and any(t=='head' for t,a in self.context) else 0
+ def publication(self,key,value,scope=None):
+  # Keep a bounded, literal key/value from source attributes, never URL or clock dates.
+  if isinstance(value,str) and len(value)<=100 and not re.search(r'[\x00-\x1f\x7f]',value) and len(self.dates)<64:
+   self.dates.append((key,value,scope))
+ def structured_dates(self,text):
+  if len(text)>200000: return
+  try: value=json.loads(text)
+  except (ValueError,RecursionError): return
+  # Only top-level Article nodes and @graph; do not harvest related entities/events.
+  nodes=value if isinstance(value,list) else [value]
+  nodes=[child for node in nodes for child in (node.get('@graph',[]) if isinstance(node,dict) and isinstance(node.get('@graph'),list) else [node])]
+  for node in nodes[:128]:
+   if not isinstance(node,dict): continue
+   types=node.get('@type',[]); types=types if isinstance(types,list) else [types]
+   if not any(kind in ('Article','NewsArticle','BlogPosting','ScholarlyArticle') for kind in types): continue
+   self.jsonld_articles+=1
+   self.publication('datePublished',node.get('datePublished'),self.jsonld_scope)
  def boundary(self):
   text=''.join(self.parts)
   if not self.pre: text=re.sub(r'\s+',' ',text)
   text=text.strip()
-  if text: self.items.append((len(self.items)+1,text,self.heading))
+  if text:
+   self.items.append((len(self.items)+1,text,self.heading)); self.item_scopes.append(self.scope())
+   for header in self.headers:
+    if header['size']<=8192: header['text'].append('\n')
   self.parts=[]; self.heading=False
  def handle_starttag(self,tag,attrs):
+  attrs=dict(attrs)
+  if not self.skip and tag=='script' and attrs.get('type','').lower()=='application/ld+json':
+   self.jsonld=[]; self.jsonld_scope=self.metadata_scope()
   if tag in ('script','style','noscript','template'): self.skip+=1
   if self.skip: return
+  if tag=='header': self.headers.append({'text':[],'size':0,'dates':[]})
+  if tag=='article':
+   self.boundary(); self.article_count+=1; self.articles.append(self.article_count); self.article_headings[self.article_count]=0
+  if tag=='main':
+   self.boundary(); self.main_count+=1; self.mains.append(self.main_count); self.main_headings[self.main_count]=0
+  if tag=='h1' and self.mains and not self.excluded: self.main_headings[self.mains[-1]]+=1
+  if tag=='h1' and self.articles and not self.excluded: self.article_headings[self.articles[-1]]+=1
+  ancillary=tag in ('aside','nav','footer') or attrs.get('role')=='complementary' or any(re.fullmatch(r'(?:related(?:[-_]\w+)*|recommend(?:ed|ations)(?:[-_]\w+)*|read-more|more-stories|article-card)',part,re.I) for part in (attrs.get('class','')+' '+attrs.get('id','')).split())
+  if ancillary:
+   self.boundary(); self.excluded.append((tag,len(self.context)))
+  if tag=='meta':
+   key=(attrs.get('property') or attrs.get('name') or attrs.get('itemprop') or '').lower()
+   if key in ('article:published_time','datepublished'):
+    self.publication('article:published_time' if key=='article:published_time' else 'datePublished',attrs.get('content'),self.metadata_scope())
+  if tag=='time' and attrs.get('itemprop','').lower()=='datepublished':
+   if self.headers:
+    if len(self.headers[-1]['dates'])<64: self.headers[-1]['dates'].append(('datePublished',attrs.get('datetime'),self.metadata_scope()))
+   # Without an article header there is no bounded label context; keep visible text only.
+  elif tag=='time' and any(t=='header' for t,a in self.context):
+   classes=' '.join([a.get('class','') for t,a in self.context[-5:]]+[attrs.get('class','')])
+   tokens=classes.lower().split()
+   published=any(token in ('published','publication-date','publication_date','single-pub__date') for token in tokens)
+   if published and self.headers and len(self.headers[-1]['dates'])<64 and not re.search(r'updated|modified|event',classes,re.I):
+    self.headers[-1]['dates'].append(('time[datetime]',attrs.get('datetime'),self.metadata_scope()))
+  if tag not in ('area','base','br','col','embed','hr','img','input','link','meta','param','source','track','wbr'): self.context.append((tag,attrs))
   if tag in ('p','div','section','article','h1','h2','h3','h4','h5','h6','li','tr','blockquote','pre'):
    self.boundary(); self.heading=tag in ('h1','h2','h3','h4','h5','h6')
    if tag=='pre': self.pre+=1
   elif tag in ('br','td','th'): self.parts.append('\n' if self.pre and tag=='br' else ' ')
  def handle_endtag(self,tag):
   if tag in ('script','style','noscript','template') and self.skip:
+   if tag=='script' and self.jsonld is not None:
+    self.structured_dates(''.join(self.jsonld)); self.jsonld=None
    self.skip-=1; return
   if not self.skip and tag in ('p','div','section','article','h1','h2','h3','h4','h5','h6','li','tr','blockquote','pre'): self.boundary()
   if not self.skip and tag=='pre' and self.pre: self.pre-=1
+  if not self.skip and tag=='header' and self.headers:
+   header=self.headers.pop()
+   # CSS is only a hint. Wait for labels both before and after the time element.
+   # Explicit meta/JSON-LD dates are independent of this conservative fallback.
+   if header['size']<=8192 and not re.search(r'\b(?:updated?|modified|revised)\b|更新|修订|修改|更正',''.join(header['text']),re.I):
+    for key,value,scope in header['dates']: self.publication(key,value,scope)
+  if not self.skip and tag=='article' and self.articles: self.articles.pop()
+  if not self.skip and tag=='main' and self.mains:
+   self.boundary(); self.mains.pop()
+  if not self.skip:
+   for index in range(len(self.context)-1,-1,-1):
+    if self.context[index][0]==tag:
+     if self.excluded and self.excluded[-1]==(tag,index):
+      self.boundary(); self.excluded.pop()
+     self.context=self.context[:index]; break
  def handle_data(self,data):
-  if not self.skip: self.parts.append(data)
+  if self.jsonld is not None and sum(map(len,self.jsonld))<=200000: self.jsonld.append(data)
+  if not self.skip:
+   self.parts.append(data)
+   for header in self.headers:
+    header['size']+=len(data)
+    if header['size']<=8192: header['text'].append(data)
+ def output(self):
+  # Pack each semantic article separately. Navigation/related sidebars never inherit its date.
+  main_is_article=self.article_count==0 and self.main_count==1 and self.main_headings.get(1)==1 and self.jsonld_articles<=1 and any(scope in (None,-1) for key,value,scope in self.dates)
+  global_article=self.article_count==1 and self.article_headings.get(1)==1 and self.jsonld_articles<=1
+  def resolved(scope): return 1 if scope==-1 and main_is_article else scope if scope and scope>0 and self.article_headings.get(scope)==1 else None
+  group=[]; previous=None
+  for item,scope in zip(self.items,self.item_scopes):
+   scope=resolved(scope)
+   if group and scope!=previous:
+    blocks(group,{'region':'html article %d'%previous} if previous else None); group=[]
+   group.append(item); previous=scope
+  blocks(group,{'region':'html article %d'%previous} if previous else None)
+  seen=set()
+  for key,value,scope in self.dates:
+   if scope is None and (global_article or main_is_article): scope=1
+   else: scope=resolved(scope)
+   identity=(key,value,scope)
+   if identity in seen: continue
+   seen.add(identity)
+   region=('html article %d'%scope if scope else 'html document')+'; publication metadata'
+   emit(key+': '+value,{'region':region})
 try:
  data=open(sys.argv[1],'rb').read(25*1024*1024+1); fmt=sys.argv[2]
  if not data or len(data)>25*1024*1024: fail('limit_exceeded')
@@ -107,7 +208,7 @@ try:
   if data.startswith((b'%PDF-',b'PK\x03\x04',b'\x89PNG',b'\xff\xd8')): fail('unsupported_content')
   text=data.decode('utf-8-sig',errors='strict')
   if fmt=='html':
-   p=HTMLText(); p.feed(text); p.close(); p.boundary(); blocks(p.items)
+   p=HTMLText(); p.feed(text); p.close(); p.boundary(); p.output()
   elif fmt=='csv':
    csv.field_size_limit(20000)
    for row,values in enumerate(csv.reader(io.StringIO(text)),1):

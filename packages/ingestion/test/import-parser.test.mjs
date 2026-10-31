@@ -93,6 +93,197 @@ test('HTML pre blocks retain internal whitespace and inline markup text', () => 
   );
   assert.equal(out.fragments[0].text, '背景\n\na\n  b\n\n    c\n\n结论');
 });
+
+test('HTML preserves first publication metadata in one primary main article and isolates related content', () => {
+  const html =
+    '<html><head><meta property="article:published_time" content="2026-10-30T18:00:21+00:00">' +
+    '<meta property="article:modified_time" content="2026-10-31T02:00:00+00:00">' +
+    '<script type="application/ld+json">{"@graph":[{"@type":"Article","datePublished":"2026-10-30T18:00:21+00:00","dateModified":"2026-10-31T02:00:00+00:00"},{"@type":"WebPage","datePublished":"2026-10-28"}]}</script></head>' +
+    '<body><main><h1>A product announcement</h1><p>Company Alpha released its first public model.</p>' +
+    '<h2>Technical details</h2><p>The new model improves retrieval accuracy.</p>' +
+    '<div class="related-posts"><h2>Another article</h2><div><p>Company Beta released a different model.</p></div><time itemprop="datePublished" datetime="2026-10-20">October 20</time></div>' +
+    '<p>The Alpha model is available today.</p></main><footer>Footer text</footer></body></html>';
+  const output = parseImportOutput(parse('html', html).output);
+  const primary = output.fragments.filter((f) => f.locator.region.startsWith('html article 1;'));
+  assert.ok(primary.some((f) => f.text.includes('Company Alpha')));
+  assert.ok(primary.some((f) => f.text.includes('Technical details')));
+  assert.ok(primary.some((f) => f.text.includes('The Alpha model is available')));
+  assert.ok(!primary.some((f) => f.text.includes('Company Beta')));
+  const metadata = primary.filter((f) => f.locator.region.endsWith('publication metadata'));
+  assert.deepEqual(
+    metadata.map((f) => f.text),
+    [
+      'article:published_time: 2026-10-30T18:00:21+00:00',
+      'datePublished: 2026-10-30T18:00:21+00:00',
+    ],
+  );
+  assert.ok(!JSON.stringify(output).includes('2026-10-31T02:00:00'));
+  assert.ok(!output.fragments.some((f) => f.text === 'datePublished: 2026-10-20'));
+  assert.ok(output.fragments.some((f) => f.text.includes('October 20')));
+});
+
+test('HTML publication header time keeps its value while a bare or updated time is not a publication date', () => {
+  for (const [classes, expected] of [
+    ['single-pub__date', true],
+    ['published', true],
+    ['event-date', false],
+    ['entry-date', false],
+    ['post-date', false],
+    ['updated published', false],
+    ['', false],
+  ]) {
+    const html = `<main><header><h1>A research publication</h1><p class="${classes}"><time datetime="2026-10-29">October 29, 2026</time></p></header><p>A study introduces a new retrieval algorithm.</p></main>`;
+    const output = parseImportOutput(parse('html', html).output);
+    assert.equal(
+      output.fragments.some(
+        (f) =>
+          f.text === 'time[datetime]: 2026-10-29' &&
+          f.locator.region === 'html article 1; publication metadata',
+      ),
+      expected,
+      classes,
+    );
+    assert.ok(output.fragments.some((f) => f.text.includes('October 29, 2026')));
+  }
+});
+
+test('visible update labels before or after header time cannot become first publication dates', () => {
+  const time = '<time datetime="2026-10-31T08:00:00Z">October 31, 2026</time>';
+  for (const classes of ['entry-date', 'post-date', 'published', 'single-pub__date']) {
+    for (const label of ['Updated', 'Last modified', '更新时间', '最后修订']) {
+      for (const inner of [`${label} ${time}`, `${time} ${label}`]) {
+        const output = parseImportOutput(
+          parse(
+            'html',
+            `<article><header><h1>Original article</h1><div class="${classes}">${inner}</div></header><p>ACME announced an older processor.</p></article>`,
+          ).output,
+        );
+        assert.ok(
+          !output.fragments.some((fragment) =>
+            fragment.locator.region.endsWith('publication metadata'),
+          ),
+          `${classes}: ${inner}`,
+        );
+      }
+    }
+  }
+});
+
+test('contradictory visible labels also reject a datePublished time property while keeping exact source text', () => {
+  const output = parseImportOutput(
+    parse(
+      'html',
+      '<article><header><h1>Original article</h1><span>Up<b>dated</b> <time itemprop="datePublished" datetime="2026-10-31">October 31, 2026</time></span></header><p>ACME announced an older processor.</p></article>',
+    ).output,
+  );
+  assert.ok(
+    !output.fragments.some((fragment) => fragment.locator.region.endsWith('publication metadata')),
+  );
+  assert.ok(
+    output.fragments.some((fragment) => fragment.text.includes('Updated October 31, 2026')),
+  );
+});
+
+test('non-header time never supplies an automatic publication date even with a datePublished property', () => {
+  const time = '<time itemprop="datePublished" datetime="2026-10-31">October 31, 2026</time>';
+  for (const inner of [
+    `Updated ${time}`,
+    `${time} Updated`,
+    `更新 ${time}`,
+    `${time} 最后修订`,
+    time,
+  ]) {
+    const output = parseImportOutput(
+      parse(
+        'html',
+        `<article><h1>Original article</h1><div class="published">${inner}</div><p>ACME announced an older processor.</p></article>`,
+      ).output,
+    );
+    assert.ok(
+      !output.fragments.some((fragment) =>
+        fragment.locator.region.endsWith('publication metadata'),
+      ),
+      inner,
+    );
+    assert.ok(output.fragments.some((fragment) => fragment.text.includes('October 31, 2026')));
+  }
+  const output = parseImportOutput(
+    parse(
+      'html',
+      `<article><h1>Original article</h1><meta itemprop="datePublished" content="2026-10-06"><div class="published">Updated ${time}</div><p>ACME announced an older processor.</p></article>`,
+    ).output,
+  );
+  assert.deepEqual(
+    output.fragments
+      .filter((fragment) => fragment.locator.region.endsWith('publication metadata'))
+      .map((fragment) => fragment.text),
+    ['datePublished: 2026-10-06'],
+  );
+});
+
+test('updated times do not override or invalidate explicit first publication metadata in the same header', () => {
+  const metadata = '<meta itemprop="datePublished" content="2026-10-06">';
+  const updated =
+    '<div class="published"><time datetime="2026-10-31T08:00:00Z">October 31, 2026</time> Updated</div>';
+  const first = '<div class="published"><time datetime="2026-10-06">October 6, 2026</time></div>';
+  for (const inner of [metadata + first + updated, updated + metadata + first]) {
+    const output = parseImportOutput(
+      parse(
+        'html',
+        `<article><header><h1>Original article</h1>${inner}</header><p>ACME announced an older processor.</p></article>`,
+      ).output,
+    );
+    assert.deepEqual(
+      output.fragments
+        .filter((fragment) => fragment.locator.region.endsWith('publication metadata'))
+        .map((fragment) => fragment.text),
+      ['datePublished: 2026-10-06'],
+    );
+  }
+});
+
+test('HTML cannot bind page metadata to multiple main articles, related articles or non-Article JSON-LD', () => {
+  const meta = '<head><meta property="article:published_time" content="2026-10-30"></head>';
+  for (const body of [
+    '<main><h1>First article</h1><p>First story.</p><h1>Second article</h1><p>Second story.</p></main>',
+    '<main><h1>Main story</h1><p>Some primary text.</p><article><h2>Related story</h2><p>Other facts.</p></article></main>',
+    '<article><h1>First article</h1><p>First story.</p></article><article><h1>Second article</h1><p>Second story.</p></article>',
+  ]) {
+    const output = parseImportOutput(parse('html', meta + body).output);
+    assert.ok(
+      output.fragments.some(
+        (f) =>
+          f.text === 'article:published_time: 2026-10-30' &&
+          f.locator.region === 'html document; publication metadata',
+      ),
+    );
+  }
+  const ambiguous = parseImportOutput(
+    parse(
+      'html',
+      '<article><meta itemprop="datePublished" content="2026-10-30"><h1>First article</h1><p>First story.</p><h1>Second article</h1><p>Second story.</p></article>',
+    ).output,
+  );
+  assert.ok(
+    ambiguous.fragments.every((fragment) => !fragment.locator.region.startsWith('html article')),
+  );
+  for (const json of [
+    '{"@type":"Event","datePublished":"2026-10-30"}',
+    '{"@type":"Article","dateModified":"2026-10-30"}',
+    '{invalid',
+  ]) {
+    const output = parseImportOutput(
+      parse(
+        'html',
+        '<head><script type="application/ld+json">' +
+          json +
+          '</script></head><main><h1>Title</h1><p>Body text.</p></main>',
+      ).output,
+    );
+    assert.ok(!output.fragments.some((f) => f.locator.region.includes('publication metadata')));
+    assert.ok(!JSON.stringify(output).includes('dateModified'));
+  }
+});
 test('Markdown fenced code is not mistaken for a new section', () => {
   const source = '# 章节\n\n~~~python\n# comment\n\nprint(1)\n~~~\n\n解释';
   const out = parseImportOutput(parse('markdown', source).output);
