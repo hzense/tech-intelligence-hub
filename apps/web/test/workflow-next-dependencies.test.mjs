@@ -87,3 +87,97 @@ test('real Workflow app entry points load without Nest, the SWC CLI or network a
   assert.equal(result.signal, null, result.stderr);
   assert.equal(result.status, 0, result.stderr || result.stdout);
 });
+
+test('patched minimatch supports the installed Queue, oclif and FileList consumers offline', () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '--eval',
+      `
+        import assert from 'node:assert/strict';
+        import { createRequire } from 'node:module';
+        import { Socket } from 'node:net';
+        import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+        import { tmpdir } from 'node:os';
+        import { join, dirname } from 'node:path';
+        import { pathToFileURL } from 'node:url';
+        let networkCalls = 0;
+        const offline = () => {
+          networkCalls++;
+          throw Error('Dependency compatibility checks must stay offline');
+        };
+        globalThis.fetch = offline;
+        Socket.prototype.connect = offline;
+        const app = createRequire(join(process.cwd(), 'package.json'));
+        // Resolve through real production edges, not a root/dev copy of minimatch.
+        const workflow = createRequire(app.resolve('workflow'));
+        const cli = createRequire(workflow.resolve('@workflow/cli/package.json'));
+        const world = createRequire(cli.resolve('@workflow/world-local'));
+        const queueEntry = world.resolve('@vercel/queue');
+        const queue = createRequire(queueEntry);
+        const core = createRequire(cli.resolve('@oclif/core'));
+        const ejs = createRequire(core.resolve('ejs'));
+        const jake = createRequire(ejs.resolve('jake'));
+        const filelistEntry = jake.resolve('filelist');
+        const filelist = createRequire(filelistEntry);
+        const semver = core('semver');
+        for (const consumer of [queue, core, filelist]) {
+          const metadata = consumer('minimatch/package.json');
+          assert.ok(semver.gte(metadata.version, '11.0.1'), 'production edge must be patched');
+          assert.ok(semver.satisfies(process.version, metadata.engines.node));
+          const cjs = consumer('minimatch');
+          const esm = await import(new URL(
+            metadata.exports['.'].import.default,
+            pathToFileURL(consumer.resolve('minimatch/package.json')),
+          ));
+          for (const matcher of [cjs, esm]) {
+            assert.equal(matcher.minimatch('app/api/events/route.ts', 'app/**/route.ts'), true);
+            assert.equal(matcher.minimatch('app/api/events/route.ts', 'pages/**/*.js'), false);
+            assert.deepEqual(matcher.match(['one.js', 'two.ts', '.hidden.js', 'notes.txt'], '*.{js,ts}'), ['one.js', 'two.ts']);
+          }
+        }
+        // Load both Queue formats so named-import/require export drift is exercised.
+        const queuePackage = JSON.parse(readFileSync(join(dirname(queueEntry), '..', 'package.json'), 'utf8'));
+        const queueEsm = await import(pathToFileURL(join(dirname(queueEntry), '..', queuePackage.module)));
+        assert.equal(typeof world('@vercel/queue').QueueClient, 'function');
+        assert.equal(typeof queueEsm.QueueClient, 'function');
+        // Execute oclif's real wildcard plugin filter, stopping before loading plugins.
+        const PluginLoader = core('./config/plugin-loader.js').default;
+        const loader = new PluginLoader({});
+        const groups = [];
+        loader.loadPlugins = async (...args) => { groups.push(args); };
+        await loader.loadCorePlugins({ rootPlugin: {
+          root: process.cwd(),
+          pjson: { oclif: { plugins: ['@fixture/*'] }, dependencies: {
+            '@fixture/alpha': '1', '@fixture/beta': '1', unrelated: '1',
+          } },
+        } });
+        assert.deepEqual(groups.flatMap(([, , names]) => names), ['@fixture/alpha', '@fixture/beta']);
+        // Exercise FileList's actual .match consumer against disposable files.
+        const fixture = mkdtempSync(join(tmpdir(), 'hzense-minimatch-'));
+        try {
+          mkdirSync(join(fixture, 'nested'));
+          for (const name of ['one.js', '.hidden.js', 'nested/two.ts', 'nested/notes.txt'])
+            writeFileSync(join(fixture, name), 'fixture');
+          const { FileList } = jake('filelist');
+          const files = new FileList(join(fixture, '**/*.{js,ts}'));
+          assert.deepEqual(files.toArray().sort(), [join(fixture, 'nested/two.ts'), join(fixture, 'one.js')].sort());
+        } finally {
+          rmSync(fixture, { recursive: true, force: true });
+        }
+        assert.equal(networkCalls, 0);
+      `,
+    ],
+    {
+      cwd: fileURLToPath(new URL('..', import.meta.url)),
+      env: { NODE_ENV: 'test', PATH: process.env.PATH ?? '' },
+      encoding: 'utf8',
+      timeout: 15000,
+      maxBuffer: 128 * 1024,
+    },
+  );
+  assert.ifError(result.error);
+  assert.equal(result.signal, null, result.stderr);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
