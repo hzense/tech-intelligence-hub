@@ -30,7 +30,11 @@
 
 用户批准后该运行于 `15:16:11Z` 开始，最终失败，`2026-11-01T15:16:40.206Z` 返回 `status: blocked`、`gate: unavailable`、`topicSyncMayHaveCommitted: false`、`verificationCompleted: false`。正式同步未提交 Topic 数据，写后核验未完成；通用诊断不足以确认根因，不能认定专用连接认证或 ACL 已通过。当前正在定位失败原因，没有盲目重跑或追加生产修改；未调用 AI 或修改开关。后续须修正具体阻断、核对计划和新的运行审批，完成同步、独立核验及线上目录检查，不能宣称采集已恢复。详见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)及[受保护的 Topic 维护入口](DEPLOYMENT.md#受保护的-topic-维护入口2026-11-01)。
 
-诊断补丁已完成独立代码审核，定向回归 438 项通过，ESLint、工作流校验及格式检查通过。失败响应新增固定白名单 `phase`／`reason`，区分连接策略、认证、权限契约和提交／核验阶段，不包含原始错误或敏感值；原有门禁和提交不确定性保持不变。补丁待合并，下一步先运行只读 `topic-verify` 定位实际阻断，再决定具体修正；本地测试不代表生产根因已解决。
+诊断补丁已通过 [PR #249](https://github.com/hzense/tech-intelligence-hub/pull/249) 合并为 `44a7aa96a9e94b3457f6b4099fa554758223175b`，定向回归 438 项及独立代码审核通过，主干 [CI 41322782146](https://github.com/hzense/tech-intelligence-hub/actions/runs/41322782146) 三项作业成功。Vercel 生产部署 `dpl_92bgm6vhxZFk32zQE9hy9LcUu9wL` 为 READY，`hzense.com` 已指向该提交，本地已同步。失败响应新增固定白名单 `phase`／`reason`，原有门禁和提交不确定性保持不变。
+
+随后经审批的只读 [topic-verify 41323966645](https://github.com/hzense/tech-intelligence-hub/actions/runs/41323966645) 于 `2026-11-01T16:10:27.2303752Z` 返回 `phase: dedicated-target`、`reason: unavailable`。已定位到专用连接地址的本地校验，尚未进入数据库认证和权限预检；此结果不是密码或 ACL 错误的证据。源码排除及真实校验器复现后，未细分的生产地址错误为显式端口缺失、回环主机、库名或用户名的非法百分号编码。补充诊断分类的本地定向回归 476 项及独立代码审核通过，校验规则未改变，补丁尚未提交。用户随后确认专用连接确实缺少 `:5432`，现已补齐并保存；仅核对 Secret 元数据于 `2026-11-01T16:32:44Z` 更新，未读取值。补正后的只读 [topic-verify 41326991812](https://github.com/hzense/tech-intelligence-hub/actions/runs/41326991812) 绑定 `main@44a7aa9`，经本次 GitHub 环境审批后已执行，结果见下；连接和 ACL 尚待验证，目录仍未同步。
+
+端口补正后的运行已获审批并执行，于 `2026-11-01T16:34:41.4417606Z` 仍在 `dedicated-target` 阶段停止，原因变为 `connection-policy-invalid`。此处为只读数据库诊断失败，尚未发起认证或权限查询。正在把地址校验细分到主机、端口、数据库名、账号及格式错误，保留严格校验和脱敏输出，以便下一次直接定位具体字段；未新增生产写入。
 
 ### 自动生成日期与资源证据修复（2026-10-31，本地修改）
 

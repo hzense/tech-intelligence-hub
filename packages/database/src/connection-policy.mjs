@@ -10,18 +10,27 @@ const allowedQueryParameters = new Set([
   'sslrootcert',
 ]);
 
-function requireString(value, label) {
+// Fixed field diagnostics are separate from the existing human-readable message.
+// Callers must whitelist reasonCode before exposing it outside maintenance logs.
+export class ConnectionPolicyError extends Error {
+  constructor(reasonCode, message) {
+    super(message);
+    this.reasonCode = reasonCode;
+  }
+}
+
+function requireString(value, label, reasonCode) {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`${label} is required`);
+    throw new ConnectionPolicyError(reasonCode, `${label} is required`);
   }
   return value.trim();
 }
 
-function decoded(value, label) {
+function decoded(value, label, reasonCode) {
   try {
     return decodeURIComponent(value);
   } catch {
-    throw new Error(`${label} contains invalid percent encoding`);
+    throw new ConnectionPolicyError(reasonCode, `${label} contains invalid percent encoding`);
   }
 }
 
@@ -30,7 +39,10 @@ function isUnsafeLocalEndpoint(hostname) {
   try {
     canonicalHost = new URL(`http://${hostname}`).hostname.toLowerCase().replace(/\.+$/, '');
   } catch {
-    throw new Error('Database connection string host is not a valid network host');
+    throw new ConnectionPolicyError(
+      'host-invalid',
+      'Database connection string host is not a valid network host',
+    );
   }
   const unbracketedHost = canonicalHost.replace(/^\[|\]$/g, '');
   if (
@@ -59,9 +71,16 @@ export function validateConnectionTarget({
   configurationPrefix = 'HZENSE_DATABASE',
   nodeTlsRejectUnauthorized = process.env.NODE_TLS_REJECT_UNAUTHORIZED,
 }) {
-  const rawConnectionString = requireString(connectionString, 'database connection string');
+  const rawConnectionString = requireString(
+    connectionString,
+    'database connection string',
+    'url-required',
+  );
   if (rawConnectionString !== connectionString) {
-    throw new Error('Database connection string must not contain leading or trailing whitespace');
+    throw new ConnectionPolicyError(
+      'url-whitespace',
+      'Database connection string must not contain leading or trailing whitespace',
+    );
   }
   if (
     [...rawConnectionString].some((character) => {
@@ -69,78 +88,163 @@ export function validateConnectionTarget({
       return codePoint <= 0x1f || codePoint === 0x7f;
     })
   ) {
-    throw new Error('Database connection string must not contain control characters');
+    throw new ConnectionPolicyError(
+      'url-control-character',
+      'Database connection string must not contain control characters',
+    );
   }
   if (!/^(?:postgres|postgresql):\/\//.test(rawConnectionString)) {
-    throw new Error('Database connection string must be an absolute lowercase PostgreSQL URL');
+    throw new ConnectionPolicyError(
+      'url-scheme-invalid',
+      'Database connection string must be an absolute lowercase PostgreSQL URL',
+    );
   }
   let url;
   try {
     url = new URL(rawConnectionString);
   } catch {
-    throw new Error('Database connection string is not a valid URL');
+    throw new ConnectionPolicyError('url-invalid', 'Database connection string is not a valid URL');
   }
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
-    throw new Error('Database connection string must use postgres:// or postgresql://');
+    throw new ConnectionPolicyError(
+      'url-scheme-invalid',
+      'Database connection string must use postgres:// or postgresql://',
+    );
   }
-  if (url.hash) throw new Error('Database connection string must not contain a fragment');
+  if (url.hash)
+    throw new ConnectionPolicyError(
+      'url-fragment',
+      'Database connection string must not contain a fragment',
+    );
   if (url.hostname.includes('%')) {
-    throw new Error('Database connection string host must not use percent encoding');
+    throw new ConnectionPolicyError(
+      'host-encoding-invalid',
+      'Database connection string host must not use percent encoding',
+    );
   }
   const parameterCounts = new Map();
   for (const key of url.searchParams.keys()) {
     const normalizedKey = key.toLowerCase();
     if (!allowedQueryParameters.has(normalizedKey)) {
-      throw new Error(`Database connection string query parameter is not allowed: ${key}`);
+      throw new ConnectionPolicyError(
+        'query-parameter-disallowed',
+        `Database connection string query parameter is not allowed: ${key}`,
+      );
     }
     parameterCounts.set(normalizedKey, (parameterCounts.get(normalizedKey) ?? 0) + 1);
   }
   for (const [key, count] of parameterCounts) {
     if (count !== 1) {
-      throw new Error(`Database connection string query parameter must appear once: ${key}`);
+      throw new ConnectionPolicyError(
+        'query-parameter-duplicate',
+        `Database connection string query parameter must appear once: ${key}`,
+      );
     }
   }
 
-  const database = decoded(url.pathname.replace(/^\//, ''), 'database name');
-  const user = decoded(url.username, 'database user');
+  const database = decoded(
+    url.pathname.replace(/^\//, ''),
+    'database name',
+    'database-encoding-invalid',
+  );
+  const user = decoded(url.username, 'database user', 'user-encoding-invalid');
   if (!database || database.includes('/')) {
-    throw new Error('Database connection string must contain exactly one database name');
+    throw new ConnectionPolicyError(
+      'database-name-invalid',
+      'Database connection string must contain exactly one database name',
+    );
   }
-  if (!user) throw new Error('Database connection string must contain a user');
+  if (!user)
+    throw new ConnectionPolicyError(
+      'user-required',
+      'Database connection string must contain a user',
+    );
 
   if (profile === 'local-test') {
     if (!loopbackHosts.has(url.hostname)) {
-      throw new Error('local-test database connections must use a literal loopback host');
+      throw new ConnectionPolicyError(
+        'host-not-loopback',
+        'local-test database connections must use a literal loopback host',
+      );
     }
     return { database, host: url.hostname, port: url.port || '5432', user };
   }
   if (profile !== 'production') {
-    throw new Error('database profile must be local-test or production');
+    throw new ConnectionPolicyError(
+      'profile-invalid',
+      'database profile must be local-test or production',
+    );
   }
   if (nodeTlsRejectUnauthorized === '0') {
-    throw new Error('Production database connections refuse NODE_TLS_REJECT_UNAUTHORIZED=0');
+    throw new ConnectionPolicyError(
+      'tls-validation-disabled',
+      'Production database connections refuse NODE_TLS_REJECT_UNAUTHORIZED=0',
+    );
   }
 
-  const prefix = requireString(configurationPrefix, 'database configuration prefix');
-  const host = requireString(expectedHost, `${prefix}_EXPECTED_HOST`).toLowerCase();
-  const port = requireString(expectedPort, `${prefix}_EXPECTED_PORT`);
-  const expectedName = requireString(expectedDatabase, `${prefix}_EXPECTED_NAME`);
-  const expectedRole = requireString(expectedUser, `${prefix}_EXPECTED_USER`);
+  const prefix = requireString(
+    configurationPrefix,
+    'database configuration prefix',
+    'configuration-prefix-required',
+  );
+  const host = requireString(
+    expectedHost,
+    `${prefix}_EXPECTED_HOST`,
+    'expected-host-required',
+  ).toLowerCase();
+  const port = requireString(expectedPort, `${prefix}_EXPECTED_PORT`, 'expected-port-required');
+  const expectedName = requireString(
+    expectedDatabase,
+    `${prefix}_EXPECTED_NAME`,
+    'expected-database-required',
+  );
+  const expectedRole = requireString(
+    expectedUser,
+    `${prefix}_EXPECTED_USER`,
+    'expected-user-required',
+  );
   if (isUnsafeLocalEndpoint(url.hostname)) {
-    throw new Error('production database connections cannot use a loopback host');
+    throw new ConnectionPolicyError(
+      'host-loopback-disallowed',
+      'production database connections cannot use a loopback host',
+    );
   }
   if (!url.port) {
-    throw new Error('production database connection string must include an explicit port');
+    throw new ConnectionPolicyError(
+      'port-required',
+      'production database connection string must include an explicit port',
+    );
   }
-  if (url.hostname.toLowerCase() !== host || url.port !== port) {
-    throw new Error('Production database endpoint does not match the reviewed direct endpoint');
+  if (url.hostname.toLowerCase() !== host) {
+    throw new ConnectionPolicyError(
+      'host-mismatch',
+      'Production database endpoint does not match the reviewed direct endpoint',
+    );
   }
-  if (database !== expectedName || user !== expectedRole) {
-    throw new Error('Production database URL identity does not match the reviewed target');
+  if (url.port !== port) {
+    throw new ConnectionPolicyError(
+      'port-mismatch',
+      'Production database endpoint does not match the reviewed direct endpoint',
+    );
+  }
+  if (database !== expectedName) {
+    throw new ConnectionPolicyError(
+      'database-mismatch',
+      'Production database URL identity does not match the reviewed target',
+    );
+  }
+  if (user !== expectedRole) {
+    throw new ConnectionPolicyError(
+      'user-mismatch',
+      'Production database URL identity does not match the reviewed target',
+    );
   }
   const sslMode = url.searchParams.get('sslmode');
   if (sslMode !== 'verify-full') {
-    throw new Error('Production database URL must set sslmode=verify-full exactly once');
+    throw new ConnectionPolicyError(
+      'tls-mode-invalid',
+      'Production database URL must set sslmode=verify-full exactly once',
+    );
   }
 
   return { database, host: url.hostname, port: url.port, user };

@@ -189,9 +189,9 @@ CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当�
 
 `topics` 的更新触发器可能使旧 qualified publication 的核验依赖封印失效。计划会统计未失效封印，存在任何未失效封印时阻止本次写入，需先独立评估影响。Apply 审批还须包含 `publicationFreezeConfirmed: true`：维护期间暂停独立候选核验和 qualified publication；写入前后封印总数变化也会阻断事务。不能用管理员权限绕过触发器或声称领域同步完全不影响业务。目录同步本身不重跑自动采集、不重放生成或发布、不修改历史费用。成功后还需从线上后台核对领域选项与采集前置检查，另行观察正常计划的真实结果。
 
-维护失败响应使用固定白名单 `phase` 和 `reason` 定位连接校验、认证、权限预检、事务或独立核验阶段；不输出原始异常、连接串、SQL 或动态对象名。`topicSyncMayHaveCommitted: false` 仅表示尚未发送被跟踪的 `COMMIT`，不能据此判断是否已认证或执行事务内 DML；值为 `true` 时必须先只读对账，不能直接重跑写入。
+维护失败响应使用固定白名单 `phase` 和 `reason` 定位连接校验、认证、权限预检、事务或独立核验阶段；不输出原始异常、连接串、SQL 或动态对象名。本地连接校验器提供固定字段原因码，维护边界仅接受该错误类型及白名单码：`connection-port-required` 表示未显式填写端口，`connection-host-mismatch`／`connection-port-mismatch` 表示目标地址字段不匹配，`connection-database-mismatch`／`connection-user-mismatch` 表示数据库名或账号不匹配。原校验规则及错误消息保持不变，未知原因仍停止执行。`topicSyncMayHaveCommitted: false` 仅表示尚未发送被跟踪的 `COMMIT`，不能据此判断是否已认证或执行事务内 DML；值为 `true` 时必须先只读对账，不能直接重跑写入。
 
-2026-11-01 的故障取证与执行状态见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)。基础维护入口已通过 PR #248 上线，0032 已迁移；首次 Topic 同步在提交前失败，尚未完成目录更新。本次阶段诊断修复仍待提交上线。只读确认专用角色存在、封印数为零或本地回归通过，均不能替代执行时的精确 ACL／计划检查和独立生产验收；本轮未调用付费 AI。
+2026-11-01 的故障取证与执行状态见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)。基础维护入口已通过 PR #248 上线，0032 已迁移；首次 Topic 同步在提交前失败，尚未完成目录更新。阶段诊断已通过 PR #249 上线，随后只读运行定位到专用连接地址校验阶段，尚未进入认证或权限预检。只读确认专用角色存在、封印数为零或本地回归通过，均不能替代执行时的精确 ACL／计划检查和独立生产验收；本轮未调用付费 AI。
 
 ### 首次安装与独立 CLI
 

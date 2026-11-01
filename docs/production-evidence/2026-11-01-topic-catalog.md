@@ -105,11 +105,17 @@ Neon 的 Reset 最终确认框明示操作不可撤销，因此先向用户请�
 
 ## 尚待完成
 
-已完成最小诊断补丁及独立代码审核，定向回归 438 项通过，ESLint、工作流校验及格式检查通过。固定白名单 `phase`／`reason` 将标出连接策略、认证、最小权限或事务／核验阶段；不输出原始异常、SQL、连接串或动态对象名。保留原门禁、嵌套失败阶段及提交不确定性，回滚和连接清理失败不会覆盖首个错误。补丁待合并并通过受保护只读运行验证，尚无新生产诊断结果。
+最小诊断补丁已通过 [PR #249](https://github.com/hzense/tech-intelligence-hub/pull/249) 合并为 `44a7aa96a9e94b3457f6b4099fa554758223175b`，定向回归 438 项、独立代码审核及主干 [CI 41322782146](https://github.com/hzense/tech-intelligence-hub/actions/runs/41322782146) 均通过。Vercel 生产部署 `dpl_92bgm6vhxZFk32zQE9hy9LcUu9wL` 为 READY，`hzense.com` 别名已核对指向该提交，本地已同步。固定白名单 `phase`／`reason` 不输出原始异常、SQL、连接串或动态对象名，原门禁和提交不确定性保持不变。
+
+只读 [topic-verify 41323966645](https://github.com/hzense/tech-intelligence-hub/actions/runs/41323966645) 经用户审批，于 `2026-11-01T16:10:27.2303752Z` 返回 `blocked`／`unavailable`、`phase: dedicated-target`、`reason: unavailable`、`topicSyncMayHaveCommitted: false`、`verificationCompleted: false`。本次在专用连接地址的本地校验阶段停止，尚未执行数据库认证或权限预检，因此不能据此认定密码或权限有误。格式错误的具体字段尚未确认；正在补齐真实校验器错误分类并核对显式端口。本次没有生产数据写入或 AI 调用。
 
 最初核对时 GitHub `production-maintenance` 环境缺少 `HZENSE_TOPIC_SYNC_DATABASE_URL`，现已由用户保存并确认修正 TLS 参数，仍待验证连接认证与最小权限。已通过 Neon Roles 页面确认 `main` 存在 `hzense_topic_sync`，本轮未新建、改密或授权。
 
-1. 定位 `topic-apply` 的 `unavailable` 失败位置，补足可脱敏核对的原因；修正并确认连接认证与最小权限后，重新核对计划及本轮维护绑定，不盲目重跑旧运行。
+补充诊断分类的本地回归 476 项及独立代码审核通过，使用真实连接校验器复现显式端口缺失、回环主机及库名／用户名非法百分号编码，并确认创建连接前停止。补丁尚未提交，校验规则未改变。用户随后确认连接确实缺少显式 `:5432`，已补齐并保存；Secret 元数据更新时间为 `2026-11-01T16:32:44Z`，未读取值。补正后的只读 [topic-verify 41326991812](https://github.com/hzense/tech-intelligence-hub/actions/runs/41326991812) 绑定 `main@44a7aa96a9e94b3457f6b4099fa554758223175b`，主干 CI 已成功，随后经用户本次环境审批执行，结果见下。端口缺失与已定位的校验错误吻合，仍须实际运行确认修正有效及后续认证、最小权限是否就绪。
+
+端口补正后的运行已获审批并执行，于 `2026-11-01T16:34:41.4417606Z` 返回 `phase: dedicated-target`、`reason: connection-policy-invalid`，仍在认证或权限查询之前被地址校验阻止。当前日志没有具体字段，正在细分主机、端口、数据库名、账号和格式错误的固定原因码，保留严格校验和脱敏输出。本次没有数据库写入或 AI 调用。
+
+1. 核对专用连接地址格式；修正并确认连接认证与最小权限后，重新核对计划及本轮维护绑定，不盲目重跑旧运行。
 2. 按新的运行绑定审批执行 Topic 同步与独立核验，记录运行链接、审批绑定指纹、计数和 no-op 结果。
 3. 核对线上发布目录与采集前置检查；真实采集结果以之后的正常计划或另行授权运行回执为准。
 

@@ -7,7 +7,8 @@ import {
 } from '../../../.github/scripts/topic-maintenance.mjs';
 import { normalizeDesiredTopics, planTopicSync, syncTopics } from '../src/topic-sync.mjs';
 import { verifyTopicProjectionReadOnly } from '../src/topic-projection-verify.mjs';
-import { validateConnectionTarget } from '../src/connection-policy.mjs';
+import { ConnectionPolicyError, validateConnectionTarget } from '../src/connection-policy.mjs';
+import { assertDirectTopicSyncEndpoint } from '../src/topic-sync-preflight.mjs';
 import { publicMaintenanceFailure } from '../../../.github/scripts/production-maintenance.mjs';
 
 const copy = (value) => globalThis.structuredClone(value);
@@ -378,6 +379,172 @@ describe('Topic failure diagnostics', () => {
   const privateDetail =
     'postgresql://private-user:secret-password@private-host/db SQL private-data';
   const failure = (code, message = privateDetail) => Object.assign(new Error(message), { code });
+  const scopedUrl =
+    'postgresql://hzense_topic_sync:secret-password@fixture.invalid:5432/fixture?sslmode=verify-full';
+
+  it.each([
+    ['missing port', scopedUrl.replace(':5432', ''), 'connection-port-required'],
+    [
+      'loopback',
+      scopedUrl.replace('fixture.invalid', '127.0.0.1'),
+      'connection-host-loopback-disallowed',
+    ],
+    [
+      'database encoding',
+      scopedUrl.replace('/fixture?', '/%ZZ?'),
+      'connection-database-encoding-invalid',
+    ],
+    [
+      'user encoding',
+      scopedUrl.replace('hzense_topic_sync:', '%ZZ:'),
+      'connection-user-encoding-invalid',
+    ],
+    [
+      'host mismatch',
+      scopedUrl.replace('fixture.invalid', 'other-private.invalid'),
+      'connection-host-mismatch',
+    ],
+    ['port mismatch', scopedUrl.replace(':5432', ':6543'), 'connection-port-mismatch'],
+    [
+      'database mismatch',
+      scopedUrl.replace('/fixture?', '/private-database?'),
+      'connection-database-mismatch',
+    ],
+    [
+      'user mismatch',
+      scopedUrl.replace('hzense_topic_sync:', 'private-user:'),
+      'connection-user-mismatch',
+    ],
+    ['whitespace', ` ${scopedUrl}`, 'connection-url-whitespace'],
+    [
+      'control character',
+      scopedUrl.replace('secret-password', 'secret\tpassword'),
+      'connection-url-control-character',
+    ],
+    ['scheme', scopedUrl.replace('postgresql:', 'https:'), 'connection-url-scheme-invalid'],
+    ['invalid URL', 'postgresql://[private-invalid', 'connection-url-invalid'],
+    ['fragment', `${scopedUrl}#private-fragment`, 'connection-url-fragment'],
+    [
+      'host encoding',
+      scopedUrl.replace('fixture.invalid', 'fixture%2Einvalid'),
+      'connection-host-encoding-invalid',
+    ],
+    [
+      'extra query parameter',
+      `${scopedUrl}&private-query=secret`,
+      'connection-query-parameter-disallowed',
+    ],
+    [
+      'duplicate query parameter',
+      `${scopedUrl}&sslmode=verify-full`,
+      'connection-query-parameter-duplicate',
+    ],
+    ['missing database', scopedUrl.replace('/fixture?', '/?'), 'connection-database-name-invalid'],
+    ['missing user', scopedUrl.replace('hzense_topic_sync:', ':'), 'connection-user-required'],
+  ])(
+    'classifies a real rejected dedicated target: %s',
+    async (_label, connectionString, reason) => {
+      const f = fixture();
+      f.deps.options = {
+        ...f.deps.options,
+        profile: 'production',
+        connectionString:
+          'postgresql://owner:fixture@fixture.invalid:5432/fixture?sslmode=verify-full',
+      };
+      f.deps.validateConnectionTarget.mockImplementation(validateConnectionTarget);
+      f.deps.assertDirectTopicSyncEndpoint.mockImplementation(assertDirectTopicSyncEndpoint);
+      f.env.HZENSE_TOPIC_SYNC_DATABASE_URL = connectionString;
+      const error = await f.execute('topic-verify').catch((error) => error);
+      const result = publicMaintenanceFailure(error);
+      expect(result).toMatchObject({
+        phase: 'dedicated-target',
+        gate: 'unavailable',
+        reason,
+        topicSyncMayHaveCommitted: false,
+      });
+      expect(f.clients).toHaveLength(0);
+      expect(f.deps.verifyDatabaseContract).not.toHaveBeenCalled();
+      expect(JSON.stringify(result)).not.toMatch(
+        /private|secret|password|fixture|127\.0\.0\.1|%ZZ/,
+      );
+    },
+  );
+
+  it.each(['expectedHost', 'expectedPort', 'expectedDatabase', 'expectedUser'])(
+    'classifies a missing reviewed target field with the real validator: %s',
+    async (field) => {
+      const f = fixture();
+      f.deps.options = {
+        ...f.deps.options,
+        profile: 'production',
+        connectionString:
+          'postgresql://owner:secret-password@fixture.invalid:5432/fixture?sslmode=verify-full',
+        [field]: undefined,
+      };
+      f.deps.validateConnectionTarget.mockImplementation(validateConnectionTarget);
+      const error = await f.execute('topic-plan').catch((error) => error);
+      expect(publicMaintenanceFailure(error)).toMatchObject({
+        phase: 'owner-target',
+        reason: `connection-expected-${field.slice('expected'.length).toLowerCase()}-required`,
+        topicSyncMayHaveCommitted: false,
+      });
+      expect(f.clients).toHaveLength(0);
+    },
+  );
+
+  it('classifies a real missing direct endpoint and a non-loopback local target', () => {
+    const getFailure = (work) => {
+      try {
+        work();
+        throw new Error('fixture expected rejection');
+      } catch (error) {
+        return publicMaintenanceFailure(
+          new TopicMaintenanceError(error, 'topic-verify', false, 'dedicated-target'),
+        );
+      }
+    };
+    expect(getFailure(() => assertDirectTopicSyncEndpoint(''))).toMatchObject({
+      reason: 'connection-host-invalid',
+    });
+    expect(
+      getFailure(() =>
+        validateConnectionTarget({
+          profile: 'local-test',
+          connectionString: 'postgresql://owner:secret-password@fixture.invalid/fixture',
+        }),
+      ),
+    ).toMatchObject({ reason: 'connection-host-not-loopback' });
+    expect(getFailure(() => assertDirectTopicSyncEndpoint('private-pooler.invalid'))).toMatchObject(
+      {
+        reason: 'connection-pooler-disallowed',
+      },
+    );
+  });
+
+  it('only accepts local typed and whitelisted field reasons without invoking accessors', () => {
+    const expose = (error, phase = 'dedicated-target') =>
+      publicMaintenanceFailure(new TopicMaintenanceError(error, 'topic-verify', false, phase));
+    expect(
+      expose(Object.assign(new Error(privateDetail), { reasonCode: 'host-mismatch' })),
+    ).toMatchObject({
+      reason: 'unavailable',
+    });
+    expect(expose(new ConnectionPolicyError(privateDetail, privateDetail))).toMatchObject({
+      reason: 'unavailable',
+    });
+    expect(
+      expose(new ConnectionPolicyError('host-mismatch', privateDetail), 'dedicated-connect'),
+    ).toMatchObject({
+      reason: 'unavailable',
+    });
+    const error = new ConnectionPolicyError('host-mismatch', privateDetail);
+    const getter = vi.fn(() => {
+      throw new Error(privateDetail);
+    });
+    Object.defineProperty(error, 'reasonCode', { get: getter });
+    expect(expose(error)).toMatchObject({ reason: 'unavailable' });
+    expect(getter).not.toHaveBeenCalled();
+  });
 
   it('identifies the real strict TLS policy failure before creating any client', async () => {
     const f = fixture();

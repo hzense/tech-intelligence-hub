@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ConnectionPolicyError,
   productionDatabaseOptions,
   topicSyncProductionOptions,
   validateConnectionTarget,
@@ -46,6 +47,69 @@ describe('database connection policy', () => {
     expect(() =>
       validateConnectionTarget({ ...productionPolicy, expectedUser: 'postgres' }),
     ).toThrow(/identity/);
+  });
+
+  it.each([
+    [
+      'expectedHost',
+      'other.invalid',
+      'host-mismatch',
+      'Production database endpoint does not match the reviewed direct endpoint',
+    ],
+    [
+      'expectedPort',
+      '6543',
+      'port-mismatch',
+      'Production database endpoint does not match the reviewed direct endpoint',
+    ],
+    [
+      'expectedDatabase',
+      'other',
+      'database-mismatch',
+      'Production database URL identity does not match the reviewed target',
+    ],
+    [
+      'expectedUser',
+      'other',
+      'user-mismatch',
+      'Production database URL identity does not match the reviewed target',
+    ],
+  ])(
+    'retains the rejection message and identifies only the mismatching %s',
+    (field, value, reasonCode, message) => {
+      let caught;
+      try {
+        validateConnectionTarget({ ...productionPolicy, [field]: value });
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(ConnectionPolicyError);
+      expect(caught).toBeInstanceOf(Error);
+      expect(caught).toMatchObject({ reasonCode, message });
+      expect(Object.keys(caught)).toEqual(['reasonCode']);
+    },
+  );
+
+  it('keeps the original validation order when several fields mismatch', () => {
+    const invalid = {
+      ...productionPolicy,
+      expectedHost: 'other.invalid',
+      expectedPort: '6543',
+      expectedDatabase: 'other',
+      expectedUser: 'other',
+    };
+    for (const [field, reasonCode] of [
+      ['expectedHost', 'host-mismatch'],
+      ['expectedPort', 'port-mismatch'],
+      ['expectedDatabase', 'database-mismatch'],
+      ['expectedUser', 'user-mismatch'],
+    ]) {
+      expect(() => validateConnectionTarget(invalid)).toThrow(
+        expect.objectContaining({ reasonCode }),
+      );
+      invalid[field] = productionPolicy[field];
+    }
+    expect(validateConnectionTarget(invalid)).toMatchObject({ user: 'hzense_migrator' });
   });
 
   it('requires verify-full TLS and rejects loopback production targets', () => {
