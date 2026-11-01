@@ -317,16 +317,14 @@ describe('protected legacy signal migration', () => {
       expect(deps.applyLegacySignalArchive).not.toHaveBeenCalled();
     }
   });
-  it('keeps workflow secret bindings bounded to the new operations', async () => {
+  it('passes approval only to the writable legacy operation', async () => {
     const text = await readFile(
       new URL('../../../.github/workflows/production-maintenance.yml', import.meta.url),
       'utf8',
     );
-    expect(text).toContain(
-      "inputs.operation == 'legacy-signal-apply' || inputs.operation == 'unified-signal-apply' || inputs.operation == 'topic-apply') && secrets.MAINTENANCE_APPROVAL",
-    );
-    expect(text).not.toContain(
-      "inputs.operation == 'legacy-signal-dry-run') && secrets.MAINTENANCE_APPROVAL",
-    );
+    const binding = text.split('\n').find((line) => /^\s+MAINTENANCE_APPROVAL:/.test(line));
+    expect(binding).toContain("inputs.operation == 'legacy-signal-apply'");
+    expect(binding).toContain('secrets.MAINTENANCE_APPROVAL');
+    expect(binding).not.toMatch(/inputs\.operation == 'legacy-signal-(?:dry-run|verify)'/);
   });
 });
