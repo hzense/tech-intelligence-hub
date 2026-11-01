@@ -6,6 +6,12 @@ import { openRouterOptions, portableJsonSchema } from './ai-model-compatibility.
 import { isValidAiModelId } from '../../../packages/database/src/ai-model-id.mjs';
 import { AI_PROBE_OUTPUT_TOKENS } from '../../../packages/database/src/ai-config-contract.mjs';
 import {
+  parseAiProbeDiagnostics,
+  type AiProbeDiagnostics,
+  type AiProbeDiagnosticStage,
+  type AiProbeDiagnosticReason,
+} from '../../../packages/database/src/ai-probe-diagnostics.mjs';
+import {
   AiProbeError,
   createPinnedAiFetch,
   type AiProbeErrorCode,
@@ -36,6 +42,7 @@ export interface AiProbeResult {
   output_tokens: number | null;
   result: Record<string, unknown>;
   error_code?: AiProbeErrorCode;
+  diagnostics?: AiProbeDiagnostics;
 }
 export function validAiModelId(value: unknown): value is string {
   return isValidAiModelId(value);
@@ -73,6 +80,23 @@ function errorCode(error: unknown): AiProbeErrorCode {
   // Never return provider/SDK error messages, headers or response bodies.
   return 'capability_failed';
 }
+function typedProbeError(error: unknown): AiProbeError | undefined {
+  let current = error;
+  for (let index = 0; index < 5 && current instanceof Error; index++) {
+    if (current instanceof AiProbeError) return current;
+    current = current.cause;
+  }
+  return undefined;
+}
+function validationReason(error: unknown): AiProbeDiagnosticReason | undefined {
+  let current = error;
+  for (let index = 0; index < 5 && current instanceof Error; index++) {
+    if (current.name === 'AI_ToolChoiceViolationError') return 'invalid_tool_call';
+    if (current.name === 'AI_NoObjectGeneratedError') return 'invalid_structured_output';
+    current = current.cause;
+  }
+  return undefined;
+}
 const tokens = (value: unknown): number | null =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 
@@ -91,6 +115,7 @@ export function createAiProbeInvoker(
       result: {},
     };
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let stage: AiProbeDiagnosticStage = 'configuration';
     const controller = new AbortController();
     try {
       const timeout = input.connection.settings.timeout_ms;
@@ -120,11 +145,13 @@ export function createAiProbeInvoker(
           allowedHosts: [...input.allowedHosts],
           apiKey: input.apiKey,
           signal: controller.signal,
+          captureRejectionDiagnostics: true,
         },
         dependencies,
       );
       const operation = async (): Promise<AiProbeResult> => {
         if (input.kind === 'models') {
+          stage = 'model_catalog';
           const response = await transport(
             `${input.connection.base_url.replace(/\/$/, '')}/models`,
           );
@@ -187,6 +214,10 @@ export function createAiProbeInvoker(
             },
           };
         }
+        stage =
+          new URL(input.connection.base_url).hostname === 'openrouter.ai'
+            ? 'model_catalog'
+            : 'model_request';
         const routerOptions = await openRouterOptions(
           input.connection.base_url,
           safeModel!,
@@ -197,12 +228,15 @@ export function createAiProbeInvoker(
               ? 'tools'
               : 'text',
         );
+        stage = 'model_request';
         const provider = createOpenAICompatible({
           name: 'hzense-compatible',
           baseURL: input.connection.base_url,
           apiKey: input.apiKey,
           fetch: async (url, init) => {
+            stage = 'model_request';
             const response = await transport(url, init);
+            stage = 'response_validation';
             if (init?.method === 'POST') {
               const cost = await readApiCostMicrousd(response, input.connection.base_url);
               if (cost !== null) base.provider_cost_microusd = cost;
@@ -232,7 +266,9 @@ export function createAiProbeInvoker(
             prompt: `Return exactly {"sentinel":"${aiProbeSentinel}","ok":true}.`,
           });
           if (!validSentinel(result.output) || result.toolCalls.length)
-            throw new AiProbeError('capability_failed');
+            throw new AiProbeError('capability_failed', undefined, {
+              reason: 'invalid_structured_output',
+            });
           return {
             ...base,
             success: true,
@@ -263,7 +299,7 @@ export function createAiProbeInvoker(
             call.invalid ||
             !validSentinel(call.input)
           )
-            throw new AiProbeError('capability_failed');
+            throw new AiProbeError('capability_failed', undefined, { reason: 'invalid_tool_call' });
           return {
             ...base,
             success: true,
@@ -277,7 +313,7 @@ export function createAiProbeInvoker(
           prompt: `Reply with exactly ${aiProbeSentinel} and no other text.`,
         });
         if (result.text.trim() !== aiProbeSentinel || result.toolCalls.length)
-          throw new AiProbeError('capability_failed');
+          throw new AiProbeError('capability_failed', undefined, { reason: 'sentinel_mismatch' });
         return {
           ...base,
           success: true,
@@ -288,7 +324,30 @@ export function createAiProbeInvoker(
       };
       return await Promise.race([operation(), deadline]);
     } catch (error) {
-      return { ...base, error_code: errorCode(error) };
+      const code = errorCode(error);
+      const typed = typedProbeError(error);
+      // The async operation mutates this stage; TypeScript does not track writes
+      // performed inside the operation callback when narrowing the catch block.
+      const failedStage = stage as AiProbeDiagnosticStage;
+      if (typed?.providerCostMicrousd != null)
+        base.provider_cost_microusd = typed.providerCostMicrousd;
+      if (typed?.inputTokens != null) base.input_tokens = typed.inputTokens;
+      if (typed?.outputTokens != null) base.output_tokens = typed.outputTokens;
+      const diagnostics = parseAiProbeDiagnostics({
+        version: 1,
+        stage: failedStage,
+        reason:
+          typed?.reason ??
+          (failedStage === 'response_validation' ? validationReason(error) : undefined) ??
+          (failedStage === 'model_catalog' && typed?.code === 'capability_failed'
+            ? 'unsupported_parameters'
+            : code),
+        ...(typed?.httpStatus !== undefined ? { http_status: typed.httpStatus } : {}),
+        ...(code === 'provider_rejected' && typed?.httpStatus !== undefined
+          ? { rejection_confirmed: typed?.rejectionConfirmed === true }
+          : {}),
+      });
+      return { ...base, error_code: code, ...(diagnostics ? { diagnostics } : {}) };
     } finally {
       if (timer) clearTimeout(timer);
       controller.abort();

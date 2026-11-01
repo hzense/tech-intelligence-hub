@@ -3,6 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { describe, it, expect, vi } from 'vitest';
 import { encryptAiKey, decryptAiKey } from '../src/ai-config-crypto.mjs';
 import {
+  parseAiProbeAccounting,
+  isConfirmedAiProbeRejection,
+} from '../src/ai-probe-diagnostics.mjs';
+import {
   createAiConnection,
   updateAiConnection,
   listAiConnections,
@@ -54,6 +58,21 @@ const success = () => ({
   input_tokens: 12,
   output_tokens: 1,
   result: { sentinel_matched: true },
+});
+const rejection = () => ({
+  success: false,
+  model_id: 'test/model',
+  input_tokens: null,
+  output_tokens: null,
+  result: { private_provider_body: key, accounting: { version: 1, source: 'provider' } },
+  error_code: 'provider_rejected',
+  diagnostics: {
+    version: 1,
+    stage: 'model_request',
+    reason: 'no_matching_provider',
+    http_status: 404,
+    rejection_confirmed: true,
+  },
 });
 const stage = () => ({
   connection_id: id,
@@ -193,7 +212,27 @@ function fake(options = {}) {
             today_count: options.todayCount ?? String(state.probes.length),
             today_cost:
               options.todayCost ??
-              state.probes.reduce((n, r) => n + BigInt(r.charged_microusd), 0n).toString(),
+              state.probes
+                .reduce((n, r) => {
+                  const charged = BigInt(r.charged_microusd);
+                  const reserved = BigInt(r.reserved_microusd);
+                  const source = parseAiProbeAccounting(r.result?.accounting)?.source;
+                  const settled =
+                    ['succeeded', 'failed', 'stale'].includes(r.status) &&
+                    (source === 'provider' ||
+                      (r.status !== 'succeeded' &&
+                        source === 'request_rejected' &&
+                        charged === 0n &&
+                        isConfirmedAiProbeRejection({
+                          success: false,
+                          error_code: 'provider_rejected',
+                          diagnostics: r.result?.diagnostics,
+                          input_tokens: r.input_tokens,
+                          output_tokens: r.output_tokens,
+                        })));
+                  return n + (settled ? charged : charged > reserved ? charged : reserved);
+                }, 0n)
+                .toString(),
             active:
               options.active ??
               String(state.probes.filter((r) => ['pending', 'running'].includes(r.status)).length),
@@ -736,10 +775,11 @@ describe('AI probe reservation and exactly-once external attempt', () => {
         result: catalog,
       }));
       expect(result.status).toBe('succeeded');
-      expect(result.result).toEqual(catalog);
+      const storedCatalog = { ...catalog, accounting: { version: 1, source: 'estimate' } };
+      expect(result.result).toEqual(storedCatalog);
       expect(result.charged_microusd).toBe('0');
-      expect((await getAiProbe({ pool: f.pool, id: req.id })).result).toEqual(catalog);
-      expect((await listAiProbes({ pool: f.pool }))[0].result).toEqual(catalog);
+      expect((await getAiProbe({ pool: f.pool, id: req.id })).result).toEqual(storedCatalog);
+      expect((await listAiProbes({ pool: f.pool }))[0].result).toEqual(storedCatalog);
     },
   );
   it.each([-1, 1.5, '12', null, 100001])(
@@ -843,7 +883,8 @@ describe('AI probe reservation and exactly-once external attempt', () => {
       f.state.connections[0].revision = 2;
       return success();
     });
-    expect(result).toMatchObject({ status: 'stale', result: {} });
+    expect(result).toMatchObject({ status: 'stale' });
+    expect(result.result).toEqual({ accounting: { version: 1, source: 'estimate' } });
   });
   it('keeps reservation and safe errors when the provider throws sensitive data', async () => {
     const f = fake();
@@ -880,7 +921,106 @@ describe('AI probe reservation and exactly-once external attempt', () => {
       provider_cost_microusd: amount,
     }));
     expect(saved.charged_microusd).toBe(String(amount));
+    expect(saved.result.accounting).toEqual({ version: 1, source: 'provider' });
   });
+  it('releases a proven rejected request without rewriting its reservation or retrying its ID', async () => {
+    const f = fake();
+    f.state.connections[0].settings.daily_budget_microusd = 12288;
+    const req = request();
+    const invoke = vi.fn(async () => rejection());
+    const saved = await run(f, req, invoke);
+    expect(saved).toMatchObject({
+      status: 'failed',
+      reserved_microusd: '12288',
+      charged_microusd: '0',
+    });
+    expect(saved.result).toEqual({
+      diagnostics: rejection().diagnostics,
+      accounting: { version: 1, source: 'request_rejected' },
+    });
+    expect(JSON.stringify(saved)).not.toContain(key);
+    expect(await run(f, req, invoke)).toEqual(saved);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect((await run(f, request(), async () => success())).status).toBe('succeeded');
+  });
+  it.each([
+    { diagnostics: undefined },
+    { diagnostics: { ...rejection().diagnostics, rejection_confirmed: false } },
+    { diagnostics: { ...rejection().diagnostics, http_status: 408 } },
+    { diagnostics: { ...rejection().diagnostics, http_status: 500 } },
+    { diagnostics: { ...rejection().diagnostics, stage: 'response_validation' } },
+    { diagnostics: { ...rejection().diagnostics, rejection_confirmed: 'true' } },
+    { diagnostics: { ...rejection().diagnostics, body: key } },
+    { diagnostics: { ...rejection().diagnostics, reason: key } },
+    { error_code: 'timeout' },
+    { input_tokens: 1 },
+    { output_tokens: 1 },
+  ])(
+    'retains conservative cost when rejection evidence is incomplete or usage exists %j',
+    async (changes) => {
+      const f = fake();
+      f.state.connections[0].settings.daily_budget_microusd = 12288;
+      const saved = await run(f, request(), async () => ({ ...rejection(), ...changes }));
+      expect(saved.charged_microusd).toBe('12288');
+      expect(saved.result.accounting).toEqual({ version: 1, source: 'estimate' });
+      expect(JSON.stringify(saved)).not.toContain(key);
+      const invoke = vi.fn();
+      await expect(run(f, request(), invoke)).rejects.toMatchObject({
+        code: 'daily_budget_exceeded',
+      });
+      expect(invoke).not.toHaveBeenCalled();
+    },
+  );
+  it.each([0, 17])(
+    'uses API cost %s even when the provider rejected the request',
+    async (amount) => {
+      const saved = await run(fake(), request(), async () => ({
+        ...rejection(),
+        provider_cost_microusd: amount,
+      }));
+      expect(saved.charged_microusd).toBe(String(amount));
+      expect(saved.result.accounting).toEqual({ version: 1, source: 'provider' });
+    },
+  );
+  it('keeps API cost when successful capability payload validation fails', async () => {
+    const saved = await run(fake(), request(), async () => ({
+      ...success(),
+      provider_cost_microusd: 23,
+      result: { sentinel_matched: true, body: key },
+    }));
+    expect(saved).toMatchObject({
+      status: 'failed',
+      error_code: 'invalid_response',
+      charged_microusd: '23',
+    });
+    expect(saved.result).toEqual({ accounting: { version: 1, source: 'provider' } });
+  });
+  it('uses provider settlement for admission instead of the larger original reservation', async () => {
+    const f = fake();
+    f.state.connections[0].settings.daily_budget_microusd = 12411;
+    await run(f, request(), async () => ({ ...success(), provider_cost_microusd: 123 }));
+    expect((await run(f, request(), async () => success())).status).toBe('succeeded');
+    await expect(run(f, request(), vi.fn())).rejects.toMatchObject({
+      code: 'daily_budget_exceeded',
+    });
+  });
+  it.each(['provider', 'request_rejected'])(
+    'retains only safe receipt metadata when a %s response becomes stale',
+    async (source) => {
+      const f = fake();
+      const saved = await run(f, request(), async () => {
+        f.state.connections[0].revision = 2;
+        return source === 'provider' ? { ...success(), provider_cost_microusd: 3 } : rejection();
+      });
+      expect(saved).toMatchObject({ status: 'stale', error_code: 'connection_unavailable' });
+      expect(saved.result).toEqual({
+        ...(source === 'request_rejected' ? { diagnostics: rejection().diagnostics } : {}),
+        accounting: { version: 1, source },
+      });
+      expect(saved.result).not.toHaveProperty('sentinel_matched');
+      expect(saved.result).not.toHaveProperty('schema_valid');
+    },
+  );
   it('never retries an external call after a final database failure', async () => {
     const options = { failTag: 'probe-finish' },
       f = fake(options),

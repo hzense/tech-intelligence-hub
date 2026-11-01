@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 import type { AiProbe } from '../../../packages/database/src/ai-config-store.mjs';
+import { aiProbePresentation } from '../lib/admin-ai-probe-summary';
 import {
   aiEndpointChanged,
   aiEndpointMessage,
@@ -239,6 +240,7 @@ export function AiEndpointFields({
   );
 }
 export function ProbeSummary({ probe }: { probe: AiProbe }) {
+  const presentation = aiProbePresentation(probe);
   return (
     <article className={styles.card}>
       <h3>
@@ -257,16 +259,22 @@ export function ProbeSummary({ probe }: { probe: AiProbe }) {
         <dd>{probe.created_at}</dd>
         <dt>预算保留／记账</dt>
         <dd>
-          {usd(probe.reserved_microusd)} / {usd(probe.charged_microusd)}（估算）
+          {usd(probe.reserved_microusd)} / {usd(probe.charged_microusd)}（{presentation.costLabel}）
         </dd>
         <dt>输入／输出 token</dt>
         <dd>
           {probe.input_tokens ?? '未知'} / {probe.output_tokens ?? '未知'}
         </dd>
       </dl>
-      {probe.error_code ? (
-        <p className={styles.muted}>分类：{probe.error_code}；失败不等于供应商未计费。</p>
+      <p className={styles.muted}>{presentation.accountingDetail}</p>
+      {probe.error_code ? <p className={styles.muted}>分类：{probe.error_code}</p> : null}
+      {presentation.stageLabel ? (
+        <p className={styles.muted}>
+          失败阶段：{presentation.stageLabel}
+          {presentation.httpStatus === null ? '' : ` · HTTP ${presentation.httpStatus}`}
+        </p>
       ) : null}
+      {presentation.failureDetail ? <p>{presentation.failureDetail}</p> : null}
       <details>
         <summary>查看安全测试摘要</summary>
         <pre className={styles.code}>{JSON.stringify(probe.result, null, 2)}</pre>

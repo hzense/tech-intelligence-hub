@@ -16,6 +16,12 @@ import {
   validateAiBaseUrl,
 } from './ai-config-contract.mjs';
 import { encryptAiKey, decryptAiKey, readAiKeyring } from './ai-config-crypto.mjs';
+import {
+  parseAiProbeDiagnostics,
+  isConfirmedAiProbeRejection,
+  aiProbeRejectedStatuses,
+  aiProbeDiagnosticReasons,
+} from './ai-probe-diagnostics.mjs';
 
 const connectionColumns =
   'id,revision,name,protocol,base_url,enabled,settings,encrypted_key,created_at,updated_at';
@@ -564,21 +570,33 @@ const providerErrors = new Set([
   'capability_failed',
 ]);
 function safeProviderResult(value, kind, modelId) {
+  let metadata;
   try {
     const v = aiObject(
       value,
       ['success', 'model_id', 'input_tokens', 'output_tokens', 'result'],
-      ['error_code', 'provider_cost_microusd'],
+      ['error_code', 'provider_cost_microusd', 'diagnostics'],
     );
     if (typeof v.success !== 'boolean' || v.model_id !== (modelId ?? null)) throw Error();
     if (v.provider_cost_microusd != null)
       aiInteger(v.provider_cost_microusd, 0, Number.MAX_SAFE_INTEGER);
     for (const key of ['input_tokens', 'output_tokens'])
       if (v[key] !== null) aiInteger(v[key], 0, 2147483647);
+    const diagnostics = parseAiProbeDiagnostics(v.diagnostics);
+    metadata = {
+      model_id: v.model_id,
+      input_tokens: v.input_tokens,
+      output_tokens: v.output_tokens,
+      ...(v.provider_cost_microusd != null
+        ? { provider_cost_microusd: v.provider_cost_microusd }
+        : {}),
+      ...(diagnostics ? { diagnostics } : {}),
+    };
     if (!v.success)
       return {
-        ...v,
-        result: {},
+        ...metadata,
+        success: false,
+        result: diagnostics ? { diagnostics } : {},
         error_code: providerErrors.has(v.error_code) ? v.error_code : 'invalid_response',
       };
     let result;
@@ -610,14 +628,15 @@ function safeProviderResult(value, kind, modelId) {
       result = r;
     }
     if (Buffer.byteLength(JSON.stringify(result)) > 16384) throw Error();
-    return { ...v, result, error_code: null };
+    return { ...metadata, success: true, result, error_code: null };
   } catch {
     return {
       success: false,
       model_id: modelId ?? null,
       input_tokens: null,
       output_tokens: null,
-      result: {},
+      ...metadata,
+      result: metadata?.diagnostics ? { diagnostics: metadata.diagnostics } : {},
       error_code: 'invalid_response',
     };
   }
@@ -666,9 +685,24 @@ export async function runAiProbe({ pool, request, keyring, allowedHosts, invoke 
       const usage = one(
         await client.query(
           `/* ai:probe-budget */ SELECT count(*) FILTER(WHERE created_at>=date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AS today_count,
-      COALESCE(sum(GREATEST(reserved_microusd,charged_microusd)) FILTER(WHERE created_at>=date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),0) AS today_cost,
+      COALESCE(sum(CASE
+        WHEN status IN ('succeeded','failed','stale') AND (
+          result->'accounting'='{"version":1,"source":"provider"}'::jsonb
+          OR (result->'accounting'='{"version":1,"source":"request_rejected"}'::jsonb
+            AND ((status='failed' AND error_code='provider_rejected') OR status='stale')
+            AND charged_microusd=0 AND COALESCE(input_tokens,0)=0 AND COALESCE(output_tokens,0)=0
+            AND result->'diagnostics'=jsonb_build_object(
+              'version',1,'stage',result#>>'{diagnostics,stage}',
+              'reason',result#>>'{diagnostics,reason}',
+              'http_status',result#>'{diagnostics,http_status}','rejection_confirmed',true)
+            AND result#>>'{diagnostics,stage}' IN ('model_catalog','model_request')
+            AND result#>'{diagnostics,http_status}'=ANY($2::jsonb[])
+            AND result#>>'{diagnostics,reason}'=ANY($3::text[]))
+        ) THEN charged_microusd
+        ELSE GREATEST(reserved_microusd,charged_microusd)
+      END) FILTER(WHERE created_at>=date_trunc('day',clock_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'),0) AS today_cost,
       count(*) FILTER(WHERE status IN ('pending','running')) AS active FROM public.ai_probe_runs WHERE connection_id=$1`,
-          [v.connection_id],
+          [v.connection_id, aiProbeRejectedStatuses.map(String), aiProbeDiagnosticReasons],
         ),
       );
       if (Number(usage.today_count) >= 100) aiFail('daily_probe_limit');
@@ -770,11 +804,9 @@ export async function runAiProbe({ pool, request, keyring, allowedHosts, invoke 
   // Even trusted adapters cannot return credential-bearing model names.
   if (JSON.stringify(outcome.result).includes(prepared.apiKey))
     outcome = {
+      ...outcome,
       success: false,
-      model_id: v.model_id ?? null,
-      input_tokens: null,
-      output_tokens: null,
-      result: {},
+      result: outcome.diagnostics ? { diagnostics: outcome.diagnostics } : {},
       error_code: 'invalid_response',
     };
   prepared.apiKey = undefined;
@@ -790,12 +822,26 @@ export async function runAiProbe({ pool, request, keyring, allowedHosts, invoke 
           ? 0n
           : cost(outcome.input_tokens, outcome.output_tokens, prepared.connection.settings);
       const apiCost = outcome.provider_cost_microusd;
-      const charged =
-        Number.isSafeInteger(apiCost) && apiCost >= 0
-          ? BigInt(apiCost)
+      const hasProviderCost = Number.isSafeInteger(apiCost) && apiCost >= 0;
+      const rejected = isConfirmedAiProbeRejection(outcome);
+      const charged = hasProviderCost
+        ? BigInt(apiCost)
+        : rejected
+          ? 0n
           : measured > BigInt(current.reserved_microusd)
             ? measured
             : BigInt(current.reserved_microusd);
+      const result = {
+        ...(stale
+          ? outcome.diagnostics
+            ? { diagnostics: outcome.diagnostics }
+            : {}
+          : outcome.result),
+        accounting: {
+          version: 1,
+          source: hasProviderCost ? 'provider' : rejected ? 'request_rejected' : 'estimate',
+        },
+      };
       const saved = one(
         await client.query(
           `/* ai:probe-finish */ UPDATE public.ai_probe_runs SET status=$2,charged_microusd=$3,input_tokens=$4,output_tokens=$5,result=$6::jsonb,error_code=$7,finished_at=clock_timestamp()
@@ -806,7 +852,7 @@ export async function runAiProbe({ pool, request, keyring, allowedHosts, invoke 
             charged.toString(),
             outcome.input_tokens,
             outcome.output_tokens,
-            JSON.stringify(stale ? {} : outcome.result),
+            JSON.stringify(result),
             stale ? 'connection_unavailable' : outcome.error_code,
           ],
         ),
