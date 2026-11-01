@@ -6,13 +6,13 @@
 
 **当前阶段：主要业务功能已实现，正在完善功能、修复稳定性并补齐本地执行能力；不代表线上已经稳定可用。** 当前结论以本节、能力清单和下一步工作为准。下方历史记录中的“当前”“待提交”“未上线”、旧迁移数量和完成度百分比均只代表记录当时，不覆盖本节。
 
-### 生产采集领域目录修复（2026-11-01，目录同步完成）
+### 生产采集领域目录与候选页面修复（2026-11-01，维护验收完成）
 
-**生产目录修复成功，执行器独立新连接核验通过；候选发布页面的新字段权限阻断正在修复。** 正式 [topic-apply 41330016210](https://github.com/hzense/tech-intelligence-hub/actions/runs/41330016210) 在 `main@9b9c1cf590ab4e881f9b12bc52a34b3642861b6c` 上于 `2026-11-01T17:10:28.0770962Z` 成功：插入 0、更新 42、不变 20，目录共 62 项、47 项启用，10 个一级领域全部可用、缺失 0 项；`committed:true`、`verificationCompleted:true`。提交后独立新连接比较完整投影，最终 owner 计划没有剩余插入／更新；不再为重复核对增加生产审批。
+**生产目录同步和候选发布页面权限修复均已完成，独立新连接核验及线上只读页面验收通过。** 正式 [topic-apply 41330016210](https://github.com/hzense/tech-intelligence-hub/actions/runs/41330016210) 在 `main@9b9c1cf590ab4e881f9b12bc52a34b3642861b6c` 上于 `2026-11-01T17:10:28.0770962Z` 成功：插入 0、更新 42、不变 20，目录共 62 项、47 项启用，10 个一级领域全部可用、缺失 0 项；`committed:true`、`verificationCompleted:true`。提交后独立新连接比较完整投影，最终 owner 计划没有剩余插入／更新；不再为重复核对增加生产审批。
 
 最初 `testing` 的 `2026-11-01T01:07:20Z` 任务因 `discovery_topics_not_ready` 在付费前失败，记账 $0。当时生产有 62 个 Topic 但仅 5 个启用，全部 10 个一级领域缺失。修复保留完整检索范围，不调整模型、预算或发布策略，不重放失败任务，也不改写历史费用。
 
-[PR #248](https://github.com/hzense/tech-intelligence-hub/pull/248) 交付受保护的 `topic-plan`／`topic-apply`／`topic-verify`；[PR #249](https://github.com/hzense/tech-intelligence-hub/pull/249)、[PR #250](https://github.com/hzense/tech-intelligence-hub/pull/250) 补齐固定白名单失败阶段及原因码，均已合并部署。当前主干 [CI 41328016802](https://github.com/hzense/tech-intelligence-hub/actions/runs/41328016802) 成功，生产部署 `dpl_DeCBs1HDZND4VKT8nS4MfpG8LhLJ` READY，`hzense.com` 别名已核对指向 `9b9c1cf`，本地已同步。诊断变更没有修改迁移、目录内容、角色授权或同步写入规则。
+[PR #248](https://github.com/hzense/tech-intelligence-hub/pull/248) 交付受保护的 `topic-plan`／`topic-apply`／`topic-verify`；[PR #249](https://github.com/hzense/tech-intelligence-hub/pull/249)、[PR #250](https://github.com/hzense/tech-intelligence-hub/pull/250) 补齐固定白名单失败阶段及原因码，均已合并部署。此前 `main@9b9c1cf` 的 [CI 41328016802](https://github.com/hzense/tech-intelligence-hub/actions/runs/41328016802) 和部署验证通过；诊断变更没有修改迁移、目录内容、角色授权或同步写入规则。随后 [PR #251](https://github.com/hzense/tech-intelligence-hub/pull/251) 交付受保护的 writer 增量授权入口，本次维护执行时主干为 `7adeb4d5d3cef1172f4cb503b3a4e571cfaa507b`，对应 [CI 41333562134](https://github.com/hzense/tech-intelligence-hub/actions/runs/41333562134) 成功，生产部署 `dpl_G84b11LeJFvyTVk2xuep9XNBX8ng` READY，`hzense.com`／`www.hzense.com` 别名及本地同步已核对。
 
 维护已完成真实备份、隔离恢复、ACL 双采样、`0032` 迁移和随后独立完整 Schema 核验，生产确认为 **33 项迁移、58 张表**。[迁移 41317293957](https://github.com/hzense/tech-intelligence-hub/actions/runs/41317293957) 和 [只读计划 41318093575](https://github.com/hzense/tech-intelligence-hub/actions/runs/41318093575) 均成功；计划独立复审通过。完整备份 `pre-topic-catalog-0032-20261101` 按 Never 保留；隔离演练分支按 `2026-11-02T14:24:40Z` 自动过期。44 文件恢复封存及独立审核有效，不将迁移前恢复证据声称为迁移后新演练。
 
@@ -24,7 +24,9 @@
 
 本次 Topic DML 仅由 `hzense_topic_sync` 执行，保留 main／CI、运行绑定审批、备份恢复、维护与发布冻结、依赖封印及事务锁内重算检查。未失效封印为 0，维护中封印总数没有变化。本轮未调用付费 AI、发布信号或调整开关；真实采集是否完整恢复，以之后正常计划或另行授权运行回执为准。
 
-页面验收发现独立问题：生成列表可读取 28 条既有任务，但候选发布信息同源 GET 返回 503。生产只读核对确认 `0032` 的新列已存在，writer 却缺少 `publication_basis` SELECT／INSERT 和生成快照 SELECT；读取代码因此拒绝返回不明发布依据。reader 已具备公开依据列的读取权限。用户已授权新增受保护维护入口并仅升级 writer 这三项能力，保持 reader、发布开关、历史任务及费用不变；当前正在开发和隔离验证，尚未执行生产授权。修复后继续只读核对线上 47 个可选领域、10 个一级领域。
+页面验收曾发现独立问题：生成列表可读取 28 条既有任务，但候选发布信息同源 GET 返回 503。生产只读核对确认 `0032` 的新列已存在，writer 却缺少 `editorial_signal_revisions.publication_basis` SELECT／INSERT 和 `signal_generation_runs.snapshot` SELECT；reader 已具备公开依据列的读取权限。经用户授权及 [只读计划 41334109163](https://github.com/hzense/tech-intelligence-hub/actions/runs/41334109163) 双采样核验后，[正式授权 41338324347](https://github.com/hzense/tech-intelligence-hub/actions/runs/41338324347) 于 `18:47:53Z` 在上述维护提交上成功增补 writer 三项能力。执行器提交后通过独立新连接核验，reader 及其他 ACL 保持不变，完整 Schema 仍为 33 项迁移、58 张表；脱敏回执独立复审通过。
+
+`18:54:13.929Z` 的线上只读验收确认候选页面恢复正常表单，展示 **47 个可选领域、10 个一级领域，缺失 0 项**，原候选“已撤回”状态保持，未显示发布信息读取错误。本次维护验收完成，维护冻结可解除；原备份及演练分支到期安排保持不变。本轮未重跑付费采集、发布信号或修改开关，页面恢复不替代后续真实采集与发布结果的验收。
 
 自动采集旧失败记录不会因目录修复被改写。详细时间线、四项审批指纹、恢复与 ACL 证据见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)；维护入口见[部署说明](DEPLOYMENT.md#受保护的-topic-维护入口2026-11-01)。
 

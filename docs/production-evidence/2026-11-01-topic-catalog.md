@@ -1,6 +1,6 @@
 # 生产自动采集领域目录核对
 
-日期：2026-11-01。**目录修复已完成，候选发布页面仍有独立权限阻断。** 正式 [topic-apply 41330016210](https://github.com/hzense/tech-intelligence-hub/actions/runs/41330016210) 在 `main@9b9c1cf590ab4e881f9b12bc52a34b3642861b6c` 上成功提交 42 项更新；执行器随后通过独立新连接核验完整投影，并由 owner 再次检查无剩余插入或更新。生产目录为 62 项、47 项启用、10 个一级领域全部可用，完整 Schema 为 33 项迁移、58 张表。后续页面验收发现 `0032` 后发布写入角色缺少新列权限，已只读核实并取得最小升级授权，尚未执行授权。未重跑付费采集、未发布信号或修改开关，不能把目录修复等同于完整采集链路已验收。
+日期：2026-11-01。**领域目录同步、发布角色最小权限升级及候选页面只读验收均已完成。** 正式 [topic-apply 41330016210](https://github.com/hzense/tech-intelligence-hub/actions/runs/41330016210) 成功提交 42 项更新，独立新连接核验及最终无差异检查通过；生产目录为 62 项、47 项启用、10 个一级领域全部可用。随后 [editorial-capability-grant 41338324347](https://github.com/hzense/tech-intelligence-hub/actions/runs/41338324347) 在 `main@7adeb4d5d3cef1172f4cb503b3a4e571cfaa507b` 上补齐发布写入角色三项列能力，提交后独立核验通过，reader 及其他 ACL 不变。`18:54:13Z` 登录后的候选页面已正常显示 47 个领域，包含全部 10 个一级领域；原已撤回状态保持。完整 Schema 为 33 项迁移、58 张表。本轮未重跑付费采集、未发布信号或修改开关，不把目录与页面恢复等同于完整付费采集链路已验收。
 
 ## 故障定位时的线上事实
 
@@ -24,11 +24,12 @@ Vercel 日志在 `01:07:26Z` 记录同一错误。后台任务详情列出的缺
 
 ## 代码交付与修复范围
 
-| 交付                                                                | 合并与核对结果                                                                                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [PR #248](https://github.com/hzense/tech-intelligence-hub/pull/248) | `e2581af06c518b6bec5a8661bd7fa9025af2fabc`；[主干 CI 41265488915](https://github.com/hzense/tech-intelligence-hub/actions/runs/41265488915) 成功；生产部署 `dpl_3n8B2sWvFdsiBYMp5gVsNLLiPv1K` READY，域名已核对                                                                                              |
-| [PR #249](https://github.com/hzense/tech-intelligence-hub/pull/249) | `44a7aa96a9e94b3457f6b4099fa554758223175b`；定向回归 438 项、独立审核及 [主干 CI 41322782146](https://github.com/hzense/tech-intelligence-hub/actions/runs/41322782146) 通过；生产部署 `dpl_92bgm6vhxZFk32zQE9hy9LcUu9wL` READY，域名已核对                                                                  |
-| [PR #250](https://github.com/hzense/tech-intelligence-hub/pull/250) | 当前 `main@9b9c1cf590ab4e881f9b12bc52a34b3642861b6c`；定向回归 476 项、独立审核及 1,320 组校验行为对比通过；[主干 CI 41328016802](https://github.com/hzense/tech-intelligence-hub/actions/runs/41328016802) 成功；生产部署 `dpl_DeCBs1HDZND4VKT8nS4MfpG8LhLJ` READY，`hzense.com` 别名指向此提交，本地已同步 |
+| 交付                                                                | 合并与核对结果                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [PR #248](https://github.com/hzense/tech-intelligence-hub/pull/248) | `e2581af06c518b6bec5a8661bd7fa9025af2fabc`；[主干 CI 41265488915](https://github.com/hzense/tech-intelligence-hub/actions/runs/41265488915) 成功；当时生产部署 `dpl_3n8B2sWvFdsiBYMp5gVsNLLiPv1K` READY，域名已核对                                                                                                     |
+| [PR #249](https://github.com/hzense/tech-intelligence-hub/pull/249) | `44a7aa96a9e94b3457f6b4099fa554758223175b`；定向回归 438 项、独立审核及 [主干 CI 41322782146](https://github.com/hzense/tech-intelligence-hub/actions/runs/41322782146) 通过；当时生产部署 `dpl_92bgm6vhxZFk32zQE9hy9LcUu9wL` READY，域名已核对                                                                         |
+| [PR #250](https://github.com/hzense/tech-intelligence-hub/pull/250) | 合并提交 `9b9c1cf590ab4e881f9b12bc52a34b3642861b6c`；定向回归 476 项、独立审核及 1,320 组校验行为对比通过；[主干 CI 41328016802](https://github.com/hzense/tech-intelligence-hub/actions/runs/41328016802) 成功；当时生产部署 `dpl_DeCBs1HDZND4VKT8nS4MfpG8LhLJ` READY，`hzense.com` 别名当时指向此提交，本地同步已核对 |
+| [PR #251](https://github.com/hzense/tech-intelligence-hub/pull/251) | `7adeb4d5d3cef1172f4cb503b3a4e571cfaa507b`；独立代码／SQL 审核和 [主干 CI 41333562134](https://github.com/hzense/tech-intelligence-hub/actions/runs/41333562134) 通过；生产部署 `dpl_G84b11LeJFvyTVk2xuep9XNBX8ng` READY，`hzense.com`、`www.hzense.com` 别名均已核对                                                   |
 
 - `topic-plan` 只读生成完整计划；`topic-apply` 仅使用独立 `hzense_topic_sync` 写入；`topic-verify` 只读比较完整投影。
 - 保留 main／CI、运行绑定审批、备份和恢复证据门禁。审批须确认维护与发布冻结，未失效依赖封印非零或写入期间封印总数变化时停止。
@@ -93,13 +94,40 @@ Reset 最终确认返回时，弹窗已关闭，供应商显示更新时间 `202
 
 这四项与原审阅计划一致。成功运行的 `planFingerprint` 对应本次写入前的计划，独立连接核验及最终无差异检查已包含在同一执行器中，不再为重复核对新增生产审批。
 
-## 线上验收与后续边界
+## 权限阻断定位与修复
 
-- 登录后生成任务列表成功读取 28 条既有任务，手动刷新显示“未调用 AI”。在三条既有候选上抽查信号管理页面，均无法读取发布信息；浏览器 Network 对同源只读请求确认 `503`／`{"error":"unavailable"}`。因此没有将页面验收记为通过，也没有把地址栏直接访问受保护 API 得到的 `403` 误当成同源读取结果。
-- Neon 生产 `main`／`hzense` 中，以 `hzense_migrator` 执行单条只读 SELECT 再次确认启用 Topic 为 47 项。`hzense_editorial_writer` 的 `editorial_signal_revisions.publication_basis` SELECT／INSERT 和 `signal_generation_runs.snapshot` SELECT 均为 false；`hzense_editorial_reader` 的公开视图 `publication_basis` SELECT 为 true。
+- 登录后生成任务列表成功读取 28 条既有任务，手动刷新显示“未调用 AI”。在三条既有候选上抽查信号管理页面，均无法读取发布信息；浏览器 Network 对同源只读请求确认 `503`／`{"error":"unavailable"}`。这是授权前的故障快照，当时没有将页面验收记为通过，也没有把地址栏直接访问受保护 API 得到的 `403` 误当成同源读取结果。
+- 授权前，在 Neon 生产 `main`／`hzense` 中，以 `hzense_migrator` 执行单条只读 SELECT 再次确认启用 Topic 为 47 项。`hzense_editorial_writer` 的 `editorial_signal_revisions.publication_basis` SELECT／INSERT 和 `signal_generation_runs.snapshot` SELECT 均为 false；`hzense_editorial_reader` 的公开视图 `publication_basis` SELECT 为 true。
 - 根因链路：`0032` 新建发布依据列但不授予权限；`readEditorialSignal()` 调用 `hasPublicationBasis()`，遇到“列存在但不能读取”主动拒绝，随后被映射为 `database_unavailable`／`unavailable`。这与 Topic 数据同步成功并不矛盾；不能把未知发布依据降级伪装为人工确认。
-- 用户已授权通过新受保护维护入口，只给 writer 增加上述三项列能力，reader 既有权限保持。该增量允许 writer 读取完整生成快照，并在触发器及应用策略仍满足时写入发布依据，不是仅一个显示标签权限；本轮仍不启用自动发布、不调用 AI、不重放历史任务。升级需经过独立 SQL／代码审核、隔离数据库测试、运行绑定审批和写后独立核验；当前尚未执行生产授权。
+- 用户已授权通过新受保护维护入口，只给 writer 增加上述三项列能力，reader 既有权限保持。该增量允许 writer 读取完整生成快照，并在触发器及应用策略仍满足时写入发布依据，不是仅一个显示标签权限；本轮仍不启用自动发布、不调用 AI、不重放历史任务。独立 SQL／代码审核、隔离数据库测试、运行绑定审批和写后独立核验均已完成，正式结果见下表。
 - 已实现 `editorial-capability-plan`／`editorial-capability-grant`，固定增量 SQL SHA-256 为 `14304aa16b84e8f3598eac1bee0e51faefb0865aa834e669715247e30827502e`。隔离 PostgreSQL 18／pgvector 0.8.6 的新测试文件 50 项通过，覆盖完整执行器计划→授权→独立新连接核验、reader 不变、部分权限拒绝及失败回滚；生产 TLS／目标和 GitHub 门禁由独立单元测试覆盖，不把本地 fixture 冒充生产核验。独立评审发现并修正维护入口回调透传遗漏，补齐写后 ACL 指纹回执，复审无未解决阻断。
-- **仍待完成：** 权限升级后重新只读核对页面 `topicOptions` 为 47 项且包含全部 10 个一级领域；该入口与采集前置检查共用目录读取函数。
+- 权限升级后的页面验收已完成：领域选择框显示 47 项，包含全部 10 个一级领域；该入口与采集前置检查共用目录读取函数。
 - 目录读取每次查询数据库，接口禁止缓存；重新打开候选或刷新页面即可，不因本次数据同步另行部署。自动采集旧失败详情保留原 `discoveryMissingTopics`，它是历史回执，不会随目录修复被改写。
 - 本轮没有重跑付费采集、生成或发布。下一次正常计划或另行授权的真实采集回执才能证明后续联网发现、原文导入、候选生成及按策略发布的完整结果。
+
+## 发布角色升级回执与最终验收
+
+| 项目       | 结果                                                                                                                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 只读计划   | [41334109163](https://github.com/hzense/tech-intelligence-hub/actions/runs/41334109163)，两次 ACL 样本一致，writer 精确缺少 3 项列能力，独立离线审核通过          |
+| 正式授权   | [41338324347](https://github.com/hzense/tech-intelligence-hub/actions/runs/41338324347)，attempt 1，`2026-11-01T18:47:53.4803799Z` 返回成功，`18:47:56Z` 运行结束 |
+| 绑定提交   | `7adeb4d5d3cef1172f4cb503b3a4e571cfaa507b`；新审批与本次运行、尝试编号、提交、SQL、计划和有效期精确绑定                                                           |
+| 精确授权   | `hzense_editorial_writer`：`editorial_signal_revisions.publication_basis` 的 SELECT／INSERT，以及 `signal_generation_runs.snapshot` 的 SELECT                     |
+| 提交状态   | `writerGrantedCount:3`、`committed:true`、`roleUpgradeCompleted:true`、`verificationCompleted:true`                                                               |
+| 独立核验   | 提交后新建独立 owner 连接核对角色、完整 ACL 和完整 Schema；33 项迁移、58 张表                                                                                     |
+| 权限边界   | `readerUnchanged:true`；排除已批准三项增量后的 ACL 指纹与授权前一致，其他角色和设置保持不变                                                                       |
+| 浏览器验收 | `2026-11-01T18:54:13.929Z`，重新登录后只读打开原失败候选页，编辑表单恢复，47 个领域包含全部 10 个一级领域，不再显示“无法读取发布信息”                             |
+| 状态保护   | 抽查候选仍显示“已撤回 · 不会自动重新发布”；未点击保存、发布、生成或采集操作                                                                                       |
+
+| 指纹           | 值                                                                 |
+| -------------- | ------------------------------------------------------------------ |
+| 权限计划       | `b08f2698977db0deb65114a7fc95ac0f7fda289e715247b6909a632a900dff17` |
+| 迁移清单       | `6a86c2bc8549113a47e9829d3e46914a0cb039e8376aa96e74070cc4c2ad8dab` |
+| 授权 SQL       | `14304aa16b84e8f3598eac1bee0e51faefb0865aa834e669715247e30827502e` |
+| 授权前完整 ACL | `fb6853ec5f0588386dd7c00348a91869d565e6541b84f11a7bf0f0a46be62b74` |
+| 授权后完整 ACL | `a0eda0421f01ea745fdb9b3b95cc18b86cad63acad7c853a74e9058666a2772f` |
+| 未变更范围 ACL | `0a155560a0816f28d3d9e0f975f09c145735d0b3a024859afbdbb5ba5541daa2` |
+
+计划、正式回执、运行绑定、独立审核和脱敏页面验收另存于同一私有证据目录；不修改原封存的 44 文件恢复清单。正式回执独立审核为 PASS，审核文件 SHA-256 为 `5c2332f315b09ebd507172a921fd25ec06fadb279dc9aee235ebcaa7f1ac823f`。GitHub 对 JSON 外层结构括号产生掩码，归档仅恢复固定外层括号，未还原任何被遮盖的字段值；审核保留这一传输限制。浏览器验收记录的是表单和目录实际可读，不声称另行采集了该次请求的 HTTP 状态码。
+
+本次维护核验已完成，可解除维护冻结；原备份继续保留，隔离分支按既定到期时间自动过期。没有追加重复生产核验审批，也未开启自动发布或重跑收费任务。旧失败任务保留历史结果，下一次正常计划任务的回执用于确认完整联网采集链路。

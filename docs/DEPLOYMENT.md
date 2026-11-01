@@ -208,6 +208,10 @@ CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当�
 
 执行器在写入前和提交前再次验证当前 `main`、CI 与审批期限。若失败结果包含 `roleUpgradeMayHaveCommitted: true`，先执行只读计划核对实际权限，不能直接重试授权。Grant 内的独立连接核验通过后，再从线上候选页面只读确认发布材料和领域选项可加载；无需额外重跑付费 AI 或点击发布来验收权限。
 
+**2026-11-01 执行结果：** [PR #251](https://github.com/hzense/tech-intelligence-hub/pull/251) 已合并为 `main@7adeb4d5d3cef1172f4cb503b3a4e571cfaa507b`，对应 CI 和 Production 部署通过。[只读计划 41334109163](https://github.com/hzense/tech-intelligence-hub/actions/runs/41334109163) 完成双采样并经独立复审；[正式授权 41338324347](https://github.com/hzense/tech-intelligence-hub/actions/runs/41338324347) 于 `18:47:53Z` 成功增补上述三项 writer 能力。回执为 `committed:true`、`roleUpgradeCompleted:true`、`verificationCompleted:true`、`readerUnchanged:true`；独立新连接核对 reader 及其他 ACL 不变，完整 Schema 仍为 33 项迁移、58 张表。升级后 ACL 指纹单独保存，未用升级前基线替代。
+
+`18:54:13.929Z` 的线上只读候选页面验收确认表单正常，47 个可选领域包含全部 10 个一级领域，缺失 0 项，既有“已撤回”状态保持且无发布信息读取错误。维护验收完成，可解除本次维护冻结；完整备份 `pre-topic-catalog-0032-20261101` 继续按 Never 保留，演练分支仍按 `2026-11-02T14:24:40Z` 自动过期。本轮没有付费重跑、发布信号或修改开关；安全回执、独立复审和页面观察见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)。
+
 ### 首次安装与独立 CLI
 
 首次生产同步必须严格按以下顺序执行：
