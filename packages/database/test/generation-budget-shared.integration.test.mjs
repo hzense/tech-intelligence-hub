@@ -29,6 +29,7 @@ const limits = { batchLimitMicrousd: 100, dailyLimitMicrousd: 100 };
 let admin, pool, rolePool;
 let databaseCreated = false;
 let roleCreated = false;
+const connectionsClosed = [];
 
 async function generation(status, reserve, charged, nextReserve = 10) {
   const id = randomUUID();
@@ -88,6 +89,11 @@ suite('generation and enrichment share settled budgets with existing column perm
     const url = new URL(adminUrl);
     url.pathname = `/${name}`;
     pool = new pg.Pool({ connectionString: url.toString() });
+    // release(true) removes a client from pg-pool before its socket finishes
+    // closing. pool.end() alone can therefore race with DROP DATABASE FORCE.
+    pool.on('connect', (client) => {
+      connectionsClosed.push(new Promise((resolve) => client.once('end', resolve)));
+    });
     for (const migration of [
       '0015_signal_generation.sql',
       '0018_generation_task_visibility.sql',
@@ -125,6 +131,7 @@ suite('generation and enrichment share settled budgets with existing column perm
   });
   afterAll(async () => {
     await pool?.end();
+    await Promise.all(connectionsClosed);
     if (databaseCreated) await admin.query(`DROP DATABASE "${name}" WITH (FORCE)`);
     if (roleCreated) await admin.query(`DROP ROLE "${name}"`);
     await admin?.end();
