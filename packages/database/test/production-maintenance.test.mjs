@@ -16,6 +16,10 @@ import {
 } from '../../../.github/scripts/production-maintenance.mjs';
 import { maintenanceWorkflowProblems } from '../../../.github/scripts/maintenance-workflow-contract.mjs';
 import { TopicMaintenanceError } from '../../../.github/scripts/topic-maintenance.mjs';
+import {
+  EditorialCapabilityMaintenanceError,
+  editorialCapabilityRoleUpgradeSha256,
+} from '../../../.github/scripts/editorial-capability-maintenance.mjs';
 
 const now = Date.parse('2026-09-07T10:00:00Z');
 const backupId = 'protected-backup-20260907';
@@ -44,6 +48,153 @@ const ciRun = {
   status: 'completed',
   conclusion: 'success',
 };
+
+describe('writer-only editorial capability hosted approval', () => {
+  const approved = (changes = {}) =>
+    writeEnvironment('editorial-capability-grant', {
+      recoveryPolicy: 'verified',
+      roleUpgradeApproved: true,
+      publicationFreezeConfirmed: true,
+      roleUpgradeSha256: editorialCapabilityRoleUpgradeSha256,
+      writerMissingCount: 3,
+      unchangedAclFingerprint: 'c'.repeat(64),
+      manifestFingerprint: 'f'.repeat(64),
+      targetFingerprint: 'd'.repeat(64),
+      ...changes,
+    });
+  it('accepts only a fresh run-bound verified recovery declaration for the exact upgrade', () => {
+    expect(validateMaintenanceRequest(approved(), now).operation).toBe(
+      'editorial-capability-grant',
+    );
+    expect(
+      validateMaintenanceRequest(approved({ writerMissingCount: 0 }), now).approval
+        .writerMissingCount,
+    ).toBe(0);
+    expect(
+      validateMaintenanceRequest(
+        { ...env, MAINTENANCE_OPERATION: 'editorial-capability-plan' },
+        now,
+      ),
+    ).toEqual({ operation: 'editorial-capability-plan' });
+  });
+  it.each(['editorial-capability-plan', 'editorial-capability-grant'])(
+    'passes live approval and freshness callbacks through the hosted %s entry point',
+    async (operation) => {
+      const request =
+        operation === 'editorial-capability-grant'
+          ? approved()
+          : { ...env, MAINTENANCE_OPERATION: operation };
+      const fetchImpl = successfulFetch()
+        .mockResolvedValueOnce(response(reference))
+        .mockResolvedValueOnce(response({ workflow_runs: [ciRun] }))
+        .mockResolvedValueOnce(response(reference));
+      const clock = vi.fn(() => now);
+      const execute = vi.fn(async (executionEnv, validatedRequest, context) => {
+        expect(executionEnv.GH_TOKEN).toBeUndefined();
+        expect(validatedRequest.operation).toBe(operation);
+        expect(context.checkApproval()).toEqual(validatedRequest);
+        await context.checkFreshness();
+        return { verificationCompleted: false, committed: false };
+      });
+      const result = await runMaintenance(request, execute, { fetchImpl, now: clock });
+      expect(result).toMatchObject({ operation, status: 'succeeded', committed: false });
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(fetchImpl).toHaveBeenCalledTimes(6);
+      expect(clock).toHaveBeenCalledTimes(5);
+    },
+  );
+  it.each([
+    { roleUpgradeApproved: false },
+    { publicationFreezeConfirmed: false },
+    { roleUpgradeSha256: 'f'.repeat(64) },
+    { roleUpgradeSha256: undefined },
+    { writerMissingCount: 1 },
+    { writerMissingCount: 2 },
+    { writerMissingCount: '3' },
+    { unchangedAclFingerprint: undefined },
+    { manifestFingerprint: undefined },
+    { targetFingerprint: undefined },
+    { planFingerprint: undefined },
+    { aclFingerprint: undefined },
+    { restoreEvidenceFingerprint: undefined },
+    { restoreRehearsed: false },
+    { aclRecoveryReviewed: false },
+    { backupVerified: false },
+    { ddlFreezeConfirmed: false },
+    { sha: 'f'.repeat(40) },
+    { runId: 'old-run' },
+    { runAttempt: '2' },
+    { expiresAt: '2026-09-07T09:00:00Z' },
+    { expiresAt: '2026-09-09T11:00:00Z' },
+    { backupIdSha256: 'f'.repeat(64) },
+    { recoveryPolicy: 'accept-unverified-fts1' },
+  ])('refuses incomplete or stale writer capability binding %j', (changes) => {
+    expect(() => validateMaintenanceRequest(approved(changes), now)).toThrow();
+  });
+  it('only exposes fixed counts, booleans and digests in the hosted success DTO', () => {
+    const result = publicMaintenanceResult('editorial-capability-grant', {
+      writerMissingCount: 3,
+      writerGrantedCount: 3,
+      readerUnchanged: true,
+      unchangedAclFingerprint: 'c'.repeat(64),
+      verifiedAclFingerprint: 'b'.repeat(64),
+      migrationCount: 33,
+      tableCount: 58,
+      committed: true,
+      verificationCompleted: true,
+      roleUpgradeCompleted: true,
+      privateUrl: 'postgresql://secret@private/db',
+      sql: 'GRANT ALL',
+      roleStateFingerprint: 'private',
+      readerPassword: 'private',
+    });
+    expect(result).toMatchObject({
+      operation: 'editorial-capability-grant',
+      status: 'succeeded',
+      writerMissingCount: 3,
+      writerGrantedCount: 3,
+      readerUnchanged: true,
+      previewOnly: false,
+      committed: true,
+      verificationCompleted: true,
+      roleUpgradeCompleted: true,
+    });
+    expect(JSON.stringify(result)).not.toMatch(/private|postgres|GRANT/);
+    const invalid = publicMaintenanceResult('editorial-capability-plan', {
+      writerMissingCount: '3',
+      writerGrantedCount: 2,
+      readerUnchanged: 'true',
+      unchangedAclFingerprint: 'private',
+      verifiedAclFingerprint: 'private',
+      previewOnly: false,
+    });
+    expect(invalid).toEqual({
+      operation: 'editorial-capability-plan',
+      status: 'succeeded',
+      previewOnly: true,
+    });
+  });
+  it('keeps uncertain commits explicit while suppressing provider error text', () => {
+    const error = new EditorialCapabilityMaintenanceError(
+      Object.assign(new Error('postgresql://private:secret@private/db SQL private-data'), {
+        code: '08006',
+      }),
+      'editorial-capability-grant',
+      true,
+      'commit',
+    );
+    const result = publicMaintenanceFailure(error);
+    expect(result).toMatchObject({
+      status: 'blocked',
+      operation: 'editorial-capability-grant',
+      phase: 'commit',
+      roleUpgradeMayHaveCommitted: true,
+      roleUpgradeCompleted: false,
+      verificationCompleted: false,
+    });
+    expect(JSON.stringify(result)).not.toMatch(/private|postgres|secret|SQL/);
+  });
+});
 function response(body, status = 200) {
   return { status, json: async () => body };
 }
@@ -725,10 +876,22 @@ describe('execution-time GitHub freshness check', () => {
               'legacy-signal-apply',
               'unified-signal-apply',
               'topic-apply',
+              'editorial-capability-grant',
             ].includes(operation)
           ? writeEnvironment(operation, {
               publicArchiveApproved: true,
               archiveRepository: 'hzense/tech-intelligence-hub',
+              ...(operation === 'editorial-capability-grant'
+                ? {
+                    roleUpgradeApproved: true,
+                    publicationFreezeConfirmed: true,
+                    roleUpgradeSha256: editorialCapabilityRoleUpgradeSha256,
+                    writerMissingCount: 3,
+                    unchangedAclFingerprint: 'c'.repeat(64),
+                    targetFingerprint: 'd'.repeat(64),
+                    manifestFingerprint: 'f'.repeat(64),
+                  }
+                : {}),
               ...(operation === 'topic-apply'
                 ? {
                     publicationFreezeConfirmed: true,

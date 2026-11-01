@@ -191,7 +191,22 @@ CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当�
 
 维护失败响应使用固定白名单 `phase` 和 `reason` 定位连接校验、认证、权限预检、事务或独立核验阶段；不输出原始异常、连接串、SQL 或动态对象名。本地连接校验器提供固定字段原因码，维护边界仅接受该错误类型及白名单码：`connection-port-required` 表示未显式填写端口，`connection-host-mismatch`／`connection-port-mismatch` 表示目标地址字段不匹配，`connection-database-mismatch`／`connection-user-mismatch` 表示数据库名或账号不匹配。原校验规则及错误消息保持不变，未知原因仍停止执行。`topicSyncMayHaveCommitted: false` 仅表示尚未发送被跟踪的 `COMMIT`，不能据此判断是否已认证或执行事务内 DML；值为 `true` 时必须先只读对账，不能直接重跑写入。
 
-2026-11-01 的故障取证与执行状态见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)。基础维护入口已通过 PR #248 上线，0032 已迁移；首次 Topic 同步在提交前失败，尚未完成目录更新。阶段诊断已通过 PR #249 上线，随后只读运行定位到专用连接地址校验阶段，尚未进入认证或权限预检。只读确认专用角色存在、封印数为零或本地回归通过，均不能替代执行时的精确 ACL／计划检查和独立生产验收；本轮未调用付费 AI。
+2026-11-01 的故障取证与执行状态见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)。维护入口及脱敏诊断已通过 PR #248、#249、#250 上线，0032 已迁移。修正专用连接地址后，[正式 Topic 同步](https://github.com/hzense/tech-intelligence-hub/actions/runs/41330016210)成功更新 42 项、保留 20 项；62 项目录中启用 47 项，覆盖全部 10 个一级领域。执行器已通过独立新连接验证完整投影及无剩余变更。本轮未调用付费 AI，真实采集结果仍须观察之后的正常计划或另行授权运行。
+
+### 0032 后的发布写入角色增量授权
+
+`0032` 增加 `publication_basis` 列但不自动授予应用权限。旧写入角色在新 Schema 下会被精确权限检查拒绝，候选发布信息因此可能返回 503。修复通过 `Production maintenance` 的以下两个操作进行，不能重新执行首次安装的广泛角色初始化脚本。
+
+| 操作                         | 行为                                                                                                | 成功含义                                                                  |
+| ---------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `editorial-capability-plan`  | 现有维护连接执行完整 Schema 核验，并在两个独立只读事务中检查角色和完整 ACL，生成权限计划指纹        | 确认现有 reader 已就绪，writer 缺少恰好三项能力（或已完整升级）；没有授权 |
+| `editorial-capability-grant` | 在迁移锁内重算并匹配计划，执行固定 SHA 的增量 SQL；提交后以全新连接独立核验角色、完整 ACL 和 Schema | 三项能力均生效，reader 及其他权限保持不变；不是自动发布开关已开启         |
+
+固定脚本为 [`upgrade_editorial_publication_writer.sql`](../db/roles/upgrade_editorial_publication_writer.sql)，只向 `hzense_editorial_writer` 增加 `editorial_signal_revisions.publication_basis` 的 `SELECT`／`INSERT` 和 `signal_generation_runs.snapshot` 的 `SELECT`。最后一项允许读取完整任务快照，包含私有输入与配置；它仅授予发布写入角色，不授予公开读取角色。脚本不创建角色、不设置密码、不改数据、默认权限或开关。发现部分升级、额外权限、reader 缺失能力或非预期 Schema 时停止。
+
+两个入口均要求当前 `main` 的 CI 和 GitHub 环境审批，沿用已有维护连接与备份标识，不增加凭据。Grant 还要求本次运行、提交、次数、期限、备份／恢复证据和新采集 ACL 基线的精确绑定，以及 `roleUpgradeApproved: true`、`publicationFreezeConfirmed: true`；绑定字段包括 `manifestFingerprint`、`targetFingerprint`、`roleUpgradeSha256`、`aclFingerprint`、`unchangedAclFingerprint`、`writerMissingCount` 和 `planFingerprint`。不复用迁移或 Topic 同步的审批 JSON，也不能把升级前 ACL 当作升级后基线。保留的维护窗口起始备份只能标注为整个维护窗口的恢复点，不能声称它是授权前的最新快照。
+
+执行器在写入前和提交前再次验证当前 `main`、CI 与审批期限。若失败结果包含 `roleUpgradeMayHaveCommitted: true`，先执行只读计划核对实际权限，不能直接重试授权。Grant 内的独立连接核验通过后，再从线上候选页面只读确认发布材料和领域选项可加载；无需额外重跑付费 AI 或点击发布来验收权限。
 
 ### 首次安装与独立 CLI
 
