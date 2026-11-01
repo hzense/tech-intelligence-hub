@@ -169,6 +169,30 @@ CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当�
 
 同步器默认执行不持久化的 dry run：在一个事务中计算 source fingerprint 与 plan fingerprint，执行拟议 DML 与写后校验，随后强制回滚。Source fingerprint 只绑定权威投影；plan fingerprint 还绑定当前数据库托管字段与 insert/update/no-op 行集。Apply 才提交同一事务；两种模式均复用 Migration advisory lock，只允许 insert/update。Apply 在取得 advisory lock 与 `topics` table lock 后、任何写入前重新计算并精确匹配两个 fingerprint。发现 PostgreSQL 中存在 Taxonomy 之外的 Topic ID，或 dry run 后输入/数据库漂移导致计划改变时，立即 fail closed；绝不 delete、truncate、自动 archived 或接管未知数据。
 
+### 受保护的 Topic 维护入口（2026-11-01）
+
+本次改动在 `Production maintenance` 工作流中增加三个操作，修复普通部署不会同步生产 Topic 目录的缺口。它们仍只接受已合并的当前 `main`，要求同一提交的 CI 成功，并通过 `production-maintenance` 环境审批；与其他维护操作串行执行。
+
+| 操作           | 行为与凭据                                                                                                                                                 | 成功含义                                                                               |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `topic-plan`   | 使用现有维护连接，在只读事务中检查 Schema、迁移记录和当前 Topic 投影，生成权威来源、数据计划、目标及迁移清单指纹；检查专用角色是否存在                     | 取得待审核的差异和前置条件，不代表已同步或可以跳过写入审批                             |
+| `topic-apply`  | 使用独立 `hzense_topic_sync` 连接，在锁内重新核对审批绑定的来源与计划，只插入／更新权威 Topic 数据；提交后另建连接只读核验完整投影，并确认剩余计划为 no-op | 同步提交与独立核验均通过；若提交后连接或核验失败，必须按“可能已提交”处理，不能直接重跑 |
+| `topic-verify` | 用专用角色独立只读核对全部权威行、字段、指纹和无剩余变更                                                                                                   | 当前数据库投影与当前仓库一致，不执行同步或调用 AI                                      |
+
+当前权威目录含 **62 个节点、47 个启用项和 10 个一级领域**。以上数字来自当前仓库，不是允许数据库保留额外未知 Topic 的配额。执行前须完成内容校验及完整 Schema 核验；数据库存在未知 ID、源目录变化、计划变化或迁移未完成时应停止。
+
+2026-11-01 的 Neon SQL Editor 只读核对发现：生产 `hzense` 仅登记 32 项迁移，最新为 `0031_retire_unused_tables.sql`；当前仓库契约要求包含 `0032_automatic_signal_publication.sql` 的 33 项迁移。因此连只读 `topic-plan` 也会因待迁移项阻断，必须先按标准受保护流程授权、执行并验证 `0032`。本轮尚未获得该迁移的生产写入授权。`0032` 仅准备自动发布能力所需结构，不包含角色授权、历史任务重放、信号发布或开关修改；完成迁移仍不等于开启自动发布或完成 Topic 同步。
+
+`topic-plan` 不执行 DML，也不运行旧 CLI 的回滚式 dry-run。`topic-apply` 继续使用已有运行绑定 `MAINTENANCE_APPROVAL`、`MAINTENANCE_BACKUP_ID`、审批期限、维护冻结与已验证备份／恢复证据，另外绑定本次计划的来源、计划、目标和迁移清单指纹。不得复用历史运行的审批或将旧备份冒充本次备份。写入前和提交前再次检查审批与当前 main／CI；凭据不进入准备、安装和构建步骤。
+
+生产环境需单独配置 `HZENSE_TOPIC_SYNC_DATABASE_URL`，账号固定为 `hzense_topic_sync`，连接数上限为 2。目标 host、port 和 database 取已独立审核的维护目标配置，不能从 URL 反推“期望值”。Migrator 连接仅用于只读结构核验和计划，不代替专用同步角色执行 DML。若角色或精确 ACL 尚未就绪，应单独处理；三个操作不会创建角色、设密码或更改权限，也不得为了修复数据重复执行下方首次安装的广泛 ACL 初始化脚本。
+
+`topics` 的更新触发器可能使旧 qualified publication 的核验依赖封印失效。计划会统计未失效封印，存在任何未失效封印时阻止本次写入，需先独立评估影响。Apply 审批还须包含 `publicationFreezeConfirmed: true`：维护期间暂停独立候选核验和 qualified publication；写入前后封印总数变化也会阻断事务。不能用管理员权限绕过触发器或声称领域同步完全不影响业务。目录同步本身不重跑自动采集、不重放生成或发布、不修改历史费用。成功后还需从线上后台核对领域选项与采集前置检查，另行观察正常计划的真实结果。
+
+2026-11-01 的故障取证与执行状态见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)；本次维护入口修改尚未上线，未写生产、未调用付费 AI，当前文档不代表生产同步已经完成。只读确认专用角色存在、封印数为零或本地回归通过，均不能替代执行时的精确 ACL／计划检查和独立生产验收。
+
+### 首次安装与独立 CLI
+
 首次生产同步必须严格按以下顺序执行：
 
 1. 固定已合并的 `main` commit，完成 Taxonomy → Seed → Content 校验，并记录该输入生成的 source fingerprint。
