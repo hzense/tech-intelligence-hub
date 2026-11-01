@@ -943,6 +943,8 @@ describe('topic synchronization protected gates', () => {
       expect(publicMaintenanceFailure(error)).toEqual({
         status: 'blocked',
         gate: 'unavailable',
+        phase: 'initialization',
+        reason: 'unavailable',
         operation: 'topic-apply',
         topicSyncMayHaveCommitted: committed,
         verificationCompleted: false,

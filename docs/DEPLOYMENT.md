@@ -181,15 +181,17 @@ CI 同时支持 GitHub Actions 的 `workflow_dispatch` 手动触发入口。当�
 
 当前权威目录含 **62 个节点、47 个启用项和 10 个一级领域**。以上数字来自当前仓库，不是允许数据库保留额外未知 Topic 的配额。执行前须完成内容校验及完整 Schema 核验；数据库存在未知 ID、源目录变化、计划变化或迁移未完成时应停止。
 
-2026-11-01 的 Neon SQL Editor 只读核对发现：生产 `hzense` 仅登记 32 项迁移，最新为 `0031_retire_unused_tables.sql`；当前仓库契约要求包含 `0032_automatic_signal_publication.sql` 的 33 项迁移。因此连只读 `topic-plan` 也会因待迁移项阻断，必须先按标准受保护流程授权、执行并验证 `0032`。本轮尚未获得该迁移的生产写入授权。`0032` 仅准备自动发布能力所需结构，不包含角色授权、历史任务重放、信号发布或开关修改；完成迁移仍不等于开启自动发布或完成 Topic 同步。
+2026-11-01 最初的 Neon SQL Editor 只读核对发现生产仅登记 32 项迁移，缺少 `0032_automatic_signal_publication.sql`，因此完整 Schema 门禁阻止 Topic 操作。随后经授权的 [0032 迁移](https://github.com/hzense/tech-intelligence-hub/actions/runs/41317293957) 已成功，独立 [topic-plan](https://github.com/hzense/tech-intelligence-hub/actions/runs/41318093575) 完成完整 Schema 核验，确认 33 项迁移、58 张表。`0032` 仅准备自动发布能力所需结构，不包含角色授权、历史任务重放、信号发布或开关修改；完成迁移仍不等于开启自动发布或完成 Topic 同步。
 
 `topic-plan` 不执行 DML，也不运行旧 CLI 的回滚式 dry-run。`topic-apply` 继续使用已有运行绑定 `MAINTENANCE_APPROVAL`、`MAINTENANCE_BACKUP_ID`、审批期限、维护冻结与已验证备份／恢复证据，另外绑定本次计划的来源、计划、目标和迁移清单指纹。不得复用历史运行的审批或将旧备份冒充本次备份。写入前和提交前再次检查审批与当前 main／CI；凭据不进入准备、安装和构建步骤。
 
-生产环境需单独配置 `HZENSE_TOPIC_SYNC_DATABASE_URL`，账号固定为 `hzense_topic_sync`，连接数上限为 2。目标 host、port 和 database 取已独立审核的维护目标配置，不能从 URL 反推“期望值”。Migrator 连接仅用于只读结构核验和计划，不代替专用同步角色执行 DML。若角色或精确 ACL 尚未就绪，应单独处理；三个操作不会创建角色、设密码或更改权限，也不得为了修复数据重复执行下方首次安装的广泛 ACL 初始化脚本。
+生产环境需单独配置 `HZENSE_TOPIC_SYNC_DATABASE_URL`，账号固定为 `hzense_topic_sync`，连接数上限为 2；必须使用直连地址、显式端口和 `sslmode=verify-full`，不能使用 `sslmode=require`。目标 host、port 和 database 取已独立审核的维护目标配置，不能从 URL 反推“期望值”。Migrator 连接仅用于只读结构核验和计划，不代替专用同步角色执行 DML。若角色或精确 ACL 尚未就绪，应单独处理；三个操作不会创建角色、设密码或更改权限，也不得为了修复数据重复执行下方首次安装的广泛 ACL 初始化脚本。
 
 `topics` 的更新触发器可能使旧 qualified publication 的核验依赖封印失效。计划会统计未失效封印，存在任何未失效封印时阻止本次写入，需先独立评估影响。Apply 审批还须包含 `publicationFreezeConfirmed: true`：维护期间暂停独立候选核验和 qualified publication；写入前后封印总数变化也会阻断事务。不能用管理员权限绕过触发器或声称领域同步完全不影响业务。目录同步本身不重跑自动采集、不重放生成或发布、不修改历史费用。成功后还需从线上后台核对领域选项与采集前置检查，另行观察正常计划的真实结果。
 
-2026-11-01 的故障取证与执行状态见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)；本次维护入口修改尚未上线，未写生产、未调用付费 AI，当前文档不代表生产同步已经完成。只读确认专用角色存在、封印数为零或本地回归通过，均不能替代执行时的精确 ACL／计划检查和独立生产验收。
+维护失败响应使用固定白名单 `phase` 和 `reason` 定位连接校验、认证、权限预检、事务或独立核验阶段；不输出原始异常、连接串、SQL 或动态对象名。`topicSyncMayHaveCommitted: false` 仅表示尚未发送被跟踪的 `COMMIT`，不能据此判断是否已认证或执行事务内 DML；值为 `true` 时必须先只读对账，不能直接重跑写入。
+
+2026-11-01 的故障取证与执行状态见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)。基础维护入口已通过 PR #248 上线，0032 已迁移；首次 Topic 同步在提交前失败，尚未完成目录更新。本次阶段诊断修复仍待提交上线。只读确认专用角色存在、封印数为零或本地回归通过，均不能替代执行时的精确 ACL／计划检查和独立生产验收；本轮未调用付费 AI。
 
 ### 首次安装与独立 CLI
 
