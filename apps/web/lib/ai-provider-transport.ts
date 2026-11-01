@@ -2,6 +2,12 @@ import { Resolver } from 'node:dns/promises';
 import { request as httpsRequest, type RequestOptions } from 'node:https';
 import { BlockList, isIP } from 'node:net';
 import { Buffer } from 'node:buffer';
+import { readApiCostMicrousd } from './ai-response-cost.ts';
+import {
+  parseAiProbeDiagnostics,
+  aiProbeRejectedStatuses,
+  type AiProbeDiagnosticReason,
+} from '../../../packages/database/src/ai-probe-diagnostics.mjs';
 
 export const aiProbeErrorCodes = [
   'invalid_configuration',
@@ -20,7 +26,12 @@ export type AiProbeErrorCode = (typeof aiProbeErrorCodes)[number];
 export class AiProbeError extends Error {
   readonly code: AiProbeErrorCode;
   readonly httpStatus: number | undefined;
-  constructor(code: AiProbeErrorCode, httpStatus?: number) {
+  declare readonly reason?: AiProbeDiagnosticReason;
+  declare readonly providerCostMicrousd?: number | null;
+  declare readonly rejectionConfirmed?: boolean;
+  declare readonly inputTokens?: number | null;
+  declare readonly outputTokens?: number | null;
+  constructor(code: AiProbeErrorCode, httpStatus?: number, details?: AiRejectionDetails) {
     super(code);
     this.name = 'AiProbeError';
     this.code = code;
@@ -32,12 +43,168 @@ export class AiProbeError extends Error {
       httpStatus <= 599
         ? httpStatus
         : undefined;
+    const reason = parseAiProbeDiagnostics({
+      version: 1,
+      stage: 'model_request',
+      reason: details?.reason,
+    })?.reason;
+    if (reason) this.reason = reason;
+    for (const key of ['providerCostMicrousd', 'inputTokens', 'outputTokens'] as const) {
+      const value = details?.[key];
+      if (
+        value === null ||
+        (typeof value === 'number' &&
+          Number.isSafeInteger(value) &&
+          value >= 0 &&
+          (key === 'providerCostMicrousd' || value <= 2_147_483_647))
+      )
+        this[key] = value;
+    }
+    if (typeof details?.rejectionConfirmed === 'boolean')
+      this.rejectionConfirmed = details.rejectionConfirmed;
   }
+}
+interface AiRejectionDetails {
+  reason?: AiProbeDiagnosticReason;
+  providerCostMicrousd?: number | null;
+  rejectionConfirmed?: boolean;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
 }
 const fail = (code: AiProbeErrorCode, httpStatus?: number): never => {
   throw new AiProbeError(code, httpStatus);
 };
 export const aiResponseMaximumBytes = 1_048_576;
+export const aiRejectionMaximumBytes = 16_384;
+
+function rejectionReason(status: number, body?: Record<string, unknown>): AiProbeDiagnosticReason {
+  const error = body?.error;
+  const message =
+    error && typeof error === 'object' && !Array.isArray(error)
+      ? (error as Record<string, unknown>).message
+      : error;
+  // Only classify bounded known patterns. The source text is never retained.
+  if (typeof message === 'string' && [400, 404, 422].includes(status)) {
+    if (/no (?:endpoints|providers) (?:found|available)|no matching provider/i.test(message))
+      return 'no_matching_provider';
+    if (/model[^\n]{0,160}(?:not found|does not exist|not available)/i.test(message))
+      return 'model_not_found';
+    if (
+      /(?:unsupported|unrecognized|not supported)[^\n]{0,100}(?:parameter|tool_choice|reasoning)|(?:parameter|tool_choice|reasoning)[^\n]{0,100}(?:unsupported|not supported)/i.test(
+        message,
+      )
+    )
+      return 'unsupported_parameters';
+  }
+  if (status === 401) return 'authentication_failed';
+  if (status === 402) return 'insufficient_credit';
+  if (status === 403) return 'access_denied';
+  if (status === 429) return 'rate_limited';
+  if (status >= 500) return 'provider_unavailable';
+  if ([400, 405, 413, 415, 422].includes(status)) return 'invalid_request';
+  return 'provider_rejected';
+}
+
+function unconfirmedRejection(status: number): AiProbeError {
+  return new AiProbeError('provider_rejected', status, {
+    reason: rejectionReason(status),
+    rejectionConfirmed: false,
+  });
+}
+
+function hasRecognizableError(body: Record<string, unknown>, status: number): boolean {
+  const error = body.error;
+  if (typeof error === 'string') return error.trim().length > 0;
+  if (!error || typeof error !== 'object' || Array.isArray(error)) return false;
+  const row = error as Record<string, unknown>;
+  return (
+    (typeof row.message === 'string' && row.message.trim().length > 0) ||
+    row.code === status ||
+    (typeof row.code === 'string' &&
+      [
+        'invalid_request_error',
+        'invalid_api_key',
+        'authentication_error',
+        'permission_denied',
+        'insufficient_quota',
+        'insufficient_credits',
+        'model_not_found',
+        'rate_limit_exceeded',
+        'rate_limit_error',
+      ].includes(row.code))
+  );
+}
+
+function hasContradictoryResult(body: Record<string, unknown>): boolean {
+  // A non-2xx envelope can still contain a generated answer or an ambiguous
+  // upstream result. Its presence must never be treated as proof of no work.
+  return [
+    'choices',
+    'output',
+    'outputs',
+    'message',
+    'messages',
+    'content',
+    'completion',
+    'completions',
+    'tool_calls',
+    'function_call',
+    'result',
+    'results',
+    'response',
+    'data',
+  ].some((key) => Object.hasOwn(body, key));
+}
+
+/** Probe-only summary. The complete bounded JSON is discarded after extracting
+ * fixed categories and numeric usage; neither raw text nor provider metadata escapes.
+ */
+async function summarizeRejection(
+  bytes: Uint8Array,
+  status: number,
+  url: URL,
+): Promise<AiProbeError> {
+  try {
+    if (bytes.byteLength > aiRejectionMaximumBytes) return unconfirmedRejection(status);
+    const parsed: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+      return unconfirmedRejection(status);
+    const body = parsed as Record<string, unknown>;
+    const usage = body.usage;
+    const validUsage =
+      usage === undefined || (usage !== null && typeof usage === 'object' && !Array.isArray(usage));
+    const row = validUsage && usage ? (usage as Record<string, unknown>) : {};
+    const usageKeys = ['prompt_tokens', 'completion_tokens', 'total_tokens'];
+    const tokenUsageValid = usageKeys.every(
+      (key) =>
+        row[key] === undefined || (Number.isSafeInteger(row[key]) && (row[key] as number) >= 0),
+    );
+    const knownUsageShape = Object.keys(row).every((key) => [...usageKeys, 'cost'].includes(key));
+    const positiveTokens = usageKeys.some((key) => typeof row[key] === 'number' && row[key] > 0);
+    const cost = await readApiCostMicrousd(Response.json(body), url.origin);
+    const costValid = row.cost === undefined || cost !== null;
+    const numberOrNull = (value: unknown) =>
+      Number.isSafeInteger(value) && (value as number) >= 0 ? (value as number) : null;
+    return new AiProbeError('provider_rejected', status, {
+      reason: rejectionReason(status, body),
+      providerCostMicrousd: cost,
+      inputTokens: numberOrNull(row.prompt_tokens),
+      outputTokens: numberOrNull(row.completion_tokens),
+      rejectionConfirmed:
+        aiProbeRejectedStatuses.includes(status) &&
+        hasRecognizableError(body, status) &&
+        !hasContradictoryResult(body) &&
+        validUsage &&
+        tokenUsageValid &&
+        knownUsageShape &&
+        costValid &&
+        !positiveTokens &&
+        (cost === null || cost === 0),
+    });
+  } catch {
+    return unconfirmedRejection(status);
+  }
+}
 
 function hostnameIsAllowedShape(host: string): boolean {
   return (
@@ -182,6 +349,8 @@ export interface PinnedAiRequest {
   body: string | undefined;
   apiKey: string;
   signal: AbortSignal;
+  /** Server-owned opt-in for capability probes, never supplied by the model or UI. */
+  captureRejectionDiagnostics?: boolean;
 }
 export type AiWireRequest = (request: PinnedAiRequest) => Promise<Response>;
 
@@ -243,7 +412,40 @@ export function createAiWireRequest(
           request.destroy();
         };
         if (status >= 300 && status < 400) return stop('redirect_blocked');
-        if (status < 200 || status >= 300) return stop('provider_rejected');
+        if (status < 200 || status >= 300) {
+          if (!input.captureRejectionDiagnostics) return stop('provider_rejected');
+          const uncertain = () => {
+            finish(unconfirmedRejection(status));
+            response.destroy();
+            request.destroy();
+          };
+          const length = response.headers['content-length'];
+          if (
+            !/^application\/json(?:\s*;|$)/i.test(response.headers['content-type'] ?? '') ||
+            (response.headers['content-encoding'] &&
+              response.headers['content-encoding'] !== 'identity') ||
+            (length && (!/^\d+$/.test(length) || Number(length) > aiRejectionMaximumBytes))
+          )
+            return uncertain();
+          const chunks: Buffer[] = [];
+          let bytes = 0;
+          response.on('data', (chunk: Buffer) => {
+            if (settled) return;
+            bytes += chunk.length;
+            if (bytes > aiRejectionMaximumBytes) return uncertain();
+            chunks.push(chunk);
+          });
+          response.on('error', uncertain);
+          response.on('aborted', uncertain);
+          response.on('end', () => {
+            if (settled) return;
+            if (length && bytes !== Number(length)) return uncertain();
+            void summarizeRejection(Buffer.concat(chunks), status, input.url).then((error) =>
+              finish(error),
+            );
+          });
+          return;
+        }
         if (status === 204 || status === 205) return stop('invalid_response');
         if (
           !/^application\/json(?:\s*;|$)/i.test(response.headers['content-type'] ?? '') ||
@@ -317,6 +519,7 @@ export function createPinnedAiFetch(
     apiKey: string;
     signal: AbortSignal;
     requestPurpose?: 'probe' | 'signal-generation' | 'candidate-enrichment';
+    captureRejectionDiagnostics?: boolean;
   },
   dependencies: { resolve?: AiResolver; request?: AiWireRequest } = {},
 ): typeof fetch {
@@ -390,12 +593,45 @@ export function createPinnedAiFetch(
         body: init?.body as string | undefined,
         apiKey: config.apiKey,
         signal,
+        ...(config.captureRejectionDiagnostics ? { captureRejectionDiagnostics: true } : {}),
       }),
       signal,
     );
     if (response.status >= 300 && response.status < 400)
       return fail('redirect_blocked', response.status);
-    if (!response.ok) return fail('provider_rejected', response.status);
+    if (!response.ok) {
+      if (!config.captureRejectionDiagnostics) return fail('provider_rejected', response.status);
+      const length = response.headers.get('content-length');
+      if (
+        !/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '') ||
+        (response.headers.get('content-encoding') &&
+          response.headers.get('content-encoding') !== 'identity') ||
+        (length && (!/^\d+$/.test(length) || Number(length) > aiRejectionMaximumBytes)) ||
+        !response.body
+      ) {
+        void response.body?.cancel().catch(() => {});
+        throw unconfirmedRejection(response.status);
+      }
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let bytes = 0;
+      try {
+        while (true) {
+          const part = await withAbort(reader.read(), signal);
+          if (part.done) break;
+          bytes += part.value.byteLength;
+          if (bytes > aiRejectionMaximumBytes) throw unconfirmedRejection(response.status);
+          chunks.push(part.value);
+        }
+        if (length && bytes !== Number(length)) throw unconfirmedRejection(response.status);
+        throw await summarizeRejection(Buffer.concat(chunks), response.status, url);
+      } catch (error) {
+        if (error instanceof AiProbeError) throw error;
+        throw unconfirmedRejection(response.status);
+      } finally {
+        void reader.cancel().catch(() => {});
+      }
+    }
     // The wire implementation bounds streaming bytes; this repeats the bound for
     // test/custom transports and strips all provider headers before SDK parsing.
     const body = await withAbort(response.arrayBuffer(), signal);

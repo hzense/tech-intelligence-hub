@@ -1151,6 +1151,241 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
         ? { sentinel_matched: true }
         : { schema_valid: true, sentinel_matched: true },
   });
+  const rejectedProbe = () => ({
+    success: false,
+    model_id: 'synthetic-model',
+    input_tokens: null,
+    output_tokens: null,
+    result: { provider_body: 'private fixture response' },
+    error_code: 'provider_rejected',
+    diagnostics: {
+      version: 1,
+      stage: 'model_request',
+      reason: 'no_matching_provider',
+      http_status: 404,
+      rejection_confirmed: true,
+    },
+  });
+
+  it.each([
+    ['provider', false],
+    ['provider', true],
+    ['request_rejected', false],
+    ['request_rejected', true],
+  ])(
+    'settles %s receipts (stale=%s) in the real admission ledger without changing reservations',
+    async (source, stale) =>
+      withPool(async (pool) => {
+        const apiCost = source === 'provider' ? 123 : 0;
+        const input = createRequest();
+        input.settings = { ...settings, daily_budget_microusd: 10240 + apiCost };
+        const connection = await createAiConnection({
+          pool,
+          request: input,
+          keyring,
+          allowedHosts,
+        });
+        const request = {
+          id: randomUUID(),
+          connection_id: connection.id,
+          connection_revision: 1,
+          kind: 'connection',
+          model_id: 'synthetic-model',
+        };
+        let calls = 0;
+        const invoke = async () => {
+          calls++;
+          if (stale)
+            await updateAiConnection({
+              pool,
+              request: { id: connection.id, expected_revision: 1, name: 'Revised while pending' },
+              keyring,
+              allowedHosts,
+            });
+          return source === 'provider'
+            ? { ...result('connection'), provider_cost_microusd: apiCost }
+            : rejectedProbe();
+        };
+        const saved = await runAiProbe({ pool, request, keyring, allowedHosts, invoke });
+        expect(saved).toMatchObject({
+          status: stale ? 'stale' : source === 'provider' ? 'succeeded' : 'failed',
+          reserved_microusd: '10240',
+          charged_microusd: String(apiCost),
+          result: { accounting: { version: 1, source } },
+        });
+        expect(saved.result).not.toHaveProperty('provider_body');
+        if (stale) expect(saved.result).not.toHaveProperty('sentinel_matched');
+        expect(await runAiProbe({ pool, request, keyring, allowedHosts, invoke })).toEqual(saved);
+        expect(calls).toBe(1);
+        const next = { ...request, id: randomUUID(), connection_revision: stale ? 2 : 1 };
+        const second = await runAiProbe({
+          pool,
+          request: next,
+          keyring,
+          allowedHosts,
+          invoke: async () => result('connection'),
+        });
+        expect(second.status).toBe('succeeded');
+        await expect(
+          runAiProbe({
+            pool,
+            request: { ...next, id: randomUUID() },
+            keyring,
+            allowedHosts,
+            invoke: async () => {
+              throw Error('Budget must block before invocation');
+            },
+          }),
+        ).rejects.toMatchObject({ code: 'daily_budget_exceeded' });
+        expect((await getAiProbe({ pool, id: request.id })).reserved_microusd).toBe('10240');
+      }),
+  );
+
+  it.each([
+    ['legacy failed', 'failed', {}, null, null],
+    [
+      'unknown with settlement marker',
+      'unknown',
+      { accounting: { version: 1, source: 'provider' } },
+      null,
+      null,
+    ],
+    [
+      'pending with settlement marker',
+      'pending',
+      { accounting: { version: 1, source: 'provider' } },
+      null,
+      null,
+    ],
+    [
+      'running with settlement marker',
+      'running',
+      { accounting: { version: 1, source: 'provider' } },
+      null,
+      null,
+    ],
+    [
+      'unsupported accounting version',
+      'failed',
+      { accounting: { version: 2, source: 'provider' } },
+      null,
+      null,
+    ],
+    [
+      'extra accounting key',
+      'failed',
+      { accounting: { version: 1, source: 'provider', untrusted: true } },
+      null,
+      null,
+    ],
+    [
+      'missing rejected diagnostic',
+      'failed',
+      { accounting: { version: 1, source: 'request_rejected' } },
+      null,
+      null,
+    ],
+    [
+      'succeeded cannot claim rejection',
+      'succeeded',
+      {
+        accounting: { version: 1, source: 'request_rejected' },
+        diagnostics: rejectedProbe().diagnostics,
+      },
+      null,
+      null,
+    ],
+    [
+      'positive usage with rejection marker',
+      'failed',
+      {
+        accounting: { version: 1, source: 'request_rejected' },
+        diagnostics: rejectedProbe().diagnostics,
+      },
+      1,
+      null,
+    ],
+    [
+      'string rejection confirmation',
+      'failed',
+      {
+        accounting: { version: 1, source: 'request_rejected' },
+        diagnostics: { ...rejectedProbe().diagnostics, rejection_confirmed: 'true' },
+      },
+      null,
+      null,
+    ],
+    [
+      'string HTTP status',
+      'failed',
+      {
+        accounting: { version: 1, source: 'request_rejected' },
+        diagnostics: { ...rejectedProbe().diagnostics, http_status: '404' },
+      },
+      null,
+      null,
+    ],
+    [
+      'extra diagnostic key',
+      'failed',
+      {
+        accounting: { version: 1, source: 'request_rejected' },
+        diagnostics: { ...rejectedProbe().diagnostics, body: 'private' },
+      },
+      null,
+      null,
+    ],
+  ])(
+    'retains the reservation for %s in PostgreSQL without rewriting historical receipts',
+    async (_label, status, storedResult, inputTokens, outputTokens) =>
+      withPool(async (pool) => {
+        const input = createRequest();
+        input.settings = { ...settings, daily_budget_microusd: 10240 };
+        const connection = await createAiConnection({
+          pool,
+          request: input,
+          keyring,
+          allowedHosts,
+        });
+        const request = {
+          id: randomUUID(),
+          connection_id: connection.id,
+          connection_revision: 1,
+          kind: 'connection',
+          model_id: 'synthetic-model',
+        };
+        await runAiProbe({
+          pool,
+          request,
+          keyring,
+          allowedHosts,
+          invoke: async () => result('connection'),
+        });
+        await owner((client) =>
+          client.query(
+            `UPDATE public.ai_probe_runs SET status=$2,
+        charged_microusd=0,result=$3::jsonb,input_tokens=$4,output_tokens=$5,
+        error_code='provider_rejected',created_at=clock_timestamp()-interval '70 seconds' WHERE id=$1`,
+            [request.id, status, JSON.stringify(storedResult), inputTokens, outputTokens],
+          ),
+        );
+        await expect(
+          runAiProbe({
+            pool,
+            request: { ...request, id: randomUUID() },
+            keyring,
+            allowedHosts,
+            invoke: async () => {
+              throw Error('Unsettled reservations must block admission');
+            },
+          }),
+        ).rejects.toMatchObject({ code: 'daily_budget_exceeded' });
+        const original = await getAiProbe({ pool, id: request.id });
+        expect(original.reserved_microusd).toBe('10240');
+        expect(original.charged_microusd).toBe('0');
+        expect(original.result).toEqual(storedResult);
+      }),
+  );
 
   it('serializes connection creation retries and rejects conflicting or obsolete create payloads', async () =>
     withPool(async (pool) => {

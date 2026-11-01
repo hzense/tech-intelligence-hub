@@ -50,6 +50,8 @@ const savedModelProbe = {
   created_at: '2026-01-01T00:00:00.000Z',
   reserved_microusd: 0,
   charged_microusd: 0,
+  input_tokens: null,
+  output_tokens: null,
 };
 
 // Real AdminAiConsole and its fetch calls, but an entirely synthetic, loopback-only
@@ -360,6 +362,79 @@ test(
         await expect(
           page.getByText('当前连接 r1 的列表包含 2 个模型；选择后只填写模型 ID，不自动测试。'),
         ).toBeVisible();
+        await expectNoWrites();
+      },
+    );
+
+    await t.test(
+      'probe history distinguishes refusal, API charges and missing legacy evidence',
+      async () => {
+        const probes = [
+          {
+            ...savedModelProbe,
+            id: '42345678-1234-4123-8123-123456789ab1',
+            kind: 'tool_calling',
+            model_id: fixedModel,
+            status: 'failed',
+            error_code: 'provider_rejected',
+            reserved_microusd: '143360',
+            charged_microusd: '0',
+            result: {
+              diagnostics: {
+                version: 1,
+                stage: 'model_request',
+                reason: 'invalid_request',
+                http_status: 400,
+                rejection_confirmed: true,
+              },
+              accounting: { version: 1, source: 'request_rejected' },
+            },
+          },
+          {
+            ...savedModelProbe,
+            id: '42345678-1234-4123-8123-123456789ab2',
+            kind: 'tool_calling',
+            model_id: fixedModel,
+            status: 'failed',
+            error_code: 'capability_failed',
+            reserved_microusd: '143360',
+            charged_microusd: '15000',
+            result: {
+              diagnostics: {
+                version: 1,
+                stage: 'response_validation',
+                reason: 'invalid_tool_call',
+              },
+              accounting: { version: 1, source: 'provider' },
+            },
+          },
+          {
+            ...savedModelProbe,
+            id: '42345678-1234-4123-8123-123456789ab3',
+            kind: 'tool_calling',
+            model_id: fixedModel,
+            status: 'failed',
+            error_code: 'provider_rejected',
+            reserved_microusd: '143360',
+            charged_microusd: '143360',
+            result: {},
+          },
+        ];
+        await mount({ connections: [savedConnection], probes });
+        const history = page.getByRole('region', { name: '最近模型测试' });
+        const card = (probe) =>
+          history
+            .getByRole('article')
+            .filter({ has: page.getByRole('link', { name: probe.id, exact: true }) });
+        await expect(card(probes[0])).toContainText('失败阶段：请求模型 · HTTP 400');
+        await expect(card(probes[0])).toContainText('$0.143360 / $0.000000（明确拒绝，不计费）');
+        await expect(card(probes[0])).toContainText('预留额度已释放');
+        await expect(card(probes[1])).toContainText('失败阶段：校验模型结果');
+        await expect(card(probes[1])).toContainText('$0.143360 / $0.015000（API 返回费用）');
+        await expect(card(probes[1])).toContainText('工具调用数量、工具名称或参数未通过校验');
+        await expect(card(probes[2])).toContainText('费用来源未记录');
+        await expect(card(probes[2])).toContainText('未保存 HTTP 状态与拒绝详情');
+        await expect(card(probes[2])).not.toContainText('预留额度已释放');
         await expectNoWrites();
       },
     );

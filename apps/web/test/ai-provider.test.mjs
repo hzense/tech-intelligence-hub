@@ -11,9 +11,10 @@ import {
   pinnedAiRequestOptions,
   createAiWireRequest,
   aiResponseMaximumBytes,
+  aiRejectionMaximumBytes,
   AiProbeError,
 } from '../lib/ai-provider-transport.ts';
-const { Response, AbortController, AbortSignal, URL, queueMicrotask } = globalThis;
+const { Response, AbortController, AbortSignal, URL, queueMicrotask, TextEncoder } = globalThis;
 const apiKey = 'synthetic-probe-key-only';
 const baseUrl = 'https://api.provider.example.com/v1';
 const allowedHosts = ['api.provider.example.com'];
@@ -880,4 +881,374 @@ test('deadline covers stalled DNS and HTTP, with no requests after DNS timeout',
   } finally {
     clearTimeout(keepAlive);
   }
+});
+
+const haikuProbe = (modelId = 'anthropic/claude-haiku-5.5') => ({
+  ...fixture('tool_calling'),
+  modelId,
+  connection: { ...fixture().connection, base_url: 'https://openrouter.ai/api/v1' },
+  allowedHosts: ['openrouter.ai'],
+});
+const haikuCatalog = (modelId, extras = {}) =>
+  Response.json({
+    data: [
+      {
+        id: modelId,
+        supported_parameters: ['max_tokens', 'tools', 'tool_choice', 'reasoning'],
+        reasoning: { mandatory: false },
+        ...extras,
+      },
+    ],
+  });
+const echoResponse = () =>
+  response(null, {
+    choices: [
+      {
+        message: {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            {
+              id: 'probe-call',
+              type: 'function',
+              function: {
+                name: 'echo',
+                arguments: JSON.stringify({ sentinel: aiProbeSentinel, ok: true }),
+              },
+            },
+          ],
+        },
+        finish_reason: 'tool_calls',
+      },
+    ],
+  });
+
+test('Haiku catalog metadata disables optional thinking and sends the named tool through the SDK', async () => {
+  for (const model of ['anthropic/claude-haiku-4.5', 'anthropic/claude-haiku-5.5']) {
+    const input = haikuProbe(model);
+    let posts = 0;
+    const invoke = createAiProbeInvoker({
+      resolve,
+      request: async (request) => {
+        if (request.method === 'GET') return haikuCatalog(model);
+        posts++;
+        const body = JSON.parse(request.body);
+        assert.deepEqual(body.reasoning, { exclude: true, enabled: false });
+        assert.deepEqual(body.provider, { require_parameters: true });
+        assert.deepEqual(body.tool_choice, { type: 'function', function: { name: 'echo' } });
+        assert.equal(body.max_tokens, 2048);
+        return echoResponse();
+      },
+    });
+    const result = await invoke(input);
+    assert.equal(result.success, true);
+    assert.equal(posts, 1);
+    assert.equal(result.diagnostics, undefined);
+  }
+});
+
+test('probe rejection receipts distinguish catalog and model stages without retaining error prose', async () => {
+  const input = haikuProbe();
+  for (const stage of ['model_catalog', 'model_request']) {
+    for (const [status, message, reason, confirmed] of [
+      [400, 'Unsupported parameter tool_choice', 'unsupported_parameters', true],
+      [401, 'Invalid credentials', 'authentication_failed', true],
+      [402, 'Insufficient credits', 'insufficient_credit', true],
+      [403, 'Access denied', 'access_denied', true],
+      [404, 'No endpoints found that support tool use', 'no_matching_provider', true],
+      [404, 'Model requested does not exist', 'model_not_found', true],
+      [429, 'Rate limit exceeded', 'rate_limited', true],
+      [503, 'Service unavailable', 'provider_unavailable', false],
+    ]) {
+      const seen = [];
+      const invoke = createAiProbeInvoker({
+        resolve,
+        request: async (request) => {
+          seen.push(request.method);
+          assert.equal(request.captureRejectionDiagnostics, true);
+          if (stage === 'model_request' && request.method === 'GET')
+            return haikuCatalog(input.modelId);
+          return Response.json(
+            { error: { code: status, message: `${message}; private ${apiKey}` }, private: apiKey },
+            {
+              status,
+              headers: { 'x-secret': apiKey, 'x-provider-url': 'https://private.invalid' },
+            },
+          );
+        },
+      });
+      const result = await invoke(input);
+      assert.equal(result.success, false);
+      assert.equal(result.error_code, 'provider_rejected');
+      assert.deepEqual(result.diagnostics, {
+        version: 1,
+        stage,
+        reason,
+        http_status: status,
+        rejection_confirmed: confirmed,
+      });
+      assert.deepEqual(seen, stage === 'model_catalog' ? ['GET'] : ['GET', 'POST']);
+      assert.equal(result.input_tokens, null);
+      assert.equal(result.output_tokens, null);
+      assert.deepEqual(result.result, {});
+      for (const forbidden of [apiKey, message, 'https://private.invalid', 'x-secret'])
+        assert.equal(JSON.stringify(result).includes(forbidden), false);
+    }
+  }
+});
+
+test('complete probe error receipts preserve provider costs and usage before failure accounting', async () => {
+  const input = haikuProbe();
+  for (const [usage, expectedCost, confirmed, inputTokens, outputTokens] of [
+    [{ cost: 0.012345 }, 12345, false, null, null],
+    [{ cost: 0 }, 0, true, null, null],
+    [{ prompt_tokens: 8, completion_tokens: 4 }, undefined, false, 8, 4],
+    [{ total_tokens: 12 }, undefined, false, null, null],
+    [{ cost: '0' }, undefined, false, null, null],
+    [{ prompt_tokens: -1 }, undefined, false, null, null],
+    [{ input_tokens: 12 }, undefined, false, null, null],
+    [null, undefined, false, null, null],
+  ]) {
+    const invoke = createAiProbeInvoker({
+      resolve,
+      request: async (request) =>
+        request.method === 'GET'
+          ? haikuCatalog(input.modelId)
+          : Response.json({ error: { message: 'Request rejected' }, usage }, { status: 400 }),
+    });
+    const result = await invoke(input);
+    assert.equal(result.provider_cost_microusd, expectedCost);
+    assert.equal(result.diagnostics.rejection_confirmed, confirmed);
+    assert.equal(result.input_tokens, inputTokens);
+    assert.equal(result.output_tokens, outputTokens);
+  }
+});
+
+test('malformed, oversized and incomplete error bodies cannot establish an uncharged rejection', async () => {
+  const input = haikuProbe();
+  let cancelled = 0;
+  const failures = [
+    () =>
+      new Response('{"error":', { status: 400, headers: { 'content-type': 'application/json' } }),
+    () => Response.json({}, { status: 400 }),
+    () =>
+      new Response('private HTML response', {
+        status: 400,
+        headers: { 'content-type': 'text/html' },
+      }),
+    () => Response.json({ error: { message: apiKey.repeat(1000) } }, { status: 400 }),
+    () =>
+      Response.json(
+        { error: { message: 'bad' } },
+        { status: 400, headers: { 'content-length': '9000' } },
+      ),
+    () =>
+      new Response(
+        new globalThis.ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"error":{"message":"bad"},"usage":'));
+            controller.error(new Error(apiKey));
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      ),
+    () =>
+      new Response(
+        new globalThis.ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array(aiRejectionMaximumBytes + 1));
+          },
+          cancel() {
+            cancelled++;
+          },
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      ),
+  ];
+  for (const fail of failures) {
+    const invoke = createAiProbeInvoker({
+      resolve,
+      request: async (request) => (request.method === 'GET' ? haikuCatalog(input.modelId) : fail()),
+    });
+    const result = await invoke(input);
+    assert.equal(result.error_code, 'provider_rejected');
+    assert.equal(result.diagnostics.http_status, 400);
+    assert.equal(result.diagnostics.rejection_confirmed, false);
+    assert.equal(result.provider_cost_microusd, undefined);
+    assert.equal(JSON.stringify(result).includes(apiKey), false);
+  }
+  assert.equal(cancelled, 1);
+});
+
+test('empty errors and contradictory generated results cannot confirm an uncharged rejection', async () => {
+  const input = haikuProbe();
+  const bodyOutcome = async (body) => {
+    const invoke = createAiProbeInvoker({
+      resolve,
+      request: async (request) =>
+        request.method === 'GET'
+          ? haikuCatalog(input.modelId)
+          : Response.json(body, { status: 400 }),
+    });
+    return invoke(input);
+  };
+  for (const error of ['', '  ', {}, { message: '' }, { message: ' ' }, { code: 'unknown' }, []]) {
+    const result = await bodyOutcome({ error });
+    assert.equal(result.error_code, 'provider_rejected');
+    assert.equal(result.diagnostics.rejection_confirmed, false);
+  }
+  for (const key of [
+    'choices',
+    'output',
+    'outputs',
+    'message',
+    'messages',
+    'content',
+    'completion',
+    'completions',
+    'tool_calls',
+    'function_call',
+    'result',
+    'results',
+    'response',
+    'data',
+  ]) {
+    for (const value of [null, [], [{ message: { content: `generated output ${apiKey}` } }]]) {
+      const result = await bodyOutcome({
+        error: { message: 'Request rejected' },
+        [key]: value,
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+      });
+      assert.equal(result.diagnostics.rejection_confirmed, false, key);
+      assert.equal(result.provider_cost_microusd, undefined);
+      assert.equal(JSON.stringify(result).includes(apiKey), false);
+    }
+  }
+  const paid = await bodyOutcome({
+    error: {},
+    choices: [{ message: { content: 'generated output' } }],
+    usage: { cost: 0.01 },
+  });
+  assert.equal(paid.provider_cost_microusd, 10000);
+  assert.equal(paid.diagnostics.rejection_confirmed, false);
+  for (const error of [
+    'Bad request',
+    { message: 'Request rejected' },
+    { code: 400 },
+    { code: 'invalid_request_error' },
+  ])
+    assert.equal((await bodyOutcome({ error })).diagnostics.rejection_confirmed, true);
+});
+
+test('native probe-only rejection capture is bounded and leaves shared default behavior unchanged', async () => {
+  async function run({ chunks, headers = {}, abort = false, capture = true, status = 400 }) {
+    let bytesEmitted = 0;
+    let destroyed = false;
+    const wire = createAiWireRequest((_options, onResponse) => {
+      const request = new EventEmitter();
+      request.destroy = () => {
+        destroyed = true;
+      };
+      request.end = () =>
+        queueMicrotask(() => {
+          const stream = new EventEmitter();
+          stream.statusCode = status;
+          stream.headers = { 'content-type': 'application/json', ...headers };
+          stream.destroy = () => {
+            destroyed = true;
+          };
+          onResponse(stream);
+          for (const chunk of chunks) {
+            if (destroyed) break;
+            const buffer = Buffer.from(chunk);
+            bytesEmitted += buffer.length;
+            stream.emit('data', buffer);
+          }
+          if (!destroyed) stream.emit(abort ? 'aborted' : 'end');
+        });
+      return request;
+    });
+    let error;
+    try {
+      await wire({
+        url: new URL('https://openrouter.ai/api/v1/chat/completions'),
+        address: (await resolve())[0],
+        method: 'POST',
+        body: '{}',
+        apiKey,
+        signal: new AbortController().signal,
+        captureRejectionDiagnostics: capture,
+      });
+    } catch (caught) {
+      error = caught;
+    }
+    return { error, bytesEmitted, destroyed };
+  }
+  const json = JSON.stringify({ error: { message: `Unsupported tool_choice ${apiKey}` } });
+  const valid = await run({ chunks: [json] });
+  assert.equal(valid.error.reason, 'unsupported_parameters');
+  assert.equal(valid.error.rejectionConfirmed, true);
+  assert.equal(valid.error.httpStatus, 400);
+  assert.equal(valid.bytesEmitted, Buffer.byteLength(json));
+  assert.equal(JSON.stringify(valid.error).includes(apiKey), false);
+  const paid = await run({
+    chunks: [JSON.stringify({ error: { message: 'bad' }, usage: { cost: 0.000321 } })],
+  });
+  assert.equal(paid.error.providerCostMicrousd, 321);
+  assert.equal(paid.error.rejectionConfirmed, false);
+  const unchanged = await run({ chunks: [json], capture: false });
+  assert.equal(unchanged.bytesEmitted, 0);
+  assert.equal(unchanged.error.rejectionConfirmed, undefined);
+  for (const options of [
+    { chunks: [json], abort: true },
+    { chunks: [json], headers: { 'content-length': '10000' } },
+    { chunks: [json], headers: { 'content-length': String(aiRejectionMaximumBytes + 1) } },
+    { chunks: [json], headers: { 'content-type': 'text/html' } },
+    { chunks: ['x'.repeat(aiRejectionMaximumBytes), 'y', 'not-read'] },
+  ]) {
+    const incomplete = await run(options);
+    assert.equal(incomplete.error.code, 'provider_rejected');
+    assert.equal(incomplete.error.httpStatus, 400);
+    assert.equal(incomplete.error.rejectionConfirmed, false);
+    assert.equal(incomplete.destroyed, true);
+    assert.ok(incomplete.bytesEmitted <= aiRejectionMaximumBytes + 1);
+  }
+});
+
+test('catalog gates and tool validation have distinct safe reasons, and timeouts retain their request stage', async () => {
+  const input = haikuProbe();
+  let posts = 0;
+  const unsupported = createAiProbeInvoker({
+    resolve,
+    request: async (request) => {
+      if (request.method === 'POST') posts++;
+      return haikuCatalog(input.modelId, { supported_parameters: ['max_tokens', 'tools'] });
+    },
+  });
+  assert.deepEqual((await unsupported(input)).diagnostics, {
+    version: 1,
+    stage: 'model_catalog',
+    reason: 'unsupported_parameters',
+  });
+  assert.equal(posts, 0);
+  for (const [kind, reason] of [
+    ['tool_calling', 'invalid_tool_call'],
+    ['connection', 'sentinel_mismatch'],
+  ]) {
+    const invalid = createAiProbeInvoker({ resolve, request: async () => response('wrong') });
+    assert.deepEqual((await invalid(fixture(kind))).diagnostics, {
+      version: 1,
+      stage: 'response_validation',
+      reason,
+    });
+  }
+  const timeout = createAiProbeInvoker({
+    resolve,
+    request: async () => {
+      throw new AiProbeError('timeout');
+    },
+  });
+  const failed = await timeout(input);
+  assert.deepEqual(failed.diagnostics, { version: 1, stage: 'model_catalog', reason: 'timeout' });
+  assert.equal(failed.provider_cost_microusd, undefined);
 });

@@ -1,3 +1,5 @@
+import type { AiProbeDiagnostics } from './ai-probe-diagnostics.mjs';
+
 export interface AiConnectionSettings {
   timeout_ms: number;
   max_concurrency: number;
@@ -140,6 +142,7 @@ export type AiProbeInvoker = (input: {
   output_tokens: number | null;
   result: Record<string, unknown>;
   error_code?: string;
+  diagnostics?: AiProbeDiagnostics;
 }>;
 export function createAiConnection(input: {
   pool: unknown;
