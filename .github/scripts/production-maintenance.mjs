@@ -1688,14 +1688,22 @@ export function publicMaintenanceResult(operation, result = {}) {
 }
 
 export function publicMaintenanceFailure(error) {
-  if (error instanceof TopicMaintenanceError)
+  if (error instanceof TopicMaintenanceError) {
+    const safe = new TopicMaintenanceError(
+      error,
+      Object.getOwnPropertyDescriptor(error, 'operation')?.value,
+      Object.getOwnPropertyDescriptor(error, 'mayHaveCommitted')?.value,
+    );
     return {
       status: 'blocked',
-      gate: error.gate,
-      operation: error.operation,
-      topicSyncMayHaveCommitted: error.mayHaveCommitted,
+      gate: safe.gate,
+      phase: safe.phase,
+      reason: safe.reason,
+      operation: safe.operation,
+      topicSyncMayHaveCommitted: safe.mayHaveCommitted,
       verificationCompleted: false,
     };
+  }
   if (
     error instanceof LegacySignalMaintenanceError ||
     error instanceof UnifiedSignalMaintenanceError

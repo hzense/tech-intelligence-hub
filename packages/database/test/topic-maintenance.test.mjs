@@ -7,6 +7,8 @@ import {
 } from '../../../.github/scripts/topic-maintenance.mjs';
 import { normalizeDesiredTopics, planTopicSync, syncTopics } from '../src/topic-sync.mjs';
 import { verifyTopicProjectionReadOnly } from '../src/topic-projection-verify.mjs';
+import { validateConnectionTarget } from '../src/connection-policy.mjs';
+import { publicMaintenanceFailure } from '../../../.github/scripts/production-maintenance.mjs';
 
 const copy = (value) => globalThis.structuredClone(value);
 const hash = (value) => createHash('sha256').update(value).digest('hex');
@@ -364,9 +366,307 @@ describe('protected production Topic projection maintenance', () => {
     });
     await expect(pending.execute('topic-plan')).rejects.toMatchObject({
       gate: 'applied-schema-required',
+      phase: 'owner-preflight',
     });
     const unknown = fixture();
     unknown.state.rows.push({ ...desired[0], id: 'topic-unknown' });
     await expect(unknown.execute('topic-plan')).rejects.toMatchObject({ gate: 'unavailable' });
+  });
+});
+
+describe('Topic failure diagnostics', () => {
+  const privateDetail =
+    'postgresql://private-user:secret-password@private-host/db SQL private-data';
+  const failure = (code, message = privateDetail) => Object.assign(new Error(message), { code });
+
+  it('identifies the real strict TLS policy failure before creating any client', async () => {
+    const f = fixture();
+    f.deps.options = {
+      ...f.deps.options,
+      profile: 'production',
+      connectionString:
+        'postgresql://owner:fixture@fixture.invalid:5432/fixture?sslmode=verify-full',
+    };
+    f.deps.validateConnectionTarget.mockImplementation(validateConnectionTarget);
+    const approval = await f.approve();
+    f.clients.length = 0;
+    f.env.HZENSE_TOPIC_SYNC_DATABASE_URL =
+      'postgresql://hzense_topic_sync:secret-password@fixture.invalid:5432/fixture?sslmode=require';
+    const error = await f.execute('topic-apply', approval).catch((error) => error);
+    expect(publicMaintenanceFailure(error)).toMatchObject({
+      gate: 'unavailable',
+      phase: 'dedicated-target',
+      reason: 'tls-policy-invalid',
+      topicSyncMayHaveCommitted: false,
+    });
+    expect(f.clients).toHaveLength(0);
+    expect(JSON.stringify(publicMaintenanceFailure(error))).not.toContain('secret-password');
+  });
+
+  it.each([
+    ['28P01', 'authentication-failed'],
+    ['42501', 'permission-denied'],
+    ['53300', 'connection-limit'],
+    ['ENOTFOUND', 'dns-failed'],
+    ['ETIMEDOUT', 'timeout'],
+    ['ERR_TLS_CERT_ALTNAME_INVALID', 'tls-validation-failed'],
+    ['PRIVATE_UNRECOGNIZED_CODE', 'unavailable'],
+  ])('redacts dedicated connection failure %s even when cleanup fails', async (code, reason) => {
+    const f = fixture();
+    const approval = await f.approve();
+    const create = f.deps.createClient.getMockImplementation();
+    f.deps.createClient.mockImplementation((options) => {
+      const client = create(options);
+      if (options.connectionString === f.env.HZENSE_TOPIC_SYNC_DATABASE_URL) {
+        client.connect.mockRejectedValue(failure(code));
+        client.end.mockImplementation(() => {
+          throw failure('ECONNRESET', 'different private cleanup detail');
+        });
+      }
+      return client;
+    });
+    const error = await f.execute('topic-apply', approval).catch((error) => error);
+    const result = publicMaintenanceFailure(error);
+    expect(result).toMatchObject({
+      phase: 'dedicated-connect',
+      reason,
+      topicSyncMayHaveCommitted: false,
+    });
+    expect(f.deps.syncTopics).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toMatch(
+      /private|secret|postgresql|SQL|PRIVATE_UNRECOGNIZED_CODE/,
+    );
+    expect(error.cause).toBeUndefined();
+  });
+
+  it.each([
+    ['Topic sync role must be LOGIN and NOINHERIT', 'role-login-inherit-invalid'],
+    [
+      'Topic sync role connection limit mismatch; expected 2, found 10',
+      'role-connection-limit-invalid',
+    ],
+    [
+      'Topic sync role requires CONNECT only, without database CREATE or TEMPORARY',
+      'role-database-privileges-invalid',
+    ],
+    [
+      'Topic sync role must not inherit or be able to SET ROLE into another role',
+      'role-membership-invalid',
+    ],
+    [
+      'Topic sync role privileges on public.private_table are invalid; missing [SELECT]',
+      'role-table-privileges-invalid',
+    ],
+    [
+      'Topic sync public relation contract mismatch; missing [private_table]',
+      'relation-contract-invalid',
+    ],
+    [
+      'Topic sync Signal immutability contract mismatch: private function body',
+      'immutability-contract-invalid',
+    ],
+  ])('reports a fixed preflight reason for %s', async (message, reason) => {
+    const f = fixture();
+    const approval = await f.approve();
+    f.deps.inspectTopicSyncPreflight.mockRejectedValue(new Error(message));
+    const error = await f.execute('topic-apply', approval).catch((error) => error);
+    const result = publicMaintenanceFailure(error);
+    expect(result).toMatchObject({
+      phase: 'dedicated-preflight',
+      reason,
+      topicSyncMayHaveCommitted: false,
+    });
+    expect(f.deps.syncTopics).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toMatch(/private|function body|public\./);
+  });
+
+  it('preserves the failed owner read when ROLLBACK also fails', async () => {
+    const f = fixture();
+    const create = f.deps.createClient.getMockImplementation();
+    f.deps.createClient.mockImplementation((options) => {
+      const client = create(options);
+      const query = client.query.getMockImplementation();
+      client.query.mockImplementation((sql, values) => {
+        if (sql.includes('FROM public.topics')) throw failure('42501');
+        if (sql === 'ROLLBACK') throw failure('ECONNRESET');
+        return query(sql, values);
+      });
+      return client;
+    });
+    const error = await f.execute('topic-plan').catch((error) => error);
+    expect(publicMaintenanceFailure(error)).toMatchObject({
+      phase: 'owner-read',
+      reason: 'permission-denied',
+      topicSyncMayHaveCommitted: false,
+    });
+    expect(f.clients[0].end).toHaveBeenCalledOnce();
+  });
+
+  it('keeps commit uncertainty and the sync phase when COMMIT acknowledgement is lost', async () => {
+    const f = fixture();
+    const approval = await f.approve();
+    const create = f.deps.createClient.getMockImplementation();
+    f.deps.createClient.mockImplementation((options) => {
+      const client = create(options);
+      const query = client.query.getMockImplementation();
+      client.query.mockImplementation(async (sql, values) => {
+        const result = await query(sql, values);
+        if (sql === 'COMMIT') throw failure('ECONNRESET');
+        return result;
+      });
+      return client;
+    });
+    const error = await f.execute('topic-apply', approval).catch((error) => error);
+    expect(publicMaintenanceFailure(error)).toMatchObject({
+      phase: 'topic-sync',
+      reason: 'connection-failed',
+      topicSyncMayHaveCommitted: true,
+    });
+    expect(f.state.rows.filter((row) => row.runtimeEnabled)).toHaveLength(47);
+  });
+
+  it.each([false, true])(
+    'keeps the session error gate when emitted after commit=%s',
+    async (afterCommit) => {
+      const f = fixture();
+      const approval = await f.approve();
+      if (afterCommit) {
+        const create = f.deps.createClient.getMockImplementation();
+        f.deps.createClient.mockImplementation((options) => {
+          const client = create(options);
+          const query = client.query.getMockImplementation();
+          client.query.mockImplementation(async (sql, values) => {
+            const result = await query(sql, values);
+            if (sql === 'COMMIT') client.emit('error', failure('ECONNRESET'));
+            return result;
+          });
+          return client;
+        });
+      } else {
+        f.deps.inspectTopicSyncPreflight.mockImplementation(async (client) => {
+          client.emit('error', failure('ECONNRESET'));
+        });
+      }
+      const error = await f.execute('topic-apply', approval).catch((error) => error);
+      const result = publicMaintenanceFailure(error);
+      expect(result).toMatchObject({
+        gate: 'connection-failed',
+        phase: 'dedicated-session',
+        reason: 'connection-failed',
+        topicSyncMayHaveCommitted: afterCommit,
+      });
+      expect(f.queries().includes('COMMIT')).toBe(afterCommit);
+      expect(f.state.rows.filter((row) => row.runtimeEnabled)).toHaveLength(afterCommit ? 47 : 5);
+      expect(JSON.stringify(result)).not.toMatch(/private|secret|postgresql|SQL/);
+    },
+  );
+
+  it('preserves the owner session phase for an emitted connection error', async () => {
+    const f = fixture();
+    f.deps.inspectDatabasePreflight.mockImplementation(async (client) => {
+      client.emit('error', failure('53300'));
+      return { database: policy.database, user: policy.user, pendingMigrations: [] };
+    });
+    const error = await f.execute('topic-plan').catch((error) => error);
+    expect(publicMaintenanceFailure(error)).toMatchObject({
+      gate: 'connection-failed',
+      phase: 'owner-session',
+      reason: 'connection-limit',
+      topicSyncMayHaveCommitted: false,
+    });
+  });
+
+  it('preserves nested dedicated preflight diagnostics after commit', async () => {
+    const f = fixture();
+    const approval = await f.approve();
+    f.deps.inspectTopicSyncPreflight
+      .mockResolvedValueOnce({ database: policy.database, user: 'hzense_topic_sync' })
+      .mockRejectedValueOnce(failure('42501'));
+    const error = await f.execute('topic-apply', approval).catch((error) => error);
+    expect(publicMaintenanceFailure(error)).toMatchObject({
+      phase: 'dedicated-preflight',
+      reason: 'permission-denied',
+      topicSyncMayHaveCommitted: true,
+    });
+  });
+
+  it('identifies catalog drift in a read-only verification without suggesting a commit', async () => {
+    const f = fixture();
+    const error = await f.execute('topic-verify').catch((error) => error);
+    expect(publicMaintenanceFailure(error)).toMatchObject({
+      phase: 'topic-verification',
+      reason: 'projection-drift',
+      topicSyncMayHaveCommitted: false,
+    });
+    expect(f.deps.syncTopics).not.toHaveBeenCalled();
+    expect(f.queries()).not.toContain('COMMIT');
+  });
+
+  it('distinguishes post-commit verification from the write phase', async () => {
+    const f = fixture();
+    const approval = await f.approve();
+    f.deps.verifyTopicProjectionReadOnly.mockRejectedValue(failure('42501'));
+    const error = await f.execute('topic-apply', approval).catch((error) => error);
+    expect(publicMaintenanceFailure(error)).toMatchObject({
+      phase: 'topic-verification',
+      reason: 'permission-denied',
+      topicSyncMayHaveCommitted: true,
+    });
+  });
+
+  it('preserves a nested approval failure instead of mislabeling it as sync failure', async () => {
+    const f = fixture();
+    const approval = await f.approve();
+    f.context.checkApproval
+      .mockImplementationOnce(() => {})
+      .mockImplementationOnce(() => {
+        throw failure('PRIVATE_CODE');
+      });
+    const error = await f.execute('topic-apply', approval).catch((error) => error);
+    expect(publicMaintenanceFailure(error)).toMatchObject({
+      phase: 'approval-check',
+      reason: 'unavailable',
+      topicSyncMayHaveCommitted: false,
+    });
+    expect(f.queries()).not.toContain('COMMIT');
+  });
+
+  it('does not expose spoofed phase, reason, gate, operation or driver getters', () => {
+    const error = new Error(privateDetail);
+    const readCode = vi.fn(() => {
+      throw new Error(privateDetail);
+    });
+    Object.defineProperty(error, 'code', { get: readCode });
+    const safe = new TopicMaintenanceError(error, 'topic-apply', false, 'dedicated-connect');
+    expect(safe.reason).toBe('unavailable');
+    expect(readCode).not.toHaveBeenCalled();
+    Object.assign(safe, {
+      phase: privateDetail,
+      reason: privateDetail,
+      gate: privateDetail,
+      operation: privateDetail,
+    });
+    expect(publicMaintenanceFailure(safe)).toEqual({
+      status: 'blocked',
+      gate: 'unavailable',
+      phase: 'initialization',
+      reason: 'unavailable',
+      operation: 'topic-plan',
+      topicSyncMayHaveCommitted: false,
+      verificationCompleted: false,
+    });
+    for (const key of ['phase', 'reason', 'gate', 'operation', 'mayHaveCommitted']) {
+      Object.defineProperty(safe, key, { get: readCode });
+    }
+    expect(publicMaintenanceFailure(safe)).toEqual({
+      status: 'blocked',
+      gate: 'unavailable',
+      phase: 'initialization',
+      reason: 'unavailable',
+      operation: 'topic-plan',
+      topicSyncMayHaveCommitted: false,
+      verificationCompleted: false,
+    });
+    expect(readCode).not.toHaveBeenCalled();
   });
 });
