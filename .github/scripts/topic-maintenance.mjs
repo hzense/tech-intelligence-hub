@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath, URL } from 'node:url';
+import { ConnectionPolicyError } from '../../packages/database/src/connection-policy.mjs';
 
 const digest = /^[a-f0-9]{64}$/;
 const hash = (value) => createHash('sha256').update(value).digest('hex');
@@ -100,11 +101,44 @@ const roleReasonPrefixes = new Map([
   ['Topic sync current public Signal view relation ', 'relation-contract-invalid'],
   ['Topic sync Signal immutability contract mismatch:', 'immutability-contract-invalid'],
 ]);
+const targetCodeReasons = new Map([
+  ...[
+    'url-required',
+    'url-whitespace',
+    'url-control-character',
+    'url-scheme-invalid',
+    'url-invalid',
+    'url-fragment',
+    'host-invalid',
+    'host-encoding-invalid',
+    'query-parameter-disallowed',
+    'query-parameter-duplicate',
+    'database-encoding-invalid',
+    'user-encoding-invalid',
+    'database-name-invalid',
+    'user-required',
+    'host-not-loopback',
+    'profile-invalid',
+    'configuration-prefix-required',
+    'expected-host-required',
+    'expected-port-required',
+    'expected-database-required',
+    'expected-user-required',
+    'host-loopback-disallowed',
+    'port-required',
+    'host-mismatch',
+    'port-mismatch',
+    'database-mismatch',
+    'user-mismatch',
+  ].map((code) => [code, `connection-${code}`]),
+  ['tls-mode-invalid', 'tls-policy-invalid'],
+  ['tls-validation-disabled', 'tls-validation-disabled'],
+]);
 const safeReasons = new Set([
   ...codeReasons.values(),
   ...roleReasonPrefixes.values(),
-  'tls-policy-invalid',
-  'connection-policy-invalid',
+  ...targetCodeReasons.values(),
+  'connection-pooler-disallowed',
   'projection-drift',
   'unavailable',
 ]);
@@ -115,20 +149,17 @@ function safeReason(error, phase) {
   if (!error || (typeof error !== 'object' && typeof error !== 'function')) return 'unavailable';
   const code = ownValue(error, 'code');
   if (typeof code === 'string' && codeReasons.has(code)) return codeReasons.get(code);
+  if (
+    (phase === 'owner-target' || phase === 'dedicated-target') &&
+    error instanceof ConnectionPolicyError
+  )
+    return targetCodeReasons.get(ownValue(error, 'reasonCode')) ?? 'unavailable';
   const message = ownValue(error, 'message');
   if (typeof message !== 'string') return 'unavailable';
   if (phase === 'owner-target' || phase === 'dedicated-target') {
-    if (
-      message === 'Production database URL must set sslmode=verify-full exactly once' ||
-      message === 'Production database connections refuse NODE_TLS_REJECT_UNAUTHORIZED=0'
-    )
-      return 'tls-policy-invalid';
-    if (
-      /^(Database connection string |Production database (endpoint|URL identity) |database (connection string|configuration prefix|profile) |Topic sync requires a reviewed direct\/session endpoint)/.test(
-        message,
-      )
-    )
-      return 'connection-policy-invalid';
+    if (message === 'Topic sync database host is required') return 'connection-host-invalid';
+    if (message === 'Topic sync requires a reviewed direct/session endpoint, not a pooler endpoint')
+      return 'connection-pooler-disallowed';
   }
   if (phase === 'dedicated-preflight') {
     for (const [prefix, reason] of roleReasonPrefixes)
