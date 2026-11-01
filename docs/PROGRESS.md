@@ -6,35 +6,27 @@
 
 **当前阶段：主要业务功能已实现，正在完善功能、修复稳定性并补齐本地执行能力；不代表线上已经稳定可用。** 当前结论以本节、能力清单和下一步工作为准。下方历史记录中的“当前”“待提交”“未上线”、旧迁移数量和完成度百分比均只代表记录当时，不覆盖本节。
 
-### 生产采集领域目录修复（2026-11-01，实施中）
+### 生产采集领域目录修复（2026-11-01，目录同步完成）
 
-最初只读定位时，hzense.com 指向 `main@6ff843f`（PR #247）。`testing` 于 `2026-11-01T01:07:20Z` 创建的采集任务在发现阶段报 `discovery_topics_not_ready`，尚未调用 AI，检索记账为 $0。任务详情显示全部 10 个一级领域未启用；同一生产目录的信号管理页面仅提供 AI Agents、AI Infrastructure、AI Security、Foundation Models、Humanoid Robotics 五个子领域。仓库权威投影为 62 个节点、47 个启用项，覆盖全部 10 个一级领域。代码部署和本地目录同步没有更新生产 Topic 数据。
+**生产目录修复成功，执行器独立新连接核验通过；候选发布页面的新字段权限阻断正在修复。** 正式 [topic-apply 41330016210](https://github.com/hzense/tech-intelligence-hub/actions/runs/41330016210) 在 `main@9b9c1cf590ab4e881f9b12bc52a34b3642861b6c` 上于 `2026-11-01T17:10:28.0770962Z` 成功：插入 0、更新 42、不变 20，目录共 62 项、47 项启用，10 个一级领域全部可用、缺失 0 项；`committed:true`、`verificationCompleted:true`。提交后独立新连接比较完整投影，最终 owner 计划没有剩余插入／更新；不再为重复核对增加生产审批。
 
-本次补齐受保护的 `topic-plan`／`topic-apply`／`topic-verify` 维护入口：先只读生成完整计划，再以独立 `hzense_topic_sync` 角色同步，最后用独立连接核验完整投影和无剩余变更。保留当前 main／CI、运行绑定审批、备份与恢复证据门禁；不调整模型、预算或领域范围，不重放失败任务。Topic 更新会触发旧核验依赖失效，因此计划同时统计未失效依赖封印，非零时阻止写入，不能将同步描述为无条件无业务影响。
+最初 `testing` 的 `2026-11-01T01:07:20Z` 任务因 `discovery_topics_not_ready` 在付费前失败，记账 $0。当时生产有 62 个 Topic 但仅 5 个启用，全部 10 个一级领域缺失。修复保留完整检索范围，不调整模型、预算或发布策略，不重放失败任务，也不改写历史费用。
 
-迁移前 Neon SQL Editor 只读快照确认：生产 `hzense` 登记 32 项迁移，最新为 `0031_retire_unused_tables.sql`；`topics` 共 62 行、启用 5 行；核验依赖封印总数和未失效数均为 0。此前 `0031` 独立核验为 58 张表。现有 `hzense_topic_sync` 角色已存在；GitHub 维护环境最初缺少 `HZENSE_TOPIC_SYNC_DATABASE_URL`，用户现已确认保存并修正 TLS 参数，最新元数据更新时间为 `2026-11-01T15:14:05Z`，未读取值、尚未验证连接认证。完整 Schema 契约要求 `0032_automatic_signal_publication.sql`，故需先迁移再同步 Topic。用户已授权本轮升级、专用凭据配置和目录同步，并确认维护期间暂停其他数据库结构修改、角色授权及发布；迁移本身不授权角色、不重放任务、不发布信号或修改开关。
+[PR #248](https://github.com/hzense/tech-intelligence-hub/pull/248) 交付受保护的 `topic-plan`／`topic-apply`／`topic-verify`；[PR #249](https://github.com/hzense/tech-intelligence-hub/pull/249)、[PR #250](https://github.com/hzense/tech-intelligence-hub/pull/250) 补齐固定白名单失败阶段及原因码，均已合并部署。当前主干 [CI 41328016802](https://github.com/hzense/tech-intelligence-hub/actions/runs/41328016802) 成功，生产部署 `dpl_DeCBs1HDZND4VKT8nS4MfpG8LhLJ` READY，`hzense.com` 别名已核对指向 `9b9c1cf`，本地已同步。诊断变更没有修改迁移、目录内容、角色授权或同步写入规则。
 
-[PR #248](https://github.com/hzense/tech-intelligence-hub/pull/248) 已合并为 `e2581af06c518b6bec5a8661bd7fa9025af2fabc`，主干 [CI 41265488915](https://github.com/hzense/tech-intelligence-hub/actions/runs/41265488915) 三项作业全部成功。生产部署 `dpl_3n8B2sWvFdsiBYMp5gVsNLLiPv1K` 为 READY，提交与主干一致，`hzense.com` 别名已核对指向此部署。受保护维护入口已上线，数据库修复仍未完成。
+维护已完成真实备份、隔离恢复、ACL 双采样、`0032` 迁移和随后独立完整 Schema 核验，生产确认为 **33 项迁移、58 张表**。[迁移 41317293957](https://github.com/hzense/tech-intelligence-hub/actions/runs/41317293957) 和 [只读计划 41318093575](https://github.com/hzense/tech-intelligence-hub/actions/runs/41318093575) 均成功；计划独立复审通过。完整备份 `pre-topic-catalog-0032-20261101` 按 Never 保留；隔离演练分支按 `2026-11-02T14:24:40Z` 自动过期。44 文件恢复封存及独立审核有效，不将迁移前恢复证据声称为迁移后新演练。
 
-迁移前只读 [preflight 41312427432](https://github.com/hzense/tech-intelligence-hub/actions/runs/41312427432) 绑定上述主干，经 `production-maintenance` 环境审批于 `2026-11-01T13:53:59.0602257Z` 成功，当时待迁移 1 项；该预检只检查连接、迁移记录和待迁移数量，没有执行写入。新完整备份 `pre-topic-catalog-0032-20261101` 已创建且不过期；隔离子分支 `restore-check-topic-0032-20261101` 已创建，初始保留至 `2026-11-02T13:47:08Z`；恢复后核对的到期时间为 `2026-11-02T14:24:40Z`。备份强身份核对通过精确 32 项迁移、58 张表及可信 postmaster／owner 断言。
+连接诊断与执行过程已闭合（时间均为 UTC）：
 
-备份与隔离子分支的初始完整数据（58 张表、1,218 行）、结构和 ACL 摘要（各 21 类）一致。仅在隔离子分支提交 canary 修改，三项断言均通过；修改后仅 `topics` 数据改变，其余 57 张业务表不变，阶段证据已独立审核。Reset 最终确认返回时弹窗已经关闭，供应商显示更新时间 `2026-11-01T14:24:41Z`，代理没有再次点击 Reset。随后依据新时间线及全量摘要核验实际恢复通过：58 张表、1,218 行及数据／结构／ACL 均与备份一致，canary 消失，撤销的列权限恢复；备份最终身份及全部摘要保持不变。最终恢复证据清单已封存 44 个文件，SHA-256 为 `4ee06b19d0ed213014ecf58a0cc8b70c8c96a82580031f389bcc6f4d2b02fa2d`，清单独立审核已通过，44 个文件的大小和 SHA-256 全部一致。
+- 首次同步 [41320254050](https://github.com/hzense/tech-intelligence-hub/actions/runs/41320254050) 未提交，通用摘要不足以定因；补诊断后，[41326991812](https://github.com/hzense/tech-intelligence-hub/actions/runs/41326991812) 显示 `dedicated-target / connection-policy-invalid`，[41328446114](https://github.com/hzense/tech-intelligence-hub/actions/runs/41328446114) 明确为 `connection-host-mismatch`，均在专用连接认证前停止。
+- 用户保存完整正确专用连接模板，Secret 元数据于 `17:01:58Z` 更新；仅核对名称和更新时间，没有读取值、重设密码或扩大权限。[只读 41329376547](https://github.com/hzense/tech-intelligence-hub/actions/runs/41329376547) 随后到达 `topic-verification / projection-drift`，证明连接、完整 Schema 和只读最小权限已通过，只剩待同步的目录差异。
+- [41329669171](https://github.com/hzense/tech-intelligence-hub/actions/runs/41329669171) 因环境审批先于新审批元数据绑定，被 `approval-run-mismatch` 在执行前拦下，没有写入；该旧运行不再复用。新运行 [41330016210](https://github.com/hzense/tech-intelligence-hub/actions/runs/41330016210) 先在 `17:09:33Z`／`17:09:34Z` 更新并核对精确审批元数据，再成功执行；四项指纹与已审阅计划一致。
 
-只读 [ACL 双采样运行 41314482877](https://github.com/hzense/tech-intelligence-hub/actions/runs/41314482877) 已审批并成功，`14:25:34.912Z`／`14:25:35.225Z` 两次采样一致，正式指纹为 `09760ceb9b09f0514dde47633d0e3a3fb0aa54fbc03c691a802cbb1bc45c7399`。其运行审批按建立时状态保留 `restoreRehearsed: false`、`aclRecoveryReviewed: false`，没有虚构恢复指纹，未沿用为后续迁移审批。该采集没有生产数据或权限写入。
+本次 Topic DML 仅由 `hzense_topic_sync` 执行，保留 main／CI、运行绑定审批、备份恢复、维护与发布冻结、依赖封印及事务锁内重算检查。未失效封印为 0，维护中封印总数没有变化。本轮未调用付费 AI、发布信号或调整开关；真实采集是否完整恢复，以之后正常计划或另行授权运行回执为准。
 
-正式 [迁移运行 41317293957](https://github.com/hzense/tech-intelligence-hub/actions/runs/41317293957) 精确绑定 `main@e2581af06c518b6bec5a8661bd7fa9025af2fabc`，经用户批准后已 `completed`／`success`。本次审批元数据通过纯函数校验及独立审核，于 `2026-11-01T14:41:23Z` 上传；执行步骤于 `2026-11-01T14:48:45.4539246Z` 返回 `operation: migrate`、`status: succeeded`、33 项迁移、58 张表。`0032` 的生产结构写入已完成，尚未写入 Topic 数据、调用 AI 或修改开关与权限。
+页面验收发现独立问题：生成列表可读取 28 条既有任务，但候选发布信息同源 GET 返回 503。生产只读核对确认 `0032` 的新列已存在，writer 却缺少 `publication_basis` SELECT／INSERT 和生成快照 SELECT；读取代码因此拒绝返回不明发布依据。reader 已具备公开依据列的读取权限。用户已授权新增受保护维护入口并仅升级 writer 这三项能力，保持 reader、发布开关、历史任务及费用不变；当前正在开发和隔离验证，尚未执行生产授权。修复后继续只读核对线上 47 个可选领域、10 个一级领域。
 
-独立只读 [topic-plan 41318093575](https://github.com/hzense/tech-intelligence-hub/actions/runs/41318093575) 精确绑定同一主干，经审批于 `2026-11-01T15:05:21.7410678Z` 成功。`verifyDatabaseContract` 独立完整 Schema 核验已通过，确认为 33 项迁移、58 张表；随后计划得到 0 项插入、42 项更新、20 项不变，启用目录将由 5 项恢复到 47 项，当前启用目录缺失全部 10 个所需一级领域，依赖封印为 0／0。私有报告已保存并通过本地交叉核对，独立复审为 PASS；`roleExists` 仅证明角色存在，不能代替连接认证与最小权限预检。四项审批指纹见生产目录记录。
-
-此前给用户的专用连接模板误写 `sslmode=require`，项目强制要求 `sslmode=verify-full`；已纠正，用户已确认修正并保存，无需重设密码，未读取 Secret 值。正式 [topic-apply 41320254050](https://github.com/hzense/tech-intelligence-hub/actions/runs/41320254050) 精确绑定同一主干，审批文件绑定四项计划指纹、恢复证据及备份，明确 `publicationFreezeConfirmed: true` 并通过纯函数校验；`MAINTENANCE_APPROVAL` 元数据已于 `2026-11-01T15:15:41Z` 更新确认。
-
-用户批准后该运行于 `15:16:11Z` 开始，最终失败，`2026-11-01T15:16:40.206Z` 返回 `status: blocked`、`gate: unavailable`、`topicSyncMayHaveCommitted: false`、`verificationCompleted: false`。正式同步未提交 Topic 数据，写后核验未完成；通用诊断不足以确认根因，不能认定专用连接认证或 ACL 已通过。当前正在定位失败原因，没有盲目重跑或追加生产修改；未调用 AI 或修改开关。后续须修正具体阻断、核对计划和新的运行审批，完成同步、独立核验及线上目录检查，不能宣称采集已恢复。详见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)及[受保护的 Topic 维护入口](DEPLOYMENT.md#受保护的-topic-维护入口2026-11-01)。
-
-诊断补丁已通过 [PR #249](https://github.com/hzense/tech-intelligence-hub/pull/249) 合并为 `44a7aa96a9e94b3457f6b4099fa554758223175b`，定向回归 438 项及独立代码审核通过，主干 [CI 41322782146](https://github.com/hzense/tech-intelligence-hub/actions/runs/41322782146) 三项作业成功。Vercel 生产部署 `dpl_92bgm6vhxZFk32zQE9hy9LcUu9wL` 为 READY，`hzense.com` 已指向该提交，本地已同步。失败响应新增固定白名单 `phase`／`reason`，原有门禁和提交不确定性保持不变。
-
-随后经审批的只读 [topic-verify 41323966645](https://github.com/hzense/tech-intelligence-hub/actions/runs/41323966645) 于 `2026-11-01T16:10:27.2303752Z` 返回 `phase: dedicated-target`、`reason: unavailable`。已定位到专用连接地址的本地校验，尚未进入数据库认证和权限预检；此结果不是密码或 ACL 错误的证据。源码排除及真实校验器复现后，未细分的生产地址错误为显式端口缺失、回环主机、库名或用户名的非法百分号编码。补充诊断分类的本地定向回归 476 项及独立代码审核通过，校验规则未改变，补丁尚未提交。用户随后确认专用连接确实缺少 `:5432`，现已补齐并保存；仅核对 Secret 元数据于 `2026-11-01T16:32:44Z` 更新，未读取值。补正后的只读 [topic-verify 41326991812](https://github.com/hzense/tech-intelligence-hub/actions/runs/41326991812) 绑定 `main@44a7aa9`，经本次 GitHub 环境审批后已执行，结果见下；连接和 ACL 尚待验证，目录仍未同步。
-
-端口补正后的运行已获审批并执行，于 `2026-11-01T16:34:41.4417606Z` 仍在 `dedicated-target` 阶段停止，原因变为 `connection-policy-invalid`。此处为只读数据库诊断失败，尚未发起认证或权限查询。正在把地址校验细分到主机、端口、数据库名、账号及格式错误，保留严格校验和脱敏输出，以便下一次直接定位具体字段；未新增生产写入。
+自动采集旧失败记录不会因目录修复被改写。详细时间线、四项审批指纹、恢复与 ACL 证据见[生产目录记录](production-evidence/2026-11-01-topic-catalog.md)；维护入口见[部署说明](DEPLOYMENT.md#受保护的-topic-维护入口2026-11-01)。
 
 ### 自动生成日期与资源证据修复（2026-10-31，本地修改）
 

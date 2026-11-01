@@ -1,6 +1,10 @@
 import { LegacySignalMaintenanceError, legacyMigrationName } from './legacy-signal-maintenance.mjs';
 import { UnifiedSignalMaintenanceError } from './unified-signal-apply.mjs';
 import { TopicMaintenanceError } from './topic-maintenance.mjs';
+import {
+  EditorialCapabilityMaintenanceError,
+  editorialCapabilityRoleUpgradeSha256,
+} from './editorial-capability-maintenance.mjs';
 import console from 'node:console';
 import process from 'node:process';
 import { createHash } from 'node:crypto';
@@ -29,6 +33,8 @@ export const maintenanceOperations = Object.freeze([
   'topic-plan',
   'topic-apply',
   'topic-verify',
+  'editorial-capability-plan',
+  'editorial-capability-grant',
 ]);
 const migrationSequence = 'migrate-and-verify';
 const writes = new Set([
@@ -39,6 +45,7 @@ const writes = new Set([
   'legacy-signal-apply',
   'unified-signal-apply',
   'topic-apply',
+  'editorial-capability-grant',
 ]);
 const digest = /^[a-f0-9]{64}$/;
 export const editorialResourceRoleUpgradeSha256 =
@@ -1478,6 +1485,22 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
     'approval-expired-or-too-long',
   );
   const recoveryPolicy = validateRecoveryPolicy(approval, operation);
+  if (operation === 'editorial-capability-grant') {
+    requireGate(
+      recoveryPolicy === 'verified' &&
+        approval.roleUpgradeApproved === true &&
+        approval.publicationFreezeConfirmed === true &&
+        approval.roleUpgradeSha256 === editorialCapabilityRoleUpgradeSha256 &&
+        [0, 3].includes(approval.writerMissingCount) &&
+        [
+          'manifestFingerprint',
+          'targetFingerprint',
+          'planFingerprint',
+          'unchangedAclFingerprint',
+        ].every((key) => digest.test(approval[key] ?? '')),
+      'editorial-capability-grant-approval-required',
+    );
+  }
   if (operation === 'topic-apply') {
     requireGate(
       recoveryPolicy === 'verified' &&
@@ -1620,6 +1643,15 @@ export function publicRecoveryAcceptance(request, rawApproval) {
 // Allowlist types too: a database error or document ID must never become a log.
 export function publicMaintenanceResult(operation, result = {}) {
   const summary = { operation, status: 'succeeded' };
+  if (operation.startsWith('editorial-capability-')) {
+    for (const key of ['writerMissingCount', 'writerGrantedCount'])
+      if ([0, 3].includes(result[key])) summary[key] = result[key];
+    for (const key of ['unchangedAclFingerprint', 'verifiedAclFingerprint'])
+      if (typeof result[key] === 'string' && digest.test(result[key])) summary[key] = result[key];
+    if (typeof result.readerUnchanged === 'boolean')
+      summary.readerUnchanged = result.readerUnchanged;
+    summary.previewOnly = operation === 'editorial-capability-plan';
+  }
   if (operation.startsWith('topic-')) {
     for (const key of [
       'enabledCount',
@@ -1688,6 +1720,23 @@ export function publicMaintenanceResult(operation, result = {}) {
 }
 
 export function publicMaintenanceFailure(error) {
+  if (error instanceof EditorialCapabilityMaintenanceError) {
+    const safe = new EditorialCapabilityMaintenanceError(
+      error,
+      Object.getOwnPropertyDescriptor(error, 'operation')?.value,
+      Object.getOwnPropertyDescriptor(error, 'mayHaveCommitted')?.value,
+    );
+    return {
+      status: 'blocked',
+      gate: safe.gate,
+      phase: safe.phase,
+      reason: safe.reason,
+      operation: safe.operation,
+      roleUpgradeCompleted: false,
+      roleUpgradeMayHaveCommitted: safe.mayHaveCommitted,
+      verificationCompleted: false,
+    };
+  }
   if (error instanceof TopicMaintenanceError) {
     const safe = new TopicMaintenanceError(
       error,
@@ -2043,6 +2092,11 @@ async function executeEditorialResourceGrant(env, approval, context) {
 }
 
 async function executeOperation(env, { operation, approval }, context = {}) {
+  if (operation.startsWith('editorial-capability-')) {
+    const { executeEditorialCapabilityMaintenance } =
+      await import('./editorial-capability-maintenance.mjs');
+    return executeEditorialCapabilityMaintenance(env, { operation, approval }, context);
+  }
   if (operation.startsWith('topic-')) {
     const { executeTopicMaintenance } = await import('./topic-maintenance.mjs');
     return executeTopicMaintenance(env, { operation, approval }, context);
@@ -2841,6 +2895,7 @@ export async function runMaintenance(
               ...(request.operation === 'editorial-resource-grant' ||
               request.operation.startsWith('unified-signal-') ||
               request.operation.startsWith('topic-') ||
+              request.operation.startsWith('editorial-capability-') ||
               request.operation.startsWith('legacy-signal-')
                 ? [{ checkApproval, checkFreshness }]
                 : []),
