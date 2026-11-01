@@ -1,5 +1,6 @@
 import { LegacySignalMaintenanceError, legacyMigrationName } from './legacy-signal-maintenance.mjs';
 import { UnifiedSignalMaintenanceError } from './unified-signal-apply.mjs';
+import { TopicMaintenanceError } from './topic-maintenance.mjs';
 import console from 'node:console';
 import process from 'node:process';
 import { createHash } from 'node:crypto';
@@ -25,6 +26,9 @@ export const maintenanceOperations = Object.freeze([
   'unified-signal-dry-run',
   'unified-signal-apply',
   'unified-signal-verify',
+  'topic-plan',
+  'topic-apply',
+  'topic-verify',
 ]);
 const migrationSequence = 'migrate-and-verify';
 const writes = new Set([
@@ -34,6 +38,7 @@ const writes = new Set([
   'editorial-resource-grant',
   'legacy-signal-apply',
   'unified-signal-apply',
+  'topic-apply',
 ]);
 const digest = /^[a-f0-9]{64}$/;
 export const editorialResourceRoleUpgradeSha256 =
@@ -1473,6 +1478,19 @@ export function validateMaintenanceRequest(env, now = Date.now()) {
     'approval-expired-or-too-long',
   );
   const recoveryPolicy = validateRecoveryPolicy(approval, operation);
+  if (operation === 'topic-apply') {
+    requireGate(
+      recoveryPolicy === 'verified' &&
+        approval.publicationFreezeConfirmed === true &&
+        [
+          'projectionFingerprint',
+          'planFingerprint',
+          'targetFingerprint',
+          'manifestFingerprint',
+        ].every((key) => digest.test(approval[key] ?? '')),
+      'topic-plan-approval-required',
+    );
+  }
   if (operation === 'unified-signal-apply') {
     requireGate(
       recoveryPolicy === 'verified' &&
@@ -1602,6 +1620,20 @@ export function publicRecoveryAcceptance(request, rawApproval) {
 // Allowlist types too: a database error or document ID must never become a log.
 export function publicMaintenanceResult(operation, result = {}) {
   const summary = { operation, status: 'succeeded' };
+  if (operation.startsWith('topic-')) {
+    for (const key of [
+      'enabledCount',
+      'rootTopicCount',
+      'currentEnabledCount',
+      'missingRootCount',
+      'activeSealCount',
+      'sealTotalCount',
+    ])
+      if (Number.isSafeInteger(result[key]) && result[key] >= 0) summary[key] = result[key];
+    for (const key of ['roleExists'])
+      if (typeof result[key] === 'boolean') summary[key] = result[key];
+    summary.previewOnly = operation === 'topic-plan';
+  }
   if (operation.startsWith('unified-signal-')) {
     for (const key of [
       'sourceLegacyCount',
@@ -1656,6 +1688,14 @@ export function publicMaintenanceResult(operation, result = {}) {
 }
 
 export function publicMaintenanceFailure(error) {
+  if (error instanceof TopicMaintenanceError)
+    return {
+      status: 'blocked',
+      gate: error.gate,
+      operation: error.operation,
+      topicSyncMayHaveCommitted: error.mayHaveCommitted,
+      verificationCompleted: false,
+    };
   if (
     error instanceof LegacySignalMaintenanceError ||
     error instanceof UnifiedSignalMaintenanceError
@@ -1995,6 +2035,10 @@ async function executeEditorialResourceGrant(env, approval, context) {
 }
 
 async function executeOperation(env, { operation, approval }, context = {}) {
+  if (operation.startsWith('topic-')) {
+    const { executeTopicMaintenance } = await import('./topic-maintenance.mjs');
+    return executeTopicMaintenance(env, { operation, approval }, context);
+  }
   if (['unified-signal-apply', 'unified-signal-verify'].includes(operation)) {
     const { executeUnifiedSignalApply } = await import('./unified-signal-apply.mjs');
     return executeUnifiedSignalApply(env, { operation, approval }, context);
@@ -2788,6 +2832,7 @@ export async function runMaintenance(
               request,
               ...(request.operation === 'editorial-resource-grant' ||
               request.operation.startsWith('unified-signal-') ||
+              request.operation.startsWith('topic-') ||
               request.operation.startsWith('legacy-signal-')
                 ? [{ checkApproval, checkFreshness }]
                 : []),

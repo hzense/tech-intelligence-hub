@@ -15,6 +15,7 @@ import {
   verifyMaintenanceFreshness,
 } from '../../../.github/scripts/production-maintenance.mjs';
 import { maintenanceWorkflowProblems } from '../../../.github/scripts/maintenance-workflow-contract.mjs';
+import { TopicMaintenanceError } from '../../../.github/scripts/topic-maintenance.mjs';
 
 const now = Date.parse('2026-09-07T10:00:00Z');
 const backupId = 'protected-backup-20260907';
@@ -723,10 +724,18 @@ describe('execution-time GitHub freshness check', () => {
               'editorial-resource-grant',
               'legacy-signal-apply',
               'unified-signal-apply',
+              'topic-apply',
             ].includes(operation)
           ? writeEnvironment(operation, {
               publicArchiveApproved: true,
               archiveRepository: 'hzense/tech-intelligence-hub',
+              ...(operation === 'topic-apply'
+                ? {
+                    publicationFreezeConfirmed: true,
+                    targetFingerprint: 'd'.repeat(64),
+                    manifestFingerprint: 'f'.repeat(64),
+                  }
+                : {}),
               ...(operation === 'unified-signal-apply'
                 ? {
                     roleUpgradeApproved: true,
@@ -827,6 +836,12 @@ describe('production maintenance workflow contract', () => {
     (w) => (w.jobs.maintenance.steps[3].run = 'true'),
     (w) => (w.jobs.maintenance.steps[3]['continue-on-error'] = true),
     (w) => (w.jobs.maintenance.steps[4].env.MAINTENANCE_APPROVAL = ''),
+    (w) =>
+      (w.jobs.maintenance.steps[4].env.HZENSE_TOPIC_SYNC_DATABASE_URL =
+        '${{ secrets.DATABASE_DIRECT_URL }}'),
+    (w) =>
+      (w.jobs.maintenance.steps[4].env.HZENSE_TOPIC_SYNC_DATABASE_URL =
+        '${{ secrets.HZENSE_TOPIC_SYNC_DATABASE_URL }}'),
     (w) => delete w.jobs.maintenance.steps[4].env.GH_TOKEN,
     (w) => (w.jobs.maintenance.steps[4].env.GH_TOKEN = '${{ secrets.PERSONAL_TOKEN }}'),
     (w) => (w.jobs.maintenance.steps[4].run = 'node arbitrary-script.mjs'),
@@ -851,4 +866,87 @@ describe('production maintenance workflow contract', () => {
     mutate(copy);
     expect(maintenanceWorkflowProblems(copy).length).toBeGreaterThan(0);
   });
+});
+
+describe('topic synchronization protected gates', () => {
+  const topicRequest = (changes = {}) =>
+    writeEnvironment('topic-apply', {
+      publicationFreezeConfirmed: true,
+      targetFingerprint: 'f'.repeat(64),
+      manifestFingerprint: 'a'.repeat(64),
+      ...changes,
+    });
+  it('allows only a reviewed, run-bound topic apply with both freezes', () => {
+    expect(validateMaintenanceRequest(topicRequest(), now).operation).toBe('topic-apply');
+  });
+  it.each([
+    { publicationFreezeConfirmed: false },
+    { publicationFreezeConfirmed: undefined },
+    { projectionFingerprint: undefined },
+    { planFingerprint: undefined },
+    { targetFingerprint: undefined },
+    { manifestFingerprint: undefined },
+    { backupVerified: false },
+    { restoreRehearsed: false },
+    { ddlFreezeConfirmed: false },
+    { runId: '456' },
+  ])('rejects incomplete scope or recovery approval %j', (changes) => {
+    expect(() => validateMaintenanceRequest(topicRequest(changes), now)).toThrow();
+  });
+  it('does not need a write approval to read the plan or independently verify', () => {
+    for (const operation of ['topic-plan', 'topic-verify'])
+      expect(validateMaintenanceRequest({ ...env, MAINTENANCE_OPERATION: operation }, now)).toEqual(
+        { operation },
+      );
+  });
+  it('reports only bounded catalog counts and fingerprints', () => {
+    expect(
+      publicMaintenanceResult('topic-plan', {
+        desiredCount: 62,
+        enabledCount: 47,
+        rootTopicCount: 10,
+        currentEnabledCount: 5,
+        missingRootCount: 10,
+        activeSealCount: 0,
+        sealTotalCount: 0,
+        roleExists: true,
+        fingerprint: 'a'.repeat(64),
+        planFingerprint: 'b'.repeat(64),
+        connectionString: 'secret',
+        password: 'secret',
+        topics: ['private'],
+      }),
+    ).toEqual({
+      operation: 'topic-plan',
+      status: 'succeeded',
+      previewOnly: true,
+      desiredCount: 62,
+      enabledCount: 47,
+      rootTopicCount: 10,
+      currentEnabledCount: 5,
+      missingRootCount: 10,
+      activeSealCount: 0,
+      sealTotalCount: 0,
+      roleExists: true,
+      fingerprint: 'a'.repeat(64),
+      planFingerprint: 'b'.repeat(64),
+    });
+  });
+  it.each([false, true])(
+    'preserves commit uncertainty without exposing raw errors (%s)',
+    (committed) => {
+      const error = new TopicMaintenanceError(
+        new Error('private database connection details'),
+        'topic-apply',
+        committed,
+      );
+      expect(publicMaintenanceFailure(error)).toEqual({
+        status: 'blocked',
+        gate: 'unavailable',
+        operation: 'topic-apply',
+        topicSyncMayHaveCommitted: committed,
+        verificationCompleted: false,
+      });
+    },
+  );
 });
