@@ -54,6 +54,92 @@ describe('editorial confirmation contract', () => {
     // Historical committed replays are authenticated before checking current policy.
     expect(normalizeEditorialRequest(request, bound, { checkPublication: false })).toEqual(request);
   });
+  it.each(['technology', 'security', 'market', 'supply_chain', 'open_source'])(
+    'requires reclassification of %s on new revisions while preserving history and withdrawal',
+    (signalType) => {
+      const { request, material } = editorialFixture();
+      const historical = { ...request, content: { ...request.content, signalType } };
+      expect(normalizeEditorialContent(historical.content)).toEqual(historical.content);
+      expect(contentReadiness(historical.content)).toEqual({
+        ready: false,
+        missing: ['signalType'],
+      });
+      expect(normalizeEditorialRequest(historical, material, { checkPublication: false })).toEqual(
+        historical,
+      );
+      for (const action of ['draft', 'publish']) {
+        expect(() => normalizeEditorialRequest({ ...historical, action }, material)).toThrow(
+          'confirmation_required',
+        );
+      }
+      expect(() =>
+        normalizeEditorialRequest({ ...historical, consent: false }, material, { automatic: true }),
+      ).toThrow('confirmation_required');
+      expect(
+        normalizeEditorialRequest({ ...historical, action: 'withdraw' }, material).content,
+      ).toEqual(historical.content);
+      expect(normalizeEditorialRequest(request, material)).toEqual(request);
+    },
+  );
+  it('acknowledges an unchanged retired-type receipt and rejects a new write without modifying history', async () => {
+    const { request, material } = editorialFixture();
+    request.content.signalType = 'technology';
+    const normalized = normalizeEditorialRequest(request, material, { checkPublication: false });
+    const old = {
+      request_id: request.requestId,
+      owner_id: 'owner',
+      revision: 1,
+      action: 'publish',
+      content: normalized.content,
+      request_hash: createHash('sha256')
+        .update(JSON.stringify({ owner: 'owner', ...normalized }))
+        .digest('hex'),
+    };
+    const writes = [];
+    const pool = {
+      connect: async () => ({
+        query: async (sql, values) => {
+          if (sql.startsWith('SELECT id FROM public.signal_generation_runs'))
+            return { rows: [{ id: request.runId }] };
+          if (sql.includes('WHERE request_id=$1'))
+            return { rows: values[0] === old.request_id ? [old] : [] };
+          if (sql.startsWith('SELECT') && sql.includes('editorial_signal_revisions'))
+            return { rows: [old] };
+          if (sql.startsWith('INSERT INTO public.editorial_signal_revisions')) {
+            const row = { revision: values[4], action: values[6], content: JSON.parse(values[7]) };
+            writes.push(row);
+            return { rows: [row] };
+          }
+          return { rows: [] };
+        },
+        release: () => {},
+      }),
+    };
+    const args = { pool, owner: 'owner', request, material };
+    expect((await saveEditorialSignal(args)).content).toEqual(old.content);
+    const next = {
+      ...request,
+      requestId: '33333333-3333-3333-3333-333333333333',
+      expectedRevision: 1,
+    };
+    await expect(saveEditorialSignal({ ...args, request: next })).rejects.toThrow(
+      'confirmation_required',
+    );
+    expect(writes).toHaveLength(0);
+    await expect(
+      saveEditorialSignal({
+        ...args,
+        request: { ...request, content: { ...request.content, signalType: 'research' } },
+      }),
+    ).rejects.toThrow('request_id_conflict');
+    const withdrawn = await saveEditorialSignal({
+      ...args,
+      request: { ...next, action: 'withdraw' },
+    });
+    expect(withdrawn.content).toEqual(old.content);
+    expect(withdrawn.action).toBe('withdraw');
+    expect(writes).toHaveLength(1);
+  });
   it('still validates structure and immutable content before historical replay lookup', () => {
     const { request, material } = editorialFixture();
     for (const patch of [

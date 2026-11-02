@@ -209,6 +209,13 @@ test(
           );
         });
       await expect(page.getByRole('checkbox', { name: '人工智能' })).toBeChecked();
+      const eventTypes = page.getByLabel('事件类型', { exact: true });
+      for (const retired of ['technology', 'security', 'market', 'open_source', 'supply_chain']) {
+        await expect(eventTypes.locator(`option[value="${retired}"]`)).toHaveCount(0);
+      }
+      for (const added of ['disclosure', 'operations', 'incident']) {
+        await expect(eventTypes.locator(`option[value="${added}"]`)).toHaveCount(1);
+      }
       await page.getByRole('checkbox', { name: '人工智能' }).uncheck();
       await expect(page.getByRole('checkbox', { name: '人工智能' })).not.toBeChecked();
       await page.getByLabel('事件日期', { exact: true }).fill('2026-09-25');
@@ -233,6 +240,17 @@ test(
       assert.deepEqual(posts[0].content.persons, ['测试人物']);
       await page.reload();
       await expect(page.getByRole('button', { name: '保存修改' })).toBeVisible();
+      // An old public record stays withdrawable, but cannot silently republish a retired category.
+      data = { ...data, content: { ...data.content, signalType: 'security' } };
+      await page.reload();
+      await expect(eventTypes).toHaveValue('security');
+      await expect(eventTypes.locator('option[value="security"]')).toHaveAttribute('disabled', '');
+      await expect(page.getByRole('button', { name: '保存修改' })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '撤回发布', exact: true })).toBeEnabled();
+      await eventTypes.selectOption('incident');
+      await expect(page.getByRole('button', { name: '保存修改' })).toBeEnabled();
+      data = { ...data, content: { ...data.content, signalType: 'product' } };
+      await page.reload();
       assert.deepEqual(errors, []);
       await page.screenshot({ path: '/tmp/hzense-editorial-before-withdraw.png', fullPage: true });
       // A local incomplete edit must not prevent withdrawing the saved public revision.

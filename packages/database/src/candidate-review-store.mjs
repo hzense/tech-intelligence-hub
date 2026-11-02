@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { GENERATION_SOURCE_PUBLICATION_CONTRACT } from '../../ingestion/src/signal-generation-contract.mjs';
+import { hasSourcePublicationDate } from '../../ingestion/src/signal-generation-contract.mjs';
 import {
   CandidateReviewError,
   normalizeCandidateReviewRequest,
@@ -55,7 +55,7 @@ export async function saveCandidateReview({ pool, owner, request, materialHash }
     // publication date as the event date expected by the historical pipeline.
     if (
       r.decision === 'submit_verification' &&
-      run.snapshot.output_contract === GENERATION_SOURCE_PUBLICATION_CONTRACT
+      hasSourcePublicationDate(run.snapshot.output_contract)
     )
       fail('source_publication_requires_manual_confirmation');
     const latest = (

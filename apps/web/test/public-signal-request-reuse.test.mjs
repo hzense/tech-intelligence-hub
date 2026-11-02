@@ -168,8 +168,14 @@ test('real RSC renders reuse current reads while subsequent renders and searches
   });
   const output = execFileSync(
     process.execPath,
-    ['--conditions=react-server', '--eval', compiled.outputFiles[0].text],
-    { cwd: root, encoding: 'utf8', timeout: 30_000 },
+    ['--conditions=react-server', '--input-type=commonjs', '-'],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      timeout: 30_000,
+      // Bundled fixtures can exceed Linux's per-argument size limit.
+      input: compiled.outputFiles[0].text,
+    },
   );
   assert.match(output, /request reuse verified/);
 });

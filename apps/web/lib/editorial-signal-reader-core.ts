@@ -1,4 +1,5 @@
 import { rankSearchDocuments } from '@hzense/search/ranking';
+import { signalEventTypeKeywords } from './signal-event-type.ts';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import {
   SIGNAL_TYPES,
@@ -254,7 +255,7 @@ export function searchSignalEntries(entries: SignalEntry[], query: string) {
       date: entry.occurred_at.slice(0, 10),
       body: entry.analysis ?? '',
       keywords: [
-        entry.type,
+        signalEventTypeKeywords(entry),
         ...entry.topics,
         ...(entry.public_topics ?? []).map((item) => item.title),
         ...(entry.public_people ?? []).map((item) => item.name),

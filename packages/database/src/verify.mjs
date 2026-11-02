@@ -342,6 +342,9 @@ const expectedEnums = {
     'partnership',
     'regulation',
     'supply_chain',
+    'disclosure',
+    'operations',
+    'incident',
   ],
   signal_status: ['inbox', 'reviewed', 'accepted', 'rejected', 'archived'],
   source_type: [

@@ -4,6 +4,8 @@ import {
   assessGeneratedCandidates,
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
+  GENERATION_EVENT_TYPES_CONTRACT,
+  hasSourcePublicationDate,
 } from '../../ingestion/src/signal-generation-contract.mjs';
 import { finishSignalGeneration } from '../src/signal-generation-store.mjs';
 
@@ -59,9 +61,7 @@ function fixture(contract = GENERATION_RESOURCES_CONTRACT) {
         candidates: [
           {
             ...raw,
-            ...(contract === GENERATION_SOURCE_PUBLICATION_CONTRACT
-              ? { date_basis: 'source_published' }
-              : {}),
+            ...(hasSourcePublicationDate(contract) ? { date_basis: 'source_published' } : {}),
           },
         ],
         reason: '私有候选',
@@ -111,32 +111,35 @@ function fixture(contract = GENERATION_RESOURCES_CONTRACT) {
 }
 
 describe('unknown event dates at the generation persistence boundary', () => {
-  it('binds source publication date semantics to the immutable snapshot through completion', async () => {
-    const { args, row, writes } = fixture(GENERATION_SOURCE_PUBLICATION_CONTRACT);
-    const saved = await finishSignalGeneration(args);
-    expect(saved.result.candidates[0].date_basis).toBe('source_published');
-    expect(saved.result.candidates[0].event_date).toBeNull();
-    expect(row.snapshot.output_contract).toBe(GENERATION_SOURCE_PUBLICATION_CONTRACT);
-    expect(writes).toHaveLength(1);
-    for (const basis of [undefined, 'event', 'captured_at']) {
-      const candidate = { ...args.result.candidates[0] };
-      if (basis === undefined) delete candidate.date_basis;
-      else candidate.date_basis = basis;
+  it.each([GENERATION_SOURCE_PUBLICATION_CONTRACT, GENERATION_EVENT_TYPES_CONTRACT])(
+    'binds %s date semantics to the immutable snapshot through completion',
+    async (contract) => {
+      const { args, row, writes } = fixture(contract);
+      const saved = await finishSignalGeneration(args);
+      expect(saved.result.candidates[0].date_basis).toBe('source_published');
+      expect(saved.result.candidates[0].event_date).toBeNull();
+      expect(row.snapshot.output_contract).toBe(contract);
+      expect(writes).toHaveLength(1);
+      for (const basis of [undefined, 'event', 'captured_at']) {
+        const candidate = { ...args.result.candidates[0] };
+        if (basis === undefined) delete candidate.date_basis;
+        else candidate.date_basis = basis;
+        await expect(
+          finishSignalGeneration({ ...args, result: { ...args.result, candidates: [candidate] } }),
+        ).rejects.toMatchObject({ code: 'invalid_result' });
+      }
+      const legacy = fixture();
       await expect(
-        finishSignalGeneration({ ...args, result: { ...args.result, candidates: [candidate] } }),
+        finishSignalGeneration({
+          ...legacy.args,
+          result: {
+            ...legacy.args.result,
+            candidates: [{ ...legacy.args.result.candidates[0], date_basis: 'source_published' }],
+          },
+        }),
       ).rejects.toMatchObject({ code: 'invalid_result' });
-    }
-    const legacy = fixture();
-    await expect(
-      finishSignalGeneration({
-        ...legacy.args,
-        result: {
-          ...legacy.args.result,
-          candidates: [{ ...legacy.args.result.candidates[0], date_basis: 'source_published' }],
-        },
-      }),
-    ).rejects.toMatchObject({ code: 'invalid_result' });
-  });
+    },
+  );
   it('retains exact private date clues without inferring a date or promoting publication readiness', async () => {
     const { args, row, writes } = fixture();
     const before = JSON.stringify({ source, raw, snapshot: row.snapshot, result: args.result });
@@ -217,4 +220,25 @@ describe('unknown event dates at the generation persistence boundary', () => {
     ).rejects.toMatchObject({ code: 'invalid_result' });
     expect(writes).toEqual([]);
   });
+});
+
+it('completion rejects retired dimensions in event-only tasks while retaining historical results', async () => {
+  for (const signalType of ['technology', 'security', 'market', 'supply_chain', 'open_source']) {
+    const current = fixture(GENERATION_EVENT_TYPES_CONTRACT);
+    current.args.result.candidates[0].signal_type = signalType;
+    await expect(finishSignalGeneration(current.args)).rejects.toMatchObject({
+      code: 'invalid_result',
+    });
+    expect(current.writes).toHaveLength(0);
+    const legacy = fixture(GENERATION_SOURCE_PUBLICATION_CONTRACT);
+    legacy.args.result.candidates[0].signal_type = signalType;
+    const saved = await finishSignalGeneration(legacy.args);
+    expect(saved.result.candidates[0].signal_type).toBe(signalType);
+  }
+  for (const signalType of ['disclosure', 'operations', 'incident']) {
+    const current = fixture(GENERATION_EVENT_TYPES_CONTRACT);
+    current.args.result.candidates[0].signal_type = signalType;
+    const saved = await finishSignalGeneration(current.args);
+    expect(saved.result.candidates[0].signal_type).toBe(signalType);
+  }
 });

@@ -17,7 +17,7 @@ export const publicSignalSearchQuery = `SELECT ${columns}
 FROM public.current_public_signals
 WHERE NOT EXISTS (
   SELECT 1 FROM unnest($1::text[]) AS term
-  WHERE strpos(lower(normalize(concat_ws(' ', title, summary, analysis,
+  WHERE strpos(lower(normalize(concat_ws(' ', title, summary, analysis, $3::jsonb->>(type::text),
     topics::text, people::text, organizations::text, sources::text), NFKC)), term)=0
 )
 ORDER BY occurred_at DESC, importance DESC, signal_id COLLATE "C"

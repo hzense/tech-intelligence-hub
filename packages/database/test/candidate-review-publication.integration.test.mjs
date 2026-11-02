@@ -7,6 +7,7 @@ import { beforeAll, afterAll, it, describe, expect } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { fixture } from './candidate-review.test.mjs';
 import { publicSignalSearchQuery } from '../src/public-signal-query.mjs';
+import { SIGNAL_EVENT_TYPE_LABELS } from '../../ingestion/src/signal-types.mjs';
 import { saveCandidateReview } from '../src/candidate-review-store.mjs';
 import {
   signalWriterInsertColumns,
@@ -24,6 +25,9 @@ import {
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
 const suite = adminUrl ? describe.sequential : describe.skip;
+const eventTypeKeywords = Object.fromEntries(
+  Object.entries(SIGNAL_EVENT_TYPE_LABELS).map(([type, label]) => [type, `${type} ${label}`]),
+);
 suite('review conversion with isolated PostgreSQL roles and real publication', () => {
   const suffix = `${process.pid}_${Date.now()}`;
   const db = `hzense_reviewpub_${suffix}`;
@@ -407,23 +411,39 @@ suite('review conversion with isolated PostgreSQL roles and real publication', (
       current_public: true,
     });
     expect(
-      (await owner.query(publicSignalSearchQuery, [['synthetic reviewed event'], 20])).rows.map(
-        (r) => r.signal_id,
-      ),
+      (
+        await owner.query(publicSignalSearchQuery, [
+          ['synthetic reviewed event'],
+          20,
+          eventTypeKeywords,
+        ])
+      ).rows.map((r) => r.signal_id),
     ).toContain(converted.signal_id);
     await owner.query('UPDATE public.entities SET name=$1 WHERE id=$2', [
       'Changed synthetic identity',
       f.draft.personIds[0],
     ]);
     expect(
-      (await owner.query(publicSignalSearchQuery, [['synthetic reviewed event'], 20])).rows,
+      (
+        await owner.query(publicSignalSearchQuery, [
+          ['synthetic reviewed event'],
+          20,
+          eventTypeKeywords,
+        ])
+      ).rows,
     ).toEqual([]);
     await owner.query('UPDATE public.entities SET name=$1 WHERE id=$2', [
       'Synthetic Person',
       f.draft.personIds[0],
     ]);
     expect(
-      (await owner.query(publicSignalSearchQuery, [['synthetic reviewed event'], 20])).rows,
+      (
+        await owner.query(publicSignalSearchQuery, [
+          ['synthetic reviewed event'],
+          20,
+          eventTypeKeywords,
+        ])
+      ).rows,
     ).toEqual([]);
     expect(
       (
@@ -506,9 +526,13 @@ suite('review conversion with isolated PostgreSQL roles and real publication', (
       current_public: true,
     });
     expect(
-      (await owner.query(publicSignalSearchQuery, [['synthetic corrected title'], 20])).rows.map(
-        (r) => r.signal_id,
-      ),
+      (
+        await owner.query(publicSignalSearchQuery, [
+          ['synthetic corrected title'],
+          20,
+          eventTypeKeywords,
+        ])
+      ).rows.map((r) => r.signal_id),
     ).toContain(converted.signal_id);
     expect(
       (
@@ -560,7 +584,13 @@ suite('review conversion with isolated PostgreSQL roles and real publication', (
       }),
     ).toMatchObject({ reviewRevision: 3, conversion: null, readiness: 'review_not_submitted' });
     expect(
-      (await owner.query(publicSignalSearchQuery, [['synthetic corrected title'], 20])).rows,
+      (
+        await owner.query(publicSignalSearchQuery, [
+          ['synthetic corrected title'],
+          20,
+          eventTypeKeywords,
+        ])
+      ).rows,
     ).toEqual([]);
     expect(
       (

@@ -49,6 +49,7 @@ describe('database migration runner', () => {
       '0030_unified_signal_cutover.sql',
       '0031_retire_unused_tables.sql',
       '0032_automatic_signal_publication.sql',
+      '0033_signal_event_types.sql',
     ]);
     expect(migrations.every((migration) => migration.checksum.length === 64)).toBe(true);
     await expect(verifyMigrationManifest(migrations)).resolves.toBeUndefined();

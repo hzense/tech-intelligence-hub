@@ -278,6 +278,9 @@ function parseSnapshot(input) {
       'partnership',
       'regulation',
       'supply_chain',
+      'disclosure',
+      'operations',
+      'incident',
     ],
     code,
   );

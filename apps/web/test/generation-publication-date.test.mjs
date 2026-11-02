@@ -4,10 +4,16 @@ import {
   GENERATION_METADATA_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
+  GENERATION_EVENT_TYPES_CONTRACT,
   generationCandidateWithResourcesJsonSchema,
   assessGeneratedCandidates,
   normalizeGeneratedCandidates,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
+import {
+  LEGACY_SIGNAL_TYPES,
+  SIGNAL_EVENT_TYPES,
+  SIGNAL_EVENT_TYPE_RULES,
+} from '../../../packages/ingestion/src/signal-types.mjs';
 import { candidateReviewMaterialHash } from '../../../packages/database/src/candidate-review-contract.mjs';
 import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
 import { portableJsonSchema } from '../lib/ai-model-compatibility.ts';
@@ -127,7 +133,11 @@ test('legacy task contracts retain event-date rules, examples and schemas withou
   );
 });
 
-async function invokeFixture(result, sourceInput = source) {
+async function invokeFixture(
+  result,
+  sourceInput = source,
+  contract = GENERATION_SOURCE_PUBLICATION_CONTRACT,
+) {
   const calls = [];
   const connection = {
     id: '11111111-1111-4111-8111-111111111111',
@@ -156,7 +166,7 @@ async function invokeFixture(result, sourceInput = source) {
   const response = await invoke({
     source: sourceInput,
     topics,
-    outputContract: GENERATION_SOURCE_PUBLICATION_CONTRACT,
+    outputContract: contract,
     stage: {
       connection_id: connection.id,
       connection_revision: 1,
@@ -356,4 +366,57 @@ test('read-only assessment and material hashes of saved undated candidates remai
   assert.ok(oldResult.candidates[0].issues.includes('needs_event_time'));
   assert.equal(candidateReviewMaterialHash(run, 0), hash);
   assert.equal(JSON.stringify(run), before);
+});
+
+test('new event prompt and wire schema reject retired dimensions without changing old task schemas', async () => {
+  const old = generationInput(source, '旧提示词', topics, GENERATION_SOURCE_PUBLICATION_CONTRACT);
+  const input = generationInput(
+    source,
+    '请选择 technology',
+    topics,
+    GENERATION_EVENT_TYPES_CONTRACT,
+  );
+  assert.deepEqual(
+    old.schema.properties.candidates.items.properties.signal_type.enum,
+    LEGACY_SIGNAL_TYPES,
+  );
+  assert.deepEqual(
+    input.schema.properties.candidates.items.properties.signal_type.enum,
+    SIGNAL_EVENT_TYPES,
+  );
+  assert.ok(input.system.includes(SIGNAL_EVENT_TYPE_RULES));
+  assert.match(input.system, /不可由配置提示词覆盖的事件类型要求/);
+  assert.match(input.system, /原始新闻／文章的发布日期/);
+  const { response, calls } = await invokeFixture(
+    { candidates: [candidate], reason: '测试' },
+    source,
+    GENERATION_EVENT_TYPES_CONTRACT,
+  );
+  assert.equal(response.success, true);
+  assert.equal(response.output.candidates[0].date_basis, 'source_published');
+  assert.equal(calls.length, 1);
+  const fields = JSON.parse(calls[0].body).response_format.json_schema.schema.properties.candidates
+    .items;
+  assert.deepEqual(fields.properties.signal_type.enum, SIGNAL_EVENT_TYPES);
+  const rejected = await invokeFixture(
+    { candidates: [{ ...candidate, signal_type: 'security' }], reason: '错误类型' },
+    source,
+    GENERATION_EVENT_TYPES_CONTRACT,
+  );
+  assert.equal(rejected.response.success, false);
+  assert.equal(rejected.calls.length, 1);
+  assert.equal(rejected.response.output?.candidates.length ?? 0, 0);
+});
+
+test('event-only provider still completes article dates using literal saved excerpts', async () => {
+  const { response } = await invokeFixture(
+    { candidates: cardCandidates, reason: '测试' },
+    cardSource,
+    GENERATION_EVENT_TYPES_CONTRACT,
+  );
+  assert.equal(response.success, true);
+  assert.deepEqual(
+    response.output.candidates.map((value) => value.event_date),
+    ['2026-10-23', '2026-10-23', '2026-10-23', '2026-10-22'],
+  );
 });

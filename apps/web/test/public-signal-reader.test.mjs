@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import reviewedClassifications from '../../../data/seed/signal-event-classifications.json' with { type: 'json' };
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { URL } from 'node:url';
@@ -208,13 +209,57 @@ test('search binds normalized literal terms in the live view and never queries t
   assert.equal(results[0].type, 'signal');
   assert.equal(results[0].body, 'Public analysis');
   assert.equal(calls[0].sql, publicSignalSearchQuery);
-  assert.deepEqual(calls[0].parameters, [['research'], 10001]);
+  assert.deepEqual(calls[0].parameters.slice(0, 2), [['research'], 10001]);
+  const eventLabels = JSON.parse(calls[0].parameters[2]);
+  assert.equal(eventLabels.operations, 'operations 建设投产');
+  assert.match(eventLabels.security, /incident 事故事件/);
+  assert.doesNotMatch(eventLabels.security, /security|安全/);
+  assert.match(calls[0].sql, /\$3::jsonb/);
   await reader.search("x%' OR TRUE --");
   assert.deepEqual(calls[1].parameters[0], ["x%'", 'or', 'true', '--']);
   assert.doesNotMatch(calls[1].sql, /x%|search_documents/);
   assert.deepEqual(await reader.search('  '), []);
   await assert.rejects(reader.search('x'.repeat(121)), { name: 'SearchQueryError' });
   assert.equal(calls.length, 2);
+});
+
+test('SQL preselection admits reviewed historical event types and final ranking excludes unmatched records', async () => {
+  const reviewed = reviewedClassifications.find((item) => item.type === 'incident');
+  const current = {
+    ...row(),
+    signal_id: reviewed.id,
+    type: reviewed.previousType,
+    title: reviewed.title,
+    summary: reviewed.summary,
+  };
+  const changed = { ...current, signal_id: 'unreviewed-security-signal' };
+  const other = reviewedClassifications.find(
+    (item) => item.type === 'incident' && item.id !== reviewed.id,
+  );
+  const changedText = {
+    ...current,
+    signal_id: other.id,
+    title: '正文已经变更',
+    summary: other.summary,
+  };
+  let candidates = 0;
+  const reader = createPublicSignalReader({
+    query: async (_sql, [terms, , labels]) => {
+      const prefilter = JSON.parse(labels);
+      const rows = [current, changed, changedText].filter((entry) => {
+        const searchable = `${entry.title} ${entry.summary} ${prefilter[entry.type] ?? ''}`;
+        return terms.every((term) => searchable.includes(term));
+      });
+      candidates = rows.length;
+      return { rows };
+    },
+  });
+  assert.deepEqual(
+    (await reader.search('事故事件')).map((entry) => entry.id),
+    [reviewed.id],
+  );
+  assert.equal(candidates, 3);
+  assert.deepEqual(await reader.search('security'), []);
 });
 
 test('search discards all old Signal hits including same-id withdrawn content before merging', () => {

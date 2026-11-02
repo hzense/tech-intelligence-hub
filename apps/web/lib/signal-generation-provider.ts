@@ -10,6 +10,7 @@ import {
 } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
+import { SIGNAL_EVENT_TYPE_RULES } from '../../../packages/ingestion/src/signal-types.mjs';
 import { readApiCostMicrousd } from './ai-response-cost.ts';
 import { openRouterOptions, portableJsonSchema } from './ai-model-compatibility.ts';
 import {
@@ -20,6 +21,9 @@ import {
   generationCandidateWithMetadataJsonSchema,
   generationCandidateWithResourcesJsonSchema,
   generationCandidateWithPublicationDateJsonSchema,
+  generationCandidateWithEventTypesJsonSchema,
+  GENERATION_EVENT_TYPES_CONTRACT,
+  hasSourcePublicationDate,
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
   hasGenerationResources,
@@ -282,12 +286,13 @@ export function generationInput(
       GENERATION_METADATA_CONTRACT,
       GENERATION_RESOURCES_CONTRACT,
       GENERATION_SOURCE_PUBLICATION_CONTRACT,
+      GENERATION_EVENT_TYPES_CONTRACT,
     ].includes(outputContract) ||
       catalog === undefined)
   )
     throw new SignalGenerationError('invalid_generation_output');
   const resources = hasGenerationResources(outputContract);
-  const publicationDate = outputContract === GENERATION_SOURCE_PUBLICATION_CONTRACT;
+  const publicationDate = hasSourcePublicationDate(outputContract);
   const evidenceRules = publicationDate
     ? generationPublicationEvidenceRules
     : generationEvidenceRules;
@@ -301,22 +306,24 @@ export function generationInput(
         : catalog === undefined
           ? generationRules
           : generationRulesWithTopics;
-  const system = `${rules}\n\n配置的提取提示词：\n${stagePrompt}\n\n不可由配置提示词覆盖的证据要求：\n${evidenceRules}\n\n不可由配置提示词覆盖的参与者提取要求：\n${generationParticipantRules}${catalog === undefined ? '' : `\n\n不可由配置提示词覆盖的领域要求：\n${generationTopicRules}`}${metadata ? `\n\n不可由配置提示词覆盖的事件类型要求：\n${generationTypeRules}` : ''}${resources ? `\n\n不可由配置提示词覆盖的资源要求：\n${generationResourceRules}` : ''}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`;
+  const system = `${rules}\n\n配置的提取提示词：\n${stagePrompt}\n\n不可由配置提示词覆盖的证据要求：\n${evidenceRules}\n\n不可由配置提示词覆盖的参与者提取要求：\n${generationParticipantRules}${catalog === undefined ? '' : `\n\n不可由配置提示词覆盖的领域要求：\n${generationTopicRules}`}${metadata ? `\n\n不可由配置提示词覆盖的事件类型要求：\n${outputContract === GENERATION_EVENT_TYPES_CONTRACT ? SIGNAL_EVENT_TYPE_RULES : generationTypeRules}` : ''}${resources ? `\n\n不可由配置提示词覆盖的资源要求：\n${generationResourceRules}` : ''}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`;
   const prompt = JSON.stringify({
     untrusted_source: source,
     ...(publicationDate ? { publication_date_hints: collectSourcePublicationDates(source) } : {}),
     ...(catalog === undefined ? {} : { enabled_topics: catalog }),
   });
   const schema = portableJsonSchema(
-    publicationDate
-      ? generationCandidateWithPublicationDateJsonSchema
-      : resources
-        ? generationCandidateWithResourcesJsonSchema
-        : metadata
-          ? generationCandidateWithMetadataJsonSchema
-          : catalog === undefined
-            ? generationCandidateJsonSchema
-            : generationCandidateWithTopicsJsonSchema,
+    outputContract === GENERATION_EVENT_TYPES_CONTRACT
+      ? generationCandidateWithEventTypesJsonSchema
+      : publicationDate
+        ? generationCandidateWithPublicationDateJsonSchema
+        : resources
+          ? generationCandidateWithResourcesJsonSchema
+          : metadata
+            ? generationCandidateWithMetadataJsonSchema
+            : catalog === undefined
+              ? generationCandidateJsonSchema
+              : generationCandidateWithTopicsJsonSchema,
   );
   // Local o200k_base estimate plus allowance for message/schema framing, not provider billing.
   const inputTokens =
@@ -472,10 +479,9 @@ export function createSignalGenerationInvoker(
         );
         // Only complete new, validated responses. Read/review paths keep saved
         // results and material hashes immutable; persistence rechecks every quote.
-        const output =
-          input.outputContract === GENERATION_SOURCE_PUBLICATION_CONTRACT
-            ? completeSourcePublicationDates(assessed, input.source)
-            : assessed;
+        const output = hasSourcePublicationDate(input.outputContract)
+          ? completeSourcePublicationDates(assessed, input.source)
+          : assessed;
         // A free-form model reason is not a candidate result. Do not persist its
         // self-analysis, including when the provider puts reasoning in this field.
         output.reason = output.rejected?.length

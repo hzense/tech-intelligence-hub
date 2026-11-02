@@ -19,7 +19,7 @@ import {
   getSeedSourceMap,
   getSignalEntries,
 } from './seed-runtime.ts';
-import { formatSignalType } from './signal-presentation.ts';
+import { signalEventTypeKeywords } from './signal-event-type.ts';
 import { searchSignalEntries } from './editorial-signal-reader-core.ts';
 import { compareSearchResults } from '@hzense/search/ranking';
 import {
@@ -176,7 +176,7 @@ function signalCandidate(
     summary: signal.summary,
     href: `/signals/${signal.id}`,
     keywords: [
-      formatSignalType(signal.type),
+      signalEventTypeKeywords(signal),
       sourceName,
       topicKeywords(signal.topics, topicTitleMap),
       signal.entities.map((id) => `${id} ${entityMap.get(id)?.name ?? ''}`).join(' '),

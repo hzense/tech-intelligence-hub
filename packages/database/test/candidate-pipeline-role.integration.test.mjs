@@ -4,7 +4,7 @@ import process from 'node:process';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
-import { runMigrations } from '../src/migrate.mjs';
+import { loadMigrations, runMigrations } from '../src/migrate.mjs';
 import { verifyDatabaseContract } from '../src/verify.mjs';
 import {
   assertCandidatePipelineRole,
@@ -13,6 +13,9 @@ import {
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
 const suite = adminUrl ? describe.sequential : describe.skip;
+const migrationCount = (
+  await loadMigrations(new URL('../../../db/migrations/', import.meta.url).pathname)
+).length;
 suite('candidate pipeline exact effective grants in isolated PostgreSQL', () => {
   const db = `hzense_pipeline_acl_${randomUUID().replaceAll('-', '')}`;
   const roles = [
@@ -106,7 +109,7 @@ suite('candidate pipeline exact effective grants in isolated PostgreSQL', () => 
         expectedDatabase: db,
         expectedUser: new URL(adminUrl).username,
       }),
-    ).resolves.toMatchObject({ migrationCount: 33, tableCount: 58 });
+    ).resolves.toMatchObject({ migrationCount, tableCount: 58 });
   });
   it('accepts only the exact Neon ADMIN-only incoming membership, never SET or outbound memberships', async () => {
     await admin.query(

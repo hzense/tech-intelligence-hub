@@ -1,6 +1,8 @@
 # HZense — Information Model
 
-> **2026-10-21 0032 开发增量（生产未执行）：** `editorial_signal_revisions` 新增 `publication_basis`，默认 `manual_confirmation`，自动发布写 `automatic_checks`。统一 `signal_versions` 的 AI 来源分支允许该新依据；同步触发器保留真实依据，正文、版本指针及审计仍原子提交。`editorial_public_signals` 增加对应公开投影。新任务在原有 JSONB 快照保存自动策略版本和获准公开的原始链接，旧任务不改写。该迁移不增删表、不自动发布历史候选；仓库目标为 33 项迁移、58 张持久表，生产最后已验收仍以本章下方 0031 记录为准。
+> **2026-11-02 0033 开发增量（本地，生产待执行）：** 新信号只选择 13 种事件类型；`0033_signal_event_types.sql` 为 `signal_type` 追加 `disclosure`、`operations`、`incident`。保留旧枚举值供不可变历史记录读取，不修改表数量、旧正文、版本哈希或权限。仓库目标为 **34 项迁移、58 张持久表**；已在隔离 PostgreSQL 验证，尚未执行生产迁移。类型边界与历史显示映射见[信号事件类型](SIGNAL_EVENT_TYPES.md)。下方日期段落保留各开发阶段的状态；0032 后续生产执行记录见[部署说明](DEPLOYMENT.md#受保护的-topic-维护入口2026-11-01)。
+
+> **2026-10-21 0032 开发增量（历史：当时生产未执行）：** `editorial_signal_revisions` 新增 `publication_basis`，默认 `manual_confirmation`，自动发布写 `automatic_checks`。统一 `signal_versions` 的 AI 来源分支允许该新依据；同步触发器保留真实依据，正文、版本指针及审计仍原子提交。`editorial_public_signals` 增加对应公开投影。新任务在原有 JSONB 快照保存自动策略版本和获准公开的原始链接，旧任务不改写。该迁移不增删表、不自动发布历史候选；仓库目标为 33 项迁移、58 张持久表，生产最后已验收仍以本章下方 0031 记录为准。
 
 > **2026-10-06 0030 实施增量（默认关闭）：** 私有 `unified_signal_cutover` 保存就绪状态及回填计划指纹；`editorial_signal_revisions.unified_content` 为原子统一写入的输入列；`unified_public_signals` 和 `unified_public_status` 为 4.0 公开数据／状态视图。两项 owner 触发器保证审计、正文、最新版本指针和发布／撤回同事务提交，激活后拒绝旧审计单写。完整契约及最小 ACL 见[切换说明](UNIFIED_SIGNAL_CUTOVER.md)。0029 已应用生产，0030 与数据切换尚待受保护执行；下条为旧阶段记录。
 
@@ -740,25 +742,27 @@ promoted_to_weekly: false
 
 ---
 
-# 22. Signal Type v1
+# 22. Signal Event Type
+
+信号类型只表达事件，每条新信号单选；技术领域由 `topics` 独立多选。当前 13 类：
 
 ```text
-research
-product
-funding
-acquisition
-hiring
-policy
-technology
-market
-people
-open_source
-security
-patent
-partnership
-regulation
-supply_chain
+research       研究成果发布
+product        产品发布与更新
+funding        融资
+acquisition    收购合并
+hiring         人才招聘
+policy         政策发布
+people         人事变动
+patent         专利进展
+partnership    合作签约
+regulation     监管行动
+disclosure     经营与信息披露
+operations     建设投产
+incident       事故事件
 ```
+
+`technology`、`security`、`market`、`supply_chain`、`open_source` 不再用于新事件分类。旧物理枚举值保留，只支持历史读取与回执兼容；不可变版本不原地改写。生成、发布和历史显示的具体边界见 [信号事件类型](SIGNAL_EVENT_TYPES.md)。
 
 ---
 
@@ -1450,17 +1454,17 @@ entities 1 ───── N relations N ───── 1 entities
 
 ## 40.5 Enum 与 pgvector
 
-| Enum              | 允许值                                                                                                                                                                                  |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `entity_type`     | `person`、`company`、`institution`、`technology`、`product`、`model`、`dataset`、`standard_protocol`、`paper`、`event`                                                                  |
-| `signal_type`     | `research`、`product`、`funding`、`acquisition`、`hiring`、`policy`、`technology`、`market`、`people`、`open_source`、`security`、`patent`、`partnership`、`regulation`、`supply_chain` |
-| `signal_status`   | `inbox`、`reviewed`、`accepted`、`rejected`、`archived`                                                                                                                                 |
-| `source_type`     | `website`、`rss`、`paper`、`company_blog`、`research_lab`、`news_media`、`newsletter`、`github`、`social`、`regulator`、`patent_database`                                               |
-| `topic_status`    | `watching`、`active`、`strategic`、`archived`                                                                                                                                           |
-| `trend`           | `rapid_growth`、`growth`、`stable`、`decline`、`rapid_decline`                                                                                                                          |
-| `maturity`        | `research`、`early`、`emerging`、`growth`、`mature`                                                                                                                                     |
-| `strategic_value` | `low`、`medium`、`high`、`critical`                                                                                                                                                     |
-| `radar_domain`    | `artificial_intelligence`、`infrastructure`、`security`、`robotics`                                                                                                                     |
+| Enum              | 允许值                                                                                                                                                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `entity_type`     | `person`、`company`、`institution`、`technology`、`product`、`model`、`dataset`、`standard_protocol`、`paper`、`event`                                                                                                          |
+| `signal_type`     | `research`、`product`、`funding`、`acquisition`、`hiring`、`policy`、`technology`、`market`、`people`、`open_source`、`security`、`patent`、`partnership`、`regulation`、`supply_chain`、`disclosure`、`operations`、`incident` |
+| `signal_status`   | `inbox`、`reviewed`、`accepted`、`rejected`、`archived`                                                                                                                                                                         |
+| `source_type`     | `website`、`rss`、`paper`、`company_blog`、`research_lab`、`news_media`、`newsletter`、`github`、`social`、`regulator`、`patent_database`                                                                                       |
+| `topic_status`    | `watching`、`active`、`strategic`、`archived`                                                                                                                                                                                   |
+| `trend`           | `rapid_growth`、`growth`、`stable`、`decline`、`rapid_decline`                                                                                                                                                                  |
+| `maturity`        | `research`、`early`、`emerging`、`growth`、`mature`                                                                                                                                                                             |
+| `strategic_value` | `low`、`medium`、`high`、`critical`                                                                                                                                                                                             |
+| `radar_domain`    | `artificial_intelligence`、`infrastructure`、`security`、`robotics`                                                                                                                                                             |
 
 `search_documents.embedding` 是可空的 `vector(1536)`。Embedding 与 Search Document 同生命周期保存，当前没有独立 `embeddings` 表。
 

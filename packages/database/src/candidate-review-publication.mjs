@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
-import { GENERATION_SOURCE_PUBLICATION_CONTRACT } from '../../ingestion/src/signal-generation-contract.mjs';
+import { hasSourcePublicationDate } from '../../ingestion/src/signal-generation-contract.mjs';
 import {
   candidateReviewMaterialHash,
   reviewOwner,
@@ -289,7 +289,7 @@ export async function prepareReviewedSignalCandidate({ pool, owner, request }) {
         fail('conversion_conflict');
       return { outcome: 'replay', ...previous[0] };
     }
-    if (run.snapshot.output_contract === GENERATION_SOURCE_PUBLICATION_CONTRACT)
+    if (hasSourcePublicationDate(run.snapshot.output_contract))
       fail('source_publication_requires_manual_confirmation');
     const draft = draftCheck(review.draft);
     await client.query(
@@ -614,7 +614,7 @@ export async function publishReviewedSignal({
       }
       return replay;
     }
-    if (generation.snapshot.output_contract === GENERATION_SOURCE_PUBLICATION_CONTRACT)
+    if (hasSourcePublicationDate(generation.snapshot.output_contract))
       fail('source_publication_requires_manual_confirmation');
     // An assembly is single-use for a publication. A new request after withdrawal
     // requires a new reviewed draft and a fresh independent verification record.

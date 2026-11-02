@@ -1,5 +1,7 @@
 # AI 信号候选生成
 
+当前事件分类使用 13 类，技术、安全、市场、供应链与开源不再作为新信号类型；历史读取兼容与逐条显示映射见 [信号事件类型](SIGNAL_EVENT_TYPES.md)。新生成固定 `signal-event-types-v1`，旧快照不改写。
+
 ## 研究作者与单位提取（2026-10-24，本地修复，未部署）
 
 TurboVLA 缺少人物和组织的这次根因是输入不完整：任务导入了 The Batch 的日期标签汇总页，已保存的 TurboVLA 片段只有标题、摘要和日期，没有文章全文中的研究作者和单位。读取单篇文章并用相同解析器处理后，可以保留 Hengyi Xie、Chenfei Yao 和 Huazhong University of Science and Technology 所在的正文。扩大 token 上限或手动补录入口都不能替代正确原文。

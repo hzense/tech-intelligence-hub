@@ -14,6 +14,7 @@ import {
   buildGenerationSource,
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
+  GENERATION_EVENT_TYPES_CONTRACT,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 
 const secret = 'a'.repeat(64);
@@ -127,7 +128,7 @@ test('checked-in fixture produces a valid candidate with literal source evidence
   assert.match(candidate.title, /^【本地模拟】/);
   assert.equal(candidate.event_date, '2026-10-18');
   assert.deepEqual(candidate.topic_ids, ['topic-semiconductors']);
-  assert.equal(candidate.signal_type, 'technology');
+  assert.equal(candidate.signal_type, 'product');
   assert.equal(candidate.persons[0].name, '林青');
   assert.deepEqual(candidate.organizations, ['示例计算公司']);
   assert.equal(candidate.resources.length, 2);
@@ -235,4 +236,15 @@ test('fictional publication source is available only to a completed, source-boun
     { ...env, HZENSE_LOCAL_DEVELOPMENT: '0' },
   ])
     assert.deepEqual(localFixtureSourceOptions(run, bad), []);
+});
+
+test('event-only local simulation keeps article dates and generates an eligible product event', async () => {
+  const result = await invokeLocalGeneration(
+    { ...input(template), outputContract: GENERATION_EVENT_TYPES_CONTRACT },
+    env,
+  );
+  assert.equal(result.success, true);
+  assert.equal(result.output.candidates[0].signal_type, 'product');
+  assert.equal(result.output.candidates[0].date_basis, 'source_published');
+  assert.equal(result.output.candidates[0].event_date, '2026-10-19');
 });

@@ -4,7 +4,7 @@ import { parseImportOutput } from './import-task-contract.mjs';
 import { isExcludedPublicPerson } from './person-resource-policy.mjs';
 import { completeResourceNameEvidence, resourceNameMention } from './resource-name-evidence.mjs';
 import { isGenerationValidationDetail } from './signal-generation-validation-diagnostics.mjs';
-import { SIGNAL_TYPES } from './signal-types.mjs';
+import { LEGACY_SIGNAL_TYPES, SIGNAL_EVENT_TYPES } from './signal-types.mjs';
 export { SIGNAL_TYPES } from './signal-types.mjs';
 
 export const GENERATION_LIMITS = Object.freeze({
@@ -212,7 +212,7 @@ export const generationCandidateWithMetadataJsonSchema = Object.freeze({
           ...topicCandidateSchema.properties,
           signal_type: {
             type: 'string',
-            enum: SIGNAL_TYPES,
+            enum: LEGACY_SIGNAL_TYPES,
             description: '选择最能描述事件本身的一种事件类型；与 topic_ids 技术领域分别填写。',
           },
         },
@@ -224,8 +224,14 @@ export const generationCandidateWithMetadataJsonSchema = Object.freeze({
 export const GENERATION_RESOURCES_CONTRACT = 'signal-resources-v1';
 // Pin date semantics with the task. Never reinterpret saved event-date candidates.
 export const GENERATION_SOURCE_PUBLICATION_CONTRACT = 'signal-source-publication-v1';
+export const GENERATION_EVENT_TYPES_CONTRACT = 'signal-event-types-v1';
+export function hasSourcePublicationDate(contract) {
+  return [GENERATION_SOURCE_PUBLICATION_CONTRACT, GENERATION_EVENT_TYPES_CONTRACT].includes(
+    contract,
+  );
+}
 export function hasGenerationResources(contract) {
-  return [GENERATION_RESOURCES_CONTRACT, GENERATION_SOURCE_PUBLICATION_CONTRACT].includes(contract);
+  return contract === GENERATION_RESOURCES_CONTRACT || hasSourcePublicationDate(contract);
 }
 export const generatedResourceJsonSchema = Object.freeze({
   type: 'object',
@@ -311,6 +317,31 @@ export const generationCandidateWithPublicationDateJsonSchema = Object.freeze({
             ...publicationCandidateSchema.properties.event_date_evidence,
             description:
               '逐字引用本篇原文的发布日期依据。非空日期至少一条引用；缺失完整年月日返回 null 和 []，不猜年份、不使用更新时间或正文事件日期代替。',
+          },
+        },
+      },
+    },
+  },
+});
+
+// Keep historical output schemas intact; only new tasks use event-only categories.
+const eventTypeCandidateSchema =
+  generationCandidateWithPublicationDateJsonSchema.properties.candidates.items;
+export const generationCandidateWithEventTypesJsonSchema = Object.freeze({
+  ...generationCandidateWithPublicationDateJsonSchema,
+  properties: {
+    ...generationCandidateWithPublicationDateJsonSchema.properties,
+    candidates: {
+      ...generationCandidateWithPublicationDateJsonSchema.properties.candidates,
+      items: {
+        ...eventTypeCandidateSchema,
+        properties: {
+          ...eventTypeCandidateSchema.properties,
+          signal_type: {
+            ...eventTypeCandidateSchema.properties.signal_type,
+            enum: SIGNAL_EVENT_TYPES,
+            description:
+              '只选择最贴近核心事件的一种事件类型；技术领域、安全、市场、供应链及开源属性不能作为事件类型。',
           },
         },
       },
@@ -613,6 +644,7 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
       GENERATION_METADATA_CONTRACT,
       GENERATION_RESOURCES_CONTRACT,
       GENERATION_SOURCE_PUBLICATION_CONTRACT,
+      GENERATION_EVENT_TYPES_CONTRACT,
     ].includes(outputContract)
   )
     fail('invalid_generation_output');
@@ -649,7 +681,7 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
         rejected.push({ index, classification: 'private', status: 'rejected', errors });
         return null;
       };
-      const publicationDate = outputContract === GENERATION_SOURCE_PUBLICATION_CONTRACT;
+      const publicationDate = hasSourcePublicationDate(outputContract);
       const shape = check(
         'candidate',
         () => {
@@ -762,7 +794,13 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
       const signal_type =
         outputContract !== undefined
           ? check('signal_type', () => {
-              if (!SIGNAL_TYPES.includes(candidate.signal_type))
+              if (
+                !(
+                  outputContract === GENERATION_EVENT_TYPES_CONTRACT
+                    ? SIGNAL_EVENT_TYPES
+                    : LEGACY_SIGNAL_TYPES
+                ).includes(candidate.signal_type)
+              )
                 fail(undefined, 'signal_type', 'invalid_type');
               return candidate.signal_type;
             })

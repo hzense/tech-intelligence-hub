@@ -1,22 +1,7 @@
 import type { SeedSignal, SeedSource } from '@hzense/content';
+import { SIGNAL_EVENT_TYPE_LABELS, isSignalEventType } from '@hzense/ingestion/signal-types';
 
-export const signalTypeLabels = {
-  research: '研究',
-  product: '产品',
-  funding: '融资',
-  acquisition: '收购',
-  hiring: '人才',
-  policy: '政策',
-  technology: '技术',
-  market: '市场',
-  people: '人物',
-  open_source: '开源',
-  security: '安全',
-  patent: '专利',
-  partnership: '合作',
-  regulation: '监管',
-  supply_chain: '供应链',
-} satisfies Record<SeedSignal['type'], string>;
+export const signalTypeLabels = SIGNAL_EVENT_TYPE_LABELS;
 
 const sourceTypeLabels = {
   website: '网站',
@@ -33,7 +18,11 @@ const sourceTypeLabels = {
 } satisfies Record<SeedSource['type'], string>;
 
 export function formatSignalType(value: SeedSignal['type'] | 'editorial'): string {
-  return value === 'editorial' ? '管理员确认' : signalTypeLabels[value];
+  return value === 'editorial'
+    ? '未分类'
+    : isSignalEventType(value)
+      ? signalTypeLabels[value]
+      : '待重新分类';
 }
 
 export function formatSourceType(value: SeedSource['type']): string {

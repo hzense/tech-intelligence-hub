@@ -101,6 +101,9 @@ describe('private publisher and public Signal 3.0.0 hash compatibility', () => {
     'partnership',
     'regulation',
     'supply_chain',
+    'disclosure',
+    'operations',
+    'incident',
   ] as const)('retains the versioned %s discriminator', (type) => {
     const source = createSignalVersionSnapshot(content({ type }));
     expect(cloneSignalSnapshotForPublication(source, 2)).toEqual(

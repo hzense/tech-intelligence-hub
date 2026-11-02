@@ -195,6 +195,9 @@ export const signalType = pgEnum('signal_type', [
   'partnership',
   'regulation',
   'supply_chain',
+  'disclosure',
+  'operations',
+  'incident',
 ]);
 export const signalStatus = pgEnum('signal_status', [
   'inbox',

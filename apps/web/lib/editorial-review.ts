@@ -1,4 +1,5 @@
 import type { GenerationSignalType } from '../../../packages/ingestion/src/signal-types.mjs';
+import { isSignalEventType } from '../../../packages/ingestion/src/signal-types.mjs';
 export type EditorialResource = {
   /** Explicit administrator assertion, never an AI or verified quotation. */
   basis?: 'manual_confirmation';
@@ -87,7 +88,7 @@ export function editorialMissing(
   missingResourceDetails: NonNullable<EditorialDashboard['missingResourceDetails']> = [],
 ): string[] {
   const missing: string[] = [];
-  if (!content.signalType) missing.push('事件类型');
+  if (!isSignalEventType(content.signalType)) missing.push('事件类型');
   const date = content.eventDate;
   if (
     !date ||
