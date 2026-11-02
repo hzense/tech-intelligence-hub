@@ -1,3 +1,4 @@
+import { isSignalEventType } from './signal-types.mjs';
 import { TextEncoder } from 'node:util';
 import { isExcludedPublicPerson } from './person-resource-policy.mjs';
 import {
@@ -5,6 +6,7 @@ import {
   GENERATION_METADATA_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
+  GENERATION_EVENT_TYPES_CONTRACT,
   generatedResourceJsonSchema,
   normalizeGeneratedCandidates,
   validateGenerationSource,
@@ -169,7 +171,9 @@ export function assessCandidateEnrichment(value, candidate, source) {
       validatedSource,
       undefined,
       original.date_basis === 'source_published'
-        ? GENERATION_SOURCE_PUBLICATION_CONTRACT
+        ? isSignalEventType(original.signal_type)
+          ? GENERATION_EVENT_TYPES_CONTRACT
+          : GENERATION_SOURCE_PUBLICATION_CONTRACT
         : withResources
           ? GENERATION_RESOURCES_CONTRACT
           : Object.hasOwn(original, 'signal_type')

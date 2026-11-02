@@ -11,6 +11,7 @@ import {
   type EditorialResourceOption,
 } from '@/lib/editorial-review';
 import { signalTypeLabels } from '@/lib/signal-presentation';
+import { isSignalEventType } from '@hzense/ingestion/signal-types';
 import controls from './admin-controls.module.css';
 import styles from './editorial-publication-editor.module.css';
 
@@ -560,6 +561,8 @@ export function EditorialPublicationEditor({
               事件类型
               <select
                 aria-label="事件类型"
+                aria-describedby="signal-event-type-help"
+                aria-invalid={!isSignalEventType(data.content.signalType)}
                 value={data.content.signalType ?? ''}
                 onChange={(event) =>
                   setData({
@@ -575,12 +578,20 @@ export function EditorialPublicationEditor({
                 }
               >
                 <option value="">请选择事件类型</option>
+                {data.content.signalType && !isSignalEventType(data.content.signalType) ? (
+                  <option value={data.content.signalType} disabled>
+                    旧分类已停用，请重新选择事件类型
+                  </option>
+                ) : null}
                 {Object.entries(signalTypeLabels).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>
                 ))}
               </select>
+              <span id="signal-event-type-help">
+                选择本条新闻发生的核心事件；技术领域另选，可关联多个领域。
+              </span>
             </label>
             <label>
               {data.content.dateBasis === 'source_published' ? '原文发布日期' : '事件日期'}

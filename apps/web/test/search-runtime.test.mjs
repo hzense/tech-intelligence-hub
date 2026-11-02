@@ -15,7 +15,7 @@ import {
   getSeedSourceMap,
   getSignalEntries,
 } from '../lib/seed-runtime.ts';
-import { formatSignalType } from '../lib/signal-presentation.ts';
+import { signalEventTypeKeywords } from '../lib/signal-event-type.ts';
 
 const documents = [
   {
@@ -328,7 +328,7 @@ test('assembles currently publishable projection types from the real content and
       title: canonicalText(signal.title),
       summary: canonicalText(signal.summary),
       keywords: canonicalKeywords([
-        formatSignalType(signal.type),
+        signalEventTypeKeywords(signal),
         sourceMap.get(signal.source_id)?.name ?? signal.source_id,
         expectedTopicKeywords(signal.topics, topicTitleMap),
         signal.entities.map((id) => `${id} ${entityMap.get(id)?.name ?? ''}`).join(' '),

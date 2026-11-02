@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import nodeTest from 'node:test';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { URL } from 'node:url';
@@ -9,6 +9,7 @@ import { createCandidateReviewHandler } from '../lib/admin-candidate-review-hand
 import {
   assessGeneratedCandidates,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
+  GENERATION_EVENT_TYPES_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
@@ -33,7 +34,10 @@ const source = {
   ],
 };
 const evidence = [{ fragment_id: 'fragment-1', quote: source.fragments[0].text }];
-function fixture(publicationDate = true) {
+function fixture(
+  publicationDate = true,
+  publicationContract = GENERATION_SOURCE_PUBLICATION_CONTRACT,
+) {
   const raw = {
     title: 'Lab announced AI X',
     summary: 'Ada announced AI X.',
@@ -50,9 +54,7 @@ function fixture(publicationDate = true) {
     ],
     ...(publicationDate ? { date_basis: 'source_published' } : {}),
   };
-  const contract = publicationDate
-    ? GENERATION_SOURCE_PUBLICATION_CONTRACT
-    : GENERATION_RESOURCES_CONTRACT;
+  const contract = publicationDate ? publicationContract : GENERATION_RESOURCES_CONTRACT;
   const run = {
     id,
     owner_id: 'owner',
@@ -178,8 +180,13 @@ const {
   inspectReviewedCandidate,
 } = mod.exports;
 
-test('legacy preparation labels source publication dates and never creates an event-date draft', () => {
-  const f = fixture();
+function test(name, run) {
+  for (const contract of [GENERATION_SOURCE_PUBLICATION_CONTRACT, GENERATION_EVENT_TYPES_CONTRACT])
+    nodeTest(`${name} (${contract})`, () => run(contract));
+}
+
+test('legacy preparation labels source publication dates and never creates an event-date draft', (contract) => {
+  const f = fixture(true, contract);
   const candidate = f.run.result.candidates[0];
   const catalog = {
     people: [{ id: 'ada', name: 'Ada' }],
@@ -212,8 +219,8 @@ test('legacy preparation labels source publication dates and never creates an ev
   );
 });
 
-test('DB review store rejects new legacy submission but preserves drafts and committed replays', async () => {
-  const f = fixture();
+test('DB review store rejects new legacy submission but preserves drafts and committed replays', async (contract) => {
+  const f = fixture(true, contract);
   const blocked = poolFor(f);
   await assert.rejects(
     saveCandidateReview({
@@ -268,8 +275,8 @@ test('DB review store rejects new legacy submission but preserves drafts and com
   );
 });
 
-test('DB conversion rejects new source-date conversions after authenticating material, but preserves receipts', async () => {
-  const f = fixture();
+test('DB conversion rejects new source-date conversions after authenticating material, but preserves receipts', async (contract) => {
+  const f = fixture(true, contract);
   const request = { ...f.identity, requestKey: 'conversion-one' };
   const blocked = poolFor(f);
   await assert.rejects(prepareReviewedSignalCandidate({ pool: blocked, owner: 'owner', request }), {
@@ -294,8 +301,8 @@ test('DB conversion rejects new source-date conversions after authenticating mat
   );
 });
 
-test('publication boundary blocks new source-date publication without a control run while replay, reads and withdrawal remain available', async () => {
-  const f = fixture();
+test('publication boundary blocks new source-date publication without a control run while replay, reads and withdrawal remain available', async (contract) => {
+  const f = fixture(true, contract);
   const conversion = {
     request_key: 'conversion-one',
     review_id: reviewId,

@@ -1,5 +1,7 @@
 import { isEditorialSignal, type SignalEntry } from './public-signal-reader-core.ts';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
+import type { SignalEventType } from '@hzense/ingestion/signal-types';
+import { resolveSignalEventType } from './signal-event-type.ts';
 
 /** The public contract is independent of the historical storage path. */
 export interface UnifiedSignal {
@@ -7,7 +9,7 @@ export interface UnifiedSignal {
   title: string;
   summary: string;
   /** Event category; absent when the publication path did not classify it. */
-  type: Exclude<SignalEntry['type'], 'editorial'> | null;
+  type: SignalEventType | null;
   occurredAt: string;
   dateBasis?: 'source_published';
   capturedAt: string;
@@ -64,7 +66,8 @@ export function toUnifiedSignal(entry: SignalEntry): UnifiedSignal {
     id: entry.id,
     title: entry.title,
     summary: entry.summary,
-    type: entry.type === 'editorial' ? null : entry.type,
+    // Historical domain-based types remain in storage, not in the event taxonomy.
+    type: resolveSignalEventType(entry),
     occurredAt: entry.occurred_at,
     ...(entry.date_basis === undefined ? {} : { dateBasis: entry.date_basis }),
     capturedAt: entry.captured_at,

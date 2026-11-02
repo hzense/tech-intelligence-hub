@@ -1,6 +1,6 @@
 import { URL } from 'node:url';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
-import { SIGNAL_TYPES } from '../../ingestion/src/signal-types.mjs';
+import { SIGNAL_TYPES, isSignalEventType } from '../../ingestion/src/signal-types.mjs';
 
 export class EditorialSignalError extends Error {
   constructor(code = 'invalid_request') {
@@ -222,7 +222,7 @@ export function contentReadiness(content) {
         ? false
         : !content[key]?.length,
   );
-  if (!content.signalType) missing.push('signalType');
+  if (!isSignalEventType(content.signalType)) missing.push('signalType');
   return { ready: missing.length === 0, missing };
 }
 export function normalizeEditorialRequest(
@@ -269,6 +269,15 @@ export function normalizeEditorialRequest(
     // Preserve historical request hashes, while preventing new writes from
     // dropping or inventing the date policy pinned to the original candidate.
     if (content.dateBasis !== material.dateBasis) editorialFail('material_changed');
+    // Retired domain/attribute categories remain valid in immutable historical
+    // content and committed request hashes. Only a new editable revision must
+    // replace them with an event type; withdrawal preserves the original record.
+    if (
+      request.action !== 'withdraw' &&
+      content.signalType != null &&
+      !isSignalEventType(content.signalType)
+    )
+      editorialFail('confirmation_required');
     const manualResources = (content.resources ?? []).filter(
       (resource) => resource.basis === 'manual_confirmation',
     );

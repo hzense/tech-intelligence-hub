@@ -81,6 +81,14 @@ test('confirmed classification and sources reach the public DTO without inventin
     mapEditorialSignalRows([row({ content: { ...row().content, signalType: 'made_up' } })]),
   );
 });
+test('published events use the displayed Chinese classification in search without retired type keywords', () => {
+  const records = (signalType) =>
+    mapEditorialSignalRows([row({ content: { ...row().content, signalType } })]);
+  assert.equal(searchSignalEntries(records('operations'), '建设投产').length, 1);
+  assert.equal(searchSignalEntries(records('operations'), 'operations').length, 1);
+  assert.equal(searchSignalEntries(records('security'), 'security').length, 0);
+  assert.equal(searchSignalEntries(records('security'), 'Administrator').length, 1);
+});
 test('manual reader hides leader names after validation while keeping organizations and factual text', () => {
   const original = row();
   original.content.persons = ['Anthony Albanese'];

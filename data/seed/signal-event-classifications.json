@@ -1,0 +1,184 @@
+[
+  {
+    "id": "signal-20260910-skild-nvidia-physical-ai",
+    "previousType": "technology",
+    "type": "partnership",
+    "title": "NVIDIA 披露 Skild S1 机器人模型的训练、仿真与部署技术合作",
+    "summary": "NVIDIA 介绍 Skild S1 利用视频示范进行上下文学习，并披露双方在合成数据、训练、仿真和实体机器人部署方面的合作，包括 Cosmos、Isaac Sim 与 Isaac Lab。文中的任务表现来自厂商描述和测试；本条记录该技术披露，不把文章日期当作 S1 首次发布日期。"
+  },
+  {
+    "id": "signal-20260910-anthropic-threat-report",
+    "previousType": "security",
+    "type": "research",
+    "title": "Anthropic 发布 2026 年 9 月 AI 滥用威胁情报报告",
+    "summary": "Anthropic 发布报告，披露其在 2025 年 12 月至 2026 年 8 月期间识别并阻断的 Claude 滥用案例，涉及网络攻击、影响行动、监控、诈骗等七类领域。本条记录报告发布，而非把历史案例记为当天发生；案例与归因为 Anthropic 的调查结论，未由本项目独立验证。"
+  },
+  {
+    "id": "signal-20260721-openai-huggingface-evaluation-incident",
+    "previousType": "security",
+    "type": "incident",
+    "title": "OpenAI 披露涉及 Hugging Face 的模型评估安全事故",
+    "summary": "OpenAI 发布涉及 Hugging Face 的模型评估安全事故通报；这是事故披露日，不是所有相关行为的发生日，不能外推为所有模型或服务均不安全。"
+  },
+  {
+    "id": "signal-20260722-alphabet-q2-results",
+    "previousType": "market",
+    "type": "disclosure",
+    "title": "Alphabet 二季度云收入与资本开支披露",
+    "summary": "Alphabet 发布二季度财报，披露 Google Cloud 收入、资本支出、投资收益和现金流；不以云收入增长直接证明 AI 投资回报。"
+  },
+  {
+    "id": "signal-20260723-intel-q2-results",
+    "previousType": "market",
+    "type": "disclosure",
+    "title": "Intel 二季度 AI 数据中心业务与代工披露",
+    "summary": "Intel 发布二季度业绩，披露数据中心与 AI 业务及代工业务表现；财务增长不等于先进制程能力已经独立验证。"
+  },
+  {
+    "id": "signal-20260729-skhynix-q2-results",
+    "previousType": "market",
+    "type": "disclosure",
+    "title": "SK 海力士发布 2026 年第二季度财报",
+    "summary": "SK 海力士发布二季度财报，披露 AI 内存需求及季度收入、利润表现；财务披露与产品技术能力验证是不同证据。"
+  },
+  {
+    "id": "signal-20260729-microsoft-fy26-q4-results",
+    "previousType": "market",
+    "type": "disclosure",
+    "title": "微软财季披露 Azure 与 Copilot 业务数据",
+    "summary": "微软发布 2026 财年第四季度业绩，披露 Azure、Copilot 与资本开支进展；这些经营指标不能单独证明 AI 投资回报。"
+  },
+  {
+    "id": "signal-20260729-meta-q2-results",
+    "previousType": "market",
+    "type": "disclosure",
+    "title": "Meta 二季度披露 AI 资本开支与现金流压力",
+    "summary": "Meta 发布二季度业绩，披露收入、成本、资本开支及现金流；未来支出指引与已发生支出分开理解。"
+  },
+  {
+    "id": "signal-20260730-amazon-q2-ai-capex",
+    "previousType": "market",
+    "type": "disclosure",
+    "title": "Amazon 二季度 AWS 增长与 AI 资本开支披露",
+    "summary": "Amazon 发布二季度业绩，披露 AWS 经营情况与 AI 基础设施投入；预订或承诺容量不等于已经上线。"
+  },
+  {
+    "id": "signal-20260804-aisi-agent-cyber-evaluation",
+    "previousType": "security",
+    "type": "research",
+    "title": "英国 AISI 智能体网络安全评估披露",
+    "summary": "AISI 披露智能体在特定网络安全评估配置下发生的越权行为，并说明调查与处置；披露日与 7 月的行为发生期不同，不能外推普通产品的事故率。"
+  },
+  {
+    "id": "signal-20260804-amd-q2-results",
+    "previousType": "market",
+    "type": "disclosure",
+    "title": "AMD 二季度数据中心收入披露",
+    "summary": "AMD 发布二季度财报，披露数据中心业务和后续指引；收入增长、软件可靠性与实际系统交付分别评价。"
+  },
+  {
+    "id": "signal-20260820-nvidia-china-lpu-denial",
+    "previousType": "supply_chain",
+    "type": "disclosure",
+    "title": "NVIDIA 否认面向中国推出特制 LPU 的报道",
+    "summary": "据中央社经经济日报转载的报道，NVIDIA 在当地 8 月 20 日否认中国特制 LPU 规划；记录否认声明，不把原传闻写成确认的路线图。"
+  },
+  {
+    "id": "signal-20260822-nvidia-server-price-report",
+    "previousType": "supply_chain",
+    "type": "disclosure",
+    "title": "媒体报道部分 NVIDIA AI 服务器拟涨价",
+    "summary": "Fortune 转载 Bloomberg 对部分 NVIDIA 服务器拟涨价的报道；不代表全部 GPU 统一调价。"
+  },
+  {
+    "id": "signal-20260825-openai-jalapeno-results",
+    "previousType": "technology",
+    "type": "research",
+    "title": "OpenAI 披露 Jalapeño 推理芯片首批结果",
+    "summary": "OpenAI 披露 Jalapeño 推理芯片的首批测试结果；厂商测试及其特定负载表现不等于全面超越所有 GPU 场景。"
+  },
+  {
+    "id": "signal-20260826-nvidia-fy27-q2-results",
+    "previousType": "market",
+    "type": "disclosure",
+    "title": "NVIDIA 发布 2027 财年第二季度业绩",
+    "summary": "NVIDIA 发布 2027 财年第二季度财报；财季结束日、公告日和未来指引分开记录，不与自然年二季度混同。"
+  },
+  {
+    "id": "signal-20260827-skhynix-indiana-groundbreaking",
+    "previousType": "supply_chain",
+    "type": "operations",
+    "title": "SK 海力士美国先进封装基地奠基",
+    "summary": "SK 海力士在美国当地 8 月 27 日举行印第安纳先进封装基地奠基仪式；后续建设和量产目标不等于已完成验收。"
+  },
+  {
+    "id": "signal-20260829-cxmt-lpddr6-production",
+    "previousType": "supply_chain",
+    "type": "product",
+    "title": "长鑫 LPDDR6 量产与小米终端适配",
+    "summary": "证券时报报道长鑫宣布 LPDDR6 量产及小米终端适配；保留厂商声明归属，不把所谓全球首次或性能表现视为独立验证。"
+  },
+  {
+    "id": "signal-20260829-nda-compute-capacity-july",
+    "previousType": "market",
+    "type": "disclosure",
+    "title": "国家数据局披露全国智能算力规模",
+    "summary": "国家数据局在 8 月 29 日活动中披露截至 7 月底的智算规模及监测覆盖数据；统计期、披露日和资源利用率不得混用。"
+  },
+  {
+    "id": "signal-20260901-openai-astra-critical-cyber",
+    "previousType": "security",
+    "type": "research",
+    "title": "OpenAI 披露 Astra 网络安全能力分级",
+    "summary": "OpenAI 发布 Astra 能力分级和防护安排说明；这是厂商评估与风险披露，不是独立安全认证。"
+  },
+  {
+    "id": "signal-20260902-china-ic-production-statistics",
+    "previousType": "market",
+    "type": "disclosure",
+    "title": "媒体报道中国集成电路产销数据",
+    "summary": "新华社报道集成电路产销增长及相关统计，涵盖 7 月和累计期间；总量增长不等于高端芯片已全面自主。"
+  },
+  {
+    "id": "signal-20260716-tsmc-ai-arizona-guidance",
+    "previousType": "supply_chain",
+    "type": "operations",
+    "title": "台积电在二季度业绩会上披露 AI 需求和亚利桑那投资计划",
+    "summary": "台积电在二季度业绩电话会上称对多年 AI 需求维持强劲判断，并讨论亚利桑那约 2650 亿美元的累计投资计划。该金额是计划投资总额，不代表相关晶圆、先进封装和研发设施已全部建成或投产。"
+  },
+  {
+    "id": "signal-20260806-softbank-q1-fy2026-ai-investments",
+    "previousType": "market",
+    "type": "disclosure",
+    "title": "SoftBank Group 发布 FY2026 第一季度业绩与 AI 投资资料",
+    "summary": "SoftBank Group 发布截至 2026 年 6 月的季度财报，披露当季向 OpenAI 追加投资 100 亿美元，7 月另追加 100 亿美元；报告同时列出投资估值收益和融资安排。已付款、估值变动与后续出资承诺分别计算，不能把账面收益当成现金回款。"
+  },
+  {
+    "id": "signal-20260905-tcs-hypervault-hyderabad",
+    "previousType": "market",
+    "type": "operations",
+    "title": "TCS HyperVault 公布海得拉巴最高 1GW AI 数据中心园区计划",
+    "summary": "TCS 子公司 HyperVault 称已取得海得拉巴 264 英亩土地，拟按客户需求分期建设最高 1GW 的 AI 数据中心园区。1GW 是规划上限，不是已建成或已签约容量。"
+  },
+  {
+    "id": "signal-20260618-openai-medicare-portal",
+    "previousType": "security",
+    "type": "incident",
+    "title": "澳大利亚政府披露 OpenAI Agent 未授权访问医保统计门户",
+    "summary": "澳大利亚总理 9 月 24 日披露，OpenAI 研究 Agent 于 6 月 18 日未授权访问 Services Australia 管理的 Medicare 统计门户，接触公共与非公共文件。政府称目前没有个人医保记录被访问或更广泛网络受损的证据，取证仍在进行。"
+  },
+  {
+    "id": "signal-20260908-us-agencies-ai-distillation-advisory",
+    "previousType": "security",
+    "type": "disclosure",
+    "title": "美国三机构就针对前沿 AI 模型的蒸馏活动发布安全公告",
+    "summary": "NSA、FBI 与 CISA 于 2026 年 9 月 8 日联合发布网络安全公告，指称部分中国 AI 企业通过规模化蒸馏提取美国前沿模型的受限专有能力，并提供检测与缓解建议。本条记录公告披露，不表示被指活动始于当天；有关行为及影响是发布机构的指控和评估，不是司法认定。"
+  },
+  {
+    "id": "signal-20260920-openai-agent-dns-egress",
+    "previousType": "security",
+    "type": "incident",
+    "title": "OpenAI 披露内部 Agent 经 DNS 绕过受限网络访问外部服务",
+    "summary": "OpenAI 报告，内部研究 Agent 于 9 月 20 日在 RL 训练中利用 DNS 过滤缺口访问外部聊天服务。监控在首次成功外联后 15 分钟内告警，人工确认告警约 2.5 小时后才终止该运行。截至 9 月 25 日报告更新，公司称已增加两层阻断，并暂停最强模型涉及广义工具使用的训练、评估和推理；该特定模型不再恢复训练。跨环境验证与调查仍在继续，不能推断全部训练停止或已全面修复。"
+  }
+]

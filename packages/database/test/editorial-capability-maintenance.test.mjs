@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import process from 'node:process';
 import { URL } from 'node:url';
 import pg from 'pg';
@@ -42,6 +44,17 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
 const integration = adminUrl ? describe.sequential : describe.skip;
+const currentMigrations = await loadMigrations();
+// This completed capability upgrade is bound to the reviewed 0032 artifact.
+// Forward migrations must not silently authorize this historical grant operation.
+const reviewedMigrations = currentMigrations.filter(({ name }) => name < '0033_');
+const loadReviewedMigrations = async () => reviewedMigrations;
+const verifyReviewedMigrationManifest = async (migrations) => {
+  // Verify the current repository's real checksum file, then the exact historical
+  // subset bound by the operation; the current file deliberately includes 0033.
+  await verifyMigrationManifest(currentMigrations);
+  assertEditorialCapabilityManifest(migrations);
+};
 
 describe('bounded editorial writer capability SQL artifact', () => {
   it('leaves transaction control to the maintenance runner and never grants a reader capability', async () => {
@@ -165,8 +178,8 @@ async function fixture() {
     },
     validateConnectionTarget: vi.fn(() => policy),
     assertDirectTopicSyncEndpoint: vi.fn(),
-    loadMigrations: vi.fn(loadMigrations),
-    verifyMigrationManifest: vi.fn(verifyMigrationManifest),
+    loadMigrations: vi.fn(loadReviewedMigrations),
+    verifyMigrationManifest: vi.fn(verifyReviewedMigrationManifest),
     verifyDatabaseContract: vi.fn(async () => ({ migrationCount: 33, tableCount: 58 })),
     inspectDatabasePreflight: vi.fn(async () => ({
       database: policy.database,
@@ -262,9 +275,10 @@ async function fixture() {
 
 describe('editorial capability maintenance transactions and approval binding', () => {
   it('requires exact 33 migration names, SQL bytes and checksums', async () => {
-    const migrations = await loadMigrations();
+    const migrations = await loadReviewedMigrations();
     expect(assertEditorialCapabilityManifest(migrations)).toMatch(/^[a-f0-9]{64}$/);
     for (const changed of [
+      currentMigrations,
       migrations.slice(1),
       [...migrations].reverse(),
       migrations.map((row, index) => (index === 0 ? { ...row, sql: row.sql + '\n' } : row)),
@@ -496,6 +510,7 @@ integration('isolated PostgreSQL editorial writer capability transaction', () =>
     writer,
     reader,
     targetUrl,
+    migrationDirectory,
     databaseCreated = false;
   const revokeAdded = () =>
     owner.query(
@@ -572,7 +587,11 @@ integration('isolated PostgreSQL editorial writer capability transaction', () =>
     databaseCreated = true;
     targetUrl = new URL(adminUrl);
     targetUrl.pathname = `/${database}`;
-    await runMigrations({ connectionString: targetUrl.toString() });
+    migrationDirectory = await mkdtemp(join(tmpdir(), 'hzense-reviewed-capability-'));
+    await Promise.all(
+      reviewedMigrations.map(({ name, sql }) => writeFile(join(migrationDirectory, name), sql)),
+    );
+    await runMigrations({ connectionString: targetUrl.toString(), directory: migrationDirectory });
     owner = new pg.Client({ connectionString: targetUrl.toString() });
     await owner.connect();
     await owner.query(
@@ -630,6 +649,7 @@ integration('isolated PostgreSQL editorial writer capability transaction', () =>
       if (privileges.length)
         await admin.query(`GRANT ${privileges.join(',')} ON DATABASE "${name}" TO PUBLIC`);
     await admin?.end();
+    if (migrationDirectory) await rm(migrationDirectory, { recursive: true, force: true });
   });
   it('plans with a read-only transaction and leaves both roles unchanged', async () => {
     const before = [await acl(roles[0]), await acl(roles[1])];
@@ -863,8 +883,8 @@ integration('isolated PostgreSQL editorial writer capability transaction', () =>
         ).rows[0];
         return { ...actual, pendingMigrations: [] };
       },
-      loadMigrations,
-      verifyMigrationManifest,
+      loadMigrations: loadReviewedMigrations,
+      verifyMigrationManifest: verifyReviewedMigrationManifest,
       migrationLockKeys,
       buildRuntimeAclBaseline,
       runtimeAclBackupReference,

@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { toUnifiedSignal } from '../lib/unified-signal-core.ts';
+import { SIGNAL_EVENT_TYPES } from '../../../packages/ingestion/src/signal-types.mjs';
+import { formatSignalType } from '../lib/signal-presentation.ts';
 
 const base = {
   id: 'example-signal',
@@ -18,6 +20,23 @@ const base = {
   confidence: 0.8,
   novelty: 0.5,
 };
+
+test('public cards expose event types while retired categories stay readable without rewriting sources', () => {
+  for (const type of ['technology', 'security', 'market', 'open_source', 'supply_chain']) {
+    const source = { ...base, type };
+    const before = JSON.stringify(source);
+    const signal = toUnifiedSignal(source);
+    assert.equal(signal.type, null);
+    assert.equal(signal.title, source.title);
+    assert.equal(signal.sources[0].url, source.source_url);
+    assert.equal(formatSignalType(type), '待重新分类');
+    assert.equal(JSON.stringify(source), before);
+  }
+  for (const type of SIGNAL_EVENT_TYPES) {
+    assert.equal(toUnifiedSignal({ ...base, type }).type, type);
+    assert.notEqual(formatSignalType(type), '待重新分类');
+  }
+});
 
 test('legacy and qualified signals share the same public shape without changing their basis', () => {
   const legacy = toUnifiedSignal(base);

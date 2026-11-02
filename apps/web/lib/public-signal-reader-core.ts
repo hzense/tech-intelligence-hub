@@ -1,3 +1,5 @@
+import { SIGNAL_TYPES } from '@hzense/ingestion/signal-types';
+import { signalEventTypeKeywords, signalEventTypeSearchPrefilter } from './signal-event-type.ts';
 import type { SeedSignal } from '@hzense/content';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import {
@@ -92,23 +94,7 @@ export function readSignalReadMode(
 
 export const publicSignalMaximumEntries = 10_000;
 
-const signalTypes = new Set([
-  'research',
-  'product',
-  'funding',
-  'acquisition',
-  'hiring',
-  'policy',
-  'technology',
-  'market',
-  'people',
-  'open_source',
-  'security',
-  'patent',
-  'partnership',
-  'regulation',
-  'supply_chain',
-]);
+const signalTypes = new Set<string>(SIGNAL_TYPES);
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return fail();
   return value as Record<string, unknown>;
@@ -246,7 +232,13 @@ export function createPublicSignalReader(client: PublicSignalQueryClient) {
       const terms = tokenizeSearchQuery(query);
       if (!terms.length) return [];
       const entries = mapPublicSignalRows(
-        (await executeQuery(publicSignalSearchQuery, [terms, publicSignalMaximumEntries + 1])).rows,
+        (
+          await executeQuery(publicSignalSearchQuery, [
+            terms,
+            publicSignalMaximumEntries + 1,
+            JSON.stringify(signalEventTypeSearchPrefilter),
+          ])
+        ).rows,
       );
       return rankSearchDocuments(
         entries.map((entry) => ({
@@ -258,7 +250,7 @@ export function createPublicSignalReader(client: PublicSignalQueryClient) {
           date: entry.occurred_at.slice(0, 10),
           body: entry.analysis ?? '',
           keywords: [
-            entry.type,
+            signalEventTypeKeywords(entry),
             ...(entry.public_topics ?? []).map((topic) => `${topic.id} ${topic.title}`),
             ...(entry.public_people ?? []).map((person) => `${person.id} ${person.name}`),
             ...(entry.public_organizations ?? []).map((person) => `${person.id} ${person.name}`),

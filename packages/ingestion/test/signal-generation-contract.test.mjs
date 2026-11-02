@@ -9,7 +9,6 @@ import {
   GENERATION_METADATA_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
   generationCandidateWithResourcesJsonSchema,
-  SIGNAL_TYPES,
   normalizeGenerationTopics,
   normalizeGeneratedCandidates,
   assessGeneratedCandidates,
@@ -20,6 +19,7 @@ import {
   estimateGenerationTokens,
   GENERATION_LIMITS,
 } from '../src/signal-generation-contract.mjs';
+import { LEGACY_SIGNAL_TYPES } from '../src/signal-types.mjs';
 import { isGenerationValidationDetail } from '../src/signal-generation-validation-diagnostics.mjs';
 
 const original = '2026-09-16，研究作者李明在示例研究所公布合成研究结果。尚不能证明实际效果。';
@@ -56,14 +56,14 @@ test('event types are required only by the metadata contract, preserving legacy 
   const old = normalizeGeneratedCandidates({ candidates: [oldTopics], reason: 'old' }, source, []);
   const schema = generationCandidateWithMetadataJsonSchema.properties.candidates.items;
   assert.ok(schema.required.includes('signal_type'));
-  assert.deepEqual(schema.properties.signal_type.enum, SIGNAL_TYPES);
+  assert.deepEqual(schema.properties.signal_type.enum, LEGACY_SIGNAL_TYPES);
   assert.equal(
     generationCandidateWithTopicsJsonSchema.properties.candidates.items.required.includes(
       'signal_type',
     ),
     false,
   );
-  for (const signal_type of SIGNAL_TYPES) {
+  for (const signal_type of LEGACY_SIGNAL_TYPES) {
     const result = normalizeGeneratedCandidates(
       { candidates: [{ ...oldTopics, signal_type }], reason: 'new' },
       source,

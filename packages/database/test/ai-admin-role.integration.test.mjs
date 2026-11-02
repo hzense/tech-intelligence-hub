@@ -6,7 +6,7 @@ import { URL } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
-import { runMigrations } from '../src/migrate.mjs';
+import { loadMigrations, runMigrations } from '../src/migrate.mjs';
 import { verifyDatabaseContract } from '../src/verify.mjs';
 import { aiConfigurationColumns } from '../src/ai-configuration-catalog.mjs';
 import { waitForDatabaseDisconnects } from './database-disconnect.mjs';
@@ -29,6 +29,9 @@ const { Client, Pool } = pg;
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
 const suite = adminUrl ? describe.sequential : describe.skip;
+const migrationCount = (
+  await loadMigrations(new URL('../../../db/migrations/', import.meta.url).pathname)
+).length;
 const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
 const databaseName = `hzense_ai_config_${suffix}`;
 const sentinelDatabase = `hzense_ai_sentinel_${suffix}`;
@@ -223,7 +226,7 @@ suite('PostgreSQL private AI configuration and administrator role', () => {
 
   it('migrates and verifies 58 tables without adding any AI trigger/function or public read surface', async () => {
     expect(await verify()).toMatchObject({
-      migrationCount: 33,
+      migrationCount,
       tableCount: 58,
       pgvectorVersion: '0.8.6',
     });

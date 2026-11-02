@@ -5,7 +5,7 @@ import { URL } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
-import { runMigrations } from '../src/migrate.mjs';
+import { loadMigrations, runMigrations } from '../src/migrate.mjs';
 import { verifyDatabaseContract } from '../src/verify.mjs';
 import {
   signalWorkbenchReadColumns,
@@ -28,6 +28,9 @@ import { waitForDatabaseDisconnects } from './database-disconnect.mjs';
 const adminUrl = process.env.MIGRATION_TEST_ADMIN_URL;
 if (adminUrl) validateConnectionTarget({ connectionString: adminUrl, profile: 'local-test' });
 const suite = adminUrl ? describe.sequential : describe.skip;
+const migrationCount = (
+  await loadMigrations(new URL('../../../db/migrations/', import.meta.url).pathname)
+).length;
 const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
 const database = `hzense_workbench_${suffix}`;
 const ownerRole = `hzense_workbench_owner_${suffix}`;
@@ -278,7 +281,7 @@ suite('Signal administrator has exact read-only PostgreSQL privileges', () => {
       expectedDatabase: database,
       expectedUser: ownerRole,
     });
-    expect(result).toMatchObject({ migrationCount: 33, tableCount: 58 });
+    expect(result).toMatchObject({ migrationCount, tableCount: 58 });
   });
 
   it('empty-role-only provisioning refuses a second grant run without changing valid rights', async () => {
@@ -333,7 +336,7 @@ suite('Signal administrator has exact read-only PostgreSQL privileges', () => {
       } finally {
         await admin((client) => client.query(restore));
       }
-      await expect(verify()).resolves.toMatchObject({ migrationCount: 33, tableCount: 58 });
+      await expect(verify()).resolves.toMatchObject({ migrationCount, tableCount: 58 });
     },
   );
 

@@ -7,6 +7,11 @@
       "types": "./src/import-manifest.d.mts",
       "default": "./src/import-manifest.mjs"
     },
+    "./signal-types": {
+      "types": "./src/signal-types.d.mts",
+      "import": "./src/signal-types.mjs",
+      "default": "./src/signal-types.mjs"
+    },
     "./person-resource-policy": {
       "types": "./src/person-resource-policy.d.mts",
       "import": "./src/person-resource-policy.mjs",

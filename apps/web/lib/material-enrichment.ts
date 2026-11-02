@@ -1,3 +1,4 @@
+import { isSignalEventType } from '../../../packages/ingestion/src/signal-types.mjs';
 import { Buffer } from 'node:buffer';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import {
@@ -10,6 +11,7 @@ import {
   GENERATION_METADATA_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
+  GENERATION_EVENT_TYPES_CONTRACT,
   generatedResourceJsonSchema,
   type GeneratedCandidate,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
@@ -218,7 +220,9 @@ export function assessMaterialEnrichment(
     checked,
     undefined,
     original.date_basis === 'source_published'
-      ? GENERATION_SOURCE_PUBLICATION_CONTRACT
+      ? isSignalEventType(original.signal_type)
+        ? GENERATION_EVENT_TYPES_CONTRACT
+        : GENERATION_SOURCE_PUBLICATION_CONTRACT
       : original.resources !== undefined
         ? GENERATION_RESOURCES_CONTRACT
         : original.signal_type === undefined

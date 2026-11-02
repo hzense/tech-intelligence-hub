@@ -1,3 +1,4 @@
+import { SIGNAL_TYPES } from '@hzense/ingestion/signal-types';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse } from 'yaml';
@@ -62,23 +63,7 @@ const signalSchema = z.object({
   id,
   event_key: id.optional(),
   title: z.string().min(1),
-  type: z.enum([
-    'research',
-    'product',
-    'funding',
-    'acquisition',
-    'hiring',
-    'policy',
-    'technology',
-    'market',
-    'people',
-    'open_source',
-    'security',
-    'patent',
-    'partnership',
-    'regulation',
-    'supply_chain',
-  ]),
+  type: z.enum(SIGNAL_TYPES),
   occurred_at: seedDateTime,
   captured_at: seedDateTime,
   status: z.enum(['inbox', 'reviewed', 'accepted', 'rejected', 'archived']),

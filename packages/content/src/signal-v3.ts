@@ -1,3 +1,4 @@
+import { SIGNAL_TYPES } from '@hzense/ingestion/signal-types';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { parseSeedCatalog, type SeedCatalog, type SeedSignal } from './seed.js';
@@ -28,23 +29,7 @@ const snapshotFields = {
   version: z.number().int().positive().max(2_147_483_647),
   schema_version: z.literal(SIGNAL_VERSION_SCHEMA_VERSION),
   title: nonblank,
-  type: z.enum([
-    'research',
-    'product',
-    'funding',
-    'acquisition',
-    'hiring',
-    'policy',
-    'technology',
-    'market',
-    'people',
-    'open_source',
-    'security',
-    'patent',
-    'partnership',
-    'regulation',
-    'supply_chain',
-  ]),
+  type: z.enum(SIGNAL_TYPES),
   occurred_at: timestamp,
   date_precision: z.enum(['day', 'instant']),
   date_basis: nonblank,
