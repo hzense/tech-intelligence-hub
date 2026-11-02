@@ -78,18 +78,18 @@ async function observeExpired(observer, runId) {
 
 // Independent implementation of the existing 3.0.0 fixed-order preimage, not
 // the publisher's own clone function. Synthetic data is not verified journalism.
-function snapshot(signalId, version = 1) {
+function snapshot(signalId, version = 1, content = {}) {
   const row = {
     signal_id: signalId,
     version,
     schema_version: '3.0.0',
-    title: 'Synthetic event',
+    title: '用于发布验证的示例事件',
     type: 'research',
     occurred_at: '2026-01-01T00:00:00.000Z',
     date_precision: 'day',
     date_basis: 'Synthetic UTC event date',
     captured_at: '2026-09-13T08:10:11.678Z',
-    summary: 'Synthetic public evidence-backed claim',
+    summary: '这是一条有合成公开证据支持的测试信号。',
     analysis: 'Synthetic bounded analysis',
     importance: 3,
     strength: 3,
@@ -98,6 +98,7 @@ function snapshot(signalId, version = 1) {
     revision_reason: 'Synthetic fixture version',
     origin: 'manual',
     legacy_status: null,
+    ...content,
   };
   return {
     ...row,
@@ -176,7 +177,12 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
     }
   }, 30_000);
 
-  async function fixture({ sourceVersion = 1, leaseSeconds = 60, beforeSeal } = {}) {
+  async function fixture({
+    sourceVersion = 1,
+    leaseSeconds = 60,
+    beforeSeal,
+    snapshotContent,
+  } = {}) {
     const id = `qualified-${randomUUID()}`;
     const client = await pool.connect();
     try {
@@ -212,7 +218,7 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
         [`${id}-evidence`, `${id}-source`, 'a'.repeat(64)],
       );
       for (let version = 1; version <= sourceVersion; version += 1) {
-        const row = snapshot(id, version);
+        const row = snapshot(id, version, snapshotContent);
         await client.query(
           `INSERT INTO public.signal_versions(signal_id,version,schema_version,title,type,occurred_at,date_precision,date_basis,captured_at,summary,analysis,importance,strength,confidence,novelty,revision_reason,origin,legacy_status,content_hash)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
@@ -385,6 +391,25 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
       expect(edges).toHaveLength(2);
       expect(edges[1]).toEqual(edges[0]);
     }
+  });
+
+  it('keeps a sealed English snapshot readable but blocks new private and public publication', async () => {
+    const snapshotContent = { title: 'An English title', summary: 'An English summary.' };
+    const privateCandidate = await fixture({ snapshotContent });
+    const privateBefore = await state(privateCandidate.id);
+    await expect(publish({ pool, request: privateCandidate.request })).rejects.toMatchObject({
+      code: 'chinese_content_required',
+    });
+    expect(await state(privateCandidate.id)).toEqual(privateBefore);
+
+    // Verification material and its historical hash remain readable; the
+    // current language policy is rechecked only for a new publication write.
+    const publicFixture = await publicCandidate(undefined, snapshotContent);
+    const publicBefore = await state(publicFixture.id);
+    await expect(
+      publishVerifiedSignal({ pool, request: publicFixture.request }),
+    ).rejects.toMatchObject({ code: 'chinese_content_required' });
+    expect(await state(publicFixture.id)).toEqual(publicBefore);
   });
 
   it.each([
@@ -742,8 +767,9 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
     expect((await state(f.id)).receipts).toHaveLength(1);
   });
 
-  async function pendingCandidate() {
+  async function pendingCandidate(snapshotContent) {
     return fixture({
+      snapshotContent,
       beforeSeal: async (client, id) => {
         await client.query(
           "UPDATE public.signal_version_people SET verification_status='pending' WHERE signal_id=$1",
@@ -795,8 +821,8 @@ suite('PostgreSQL private recorded qualification and atomic Signal publication',
     return { verification: request, request: assemblyRequest(f, request) };
   }
 
-  async function publicCandidate(overrides) {
-    const f = await pendingCandidate();
+  async function publicCandidate(overrides, snapshotContent) {
+    const f = await pendingCandidate(snapshotContent);
     const v = await verifyCandidate(f, overrides);
     await assemblePrivateVerifiedSignalCandidate({ pool, request: v.request });
     return {

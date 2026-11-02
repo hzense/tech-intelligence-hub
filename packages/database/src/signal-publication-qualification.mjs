@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { URL } from 'node:url';
 import { types } from 'node:util';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
+import { isChineseSignalText } from '@hzense/ingestion/signal-language';
 
 const maximumInteger = 2_147_483_647;
 const maximumRows = 256;
@@ -40,6 +41,7 @@ const codes = new Set([
   'content_version_not_increasing',
   'reason_code_mismatch',
   'publication_write_conflict',
+  'chinese_content_required',
 ]);
 
 /** Fixed codes only. Neither a caller payload nor a database error becomes a public message. */
@@ -618,4 +620,11 @@ export function qualifySignalPublicationBundle(input) {
       },
     };
   });
+}
+
+/** Current write policy only: historical parsing, fingerprints and receipts remain unchanged. */
+export function assertChineseSignalPublicationContent(input) {
+  const snapshot = parseSnapshot(input);
+  if (!isChineseSignalText(snapshot.title) || !isChineseSignalText(snapshot.summary))
+    reject('chinese_content_required');
 }

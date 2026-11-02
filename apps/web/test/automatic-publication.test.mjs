@@ -353,6 +353,25 @@ test('publishes first revision once using automatic consent semantics and stable
   assert.equal(calls[0][2].requestId, automaticPublicationRequestId(id, 0));
   assert.notEqual(automaticPublicationRequestId(id, 0), automaticPublicationRequestId(id, 1));
 });
+test('automatic publication holds non-Chinese output without writes or a paid regeneration', async () => {
+  const { state, publish } = setup();
+  state.dashboard.content.title = 'Institution launches an AI model';
+  state.dashboard.content.summary =
+    'The institution announces its model with public evaluation results.';
+  const result = await publish('owner', id);
+  assert.equal(result.candidates[0].status, 'needs_attention');
+  assert.match(result.candidates[0].reasons.join(' '), /以中文为主的标题/);
+  assert.match(result.candidates[0].reasons.join(' '), /以中文为主的摘要/);
+  assert.equal(state.calls.filter(([kind]) => kind === 'publish').length, 0);
+  assert.equal(state.run.status, 'completed');
+  state.dashboard.content.title = '机构发布 AI 模型';
+  state.dashboard.content.summary = '机构发布 AI 模型及公开评估结果。';
+  state.error = Object.assign(new Error('private text'), { code: 'chinese_content_required' });
+  const refused = await publish('owner', id);
+  assert.equal(refused.candidates[0].status, 'needs_attention');
+  assert.match(refused.candidates[0].reasons[0], /标题和摘要须以中文为主/);
+  assert.doesNotMatch(refused.candidates[0].reasons[0], /private text/);
+});
 test('manual drafts, edits and withdrawals are never overwritten or resurrected', async () => {
   for (const action of ['draft', 'publish', 'withdraw']) {
     const { state, publish } = setup();

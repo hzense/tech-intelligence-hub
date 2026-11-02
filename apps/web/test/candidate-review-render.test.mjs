@@ -287,6 +287,12 @@ test('signal management renders private evidence safely without performing publi
           },
           { field: 'title', code: 'title_too_long' },
           {
+            field: 'summary',
+            code: 'invalid_field',
+            path: 'summary',
+            reason: 'language_not_chinese',
+          },
+          {
             field: 'resources',
             code: 'invalid_field',
             path: 'resources[2].name',
@@ -316,5 +322,6 @@ test('signal management renders private evidence safely without performing publi
     /resources\[2\]\.name<\/code>：引用未包含该资源完整名称；请核对名称与原文引用是否一致/,
   );
   assert.match(diagnosticHtml, /resources\[3\]\.evidence<\/code>：未提供必需的原文证据/);
+  assert.match(diagnosticHtml, /标题和摘要须以中文为主，可保留英文专有名词/);
   assert.doesNotMatch(diagnosticHtml, /private-raw/);
 });

@@ -1,6 +1,6 @@
 # 统一 Signal 逻辑结构
 
-当前事件分类使用 13 类，技术、安全、市场、供应链与开源不再作为新信号类型；历史读取兼容与逐条显示映射见 [信号事件类型](SIGNAL_EVENT_TYPES.md)。新生成固定 `signal-event-types-v1`，旧快照不改写。
+当前事件分类使用 13 类，技术、安全、市场、供应链与开源不再作为新信号类型；历史读取兼容与逐条显示映射见 [信号事件类型](SIGNAL_EVENT_TYPES.md)。新生成使用 `signal-chinese-v1`，继承事件类型契约并执行 [信号中文规则](SIGNAL_LANGUAGE.md)，旧快照不改写。
 
 本文件定义公开网站消费的 **统一逻辑模型**，不宣称三个现有来源已经合并为同一张物理表。历史归档已提供受保护的数据库迁移与独立读取开关；实际生产执行和切换结果以生产验收记录为准。代码契约位于 [`apps/web/lib/unified-signal-core.ts`](../apps/web/lib/unified-signal-core.ts)。
 

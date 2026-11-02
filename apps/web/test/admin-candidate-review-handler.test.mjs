@@ -84,6 +84,24 @@ test('review dispatch binds session owner and strips errors', async () => {
   assert.deepEqual(calls[2], ['owner', id, 0]);
 });
 
+test('legacy publication language rejection is a safe definite rejection', async () => {
+  const handler = createCandidateReviewHandler({
+    session: async () => ({ user: { id: 'owner' } }),
+    origin: () => origin,
+    read: async () => ({}),
+    confirm: async () => ({}),
+    enrich: async () => ({}),
+    operate: async () => {
+      throw Object.assign(new Error('private source text must not escape'), {
+        code: 'chinese_content_required',
+      });
+    },
+  });
+  const response = await handler(request({ action: 'publish', request: {} }));
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'chinese_content_required' });
+});
+
 test('review boundary rejects oversized bodies and duplicate query keys before stores', async () => {
   let calls = 0;
   const handler = createCandidateReviewHandler({

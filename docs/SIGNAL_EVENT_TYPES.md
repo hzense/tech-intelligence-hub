@@ -28,7 +28,7 @@
 
 - `packages/ingestion/src/signal-types.mjs` 是新事件类型、中文名称和生成规则的公共定义；`SIGNAL_EVENT_TYPES` 为 13 类。
 - `LEGACY_SIGNAL_TYPES` 固定旧 15 类，历史生成契约继续按当时的类型集合解析。`SIGNAL_TYPES` 是兼容存储读取的 18 类并集，不是后台可选项。
-- 新任务固定 `output_contract=signal-event-types-v1`，继承原文发布日期与资源证据规则，只接受 13 种事件类型。旧任务的候选、材料哈希、费用和成功回执不改写，也不重新调用 AI。
+- `signal-event-types-v1` 引入 13 种事件类型；后续新任务使用继承此规则的 `output_contract=signal-chinese-v1`，同时要求标题与摘要以中文为主，详见 [信号中文规则](SIGNAL_LANGUAGE.md)。旧任务的候选、材料哈希、费用和成功回执不改写，也不重新调用 AI。
 - 后台新建／更新草稿、确认发布只接受当前事件类型；旧类别的已发布信号仍可查看、按原请求重放和撤回，修订时明确选择新类型。
 - 公开卡片、详情和搜索投影共用事件类型解析。已逐条核定的 26 条 Seed 分类保存在 `data/seed/signal-event-classifications.json`；只有 ID、原类型、标题和摘要全部相符时才使用该映射。其他旧类别显示为未分类，不根据关键词推断事件。
 - 原始 `data/seed/signals.yaml`、历史归档清单、数据库快照和来源证据保持原字节。上述映射只影响展示和新搜索投影，不声称生产存储已完成重分类。

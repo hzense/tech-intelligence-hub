@@ -1,6 +1,7 @@
 import { URL } from 'node:url';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import { SIGNAL_TYPES, isSignalEventType } from '../../ingestion/src/signal-types.mjs';
+import { isChineseSignalText } from '../../ingestion/src/signal-language.mjs';
 
 export class EditorialSignalError extends Error {
   constructor(code = 'invalid_request') {
@@ -223,6 +224,8 @@ export function contentReadiness(content) {
         : !content[key]?.length,
   );
   if (!isSignalEventType(content.signalType)) missing.push('signalType');
+  if (!isChineseSignalText(content.title)) missing.push('titleLanguage');
+  if (!isChineseSignalText(content.summary)) missing.push('summaryLanguage');
   return { ready: missing.length === 0, missing };
 }
 export function normalizeEditorialRequest(
@@ -340,8 +343,11 @@ export function normalizeEditorialRequest(
         editorialFail('automatic_publication_invalid');
     } else if (request.action !== 'draft' && !request.consent)
       editorialFail('confirmation_required');
-    if (request.action === 'publish' && !contentReadiness(content).ready)
-      editorialFail('confirmation_required');
+    if (request.action === 'publish') {
+      if (!isChineseSignalText(content.title) || !isChineseSignalText(content.summary))
+        editorialFail('chinese_content_required');
+      if (!contentReadiness(content).ready) editorialFail('confirmation_required');
+    }
   }
   return {
     requestId: request.requestId,

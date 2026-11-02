@@ -49,8 +49,8 @@ suite('automatic publication: pinned opt-in and append-only post-publication cha
   } = {}) {
     const id = randomUUID();
     const content = {
-      title: 'Generated title',
-      summary: 'Generated summary',
+      title: '机构发布新产品',
+      summary: '该机构发布新产品，并介绍相关能力与应用方向。',
       eventDate,
       dateBasis: 'source_published',
       signalType: 'product',
@@ -238,7 +238,11 @@ suite('automatic publication: pinned opt-in and append-only post-publication cha
   it('supports genuine manual text edits and withdrawal without auto overwriting or resurrecting', async () => {
     const args = await fixture();
     await saveEditorialSignal(args);
-    const edited = { ...args.request.content, title: 'Edited title', summary: 'Edited summary' };
+    const edited = {
+      ...args.request.content,
+      title: '人工修订标题',
+      summary: '人工修订后的中文摘要。',
+    };
     await saveEditorialSignal({
       ...args,
       automatic: false,
@@ -265,7 +269,7 @@ suite('automatic publication: pinned opt-in and append-only post-publication cha
         consent: true,
       },
     });
-    expect(withdrawn.content.title).toBe('Edited title');
+    expect(withdrawn.content.title).toBe('人工修订标题');
     expect(withdrawn.publication_basis).toBe('manual_confirmation');
     // A replay acknowledges the original write but cannot create a new revision.
     expect((await saveEditorialSignal(args)).revision).toBe(1);

@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { fingerprintSignalPublicationRequest } from '../src/signal-publication-transition.mjs';
-import { fingerprintQualifiedPublicationRequest } from '../src/signal-publication-qualification.mjs';
+import {
+  assertChineseSignalPublicationContent,
+  fingerprintQualifiedPublicationRequest,
+  QualifiedPublicationError,
+} from '../src/signal-publication-qualification.mjs';
 import { lockPrivatePublicationControls } from '../src/signal-publication-control-store.mjs';
 import { publishPrivateQualifiedSignalVersion as publish } from '../src/signal-qualified-publication-store.mjs';
 
@@ -13,6 +17,7 @@ vi.mock('../src/signal-publication-control-store.mjs', () => ({
 vi.mock('../src/signal-publication-qualification.mjs', async (original) => ({
   ...(await original()),
   qualifySignalPublicationBundle: vi.fn(() => ({ scope: 'recorded_qualification_only' })),
+  assertChineseSignalPublicationContent: vi.fn(),
   cloneSignalSnapshotForPublication: vi.fn((snapshot, version) => ({
     ...snapshot,
     version,
@@ -278,6 +283,18 @@ describe('private qualified publication adapter lifecycle', () => {
       current_head_unchanged: true,
     });
     expect(lockPrivatePublicationControls).not.toHaveBeenCalled();
+    expect(assertChineseSignalPublicationContent).not.toHaveBeenCalled();
+    expect(statements.some(({ sql }) => /^(INSERT|UPDATE|DELETE)/.test(sql))).toBe(false);
+  });
+  it('rejects English content before any new publication write', async () => {
+    assertChineseSignalPublicationContent.mockImplementationOnce(() => {
+      throw new QualifiedPublicationError('chinese_content_required');
+    });
+    const { pool, statements } = fake();
+    await expect(publish({ pool, request: command() })).rejects.toMatchObject({
+      code: 'chinese_content_required',
+    });
+    expect(statements.at(-1).sql).toBe('ROLLBACK');
     expect(statements.some(({ sql }) => /^(INSERT|UPDATE|DELETE)/.test(sql))).toBe(false);
   });
   it('rejects changed source/run semantics and an orphan binding', async () => {

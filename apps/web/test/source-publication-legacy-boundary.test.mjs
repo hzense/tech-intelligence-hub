@@ -10,6 +10,7 @@ import {
   assessGeneratedCandidates,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
   GENERATION_EVENT_TYPES_CONTRACT,
+  GENERATION_CHINESE_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
@@ -39,8 +40,14 @@ function fixture(
   publicationContract = GENERATION_SOURCE_PUBLICATION_CONTRACT,
 ) {
   const raw = {
-    title: 'Lab announced AI X',
-    summary: 'Ada announced AI X.',
+    title:
+      publicationContract === GENERATION_CHINESE_CONTRACT
+        ? 'Lab 团队公布新模型 AI X'
+        : 'Lab announced AI X',
+    summary:
+      publicationContract === GENERATION_CHINESE_CONTRACT
+        ? 'Ada 所在研究团队公布了新模型 AI X。'
+        : 'Ada announced AI X.',
     event_date: '2026-10-20',
     event_date_evidence: evidence,
     persons: [{ name: 'Ada', role: 'researcher', organization: 'Lab', evidence }],
@@ -181,7 +188,11 @@ const {
 } = mod.exports;
 
 function test(name, run) {
-  for (const contract of [GENERATION_SOURCE_PUBLICATION_CONTRACT, GENERATION_EVENT_TYPES_CONTRACT])
+  for (const contract of [
+    GENERATION_SOURCE_PUBLICATION_CONTRACT,
+    GENERATION_EVENT_TYPES_CONTRACT,
+    GENERATION_CHINESE_CONTRACT,
+  ])
     nodeTest(`${name} (${contract})`, () => run(contract));
 }
 

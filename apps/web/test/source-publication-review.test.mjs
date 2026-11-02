@@ -16,8 +16,8 @@ import { toUnifiedSignal } from '../lib/unified-signal-core.ts';
 const runId = '11111111-1111-4111-8111-111111111111';
 const requestId = '22222222-2222-4222-8222-222222222222';
 const content = {
-  title: 'Source-date example',
-  summary: 'The article describes an earlier event.',
+  title: '原文发布日期示例',
+  summary: '原文报道了一项较早发生的事件。',
   eventDate: '2026-10-20',
   dateBasis: 'source_published',
   signalType: 'product',

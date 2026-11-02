@@ -47,14 +47,14 @@ cross_domain_relations: []
     writeFile(
       join(seedRoot, 'signals.yaml'),
       `- id: signal-example
-  title: Example signal
+  title: 示例信号
   type: technology
   occurred_at: 2024-06-19T00:00:00Z
   captured_at: 2024-06-20T00:00:00Z
   status: accepted
   source_id: source-example
   source_url: https://example.com/signal
-  summary: Example summary
+  summary: 用于内容加载验证的示例摘要。
   importance: 3
   confidence: 0.8
   novelty: 0.7

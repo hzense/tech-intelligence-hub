@@ -1,5 +1,6 @@
 import type { GenerationSignalType } from '../../../packages/ingestion/src/signal-types.mjs';
 import { isSignalEventType } from '../../../packages/ingestion/src/signal-types.mjs';
+import { isChineseSignalText } from '../../../packages/ingestion/src/signal-language.mjs';
 export type EditorialResource = {
   /** Explicit administrator assertion, never an AI or verified quotation. */
   basis?: 'manual_confirmation';
@@ -88,6 +89,8 @@ export function editorialMissing(
   missingResourceDetails: NonNullable<EditorialDashboard['missingResourceDetails']> = [],
 ): string[] {
   const missing: string[] = [];
+  if (!isChineseSignalText(content.title)) missing.push('以中文为主的标题');
+  if (!isChineseSignalText(content.summary)) missing.push('以中文为主的摘要');
   if (!isSignalEventType(content.signalType)) missing.push('事件类型');
   const date = content.eventDate;
   if (

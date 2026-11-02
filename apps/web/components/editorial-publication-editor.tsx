@@ -12,6 +12,7 @@ import {
 } from '@/lib/editorial-review';
 import { signalTypeLabels } from '@/lib/signal-presentation';
 import { isSignalEventType } from '@hzense/ingestion/signal-types';
+import { isChineseSignalText } from '../../../packages/ingestion/src/signal-language.mjs';
 import controls from './admin-controls.module.css';
 import styles from './editorial-publication-editor.module.css';
 
@@ -30,6 +31,7 @@ const messages: Record<string, string> = {
   material_changed: '原候选材料发生变化，请重新读取。',
   review_incomplete: '请补齐事件类型、日期、组织、人物和领域。',
   confirmation_required: '请补齐事件类型、日期、组织、人物和领域，并点击确认发布。',
+  chinese_content_required: '标题和摘要必须以中文为主，可以保留英文专有名词。请修改后再发布。',
   topic_reference_invalid: '领域已停用或名称有变化，请重新读取并选择。',
   entity_reference_invalid: '所选资源已不可用或类型不一致，请重新读取并核对身份。',
   resource_identity_ambiguous: '存在同名资源，请核对并选择正确身份。',
@@ -522,15 +524,19 @@ export function EditorialPublicationEditor({
           ) : null}
           <fieldset disabled={disabled} className={styles.fields}>
             <legend>发布信息</legend>
+            <p id="editorial-language-help" className={styles.fullWidth}>
+              标题和摘要须以中文叙述，可以保留人名、机构名、产品型号等英文专有名词。非中文草稿可先保存，改为中文后才能发布；原文证据保留原语言。
+            </p>
             <label className={styles.fullWidth}>
               标题
               <input
                 aria-label="标题"
                 value={data.content.title}
                 aria-invalid={
-                  !data.content.title.trim() || [...data.content.title.trim()].length > 80
+                  !isChineseSignalText(data.content.title) ||
+                  [...data.content.title.trim()].length > 80
                 }
-                aria-describedby="editorial-title-length"
+                aria-describedby="editorial-title-length editorial-language-help"
                 onChange={(event) =>
                   setData({ ...data, content: { ...data.content, title: event.target.value } })
                 }
@@ -546,9 +552,10 @@ export function EditorialPublicationEditor({
                 rows={7}
                 value={data.content.summary}
                 aria-invalid={
-                  !data.content.summary.trim() || [...data.content.summary.trim()].length > 500
+                  !isChineseSignalText(data.content.summary) ||
+                  [...data.content.summary.trim()].length > 500
                 }
-                aria-describedby="editorial-summary-length"
+                aria-describedby="editorial-summary-length editorial-language-help"
                 onChange={(event) =>
                   setData({ ...data, content: { ...data.content, summary: event.target.value } })
                 }

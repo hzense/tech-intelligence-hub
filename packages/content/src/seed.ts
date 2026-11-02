@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { parse } from 'yaml';
 import { z } from 'zod';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
+import { isChineseSignalText } from '@hzense/ingestion/signal-language';
 import { loadTaxonomy, validateSeedTopicProjection, type TaxonomyCatalog } from './taxonomy.js';
 
 const id = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
@@ -314,6 +315,9 @@ export async function loadSeedCatalog(
     }
   }
   for (const signal of catalog.signals) {
+    if (!isChineseSignalText(signal.title) || !isChineseSignalText(signal.summary)) {
+      throw new Error(`Signal ${signal.id} title and summary must be primarily Chinese`);
+    }
     for (const id of signal.entities) {
       const person = personById.get(id);
       if (

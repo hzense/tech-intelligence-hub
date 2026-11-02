@@ -8,8 +8,8 @@ import {
 } from '../src/editorial-signal-contract.mjs';
 export function editorialFixture() {
   const content = {
-    title: 'Publication',
-    summary: 'Human-confirmed event',
+    title: '机构发布新产品',
+    summary: '管理员确认该机构发布的新产品与相关资料。',
     eventDate: '2026-09-25',
     signalType: 'product',
     organizations: ['Organization'],
@@ -39,6 +39,48 @@ export function editorialFixture() {
   };
 }
 describe('editorial confirmation contract', () => {
+  it('requires Chinese narrative for new publication, while drafts and historical content remain readable', () => {
+    const { request, material } = editorialFixture();
+    for (const [field, value, reason] of [
+      ['title', 'OpenAI launches a new model', 'titleLanguage'],
+      [
+        'summary',
+        'This release improves the model and provides a public evaluation.',
+        'summaryLanguage',
+      ],
+      [
+        'summary',
+        '中文 This release improves the model and provides a public evaluation.',
+        'summaryLanguage',
+      ],
+    ]) {
+      const content = { ...request.content, [field]: value };
+      const original = { ...request, content };
+      const bound = { ...material, title: content.title, summary: content.summary };
+      expect(normalizeEditorialContent(content)).toEqual(content);
+      expect(contentReadiness(content)).toEqual({ ready: false, missing: [reason] });
+      expect(() => normalizeEditorialRequest(original, bound)).toThrow('chinese_content_required');
+      expect(() =>
+        normalizeEditorialRequest({ ...original, consent: false }, bound, { automatic: true }),
+      ).toThrow('chinese_content_required');
+      expect(normalizeEditorialRequest(original, bound, { checkPublication: false })).toEqual(
+        original,
+      );
+      expect(normalizeEditorialRequest({ ...original, action: 'draft' }, bound).content).toEqual(
+        content,
+      );
+      expect(normalizeEditorialRequest({ ...original, action: 'withdraw' }, bound).content).toEqual(
+        content,
+      );
+    }
+    const content = {
+      ...request.content,
+      title: 'OpenAI 发布 GPT-6',
+      summary: 'OpenAI 发布 GPT-6，介绍模型能力及评估结果；本文保留英文产品名称并用中文叙述事实。',
+    };
+    expect(contentReadiness(content)).toEqual({ ready: true, missing: [] });
+    expect(normalizeEditorialRequest({ ...request, content }, material).content).toEqual(content);
+  });
   it('binds source publication semantics without changing historical event-date payloads', () => {
     const { request, material } = editorialFixture();
     expect(normalizeEditorialContent(request.content)).toEqual(request.content);
@@ -81,65 +123,79 @@ describe('editorial confirmation contract', () => {
       expect(normalizeEditorialRequest(request, material)).toEqual(request);
     },
   );
-  it('acknowledges an unchanged retired-type receipt and rejects a new write without modifying history', async () => {
-    const { request, material } = editorialFixture();
-    request.content.signalType = 'technology';
-    const normalized = normalizeEditorialRequest(request, material, { checkPublication: false });
-    const old = {
-      request_id: request.requestId,
-      owner_id: 'owner',
-      revision: 1,
-      action: 'publish',
-      content: normalized.content,
-      request_hash: createHash('sha256')
-        .update(JSON.stringify({ owner: 'owner', ...normalized }))
-        .digest('hex'),
-    };
-    const writes = [];
-    const pool = {
-      connect: async () => ({
-        query: async (sql, values) => {
-          if (sql.startsWith('SELECT id FROM public.signal_generation_runs'))
-            return { rows: [{ id: request.runId }] };
-          if (sql.includes('WHERE request_id=$1'))
-            return { rows: values[0] === old.request_id ? [old] : [] };
-          if (sql.startsWith('SELECT') && sql.includes('editorial_signal_revisions'))
-            return { rows: [old] };
-          if (sql.startsWith('INSERT INTO public.editorial_signal_revisions')) {
-            const row = { revision: values[4], action: values[6], content: JSON.parse(values[7]) };
-            writes.push(row);
-            return { rows: [row] };
-          }
-          return { rows: [] };
-        },
-        release: () => {},
-      }),
-    };
-    const args = { pool, owner: 'owner', request, material };
-    expect((await saveEditorialSignal(args)).content).toEqual(old.content);
-    const next = {
-      ...request,
-      requestId: '33333333-3333-3333-3333-333333333333',
-      expectedRevision: 1,
-    };
-    await expect(saveEditorialSignal({ ...args, request: next })).rejects.toThrow(
-      'confirmation_required',
-    );
-    expect(writes).toHaveLength(0);
-    await expect(
-      saveEditorialSignal({
+  it.each([
+    { patch: { signalType: 'technology' }, refusal: 'confirmation_required' },
+    {
+      patch: {
+        title: 'Historical publication',
+        summary: 'The original English summary remains unchanged.',
+      },
+      refusal: 'chinese_content_required',
+    },
+  ])(
+    'acknowledges an unchanged historical receipt and rejects a new write without modifying history: $refusal',
+    async ({ patch, refusal }) => {
+      const { request, material } = editorialFixture();
+      Object.assign(request.content, patch);
+      const normalized = normalizeEditorialRequest(request, material, { checkPublication: false });
+      const old = {
+        request_id: request.requestId,
+        owner_id: 'owner',
+        revision: 1,
+        action: 'publish',
+        content: normalized.content,
+        request_hash: createHash('sha256')
+          .update(JSON.stringify({ owner: 'owner', ...normalized }))
+          .digest('hex'),
+      };
+      const writes = [];
+      const pool = {
+        connect: async () => ({
+          query: async (sql, values) => {
+            if (sql.startsWith('SELECT id FROM public.signal_generation_runs'))
+              return { rows: [{ id: request.runId }] };
+            if (sql.includes('WHERE request_id=$1'))
+              return { rows: values[0] === old.request_id ? [old] : [] };
+            if (sql.startsWith('SELECT') && sql.includes('editorial_signal_revisions'))
+              return { rows: [old] };
+            if (sql.startsWith('INSERT INTO public.editorial_signal_revisions')) {
+              const row = {
+                revision: values[4],
+                action: values[6],
+                content: JSON.parse(values[7]),
+              };
+              writes.push(row);
+              return { rows: [row] };
+            }
+            return { rows: [] };
+          },
+          release: () => {},
+        }),
+      };
+      const args = { pool, owner: 'owner', request, material };
+      expect((await saveEditorialSignal(args)).content).toEqual(old.content);
+      const next = {
+        ...request,
+        requestId: '33333333-3333-3333-3333-333333333333',
+        expectedRevision: 1,
+      };
+      await expect(saveEditorialSignal({ ...args, request: next })).rejects.toThrow(refusal);
+      expect(writes).toHaveLength(0);
+      await expect(
+        saveEditorialSignal({
+          ...args,
+          request: { ...request, content: { ...request.content, signalType: 'research' } },
+        }),
+      ).rejects.toThrow('request_id_conflict');
+      const withdrawn = await saveEditorialSignal({
         ...args,
-        request: { ...request, content: { ...request.content, signalType: 'research' } },
-      }),
-    ).rejects.toThrow('request_id_conflict');
-    const withdrawn = await saveEditorialSignal({
-      ...args,
-      request: { ...next, action: 'withdraw' },
-    });
-    expect(withdrawn.content).toEqual(old.content);
-    expect(withdrawn.action).toBe('withdraw');
-    expect(writes).toHaveLength(1);
-  });
+        request: { ...next, action: 'withdraw' },
+      });
+      expect(withdrawn.content).toEqual(old.content);
+      expect(withdrawn.action).toBe('withdraw');
+      expect(writes).toHaveLength(1);
+    },
+  );
   it('still validates structure and immutable content before historical replay lookup', () => {
     const { request, material } = editorialFixture();
     for (const patch of [
@@ -469,7 +525,7 @@ describe('editorial confirmation contract', () => {
       { secret: 'raw source' },
     ])
       expect(() => normalizeEditorialContent({ ...content, ...patch })).toThrow();
-    for (const patch of [{ title: 'Changed' }, { summary: 'Changed' }])
+    for (const patch of [{ title: '人工修订标题' }, { summary: '人工修订摘要' }])
       expect(
         normalizeEditorialRequest({ ...request, content: { ...content, ...patch } }, material)
           .content,

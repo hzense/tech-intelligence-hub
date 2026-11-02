@@ -4,7 +4,11 @@ import { readLockedPublicCandidateMaterial } from '../src/signal-candidate-verif
 import { lockPublicPublicationControls } from '../src/signal-publication-control-store.mjs';
 import { PublicationControlError } from '../src/signal-publication-control.mjs';
 import { assembleVersion } from '../src/signal-qualified-publication-store.mjs';
-import { fingerprintQualifiedPublicationRequest } from '../src/signal-publication-qualification.mjs';
+import {
+  assertChineseSignalPublicationContent,
+  fingerprintQualifiedPublicationRequest,
+  QualifiedPublicationError,
+} from '../src/signal-publication-qualification.mjs';
 import { fingerprintSignalPublicationRequest } from '../src/signal-publication-transition.mjs';
 import {
   publishVerifiedSignal,
@@ -30,6 +34,7 @@ vi.mock('../src/candidate-verification.mjs', async (original) => ({
 vi.mock('../src/signal-publication-qualification.mjs', async (original) => ({
   ...(await original()),
   qualifySignalPublicationBundle: vi.fn(),
+  assertChineseSignalPublicationContent: vi.fn(),
   cloneSignalSnapshotForPublication: vi.fn((snapshot, version) => ({
     ...snapshot,
     version,
@@ -194,6 +199,18 @@ beforeEach(() => {
   assembleVersion.mockResolvedValue(undefined);
 });
 describe('restricted public publication service adapter', () => {
+  it('returns a safe language rejection before assembling or publishing', async () => {
+    assertChineseSignalPublicationContent.mockImplementationOnce(() => {
+      throw new QualifiedPublicationError('chinese_content_required');
+    });
+    const f = fake();
+    await expect(
+      publishVerifiedSignal({ pool: f.pool, request: publishRequest() }),
+    ).rejects.toMatchObject({ code: 'chinese_content_required' });
+    expect(assembleVersion).not.toHaveBeenCalled();
+    expect(f.statements.at(-1).sql).toBe('ROLLBACK');
+    expect(f.statements.some(({ sql }) => /^(INSERT|UPDATE|DELETE)/.test(sql))).toBe(false);
+  });
   it.each([
     'publication_disabled',
     'task_disabled',
@@ -309,6 +326,7 @@ describe('restricted public publication service adapter', () => {
     });
     expect(lockPublicPublicationControls).not.toHaveBeenCalled();
     expect(assembleVersion).not.toHaveBeenCalled();
+    expect(assertChineseSignalPublicationContent).not.toHaveBeenCalled();
     expect(f.statements.some((s) => s.sql.startsWith('INSERT'))).toBe(false);
   });
   it('withdraws with CAS without reading global switches, tasks, leases or qualification', async () => {
@@ -325,6 +343,7 @@ describe('restricted public publication service adapter', () => {
     expect(lockPublicPublicationControls).not.toHaveBeenCalled();
     expect(readLockedPublicCandidateMaterial).not.toHaveBeenCalled();
     expect(assembleVersion).not.toHaveBeenCalled();
+    expect(assertChineseSignalPublicationContent).not.toHaveBeenCalled();
   });
   it('rejects stale withdrawal without writes', async () => {
     const f = fake({ head: publicationHead });

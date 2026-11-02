@@ -325,6 +325,10 @@ function PublicationActions({ runId, candidateIndex, materialHash }: Props) {
             );
           if (body.error === 'review_revision_required')
             throw new Error('重新发布需要新的审核修订和独立核验，不能重复使用旧版本。');
+          if (body.error === 'chinese_content_required')
+            throw new Error(
+              '标题和摘要必须以中文为主，可保留英文专有名词；请修改审核材料后重新发布。',
+            );
           throw new Error('版本或状态已变化。请刷新状态后重新确认。');
         }
         if (response.status === 503)

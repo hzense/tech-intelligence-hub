@@ -36,14 +36,14 @@ cross_domain_relations: []
     writeFile(
       join(root, 'signals.yaml'),
       `- id: signal-example
-  title: Example signal
+  title: 示例信号
   type: technology
   occurred_at: ${occurredAt}
   captured_at: ${capturedAt}
   status: reviewed
   source_id: ${signalSourceId}
   source_url: https://example.com/signal
-  summary: Example summary
+  summary: 用于验证的示例摘要。
   importance: 3
   confidence: 0.8
   novelty: 0.7
@@ -90,14 +90,14 @@ async function createRadarSeedRoot({
     writeFile(
       join(root, 'signals.yaml'),
       `- id: signal-example
-  title: Example signal
+  title: 示例信号
   type: technology
   occurred_at: ${occurredAt}
   captured_at: ${capturedAt}
   status: ${signalStatus}
   source_id: source-example
   source_url: ${sourceUrl}
-  summary: Example summary
+  summary: 用于验证的示例摘要。
   importance: 3
   confidence: 0.8
   novelty: 0.7
@@ -126,6 +126,39 @@ async function createRadarSeedRoot({
 
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true })));
+});
+
+describe('current Seed language policy', () => {
+  it.each(['title', 'summary'] as const)(
+    'rejects English %s in current files without changing archive parsing',
+    async (field) => {
+      const root = await createSeedRoot('2026-08-20T00:00:00Z');
+      const { taxonomy: _taxonomy, ...catalog } = await loadFixtureCatalog(root);
+      void _taxonomy;
+      const signal = { ...catalog.signals[0]!, [field]: 'A new model was released today.' };
+      const archive = { ...catalog, signals: [signal] };
+      expect(() => parseSeedCatalog(archive)).not.toThrow();
+      expect(() => validateSeedCatalog(archive)).not.toThrow();
+      await writeFile(join(root, 'signals.yaml'), JSON.stringify([signal]));
+      await expect(loadFixtureCatalog(root)).rejects.toThrow('must be primarily Chinese');
+    },
+  );
+
+  it('permits original proper nouns in Chinese title and summary', async () => {
+    const root = await createSeedRoot('2026-08-20T00:00:00Z');
+    const catalog = await loadFixtureCatalog(root);
+    await writeFile(
+      join(root, 'signals.yaml'),
+      JSON.stringify([
+        {
+          ...catalog.signals[0],
+          title: 'OpenAI 发布 GPT-6',
+          summary: 'OpenAI 介绍 GPT-6 的功能和应用场景，具体指标仍以原文为准。',
+        },
+      ]),
+    );
+    expect((await loadFixtureCatalog(root)).signals[0]?.title).toBe('OpenAI 发布 GPT-6');
+  });
 });
 
 describe('historical Signal entity roles', () => {
