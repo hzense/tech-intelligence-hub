@@ -102,6 +102,15 @@ export function buildLocalDevelopmentEnvironment(
     WORKFLOW_LOCAL_BASE_URL: `http://127.0.0.1:${port}`,
     WORKFLOW_LOCAL_QUEUE_CONCURRENCY: '1',
   };
+  // Explicit monitoring credentials only. Never inherit cloud Blob/dispatch tokens
+  // or a production database URL into the isolated local development process.
+  for (const key of [
+    'HZENSE_NEON_PROJECT_ID',
+    'HZENSE_NEON_API_KEY',
+    'HZENSE_NEON_USAGE_QUOTA_BYTES',
+  ]) {
+    if (parent[key]) env[key] = parent[key];
+  }
   if (!isLocalDevelopment(env)) throw new LocalSiteError('本地数据库隔离配置检查失败。');
   return env;
 }

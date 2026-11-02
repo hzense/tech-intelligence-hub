@@ -52,6 +52,9 @@ export default async function AdminHomePage() {
           <Link className={styles.backLink} href="/admin/ai/profiles">
             分阶段模型配置
           </Link>
+          <Link className={styles.backLink} href="/admin/neon-usage" prefetch={false}>
+            运营仪表盘
+          </Link>
           {!local ? <AdminSignOutButton /> : null}
           <Link className={styles.backLink} href="/">
             {local ? '返回首页' : '返回网站'}

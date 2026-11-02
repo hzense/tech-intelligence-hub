@@ -73,6 +73,9 @@ const restrictedPool = {
   },
 };
 
+/** Reuses the existing guarded role for read-only aggregate accounting queries. */
+export const aiAccountingPool = restrictedPool;
+
 export interface AiDashboard {
   configured: boolean;
   available: boolean;

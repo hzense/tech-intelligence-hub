@@ -1,0 +1,175 @@
+.panel {
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.heading h2 {
+  font-size: 1rem;
+  font-weight: 650;
+}
+.heading p,
+.status {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.heading p {
+  margin-top: 0.35rem;
+}
+.status {
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.notice {
+  padding: 0.75rem 1rem;
+  margin-top: 1rem;
+  border-left: 3px solid #b67b16;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.65;
+}
+.totals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+  margin-block: 1.25rem;
+}
+.totals > div + div {
+  padding-left: 1.5rem;
+  border-left: 1px solid var(--line);
+}
+.totals dt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.totals dt span {
+  font-size: 0.7rem;
+}
+.totals dd {
+  margin-top: 0.55rem;
+  font-size: 1.9rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+.totals .totalUnsettled {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+.totalUnsettled span {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.tableScroll {
+  overflow: auto;
+  max-width: 100%;
+  scrollbar-width: thin;
+}
+.tableHint {
+  display: none;
+  color: var(--muted);
+  font-size: 0.7rem;
+  margin-bottom: 0.6rem;
+}
+.tableScroll:focus-visible,
+.footer summary:focus-visible {
+  outline: 3px solid var(--brand-bright);
+  outline-offset: 3px;
+}
+.tableScroll table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+.tableScroll th,
+.tableScroll td {
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+.tableScroll thead th {
+  color: var(--muted);
+  background: var(--surface-soft);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+.tableScroll tbody th {
+  font-weight: 500;
+}
+.charged,
+.unsettled {
+  display: block;
+}
+.unsettled {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.unavailable {
+  color: var(--muted);
+}
+.footer {
+  margin-top: 1rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.65;
+}
+.footer details {
+  margin-top: 0.5rem;
+}
+.footer summary {
+  width: fit-content;
+  padding-block: 0.3rem;
+  cursor: pointer;
+}
+.footer details p {
+  margin-top: 0.5rem;
+}
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .tableHint {
+    display: block;
+  }
+  .panel {
+    padding: 1rem;
+  }
+  .totals {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+  .totals > div + div {
+    padding-left: 0;
+    padding-top: 1rem;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
