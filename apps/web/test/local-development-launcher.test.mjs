@@ -29,6 +29,26 @@ const launch = {
   port: 3000,
 };
 
+test('local monitor only inherits explicitly named read-only Neon settings, not cloud storage or dispatch', () => {
+  const env = buildLocalDevelopmentEnvironment(
+    {
+      HZENSE_NEON_API_KEY: 'synthetic-key',
+      HZENSE_NEON_PROJECT_ID: 'synthetic-project',
+      HZENSE_NEON_USAGE_QUOTA_BYTES: '5000000000',
+      HZENSE_NEON_USAGE_BLOB_TOKEN: 'cloud-token',
+      HZENSE_NEON_USAGE_CRON_SECRET: 'cloud-dispatch',
+    },
+    credentials(),
+    launch,
+  );
+  assert.equal(env.HZENSE_NEON_API_KEY, 'synthetic-key');
+  assert.equal(env.HZENSE_NEON_PROJECT_ID, 'synthetic-project');
+  assert.equal(env.HZENSE_NEON_USAGE_QUOTA_BYTES, '5000000000');
+  assert.equal(env.HZENSE_NEON_USAGE_BLOB_TOKEN, undefined);
+  assert.equal(env.HZENSE_NEON_USAGE_CRON_SECRET, undefined);
+  assert.equal(isLocalDevelopment(env), true);
+});
+
 test('development launcher discards all inherited service credentials and binds only loopback', () => {
   const env = buildLocalDevelopmentEnvironment(
     {

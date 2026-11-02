@@ -84,6 +84,8 @@ jobs:
         run: node --test test/automation-publication-browser.test.mjs test/source-discovery-browser.test.mjs test/topic-insight-catalog-browser.test.mjs
       - name: Verify radar word cloud with isolated browser fixtures
         run: HZENSE_RADAR_BROWSER_TEST=1 node --test apps/web/test/signal-radar-browser.test.mjs
+      - name: Verify operations dashboard with isolated browser fixtures
+        run: HZENSE_NEON_USAGE_BROWSER_TEST=1 node --test apps/web/test/admin-neon-usage.test.mjs
       - name: Verify request-rendered Signal details with editorial publication on and off
         working-directory: apps/web
         env:
@@ -160,6 +162,11 @@ jobs:
           HZENSE_CANDIDATE_REVIEW_SQL_TEST_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
           RUNTIME_READER_TEST_ISOLATED_CLUSTER: '1'
         run: node --test apps/web/test/candidate-review-confirmation.test.mjs
+      - name: Verify AI cost aggregates with isolated PostgreSQL
+        env:
+          AI_USAGE_COSTS_TEST_ADMIN_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+          RUNTIME_READER_TEST_ISOLATED_CLUSTER: '1'
+        run: node --test apps/web/test/ai-usage-costs.integration.test.mjs
       - name: Install Chromium for configured administrator fixture
         run: pnpm exec playwright install --with-deps chromium
       - name: Verify AI provider presets and endpoint guidance without external calls

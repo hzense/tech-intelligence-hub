@@ -121,6 +121,66 @@ test(
         assert.match(page.headers.get('cache-control'), /no-store/);
       },
     );
+    await t.test(
+      'Neon usage page and API require admin auth, preserve missing data, and isolate scheduled access',
+      async () => {
+        const path = '/admin/neon-usage';
+        const apiPath = '/api/admin/neon-usage';
+        const cookie = await encryptedCookie(token);
+        const anonymousPage = await request(path);
+        assert.equal(anonymousPage.status, 307);
+        assert.equal(
+          new URL(anonymousPage.headers.get('location'), origin).pathname,
+          '/admin/login',
+        );
+        for (const method of ['GET', 'POST']) {
+          const anonymous = await request(apiPath, { method, headers: { origin } });
+          assert.equal(anonymous.status, 401);
+          assert.deepEqual(await anonymous.json(), { error: 'unauthorized' });
+          assert.match(anonymous.headers.get('cache-control'), /no-store/);
+        }
+        const page = await request(path, { headers: { cookie } });
+        assert.equal(page.status, 200);
+        assert.match(page.headers.get('cache-control'), /no-store/);
+        const html = await page.text();
+        assert.match(html, /运营仪表盘/);
+        assert.match(html, /监控尚未配置完成/);
+        assert.match(html, /暂无数据/);
+        assert.doesNotMatch(html, />0 B</);
+        const saved = await request(apiPath, { headers: { cookie } });
+        assert.equal(saved.status, 200);
+        assert.match(saved.headers.get('cache-control'), /no-store/);
+        const state = await saved.json();
+        assert.equal(state.configured, false);
+        assert.equal(state.sampledAt, null);
+        assert.equal(state.totalBytes, null);
+        assert.equal(state.days.length, 30);
+        assert.equal(state.aiCosts.status, 'unavailable');
+        assert.equal(state.aiCosts.today, null);
+        assert.equal(state.aiCosts.items.length, 5);
+        assert.doesNotMatch(JSON.stringify(state.aiCosts), /owner_id|connectionString|postgresql:/);
+        assert.ok(state.days.every((day) => day.bytes === null && day.status === 'missing'));
+        assert.ok(state.missing.includes('HZENSE_NEON_API_KEY'));
+        const sampling = await request(apiPath, { method: 'POST', headers: { origin, cookie } });
+        assert.equal(sampling.status, 503);
+        assert.deepEqual(await sampling.json(), { error: 'not_configured' });
+        const crossSite = await request(apiPath, {
+          method: 'POST',
+          headers: { origin: 'https://untrusted.example', cookie },
+        });
+        assert.equal(crossSite.status, 403);
+        for (const headers of [
+          {},
+          { cookie },
+          { authorization: 'Bearer synthetic-unconfigured-token-not-authorized' },
+        ]) {
+          const scheduled = await request('/api/internal/neon-usage', { method: 'POST', headers });
+          assert.equal(scheduled.status, 401);
+          assert.deepEqual(await scheduled.json(), { error: 'unauthorized' });
+          assert.match(scheduled.headers.get('cache-control'), /no-store/);
+        }
+      },
+    );
     for (const [name, claims, signingOptions] of [
       ['other email', { ...token, email: 'outsider@gmail.com' }],
       ['unverified', { ...token, emailVerified: false }],
@@ -196,6 +256,19 @@ test(
                 fullPage: true,
               });
             }
+            await page.goto(`${origin}/admin/neon-usage`);
+            await page
+              .getByRole('heading', { name: '运营仪表盘', exact: true, level: 1 })
+              .waitFor();
+            assert.equal(await page.getByRole('button', { name: '立即采样' }).isDisabled(), true);
+            assert.equal(await page.getByRole('button', { name: '刷新记录' }).isEnabled(), true);
+            assert.equal(
+              await page.evaluate(
+                () => globalThis.document.documentElement.scrollWidth <= globalThis.innerWidth,
+              ),
+              true,
+            );
+            await page.screenshot({ path: `/tmp/hzense-neon-usage-${width}.png`, fullPage: true });
             await page.goto(`${origin}/admin/ai`);
             const pending = {
               id: '00000000-0000-4000-8000-000000000001',

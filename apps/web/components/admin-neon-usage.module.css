@@ -1,0 +1,678 @@
+.main {
+  padding-block: 1.5rem 3rem;
+}
+.dashboard {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+  margin-top: 1.75rem;
+}
+.header,
+.panelHeading,
+.noticeHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.header h1 {
+  margin: 0.4rem 0;
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+.eyebrow {
+  color: var(--brand);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+}
+.muted,
+.sideNote,
+.period,
+.method {
+  color: var(--muted);
+  line-height: 1.65;
+}
+.header .muted {
+  font-size: 0.9rem;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.actions button {
+  background: var(--surface);
+  border-color: var(--line);
+  font-size: 0.85rem;
+}
+.actions .primaryButton {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+.contextBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem 1.25rem;
+  padding-block: 0.85rem;
+  border-block: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.contextBar strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+.contextEnd {
+  margin-left: auto;
+}
+.health {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+.health i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.healthy {
+  color: #16875a;
+}
+.pending {
+  color: var(--muted);
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+.metric,
+.panel,
+.notice,
+.warning {
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.featuredMetric {
+  border-top: 3px solid var(--brand-bright);
+  padding-top: calc(1.25rem - 2px);
+  background: linear-gradient(
+    125deg,
+    color-mix(in srgb, var(--brand) 6%, var(--surface)),
+    var(--surface)
+  );
+}
+.metric dt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.metric dt span {
+  color: var(--brand);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.metric dd {
+  margin: 0.9rem 0 0.75rem;
+  font-size: clamp(1.25rem, 2vw, 1.9rem);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+.metric .metricNote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.6;
+  letter-spacing: normal;
+}
+.notice,
+.warning {
+  padding: 1rem 1.25rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  background: var(--surface-soft);
+}
+.notice h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.warning {
+  border-left: 3px solid #b67b16;
+}
+.notice p {
+  margin-top: 0.25rem;
+}
+.configuration {
+  margin-top: 0.5rem;
+}
+.configuration summary,
+.method summary {
+  cursor: pointer;
+  width: fit-content;
+  padding-block: 0.3rem;
+}
+.configuration ul {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+}
+.analysisGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 1rem;
+}
+.panel h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+}
+.panelHeading p {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+}
+.planBadge {
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.costBody {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: center;
+  margin-block: 1.25rem;
+}
+.costTotal dt {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.costTotal dd {
+  margin-top: 0.55rem;
+  font-size: 1.9rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+.costTotal dd span {
+  margin-left: 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  color: var(--muted);
+}
+.costBreakdown {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem 1.25rem;
+  padding-left: 1.5rem;
+  border-left: 1px solid var(--line);
+}
+.costBreakdown dt {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.costBreakdown dd {
+  margin-top: 0.3rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.costUnavailable {
+  font-size: 0.8rem;
+  line-height: 1.65;
+  color: var(--muted);
+}
+.costFooter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.6;
+}
+.costMethod {
+  margin-top: 0.6rem;
+}
+.rangeSwitch {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-soft);
+}
+.rangeSwitch button {
+  padding: 0.45rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+.rangeSwitch button[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 1px 3px #00000012;
+}
+.figure {
+  margin: 1.75rem 0 1.25rem;
+}
+.plot {
+  position: relative;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px;
+}
+.axis {
+  height: 205px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 0.62rem;
+  color: var(--muted);
+  text-align: right;
+  padding-right: 6px;
+}
+.chart {
+  display: flex;
+  gap: clamp(2px, 0.4vw, 7px);
+  height: 236px;
+  width: 100%;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--line) 0,
+    var(--line) 1px,
+    transparent 1px,
+    transparent 100px
+  );
+  background-size: 100% 201px;
+  background-repeat: no-repeat;
+}
+.chartColumn {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  gap: 0.65rem;
+  text-align: center;
+}
+.barArea {
+  height: 200px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.bar {
+  display: block;
+  width: 100%;
+  max-width: 46px;
+  border-radius: 4px 4px 0 0;
+  min-height: 2px;
+}
+.bar.estimated {
+  background: linear-gradient(to bottom, var(--brand-bright), var(--brand));
+}
+.bar.partial {
+  background: repeating-linear-gradient(135deg, #b67b16, #b67b16 4px, #dba64e 4px, #dba64e 7px);
+}
+.estimated {
+  background: var(--brand);
+}
+.partial {
+  background: #b67b16;
+}
+.missing {
+  background: transparent;
+  border: 1px dashed var(--muted);
+}
+.chartDate {
+  display: block;
+  align-self: center;
+  flex: 0 0 auto;
+  width: max-content;
+  white-space: nowrap;
+  line-height: 1.2;
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+.chartEmpty {
+  position: absolute;
+  inset: 35px 15px 65px 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.5rem;
+  pointer-events: none;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+}
+.chartEmpty strong {
+  color: var(--ink);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+.chartEmpty span {
+  font-size: 0.75rem;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.chartFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.empty {
+  margin-top: 1rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.quotaPanel {
+  display: flex;
+  flex-direction: column;
+}
+.gauge {
+  display: grid;
+  place-items: center;
+  width: 154px;
+  height: 154px;
+  margin: 1.5rem auto;
+  border-radius: 50%;
+}
+.gauge > div {
+  width: 132px;
+  height: 132px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  background: var(--surface);
+  border-radius: 50%;
+}
+.gauge strong {
+  font-size: 1.8rem;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}
+.gauge span {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.quotaDetails {
+  display: grid;
+  gap: 0.7rem;
+  font-size: 0.8rem;
+}
+.quotaDetails > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.quotaDetails dt {
+  color: var(--muted);
+}
+.quotaDetails dd {
+  font-weight: 500;
+}
+.period {
+  margin-top: 1rem;
+  font-size: 0.65rem;
+}
+.sideNote {
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+  margin-top: 1rem;
+  font-size: 0.72rem;
+}
+.detailPanel .panelHeading {
+  margin-bottom: 1rem;
+}
+.tableHint {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.tableScroll {
+  overflow: auto;
+  max-width: 100%;
+  max-height: 338px;
+  scrollbar-width: thin;
+}
+.tableScroll:focus-visible,
+.configuration summary:focus-visible,
+.method summary:focus-visible {
+  outline: 3px solid var(--brand-bright);
+  outline-offset: 3px;
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 440px;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+}
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.7rem;
+}
+.table tbody th {
+  font-weight: 500;
+}
+.table tbody tr:hover {
+  background: var(--surface-soft);
+}
+.todayTag {
+  margin-left: 0.55rem;
+  color: var(--brand);
+  font-size: 0.65rem;
+}
+.dayStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+  font-size: 0.72rem;
+}
+.dayStatus::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.estimatedText {
+  color: var(--brand);
+}
+.partialText {
+  color: #b67b16;
+}
+.missingText {
+  color: var(--muted);
+}
+.method {
+  font-size: 0.75rem;
+}
+.method p {
+  margin-top: 0.6rem;
+}
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@media (max-width: 1020px) {
+  .contextEnd {
+    margin-left: 0;
+  }
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .analysisGrid {
+    grid-template-columns: minmax(0, 1fr) 240px;
+  }
+  .chartDate {
+    visibility: hidden;
+  }
+  .chartColumn:nth-child(5n + 1) .chartDate,
+  .chartColumn:last-child .chartDate {
+    visibility: visible;
+  }
+  .chart[data-range='7'] .chartDate {
+    visibility: visible;
+  }
+}
+@media (max-width: 760px) {
+  .costBody {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+  .costBreakdown {
+    padding-top: 1rem;
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+  .analysisGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .quotaPanel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem 1rem;
+    align-items: center;
+  }
+  .quotaPanel h2,
+  .sideNote {
+    grid-column: 1 / -1;
+  }
+  .gauge {
+    grid-row: 2 / 4;
+    width: 126px;
+    height: 126px;
+    margin: 0.5rem auto;
+  }
+  .gauge > div {
+    width: 106px;
+    height: 106px;
+  }
+  .gauge strong {
+    font-size: 1.5rem;
+  }
+  .quotaDetails {
+    font-size: 0.72rem;
+  }
+  .period,
+  .sideNote {
+    margin-top: 0;
+  }
+}
+@media (max-width: 480px) {
+  .costBreakdown {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard {
+    gap: 1rem;
+  }
+  .metric,
+  .panel,
+  .notice,
+  .warning {
+    padding: 1rem;
+  }
+  .metric dd {
+    font-size: 1.3rem;
+  }
+  .metric dt {
+    font-size: 0.7rem;
+  }
+  .metric dt span {
+    display: none;
+  }
+  .metric .metricNote {
+    font-size: 0.65rem;
+  }
+  .metrics {
+    gap: 0.6rem;
+  }
+  .plot {
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 4px;
+  }
+  .axis {
+    font-size: 0.55rem;
+    padding-right: 2px;
+  }
+  .chartEmpty {
+    inset-inline-start: 46px;
+  }
+  .chartEmpty span {
+    font-size: 0.65rem;
+  }
+  .rangeSwitch button {
+    padding-inline: 0.65rem;
+  }
+  .tableHint {
+    display: none;
+  }
+  .quotaPanel {
+    column-gap: 0.6rem;
+  }
+}

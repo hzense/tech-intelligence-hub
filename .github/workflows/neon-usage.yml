@@ -1,0 +1,66 @@
+name: Neon network usage sampling
+
+on:
+  schedule:
+    - cron: '43 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neon-network-usage-sampling
+  cancel-in-progress: false
+
+jobs:
+  sample:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && vars.NEON_USAGE_MONITOR_ENABLED == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Request a bounded Neon usage sample
+        shell: bash
+        env:
+          HZENSE_NEON_USAGE_CRON_SECRET: ${{ secrets.HZENSE_NEON_USAGE_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [[ ${#HZENSE_NEON_USAGE_CRON_SECRET} -lt 32 || "$HZENSE_NEON_USAGE_CRON_SECRET" =~ [[:space:][:cntrl:]] ]]; then
+            echo 'Neon usage sampling secret is missing or invalid.' >&2
+            exit 1
+          fi
+
+          umask 077
+          request_dir="$(mktemp -d)"
+          trap 'rm -rf "$request_dir"' EXIT
+          printf 'Authorization: Bearer %s\n' "$HZENSE_NEON_USAGE_CRON_SECRET" > "$request_dir/headers"
+          unset HZENSE_NEON_USAGE_CRON_SECRET
+
+          if ! http_status="$(curl \
+            --silent \
+            --show-error \
+            --proto '=https' \
+            --tlsv1.2 \
+            --connect-timeout 5 \
+            --max-time 55 \
+            --max-filesize 16384 \
+            --request POST \
+            --header "@$request_dir/headers" \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            'https://hzense.com/api/internal/neon-usage')"; then
+            echo 'Neon usage sampling request failed.' >&2
+            exit 1
+          fi
+
+          if [[ "$http_status" != '200' ]]; then
+            echo 'Neon usage sampling did not return HTTP 200; inspect the protected dashboard.' >&2
+            exit 1
+          fi
+
+          {
+            echo '## Neon network usage sampling'
+            echo '- Sampling endpoint returned HTTP 200.'
+            echo '- Check /admin/neon-usage for the last saved sample and data coverage.'
+            echo '- This run does not query business tables or call AI.'
+          } >> "$GITHUB_STEP_SUMMARY"
