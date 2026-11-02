@@ -12,6 +12,7 @@ import {
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
   GENERATION_EVENT_TYPES_CONTRACT,
+  GENERATION_CHINESE_CONTRACT,
   hasGenerationResources,
   REJECTED_CANDIDATES_REASON,
 } from '../../ingestion/src/signal-generation-contract.mjs';
@@ -265,6 +266,7 @@ function validateSavedCandidates(result, snapshot) {
         GENERATION_RESOURCES_CONTRACT,
         GENERATION_SOURCE_PUBLICATION_CONTRACT,
         GENERATION_EVENT_TYPES_CONTRACT,
+        GENERATION_CHINESE_CONTRACT,
       ].includes(outputContract)
     )
       fail('invalid_result');
@@ -498,6 +500,7 @@ function inputs(owner, request, snapshot, configuration) {
       GENERATION_RESOURCES_CONTRACT,
       GENERATION_SOURCE_PUBLICATION_CONTRACT,
       GENERATION_EVENT_TYPES_CONTRACT,
+      GENERATION_CHINESE_CONTRACT,
     ].includes(safe.output_contract) ||
       !Object.hasOwn(safe, 'topics'))
   )

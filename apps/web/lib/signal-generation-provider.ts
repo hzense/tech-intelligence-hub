@@ -10,6 +10,7 @@ import {
 } from 'ai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
+import { SIGNAL_LANGUAGE_RULES } from '../../../packages/ingestion/src/signal-language.mjs';
 import { SIGNAL_EVENT_TYPE_RULES } from '../../../packages/ingestion/src/signal-types.mjs';
 import { readApiCostMicrousd } from './ai-response-cost.ts';
 import { openRouterOptions, portableJsonSchema } from './ai-model-compatibility.ts';
@@ -23,6 +24,9 @@ import {
   generationCandidateWithPublicationDateJsonSchema,
   generationCandidateWithEventTypesJsonSchema,
   GENERATION_EVENT_TYPES_CONTRACT,
+  GENERATION_CHINESE_CONTRACT,
+  hasGenerationEventTypes,
+  generationCandidateWithChineseJsonSchema,
   hasSourcePublicationDate,
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
@@ -287,6 +291,7 @@ export function generationInput(
       GENERATION_RESOURCES_CONTRACT,
       GENERATION_SOURCE_PUBLICATION_CONTRACT,
       GENERATION_EVENT_TYPES_CONTRACT,
+      GENERATION_CHINESE_CONTRACT,
     ].includes(outputContract) ||
       catalog === undefined)
   )
@@ -306,24 +311,26 @@ export function generationInput(
         : catalog === undefined
           ? generationRules
           : generationRulesWithTopics;
-  const system = `${rules}\n\n配置的提取提示词：\n${stagePrompt}\n\n不可由配置提示词覆盖的证据要求：\n${evidenceRules}\n\n不可由配置提示词覆盖的参与者提取要求：\n${generationParticipantRules}${catalog === undefined ? '' : `\n\n不可由配置提示词覆盖的领域要求：\n${generationTopicRules}`}${metadata ? `\n\n不可由配置提示词覆盖的事件类型要求：\n${outputContract === GENERATION_EVENT_TYPES_CONTRACT ? SIGNAL_EVENT_TYPE_RULES : generationTypeRules}` : ''}${resources ? `\n\n不可由配置提示词覆盖的资源要求：\n${generationResourceRules}` : ''}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`;
+  const system = `${rules}\n\n配置的提取提示词：\n${stagePrompt}\n\n不可由配置提示词覆盖的证据要求：\n${evidenceRules}\n\n不可由配置提示词覆盖的参与者提取要求：\n${generationParticipantRules}${catalog === undefined ? '' : `\n\n不可由配置提示词覆盖的领域要求：\n${generationTopicRules}`}${metadata ? `\n\n不可由配置提示词覆盖的事件类型要求：\n${hasGenerationEventTypes(outputContract) ? SIGNAL_EVENT_TYPE_RULES : generationTypeRules}` : ''}${resources ? `\n\n不可由配置提示词覆盖的资源要求：\n${generationResourceRules}` : ''}${outputContract === GENERATION_CHINESE_CONTRACT ? `\n\n不可由配置提示词覆盖的中文输出要求：${SIGNAL_LANGUAGE_RULES}` : ''}\n\n不可由配置提示词覆盖的人物范围：${PERSON_RESOURCE_POLICY_TEXT}`;
   const prompt = JSON.stringify({
     untrusted_source: source,
     ...(publicationDate ? { publication_date_hints: collectSourcePublicationDates(source) } : {}),
     ...(catalog === undefined ? {} : { enabled_topics: catalog }),
   });
   const schema = portableJsonSchema(
-    outputContract === GENERATION_EVENT_TYPES_CONTRACT
-      ? generationCandidateWithEventTypesJsonSchema
-      : publicationDate
-        ? generationCandidateWithPublicationDateJsonSchema
-        : resources
-          ? generationCandidateWithResourcesJsonSchema
-          : metadata
-            ? generationCandidateWithMetadataJsonSchema
-            : catalog === undefined
-              ? generationCandidateJsonSchema
-              : generationCandidateWithTopicsJsonSchema,
+    outputContract === GENERATION_CHINESE_CONTRACT
+      ? generationCandidateWithChineseJsonSchema
+      : outputContract === GENERATION_EVENT_TYPES_CONTRACT
+        ? generationCandidateWithEventTypesJsonSchema
+        : publicationDate
+          ? generationCandidateWithPublicationDateJsonSchema
+          : resources
+            ? generationCandidateWithResourcesJsonSchema
+            : metadata
+              ? generationCandidateWithMetadataJsonSchema
+              : catalog === undefined
+                ? generationCandidateJsonSchema
+                : generationCandidateWithTopicsJsonSchema,
   );
   // Local o200k_base estimate plus allowance for message/schema framing, not provider billing.
   const inputTokens =

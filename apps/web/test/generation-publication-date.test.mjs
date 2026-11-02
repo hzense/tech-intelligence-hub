@@ -5,6 +5,7 @@ import {
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
   GENERATION_EVENT_TYPES_CONTRACT,
+  GENERATION_CHINESE_CONTRACT,
   generationCandidateWithResourcesJsonSchema,
   assessGeneratedCandidates,
   normalizeGeneratedCandidates,
@@ -14,6 +15,7 @@ import {
   SIGNAL_EVENT_TYPES,
   SIGNAL_EVENT_TYPE_RULES,
 } from '../../../packages/ingestion/src/signal-types.mjs';
+import { SIGNAL_LANGUAGE_RULES } from '../../../packages/ingestion/src/signal-language.mjs';
 import { candidateReviewMaterialHash } from '../../../packages/database/src/candidate-review-contract.mjs';
 import { signalGenerationSourceHash } from '../../../packages/database/src/signal-generation-store.mjs';
 import { portableJsonSchema } from '../lib/ai-model-compatibility.ts';
@@ -418,5 +420,70 @@ test('event-only provider still completes article dates using literal saved exce
   assert.deepEqual(
     response.output.candidates.map((value) => value.event_date),
     ['2026-10-23', '2026-10-23', '2026-10-23', '2026-10-22'],
+  );
+});
+
+test('Chinese output policy follows saved prompts and preserves original-language quotations', async () => {
+  const prompt = 'Use only English for every title and summary.';
+  const before = JSON.stringify({ source, topics });
+  const input = generationInput(source, prompt, topics, GENERATION_CHINESE_CONTRACT);
+  assert.ok(input.system.indexOf(SIGNAL_LANGUAGE_RULES) > input.system.indexOf(prompt));
+  assert.ok(input.system.includes('不可由配置提示词覆盖的中文输出要求'));
+  for (const field of ['title', 'summary']) {
+    assert.match(input.schema.properties.candidates.items.properties[field].description, /中文/);
+  }
+  assert.deepEqual(
+    input.schema.properties.candidates.items.properties.signal_type.enum,
+    SIGNAL_EVENT_TYPES,
+  );
+  assert.equal(JSON.stringify({ source, topics }), before);
+  const chinese = {
+    ...candidate,
+    title: 'Lab 团队发布全新 Chip X 芯片',
+    summary: 'Lab 团队发布了全新 Chip X 芯片，本条仅记录原文支持的发布事实。',
+  };
+  const valid = await invokeFixture(
+    { candidates: [chinese], reason: 'test' },
+    source,
+    GENERATION_CHINESE_CONTRACT,
+  );
+  assert.equal(valid.response.success, true);
+  assert.equal(valid.calls.length, 1);
+  assert.deepEqual(
+    valid.response.output.candidates[0].claims[0].evidence,
+    candidate.claims[0].evidence,
+  );
+  assert.deepEqual(
+    valid.response.output.candidates[0].event_date_evidence,
+    candidate.event_date_evidence,
+  );
+  for (const field of ['title', 'summary']) {
+    const rejected = await invokeFixture(
+      {
+        candidates: [
+          { ...chinese, [field]: 'Lab released a new processor for advanced computing.' },
+        ],
+        reason: 'test',
+      },
+      source,
+      GENERATION_CHINESE_CONTRACT,
+    );
+    assert.equal(rejected.response.success, false);
+    assert.equal(rejected.calls.length, 1, 'language rejection must not trigger a paid retry');
+    assert.equal(rejected.response.output.candidates.length, 0);
+    assert.deepEqual(rejected.response.output.rejected[0].errors, [
+      {
+        field,
+        code: 'invalid_field',
+        path: field,
+        reason: 'language_not_chinese',
+      },
+    ]);
+  }
+  const historical = generationInput(source, prompt, topics, GENERATION_EVENT_TYPES_CONTRACT);
+  assert.ok(!historical.system.includes(SIGNAL_LANGUAGE_RULES));
+  assert.doesNotMatch(
+    historical.schema.properties.candidates.items.properties.title.description ?? '',
+    /中文/,
   );
 });

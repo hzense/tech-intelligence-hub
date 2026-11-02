@@ -15,6 +15,7 @@ import {
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
   GENERATION_EVENT_TYPES_CONTRACT,
+  GENERATION_CHINESE_CONTRACT,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 
 const secret = 'a'.repeat(64);
@@ -247,4 +248,15 @@ test('event-only local simulation keeps article dates and generates an eligible 
   assert.equal(result.output.candidates[0].signal_type, 'product');
   assert.equal(result.output.candidates[0].date_basis, 'source_published');
   assert.equal(result.output.candidates[0].event_date, '2026-10-19');
+});
+
+test('Chinese-contract local simulation keeps Chinese titles and article dates', async () => {
+  const result = await invokeLocalGeneration(
+    { ...input(template), outputContract: GENERATION_CHINESE_CONTRACT },
+    env,
+  );
+  assert.equal(result.success, true);
+  assert.ok(result.output.candidates[0].title.includes('本地'));
+  assert.equal(result.output.candidates[0].signal_type, 'product');
+  assert.equal(result.output.candidates[0].date_basis, 'source_published');
 });

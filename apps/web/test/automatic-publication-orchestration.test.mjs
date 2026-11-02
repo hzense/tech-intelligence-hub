@@ -21,8 +21,8 @@ function readyDashboard() {
     publicId: null,
     warnings: [],
     content: {
-      title: 'Private candidate title before publication',
-      summary: 'An institution announces a product.',
+      title: '机构公布新产品',
+      summary: '机构公布新产品及其相关技术资料。',
       eventDate: '2026-10-20',
       dateBasis: 'source_published',
       signalType: 'product',

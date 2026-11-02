@@ -230,6 +230,24 @@ test(
       await page.getByLabel('领域', { exact: true }).fill('人工');
       await page.getByRole('checkbox', { name: '人工智能' }).check();
       await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
+      await page.getByLabel('标题', { exact: true }).fill('OpenAI launches a new model');
+      await page.getByLabel('摘要', { exact: true }).fill('The new model improves reasoning.');
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: '保存补充', exact: true })).toBeEnabled();
+      await expect(page.getByLabel('标题', { exact: true })).toHaveAttribute(
+        'aria-invalid',
+        'true',
+      );
+      await expect(page.getByLabel('摘要', { exact: true })).toHaveAttribute(
+        'aria-invalid',
+        'true',
+      );
+      await expect(page.getByText(/以中文为主的标题/)).toBeVisible();
+      await page.getByLabel('标题', { exact: true }).fill('OpenAI 发布 GPT-6');
+      await page
+        .getByLabel('摘要', { exact: true })
+        .fill('OpenAI 发布 GPT-6，介绍模型能力及评估结果。');
+      await expect(page.getByRole('button', { name: '确认发布', exact: true })).toBeEnabled();
       await page.getByRole('button', { name: '确认发布', exact: true }).click();
       await expect(page.getByText('已确认发布。', { exact: true })).toBeVisible();
       assert.equal(posts.length, 1);

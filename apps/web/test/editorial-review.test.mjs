@@ -69,6 +69,52 @@ test('publication metadata determines readiness; names normalize without invente
   );
   assert.deepEqual(editorialNames('甲、乙\n甲，丙；丁'), ['甲', '乙', '丙', '丁']);
 });
+test('publication readiness explains Chinese title and summary requirements, allowing English proper nouns', () => {
+  assert.deepEqual(
+    editorialMissing({
+      ...content,
+      title: 'A new AI model',
+      summary: 'The model improves reasoning.',
+    }),
+    ['以中文为主的标题', '以中文为主的摘要'],
+  );
+  assert.deepEqual(
+    editorialMissing({
+      ...content,
+      title: 'OpenAI 发布 GPT-6',
+      summary: 'OpenAI 发布 GPT-6，介绍模型能力、评估结果及限制。',
+    }),
+    [],
+  );
+});
+test('publication API returns a safe language refusal without calling it an unavailable service', async () => {
+  const { service, calls } = setup();
+  const handler = createEditorialHandler({
+    session: async () => ({ user: { id: 'owner' } }),
+    origin: () => 'https://hzense.test',
+    read: service.read,
+    write: service.write,
+  });
+  const body = request();
+  body.content.summary = 'The original English summary must be translated before publication.';
+  const response = await handler(
+    new Request('https://hzense.test/api/admin/editorial-signals', {
+      method: 'POST',
+      headers: {
+        host: 'hzense.test',
+        origin: 'https://hzense.test',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), { error: 'chinese_content_required' });
+  assert.equal(
+    calls.some(([kind]) => kind === 'save'),
+    false,
+  );
+});
 test('server-derived missing resources reach the UI and cannot be bypassed by publishing a shorter participant list', async () => {
   let missingResourceDetails = [{ type: 'organization', name: '待补组织' }];
   const sourceUrl = 'https://example.com/announcement';

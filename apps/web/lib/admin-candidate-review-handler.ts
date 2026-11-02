@@ -30,6 +30,7 @@ const safeErrors = new Set([
   'budget_exceeded',
   'configuration_changed',
   'source_publication_requires_manual_confirmation',
+  'chinese_content_required',
 ]);
 export function createCandidateReviewHandler(deps: {
   session(): Promise<{ user: { id: string } } | null>;

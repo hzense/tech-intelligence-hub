@@ -7,6 +7,7 @@ export type GenerationValidationReason =
   | 'missing_value'
   | 'text_too_long'
   | 'invalid_characters'
+  | 'language_not_chinese'
   | 'unknown_fragment'
   | 'quote_mismatch'
   | 'duplicate_reference'

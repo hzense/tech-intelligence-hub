@@ -12,6 +12,11 @@
       "import": "./src/signal-types.mjs",
       "default": "./src/signal-types.mjs"
     },
+    "./signal-language": {
+      "types": "./src/signal-language.d.mts",
+      "import": "./src/signal-language.mjs",
+      "default": "./src/signal-language.mjs"
+    },
     "./person-resource-policy": {
       "types": "./src/person-resource-policy.d.mts",
       "import": "./src/person-resource-policy.mjs",

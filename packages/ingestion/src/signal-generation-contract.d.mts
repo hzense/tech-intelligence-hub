@@ -19,16 +19,20 @@ export const GENERATION_METADATA_CONTRACT: 'signal-metadata-v1';
 export const GENERATION_RESOURCES_CONTRACT: 'signal-resources-v1';
 export const GENERATION_SOURCE_PUBLICATION_CONTRACT: 'signal-source-publication-v1';
 export const GENERATION_EVENT_TYPES_CONTRACT: 'signal-event-types-v1';
+export const GENERATION_CHINESE_CONTRACT: 'signal-chinese-v1';
+export function hasGenerationEventTypes(contract: GenerationOutputContract | undefined): boolean;
 export function hasSourcePublicationDate(contract: GenerationOutputContract | undefined): boolean;
 export function hasGenerationResources(contract: GenerationOutputContract | undefined): boolean;
 export type GenerationOutputContract =
   | typeof GENERATION_METADATA_CONTRACT
   | typeof GENERATION_RESOURCES_CONTRACT
   | typeof GENERATION_SOURCE_PUBLICATION_CONTRACT
-  | typeof GENERATION_EVENT_TYPES_CONTRACT;
+  | typeof GENERATION_EVENT_TYPES_CONTRACT
+  | typeof GENERATION_CHINESE_CONTRACT;
 export const generatedResourceJsonSchema: Readonly<Record<string, unknown>>;
 export const generationCandidateWithResourcesJsonSchema: Readonly<Record<string, unknown>>;
 export const generationCandidateWithEventTypesJsonSchema: Readonly<Record<string, unknown>>;
+export const generationCandidateWithChineseJsonSchema: Readonly<Record<string, unknown>>;
 export const generationCandidateWithPublicationDateJsonSchema: Readonly<Record<string, unknown>>;
 export const REJECTED_CANDIDATES_REASON: string;
 export function estimateGenerationTokens(text: string): number;

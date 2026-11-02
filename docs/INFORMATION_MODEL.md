@@ -746,6 +746,8 @@ promoted_to_weekly: false
 
 信号类型只表达事件，每条新信号单选；技术领域由 `topics` 独立多选。当前 13 类：
 
+标题和摘要分别以中文为主，允许英文专名；原文引用保持原语言。新生成与新发布均须通过 [信号中文规则](SIGNAL_LANGUAGE.md)，历史结构和回执不改写。
+
 ```text
 research       研究成果发布
 product        产品发布与更新

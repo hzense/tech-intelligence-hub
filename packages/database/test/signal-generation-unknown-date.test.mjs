@@ -5,6 +5,7 @@ import {
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
   GENERATION_EVENT_TYPES_CONTRACT,
+  GENERATION_CHINESE_CONTRACT,
   hasSourcePublicationDate,
 } from '../../ingestion/src/signal-generation-contract.mjs';
 import { finishSignalGeneration } from '../src/signal-generation-store.mjs';
@@ -111,35 +112,36 @@ function fixture(contract = GENERATION_RESOURCES_CONTRACT) {
 }
 
 describe('unknown event dates at the generation persistence boundary', () => {
-  it.each([GENERATION_SOURCE_PUBLICATION_CONTRACT, GENERATION_EVENT_TYPES_CONTRACT])(
-    'binds %s date semantics to the immutable snapshot through completion',
-    async (contract) => {
-      const { args, row, writes } = fixture(contract);
-      const saved = await finishSignalGeneration(args);
-      expect(saved.result.candidates[0].date_basis).toBe('source_published');
-      expect(saved.result.candidates[0].event_date).toBeNull();
-      expect(row.snapshot.output_contract).toBe(contract);
-      expect(writes).toHaveLength(1);
-      for (const basis of [undefined, 'event', 'captured_at']) {
-        const candidate = { ...args.result.candidates[0] };
-        if (basis === undefined) delete candidate.date_basis;
-        else candidate.date_basis = basis;
-        await expect(
-          finishSignalGeneration({ ...args, result: { ...args.result, candidates: [candidate] } }),
-        ).rejects.toMatchObject({ code: 'invalid_result' });
-      }
-      const legacy = fixture();
+  it.each([
+    GENERATION_SOURCE_PUBLICATION_CONTRACT,
+    GENERATION_EVENT_TYPES_CONTRACT,
+    GENERATION_CHINESE_CONTRACT,
+  ])('binds %s date semantics to the immutable snapshot through completion', async (contract) => {
+    const { args, row, writes } = fixture(contract);
+    const saved = await finishSignalGeneration(args);
+    expect(saved.result.candidates[0].date_basis).toBe('source_published');
+    expect(saved.result.candidates[0].event_date).toBeNull();
+    expect(row.snapshot.output_contract).toBe(contract);
+    expect(writes).toHaveLength(1);
+    for (const basis of [undefined, 'event', 'captured_at']) {
+      const candidate = { ...args.result.candidates[0] };
+      if (basis === undefined) delete candidate.date_basis;
+      else candidate.date_basis = basis;
       await expect(
-        finishSignalGeneration({
-          ...legacy.args,
-          result: {
-            ...legacy.args.result,
-            candidates: [{ ...legacy.args.result.candidates[0], date_basis: 'source_published' }],
-          },
-        }),
+        finishSignalGeneration({ ...args, result: { ...args.result, candidates: [candidate] } }),
       ).rejects.toMatchObject({ code: 'invalid_result' });
-    },
-  );
+    }
+    const legacy = fixture();
+    await expect(
+      finishSignalGeneration({
+        ...legacy.args,
+        result: {
+          ...legacy.args.result,
+          candidates: [{ ...legacy.args.result.candidates[0], date_basis: 'source_published' }],
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_result' });
+  });
   it('retains exact private date clues without inferring a date or promoting publication readiness', async () => {
     const { args, row, writes } = fixture();
     const before = JSON.stringify({ source, raw, snapshot: row.snapshot, result: args.result });
@@ -242,3 +244,29 @@ it('completion rejects retired dimensions in event-only tasks while retaining hi
     expect(saved.result.candidates[0].signal_type).toBe(signalType);
   }
 });
+
+it.each(['title', 'summary'])(
+  'new Chinese snapshots reject an English %s at persistence while old snapshots remain readable',
+  async (field) => {
+    const current = fixture(GENERATION_CHINESE_CONTRACT);
+    const changed = {
+      ...current.args.result,
+      candidates: [{ ...current.args.result.candidates[0], [field]: 'Lab released a new model.' }],
+    };
+    await expect(
+      finishSignalGeneration({ ...current.args, result: changed }),
+    ).rejects.toMatchObject({ code: 'invalid_result' });
+    expect(current.writes).toHaveLength(0);
+    const historical = fixture(GENERATION_EVENT_TYPES_CONTRACT);
+    const saved = await finishSignalGeneration({
+      ...historical.args,
+      result: {
+        ...historical.args.result,
+        candidates: [
+          { ...historical.args.result.candidates[0], [field]: 'Lab released a new model.' },
+        ],
+      },
+    });
+    expect(saved.result.candidates[0][field]).toBe('Lab released a new model.');
+  },
+);

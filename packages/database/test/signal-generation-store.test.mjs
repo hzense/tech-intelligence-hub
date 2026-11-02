@@ -8,6 +8,7 @@ import {
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
   GENERATION_EVENT_TYPES_CONTRACT,
+  GENERATION_CHINESE_CONTRACT,
 } from '../../ingestion/src/signal-generation-contract.mjs';
 import {
   createSignalGeneration,
@@ -283,6 +284,7 @@ describe('private generation input boundaries', () => {
     GENERATION_RESOURCES_CONTRACT,
     GENERATION_SOURCE_PUBLICATION_CONTRACT,
     GENERATION_EVENT_TYPES_CONTRACT,
+    GENERATION_CHINESE_CONTRACT,
   ])(
     'persists the complete catalog and %s contract in a new generation snapshot',
     async (contract) => {
@@ -323,6 +325,7 @@ describe('private generation input boundaries', () => {
         [[{ id: 'topic-old', title: 'Old topic' }], [], GENERATION_RESOURCES_CONTRACT],
         [[{ id: 'topic-old', title: 'Old topic' }], [], GENERATION_SOURCE_PUBLICATION_CONTRACT],
         [[{ id: 'topic-old', title: 'Old topic' }], [], GENERATION_EVENT_TYPES_CONTRACT],
+        [[{ id: 'topic-old', title: 'Old topic' }], [], GENERATION_CHINESE_CONTRACT],
         [[{ id: 'topic-old', title: 'Old topic' }], [{ id: 'topic-new', title: 'New topic' }]],
         [[{ id: 'topic-old', title: 'Old topic' }], []],
         [[{ id: 'topic-old', title: 'Old topic' }], [{ id: 'topic-old', title: 'Old topic' }]],

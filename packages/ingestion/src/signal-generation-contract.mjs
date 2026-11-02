@@ -5,6 +5,7 @@ import { isExcludedPublicPerson } from './person-resource-policy.mjs';
 import { completeResourceNameEvidence, resourceNameMention } from './resource-name-evidence.mjs';
 import { isGenerationValidationDetail } from './signal-generation-validation-diagnostics.mjs';
 import { LEGACY_SIGNAL_TYPES, SIGNAL_EVENT_TYPES } from './signal-types.mjs';
+import { isChineseSignalText, SIGNAL_LANGUAGE_RULES } from './signal-language.mjs';
 export { SIGNAL_TYPES } from './signal-types.mjs';
 
 export const GENERATION_LIMITS = Object.freeze({
@@ -225,10 +226,12 @@ export const GENERATION_RESOURCES_CONTRACT = 'signal-resources-v1';
 // Pin date semantics with the task. Never reinterpret saved event-date candidates.
 export const GENERATION_SOURCE_PUBLICATION_CONTRACT = 'signal-source-publication-v1';
 export const GENERATION_EVENT_TYPES_CONTRACT = 'signal-event-types-v1';
+export const GENERATION_CHINESE_CONTRACT = 'signal-chinese-v1';
+export function hasGenerationEventTypes(contract) {
+  return [GENERATION_EVENT_TYPES_CONTRACT, GENERATION_CHINESE_CONTRACT].includes(contract);
+}
 export function hasSourcePublicationDate(contract) {
-  return [GENERATION_SOURCE_PUBLICATION_CONTRACT, GENERATION_EVENT_TYPES_CONTRACT].includes(
-    contract,
-  );
+  return contract === GENERATION_SOURCE_PUBLICATION_CONTRACT || hasGenerationEventTypes(contract);
 }
 export function hasGenerationResources(contract) {
   return contract === GENERATION_RESOURCES_CONTRACT || hasSourcePublicationDate(contract);
@@ -342,6 +345,30 @@ export const generationCandidateWithEventTypesJsonSchema = Object.freeze({
             enum: SIGNAL_EVENT_TYPES,
             description:
               '只选择最贴近核心事件的一种事件类型；技术领域、安全、市场、供应链及开源属性不能作为事件类型。',
+          },
+        },
+      },
+    },
+  },
+});
+
+// Language policy is pinned to new tasks; historical snapshots keep their contract.
+const chineseCandidateSchema =
+  generationCandidateWithEventTypesJsonSchema.properties.candidates.items;
+export const generationCandidateWithChineseJsonSchema = Object.freeze({
+  ...generationCandidateWithEventTypesJsonSchema,
+  properties: {
+    ...generationCandidateWithEventTypesJsonSchema.properties,
+    candidates: {
+      ...generationCandidateWithEventTypesJsonSchema.properties.candidates,
+      items: {
+        ...chineseCandidateSchema,
+        properties: {
+          ...chineseCandidateSchema.properties,
+          title: { ...chineseCandidateSchema.properties.title, description: SIGNAL_LANGUAGE_RULES },
+          summary: {
+            ...chineseCandidateSchema.properties.summary,
+            description: SIGNAL_LANGUAGE_RULES,
           },
         },
       },
@@ -645,6 +672,7 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
       GENERATION_RESOURCES_CONTRACT,
       GENERATION_SOURCE_PUBLICATION_CONTRACT,
       GENERATION_EVENT_TYPES_CONTRACT,
+      GENERATION_CHINESE_CONTRACT,
     ].includes(outputContract)
   )
     fail('invalid_generation_output');
@@ -714,7 +742,17 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
       if (!shape) return reject();
       const title = check(
         'title',
-        () => string(candidate.title, GENERATION_LIMITS.titleCharacters, undefined, 'title'),
+        () => {
+          const title = string(
+            candidate.title,
+            GENERATION_LIMITS.titleCharacters,
+            undefined,
+            'title',
+          );
+          if (outputContract === GENERATION_CHINESE_CONTRACT && !isChineseSignalText(title))
+            fail(undefined, 'title', 'language_not_chinese');
+          return title;
+        },
         typeof candidate.title === 'string' &&
           [...candidate.title].length > GENERATION_LIMITS.titleCharacters
           ? 'title_too_long'
@@ -722,7 +760,17 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
       );
       const summary = check(
         'summary',
-        () => string(candidate.summary, GENERATION_LIMITS.summaryCharacters, undefined, 'summary'),
+        () => {
+          const summary = string(
+            candidate.summary,
+            GENERATION_LIMITS.summaryCharacters,
+            undefined,
+            'summary',
+          );
+          if (outputContract === GENERATION_CHINESE_CONTRACT && !isChineseSignalText(summary))
+            fail(undefined, 'summary', 'language_not_chinese');
+          return summary;
+        },
         typeof candidate.summary === 'string' &&
           [...candidate.summary].length > GENERATION_LIMITS.summaryCharacters
           ? 'summary_too_long'
@@ -796,9 +844,7 @@ function normalizeCandidates(value, source, partial = false, topics, outputContr
           ? check('signal_type', () => {
               if (
                 !(
-                  outputContract === GENERATION_EVENT_TYPES_CONTRACT
-                    ? SIGNAL_EVENT_TYPES
-                    : LEGACY_SIGNAL_TYPES
+                  hasGenerationEventTypes(outputContract) ? SIGNAL_EVENT_TYPES : LEGACY_SIGNAL_TYPES
                 ).includes(candidate.signal_type)
               )
                 fail(undefined, 'signal_type', 'invalid_type');

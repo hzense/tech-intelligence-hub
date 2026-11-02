@@ -27,7 +27,7 @@ import {
   GENERATION_METADATA_CONTRACT,
   GENERATION_RESOURCES_CONTRACT,
   GENERATION_SOURCE_PUBLICATION_CONTRACT,
-  GENERATION_EVENT_TYPES_CONTRACT,
+  GENERATION_CHINESE_CONTRACT,
 } from '../../../packages/ingestion/src/signal-generation-contract.mjs';
 import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { PERSON_RESOURCE_POLICY_TEXT } from '@hzense/ingestion/person-resource-policy';
@@ -1193,6 +1193,8 @@ test('creation pins enabled topics without AI; execution uses that snapshot desp
     candidates: [
       {
         ...candidate,
+        title: 'Alice 发布新处理器',
+        summary: 'Alice 发布了一款新处理器，具体性能仍需进一步核验。',
         date_basis: 'source_published',
         topic_ids: ['semiconductors'],
         signal_type: 'product',
@@ -1227,13 +1229,13 @@ test('creation pins enabled topics without AI; execution uses that snapshot desp
     consent: true,
   });
   assert.deepEqual(f.run().snapshot.topics, topicCatalog);
-  assert.equal(f.run().snapshot.output_contract, GENERATION_EVENT_TYPES_CONTRACT);
+  assert.equal(f.run().snapshot.output_contract, GENERATION_CHINESE_CONTRACT);
   assert.equal(provider.calls.length, 0);
   const createdInput = generationInput(
     source,
     stage.prompt,
     topicCatalog,
-    GENERATION_EVENT_TYPES_CONTRACT,
+    GENERATION_CHINESE_CONTRACT,
   );
   assert.ok(f.run().reserveMicrousd >= createdInput.inputTokens);
   const dto = await f.execute('admin', { action: 'run', id });

@@ -6,6 +6,7 @@ import {
   fingerprintQualifiedPublicationRequest,
   parseQualifiedPublicationRequest,
   qualifySignalPublicationBundle,
+  assertChineseSignalPublicationContent,
 } from '../src/signal-publication-qualification.mjs';
 
 const runId = '00000000-0000-0000-0000-000000000001';
@@ -141,6 +142,34 @@ function expectCode(callback, code) {
   expect(callback).toThrowError(QualifiedPublicationError);
   expect(callback).toThrowError(expect.objectContaining({ code, message: code }));
 }
+
+describe('current publication language policy', () => {
+  it('accepts Chinese narrative with original English proper nouns', () => {
+    expect(() =>
+      assertChineseSignalPublicationContent(
+        snapshot({
+          title: 'NVIDIA 发布 RTX 5090',
+          summary: 'NVIDIA 发布新一代 RTX 5090 显卡，并介绍其性能提升与应用场景。',
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it.each([
+    { title: 'NVIDIA introduces its next generation graphics card', summary: '厂商介绍新款显卡。' },
+    { title: 'NVIDIA 发布显卡', summary: 'NVIDIA introduces a new graphics card for developers.' },
+  ])('rejects non-Chinese new publication content without changing the snapshot', (content) => {
+    const value = snapshot(content);
+    const before = globalThis.structuredClone(value);
+    expectCode(() => assertChineseSignalPublicationContent(value), 'chinese_content_required');
+    expect(value).toEqual(before);
+    // Historical clone/qualification feeds immutable material fingerprints and
+    // must remain structural, even when the current publication policy changes.
+    expect(() => cloneSignalSnapshotForPublication(value, 2)).not.toThrow();
+    const historical = { ...bundle(), snapshot: value };
+    expect(() => qualifySignalPublicationBundle(historical)).not.toThrow();
+  });
+});
 
 describe('qualified publication command and replay fingerprint', () => {
   it('accepts an exact detached command including a null-prototype command', () => {

@@ -16,6 +16,7 @@ import {
   fingerprintQualifiedPublicationRequest,
   parseQualifiedPublicationRequest,
   qualifySignalPublicationBundle,
+  assertChineseSignalPublicationContent,
 } from './signal-publication-qualification.mjs';
 import { assembleVersion } from './signal-qualified-publication-store.mjs';
 import {
@@ -68,6 +69,7 @@ export const publicPublicationErrorCodes = Object.freeze([
   'withdraw_requires_published_head',
   'already_withdrawn',
   'withdraw_target_mismatch',
+  'chinese_content_required',
 ]);
 const codes = new Set(publicPublicationErrorCodes);
 export class PublicPublicationError extends Error {
@@ -341,6 +343,7 @@ async function applyPublish(client, command) {
   )
     deny('assembly_mismatch');
   qualifySignalPublicationBundle(candidate.bundle);
+  assertChineseSignalPublicationContent(candidate.bundle.snapshot);
   const currentHead = await head(client, command.signal_id, true);
   const plan = planSignalPublicationTransition(
     { head: currentHead, receipt: null },

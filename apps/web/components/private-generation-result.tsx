@@ -78,6 +78,7 @@ export function PrivateResult({
     missing_value: '文本为空或仅含空白',
     text_too_long: '文本超过该字段的长度限制',
     invalid_characters: '文本含不允许的控制字符或无效 Unicode 字符',
+    language_not_chinese: '标题和摘要须以中文为主，可保留英文专有名词；原文证据不翻译',
     unknown_fragment: '引用的原文片段编号不存在',
     unknown_topic: '领域不在本次生成提供的已启用目录中',
     missing_resource: '缺少人物或组织的资源草稿',

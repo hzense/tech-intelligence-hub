@@ -149,8 +149,8 @@ suite('review conversion with isolated PostgreSQL roles and real publication', (
       [`${id}-evidence`, `${id}-source`, 'a'.repeat(64)],
     );
     const draft = {
-      title: 'Synthetic reviewed event',
-      summary: 'Synthetic summary',
+      title: 'Synthetic reviewed event：人工审核示例信号',
+      summary: '这是一条用于人工审核发布验证的示例摘要。',
       eventDate: '2026-09-20',
       eventKey: `${id}-event`,
       sourceUrls: ['https://example.com/event'],
@@ -453,7 +453,7 @@ suite('review conversion with isolated PostgreSQL roles and real publication', (
         )
       ).rows[0].count,
     ).toBe(1);
-    const revisedDraft = { ...f.draft, title: 'Synthetic corrected title' };
+    const revisedDraft = { ...f.draft, title: 'Synthetic corrected title：已修订测试信号' };
     await saveCandidateReview({
       pool: owner,
       owner: 'owner',

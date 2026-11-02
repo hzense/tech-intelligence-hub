@@ -218,6 +218,7 @@ export function createAutomaticPublisher(deps: {
             'request_id_conflict',
             'material_changed',
             'confirmation_required',
+            'chinese_content_required',
             'resource_details_incomplete',
             'resource_identity_ambiguous',
             'resource_source_required',
@@ -237,7 +238,9 @@ export function createAutomaticPublisher(deps: {
           reasons: [
             code === 'automatic_publication_date_out_of_window'
               ? '原文发布日期不在本次采集范围内；保留为候选，不自动发布。'
-              : '发布条件已变化或存在人工处理，请重新读取并核对。',
+              : code === 'chinese_content_required'
+                ? '标题和摘要须以中文为主，可保留英文专有名词；修改后再发布。'
+                : '发布条件已变化或存在人工处理，请重新读取并核对。',
           ],
         });
       }

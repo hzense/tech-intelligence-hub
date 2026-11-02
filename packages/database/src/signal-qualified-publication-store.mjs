@@ -7,6 +7,7 @@ import {
   fingerprintQualifiedPublicationRequest,
   cloneSignalSnapshotForPublication,
   qualifySignalPublicationBundle,
+  assertChineseSignalPublicationContent,
 } from './signal-publication-qualification.mjs';
 
 // PRIVATE trusted adapter, not an authenticated API, production Publisher or
@@ -383,6 +384,7 @@ export async function publishPrivateQualifiedSignalVersion({ pool, request }) {
     if (command.target_version <= maximum) deny('target_version_not_new');
     const bundle = await lockBundle(client, command);
     qualifySignalPublicationBundle(bundle);
+    assertChineseSignalPublicationContent(bundle.snapshot);
     const snapshot = cloneSignalSnapshotForPublication(bundle.snapshot, command.target_version);
     // The first gate can precede dependency waits. Check current clock again now.
     await lockPrivatePublicationControls({ client, request: controlRequest });
