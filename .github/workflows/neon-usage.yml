@@ -61,6 +61,6 @@ jobs:
           {
             echo '## Neon network usage sampling'
             echo '- Sampling endpoint returned HTTP 200.'
-            echo '- Check /admin/neon-usage for the last saved sample and data coverage.'
+            echo '- Check /admin/dashboard for the last saved sample and data coverage.'
             echo '- This run does not query business tables or call AI.'
           } >> "$GITHUB_STEP_SUMMARY"
