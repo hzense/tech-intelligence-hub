@@ -838,6 +838,22 @@ test('explicit HTTP request rejections retain safe refusal evidence without fabr
   }
 });
 
+test('atomic budget refusals survive the adapter without a paid request or retry', async () => {
+  for (const code of ['discovery_batch_budget_exceeded', 'discovery_daily_budget_exceeded']) {
+    const h = harness();
+    await assert.rejects(
+      h.run({
+        beforeCall: async () => {
+          throw new Error(code);
+        },
+      }),
+      (error) => error.code === code && error.called === false && error.costMicrousd === null,
+    );
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].method, 'GET');
+  }
+});
+
 test('timeouts, server failures and untyped rejection errors keep unknown accounting without retries', async () => {
   for (const failure of [
     ...[408, 500, 502, 503, 504].map((status) => new globalThis.Response('private', { status })),

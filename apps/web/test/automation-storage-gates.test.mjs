@@ -24,6 +24,7 @@ async function fixture(path, mocks) {
           });
           builder.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path }) => ({
             contents: mocks[path],
+            loader: 'ts',
           }));
         },
       },
@@ -34,6 +35,43 @@ async function fixture(path, mocks) {
   );
 }
 const errorClass = `export class AutomationError extends Error {constructor(code='invalid_request'){super(code);this.code=code}}`;
+
+test('collection limits do not depend on the fixed insight reserve', async () => {
+  const keys = ['BATCH_LIMIT', 'DAILY_LIMIT', 'RESERVE'].map(
+    (key) => `HZENSE_AUTOMATION_${key}_MICROUSD`,
+  );
+  const saved = keys.map((key) => process.env[key]);
+  try {
+    const { automationLimits } = await fixture('../lib/server/automation-limits.ts', {
+      '../../../../packages/database/src/automation-contract.mjs': errorClass,
+    });
+    process.env[keys[0]] = '5000000';
+    process.env[keys[1]] = '10000000';
+    for (const value of [undefined, 'invalid', '1250000', '5000001']) {
+      if (value === undefined) delete process.env[keys[2]];
+      else process.env[keys[2]] = value;
+      assert.deepEqual(automationLimits('source_collection'), {
+        batch: 5000000,
+        daily: 10000000,
+        reserve: 0,
+      });
+      if (value === '1250000') assert.equal(automationLimits('topic_insight').reserve, 1250000);
+      else assert.throws(() => automationLimits('topic_insight'), /not_configured/);
+    }
+    for (const value of ['0', '50000001', 'NaN']) {
+      process.env[keys[0]] = value;
+      assert.throws(() => automationLimits('source_collection'), /not_configured/);
+    }
+    process.env[keys[0]] = '5000000';
+    process.env[keys[1]] = '4000000';
+    assert.throws(() => automationLimits('source_collection'), /not_configured/);
+  } finally {
+    keys.forEach((key, index) => {
+      if (saved[index] === undefined) delete process.env[key];
+      else process.env[key] = saved[index];
+    });
+  }
+});
 
 test('configuration connections retain role checks while execution and public reader stay gated', async () => {
   const saved = { ...process.env };
@@ -128,6 +166,10 @@ test('inactive configuration saves without execution budgets, while enable/trigg
   try {
     const mod = await fixture('../lib/server/automation.ts', {
       'server-only': '',
+      './automation-limits': await readFile(
+        new URL('../lib/server/automation-limits.ts', import.meta.url),
+        'utf8',
+      ),
       '../../../../packages/database/src/automation-store.mjs': `${errorClass}
         export async function saveAutomationConfig(x){if(x.pool.kind!=='config')throw Error('wrong_pool');globalThis.__automationService.writes.push(x);return x.request}
         export async function deleteAutomationConfig(x){if(x.pool.kind!=='config')throw Error('wrong_pool');globalThis.__automationService.deletions.push(x);return {id:x.request.id,revision:2,deleted_at:'2026-10-02T10:00:00Z'}}
@@ -137,8 +179,7 @@ test('inactive configuration saves without execution budgets, while enable/trigg
         export async function enqueueDueAutomations(x){const f=globalThis.__automationService;f.due++;f.dueKinds.push(x.kinds);f.dueAutomaticPolicies.push(x.allowAutomaticPublication);return []}
         export async function readAutomationRun(){return {snapshot:globalThis.__automationService.config}} export async function failAutomationDispatch(){globalThis.__automationService.dispatchFailures++} export async function rejectInsightTopicsBeforeClaim(){throw Error('Unexpected insight rejection')}
       export async function rejectAutomaticPublicationBeforeClaim(){globalThis.__automationService.publicationRefusals++;return true} export async function publishAutomationInsight(args){globalThis.__automationService.publications??=[];globalThis.__automationService.publications.push(args);return args}`,
-      '../../../../packages/database/src/automation-contract.mjs':
-        'export const normalizeAutomationConfig=x=>x;',
+      '../../../../packages/database/src/automation-contract.mjs': `${errorClass}; export const normalizeAutomationConfig=x=>x;`,
       './automation-store-access': `export const automationConfigPool={kind:'config'},automationPool={kind:'execution'};
         export function automationStorageConfiguration(){if(!globalThis.__automationService.storage)throw Error('missing')}
         export function automationDatabaseConfiguration(){automationStorageConfiguration();const f=globalThis.__automationService;if((f.local&&!f.localReal)||!f.enabled)throw Error('off')}
@@ -198,6 +239,7 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     assert.equal(f.due, 0);
     assert.equal(f.enqueued, 0);
     f.enabled = true;
+    f.replay = false;
     await assert.rejects(mod.triggerAutomation('owner', {}), /not_configured/);
     await assert.rejects(
       mod.saveAutomation('owner', { ...request, config: { ...config, enabled: true } }),
@@ -429,6 +471,22 @@ test('inactive configuration saves without execution budgets, while enable/trigg
     f.storage = false;
     assert.equal(mod.automationStorageConfigured(), false);
     assert.equal(mod.automationExecutionConfigured('source_collection'), false);
+
+    // Manual collection uses the same kind-aware limits as scheduling/worker;
+    // the fixed insight reserve must not silently gate this entry point.
+    f.storage = f.enabled = f.imports = f.generation = f.profile = true;
+    f.local = false;
+    f.replay = false;
+    f.config = config;
+    process.env.HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD = '5000000';
+    process.env.HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD = '10000000';
+    delete process.env.HZENSE_AUTOMATION_RESERVE_MICROUSD;
+    const startsBeforeDynamic = f.starts;
+    await mod.triggerAutomation('owner', {});
+    assert.equal(f.starts, startsBeforeDynamic + 1);
+    f.config = { ...config, kind: 'topic_insight', topicIds: ['topic-ai'] };
+    await assert.rejects(mod.triggerAutomation('owner', {}), /not_configured/);
+    assert.equal(f.starts, startsBeforeDynamic + 1);
   } finally {
     for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
     Object.assign(process.env, saved);

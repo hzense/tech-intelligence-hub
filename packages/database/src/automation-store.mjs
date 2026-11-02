@@ -12,6 +12,13 @@ import {
   automationStableId,
 } from './automation-contract.mjs';
 export { AutomationError } from './automation-contract.mjs';
+export class AutomationBudgetError extends AutomationError {
+  constructor(code, budget) {
+    super(code);
+    this.name = 'AutomationBudgetError';
+    this.budget = budget;
+  }
+}
 const configColumns = 'id,owner_id,revision,config,enabled,next_run_at,created_at,updated_at';
 async function configShape(client) {
   const canDelete = await automationConfigDeletionAvailable(client);
@@ -81,7 +88,23 @@ const automationBudgetUsageSql = `SELECT COALESCE(sum(CASE
   THEN greatest(reserved_microusd,charged_microusd)
   ELSE charged_microusd END),0) AS used
   FROM public.automation_runs
-  WHERE budget_day=(clock_timestamp() AT TIME ZONE 'UTC')::date`;
+  WHERE budget_day=$1::date AND ($2::uuid IS NULL OR id<>$2::uuid)`;
+async function budgetDay(client) {
+  const day = (
+    await client.query(
+      "SELECT to_char((clock_timestamp() AT TIME ZONE 'UTC')::date,'YYYY-MM-DD') AS budget_day",
+    )
+  ).rows[0]?.budget_day;
+  if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) fail('database_unavailable');
+  return day;
+}
+async function budgetUsage(client, day, excludeId = null) {
+  const value = (await client.query(automationBudgetUsageSql, [day, excludeId])).rows[0]?.used;
+  if (value === null || value === undefined) fail('database_unavailable');
+  const used = Number(value);
+  if (!Number.isSafeInteger(used) || used < 0) fail('database_unavailable');
+  return used;
+}
 async function transaction(pool, work) {
   let client,
     committing = false;
@@ -423,7 +446,10 @@ export async function claimAutomationRun({ pool, owner, id, limits }) {
       return null;
     }
     let reserve = 0;
-    if (run.snapshot.kind === 'topic_insight' || run.snapshot.discovery) {
+    const day = await budgetDay(client);
+    // Discovery's real estimate is known only after resolving the pinned model.
+    // Claiming a task must not reserve a fixed amount or reject against it.
+    if (run.snapshot.kind === 'topic_insight') {
       if (
         !limits ||
         ['batch', 'daily', 'reserve'].some(
@@ -438,7 +464,7 @@ export async function claimAutomationRun({ pool, owner, id, limits }) {
         );
         return null;
       }
-      const usage = Number((await client.query(automationBudgetUsageSql)).rows[0].used);
+      const usage = await budgetUsage(client, day);
       if (usage + limits.reserve > limits.daily) {
         await client.query(
           "UPDATE public.automation_runs SET status='failed',phase='budget_exceeded',error_code='budget_exceeded',finished_at=clock_timestamp() WHERE id=$1 AND owner_id=$2 AND status='queued'",
@@ -451,8 +477,8 @@ export async function claimAutomationRun({ pool, owner, id, limits }) {
     return dto(
       (
         await client.query(
-          `UPDATE public.automation_runs SET status='running',phase='preparing',lease_token=$2,lease_until=clock_timestamp()+interval '2 hours',started_at=clock_timestamp(),budget_day=(clock_timestamp() AT TIME ZONE 'UTC')::date,reserved_microusd=$3 WHERE id=$1 RETURNING ${runColumns}`,
-          [id, randomUUID(), reserve],
+          `UPDATE public.automation_runs SET status='running',phase='preparing',lease_token=$2,lease_until=clock_timestamp()+interval '2 hours',started_at=clock_timestamp(),budget_day=$4::date,reserved_microusd=$3 WHERE id=$1 RETURNING ${runColumns}`,
+          [id, randomUUID(), reserve, day],
         )
       ).rows[0],
     );
@@ -473,19 +499,73 @@ export async function readAutomationRun({ pool, owner, id }) {
   });
 }
 /** Atomic one-way paid-call fence, including duplicate workflow starts/replays. */
-export async function beginSourceDiscovery({ pool, owner, id, token }) {
-  automationText(owner);
+export async function beginSourceDiscovery({ pool, owner, id, token, estimateMicrousd, limits }) {
+  owner = automationText(owner);
   automationUuid(id);
   automationUuid(token);
-  return transaction(pool, async (client) => {
+  if (!Number.isSafeInteger(estimateMicrousd) || estimateMicrousd < 1) fail('invalid_request');
+  if (
+    !limits ||
+    ['batch', 'daily'].some(
+      (key) => !Number.isSafeInteger(limits[key]) || limits[key] < 1 || limits[key] > 50000000,
+    ) ||
+    limits.batch > limits.daily
+  )
+    fail('not_configured');
+  const outcome = await transaction(pool, async (client) => {
+    await lock(client, 'budget-global');
     const row = (
       await client.query(
-        "UPDATE public.automation_runs SET phase='discovering' WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' AND phase='preparing' AND lease_until>clock_timestamp() AND snapshot->>'kind'='source_collection' AND snapshot ? 'discovery' RETURNING id",
+        "SELECT id FROM public.automation_runs WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' AND phase='preparing' AND lease_until>clock_timestamp() AND snapshot->>'kind'='source_collection' AND jsonb_typeof(snapshot->'discovery')='object' AND charged_microusd=0 AND cost_source IS NULL FOR UPDATE",
         [id, owner, token],
       )
     ).rows[0];
     if (!row) fail('stale_attempt');
+    // Capture the UTC day once after acquiring both locks. The same value is
+    // used for usage and reservation even if the wall clock crosses midnight.
+    const day = await budgetDay(client);
+    // A pre-upgrade preparing task may hold a fixed reservation. Replace that
+    // reservation, rather than counting both its old and current estimates.
+    const used = await budgetUsage(client, day, id);
+    const budget = {
+      version: 1,
+      estimatedMicrousd: estimateMicrousd,
+      batchLimitMicrousd: limits.batch,
+      dailyLimitMicrousd: limits.daily,
+      dailyUsedMicrousd: used,
+      dailyRemainingMicrousd: Math.max(0, limits.daily - used),
+    };
+    const errorCode =
+      estimateMicrousd > limits.batch
+        ? 'discovery_batch_budget_exceeded'
+        : estimateMicrousd > budget.dailyRemainingMicrousd
+          ? 'discovery_daily_budget_exceeded'
+          : null;
+    if (errorCode) {
+      // Refusal and its zero-charge receipt are one transaction. A competing
+      // worker cannot cross the paid fence between refusal and settlement.
+      const rejected = (
+        await client.query(
+          "UPDATE public.automation_runs SET status='failed',phase='discovery_failed',error_code=$4,charged_microusd=0,cost_source='estimate',result=COALESCE(result,'{}'::jsonb)||jsonb_build_object('discoveryBudget',$5::jsonb),finished_at=clock_timestamp(),lease_token=NULL,lease_until=NULL WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' AND phase='preparing' AND lease_until>clock_timestamp() RETURNING id",
+          [id, owner, token, errorCode, JSON.stringify(budget)],
+        )
+      ).rows[0];
+      if (!rejected) fail('stale_attempt');
+      return { budget, errorCode };
+    }
+    const admitted = (
+      await client.query(
+        "UPDATE public.automation_runs SET phase='discovering',budget_day=$4::date,reserved_microusd=$5 WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' AND phase='preparing' AND lease_until>clock_timestamp() RETURNING id",
+        [id, owner, token, day, estimateMicrousd],
+      )
+    ).rows[0];
+    if (!admitted) fail('stale_attempt');
+    return { budget, errorCode: null };
   });
+  // Only a confirmed COMMIT may produce a typed budget refusal. Ambiguous
+  // commits remain commit_unknown and must not be overwritten as zero charge.
+  if (outcome.errorCode) throw new AutomationBudgetError(outcome.errorCode, outcome.budget);
+  return outcome.budget;
 }
 /** Atomic one-way admission before selecting inputs or making a paid insight call. */
 export async function beginTopicInsightExecution({ pool, owner, id, token }) {
@@ -539,11 +619,13 @@ export async function updateAutomationRun({
   errorCode = null,
   costMicrousd,
   costSource,
+  expectedPhase,
 }) {
   automationText(owner);
   automationUuid(id);
   automationUuid(token);
   automationText(phase, 60);
+  if (expectedPhase !== undefined) expectedPhase = automationText(expectedPhase, 60);
   if (
     !['running', 'completed', 'failed', 'unknown', 'cancelled'].includes(status) ||
     (errorCode !== null && !/^[a-z][a-z0-9_]{0,79}$/.test(errorCode))
@@ -568,8 +650,8 @@ export async function updateAutomationRun({
     // still match exactly, and missing inputs never satisfy the fence.
     const previous = (
       await client.query(
-        "SELECT snapshot,(frozen_inputs->'inputs'=$4::jsonb->'inputs') AS inputs_match FROM public.automation_runs WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' FOR UPDATE",
-        [id, owner, token, JSON.stringify(result)],
+        "SELECT snapshot,(frozen_inputs->'inputs'=$4::jsonb->'inputs') AS inputs_match FROM public.automation_runs WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' AND ($5::text IS NULL OR phase=$5) FOR UPDATE",
+        [id, owner, token, JSON.stringify(result), expectedPhase ?? null],
       )
     ).rows[0];
     if (!previous) fail('stale_attempt');
@@ -581,7 +663,7 @@ export async function updateAutomationRun({
       fail('inputs_mismatch');
     const row = (
       await client.query(
-        `UPDATE public.automation_runs SET phase=$4,result=$5::jsonb,status=$6,error_code=$7,charged_microusd=CASE WHEN $6='running' THEN charged_microusd ELSE COALESCE($8,reserved_microusd) END,cost_source=CASE WHEN $6='running' THEN cost_source ELSE COALESCE($9,'reserve') END,finished_at=CASE WHEN $6='running' THEN NULL ELSE clock_timestamp() END,lease_token=CASE WHEN $6='running' THEN lease_token ELSE NULL END,lease_until=CASE WHEN $6='running' THEN lease_until ELSE NULL END WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' AND lease_until>clock_timestamp() RETURNING ${runColumns}`,
+        `UPDATE public.automation_runs SET phase=$4,result=$5::jsonb,status=$6,error_code=$7,charged_microusd=CASE WHEN $6='running' THEN charged_microusd ELSE COALESCE($8,reserved_microusd) END,cost_source=CASE WHEN $6='running' THEN cost_source ELSE COALESCE($9,'reserve') END,finished_at=CASE WHEN $6='running' THEN NULL ELSE clock_timestamp() END,lease_token=CASE WHEN $6='running' THEN lease_token ELSE NULL END,lease_until=CASE WHEN $6='running' THEN lease_until ELSE NULL END WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' AND lease_until>clock_timestamp() AND ($10::text IS NULL OR phase=$10) RETURNING ${runColumns}`,
         [
           id,
           owner,
@@ -592,6 +674,7 @@ export async function updateAutomationRun({
           errorCode,
           costMicrousd ?? null,
           costSource ?? null,
+          expectedPhase ?? null,
         ],
       )
     ).rows[0];

@@ -72,7 +72,17 @@ test('source discovery orchestrates originals and private candidates without dro
   };
   const fixture = await build({
     stdin: {
-      contents: `${source}\nexport {findSources,createSourceBatch,createFallbackSourceBatch,importSourceItem,createPrivateGeneration,dispatchGeneration,startTopicWorker,pollTopicWorker,stopTopicWorker};`,
+      // Production Workflow wraps thrown step errors and serializes successful
+      // results. In particular a raw stale_attempt message is not preserved.
+      contents: `${source.replace(
+        'const urls = await findSources(owner, run.id);',
+        `const urls = await testStepBoundary(() => findSources(owner, run.id));`,
+      )}
+        async function testStepBoundary(work){
+          try { return JSON.parse(JSON.stringify(await work())); }
+          catch(error){ throw new Error('Step "step//./workflows/automation//findSources" failed after 0 retries: '+error.message); }
+        }
+        export {findSources,createSourceBatch,createFallbackSourceBatch,importSourceItem,createPrivateGeneration,dispatchGeneration,startTopicWorker,pollTopicWorker,stopTopicWorker};`,
       loader: 'ts',
       resolveDir: fileURLToPath(new URL('../workflows', import.meta.url)),
     },
@@ -159,6 +169,19 @@ test('source discovery orchestrates originals and private candidates without dro
     assert.equal(f.imports.length, 0);
     assert.equal(f.generated.length, 0);
     assert.equal(f.run.charged_microusd, 25000);
+    f = setup([]);
+    f.discoveryFailure = {
+      status: 'running',
+      phase: 'discovering',
+      error_code: 'stale_attempt',
+      reserved_microusd: 2500000,
+    };
+    assert.equal(await automationWorkflow('owner', 'run'), 'already_started_or_finished');
+    assert.equal(f.updates.length, 0, 'a stale discovery attempt never cleans up the winner');
+    assert.equal(f.run.status, 'running');
+    assert.equal(f.run.phase, 'discovering');
+    assert.equal(f.run.reserved_microusd, 2500000);
+    assert.equal(f.imports.length, 0);
     f = setup([]);
     f.discoveryFailure = {
       status: 'failed',

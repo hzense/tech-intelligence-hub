@@ -757,6 +757,74 @@ test(
       await expect(page.getByText(/此历史任务未保存逐条处理原因/)).toBeVisible();
       await expect(page.getByText('HTTP 403', { exact: false })).toHaveCount(0);
 
+      // Budget refusal diagnostics are read-only snapshots, not actual spend or live balances.
+      const beforeBudgetChecks = globalThis.structuredClone(run);
+      delete run.generationProgress;
+      Object.assign(run, {
+        status: 'failed',
+        phase: 'discovery_failed',
+        charged_microusd: 0,
+        cost_source: 'estimate',
+      });
+      for (const [code, message, estimated, used] of [
+        ['discovery_batch_budget_exceeded', '本次采集预估费用超过单次预算上限', 5_000_001, 0],
+        [
+          'discovery_daily_budget_exceeded',
+          '当日可用余额不足以预留本次采集费用',
+          1_871_000,
+          8_500_000,
+        ],
+      ]) {
+        run.error_code = code;
+        run.result = {
+          discoveryBudget: {
+            version: 1,
+            estimatedMicrousd: estimated,
+            batchLimitMicrousd: 5_000_000,
+            dailyLimitMicrousd: 10_000_000,
+            dailyUsedMicrousd: used,
+            dailyRemainingMicrousd: 10_000_000 - used,
+            rawOutput: 'must-not-display-private-budget',
+          },
+        };
+        await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+        await expect(page.getByText(message, { exact: false })).toBeVisible();
+        await expect(page.getByText('调用前停止，未计费', { exact: true })).toBeVisible();
+        await readDetails();
+        const budgetPanel = page.locator('details').filter({
+          has: page.getByText('查看采集预算详情', { exact: true }),
+        });
+        if ((await budgetPanel.getAttribute('open')) === null)
+          await page.getByText('查看采集预算详情', { exact: true }).click();
+        await expect(page.getByText('单次预算上限：$5.000000', { exact: true })).toBeVisible();
+        await expect(page.getByText('当日预算上限：$10.000000', { exact: true })).toBeVisible();
+        await expect(
+          page.getByText(`本次采集预估：$${(estimated / 1_000_000).toFixed(6)}`, { exact: true }),
+        ).toBeVisible();
+        await expect(
+          page.getByText(`当时可用余额：$${((10_000_000 - used) / 1_000_000).toFixed(6)}`, {
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(page.getByText(/不代表当前余额/)).toBeVisible();
+        await expect(
+          page.getByText('must-not-display-private-budget', { exact: false }),
+        ).toHaveCount(0);
+      }
+      run.result.discoveryBudget.dailyRemainingMicrousd = 'private-invalid-value';
+      await readDetails();
+      await expect(page.getByText('查看采集预算详情', { exact: true })).toHaveCount(0);
+      await expect(page.getByText('private-invalid-value', { exact: false })).toHaveCount(0);
+      run.error_code = 'budget_exceeded';
+      run.result = {};
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByText(/此记录未区分单次限制、预留不足或当日余额/)).toBeVisible();
+      await expect(page.getByText('调用前停止，未计费', { exact: true })).toHaveCount(0);
+      await readDetails();
+      await expect(page.getByText('查看采集预算详情', { exact: true })).toHaveCount(0);
+      assert.equal(posts.length, 6, 'budget inspection never starts a paid call or retries a task');
+      Object.assign(run, beforeBudgetChecks);
+
       // Failed discovery diagnostics are private structural readbacks, not a retry action.
       delete run.generationProgress;
       run.status = 'failed';

@@ -1,5 +1,21 @@
 import type { AutomationConfig } from './automation-contract.mjs';
+import { AutomationError } from './automation-contract.mjs';
 export { AutomationError } from './automation-contract.mjs';
+export interface AutomationDiscoveryBudget {
+  version: 1;
+  estimatedMicrousd: number;
+  batchLimitMicrousd: number;
+  dailyLimitMicrousd: number;
+  dailyUsedMicrousd: number;
+  dailyRemainingMicrousd: number;
+}
+export class AutomationBudgetError extends AutomationError {
+  budget: AutomationDiscoveryBudget;
+  constructor(
+    code: 'discovery_batch_budget_exceeded' | 'discovery_daily_budget_exceeded',
+    budget: AutomationDiscoveryBudget,
+  );
+}
 export interface AutomationConfigRecord {
   id: string;
   owner_id: string;
@@ -124,7 +140,9 @@ export function beginSourceDiscovery(input: {
   owner: string;
   id: string;
   token: string;
-}): Promise<void>;
+  estimateMicrousd: number;
+  limits: Pick<AutomationLimits, 'batch' | 'daily'>;
+}): Promise<AutomationDiscoveryBudget>;
 export function beginTopicInsightExecution(input: {
   pool: unknown;
   owner: string;
@@ -143,6 +161,7 @@ export function updateAutomationRun(input: {
   errorCode?: string | null;
   costMicrousd?: number;
   costSource?: 'provider' | 'estimate' | 'reserve';
+  expectedPhase?: string;
 }): Promise<AutomationRun>;
 export function failAutomationDispatch(input: {
   pool: unknown;

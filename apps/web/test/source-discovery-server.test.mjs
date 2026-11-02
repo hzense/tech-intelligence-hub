@@ -39,19 +39,39 @@ test('discovery server persists safe receipts without replaying a paid search', 
     '../admin-ai-core':
       "export function readAiBackendConfiguration(){return {allowedHosts:['openrouter.ai']}}",
     './automation-store-access': 'export const automationPool={};',
+    './automation-limits':
+      'export function automationLimits(){return globalThis.__discoveryServer.limits}',
     '../../../../packages/database/src/automation-contract.mjs':
       'export function normalizeAutomationConfig(value){return value}',
     '../../../../packages/database/src/automation-store.mjs': `
+      export class AutomationBudgetError extends Error {
+        constructor(code,budget){super(code);this.budget=budget}
+      }
       export async function readAutomationRun(){return structuredClone(globalThis.__discoveryServer.run)}
       export async function readCollectedSourceUrls(){return ['https://example.com/collected']}
-      export async function beginSourceDiscovery(){
+      export async function beginSourceDiscovery(args){
         const f=globalThis.__discoveryServer;f.fenceAttempts++;
+        f.fenceArgs=args;
         if(f.fenceError)throw Error(f.fenceError);
         if(f.run.phase!=='preparing')throw Error('stale_attempt');
+        const budget={version:1,estimatedMicrousd:args.estimateMicrousd,
+          batchLimitMicrousd:args.limits.batch,dailyLimitMicrousd:args.limits.daily,
+          dailyUsedMicrousd:f.dailyUsed,dailyRemainingMicrousd:Math.max(0,args.limits.daily-f.dailyUsed)};
+        const code=args.estimateMicrousd>args.limits.batch?'discovery_batch_budget_exceeded':
+          args.estimateMicrousd>budget.dailyRemainingMicrousd?'discovery_daily_budget_exceeded':null;
+        if(code){
+          Object.assign(f.run,{status:'failed',phase:'discovery_failed',error_code:code,
+            charged_microusd:0,cost_source:'estimate',lease_token:null,result:{discoveryBudget:budget}});
+          throw new AutomationBudgetError(code,budget);
+        }
+        f.run.reserved_microusd=args.estimateMicrousd;
         f.run.phase='discovering';
+        return budget;
       }
       export async function updateAutomationRun(args){
-        const f=globalThis.__discoveryServer;f.updates.push(structuredClone(args));
+        const f=globalThis.__discoveryServer;
+        if(args.expectedPhase && f.run.phase!==args.expectedPhase)throw Error('stale_attempt');
+        f.updates.push(structuredClone(args));
         if(f.updateErrors.length)throw Error(f.updateErrors.shift());
         f.run.result=args.result;f.run.phase=args.phase;f.run.status=args.status??f.run.status;
         if(args.costMicrousd!==undefined)f.run.charged_microusd=args.costMicrousd;
@@ -69,7 +89,10 @@ test('discovery server persists safe receipts without replaying a paid search', 
       export function discoveryEstimate(){return globalThis.__discoveryServer.estimate}
       export async function invokeSourceDiscovery(input){
         const f=globalThis.__discoveryServer;f.invocations++;f.knownUrls=input.knownUrls;f.publicKnownUrls=input.publicKnownUrls;
-        if(f.preCallError)throw new DiscoveryFailure(f.preCallError);
+        if(f.preCallError){
+          if(f.concurrentWinner)Object.assign(f.run,{phase:'discovering',reserved_microusd:2500000});
+          throw new DiscoveryFailure(f.preCallError);
+        }
         try{await input.beforeCall()}catch(error){throw new DiscoveryFailure(error.message)}
         f.paidCalls++;
         if(f.failure)throw new DiscoveryFailure(f.failure.code,true,f.failure.costMicrousd,f.failure.diagnostics,f.failure.rejectedHttpStatus);
@@ -107,6 +130,8 @@ test('discovery server persists safe receipts without replaying a paid search', 
       paidCalls: 0,
       fenceAttempts: 0,
       estimate: 250000,
+      limits: { batch: 5000000, daily: 10000000, reserve: 0 },
+      dailyUsed: 0,
       selectedTopics: [{ id: 'topic-ai', name: '人工智能' }],
       publishableTopics: [{ id: 'topic-ai', title: '人工智能' }],
       updates: [],
@@ -298,6 +323,14 @@ test('discovery server persists safe receipts without replaying a paid search', 
           'zero is policy accounting, not a fabricated API cost',
         );
         assert.deepEqual(f.run.result, {
+          discoveryBudget: {
+            version: 1,
+            estimatedMicrousd: f.estimate,
+            batchLimitMicrousd: f.limits.batch,
+            dailyLimitMicrousd: f.limits.daily,
+            dailyUsedMicrousd: 0,
+            dailyRemainingMicrousd: f.limits.daily,
+          },
           discoveryRejection: { version: 1, httpStatus: status, accounting: 'request_rejected' },
         });
         assert.equal(f.paidCalls, 1);
@@ -343,6 +376,7 @@ test('discovery server persists safe receipts without replaying a paid search', 
         await assert.rejects(discoverSources('owner', f.run.id), new RegExp(code));
         assert.equal(f.run.status, 'failed');
         assert.equal(f.updates.at(-1).errorCode, code);
+        assert.equal(f.updates.at(-1).expectedPhase, 'preparing');
         assert.equal(f.run.charged_microusd, 0);
         assert.equal(f.run.cost_source, 'estimate');
         assert.equal(f.paidCalls, 0);
@@ -351,14 +385,48 @@ test('discovery server persists safe receipts without replaying a paid search', 
       });
     }
 
-    await t.test('budget rejection happens before any provider invocation', async () => {
-      const f = setup();
-      f.estimate = f.run.reserved_microusd + 1;
-      await assert.rejects(discoverSources('owner', f.run.id), /budget_exceeded/);
-      assert.equal(f.invocations, 0);
-      assert.equal(f.paidCalls, 0);
-      assert.equal(f.run.charged_microusd, 0);
-    });
+    await t.test(
+      'an estimate above the old reserve is admitted within approved limits',
+      async () => {
+        const f = setup();
+        f.estimate = 2500000;
+        await discoverSources('owner', f.run.id);
+        assert.equal(f.fenceArgs.estimateMicrousd, 2500000);
+        assert.equal(f.run.reserved_microusd, 2500000);
+        assert.equal(f.run.result.discoveryBudget.estimatedMicrousd, 2500000);
+        assert.equal(f.paidCalls, 1);
+      },
+    );
+
+    for (const [code, estimate, used] of [
+      ['discovery_batch_budget_exceeded', 5000001, 0],
+      ['discovery_daily_budget_exceeded', 2500000, 8000000],
+    ]) {
+      await t.test(`${code} preserves its budget explanation without calling AI`, async () => {
+        const f = setup();
+        f.estimate = estimate;
+        f.dailyUsed = used;
+        await assert.rejects(discoverSources('owner', f.run.id), new RegExp(code));
+        assert.equal(f.invocations, 1, 'the adapter may inspect the model catalog');
+        assert.equal(f.fenceAttempts, 1);
+        assert.equal(f.paidCalls, 0);
+        assert.equal(f.run.status, 'failed');
+        assert.equal(f.run.charged_microusd, 0);
+        assert.equal(f.run.cost_source, 'estimate');
+        assert.equal(f.run.error_code, code);
+        assert.equal(f.updates.length, 0, 'the atomic rejection is not settled a second time');
+        assert.deepEqual(f.run.result.discoveryBudget, {
+          version: 1,
+          estimatedMicrousd: estimate,
+          batchLimitMicrousd: f.limits.batch,
+          dailyLimitMicrousd: f.limits.daily,
+          dailyUsedMicrousd: used,
+          dailyRemainingMicrousd: f.limits.daily - used,
+        });
+        await assert.rejects(discoverSources('owner', f.run.id), /stale_attempt/);
+        assert.equal(f.paidCalls, 0);
+      });
+    }
 
     await t.test('a duplicate losing the fence cannot overwrite the original run', async () => {
       const f = setup();
@@ -369,6 +437,21 @@ test('discovery server persists safe receipts without replaying a paid search', 
       assert.equal(f.paidCalls, 0);
       assert.deepEqual(f.run.result, { existingReceipt: 'must-stay' });
     });
+
+    await t.test(
+      'a late preparation failure cannot settle a concurrent paid winner at zero',
+      async () => {
+        const f = setup();
+        f.preCallError = 'capability_failed';
+        f.concurrentWinner = true;
+        await assert.rejects(discoverSources('owner', f.run.id), /stale_attempt/);
+        assert.equal(f.run.status, 'running');
+        assert.equal(f.run.phase, 'discovering');
+        assert.equal(f.run.reserved_microusd, 2500000);
+        assert.equal(f.updates.length, 0);
+        assert.equal(f.paidCalls, 0, 'this losing execution does not call the provider');
+      },
+    );
 
     for (const searchEvidence of ['search_count', 'provider_url_citations']) {
       for (const costSource of ['provider', 'estimate']) {
