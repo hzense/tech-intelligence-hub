@@ -89,7 +89,7 @@ async function fixture(path, modules) {
           });
           builder.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path }) => ({
             contents: modules[path],
-            loader: 'js',
+            loader: 'ts',
             resolveDir: root,
           }));
         },
@@ -361,6 +361,10 @@ test('local due collection dispatches only newly queued runs and keeps disabled 
     process.env[`HZENSE_AUTOMATION_${key}_MICROUSD`] = '1000000';
   const service = await fixture('../lib/server/automation.ts', {
     'server-only': '',
+    './automation-limits': await readFile(
+      new URL('../lib/server/automation-limits.ts', import.meta.url),
+      'utf8',
+    ),
     '../../../../packages/database/src/automation-store.mjs': `${errorClass}
       export async function saveAutomationConfig(x){globalThis.${fixtureKey}.writes.push(x);return x.request}
       export async function deleteAutomationConfig(){throw Error('Unexpected delete')}
@@ -373,8 +377,7 @@ test('local due collection dispatches only newly queued runs and keeps disabled 
       export async function rejectInsightTopicsBeforeClaim(){throw Error('Unexpected insight rejection')}
       export async function rejectAutomaticPublicationBeforeClaim(){throw Error('Unexpected publish')}
       export async function publishAutomationInsight(args){globalThis.${fixtureKey}.publications.push(args);return args}`,
-    '../../../../packages/database/src/automation-contract.mjs':
-      'export const normalizeAutomationConfig=x=>x;',
+    '../../../../packages/database/src/automation-contract.mjs': `${errorClass}; export const normalizeAutomationConfig=x=>x;`,
     './automation-store-access': `export const automationConfigPool={kind:'config'},automationPool={kind:'execution'};
       export function automationStorageConfiguration(){}
       export function automationDatabaseConfiguration(reader){if(reader&&process.env.HZENSE_TOPIC_INSIGHTS_ENABLED!=='1')throw Error('not_configured')}

@@ -8,6 +8,7 @@ import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { assertAutomationRole } from '../src/automation-role.mjs';
 import {
   AutomationError,
+  AutomationBudgetError,
   saveAutomationConfig,
   enqueueAutomation,
   claimAutomationRun,
@@ -79,14 +80,22 @@ suite('automation role isolation and publication boundary', () => {
   // configuration/run fixtures; unrelated cases are never reset or backdated.
   async function withBudgetFixture(work) {
     const configIds = [];
-    const newConfig = async () => {
+    const newConfig = async (overrides = {}) => {
       const operator = `budget-${randomUUID()}`;
-      const config = await save(operator);
+      const config = await save(operator, overrides);
       configIds.push(config.id);
       return { operator, config };
     };
-    const queue = async () => {
-      const { operator, config } = await newConfig();
+    const queue = async ({ discovery = false } = {}) => {
+      const { operator, config } = await newConfig(
+        discovery
+          ? {}
+          : {
+              kind: 'topic_insight',
+              topicIds: ['topic-ai'],
+              discovery: undefined,
+            },
+      );
       const id = randomUUID();
       await enqueueAutomation({
         pool,
@@ -571,9 +580,10 @@ suite('automation role isolation and publication boundary', () => {
   it('settles a definite discovery refusal at zero, releases its reservation and prevents replay', async () => {
     await withBudgetFixture(async ({ queue }) => {
       const limits = { batch: 5000000, daily: 5000000, reserve: 5000000 };
-      const task = await queue();
+      const task = await queue({ discovery: true });
       const run = await claimAutomationRun({ pool, ...task, limits });
-      const attempt = { pool, ...task, token: run.lease_token };
+      expect(run.reserved_microusd).toBe(0);
+      const attempt = { pool, ...task, token: run.lease_token, estimateMicrousd: 5000000, limits };
       await beginSourceDiscovery(attempt);
       const result = {
         discoveryRejection: {
@@ -642,9 +652,10 @@ suite('automation role isolation and publication boundary', () => {
   ])('does not free budget for %s', async (_name, settlement, charged, source) => {
     await withBudgetFixture(async ({ queue }) => {
       const limits = { batch: 5000000, daily: 5000000, reserve: 5000000 };
-      const task = await queue();
+      const task = await queue({ discovery: true });
       const run = await claimAutomationRun({ pool, ...task, limits });
-      const attempt = { pool, ...task, token: run.lease_token };
+      expect(run.reserved_microusd).toBe(0);
+      const attempt = { pool, ...task, token: run.lease_token, estimateMicrousd: 5000000, limits };
       await beginSourceDiscovery(attempt);
       await updateAutomationRun({ ...attempt, ...settlement });
       expect(await readAutomationRun({ pool, ...task })).toMatchObject({
@@ -756,6 +767,352 @@ suite('automation role isolation and publication boundary', () => {
       }
     });
   });
+  it('admits discovery using its model estimate above the old fixed reservation', async () => {
+    await withBudgetFixture(async ({ queue }) => {
+      const task = await queue({ discovery: true });
+      const limits = { batch: 5000000, daily: 10000000, reserve: 1250000 };
+      const run = await claimAutomationRun({ pool, ...task, limits });
+      expect(run).toMatchObject({ status: 'running', phase: 'preparing', reserved_microusd: 0 });
+      const attempt = { pool, ...task, token: run.lease_token, estimateMicrousd: 2500000, limits };
+      expect(await beginSourceDiscovery(attempt)).toEqual({
+        version: 1,
+        estimatedMicrousd: 2500000,
+        batchLimitMicrousd: 5000000,
+        dailyLimitMicrousd: 10000000,
+        dailyUsedMicrousd: 0,
+        dailyRemainingMicrousd: 10000000,
+      });
+      expect(await readAutomationRun({ pool, ...task })).toMatchObject({
+        status: 'running',
+        phase: 'discovering',
+        reserved_microusd: 2500000,
+        charged_microusd: 0,
+      });
+      await expect(beginSourceDiscovery(attempt)).rejects.toThrow('stale_attempt');
+    });
+  });
+  it.each([
+    [5000001, 0, 'discovery_batch_budget_exceeded'],
+    [2500000, 8000000, 'discovery_daily_budget_exceeded'],
+  ])(
+    'refuses estimate %s against spend %s before consuming the paid fence',
+    async (estimateMicrousd, spent, code) => {
+      await withBudgetFixture(async ({ queue, record }) => {
+        if (spent) await record({ status: 'completed', charged: spent });
+        const task = await queue({ discovery: true });
+        const limits = { batch: 5000000, daily: 10000000, reserve: 1250000 };
+        const run = await claimAutomationRun({ pool, ...task, limits });
+        const before = await readAutomationRun({ pool, ...task });
+        const error = await beginSourceDiscovery({
+          pool,
+          ...task,
+          token: run.lease_token,
+          estimateMicrousd,
+          limits,
+        }).catch((error) => error);
+        expect(error).toBeInstanceOf(AutomationBudgetError);
+        expect(error).toMatchObject({
+          code,
+          budget: {
+            version: 1,
+            estimatedMicrousd: estimateMicrousd,
+            batchLimitMicrousd: 5000000,
+            dailyLimitMicrousd: 10000000,
+            dailyUsedMicrousd: spent,
+            dailyRemainingMicrousd: 10000000 - spent,
+          },
+        });
+        const refused = await readAutomationRun({ pool, ...task });
+        expect(refused).toMatchObject({
+          snapshot: before.snapshot,
+          status: 'failed',
+          phase: 'discovery_failed',
+          error_code: code,
+          charged_microusd: 0,
+          cost_source: 'estimate',
+          reserved_microusd: 0,
+          lease_token: null,
+          lease_until: null,
+          result: { discoveryBudget: error.budget },
+        });
+        expect(refused.finished_at).not.toBeNull();
+        await expect(
+          beginSourceDiscovery({
+            pool,
+            ...task,
+            token: run.lease_token,
+            estimateMicrousd: 1,
+            limits,
+          }),
+        ).rejects.toThrow('stale_attempt');
+        expect(await readAutomationRun({ pool, ...task })).toEqual(refused);
+      });
+    },
+  );
+  it.each([0, -1])(
+    'replaces an old preparing reservation from UTC day offset %s without double counting',
+    async (dayOffset) => {
+      await withBudgetFixture(async ({ queue, record }) => {
+        await record({ status: 'completed', charged: 7000000 });
+        const task = await queue({ discovery: true });
+        const run = await claimAutomationRun({ pool, ...task });
+        await owner.query(
+          "UPDATE public.automation_runs SET reserved_microusd=5000000,budget_day=(clock_timestamp() AT TIME ZONE 'UTC')::date+$2::integer WHERE id=$1",
+          [task.id, dayOffset],
+        );
+        const budget = await beginSourceDiscovery({
+          pool,
+          ...task,
+          token: run.lease_token,
+          estimateMicrousd: 3000000,
+          limits: { batch: 5000000, daily: 10000000 },
+        });
+        expect(budget.dailyUsedMicrousd).toBe(7000000);
+        expect(budget.dailyRemainingMicrousd).toBe(3000000);
+        expect(await readAutomationRun({ pool, ...task })).toMatchObject({
+          phase: 'discovering',
+          reserved_microusd: 3000000,
+        });
+        expect(
+          (
+            await owner.query(
+              "SELECT budget_day=(clock_timestamp() AT TIME ZONE 'UTC')::date AS current_day FROM public.automation_runs WHERE id=$1",
+              [task.id],
+            )
+          ).rows[0].current_day,
+        ).toBe(true);
+      });
+    },
+  );
+  it('checks discovery against current UTC usage when a preparing task crosses the budget day', async () => {
+    await withBudgetFixture(async ({ queue, record }) => {
+      await record({ status: 'completed', charged: 10000000, dayOffset: -1 });
+      await record({ status: 'completed', charged: 10000000, dayOffset: 1 });
+      await record({ status: 'completed', charged: 7500000 });
+      const task = await queue({ discovery: true });
+      const run = await claimAutomationRun({ pool, ...task });
+      await owner.query(
+        "UPDATE public.automation_runs SET budget_day=(clock_timestamp() AT TIME ZONE 'UTC')::date-1 WHERE id=$1",
+        [task.id],
+      );
+      const previous = (await adminRole.query('SHOW TimeZone')).rows[0].TimeZone;
+      const timezone = (
+        await adminRole.query(
+          "SELECT CASE WHEN (clock_timestamp() AT TIME ZONE 'UTC')::time < time '12:00' THEN 'Etc/GMT+12' ELSE 'Pacific/Kiritimati' END AS timezone",
+        )
+      ).rows[0].timezone;
+      await adminRole.query("SELECT set_config('TimeZone',$1,false)", [timezone]);
+      try {
+        const budget = await beginSourceDiscovery({
+          pool,
+          ...task,
+          token: run.lease_token,
+          estimateMicrousd: 2500000,
+          limits: { batch: 5000000, daily: 10000000 },
+        });
+        expect(budget.dailyUsedMicrousd).toBe(7500000);
+        expect(
+          (
+            await owner.query(
+              "SELECT budget_day=(clock_timestamp() AT TIME ZONE 'UTC')::date AS current_day FROM public.automation_runs WHERE id=$1",
+              [task.id],
+            )
+          ).rows[0].current_day,
+        ).toBe(true);
+      } finally {
+        await adminRole.query("SELECT set_config('TimeZone',$1,false)", [previous]);
+      }
+    });
+  });
+  it('serializes actual discovery estimates across owners at the paid fence', async () => {
+    await withBudgetFixture(async ({ queue }) => {
+      const tasks = [await queue({ discovery: true }), await queue({ discovery: true })];
+      const attempts = [];
+      for (const task of tasks) {
+        const run = await claimAutomationRun({ pool, ...task });
+        attempts.push({
+          ...task,
+          token: run.lease_token,
+          estimateMicrousd: 3000000,
+          limits: { batch: 5000000, daily: 5000000 },
+        });
+      }
+      const concurrentPool = new pg.Pool({ connectionString: url(roleNames[0]), max: 1 });
+      try {
+        const outcomes = await Promise.allSettled(
+          attempts.map((attempt, index) =>
+            beginSourceDiscovery({ pool: index === 0 ? pool : concurrentPool, ...attempt }),
+          ),
+        );
+        expect(outcomes.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+        const rejection = outcomes.find(({ status }) => status === 'rejected').reason;
+        expect(rejection).toBeInstanceOf(AutomationBudgetError);
+        expect(rejection).toMatchObject({
+          code: 'discovery_daily_budget_exceeded',
+          budget: { dailyUsedMicrousd: 3000000, dailyRemainingMicrousd: 2000000 },
+        });
+        const saved = [];
+        for (const task of tasks) saved.push(await readAutomationRun({ pool, ...task }));
+        expect(saved.map((row) => row.phase).sort()).toEqual(['discovering', 'discovery_failed']);
+        expect(saved.map((row) => row.reserved_microusd).sort()).toEqual([0, 3000000]);
+      } finally {
+        await concurrentPool.end();
+      }
+    });
+  });
+  it('shares the same budget lock between insight claims and discovery admission', async () => {
+    await withBudgetFixture(async ({ queue }) => {
+      const source = await queue({ discovery: true });
+      const insight = await queue();
+      const run = await claimAutomationRun({ pool, ...source });
+      const limits = { batch: 5000000, daily: 5000000, reserve: 3000000 };
+      const concurrentPool = new pg.Pool({ connectionString: url(roleNames[0]), max: 1 });
+      try {
+        const result = await Promise.allSettled([
+          beginSourceDiscovery({
+            pool,
+            ...source,
+            token: run.lease_token,
+            estimateMicrousd: 3000000,
+            limits,
+          }),
+          claimAutomationRun({ pool: concurrentPool, ...insight, limits }),
+        ]);
+        const admitted = result.filter((row) => row.status === 'fulfilled' && row.value !== null);
+        expect(admitted).toHaveLength(1);
+        const records = [
+          await readAutomationRun({ pool, ...source }),
+          await readAutomationRun({ pool, ...insight }),
+        ];
+        expect(records.reduce((sum, row) => sum + row.reserved_microusd, 0)).toBe(3000000);
+      } finally {
+        await concurrentPool.end();
+      }
+    });
+  });
+  it('atomically serializes a budget refusal against a competing admission of the same task', async () => {
+    await withBudgetFixture(async ({ queue }) => {
+      const task = await queue({ discovery: true });
+      const run = await claimAutomationRun({ pool, ...task });
+      const input = {
+        ...task,
+        token: run.lease_token,
+        limits: { batch: 5000000, daily: 10000000 },
+      };
+      const concurrentPool = new pg.Pool({ connectionString: url(roleNames[0]), max: 1 });
+      try {
+        const [refusal, admission] = await Promise.allSettled([
+          beginSourceDiscovery({ pool, ...input, estimateMicrousd: 5000001 }),
+          beginSourceDiscovery({ pool: concurrentPool, ...input, estimateMicrousd: 2500000 }),
+        ]);
+        const saved = await readAutomationRun({ pool, ...task });
+        if (admission.status === 'fulfilled') {
+          expect(refusal.reason.code).toBe('stale_attempt');
+          expect(saved).toMatchObject({
+            status: 'running',
+            phase: 'discovering',
+            reserved_microusd: 2500000,
+            cost_source: null,
+          });
+          expect(saved.lease_token).toBe(run.lease_token);
+        } else {
+          expect(refusal.reason).toBeInstanceOf(AutomationBudgetError);
+          expect(admission.reason.code).toBe('stale_attempt');
+          expect(saved).toMatchObject({
+            status: 'failed',
+            phase: 'discovery_failed',
+            reserved_microusd: 0,
+            charged_microusd: 0,
+            cost_source: 'estimate',
+            lease_token: null,
+          });
+        }
+      } finally {
+        await concurrentPool.end();
+      }
+    });
+  });
+  it('does not let an earlier pre-call failure overwrite an admitted discovery task', async () => {
+    await withBudgetFixture(async ({ queue }) => {
+      const task = await queue({ discovery: true });
+      const run = await claimAutomationRun({ pool, ...task });
+      const attempt = { pool, ...task, token: run.lease_token };
+      await beginSourceDiscovery({
+        ...attempt,
+        estimateMicrousd: 2500000,
+        limits: { batch: 5000000, daily: 10000000 },
+      });
+      const before = await readAutomationRun({ pool, ...task });
+      await expect(
+        updateAutomationRun({
+          ...attempt,
+          expectedPhase: 'preparing',
+          phase: 'discovery_failed',
+          status: 'failed',
+          errorCode: 'profile_not_ready',
+          costMicrousd: 0,
+          costSource: 'estimate',
+          result: {},
+        }),
+      ).rejects.toThrow('stale_attempt');
+      expect(await readAutomationRun({ pool, ...task })).toEqual(before);
+    });
+  });
+  it('settles a genuine pre-call failure only while the task is still preparing', async () => {
+    await withBudgetFixture(async ({ queue }) => {
+      const task = await queue({ discovery: true });
+      const run = await claimAutomationRun({ pool, ...task });
+      await updateAutomationRun({
+        pool,
+        ...task,
+        token: run.lease_token,
+        expectedPhase: 'preparing',
+        phase: 'discovery_failed',
+        status: 'failed',
+        errorCode: 'profile_not_ready',
+        costMicrousd: 0,
+        costSource: 'estimate',
+        result: {},
+      });
+      expect(await readAutomationRun({ pool, ...task })).toMatchObject({
+        status: 'failed',
+        phase: 'discovery_failed',
+        reserved_microusd: 0,
+        charged_microusd: 0,
+        cost_source: 'estimate',
+        lease_token: null,
+      });
+    });
+  });
+  it.each([
+    ['expired', "lease_until=clock_timestamp()-interval '1 second'"],
+    ['paid phase', "phase='discovering'"],
+    ['charged preparing task', 'charged_microusd=1'],
+    ['settled preparing task', "cost_source='provider'"],
+    ['missing discovery', "snapshot=snapshot-'discovery'"],
+    ['null discovery', "snapshot=jsonb_set(snapshot,'{discovery}','null')"],
+    ['wrong kind', "snapshot=jsonb_set(snapshot,'{kind}','\"topic_insight\"')"],
+  ])('does not admit %s or release its historical reservation', async (_label, mutation) => {
+    await withBudgetFixture(async ({ queue }) => {
+      const task = await queue({ discovery: true });
+      const run = await claimAutomationRun({ pool, ...task });
+      await owner.query(
+        `UPDATE public.automation_runs SET reserved_microusd=1250000,${mutation} WHERE id=$1`,
+        [task.id],
+      );
+      const before = await readAutomationRun({ pool, ...task });
+      await expect(
+        beginSourceDiscovery({
+          pool,
+          ...task,
+          token: run.lease_token,
+          estimateMicrousd: 2500000,
+          limits: { batch: 5000000, daily: 10000000 },
+        }),
+      ).rejects.toThrow('stale_attempt');
+      expect(await readAutomationRun({ pool, ...task })).toEqual(before);
+    });
+  });
   it('discovery fences paid execution, preserves receipts and keeps source results private', async () => {
     const pool = {
       connect: async () => ({ query: (...args) => adminRole.query(...args), release() {} }),
@@ -792,9 +1149,16 @@ suite('automation role isolation and publication boundary', () => {
       id,
       limits: { batch: 1000000, daily: 5000000, reserve: 500000 },
     });
-    expect(run.reserved_microusd).toBe(500000);
+    expect(run.reserved_microusd).toBe(0);
     expect(await claimAutomationRun({ pool, owner: operator, id, limits: {} })).toBeNull();
-    const args = { pool, owner: operator, id, token: run.lease_token };
+    const args = {
+      pool,
+      owner: operator,
+      id,
+      token: run.lease_token,
+      estimateMicrousd: 500000,
+      limits: { batch: 1000000, daily: 5000000 },
+    };
     await beginSourceDiscovery(args);
     await expect(beginSourceDiscovery(args)).rejects.toThrow('stale_attempt');
     await expect(beginSourceDiscovery({ ...args, owner: 'another-owner' })).rejects.toThrow(
@@ -1070,7 +1434,11 @@ suite('automation role isolation and publication boundary', () => {
     async (_label, costSource, expectedBudget) => {
       const operator = `finished-unknown-${randomUUID()}`;
       const config = await save(operator, { publicationMode: 'automatic' });
-      const probeConfig = await save(`${operator}-probe`);
+      const probeConfig = await save(`${operator}-probe`, {
+        kind: 'topic_insight',
+        topicIds: ['topic-ai'],
+        discovery: undefined,
+      });
       const probeId = randomUUID();
       const id = randomUUID();
       const generationIds = [randomUUID(), randomUUID()];

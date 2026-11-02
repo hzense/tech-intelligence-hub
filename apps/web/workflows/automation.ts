@@ -111,6 +111,7 @@ export async function automationWorkflow(owner: string, id: string) {
   }
   try {
     const urls = await findSources(owner, run.id);
+    if (urls === null) return 'already_started_or_finished';
     if (!urls.length) {
       await finishSourceRun(owner, run.id, run.lease_token!, {
         generationIds: [],
@@ -254,7 +255,7 @@ async function claim(owner: string, id: string) {
     pool: automationPool,
     owner,
     id,
-    limits: automationLimits(),
+    limits: automationLimits(pending.snapshot.kind),
   });
   return run ? { id: run.id, kind: run.snapshot.kind, lease_token: run.lease_token, local } : null;
 }
@@ -266,7 +267,15 @@ async function findSources(owner: string, id: string) {
   // policy and execution capability before crossing the paid discovery fence.
   const run = await store.readAutomationRun({ pool: automationPool, owner, id });
   assertLocalAutomationRun(run, 'source_collection');
-  return discoverSources(owner, id);
+  try {
+    return await discoverSources(owner, id);
+  } catch (error) {
+    // Handle a lost fence/CAS inside the step. Workflow wraps thrown errors,
+    // while a null result survives serialization and cannot trigger cleanup of
+    // another execution's state and budget reservation.
+    if (error instanceof Error && error.message === 'stale_attempt') return null;
+    throw error;
+  }
 }
 findSources.maxRetries = 0;
 async function createSourceBatch(

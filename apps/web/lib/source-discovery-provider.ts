@@ -211,6 +211,9 @@ export function createDiscoveryInvoker(
           'provider_rejected',
           'timeout',
           'stale_attempt',
+          'discovery_batch_budget_exceeded',
+          'discovery_daily_budget_exceeded',
+          'not_configured',
         ].includes(error.message)
           ? error.message
           : 'discovery_unavailable';

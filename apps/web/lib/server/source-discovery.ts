@@ -8,6 +8,7 @@ import { unavailableDiscoveryTopics } from '../source-discovery-topics';
 import { editorialTopicOptions } from './editorial-topics';
 import { readAiBackendConfiguration } from '../admin-ai-core';
 import { automationPool } from './automation-store-access';
+import { automationLimits } from './automation-limits';
 import * as store from '../../../../packages/database/src/automation-store.mjs';
 import { normalizeAutomationConfig } from '../../../../packages/database/src/automation-contract.mjs';
 import {
@@ -24,6 +25,8 @@ export async function discoverSources(owner: string, id: string): Promise<string
   if (!config.discovery) return config.sourceUrls;
   if (run.phase !== 'preparing') throw new Error('stale_attempt');
   let admitted = false;
+  let budget: store.AutomationDiscoveryBudget | undefined;
+  let budgetRejected = false;
   let missingTopics: Array<{ id: string; name: string }> = [];
   let receipt: Awaited<ReturnType<typeof invokeSourceDiscovery>> | undefined;
   try {
@@ -40,7 +43,8 @@ export async function discoverSources(owner: string, id: string): Promise<string
     // not silently replaced by the narrower enabled catalog.
     missingTopics = unavailableDiscoveryTopics(selected, publishableTopics);
     if (missingTopics.length) throw new Error('discovery_topics_not_ready');
-    if (discoveryEstimate(access) > run.reserved_microusd) throw new Error('budget_exceeded');
+    const estimateMicrousd = discoveryEstimate(access);
+    const limits = automationLimits('source_collection');
     const completion = await invokeSourceDiscovery({
       access,
       config,
@@ -53,12 +57,27 @@ export async function discoverSources(owner: string, id: string): Promise<string
       ],
       allowedHosts: readAiBackendConfiguration(process.env).allowedHosts,
       beforeCall: async () => {
-        await store.beginSourceDiscovery({
-          pool: automationPool,
-          owner,
-          id,
-          token: run.lease_token!,
-        });
+        try {
+          // Reserve this model's estimate under the shared daily-budget lock,
+          // atomically with the one-way paid-call fence. A fixed insight reserve
+          // must not silently become a smaller collection budget.
+          budget = await store.beginSourceDiscovery({
+            pool: automationPool,
+            owner,
+            id,
+            token: run.lease_token!,
+            estimateMicrousd,
+            limits,
+          });
+        } catch (error) {
+          // The provider adapter wraps errors; capture only typed, safe budget
+          // numbers before that wrapper so a refusal remains actionable.
+          if (error instanceof store.AutomationBudgetError) {
+            budget = error.budget;
+            budgetRejected = true;
+          }
+          throw error;
+        }
         admitted = true;
       },
     });
@@ -80,6 +99,7 @@ export async function discoverSources(owner: string, id: string): Promise<string
       token: run.lease_token,
       phase: 'sources_discovered',
       result: {
+        ...(budget ? { discoveryBudget: budget } : {}),
         discovery: completion.result,
         discoveryDiagnostics: completion.diagnostics,
         discoveryCostMicrousd: completion.costMicrousd,
@@ -88,6 +108,9 @@ export async function discoverSources(owner: string, id: string): Promise<string
     });
     return completion.result.articles.map((article) => article.url);
   } catch (error) {
+    // Budget refusals are already final, including $0 settlement, in the same
+    // transaction that checked admission. Never write a second outcome.
+    if (budgetRejected) throw error;
     // Do not overwrite another execution's receipt when a duplicate fails its fence.
     if (error instanceof Error && error.message === 'stale_attempt') throw error;
     const called = admitted || (error instanceof DiscoveryFailure && error.called);
@@ -114,6 +137,9 @@ export async function discoverSources(owner: string, id: string): Promise<string
         'provider_rejected',
         'timeout',
         'budget_exceeded',
+        'discovery_batch_budget_exceeded',
+        'discovery_daily_budget_exceeded',
+        'not_configured',
         'discovery_topic_invalid',
         'discovery_topics_not_ready',
         'profile_not_ready',
@@ -128,6 +154,7 @@ export async function discoverSources(owner: string, id: string): Promise<string
       token: run.lease_token,
       phase: rejectedWithoutCharge ? 'discovery_rejected' : 'discovery_failed',
       result: {
+        ...(budget ? { discoveryBudget: budget } : {}),
         ...(missingTopics.length ? { discoveryMissingTopics: missingTopics } : {}),
         ...(receipt
           ? {
@@ -151,6 +178,7 @@ export async function discoverSources(owner: string, id: string): Promise<string
       },
       status: called && cost === null && !rejectedWithoutCharge ? 'unknown' : 'failed',
       errorCode: code,
+      ...(!called ? { expectedPhase: 'preparing' as const } : {}),
       ...(cost !== null
         ? { costMicrousd: cost, costSource: receipt?.costSource ?? ('provider' as const) }
         : !called || rejectedWithoutCharge

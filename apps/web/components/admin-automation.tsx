@@ -18,6 +18,7 @@ import { automationSourceFailureItems } from '../lib/automation-source-failures'
 import { readAutomationSourceFallbacks } from '../lib/automation-source-fallbacks';
 import { parseImportRecoveryBatchId } from '../lib/import-recovery';
 import { discoveryMissingTopicNames } from '../lib/source-discovery-topics';
+import { discoveryBudgetItems } from '../lib/source-discovery-budget-presentation';
 import controls from './admin-controls.module.css';
 import {
   automationGenerationIds,
@@ -73,7 +74,11 @@ const errors: Record<string, string> = {
   config_deletion_unavailable: '删除功能尚未完成数据库升级和权限核验；现有配置仍可保存。',
   not_found: '配置不存在或已被删除，请刷新列表核对。',
   commit_unknown: '操作提交结果未确认，请刷新列表核对，不要新建替代配置。',
-  budget_exceeded: '今日或单次预算不足，任务未启动。',
+  budget_exceeded: '预算校验未通过；此记录未区分单次限制、预留不足或当日余额，请核对原任务。',
+  discovery_batch_budget_exceeded:
+    '本次采集预估费用超过单次预算上限，已在调用 AI 前停止；请查看预算详情。',
+  discovery_daily_budget_exceeded:
+    '当日可用余额不足以预留本次采集费用，已在调用 AI 前停止；请查看预算详情。',
   profile_not_ready: '所选模型配置未就绪。',
   source_url_invalid: '来源链接格式或地址不符合导入规则。',
   discovery_input_too_large: '本次检索范围或排除提示过长，未调用 AI；请缩小关键词范围后重试。',
@@ -136,6 +141,15 @@ async function api<T>(body?: unknown, signal?: AbortSignal, id?: string): Promis
 }
 const money = (microusd: number) => `$${(microusd / 1_000_000).toFixed(4)}`;
 function RunCost({ row }: { row: RunView }) {
+  const stoppedBeforeCall =
+    row.snapshot.kind === 'source_collection' &&
+    row.status === 'failed' &&
+    row.phase === 'discovery_failed' &&
+    ['discovery_batch_budget_exceeded', 'discovery_daily_budget_exceeded'].includes(
+      row.error_code ?? '',
+    ) &&
+    row.charged_microusd === 0 &&
+    row.cost_source === 'estimate';
   const rejectedWithoutCharge =
     row.snapshot.kind === 'source_collection' &&
     row.status === 'failed' &&
@@ -146,7 +160,9 @@ function RunCost({ row }: { row: RunView }) {
   return (
     <>
       {money(row.charged_microusd)}
-      {rejectedWithoutCharge ? (
+      {stoppedBeforeCall ? (
+        <small>调用前停止，未计费</small>
+      ) : rejectedWithoutCharge ? (
         <small>请求拒绝，未计费</small>
       ) : row.cost_source === 'reserve' ? (
         <>
@@ -354,6 +370,7 @@ function SourceResult({
   const ids = automationGenerationIds(result);
   const diagnostics = discoveryDiagnosticItems(result.discoveryDiagnostics);
   const missingTopics = discoveryMissingTopicNames(result.discoveryMissingTopics);
+  const budget = discoveryBudgetItems(result.discoveryBudget);
   const validation = discoveryValidationItems(discovery?.validation);
   const missingRejectionReasons =
     typeof discovery?.rejected === 'number' &&
@@ -372,6 +389,17 @@ function SourceResult({
     searchRequests >= 0;
   return (
     <div className={styles.report}>
+      {!summaryOnly && budget.length ? (
+        <details>
+          <summary>查看采集预算详情</summary>
+          <ul>
+            {budget.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <p>以上为检查时的 UTC 日预算快照；预估与占用不是供应商账单，也不代表当前余额。</p>
+        </details>
+      ) : null}
       {!summaryOnly && missingTopics.length ? (
         <p>尚未启用的领域：{missingTopics.join('、')}。本次未调用 AI，采集范围没有缩小。</p>
       ) : null}

@@ -1,4 +1,6 @@
 import 'server-only';
+import { automationLimits } from './automation-limits';
+export { automationLimits } from './automation-limits';
 import * as store from '../../../../packages/database/src/automation-store.mjs';
 import {
   normalizeAutomationConfig,
@@ -63,7 +65,7 @@ export function automationExecutionReadiness(kind: AutomationConfig['kind']) {
   const checks = [
     check('storage', automationStorageConfigured),
     check('execution', automationConfigured),
-    check('budget', automationLimits),
+    check('budget', () => automationLimits(kind)),
     ...(kind === 'source_collection'
       ? [check('import', importsConfigured), check('generation', generationConfigured)]
       : []),
@@ -83,22 +85,6 @@ function assertPublicationConfiguration(config: AutomationConfig) {
     !automaticPublicationAvailable(process.env)
   )
     throw new store.AutomationError('automatic_publication_unavailable');
-}
-export function automationLimits() {
-  const limits = {
-    batch: Number(process.env.HZENSE_AUTOMATION_BATCH_LIMIT_MICROUSD),
-    daily: Number(process.env.HZENSE_AUTOMATION_DAILY_LIMIT_MICROUSD),
-    reserve: Number(process.env.HZENSE_AUTOMATION_RESERVE_MICROUSD),
-  };
-  if (
-    Object.values(limits).some(
-      (value) => !Number.isSafeInteger(value) || value < 1 || value > 50000000,
-    ) ||
-    limits.batch > limits.daily ||
-    limits.reserve > limits.batch
-  )
-    throw new store.AutomationError('not_configured');
-  return limits;
 }
 export async function automationDashboard(owner: string) {
   const state = await store.readAutomationDashboard({ pool: automationConfigPool, owner });
@@ -298,7 +284,6 @@ async function dispatch(owner: string, id: string) {
 }
 export async function triggerAutomation(owner: string, request: store.TriggerAutomationRequest) {
   if (!automationConfigured()) throw new store.AutomationError('execution_disabled');
-  automationLimits();
   const result = await store.enqueueAutomation({
     pool: automationPool,
     owner,
