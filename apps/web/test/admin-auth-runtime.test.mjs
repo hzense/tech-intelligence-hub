@@ -124,7 +124,7 @@ test(
     await t.test(
       'Neon usage page and API require admin auth, preserve missing data, and isolate scheduled access',
       async () => {
-        const path = '/admin/neon-usage';
+        const path = '/admin/dashboard';
         const apiPath = '/api/admin/neon-usage';
         const cookie = await encryptedCookie(token);
         const anonymousPage = await request(path);
@@ -144,6 +144,9 @@ test(
         assert.match(page.headers.get('cache-control'), /no-store/);
         const html = await page.text();
         assert.match(html, /运营仪表盘/);
+        const legacy = await request('/admin/neon-usage', { headers: { cookie } });
+        assert.equal(legacy.status, 308);
+        assert.equal(new URL(legacy.headers.get('location'), origin).pathname, path);
         assert.match(html, /监控尚未配置完成/);
         assert.match(html, /暂无数据/);
         assert.doesNotMatch(html, />0 B</);
@@ -256,7 +259,7 @@ test(
                 fullPage: true,
               });
             }
-            await page.goto(`${origin}/admin/neon-usage`);
+            await page.goto(`${origin}/admin/dashboard`);
             await page
               .getByRole('heading', { name: '运营仪表盘', exact: true, level: 1 })
               .waitFor();
