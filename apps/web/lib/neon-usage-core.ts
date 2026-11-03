@@ -209,44 +209,35 @@ export function neonUsageDays(history: NeonUsageHistory | null, now: Date): Neon
   return Array.from({ length: 30 }, (_, index) => {
     const date = shiftDate(today, index - 29);
     const start = berlinUsageMidnight(date);
-    const end = Math.min(berlinUsageMidnight(shiftDate(date, 1)), now.getTime());
+    const end = berlinUsageMidnight(shiftDate(date, 1));
     const inside = samples.filter(
-      (s) => Date.parse(s.sampledAt) >= start && Date.parse(s.sampledAt) <= end,
+      (s) => Date.parse(s.sampledAt) >= start && Date.parse(s.sampledAt) < end,
     );
-    const first = nearest(start) ?? inside[0];
-    const last = nearest(end) ?? inside.at(-1);
+    const unavailable = {
+      date,
+      bytes: null,
+      status: inside.length ? ('partial' as const) : ('missing' as const),
+      samples: inside.length,
+    };
+    // Settle only closed Berlin dates, using the two midnight counter baselines.
+    // Daytime observations are optional: a cumulative counter needs no hourly chain.
+    if (date === today) return unavailable;
+    const first = nearest(start);
+    const last = nearest(end);
     if (!first || !last || Date.parse(last.sampledAt) <= Date.parse(first.sampledAt))
-      return {
-        date,
-        bytes: null,
-        status: inside.length ? 'partial' : 'missing',
-        samples: inside.length,
-      };
+      return unavailable;
     const range = samples.filter(
       (s) =>
         Date.parse(s.sampledAt) >= Date.parse(first.sampledAt) &&
         Date.parse(s.sampledAt) <= Date.parse(last.sampledAt),
     );
-    let bytes = 0,
-      valid = 0;
-    let corrected = false;
-    let complete = Boolean(nearest(start) && nearest(end));
-    for (let i = 1; i < range.length; i++) {
-      const previous = range[i - 1]!,
-        current = range[i]!;
-      const gap = Date.parse(current.sampledAt) - Date.parse(previous.sampledAt);
-      if (samePeriod(previous, current) && current.bytes < previous.bytes) corrected = true;
-      if (!samePeriod(previous, current) || current.bytes < previous.bytes || gap > 3 * hour) {
-        complete = false;
-        continue; // Never assign a multi-day gap or a counter reset to one day's traffic.
-      }
-      bytes += current.bytes - previous.bytes;
-      valid++;
-    }
+    // Never subtract across a billing reset or an observed provider correction.
+    if (range.some((s, i) => !samePeriod(first, s) || (i > 0 && s.bytes < range[i - 1]!.bytes)))
+      return unavailable;
     return {
       date,
-      bytes: valid && !corrected ? bytes : null,
-      status: complete && valid && !corrected ? 'estimated' : 'partial',
+      bytes: last.bytes - first.bytes,
+      status: 'estimated' as const,
       samples: inside.length,
     };
   });
@@ -267,6 +258,11 @@ export function makeNeonUsageDashboard(options: {
   const totalBytes = currentPeriod ? latest.bytes : null;
   const quotaBytes = options.quotaBytes ?? null;
   const quotaPercent = quotaBytes && totalBytes !== null ? (totalBytes / quotaBytes) * 100 : null;
+  const todayStart = berlinUsageMidnight(berlinUsageDate(options.now));
+  const expectedBoundary =
+    options.now.getTime() >= todayStart + 1.5 * hour
+      ? todayStart
+      : berlinUsageMidnight(shiftDate(berlinUsageDate(options.now), -1));
   return {
     configured: !options.missing?.length,
     missing: options.missing ?? [],
@@ -275,7 +271,7 @@ export function makeNeonUsageDashboard(options: {
     projectId: options.projectId,
     sampledAt: latest?.sampledAt ?? null,
     stale:
-      !latest || !currentPeriod || options.now.getTime() - Date.parse(latest.sampledAt) > 3 * hour,
+      !latest || !currentPeriod || Date.parse(latest.sampledAt) < expectedBoundary - 1.5 * hour,
     totalBytes,
     quotaBytes,
     quotaPercent,

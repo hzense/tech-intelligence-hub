@@ -300,7 +300,7 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
       ) : null}
       {dashboard.stale && hasHistory ? (
         <p className={styles.warning} role="status">
-          最近采样已过期，请检查定时采样任务。以下数值未包含最近一段时间的变化。
+          最近采样已过期，请检查每日零点采样任务。以下数值仅截至上次成功采样。
         </p>
       ) : null}
       {dashboard.alert !== 'none' ? (
@@ -319,11 +319,9 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
           <dd className={styles.metricNote}>截至最近成功采样 · 全部分支</dd>
         </div>
         <div className={styles.metric}>
-          <dt>今日流量估算</dt>
-          <dd>{formatUsageBytes(today?.bytes ?? null)}</dd>
-          <dd className={styles.metricNote}>
-            {today ? dayLabels[today.status] : '缺少采样'} · 今日尚未结束
-          </dd>
+          <dt>今日流量</dt>
+          <dd>待结算</dd>
+          <dd className={styles.metricNote}>次日 00:00 结算 · 柏林时间</dd>
         </div>
         <div className={styles.metric}>
           <dt>昨日流量估算</dt>
@@ -386,7 +384,7 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
                   <div
                     key={day.date}
                     className={styles.chartColumn}
-                    title={`${day.date}：${formatUsageBytes(day.bytes)}（${dayLabels[day.status]}）`}
+                    title={`${day.date}：${formatUsageBytes(day.bytes)}（${day.date === today?.date ? '待结算' : dayLabels[day.status]}）`}
                   >
                     <div className={styles.barArea}>
                       <span
@@ -434,7 +432,9 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
             </span>
           </div>
           {!hasHistory ? (
-            <p className={styles.empty}>尚无采样记录。首次采样建立基线，后续采样才能计算增量。</p>
+            <p className={styles.empty}>
+              尚无采样记录。首次采样建立基线，取得连续两日零点附近的样本后才能结算日流量。
+            </p>
           ) : null}
         </section>
         <aside
@@ -482,7 +482,8 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
               : '等待有效账期信息'}
           </p>
           <p className={styles.sideNote}>
-            采样最短间隔 15 分钟；页面不自动轮询。供应商指标可能延迟约一小时。
+            每天柏林时间 00:00 采样并结算上一日；调度与供应商指标可能延迟。手动采样最短间隔 15
+            分钟。
           </p>
         </aside>
       </div>
@@ -526,7 +527,7 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
                   <td>{day.samples}</td>
                   <td>
                     <span className={`${styles.dayStatus} ${styles[`${day.status}Text`]}`}>
-                      {dayLabels[day.status]}
+                      {day.date === today?.date ? '待结算' : dayLabels[day.status]}
                     </span>
                   </td>
                 </tr>
@@ -538,7 +539,8 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
       <details className={styles.method}>
         <summary>数据口径与采样说明</summary>
         <p>
-          按柏林日期边界附近的采样估算增量，采样时间不是供应商计费时间。缺少采样时保留空缺；“部分时段”不能视为完整一天的流量。
+          每天柏林时间 00:00 结算刚结束的上一日，以相邻两日零点前后 90
+          分钟内的累计值之差估算流量。采样时间不是供应商计费时间；缺少边界样本或跨账期重置时保留空缺，不把多天流量归到一天。
         </p>
         <p>
           本页监控配置所指向的 Neon 云项目，包含项目各分支的累计出站流量，不是本机 PostgreSQL

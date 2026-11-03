@@ -101,15 +101,27 @@ test('no history and one first snapshot never fabricate daily zero or historical
   assert.equal(view.days.at(-1).bytes, null);
 });
 
-test('known hourly deltas form daily estimate and observed unchanged counters may be zero', () => {
+test('closed day settles from two midnight counters without hourly samples; today stays pending', () => {
   const start = berlinUsageMidnight('2026-11-02');
-  const samples = Array.from({ length: 14 }, (_, i) => sample(start + i * hour, 1000 + i * 25));
-  const current = day(samples, '2026-11-02');
-  assert.equal(current.status, 'estimated');
-  assert.equal(current.bytes, 325);
+  const end = berlinUsageMidnight('2026-11-03');
+  const samples = [sample(start, 1000), sample(end, 1325)];
+  const settled = day(samples, '2026-11-02', new Date(end));
+  assert.equal(settled.status, 'estimated');
+  assert.equal(settled.bytes, 325);
   const unchanged = samples.map((s) => ({ ...s, bytes: 1000 }));
-  assert.equal(day(unchanged, '2026-11-02').bytes, 0);
-  assert.equal(day(unchanged, '2026-11-02').status, 'estimated');
+  assert.equal(day(unchanged, '2026-11-02', new Date(end)).bytes, 0);
+  assert.equal(day(samples, '2026-11-02', new Date(end - 1)).bytes, null);
+  assert.equal(day(samples, '2026-11-03', new Date(end + 12 * hour)).bytes, null);
+});
+
+test('midnight scheduling delay is bounded and a missing midnight cannot become multi-day usage', () => {
+  const start = berlinUsageMidnight('2026-11-02');
+  const end = berlinUsageMidnight('2026-11-03');
+  const at = new Date(end + 5 * hour);
+  assert.equal(day([sample(start + hour, 10), sample(end + hour, 30)], '2026-11-02', at).bytes, 20);
+  assert.equal(day([sample(start + 2 * hour, 10), sample(end, 30)], '2026-11-02', at).bytes, null);
+  assert.equal(day([sample(start, 10), sample(end + 2 * hour, 30)], '2026-11-02', at).bytes, null);
+  assert.equal(day([sample(start - 24 * hour, 10), sample(end, 30)], '2026-11-02', at).bytes, null);
 });
 
 test('Berlin daily boundaries handle DST days of 23 and 25 hours', () => {
@@ -120,9 +132,7 @@ test('Berlin daily boundaries handle DST days of 23 and 25 hours', () => {
     const start = berlinUsageMidnight(date);
     const end = berlinUsageMidnight(next);
     assert.equal((end - start) / hour, hours);
-    const samples = Array.from({ length: hours + 1 }, (_, i) =>
-      sample(start + i * hour, i * 100, month),
-    );
+    const samples = [sample(start, 0, month), sample(end, hours * 100, month)];
     const row = day(samples, date, new Date(end + 4 * hour));
     assert.equal(row.status, 'estimated');
     assert.equal(row.bytes, hours * 100);
@@ -136,17 +146,28 @@ test('month rollover and decreasing counters are partial and do not subtract acr
     sample('2026-11-01T00:00:00Z', 10),
     sample('2026-11-01T01:00:00Z', 25),
   ];
-  const row = day(samples, '2026-11-01', new Date('2026-11-01T01:00:00Z'));
+  const row = day(samples, '2026-11-01', new Date('2026-11-02T01:00:00Z'));
   assert.equal(row.status, 'partial');
-  assert.equal(row.bytes, 15);
-  const decreasing = [sample('2026-11-02T10:00:00Z', 100), sample('2026-11-02T11:00:00Z', 80)];
-  assert.equal(day(decreasing, '2026-11-02').status, 'partial');
-  assert.equal(day(decreasing, '2026-11-02').bytes, null);
-  // A correction followed by recovery must not manufacture positive traffic.
-  assert.equal(day([...decreasing, sample('2026-11-02T12:00:00Z', 100)], '2026-11-02').bytes, null);
+  assert.equal(row.bytes, null);
+  assert.equal(
+    day(
+      [...samples, sample('2026-11-01T23:00:00Z', 50)],
+      '2026-11-01',
+      new Date('2026-11-02T01:00:00Z'),
+    ).bytes,
+    null,
+  );
+  const decreasing = [
+    sample('2026-11-01T23:00:00Z', 100),
+    sample('2026-11-02T10:00:00Z', 80),
+    sample('2026-11-02T23:00:00Z', 100),
+  ];
+  const closed = new Date('2026-11-03T01:00:00Z');
+  assert.equal(day(decreasing, '2026-11-02', closed).status, 'partial');
+  assert.equal(day(decreasing, '2026-11-02', closed).bytes, null);
 });
 
-test('missed hours and future observations cannot be turned into a full daily count', () => {
+test('non-boundary and future observations cannot be turned into a settled daily count', () => {
   const samples = [
     sample('2026-11-01T10:00:00Z', 100),
     sample('2026-11-02T10:00:00Z', 500),
@@ -155,7 +176,7 @@ test('missed hours and future observations cannot be turned into a full daily co
   ];
   const row = day(samples, '2026-11-02');
   assert.equal(row.status, 'partial');
-  assert.equal(row.bytes, 20);
+  assert.equal(row.bytes, null);
   const view = makeNeonUsageDashboard({ history: history(samples), now, projectId });
   assert.equal(view.totalBytes, 520);
   assert.equal(view.sampledAt, '2026-11-02T11:00:00.000Z');
@@ -186,7 +207,9 @@ test('quota and freshness remain independent of daily baselines and reset at per
   assert.equal(make(900).alert, 'critical');
   assert.ok(Math.abs(make(1100).quotaPercent - 110) < 0.000001);
   assert.equal(make(500).stale, false);
-  assert.equal(make(500, new Date('2026-11-02T16:00:00Z')).stale, true);
+  assert.equal(make(500, new Date('2026-11-02T16:00:00Z')).stale, false);
+  assert.equal(make(500, new Date('2026-11-02T23:30:00Z')).stale, false);
+  assert.equal(make(500, new Date('2026-11-03T01:00:00Z')).stale, true);
   const expired = make(900, new Date('2026-12-01T00:00:00Z'));
   assert.equal(expired.totalBytes, null);
   assert.equal(expired.quotaPercent, null);

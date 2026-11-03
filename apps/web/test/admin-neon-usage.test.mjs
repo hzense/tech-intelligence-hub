@@ -89,7 +89,7 @@ function dashboard(overrides = {}) {
       const date = new Date(Date.UTC(2026, 9, 4 + index)).toISOString().slice(0, 10);
       if (index === 27) return { date, bytes: 0, status: 'estimated', samples: 24 };
       if (index === 28) return { date, bytes: 14_200_000, status: 'estimated', samples: 24 };
-      if (index === 29) return { date, bytes: 3_800_000, status: 'partial', samples: 4 };
+      if (index === 29) return { date, bytes: null, status: 'partial', samples: 4 };
       return { date, bytes: null, status: 'missing', samples: 0 };
     }),
     ...overrides,
@@ -102,12 +102,12 @@ test('usage dashboard distinguishes missing data, partial estimates, and observe
   const html = render(dashboard());
   assert.match(html, /<h1>运营仪表盘<\/h1>/);
   assert.match(html, /360\.69 MB/);
-  assert.match(html, /3\.80 MB/);
+  assert.match(html, /<dt>今日流量<\/dt><dd>待结算<\/dd>/);
   assert.match(html, /<dt>昨日流量估算<\/dt><dd>14\.20 MB<\/dd>/);
   assert.match(html, /<dt>账期剩余额度<\/dt><dd>4\.64 GB<\/dd>/);
   assert.match(html, /<td>暂无数据<\/td><td>0<\/td><td><span[^>]*>缺少采样<\/span><\/td>/);
   assert.match(html, /<td>0 B<\/td><td>24<\/td><td><span[^>]*>估算<\/span><\/td>/);
-  assert.match(html, /<td>3\.80 MB<\/td><td>4<\/td><td><span[^>]*>部分时段<\/span><\/td>/);
+  assert.match(html, /<td>暂无数据<\/td><td>4<\/td><td><span[^>]*>待结算<\/span><\/td>/);
   assert.match(html, /2026\/11\/02 19:00/);
   assert.match(html, /采样时间不是供应商计费时间/);
   assert.match(html, /不能作为官方账单/);
@@ -366,7 +366,7 @@ test(
     await expect(metrics.locator('dt')).toHaveCount(4);
     for (const [label, value] of [
       ['本账期累计', '360.69 MB'],
-      ['今日流量估算', '3.80 MB'],
+      ['今日流量', '待结算'],
       ['昨日流量估算', '14.20 MB'],
       ['账期剩余额度', '4.64 GB'],
     ]) {
