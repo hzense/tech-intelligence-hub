@@ -1005,3 +1005,10 @@ PR #247 首轮 CI 在生产依赖审计处发现 [GHSA-g3hv-75wg-m249](https://g
 | 2026-08-21 | PR #4 完成依赖锁定、frozen install 和 Topic / Entity / Signal / Content 交叉引用校验，Development Foundation 达到验收标准                                                                                                |
 | 2026-08-21 | 发布 Web MVP Alpha：完成 Home、Daily、Radar、响应式 Shell、主题与品牌资源，并提供可访问 Hosted checkpoint                                                                                                                |
 | 2026-08-20 | 创建首版进度看板；修复 pnpm 11 构建授权与 YAML 日期校验；Foundation CI 首次完整通过                                                                                                                                      |
+
+### 2026-11-03：Neon 每日零点结算（待发布）
+
+- 将流量采样改为柏林时间每天 00:00，适配冬夏令时；结算刚结束的上一日。
+- 日流量使用相邻零点累计值之差，不依赖日内小时样本；当天显示待结算。
+- 缺少零点基线、跨账期重置或累计值回退时保持缺失，未采样历史不补造。
+- GitHub 调度仍可能延迟，结果继续标注估算；过期阈值随每日周期调整。

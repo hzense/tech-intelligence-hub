@@ -2,7 +2,9 @@ name: Neon network usage sampling
 
 on:
   schedule:
-    - cron: '43 * * * *'
+    # Berlin midnight is 22:00 UTC in summer and 23:00 UTC in winter.
+    - cron: '0 22 * * *'
+    - cron: '0 23 * * *'
   workflow_dispatch:
 
 permissions:
@@ -18,7 +20,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Select Berlin midnight schedule
+        id: midnight
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE_CRON: ${{ github.event.schedule }}
+        run: |
+          set -euo pipefail
+          offset="$(TZ=Europe/Berlin date +%z)"
+          if [[ "$EVENT_NAME" == 'workflow_dispatch' ||
+                ( "$SCHEDULE_CRON" == '0 22 * * *' && "$offset" == '+0200' ) ||
+                ( "$SCHEDULE_CRON" == '0 23 * * *' && "$offset" == '+0100' ) ]]; then
+            echo 'sample=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'sample=false' >> "$GITHUB_OUTPUT"
+          fi
       - name: Request a bounded Neon usage sample
+        if: steps.midnight.outputs.sample == 'true'
         shell: bash
         env:
           HZENSE_NEON_USAGE_CRON_SECRET: ${{ secrets.HZENSE_NEON_USAGE_CRON_SECRET }}
