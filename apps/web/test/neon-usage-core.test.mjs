@@ -119,8 +119,12 @@ test('midnight scheduling delay is bounded and a missing midnight cannot become 
   const end = berlinUsageMidnight('2026-11-03');
   const at = new Date(end + 5 * hour);
   assert.equal(day([sample(start + hour, 10), sample(end + hour, 30)], '2026-11-02', at).bytes, 20);
-  assert.equal(day([sample(start + 2 * hour, 10), sample(end, 30)], '2026-11-02', at).bytes, null);
-  assert.equal(day([sample(start, 10), sample(end + 2 * hour, 30)], '2026-11-02', at).bytes, null);
+  const delayed = day([sample(start + 2 * hour, 10), sample(end, 30)], '2026-11-02', at);
+  assert.equal(delayed.bytes, 20);
+  assert.equal(delayed.status, 'partial');
+  assert.equal(delayed.from, new Date(start + 2 * hour).toISOString());
+  assert.equal(delayed.through, new Date(end).toISOString());
+  assert.equal(day([sample(start, 10), sample(end + 2 * hour, 30)], '2026-11-02', at).bytes, 20);
   assert.equal(day([sample(start - 24 * hour, 10), sample(end, 30)], '2026-11-02', at).bytes, null);
 });
 
@@ -176,7 +180,9 @@ test('non-boundary and future observations cannot be turned into a settled daily
   ];
   const row = day(samples, '2026-11-02');
   assert.equal(row.status, 'partial');
-  assert.equal(row.bytes, null);
+  assert.equal(row.bytes, 20);
+  assert.equal(row.from, '2026-11-02T10:00:00.000Z');
+  assert.equal(row.through, '2026-11-02T11:00:00.000Z');
   const view = makeNeonUsageDashboard({ history: history(samples), now, projectId });
   assert.equal(view.totalBytes, 520);
   assert.equal(view.sampledAt, '2026-11-02T11:00:00.000Z');

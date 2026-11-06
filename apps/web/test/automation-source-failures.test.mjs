@@ -67,7 +67,7 @@ test('confirmed import failures carry only sanitized diagnostics and retain cand
   assert.match(labels[1], /403/);
   assert.equal(JSON.stringify(failures).includes('private'), false);
   assert.equal(JSON.stringify(labels).includes('private'), false);
-  for (const status of ['running', 'unknown', 'queued']) {
+  for (const status of ['running', 'queued']) {
     assert.deepEqual(appendAutomationImportFailure(failures, otherId, { status }), failures);
   }
   const legacy = appendAutomationImportFailure([], otherId, {
@@ -95,7 +95,7 @@ test('confirmed import failures carry only sanitized diagnostics and retain cand
         code: 'outcome_unknown',
       },
     ]),
-    [],
+    [{ itemId: otherId, phase: 'import_source', code: 'outcome_unknown' }],
   );
 });
 

@@ -125,6 +125,7 @@ export async function automationWorkflow(owner: string, id: string) {
     const generationDispatches: GenerationDispatch[] = [];
     const queuedSources: QueuedSource[] = [];
     let failed = 0;
+    let unknown = 0;
     let dispatchUnconfirmed = false;
     let dispatchError: unknown;
     try {
@@ -154,7 +155,8 @@ export async function automationWorkflow(owner: string, id: string) {
               : await importSourceItem(owner, selectedBatchId, selectedItem.id, run.id);
         }
         if (status !== 'completed') {
-          failed++;
+          if (status === 'unknown') unknown++;
+          else failed++;
           continue;
         }
         const generation = await createPrivateGeneration(
@@ -214,8 +216,9 @@ export async function automationWorkflow(owner: string, id: string) {
       generationIds,
       queuedSources,
       failed,
+      unknown,
     });
-    return 'completed';
+    return unknown ? 'outcome_unknown' : 'completed';
   } catch {
     await failSourceRun(owner, run.id, run.lease_token!);
     return 'failed';
@@ -400,20 +403,24 @@ async function importSourceItem(owner: string, batchId: string, itemId: string, 
     const result = (await runImportItem(owner, batchId, itemId)) as unknown as NonNullable<
       typeof outcome
     >;
-    if (['completed', 'failed', 'cancelled'].includes(result.status)) outcome = result;
+    if (['completed', 'failed', 'cancelled', 'unknown'].includes(result.status)) outcome = result;
   } catch {
     // A thrown transport/commit error is not proof that the item failed. Read
     // back its durable result once; do not retry a fetch, parser or AI call.
+  }
+  if (!outcome) {
     const batch = (await executeImportAdmin(owner, 'POST', {
       action: 'detail',
       batchId,
     })) as SourceBatch;
     const item = batch.items.find((row) => row.id === itemId);
-    if (item && ['completed', 'failed', 'cancelled'].includes(item.status)) outcome = item;
+    if (!item) throw new Error('source_outcome_unknown');
+    outcome = ['completed', 'failed', 'cancelled', 'unknown'].includes(item.status)
+      ? item
+      : { status: 'unknown' };
   }
-  if (!outcome) throw new Error('source_outcome_unknown');
   if (runId && outcome.status !== 'completed') {
-    // Persist only a confirmed, sanitized failure. A lost receipt write stops
+    // Persist a sanitized receipt, including uncertainty. A lost receipt write stops
     // reconciliation; it must never trigger another fetch or paid search.
     const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
     assertLocalAutomationRun(run, 'source_collection');
@@ -550,6 +557,7 @@ async function finishSourceRun(
     generationIds: string[];
     queuedSources: QueuedSource[];
     failed: number;
+    unknown?: number;
   },
 ) {
   'use step';
@@ -561,11 +569,16 @@ async function finishSourceRun(
     token,
     phase: result.generationIds.length
       ? 'candidate_tasks_queued'
-      : result.failed
+      : result.failed || result.unknown
         ? 'source_failed'
         : 'no_new_sources',
     result: { ...run.result, ...result },
-    status: result.failed && !result.generationIds.length ? 'failed' : 'completed',
+    status: result.unknown
+      ? 'unknown'
+      : result.failed && !result.generationIds.length
+        ? 'failed'
+        : 'completed',
+    ...(result.unknown ? { errorCode: 'outcome_unknown' } : {}),
     costMicrousd: Number(run.result?.discoveryCostMicrousd ?? 0),
     costSource: run.result?.discoveryCostSource === 'provider' ? 'provider' : 'estimate',
   });

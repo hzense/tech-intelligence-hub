@@ -50,6 +50,7 @@ async function compile() {
       }
       export async function updateAutomationRun(args){
         const f=globalThis.${key};
+        if(args.phase==='importing_sources'&&args.result?.sourceFailures&&f.failImportReceipt)throw Error('import receipt unconfirmed');
         if(args.phase==='dispatching_candidates'&&++f.receiptWrites===f.failReceiptWrite)
           throw Error('receipt write unconfirmed');
         f.run={...f.run,...structuredClone(args),status:args.status??f.run.status};
@@ -59,6 +60,7 @@ async function compile() {
     '../lib/server/import-service': `
       export async function executeImportAdmin(_owner,_method,request){
         const f=globalThis.${key};f.importRequests.push(request.action);
+        if(request.action==='detail'&&f.failReadback)throw Error('readback unavailable');
         return {id:f.batchId,items:structuredClone(f.items)};
       }
       export async function runImportItem(_owner,_batchId,itemId){
@@ -118,6 +120,17 @@ async function compile() {
 }
 const compiled = compile();
 
+for (const option of ['failImportReceipt', 'failReadback']) {
+  test(`${option} stops isolation when durable state cannot be confirmed`, async (t) => {
+    const { state: f, execute } = await setup(t, { count: 3, unknownImport: 1, [option]: true });
+    assert.equal(await execute(), 'failed');
+    assert.equal(f.run.status, 'unknown');
+    assert.equal(f.creates.length, 1);
+    assert.equal(f.dispatches.length, 1);
+    assert.deepEqual(f.imports, [f.items[1].id]);
+  });
+}
+
 async function setup(t, options = {}) {
   const previous = process.env.HZENSE_LOCAL_DEVELOPMENT;
   delete process.env.HZENSE_LOCAL_DEVELOPMENT;
@@ -160,7 +173,7 @@ async function setup(t, options = {}) {
 
 test('a later unknown import still dispatches the earlier confirmed receipt once', async (t) => {
   const { state: f, execute } = await setup(t, { unknownImport: 1 });
-  assert.equal(await execute(), 'failed');
+  assert.equal(await execute(), 'outcome_unknown');
   const firstId = f.creates[0].id;
   assert.deepEqual(f.dispatches, [[owner, firstId, queuedAt]]);
   assert.deepEqual(f.cleanups, []);
@@ -172,13 +185,28 @@ test('a later unknown import still dispatches the earlier confirmed receipt once
   assert.equal(f.dispatches.length, 1);
 });
 
-test('an unknown first import does not invent or dispatch a child', async (t) => {
+test('an unknown first import is isolated and later sources still dispatch', async (t) => {
   const { state: f, execute } = await setup(t, { unknownImport: 0 });
   await execute();
   assert.equal(f.run.status, 'unknown');
-  assert.deepEqual(f.creates, []);
-  assert.deepEqual(f.dispatches, []);
+  assert.equal(f.creates.length, 1);
+  assert.deepEqual(f.dispatches, [[owner, f.creates[0].id, queuedAt]]);
+  assert.equal(f.run.result.unknown, 1);
+  assert.equal(f.run.result.failed, 0);
+  assert.deepEqual(f.run.result.sourceFailures, [
+    { itemId: f.items[0].id, phase: 'import_source', code: 'outcome_unknown' },
+  ]);
   assert.deepEqual(f.imports, [f.items[0].id]);
+});
+
+test('an unknown middle source does not stop either healthy neighbour or retry on replay', async (t) => {
+  const { state: f, execute } = await setup(t, { count: 3, unknownImport: 1 });
+  assert.equal(await execute(), 'outcome_unknown');
+  assert.equal(f.creates.length, 2);
+  assert.equal(f.dispatches.length, 2);
+  assert.deepEqual(f.imports, [f.items[1].id]);
+  assert.equal(await execute(), 'already_started_or_finished');
+  assert.equal(f.dispatches.length, 2);
 });
 
 for (const option of ['failCreate', 'failQueue']) {
