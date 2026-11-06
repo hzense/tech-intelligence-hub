@@ -115,6 +115,20 @@ test('usage dashboard distinguishes missing data, partial estimates, and observe
   assert.match(html, /历史记录保留 60 天/);
 });
 
+test('observed daily increments show their actual coverage instead of pending settlement', () => {
+  const value = dashboard();
+  Object.assign(value.days.at(-1), {
+    bytes: 20,
+    status: 'partial',
+    from: '2026-11-02T10:00:00.000Z',
+    through: '2026-11-02T11:00:00.000Z',
+  });
+  const html = render(value);
+  assert.match(html, /<dt>今日流量<\/dt><dd>20 B<\/dd>/);
+  assert.match(html, /采样区间：2026\/11\/02 11:00 — 2026\/11\/02 12:00/);
+  assert.match(html, /部分时段/);
+});
+
 test('unconfigured dashboard explains missing setup and disables sampling, without inventing usage', () => {
   const html = render(
     dashboard({

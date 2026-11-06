@@ -23,6 +23,8 @@ export type NeonUsageDay = {
   bytes: number | null;
   status: 'estimated' | 'partial' | 'missing';
   samples: number;
+  from?: string;
+  through?: string;
 };
 export type NeonUsageDashboard = {
   configured: boolean;
@@ -221,9 +223,20 @@ export function neonUsageDays(history: NeonUsageHistory | null, now: Date): Neon
     };
     // Settle only closed Berlin dates, using the two midnight counter baselines.
     // Daytime observations are optional: a cumulative counter needs no hourly chain.
-    if (date === today) return unavailable;
-    const first = nearest(start);
-    const last = nearest(end);
+    let first = date === today ? undefined : nearest(start);
+    let last = date === today ? undefined : nearest(end);
+    const settled = Boolean(
+      first && last && Date.parse(last.sampledAt) > Date.parse(first.sampledAt),
+    );
+    if (!settled) {
+      // Delayed daily jobs can miss the midnight window. Show their actual
+      // interval, never silently label it as a complete calendar day.
+      first = inside[0];
+      last =
+        date === today
+          ? inside.at(-1)
+          : samples.find((s) => berlinUsageDate(new Date(s.sampledAt)) === shiftDate(date, 1));
+    }
     if (!first || !last || Date.parse(last.sampledAt) <= Date.parse(first.sampledAt))
       return unavailable;
     const range = samples.filter(
@@ -237,8 +250,9 @@ export function neonUsageDays(history: NeonUsageHistory | null, now: Date): Neon
     return {
       date,
       bytes: last.bytes - first.bytes,
-      status: 'estimated' as const,
+      status: settled ? ('estimated' as const) : ('partial' as const),
       samples: inside.length,
+      ...(!settled ? { from: first.sampledAt, through: last.sampledAt } : {}),
     };
   });
 }

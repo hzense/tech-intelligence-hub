@@ -320,8 +320,8 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
         </div>
         <div className={styles.metric}>
           <dt>今日流量</dt>
-          <dd>待结算</dd>
-          <dd className={styles.metricNote}>次日 00:00 结算 · 柏林时间</dd>
+          <dd>{today?.bytes == null ? '待结算' : formatUsageBytes(today.bytes)}</dd>
+          <dd className={styles.metricNote}>已采样时段 · 次日零点结算 · 柏林时间</dd>
         </div>
         <div className={styles.metric}>
           <dt>昨日流量估算</dt>
@@ -384,7 +384,7 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
                   <div
                     key={day.date}
                     className={styles.chartColumn}
-                    title={`${day.date}：${formatUsageBytes(day.bytes)}（${day.date === today?.date ? '待结算' : dayLabels[day.status]}）`}
+                    title={`${day.date}：${formatUsageBytes(day.bytes)}（${day.date === today?.date && day.bytes === null ? '待结算' : dayLabels[day.status]}）`}
                   >
                     <div className={styles.barArea}>
                       <span
@@ -527,8 +527,15 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
                   <td>{day.samples}</td>
                   <td>
                     <span className={`${styles.dayStatus} ${styles[`${day.status}Text`]}`}>
-                      {day.date === today?.date ? '待结算' : dayLabels[day.status]}
+                      {day.date === today?.date && day.bytes === null
+                        ? '待结算'
+                        : dayLabels[day.status]}
                     </span>
+                    {day.from && day.through ? (
+                      <div>
+                        采样区间：{displayTime(day.from)} — {displayTime(day.through)}
+                      </div>
+                    ) : null}
                   </td>
                 </tr>
               ))}
@@ -540,7 +547,7 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
         <summary>数据口径与采样说明</summary>
         <p>
           每天柏林时间 00:00 结算刚结束的上一日，以相邻两日零点前后 90
-          分钟内的累计值之差估算流量。采样时间不是供应商计费时间；缺少边界样本或跨账期重置时保留空缺，不把多天流量归到一天。
+          分钟内的累计值之差估算流量。延迟采样仅展示相邻日期的实际采样区间并标为部分时段，不等同于完整自然日。今日有两次采样时展示已观测增量。采样时间不是供应商计费时间；跨账期重置或缺少相邻日期样本时保留空缺，不把多天流量归到一天。
         </p>
         <p>
           本页监控配置所指向的 Neon 云项目，包含项目各分支的累计出站流量，不是本机 PostgreSQL

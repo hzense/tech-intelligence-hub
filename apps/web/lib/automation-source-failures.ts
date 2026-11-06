@@ -31,6 +31,7 @@ const importFailureLabels = {
   source_unavailable: '原文已不可用',
   cancelled: '导入已取消',
   import_failed: '导入失败，具体原因未记录',
+  outcome_unknown: '导入结果待核对',
 } as const;
 interface CandidateSourceFailure {
   itemId: string;
@@ -104,21 +105,24 @@ export function appendAutomationSourceFailure(
     },
   ].slice(-automationSourceFailureLimit);
 }
-/** Only terminal, confirmed import outcomes may become failure receipts. */
+/** Keep uncertainty distinct from confirmed failure; never retry it as a failure. */
 export function appendAutomationImportFailure(
   value: unknown,
   itemId: string,
   outcome: { status: string; error_code?: unknown; fetch_diagnostic?: unknown },
 ): AutomationSourceFailure[] {
   const current = readAutomationSourceFailures(value);
-  if (!itemIdIsValid(itemId) || !['failed', 'cancelled'].includes(outcome.status)) return current;
+  if (!itemIdIsValid(itemId) || !['failed', 'cancelled', 'unknown'].includes(outcome.status))
+    return current;
   const code: ImportSourceFailure['code'] =
-    outcome.status === 'cancelled'
-      ? 'cancelled'
-      : typeof outcome.error_code === 'string' &&
-          Object.hasOwn(importFailureLabels, outcome.error_code)
-        ? (outcome.error_code as ImportSourceFailure['code'])
-        : 'import_failed';
+    outcome.status === 'unknown'
+      ? 'outcome_unknown'
+      : outcome.status === 'cancelled'
+        ? 'cancelled'
+        : typeof outcome.error_code === 'string' &&
+            Object.hasOwn(importFailureLabels, outcome.error_code)
+          ? (outcome.error_code as ImportSourceFailure['code'])
+          : 'import_failed';
   return readAutomationSourceFailures(
     [
       ...current.filter((entry) => entry.itemId !== itemId),
