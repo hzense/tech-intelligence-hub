@@ -247,3 +247,57 @@ test('generation summaries remain neutral about publication for every task polic
     assert.doesNotMatch(generationSummaryLabel(task), /私有|已发布|未发布/);
   }
 });
+
+test('unknown parent still shows receipt-confirmed candidates without claiming whole-run success', () => {
+  const run = {
+    status: 'unknown',
+    phase: 'candidate_tasks_queued',
+    result: { generationIds: [id(1)], unknown: 2 },
+    generationProgress: summarizeAutomationGenerations({ generationIds: [id(1)] }, [
+      { id: id(1), status: 'completed', progress_phase: 'completed', candidate_count: 4 },
+    ]),
+  };
+  const before = globalThis.structuredClone(run);
+  assert.equal(sourceAutomationLabel(run), '已生成 4 条候选，采集结果仍待核对');
+  assert.deepEqual(run, before);
+  run.generationProgress = summarizeAutomationGenerations(run.result, null);
+  assert.equal(sourceAutomationLabel(run), '采集结果未知，请核对原任务');
+});
+test('partial source failure is visible even when all queued generation tasks completed', () => {
+  const progress = summarizeAutomationGenerations({ generationIds: [id(1)] }, [
+    { id: id(1), status: 'completed', progress_phase: 'completed', candidate_count: 5 },
+  ]);
+  assert.equal(
+    sourceAutomationLabel({
+      status: 'completed',
+      phase: 'candidate_tasks_queued',
+      result: { failed: 3, duplicateSourceCount: 1 },
+      generationProgress: progress,
+    }),
+    '部分生成完成',
+  );
+  assert.equal(
+    sourceAutomationLabel({
+      status: 'completed',
+      phase: 'candidate_tasks_queued',
+      result: { failed: 1, duplicateSourceCount: 1 },
+      generationProgress: progress,
+    }),
+    '候选已生成',
+  );
+});
+test('receipt-proven historical duplicate-only failure displays a skip while retaining audit status', () => {
+  const run = {
+    status: 'failed',
+    phase: 'source_failed',
+    result: {
+      failed: 1,
+      sourceFailures: [{ itemId: id(1), phase: 'create_candidate', code: 'duplicate_source' }],
+    },
+  };
+  const before = globalThis.structuredClone(run);
+  assert.equal(sourceAutomationLabel(run), '采集完成，重复来源已跳过');
+  assert.deepEqual(run, before);
+  assert.equal(sourceAutomationLabel({ ...run, status: 'unknown' }), '采集结果未知，请核对原任务');
+  assert.equal(sourceAutomationLabel({ ...run, result: { failed: 1 } }), '采集失败');
+});

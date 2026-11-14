@@ -6,7 +6,7 @@ import { importFetchFailureMessage } from './import-recovery.ts';
 // Eight events, each with a primary plus at most two source fallback attempts.
 export const automationSourceFailureLimit = 24;
 const failureLabels = {
-  duplicate_source: '来源已有候选任务',
+  duplicate_source: '已跳过重复来源，该来源已有候选任务',
   source_unavailable: '原文不可用于生成',
   cancelled: '任务已取消',
   profile_not_ready: '模型配置未就绪',
@@ -130,14 +130,72 @@ export function appendAutomationImportFailure(
     ].slice(-automationSourceFailureLimit),
   );
 }
+function sourceOutcomeItem(failure: AutomationSourceFailure): string {
+  if (failure.phase === 'create_candidate')
+    return `资料 ${failure.itemId} · 创建候选任务：${failureLabels[failure.code]}（${failure.code}）`;
+  return `资料 ${failure.itemId} · 导入原文：${
+    failure.code === 'fetch_failed'
+      ? importFetchFailureMessage(failure.fetchDiagnostic)
+      : importFailureLabels[failure.code]
+  }（${failure.code}）`;
+}
+
+/** Keep stored audit receipts unchanged; classify them only for presentation. */
+export function automationSourceOutcomeItems(value: unknown): {
+  failed: string[];
+  skipped: string[];
+  unknown: string[];
+} {
+  const items = { failed: [] as string[], skipped: [] as string[], unknown: [] as string[] };
+  for (const receipt of readAutomationSourceFailures(value)) {
+    const outcome =
+      receipt.code === 'duplicate_source'
+        ? 'skipped'
+        : receipt.code === 'outcome_unknown'
+          ? 'unknown'
+          : 'failed';
+    items[outcome].push(sourceOutcomeItem(receipt));
+  }
+  return items;
+}
 export function automationSourceFailureItems(value: unknown): string[] {
-  return readAutomationSourceFailures(value).map((failure) => {
-    if (failure.phase === 'create_candidate')
-      return `资料 ${failure.itemId} · 创建候选任务：${failureLabels[failure.code]}（${failure.code}）`;
-    return `资料 ${failure.itemId} · 导入原文：${
-      failure.code === 'fetch_failed'
-        ? importFetchFailureMessage(failure.fetchDiagnostic)
-        : importFailureLabels[failure.code]
-    }（${failure.code}）`;
-  });
+  return readAutomationSourceFailures(value).map(sourceOutcomeItem);
+}
+const boundedCount = (value: unknown): number | null =>
+  typeof value === 'number' &&
+  Number.isSafeInteger(value) &&
+  value >= 0 &&
+  value <= automationSourceFailureLimit
+    ? value
+    : null;
+
+/** Old runs included deduplication in failed; correct display only with a receipt. */
+export function automationSourceOutcomeCounts(value: unknown): {
+  failed: number | null;
+  skipped: number | null;
+  unknown: number | null;
+} {
+  const result =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  const receipts = readAutomationSourceFailures(result.sourceFailures);
+  const duplicates = Array.isArray(result.sourceFailures)
+    ? receipts.filter((receipt) => receipt.code === 'duplicate_source').length
+    : boundedCount(result.duplicateSourceCount);
+  const savedSkipped = boundedCount(result.skipped);
+  const savedFailed = boundedCount(result.failed);
+  const skipped = savedSkipped ?? duplicates;
+  return {
+    failed:
+      savedFailed === null
+        ? null
+        : Math.max(0, savedFailed - (savedSkipped === null ? (duplicates ?? 0) : 0)),
+    skipped,
+    unknown:
+      boundedCount(result.unknown) ??
+      (Array.isArray(result.sourceFailures)
+        ? receipts.filter((receipt) => receipt.code === 'outcome_unknown').length
+        : null),
+  };
 }

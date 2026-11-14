@@ -164,6 +164,14 @@ test(
                   ? {
                       generationIds: run.result.generationIds ?? [],
                       failed: run.result.failed ?? null,
+                      skipped: run.result.skipped ?? null,
+                      unknown: run.result.unknown ?? null,
+                      duplicateSourceCount: (run.result.sourceFailures ?? []).filter(
+                        (receipt) =>
+                          receipt.phase === 'create_candidate' &&
+                          receipt.code === 'duplicate_source',
+                      ).length,
+                      discoveryRejection: run.result.discoveryRejection ?? null,
                       discovery: run.result.discovery
                         ? {
                             articleCount: run.result.discovery.articles?.length ?? null,
@@ -757,6 +765,50 @@ test(
       await expect(page.getByText(/此历史任务未保存逐条处理原因/)).toBeVisible();
       await expect(page.getByText('HTTP 403', { exact: false })).toHaveCount(0);
 
+      // Historical duplicates are skipped; one unknown source does not erase confirmed candidates.
+      const beforeOutcomeChecks = globalThis.structuredClone(run);
+      run.status = 'unknown';
+      run.phase = 'outcome_unknown';
+      run.result = {
+        generationIds: [generationId],
+        failed: 3,
+        unknown: 1,
+        sourceFailures: [
+          {
+            itemId: '11111111-1111-4111-8111-111111111111',
+            phase: 'create_candidate',
+            code: 'duplicate_source',
+          },
+          {
+            itemId: '22222222-2222-4222-8222-222222222222',
+            phase: 'import_source',
+            code: 'outcome_unknown',
+          },
+        ],
+      };
+      run.generationProgress = summarizeAutomationGenerations(run.result, [
+        { id: generationId, status: 'completed', progress_phase: 'completed', candidate_count: 5 },
+      ]);
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(
+        page.getByRole('cell', { name: /^已生成 5 条候选，采集结果仍待核对/ }),
+      ).toBeVisible();
+      await expect(page.getByText('资料或候选登记未完成：2 项。', { exact: false })).toBeVisible();
+      await expect(
+        page.getByText('已跳过重复来源：1 项，不重复生成。', { exact: true }),
+      ).toBeVisible();
+      await expect(page.getByText('来源处理结果待核对：1 项', { exact: false })).toBeVisible();
+      await readDetails();
+      await expect(page.getByText('查看来源处理失败原因（脱敏）', { exact: true })).toHaveCount(0);
+      await page.getByText('查看已跳过的重复来源（脱敏）', { exact: true }).click();
+      await expect(
+        page.getByText('已跳过重复来源，沿用已有候选任务', { exact: false }),
+      ).toBeVisible();
+      await page.getByText('查看结果待核对的来源（脱敏）', { exact: true }).click();
+      await expect(page.getByText('尚未确认成功或失败', { exact: false })).toBeVisible();
+      assert.equal(posts.length, 6, 'outcome diagnostics do not retry paid work');
+      Object.assign(run, beforeOutcomeChecks);
+
       // Budget refusal diagnostics are read-only snapshots, not actual spend or live balances.
       const beforeBudgetChecks = globalThis.structuredClone(run);
       delete run.generationProgress;
@@ -939,6 +991,19 @@ test(
       await expect(accountingCell).not.toContainText('估算');
       await expect(accountingCell).not.toContainText('供应商回执');
       await expect(accountingCell).not.toContainText('estimate');
+      run.result = {
+        discoveryRejection: { version: 1, httpStatus: 402, accounting: 'request_rejected' },
+      };
+      await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await expect(page.getByText('供应商 HTTP 402：', { exact: false })).toBeVisible();
+      await expect(page.getByText('这不是本站每日预算不足', { exact: false })).toBeVisible();
+      await readDetails();
+      await expect(page.getByText('供应商 HTTP 402：', { exact: false })).toHaveCount(2);
+      assert.equal(
+        posts.length,
+        6,
+        'reading HTTP refusal evidence never retries or changes billing',
+      );
       const refusalReceipt = globalThis.structuredClone(run);
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
       assert.deepEqual(run, refusalReceipt, 'reading a zero-charge refusal never mutates it');

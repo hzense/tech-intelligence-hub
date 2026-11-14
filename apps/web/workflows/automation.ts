@@ -117,6 +117,8 @@ export async function automationWorkflow(owner: string, id: string) {
         generationIds: [],
         queuedSources: [],
         failed: 0,
+        skipped: 0,
+        unknown: 0,
       });
       return 'no_new_sources';
     }
@@ -125,6 +127,7 @@ export async function automationWorkflow(owner: string, id: string) {
     const generationDispatches: GenerationDispatch[] = [];
     const queuedSources: QueuedSource[] = [];
     let failed = 0;
+    let skipped = 0;
     let unknown = 0;
     let dispatchUnconfirmed = false;
     let dispatchError: unknown;
@@ -165,7 +168,8 @@ export async function automationWorkflow(owner: string, id: string) {
           selectedBatchId,
           selectedItem.id,
         );
-        if (generation) {
+        if (generation === 'duplicate_source') skipped++;
+        else if (generation) {
           generationIds.push(generation.id);
           generationDispatches.push(generation);
           queuedSources.push({
@@ -179,6 +183,8 @@ export async function automationWorkflow(owner: string, id: string) {
             generationIds,
             queuedSources,
             failed,
+            skipped,
+            unknown,
           });
         } else failed++;
       }
@@ -187,6 +193,8 @@ export async function automationWorkflow(owner: string, id: string) {
         generationIds,
         queuedSources,
         failed,
+        skipped,
+        unknown,
       });
     } finally {
       // A later source or receipt write can fail after earlier tasks were queued.
@@ -209,6 +217,8 @@ export async function automationWorkflow(owner: string, id: string) {
       generationIds,
       queuedSources,
       failed,
+      skipped,
+      unknown,
     });
     if (dispatchUnconfirmed) throw dispatchError;
     await finishSourceRun(owner, run.id, run.lease_token!, {
@@ -216,6 +226,7 @@ export async function automationWorkflow(owner: string, id: string) {
       generationIds,
       queuedSources,
       failed,
+      skipped,
       unknown,
     });
     return unknown ? 'outcome_unknown' : 'completed';
@@ -449,7 +460,7 @@ async function createPrivateGeneration(
   runId: string,
   batchId: string,
   itemId: string,
-): Promise<GenerationDispatch | null> {
+): Promise<GenerationDispatch | 'duplicate_source' | null> {
   'use step';
   assertLocalAutomationExecution('source_collection');
   const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
@@ -532,7 +543,7 @@ async function createPrivateGeneration(
           : {}),
       },
     });
-    return null;
+    return refusalCode === 'duplicate_source' || created ? 'duplicate_source' : null;
   }
   const queued = await queueGeneration(owner, id);
   const progressAt = queued.progress_at;
@@ -557,6 +568,7 @@ async function finishSourceRun(
     generationIds: string[];
     queuedSources: QueuedSource[];
     failed: number;
+    skipped: number;
     unknown?: number;
   },
 ) {
@@ -593,6 +605,8 @@ async function markSourceDispatch(
     generationIds: string[];
     queuedSources: QueuedSource[];
     failed: number;
+    skipped: number;
+    unknown: number;
   },
 ) {
   'use step';

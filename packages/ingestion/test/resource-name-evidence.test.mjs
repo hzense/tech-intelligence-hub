@@ -48,6 +48,20 @@ test('completion prepends only an adjacent clause-leading name from the referenc
   assert.ok(text.includes(result[0].quote));
 });
 
+test('completion restores only missing bytes of a clause-leading name clipped by the quote', () => {
+  for (const [name, text, quote] of [
+    ['ACME Lab', 'ACME Lab announced a processor.', 'Lab announced a processor.'],
+    ['Ada Lee', 'Ada Lee announced a processor.', 'Lee announced a processor.'],
+    ['ACME Lab', 'ＡＣＭＥ　Ｌａｂ announced a processor.', 'Ｌａｂ announced a processor.'],
+    ['示例实验室', '示例实验室发布了一款新的处理器。', '实验室发布了一款新的处理器。'],
+  ]) {
+    const evidence = [ref(quote)];
+    const result = completeResourceNameEvidence(name, evidence, fragments(text), [], 500);
+    assert.deepEqual(result, [ref(text)]);
+    assert.deepEqual(evidence, [ref(quote)], 'model quote remains unchanged');
+  }
+});
+
 test('completion refuses ambiguous, distant, oversized, alias and invalid anchors', () => {
   for (const { name = 'ACME', text, quote, other = '', otherNames = [] } of [
     { text: 'ACME exists. Example announced a product.', quote: 'announced a product.' },
@@ -97,6 +111,42 @@ test('completion refuses ambiguous, distant, oversized, alias and invalid anchor
       name: 'Advanced Micro Devices',
       text: 'AMD announced a product.',
       quote: 'announced a product.',
+    },
+    {
+      name: 'ACME Lab',
+      text: 'OtherCo Lab announced a processor.',
+      quote: 'Lab announced a processor.',
+    },
+    {
+      name: 'ACME Lab',
+      text: 'ACME Laboratory announced a processor.',
+      quote: 'Laboratory announced a processor.',
+    },
+    {
+      name: 'ACME Lab',
+      text: 'ACME Lab announced a processor. OtherCo Lab announced a processor.',
+      quote: 'Lab announced a processor.',
+    },
+    {
+      name: 'ACME Lab',
+      text: 'ACME\nLab announced a processor.',
+      quote: 'Lab announced a processor.',
+    },
+    {
+      name: 'ACME Lab',
+      text: 'ACME Lab announced a processor.',
+      quote: 'Lab announced a GPU.',
+    },
+    {
+      name: 'ACME Lab',
+      text: 'ACME Lab and OtherCo announced a processor.',
+      quote: 'Lab and OtherCo announced a processor.',
+      otherNames: ['OtherCo'],
+    },
+    {
+      name: 'ACME Lab',
+      text: 'ACME Lab’s competitor OtherCo announced a processor.',
+      quote: 'competitor OtherCo announced a processor.',
     },
   ]) {
     const evidence = [ref(quote)];
@@ -173,6 +223,27 @@ test('new assessment repairs evidence once; strict normalization accepts the rep
   );
   assert.deepEqual(saved.candidates[0].resources[0].evidence, evidence);
   assert.equal(JSON.stringify({ value, source }), before);
+});
+
+test('clipped-name repair is private-assessment-only and persists an exact source quote', () => {
+  const { source, row } = fixture();
+  row.resources[0].evidence = [ref('Lab announced a product.')];
+  const input = { candidates: [row], reason: 'Clipped-name fixture' };
+  const before = JSON.stringify(input);
+  assert.throws(() =>
+    normalizeGeneratedCandidates(input, source, [], GENERATION_RESOURCES_CONTRACT),
+  );
+  const assessed = assessGeneratedCandidates(input, source, [], GENERATION_RESOURCES_CONTRACT);
+  assert.deepEqual(assessed.rejected, []);
+  assert.deepEqual(assessed.candidates[0].resources[0].evidence, [ref(source.fragments[0].text)]);
+  assert.equal(JSON.stringify(input), before);
+  const strict = normalizeGeneratedCandidates(
+    { ...input, candidates: [{ ...row, resources: assessed.candidates[0].resources }] },
+    source,
+    [],
+    GENERATION_RESOURCES_CONTRACT,
+  );
+  assert.deepEqual(strict.candidates[0].resources, assessed.candidates[0].resources);
 });
 
 test('resource completion never repairs invalid original quotations or substitutes for missing claims', () => {

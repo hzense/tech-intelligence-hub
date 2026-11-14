@@ -33,7 +33,7 @@ test('historical, future, malformed and unbounded validation receipt shapes rema
     [],
     { version: 2 },
     { version: 1, returnedCount: '8' },
-    { version: 1, returnedCount: 9 },
+    { version: 1, returnedCount: 25 },
     { version: 1, returnedCount: -1 },
     { version: 1, returnedCount: 1.5 },
   ]) {
@@ -76,12 +76,14 @@ test('validation readback never echoes rejected content, arbitrary reason keys, 
       '返回条目：8 条 · 有效引用网址：未记录',
       '条目不是有效对象：1 条',
       '来源网址无效或不安全：1 条',
+      '条目包含不允许的字段：1 条',
       '发布日期须为 YYYY-MM-DD 格式：1 条',
     ],
     rejections: [
       '第 1 条：来源网址无效或不安全',
       '第 4 条：发布日期须为 YYYY-MM-DD 格式',
       '第 5 条：条目不是有效对象',
+      '第 6 条：条目包含不允许的字段',
     ],
   });
   assert.equal(JSON.stringify(result).includes(secret), false);

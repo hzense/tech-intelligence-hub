@@ -70,6 +70,10 @@ async function compile() {
     '../lib/server/signal-generation': `
       export async function executeGeneration(_owner,request){
         const f=globalThis.${key};f.creates.push(request);
+        if(f.duplicateCreates?.includes(f.creates.length)) {
+          if(f.duplicateReturnsTask)return {id:'another-task',status:'completed'};
+          throw Object.assign(Error('duplicate'),{code:'duplicate_source'});
+        }
         const row={id:request.id,status:'pending',progress_phase:'created'};
         f.children[request.id]=row;
         if(f.creates.length===f.failCreate)throw Error('creation outcome unknown');
@@ -277,4 +281,36 @@ test('normal completion still dispatches all children with their original fences
   assert.equal(f.run.result.queuedSources.length, 2);
   assert.equal(f.run.result.failed, 0);
   assert.deepEqual(f.cleanups, []);
+});
+
+for (const duplicateReturnsTask of [false, true]) {
+  test(`duplicate sources are skipped without requeueing another task (returned=${duplicateReturnsTask})`, async (t) => {
+    const { state: f, execute } = await setup(t, {
+      count: 3,
+      duplicateCreates: [1, 3],
+      duplicateReturnsTask,
+    });
+    assert.equal(await execute(), 'completed');
+    assert.equal(f.run.status, 'completed');
+    assert.equal(f.run.result.failed, 0);
+    assert.equal(f.run.result.skipped, 2);
+    assert.equal(f.run.result.unknown, 0);
+    assert.deepEqual(f.run.result.generationIds, [f.creates[1].id]);
+    assert.deepEqual(f.queues, [f.creates[1].id]);
+    assert.deepEqual(f.dispatches, [[owner, f.creates[1].id, queuedAt]]);
+    assert.equal(f.run.result.sourceFailures.length, 2);
+    assert.ok(f.run.result.sourceFailures.every((receipt) => receipt.code === 'duplicate_source'));
+    assert.equal(await execute(), 'already_started_or_finished');
+    assert.equal(f.creates.length, 3);
+  });
+}
+test('all duplicate sources complete with no new work and no failed count', async (t) => {
+  const { state: f, execute } = await setup(t, { duplicateCreates: [1, 2] });
+  await execute();
+  assert.equal(f.run.status, 'completed');
+  assert.equal(f.run.phase, 'no_new_sources');
+  assert.equal(f.run.result.failed, 0);
+  assert.equal(f.run.result.skipped, 2);
+  assert.deepEqual(f.queues, []);
+  assert.deepEqual(f.dispatches, []);
 });

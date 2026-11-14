@@ -1,3 +1,5 @@
+import { automationSourceOutcomeCounts } from './automation-source-failures.ts';
+
 // Presentation only: never reconcile tasks, release budgets, or invoke the model here.
 export type GenerationSummary = {
   id: string;
@@ -126,7 +128,7 @@ export function sourceAutomationAllSourcesRejected(run: SourceAutomationRun): bo
     typeof row.rejected === 'number' &&
     Number.isSafeInteger(row.rejected) &&
     row.rejected > 0 &&
-    row.rejected <= 8 &&
+    row.rejected <= 24 &&
     row.duplicates === 0
   );
 }
@@ -146,13 +148,28 @@ export function sourceAutomationLabel(run: SourceAutomationRun): string {
     };
     return phases[run.phase] ?? '采集中';
   }
-  if (run.status === 'unknown') return '采集结果未知，请核对原任务';
+  const progress = run.generationProgress;
+  const sources = automationSourceOutcomeCounts(run.result);
+  if (run.status === 'unknown') {
+    if (progress?.knownCandidates)
+      return `已生成 ${progress.knownCandidates} 条候选，采集结果仍待核对`;
+    if (progress?.active) return '候选任务执行中，采集结果仍待核对';
+    return '采集结果未知，请核对原任务';
+  }
+  if (
+    ['completed', 'failed'].includes(run.status) &&
+    !automationGenerationIds(run.result).length &&
+    sources.failed === 0 &&
+    sources.skipped &&
+    sources.unknown !== null &&
+    sources.unknown === 0
+  )
+    return '采集完成，重复来源已跳过';
   if (run.status === 'failed') return '采集失败';
   if (run.status === 'cancelled') return '已取消';
   if (run.phase === 'no_new_sources') return '采集完成，无新来源';
-  const progress = run.generationProgress;
   if (!progress?.total) return '采集结束，未确认生成候选';
-  const failureNote = progress.failed ? '（部分失败）' : '';
+  const failureNote = progress.failed || sources.failed ? '（部分失败）' : '';
   if (progress.running) return `候选生成中${failureNote}`;
   if (progress.tasks.some((task) => task.status === 'pending' && task.progress_phase === 'queued'))
     return `候选排队中${failureNote}`;
@@ -160,5 +177,6 @@ export function sourceAutomationLabel(run: SourceAutomationRun): string {
   if (progress.failed || progress.cancelled)
     return progress.completed ? '部分生成完成' : '生成未完成';
   if (!progress.candidateCountComplete) return '候选数量待核对';
+  if (sources.failed) return '部分生成完成';
   return progress.knownCandidates > 0 ? '候选已生成' : '生成完成（无合格候选）';
 }

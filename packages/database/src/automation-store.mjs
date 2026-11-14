@@ -37,6 +37,26 @@ const publicRunColumns = `id,status,phase,error_code,created_at,finished_at,
   jsonb_build_object('name',snapshot->'name','kind',snapshot->'kind',
     'publicationMode',CASE WHEN snapshot->>'publicationMode'='automatic'
       AND snapshot->>'kind'='source_collection' THEN 'automatic' ELSE 'manual' END) AS snapshot`;
+// Match the bounded, first-valid-receipt-per-item presentation reader. Only
+// scalar counts leave PostgreSQL; raw diagnostics remain detail-only.
+const sourceReceiptCount = (phase, code) => `(
+  SELECT count(*) FROM (
+    SELECT DISTINCT ON (receipt->>'itemId') receipt
+    FROM jsonb_array_elements(CASE WHEN jsonb_typeof(result->'sourceFailures')='array'
+      THEN result->'sourceFailures' ELSE '[]'::jsonb END) WITH ORDINALITY AS receipts(receipt,position)
+    WHERE position<=24 AND jsonb_typeof(receipt->'itemId')='string'
+      AND length(receipt->>'itemId')=36
+      AND receipt->>'itemId' ~ '^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$'
+      AND ((receipt->>'phase'='create_candidate' AND receipt->>'code' IN
+        ('duplicate_source','source_unavailable','cancelled','profile_not_ready','revision_conflict',
+         'capability_failed','invalid_configuration','invalid_snapshot','invalid_request',
+         'budget_exceeded','task_deleted','request_id_conflict','not_configured','database_unavailable'))
+        OR (receipt->>'phase'='import_source' AND receipt->>'code' IN
+        ('fetch_failed','parse_failed','unsupported_content','limit_exceeded','ocr_required',
+         'source_unavailable','cancelled','import_failed','outcome_unknown')))
+    ORDER BY receipt->>'itemId',position
+  ) valid WHERE receipt->>'phase'='${phase}' AND receipt->>'code'='${code}'
+)`;
 const runSummaryResult = `CASE WHEN result IS NULL THEN NULL ELSE jsonb_build_object(
   'generationIds',COALESCE((
     SELECT jsonb_agg(ids.value ORDER BY ids.first_seen) FROM (
@@ -48,7 +68,23 @@ const runSummaryResult = `CASE WHEN result IS NULL THEN NULL ELSE jsonb_build_ob
       GROUP BY value ORDER BY first_seen LIMIT 8
     ) ids
   ),'[]'::jsonb),
-  'failed',CASE WHEN jsonb_typeof(result->'failed')='number' THEN result->'failed' ELSE NULL END,
+  'failed',CASE WHEN result->'failed' IN (SELECT to_jsonb(n) FROM generate_series(0,24) n)
+    THEN result->'failed' ELSE NULL END,
+  'skipped',CASE WHEN result->'skipped' IN (SELECT to_jsonb(n) FROM generate_series(0,24) n)
+    THEN result->'skipped' ELSE NULL END,
+  'unknown',CASE WHEN result->'unknown' IN (SELECT to_jsonb(n) FROM generate_series(0,24) n)
+    THEN result->'unknown'
+    WHEN jsonb_typeof(result->'sourceFailures')='array'
+      THEN to_jsonb(${sourceReceiptCount('import_source', 'outcome_unknown')}) ELSE NULL END,
+  'duplicateSourceCount',${sourceReceiptCount('create_candidate', 'duplicate_source')},
+  'discoveryRejection',CASE WHEN jsonb_typeof(result->'discoveryRejection')='object'
+    AND result->'discoveryRejection'->'version'='1'::jsonb
+    AND result->'discoveryRejection'->>'accounting'='request_rejected'
+    AND result->'discoveryRejection'->'httpStatus' IN
+      ('400'::jsonb,'401'::jsonb,'402'::jsonb,'403'::jsonb,'404'::jsonb,'405'::jsonb,
+       '413'::jsonb,'415'::jsonb,'422'::jsonb,'429'::jsonb)
+    THEN jsonb_build_object('version',1,'accounting','request_rejected',
+      'httpStatus',result->'discoveryRejection'->'httpStatus') ELSE NULL END,
   'discovery',CASE WHEN jsonb_typeof(result->'discovery')='object' THEN jsonb_build_object(
     'articleCount',CASE WHEN jsonb_typeof(result->'discovery'->'articles')='array'
       THEN jsonb_array_length(result->'discovery'->'articles') ELSE NULL END,

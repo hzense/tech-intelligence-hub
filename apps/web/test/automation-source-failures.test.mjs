@@ -7,6 +7,8 @@ import {
   automationSourceFailureItems,
   readAutomationSourceFailures,
   automationSourceFailureLimit,
+  automationSourceOutcomeCounts,
+  automationSourceOutcomeItems,
 } from '../lib/automation-source-failures.ts';
 
 const itemId = '11111111-1111-4111-8111-111111111111';
@@ -117,6 +119,8 @@ test('source failure append bounds all primary and fallback receipts without mut
   assert.equal(
     readAutomationSourceFailures([...failures, ...failures]).length,
     automationSourceFailureLimit,
+    automationSourceOutcomeCounts,
+    automationSourceOutcomeItems,
   );
   assert.deepEqual(
     appendAutomationSourceFailure(failures, 'private-item', 'invalid_request'),
@@ -124,4 +128,75 @@ test('source failure append bounds all primary and fallback receipts without mut
   );
   assert.deepEqual(appendAutomationSourceFailure(failures, itemId, 'commit_unknown'), failures);
   assert.equal(JSON.stringify(failures).includes('private'), false);
+});
+
+test('confirmed failure, duplicate skip and unknown import have separate presentation', () => {
+  const receipts = [
+    receipt,
+    {
+      itemId: '22222222-2222-4222-8222-222222222222',
+      phase: 'create_candidate',
+      code: 'duplicate_source',
+    },
+    {
+      itemId: '33333333-3333-4333-8333-333333333333',
+      phase: 'import_source',
+      code: 'outcome_unknown',
+    },
+  ];
+  const before = globalThis.structuredClone(receipts);
+  const items = automationSourceOutcomeItems(receipts);
+  assert.equal(items.failed.length, 1);
+  assert.equal(items.skipped.length, 1);
+  assert.equal(items.unknown.length, 1);
+  assert.match(items.skipped[0], /已跳过重复来源/);
+  assert.match(items.unknown[0], /待核对/);
+  assert.deepEqual(automationSourceOutcomeCounts({ failed: 2, sourceFailures: receipts }), {
+    failed: 1,
+    skipped: 1,
+    unknown: 1,
+  });
+  assert.deepEqual(
+    automationSourceOutcomeCounts({ failed: 1, skipped: 1, unknown: 1, sourceFailures: receipts }),
+    {
+      failed: 1,
+      skipped: 1,
+      unknown: 1,
+    },
+  );
+  assert.deepEqual(
+    automationSourceOutcomeCounts({
+      failed: 2,
+      skipped: null,
+      unknown: 1,
+      duplicateSourceCount: 1,
+    }),
+    {
+      failed: 1,
+      skipped: 1,
+      unknown: 1,
+    },
+  );
+  assert.deepEqual(receipts, before);
+});
+test('missing or invalid counts are not reclassified as confirmed zero failures', () => {
+  for (const value of [
+    undefined,
+    null,
+    {},
+    { failed: '2' },
+    { failed: -1, skipped: 999 },
+    { failed: 1.5 },
+  ]) {
+    assert.deepEqual(automationSourceOutcomeCounts(value), {
+      failed: null,
+      skipped: null,
+      unknown: null,
+    });
+  }
+  assert.deepEqual(automationSourceOutcomeCounts({ failed: 2 }), {
+    failed: 2,
+    skipped: null,
+    unknown: null,
+  });
 });

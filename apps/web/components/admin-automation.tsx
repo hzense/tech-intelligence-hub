@@ -14,11 +14,15 @@ import {
   discoveryDiagnosticItems,
   discoveryValidationItems,
 } from '../lib/source-discovery-diagnostics';
-import { automationSourceFailureItems } from '../lib/automation-source-failures';
+import {
+  automationSourceOutcomeCounts,
+  automationSourceOutcomeItems,
+} from '../lib/automation-source-failures';
 import { readAutomationSourceFallbacks } from '../lib/automation-source-fallbacks';
 import { parseImportRecoveryBatchId } from '../lib/import-recovery';
 import { discoveryMissingTopicNames } from '../lib/source-discovery-topics';
 import { discoveryBudgetItems } from '../lib/source-discovery-budget-presentation';
+import { discoveryRequestFailureMessage } from '../lib/source-discovery-request-failure';
 import controls from './admin-controls.module.css';
 import {
   automationGenerationIds,
@@ -371,17 +375,20 @@ function SourceResult({
   const diagnostics = discoveryDiagnosticItems(result.discoveryDiagnostics);
   const missingTopics = discoveryMissingTopicNames(result.discoveryMissingTopics);
   const budget = discoveryBudgetItems(result.discoveryBudget);
+  const requestFailure = discoveryRequestFailureMessage(result.discoveryRejection);
   const validation = discoveryValidationItems(discovery?.validation);
   const missingRejectionReasons =
     typeof discovery?.rejected === 'number' &&
     Number.isSafeInteger(discovery.rejected) &&
     discovery.rejected > validation.rejections.length;
-  const sourceFailures = automationSourceFailureItems(result.sourceFailures);
+  const sourceOutcomes = automationSourceOutcomeItems(result.sourceFailures);
+  const sourceCounts = automationSourceOutcomeCounts(result);
+  const sourceFailures = sourceOutcomes.failed;
   const sourceFallbacks = readAutomationSourceFallbacks(result.sourceFallbacks);
   const recoveryBatchId = parseImportRecoveryBatchId(result.batchId);
   // A recorded failed attempt may have been replaced; only the final unresolved
   // source count requires manual recovery. Receipts remain available below.
-  const hasUnresolvedSources = typeof result.failed === 'number' && result.failed > 0;
+  const hasUnresolvedSources = (sourceCounts.failed ?? 0) > 0;
   const searchRequests = discovery?.searchRequests;
   const knownSearchCount =
     typeof searchRequests === 'number' &&
@@ -389,6 +396,7 @@ function SourceResult({
     searchRequests >= 0;
   return (
     <div className={styles.report}>
+      {!summaryOnly && requestFailure ? <p>{requestFailure}</p> : null}
       {!summaryOnly && budget.length ? (
         <details>
           <summary>查看采集预算详情</summary>
@@ -535,6 +543,28 @@ function SourceResult({
           <p>仅显示已确认的原文导入失败或候选创建拒绝原因；查看不会重新导入或调用 AI。</p>
         </details>
       ) : null}
+      {!summaryOnly && sourceOutcomes.skipped.length ? (
+        <details>
+          <summary>查看已跳过的重复来源（脱敏）</summary>
+          <ul>
+            {sourceOutcomes.skipped.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <p>重复来源不重复生成，也不计为来源处理失败；原记录继续保留。</p>
+        </details>
+      ) : null}
+      {!summaryOnly && sourceOutcomes.unknown.length ? (
+        <details>
+          <summary>查看结果待核对的来源（脱敏）</summary>
+          <ul>
+            {sourceOutcomes.unknown.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <p>尚未确认成功或失败，请核对原导入任务；不要重复导入或调用 AI。</p>
+        </details>
+      ) : null}
       {summaryOnly && progress?.total ? (
         <p>
           候选任务 {progress.total} 项 · 已完成 {progress.completed} 项 · 排队 {progress.pending} 项
@@ -561,14 +591,17 @@ function SourceResult({
           })}
         </ul>
       ) : null}
-      {summaryOnly &&
-      typeof result.failed === 'number' &&
-      Number.isSafeInteger(result.failed) &&
-      result.failed > 0 ? (
+      {summaryOnly && hasUnresolvedSources ? (
         <p>
-          资料或候选登记未完成：{result.failed} 项。
+          资料或候选登记未完成：{sourceCounts.failed} 项。
           {ids.length ? '候选任务仍需各自完成生成与发布检查。' : ''}
         </p>
+      ) : null}
+      {summaryOnly && (sourceCounts.skipped ?? 0) > 0 ? (
+        <p>已跳过重复来源：{sourceCounts.skipped} 项，不重复生成。</p>
+      ) : null}
+      {summaryOnly && (sourceCounts.unknown ?? 0) > 0 ? (
+        <p>来源处理结果待核对：{sourceCounts.unknown} 项，请核对原任务，不要重复执行。</p>
       ) : null}
     </div>
   );
@@ -1568,7 +1601,13 @@ export function AdminAutomation({
                         : `${row.status} · ${row.phase}`}
                       {kind === 'source_collection' ? <small>采集阶段：{row.phase}</small> : null}
                       {row.error_code ? (
-                        <small>{errors[row.error_code] ?? row.error_code}</small>
+                        <small>
+                          {(row.error_code === 'provider_rejected'
+                            ? discoveryRequestFailureMessage(row.result?.discoveryRejection)
+                            : null) ??
+                            errors[row.error_code] ??
+                            row.error_code}
+                        </small>
                       ) : null}
                     </td>
                     <td>
