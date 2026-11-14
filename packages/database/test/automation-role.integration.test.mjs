@@ -1660,6 +1660,26 @@ suite('automation role isolation and publication boundary', () => {
         ...generationIds.slice(1),
       ],
       failed: 2,
+      sourceFailures: [
+        { itemId: generationIds[0], phase: 'create_candidate', code: 'unrecognized' },
+        { itemId: generationIds[2], phase: 'import_source', code: 'fetch_failed' },
+        { itemId: generationIds[2], phase: 'create_candidate', code: 'duplicate_source' },
+        { itemId: `${generationIds[3]}\n`, phase: 'create_candidate', code: 'duplicate_source' },
+        {
+          itemId: generationIds[0],
+          phase: 'create_candidate',
+          code: 'duplicate_source',
+          private: 'hidden',
+        },
+        { itemId: generationIds[0], phase: 'create_candidate', code: 'duplicate_source' },
+        { itemId: generationIds[1], phase: 'import_source', code: 'outcome_unknown' },
+      ],
+      discoveryRejection: {
+        version: 1,
+        accounting: 'request_rejected',
+        httpStatus: 402,
+        raw: 'hidden',
+      },
       discovery: { articles: [], rejected: 8, duplicates: 0 },
       report: { body: 'synthetic private result'.repeat(10000) },
       inputs: [{ body: 'synthetic source' }],
@@ -1680,8 +1700,13 @@ suite('automation role isolation and publication boundary', () => {
     expect(summary.result).toEqual({
       generationIds: generationIds.slice(0, 8),
       failed: 2,
+      skipped: null,
+      unknown: 1,
+      duplicateSourceCount: 1,
+      discoveryRejection: { version: 1, accounting: 'request_rejected', httpStatus: 402 },
       discovery: { articleCount: 0, rejected: 8, duplicates: 0 },
     });
+    expect(summary.result).not.toHaveProperty('sourceFailures');
     expect(summary.snapshot).toEqual({
       name: config.config.name,
       kind: 'source_collection',
@@ -1706,6 +1731,47 @@ suite('automation role isolation and publication boundary', () => {
       expect(malformed.result.discovery.articleCount).toBe(null);
       expect(malformed.result.generationIds).toEqual([]);
     }
+  });
+  it('bounds source counters and strips unrecognized provider rejection diagnostics', async () => {
+    const operator = 'bounded-source-summary-owner';
+    const config = await save(operator);
+    const id = randomUUID();
+    await owner.query(
+      "INSERT INTO public.automation_runs(id,config_id,owner_id,config_revision,snapshot,slot,trigger,status,phase) VALUES($1,$2,$3,1,$4::jsonb,$5,'manual','completed','completed')",
+      [id, config.id, operator, JSON.stringify(config.config), `manual:${id}`],
+    );
+    for (const rejected of [
+      { version: 1, accounting: 'request_rejected', httpStatus: 500, raw: 'hidden' },
+      { version: 1, accounting: 'request_rejected', httpStatus: '402' },
+      { version: 2, accounting: 'request_rejected', httpStatus: 402 },
+      { version: 1, accounting: 'outcome_unknown', httpStatus: 402 },
+      null,
+    ]) {
+      await owner.query('UPDATE public.automation_runs SET result=$2::jsonb WHERE id=$1', [
+        id,
+        JSON.stringify({
+          failed: 999,
+          skipped: '1',
+          unknown: -1,
+          discoveryRejection: rejected,
+          sourceFailures: [
+            { itemId: 'private', phase: 'create_candidate', code: 'duplicate_source' },
+          ],
+        }),
+      ]);
+      const summary = (await readAutomationDashboard({ pool, owner: operator })).runs[0];
+      expect(summary.result.failed).toBe(null);
+      expect(summary.result.skipped).toBe(null);
+      expect(summary.result.unknown).toBe(0);
+      expect(summary.result.duplicateSourceCount).toBe(0);
+      expect(summary.result.discoveryRejection).toBe(null);
+    }
+    await owner.query('UPDATE public.automation_runs SET result=$2::jsonb WHERE id=$1', [
+      id,
+      JSON.stringify({ failed: 2, skipped: 1, unknown: 1 }),
+    ]);
+    const summary = (await readAutomationDashboard({ pool, owner: operator })).runs[0];
+    expect(summary.result).toMatchObject({ failed: 2, skipped: 1, unknown: 1 });
   });
   it('does not count deleted configurations against the 50 visible-configuration quota', async () => {
     const operator = 'quota-owner';

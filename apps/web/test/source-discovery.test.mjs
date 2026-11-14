@@ -567,7 +567,7 @@ test('private known URLs never become outbound exclusions when public history is
   assert.deepEqual(input.excludedSourceUrls, []);
   assert.equal(post.body.includes('private-owner-import'), false);
 });
-test('24 search candidates do not raise the eight-article output limit', async () => {
+test('bounded oversupply is validated and capped without another paid call', async () => {
   const rows = Array.from({ length: 24 }, (_, index) =>
     article(`https://example.com/article-${index}`),
   );
@@ -577,12 +577,22 @@ test('24 search candidates do not raise the eight-article output limit', async (
   const receipt = await valid.run({ config: expanded });
   assert.deepEqual(receipt.result.articles, rows.slice(0, 8));
   assert.equal(receipt.result.validation.validCitationCount, 24);
-  const overflow = harness(envelope(rows.slice(0, 9), citations));
+  const oversupply = harness(envelope(rows, citations));
+  const capped = await oversupply.run({ config: expanded });
+  assert.deepEqual(capped.result.articles, rows.slice(0, 8));
+  assert.equal(capped.result.validation.returnedCount, 24);
+  assert.equal(capped.result.validation.selectedCount, 8);
+  assert.equal(capped.result.validation.deferredCount, 16);
+  assert.equal(capped.costMicrousd, 25000);
+  assert.equal(oversupply.calls.filter((call) => call.method === 'POST').length, 1);
+  const overflow = harness(
+    envelope([...rows, article('https://example.com/over-limit')], citations),
+  );
   await assert.rejects(overflow.run({ config: expanded }), (error) => {
     assert.equal(error.code, 'discovery_invalid_output');
     assert.equal(error.called, true);
     assert.equal(error.costMicrousd, 25000);
-    assert.equal(error.diagnostics.outputIssue, 'too_many_articles');
+    assert.equal(error.diagnostics.outputIssue, 'too_many_candidates');
     return true;
   });
   assert.equal(overflow.calls.filter((call) => call.method === 'POST').length, 1);
@@ -1116,7 +1126,7 @@ test('unusable outputs retain exact structural reasons and cost without raw answ
     ['{}', 'invalid_root'],
     ['{"articles":[],"private":"extra"}', 'invalid_root'],
     ['{"articles":null}', 'invalid_articles'],
-    [JSON.stringify({ articles: Array(9).fill(article()) }), 'too_many_articles'],
+    [JSON.stringify({ articles: Array(25).fill(article()) }), 'too_many_candidates'],
   ]) {
     const body = envelope();
     body.choices[0].message.content = content;

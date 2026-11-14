@@ -333,11 +333,22 @@ async function startFixture(initial) {
       `<!doctype html><html lang="zh"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/preflight.css"><link rel="stylesheet" href="/globals.css"><link rel="stylesheet" href="/entry.css"><main style="max-width:1200px;margin:auto;padding:16px"><div id="root"></div></main><script type="module" src="/entry.js"></script></html>`,
     );
   });
+  // Chromium can open speculative TCP connections without sending an HTTP
+  // request. server.close() alone cannot finish while those sockets stay open.
+  const sockets = new Set();
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.once('close', () => sockets.delete(socket));
+  });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   return {
     origin: `http://127.0.0.1:${server.address().port}`,
     requests,
-    close: () => new Promise((resolve) => server.close(resolve)),
+    close: () =>
+      new Promise((resolve) => {
+        server.close(resolve);
+        for (const socket of sockets) socket.destroy();
+      }),
   };
 }
 
@@ -349,9 +360,17 @@ test(
   },
   async (t) => {
     const fixture = await startFixture(dashboard());
-    t.after(fixture.close);
-    const browser = await chromium.launch();
-    t.after(() => browser.close());
+    let browser;
+    // Register before launch so launch failures still release the fixture;
+    // close the client before waiting for its server connections to disappear.
+    t.after(async () => {
+      try {
+        await browser?.close();
+      } finally {
+        await fixture.close();
+      }
+    });
+    browser = await chromium.launch();
     const page = await browser.newPage();
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));

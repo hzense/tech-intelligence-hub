@@ -1,6 +1,8 @@
 /** Structural receipts only: never retain prompts, answers, citations or provider messages. */
 import {
   decodeDiscoveryOutput,
+  discoveryArticleLimit,
+  discoveryCandidateLimit,
   type DiscoveryOutputFormat,
   type DiscoveryOutputIssue,
 } from './source-discovery-output.ts';
@@ -121,6 +123,7 @@ export function discoveryDiagnosticItems(value: unknown): string[] {
     invalid_root: '顶层必须为仅含 articles 的对象',
     invalid_articles: 'articles 必须为数组',
     too_many_articles: '原文条目超过 8 条上限',
+    too_many_candidates: '搜索候选超过 24 条处理上限',
   };
   return [
     `搜索回执：${status}${requests === null ? '' : `（${requests} 次，上限 ${discoverySearchLimit} 次）`}`,
@@ -160,15 +163,18 @@ export function discoveryValidationItems(value: unknown): {
 } {
   const row = record(value);
   if (row.version !== 1) return { summary: [], rejections: [] };
-  const returnedCount = boundedCount(row.returnedCount, 8);
+  const returnedCount = boundedCount(row.returnedCount, discoveryCandidateLimit);
   const validCitationCount = boundedCount(row.validCitationCount, 1000);
   if (returnedCount === null) return { summary: [], rejections: [] };
   const seen = new Set<number>();
   const reasonCounts = new Map<DiscoveryRejectionReason, number>();
   const rejections: string[] = [];
-  for (const entry of (Array.isArray(row.rejections) ? row.rejections : []).slice(0, 8)) {
+  for (const entry of (Array.isArray(row.rejections) ? row.rejections : []).slice(
+    0,
+    discoveryCandidateLimit,
+  )) {
     const item = record(entry);
-    const index = boundedCount(item.index, 7);
+    const index = boundedCount(item.index, discoveryCandidateLimit - 1);
     if (index === null || index >= returnedCount || seen.has(index)) continue;
     const reasons = [
       ...new Set(
@@ -188,9 +194,19 @@ export function discoveryValidationItems(value: unknown): {
     );
   }
   // Derive totals from accepted diagnostic rows instead of trusting stored arbitrary keys/counts.
+  const selectedCount = boundedCount(row.selectedCount, discoveryArticleLimit);
+  const deferredCount = boundedCount(row.deferredCount, discoveryCandidateLimit);
   return {
     summary: [
       `返回条目：${returnedCount} 条 · 有效引用网址：${validCitationCount ?? '未记录'}${validCitationCount === null ? '' : ' 个'}`,
+      ...(selectedCount !== null &&
+      deferredCount !== null &&
+      deferredCount > 0 &&
+      selectedCount + deferredCount <= returnedCount
+        ? [
+            `通过校验的原文按本次上限选入 ${selectedCount} 条，另 ${deferredCount} 条未选入；未追加调用 AI`,
+          ]
+        : []),
       ...discoveryRejectionReasons
         .filter((reason) => reasonCounts.has(reason))
         .map((reason) => `${rejectionLabels[reason]}：${reasonCounts.get(reason)} 条`),

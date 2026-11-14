@@ -1,7 +1,8 @@
 import { discoverySearchLimit, discoveryUrl } from './source-discovery-core.ts';
+import { discoveryCandidateLimit } from './source-discovery-output.ts';
 
 // Search hits are a candidate pool, distinct from the eight selected originals.
-export const discoverySearchResultLimit = 24;
+export const discoverySearchResultLimit = discoveryCandidateLimit;
 export const discoveryInputTokens = 120000;
 export const discoveryRequestByteLimit = 16000;
 const exclusionUrlLimit = 40;

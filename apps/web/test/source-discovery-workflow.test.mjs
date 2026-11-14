@@ -355,7 +355,8 @@ test('source discovery orchestrates originals and private candidates without dro
     await automationWorkflow('owner', 'run');
     assert.deepEqual(f.run.result.generationIds, ['item-1']);
     assert.deepEqual(f.dispatched, ['item-1']);
-    assert.equal(f.run.result.failed, 1);
+    assert.equal(f.run.result.failed, 0);
+    assert.equal(f.run.result.skipped, 1);
     f = setup(['https://example.com/a', 'https://example.com/b']);
     f.createdIds['item-0'] = 'existing-manual-task';
     await automationWorkflow('owner', 'run');

@@ -20,7 +20,8 @@ export function resourceNameMention(name, text) {
 }
 
 /**
- * Only prepend an immediately adjacent name at the start of the same clause.
+ * Only restore an immediately adjacent, clause-leading name (including a name
+ * clipped by the quotation's starting offset).
  * Returned text is an unchanged source substring; no cross-fragment search,
  * alias inference, quote correction or new provider request is involved.
  */
@@ -41,9 +42,20 @@ export function completeResourceNameEvidence(name, evidence, fragments, otherNam
     for (const to of [...boundaries, text.length]) {
       if (start >= from && end <= to) {
         const quote = text.slice(from, to).trim();
+        const prefix = typography(text.slice(from, start)).trim().toLocaleLowerCase('en-US');
+        const normalizedName = typography(name).toLocaleLowerCase('en-US');
+        const clause = typography(quote).toLocaleLowerCase('en-US');
+        // A quote may start inside a multi-word name, e.g. "Lab announced ..."
+        // in "ACME Lab announced ...". Only missing name bytes may precede the
+        // quote: do not cross another subject, connective or attribution.
+        const adjacentName =
+          prefix === normalizedName ||
+          (prefix.length > 0 &&
+            prefix.length < normalizedName.length &&
+            normalizedName.startsWith(prefix) &&
+            clause.startsWith(normalizedName));
         if (
-          typography(text.slice(from, start)).trim().toLocaleLowerCase('en-US') ===
-            typography(name).toLocaleLowerCase('en-US') &&
+          adjacentName &&
           [...quote].length <= limit &&
           quote.includes(reference.quote) &&
           resourceNameMention(name, quote) &&

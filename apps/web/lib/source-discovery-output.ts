@@ -1,4 +1,7 @@
 export const discoveryArticleLimit = 8;
+// Providers may ignore array maxItems. Accept only a bounded candidate pool,
+// then validate and select at most discoveryArticleLimit originals locally.
+export const discoveryCandidateLimit = 24;
 export const discoveryAlternativeLimit = 2;
 
 const sourceProperties = {
@@ -52,7 +55,12 @@ export const discoveryJsonSchema = {
 
 export type DiscoveryOutputFormat = 'json' | 'json_fence' | 'invalid' | 'non_text';
 export type DiscoveryOutputIssue =
-  'content_not_text' | 'invalid_json' | 'invalid_root' | 'invalid_articles' | 'too_many_articles';
+  | 'content_not_text'
+  | 'invalid_json'
+  | 'invalid_root'
+  | 'invalid_articles'
+  | 'too_many_articles' // Historical receipts used the requested eight-item limit.
+  | 'too_many_candidates';
 type DecodedOutput = {
   format: DiscoveryOutputFormat;
 } & ({ articles: unknown[]; issue: null } | { articles: null; issue: DiscoveryOutputIssue });
@@ -81,7 +89,7 @@ export function decodeDiscoveryOutput(content: unknown): DecodedOutput {
     return { format, articles: null, issue: 'invalid_root' };
   const articles = (output as { articles: unknown }).articles;
   if (!Array.isArray(articles)) return { format, articles: null, issue: 'invalid_articles' };
-  if (articles.length > discoveryArticleLimit)
-    return { format, articles: null, issue: 'too_many_articles' };
+  if (articles.length > discoveryCandidateLimit)
+    return { format, articles: null, issue: 'too_many_candidates' };
   return { format, articles, issue: null };
 }

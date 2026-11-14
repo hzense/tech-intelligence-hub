@@ -1,7 +1,7 @@
 import { validateImportManifest } from '../../../packages/ingestion/src/import-manifest.mjs';
 import type { AutomationConfig } from '../../../packages/database/src/automation-contract.mjs';
 import { readDiscoveryDiagnostics } from './source-discovery-diagnostics.ts';
-import { decodeDiscoveryOutput } from './source-discovery-output.ts';
+import { decodeDiscoveryOutput, discoveryArticleLimit } from './source-discovery-output.ts';
 import type {
   DiscoveryRejectionReason,
   DiscoveryValidation,
@@ -77,6 +77,8 @@ export function parseDiscoveryResponse(
 ): DiscoveryResult {
   if (!config.discovery || !body || typeof body !== 'object' || Array.isArray(body))
     throw new Error('discovery_invalid_output');
+  if (!Number.isSafeInteger(config.discovery.maxSources) || config.discovery.maxSources < 1)
+    throw new Error('invalid_discovery_configuration');
   const diagnostics = readDiscoveryDiagnostics(body);
   // An explicit provider error or truncated response must not be misreported as no search.
   if (diagnostics.providerError) throw new Error('discovery_provider_error');
@@ -158,7 +160,11 @@ export function parseDiscoveryResponse(
     seen.add(source.url);
     sources.push({ index, source, entry: row as Record<string, unknown> });
   }
-  const selected = sources.slice(0, config.discovery.maxSources);
+  const selected = sources.slice(0, Math.min(discoveryArticleLimit, config.discovery.maxSources));
+  if (sources.length > selected.length) {
+    validation.selectedCount = selected.length;
+    validation.deferredCount = sources.length - selected.length;
+  }
   const alternativeValidation: DiscoveryAlternativeValidation = {
     version: 1,
     returnedCount: 0,

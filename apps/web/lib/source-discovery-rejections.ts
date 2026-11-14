@@ -19,4 +19,7 @@ export interface DiscoveryValidation {
   validCitationCount: number;
   rejections: { index: number; reasons: DiscoveryRejectionReason[] }[];
   reasonCounts: Partial<Record<DiscoveryRejectionReason, number>>;
+  // Present only when valid unique sources exceed this run's selection limit.
+  selectedCount?: number;
+  deferredCount?: number;
 }
