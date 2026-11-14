@@ -119,8 +119,6 @@ test('source failure append bounds all primary and fallback receipts without mut
   assert.equal(
     readAutomationSourceFailures([...failures, ...failures]).length,
     automationSourceFailureLimit,
-    automationSourceOutcomeCounts,
-    automationSourceOutcomeItems,
   );
   assert.deepEqual(
     appendAutomationSourceFailure(failures, 'private-item', 'invalid_request'),

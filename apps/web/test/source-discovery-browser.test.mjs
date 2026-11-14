@@ -802,7 +802,7 @@ test(
       await expect(page.getByText('查看来源处理失败原因（脱敏）', { exact: true })).toHaveCount(0);
       await page.getByText('查看已跳过的重复来源（脱敏）', { exact: true }).click();
       await expect(
-        page.getByText('已跳过重复来源，沿用已有候选任务', { exact: false }),
+        page.getByText('已跳过重复来源，该来源已有候选任务', { exact: false }),
       ).toBeVisible();
       await page.getByText('查看结果待核对的来源（脱敏）', { exact: true }).click();
       await expect(page.getByText('尚未确认成功或失败', { exact: false })).toBeVisible();
