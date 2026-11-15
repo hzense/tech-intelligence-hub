@@ -16,7 +16,11 @@ const key = '__automationPartialDispatch';
 async function compile() {
   const url = new URL('../workflows/automation.ts', import.meta.url);
   const modules = {
-    workflow: 'export async function sleep(){throw Error("unexpected sleep")}',
+    workflow: `export async function sleep(duration){
+      const f=globalThis.${key};f.sleeps.push(duration);
+      if(f.sleeps.length>60)throw Error('import admission wait exceeded its run limit');
+      if(f.sleepRunPatch)Object.assign(f.run,structuredClone(f.sleepRunPatch));
+    }`,
     'workflow/api': `export async function start(_workflow,args){
       const f=globalThis.${key};f.dispatches.push(args);
       if(f.dispatchFailures.includes(args[1]))throw Error('dispatch acknowledgement unknown');
@@ -37,7 +41,9 @@ async function compile() {
     '../lib/server/topic-insight-sandbox':
       'export async function startTopicInsightSandbox(){throw Error("unexpected sandbox")} export async function pollTopicInsightSandbox(){} export async function stopTopicInsightSandbox(){}',
     '../lib/server/source-discovery': `export async function discoverSources(){
-      const f=globalThis.${key};f.discoveries++;return f.items.map(item=>item.url);
+      const f=globalThis.${key};f.discoveries++;
+      if(f.discovery)f.run.result.discovery=structuredClone(f.discovery);
+      return f.items.map(item=>item.url);
     }`,
     '../../../packages/database/src/automation-store.mjs': `
       export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
@@ -53,18 +59,42 @@ async function compile() {
         if(args.phase==='importing_sources'&&args.result?.sourceFailures&&f.failImportReceipt)throw Error('import receipt unconfirmed');
         if(args.phase==='dispatching_candidates'&&++f.receiptWrites===f.failReceiptWrite)
           throw Error('receipt write unconfirmed');
+        f.runUpdates.push(structuredClone(args));
         f.run={...f.run,...structuredClone(args),status:args.status??f.run.status};
         return structuredClone(f.run);
       }
     `,
     '../lib/server/import-service': `
+      import { ImportAdmissionError } from ${JSON.stringify(fileURLToPath(new URL('../lib/import-admission.ts', import.meta.url)))};
+      import { ImportTaskError } from ${JSON.stringify(fileURLToPath(new URL('../../../packages/ingestion/src/import-task-contract.mjs', import.meta.url)))};
       export async function executeImportAdmin(_owner,_method,request){
         const f=globalThis.${key};f.importRequests.push(request.action);
         if(request.action==='detail'&&f.failReadback)throw Error('readback unavailable');
-        return {id:f.batchId,items:structuredClone(f.items)};
+        if(request.action==='create'){
+          f.importCreateRequests.push(structuredClone(request));
+          if(f.importCreateRequests.length===1)return {id:f.batchId,items:structuredClone(f.items)};
+          const item=f.fallbackItems.find(item=>item.url===request.request.manifest.urlLines);
+          if(!item)throw Error('unexpected fallback batch');
+          f.batches[request.request.id]={id:request.request.id,items:[item]};
+          return structuredClone(f.batches[request.request.id]);
+        }
+        return structuredClone(f.batches[request.batchId]);
       }
-      export async function runImportItem(_owner,_batchId,itemId){
-        const f=globalThis.${key};f.imports.push(itemId);return {status:'running'};
+      export async function runImportItem(_owner,batchId,itemId){
+        const f=globalThis.${key};f.imports.push(itemId);
+        const index=f.importAttempts[itemId]??0;f.importAttempts[itemId]=index+1;
+        const plan=f.importOutcomes[itemId];
+        const outcome=plan?.[Math.min(index,plan.length-1)];
+        if(!outcome)return {status:'running'};
+        const item=f.batches[batchId].items.find(item=>item.id===itemId);
+        if(outcome.durableStatus)item.status=outcome.durableStatus;
+        if(outcome.admission)throw new ImportAdmissionError(outcome.admission);
+        if(outcome.errorCode){
+          if(outcome.taskError)throw new ImportTaskError(outcome.errorCode);
+          throw Object.assign(Error(outcome.errorCode),{code:outcome.errorCode});
+        }
+        Object.assign(item,outcome);
+        return structuredClone(item);
       }
     `,
     '../lib/server/signal-generation': `
@@ -113,6 +143,7 @@ async function compile() {
           );
           builder.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path }) => ({
             contents: modules[path],
+            resolveDir: fileURLToPath(new URL('.', url)),
           }));
         },
       },
@@ -138,16 +169,25 @@ for (const option of ['failImportReceipt', 'failReadback']) {
 async function setup(t, options = {}) {
   const previous = process.env.HZENSE_LOCAL_DEVELOPMENT;
   delete process.env.HZENSE_LOCAL_DEVELOPMENT;
+  t.mock.method(globalThis.console, 'info', () => {});
   const state = (globalThis[key] = {
     batchId: uuid(2),
     items: Array.from({ length: options.count ?? 2 }, (_, index) => ({
       id: uuid(index + 3),
       kind: 'url',
-      status: index === options.unknownImport ? 'pending' : 'completed',
+      status:
+        options.itemStatuses?.[index] ??
+        (index === options.unknownImport ? 'pending' : 'completed'),
       url: `https://example.com/article-${index}`,
     })),
     imports: [],
+    importAttempts: {},
+    importOutcomes: {},
     importRequests: [],
+    importCreateRequests: [],
+    fallbackItems: [],
+    sleeps: [],
+    runUpdates: [],
     discoveries: 0,
     creates: [],
     queues: [],
@@ -162,10 +202,12 @@ async function setup(t, options = {}) {
       status: 'queued',
       trigger: 'manual',
       lease_token: uuid(20),
+      lease_until: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
       snapshot: { kind: 'source_collection', profileId: uuid(21), profileRevision: 1 },
       result: {},
     },
   });
+  state.batches = { [state.batchId]: { id: state.batchId, items: state.items } };
   t.after(() => {
     if (previous === undefined) delete process.env.HZENSE_LOCAL_DEVELOPMENT;
     else process.env.HZENSE_LOCAL_DEVELOPMENT = previous;
@@ -174,6 +216,281 @@ async function setup(t, options = {}) {
   const { automationWorkflow } = await compiled;
   return { state, execute: () => automationWorkflow(owner, state.run.id) };
 }
+
+function withSourceAlternative() {
+  const url = 'https://example.com/fallback-0';
+  return {
+    fallbackItems: [{ id: uuid(100), kind: 'url', status: 'queued', url }],
+    discovery: {
+      windowStart: '2026-10-24T00:00:00.000Z',
+      windowEnd: '2026-10-25T23:59:59.999Z',
+      articles: [
+        {
+          url: 'https://example.com/article-0',
+          alternatives: [{ url, title: 'Alternative source', publishedAt: '2026-10-25' }],
+        },
+      ],
+    },
+  };
+}
+
+test('typed worker admission waits durably and dispatches a recovered source exactly once', async (t) => {
+  const { state: f, execute } = await setup(t, {
+    count: 1,
+    itemStatuses: ['queued'],
+    importOutcomes: {
+      [uuid(3)]: [
+        { admission: 'worker_busy' },
+        { admission: 'worker_busy' },
+        { status: 'completed' },
+      ],
+    },
+  });
+  assert.equal(await execute(), 'completed');
+  assert.deepEqual(f.sleeps, ['30s', '30s']);
+  assert.deepEqual(f.imports, Array(3).fill(f.items[0].id));
+  assert.equal(f.importCreateRequests.length, 1);
+  assert.equal(f.discoveries, 1);
+  assert.equal(f.creates.length, 1);
+  assert.deepEqual(f.dispatches, [[owner, f.creates[0].id, queuedAt]]);
+  assert.equal(f.run.status, 'completed');
+  assert.equal(f.run.result.failed, 0);
+  assert.equal(f.run.result.unknown, 0);
+  assert.deepEqual(f.run.result.sourceFailures ?? [], []);
+  assert.ok(f.runUpdates.every((update) => !update.result?.sourceFailures?.length));
+  assert.equal(await execute(), 'already_started_or_finished');
+  assert.equal(f.discoveries, 1);
+  assert.equal(f.imports.length, 3);
+  assert.equal(f.sleeps.length, 2);
+  assert.equal(f.creates.length, 1);
+  assert.equal(f.dispatches.length, 1);
+});
+
+for (const [change, sleepRunPatch] of [
+  ['lease expiry', { lease_until: '2000-01-01T00:00:00.000Z' }],
+  ['run cancellation', { status: 'cancelled' }],
+]) {
+  test(`${change} during admission wait stops another import and dispatches prior confirmed work`, async (t) => {
+    const { state: f, execute } = await setup(t, {
+      count: 3,
+      itemStatuses: ['completed', 'queued', 'completed'],
+      importOutcomes: { [uuid(4)]: [{ admission: 'worker_busy' }, { status: 'completed' }] },
+      sleepRunPatch,
+    });
+    assert.equal(await execute(), 'failed');
+    assert.deepEqual(f.sleeps, ['30s']);
+    assert.deepEqual(f.imports, [f.items[1].id]);
+    assert.equal(f.items[1].status, 'queued');
+    assert.equal(f.discoveries, 1);
+    assert.equal(f.importCreateRequests.length, 1);
+    assert.equal(f.creates.length, 1);
+    assert.equal(f.creates[0].itemId, f.items[0].id);
+    assert.deepEqual(f.dispatches, [[owner, f.creates[0].id, queuedAt]]);
+    assert.deepEqual(f.cleanups, []);
+    assert.deepEqual(f.run.result.generationIds, [f.creates[0].id]);
+    assert.equal(await execute(), 'already_started_or_finished');
+    assert.equal(f.imports.length, 1);
+    assert.equal(f.discoveries, 1);
+    assert.equal(f.dispatches.length, 1);
+  });
+}
+
+test('persistent worker contention has one shared wait limit and preserves later completed work', async (t) => {
+  const { state: f, execute } = await setup(t, {
+    count: 3,
+    itemStatuses: ['queued', 'queued', 'completed'],
+    importOutcomes: {
+      [uuid(3)]: [{ admission: 'worker_busy' }],
+      [uuid(4)]: [{ admission: 'worker_busy' }],
+    },
+    ...withSourceAlternative(),
+  });
+  assert.equal(await execute(), 'completed');
+  assert.deepEqual(f.sleeps, Array(60).fill('30s'));
+  assert.deepEqual(f.imports, [...Array(61).fill(f.items[0].id), f.items[1].id]);
+  assert.equal(f.discoveries, 1);
+  assert.equal(f.importCreateRequests.length, 1);
+  assert.deepEqual(
+    f.items.map((item) => item.status),
+    ['queued', 'queued', 'completed'],
+  );
+  assert.equal(f.run.status, 'completed');
+  assert.equal(f.run.result.failed, 2);
+  assert.equal(f.run.result.unknown, 0);
+  assert.deepEqual(f.run.result.sourceFailures, [
+    { itemId: f.items[0].id, phase: 'import_source', code: 'worker_busy' },
+    { itemId: f.items[1].id, phase: 'import_source', code: 'worker_busy' },
+  ]);
+  assert.equal(f.creates.length, 1);
+  assert.equal(f.creates[0].itemId, f.items[2].id);
+  assert.deepEqual(f.dispatches, [[owner, f.creates[0].id, queuedAt]]);
+  assert.equal(await execute(), 'already_started_or_finished');
+  assert.equal(f.imports.length, 62);
+  assert.equal(f.sleeps.length, 60);
+  assert.equal(f.discoveries, 1);
+  assert.equal(f.dispatches.length, 1);
+});
+
+test('primary and fallback imports consume the same bounded admission wait allowance', async (t) => {
+  const { state: f, execute } = await setup(t, {
+    itemStatuses: ['queued', 'completed'],
+    ...withSourceAlternative(),
+    importOutcomes: {
+      [uuid(3)]: [
+        ...Array.from({ length: 59 }, () => ({ admission: 'worker_busy' })),
+        {
+          status: 'failed',
+          error_code: 'fetch_failed',
+          fetch_diagnostic: { reason: 'network' },
+        },
+      ],
+      [uuid(100)]: [{ admission: 'worker_busy' }],
+    },
+  });
+  assert.equal(await execute(), 'completed');
+  assert.deepEqual(f.sleeps, Array(60).fill('30s'));
+  assert.deepEqual(f.imports, [...Array(60).fill(f.items[0].id), uuid(100), uuid(100)]);
+  assert.equal(f.discoveries, 1);
+  assert.equal(f.importCreateRequests.length, 2);
+  assert.equal(f.fallbackItems[0].status, 'queued');
+  assert.equal(f.run.result.sourceFallbacks.length, 1);
+  assert.equal(f.run.result.failed, 1);
+  assert.equal(f.run.result.unknown, 0);
+  assert.deepEqual(f.run.result.sourceFailures.at(-1), {
+    itemId: uuid(100),
+    phase: 'import_source',
+    code: 'worker_busy',
+  });
+  assert.equal(f.creates.length, 1);
+  assert.equal(f.creates[0].itemId, f.items[1].id);
+  assert.deepEqual(f.dispatches, [[owner, f.creates[0].id, queuedAt]]);
+  assert.equal(await execute(), 'already_started_or_finished');
+  assert.equal(f.imports.length, 62);
+  assert.equal(f.importCreateRequests.length, 2);
+  assert.equal(f.discoveries, 1);
+});
+
+for (const code of ['budget_exceeded', 'configuration_conflict']) {
+  test(`typed ${code} remains a precise blocked import without retry or fallback`, async (t) => {
+    const { state: f, execute } = await setup(t, {
+      itemStatuses: ['queued', 'completed'],
+      importOutcomes: { [uuid(3)]: [{ admission: code }] },
+      ...withSourceAlternative(),
+    });
+    assert.equal(await execute(), 'completed');
+    assert.deepEqual(f.sleeps, []);
+    assert.deepEqual(f.imports, [f.items[0].id]);
+    assert.equal(f.importCreateRequests.length, 1);
+    assert.equal(f.items[0].status, 'queued');
+    assert.equal(f.run.status, 'completed');
+    assert.equal(f.run.result.failed, 1);
+    assert.equal(f.run.result.unknown, 0);
+    assert.deepEqual(f.run.result.sourceFailures, [
+      { itemId: f.items[0].id, phase: 'import_source', code },
+    ]);
+    assert.equal(f.creates.length, 1);
+    assert.equal(f.creates[0].itemId, f.items[1].id);
+    assert.deepEqual(f.dispatches, [[owner, f.creates[0].id, queuedAt]]);
+    assert.equal(await execute(), 'already_started_or_finished');
+    assert.equal(f.imports.length, 1);
+    assert.equal(f.discoveries, 1);
+    assert.equal(f.dispatches.length, 1);
+  });
+}
+
+for (const outcome of [
+  { admission: 'cancelled', durableStatus: 'cancelled' },
+  { status: 'cancelled' },
+]) {
+  test(`cancelled imports remain terminal (${outcome.admission ? 'admission' : 'result'})`, async (t) => {
+    const { state: f, execute } = await setup(t, {
+      itemStatuses: ['queued', 'completed'],
+      importOutcomes: { [uuid(3)]: [outcome] },
+      ...withSourceAlternative(),
+    });
+    await execute();
+    assert.deepEqual(f.sleeps, []);
+    assert.deepEqual(f.imports, [f.items[0].id]);
+    assert.equal(f.importCreateRequests.length, 1);
+    assert.equal(f.items[0].status, 'cancelled');
+    assert.equal(f.run.result.failed, 1);
+    assert.equal(f.run.result.unknown, 0);
+    assert.deepEqual(f.run.result.sourceFailures, [
+      { itemId: f.items[0].id, phase: 'import_source', code: 'cancelled' },
+    ]);
+    assert.equal(f.dispatches.length, 1);
+  });
+}
+
+for (const outcome of [
+  { errorCode: 'worker_busy' },
+  { errorCode: 'budget_exceeded' },
+  { errorCode: 'configuration_conflict' },
+  { errorCode: 'cancelled' },
+  { errorCode: 'worker_busy', taskError: true },
+  { errorCode: 'commit_unknown', taskError: true },
+]) {
+  test(`an unproven ${outcome.errorCode} error is never retried (task error=${!!outcome.taskError})`, async (t) => {
+    const { state: f, execute } = await setup(t, {
+      itemStatuses: ['queued', 'completed'],
+      importOutcomes: { [uuid(3)]: [outcome] },
+      ...withSourceAlternative(),
+    });
+    assert.equal(await execute(), 'outcome_unknown');
+    assert.deepEqual(f.sleeps, []);
+    assert.deepEqual(f.imports, [f.items[0].id]);
+    assert.equal(f.importCreateRequests.length, 1);
+    assert.equal(f.run.status, 'unknown');
+    assert.equal(f.run.result.failed, 0);
+    assert.equal(f.run.result.unknown, 1);
+    assert.deepEqual(f.run.result.sourceFailures, [
+      { itemId: f.items[0].id, phase: 'import_source', code: 'outcome_unknown' },
+    ]);
+    assert.equal(f.dispatches.length, 1);
+    assert.equal(await execute(), 'already_started_or_finished');
+    assert.equal(f.imports.length, 1);
+    assert.equal(f.discoveries, 1);
+    assert.equal(f.dispatches.length, 1);
+  });
+}
+
+for (const status of ['running', 'unknown', 'completed']) {
+  test(`a typed admission refusal reconciles a durable ${status} item without retry`, async (t) => {
+    const { state: f, execute } = await setup(t, {
+      count: 1,
+      itemStatuses: ['queued'],
+      importOutcomes: { [uuid(3)]: [{ admission: 'worker_busy', durableStatus: status }] },
+      ...withSourceAlternative(),
+    });
+    assert.equal(await execute(), status === 'completed' ? 'completed' : 'outcome_unknown');
+    assert.deepEqual(f.sleeps, []);
+    assert.deepEqual(f.imports, [f.items[0].id]);
+    assert.equal(f.importCreateRequests.length, 1);
+    assert.equal(f.run.result.unknown, status === 'completed' ? 0 : 1);
+    assert.equal(f.dispatches.length, status === 'completed' ? 1 : 0);
+    assert.equal(await execute(), 'already_started_or_finished');
+    assert.equal(f.imports.length, 1);
+    assert.equal(f.discoveries, 1);
+  });
+}
+
+test('an already running import is read back once and never claimed again', async (t) => {
+  const { state: f, execute } = await setup(t, {
+    itemStatuses: ['running', 'completed'],
+    importOutcomes: { [uuid(3)]: [{ status: 'running' }] },
+    ...withSourceAlternative(),
+  });
+  assert.equal(await execute(), 'outcome_unknown');
+  assert.deepEqual(f.sleeps, []);
+  assert.deepEqual(f.imports, [f.items[0].id]);
+  assert.equal(f.importRequests.filter((action) => action === 'detail').length, 1);
+  assert.equal(f.importCreateRequests.length, 1);
+  assert.equal(f.run.result.unknown, 1);
+  assert.equal(f.dispatches.length, 1);
+  assert.equal(await execute(), 'already_started_or_finished');
+  assert.equal(f.imports.length, 1);
+  assert.equal(f.dispatches.length, 1);
+});
 
 test('a later unknown import still dispatches the earlier confirmed receipt once', async (t) => {
   const { state: f, execute } = await setup(t, { unknownImport: 1 });

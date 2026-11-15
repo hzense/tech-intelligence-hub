@@ -128,6 +128,55 @@ test('source failure append bounds all primary and fallback receipts without mut
   assert.equal(JSON.stringify(failures).includes('private'), false);
 });
 
+test('confirmed import admission refusals explain unprocessed sources without changing item state', () => {
+  for (const [code, message] of [
+    ['worker_busy', '导入执行槽忙，排队等待已达上限，资料尚未处理'],
+    ['budget_exceeded', '导入预算不足，资料尚未处理'],
+    ['configuration_conflict', '导入解析配置已变更，资料尚未处理'],
+  ]) {
+    const storedItem = { id: itemId, status: 'queued', fence: 0 };
+    const blocked = {
+      status: 'blocked',
+      error_code: code,
+      fetch_diagnostic: { reason: 'http_status', status: 403, body: 'private' },
+    };
+    const failures = appendAutomationImportFailure([], storedItem.id, blocked);
+    assert.deepEqual(failures, [{ itemId, phase: 'import_source', code }]);
+    const items = automationSourceOutcomeItems(failures);
+    assert.deepEqual(items, {
+      failed: [`资料 ${itemId} · 导入原文：${message}（${code}）`],
+      skipped: [],
+      unknown: [],
+    });
+    assert.deepEqual(automationSourceOutcomeCounts({ failed: 1, sourceFailures: failures }), {
+      failed: 1,
+      skipped: 0,
+      unknown: 0,
+    });
+    assert.deepEqual(storedItem, { id: itemId, status: 'queued', fence: 0 });
+    assert.equal(blocked.status, 'blocked');
+    assert.equal(JSON.stringify(failures).includes('private'), false);
+  }
+  assert.deepEqual(
+    appendAutomationImportFailure([], itemId, { status: 'blocked', error_code: 'cancelled' }),
+    [{ itemId, phase: 'import_source', code: 'cancelled' }],
+  );
+});
+
+test('blocked receipts cannot reclassify unknown execution or unrelated failures as admission refusals', () => {
+  const previous = [{ itemId, phase: 'import_source', code: 'outcome_unknown' }];
+  for (const code of [undefined, 'outcome_unknown', 'commit_unknown', 'fetch_failed', 'private']) {
+    assert.deepEqual(
+      appendAutomationImportFailure(previous, itemId, { status: 'blocked', error_code: code }),
+      previous,
+    );
+  }
+  assert.deepEqual(
+    appendAutomationImportFailure([], itemId, { status: 'unknown', error_code: 'worker_busy' }),
+    previous,
+  );
+});
+
 test('confirmed failure, duplicate skip and unknown import have separate presentation', () => {
   const receipts = [
     receipt,

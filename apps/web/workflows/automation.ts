@@ -5,6 +5,7 @@ import { assertTrackedInsightTopics } from '../lib/server/insight-topics';
 import * as store from '../../../packages/database/src/automation-store.mjs';
 import { automationStableId } from '../../../packages/database/src/automation-contract.mjs';
 import { executeImportAdmin, runImportItem } from '../lib/server/import-service';
+import { importAdmissionCode } from '../lib/import-admission';
 import {
   executeGeneration,
   failQueuedGeneration,
@@ -52,6 +53,10 @@ type SourceItem = {
 type SourceBatch = { id: string; items: SourceItem[] };
 type GenerationDispatch = { id: string; queuedAt: string };
 type QueuedSource = { url: string; originalUrl?: string; generationId: string; queuedAt: string };
+
+// Share the waiting allowance across primary and fallback sources. Thirty
+// minutes of durable waits leave room for parsing within the two-hour run lease.
+const importBusyWaitLimit = 60;
 
 /** Called only from steps: a local marker must never fall back to cloud execution. */
 function assertLocalAutomationExecution(kind?: 'source_collection' | 'topic_insight') {
@@ -129,6 +134,7 @@ export async function automationWorkflow(owner: string, id: string) {
     let failed = 0;
     let skipped = 0;
     let unknown = 0;
+    let importBusyWaits = 0;
     let dispatchUnconfirmed = false;
     let dispatchError: unknown;
     try {
@@ -136,11 +142,31 @@ export async function automationWorkflow(owner: string, id: string) {
         if (item.kind !== 'url') continue;
         let selectedItem = item;
         let selectedBatchId = batch.id;
-        let status =
-          item.status === 'completed'
-            ? 'completed'
-            : await importSourceItem(owner, batch.id, item.id, run.id);
-        for (let attempt = 0; status === 'failed' && attempt < sourceFallbackLimit; attempt++) {
+        let status = selectedItem.status;
+        for (let attempt = 0; attempt <= sourceFallbackLimit; attempt++) {
+          if (status !== 'completed') {
+            status = await importSourceItem(
+              owner,
+              selectedBatchId,
+              selectedItem.id,
+              run.id,
+              importBusyWaits < importBusyWaitLimit,
+            );
+            while (status === 'busy') {
+              importBusyWaits++;
+              await sleep('30s');
+              status = await importSourceItem(
+                owner,
+                selectedBatchId,
+                selectedItem.id,
+                run.id,
+                importBusyWaits < importBusyWaitLimit,
+              );
+            }
+          }
+          // Admission refusals did not fetch a source. Only a confirmed fetch
+          // failure may select a different URL; unknown outcomes never retry.
+          if (status !== 'failed' || attempt === sourceFallbackLimit) break;
           const fallback = await createFallbackSourceBatch(
             owner,
             run.id,
@@ -152,10 +178,7 @@ export async function automationWorkflow(owner: string, id: string) {
           if (!fallback) break;
           selectedBatchId = fallback.id;
           selectedItem = fallback.items[0]!;
-          status =
-            selectedItem.status === 'completed'
-              ? 'completed'
-              : await importSourceItem(owner, selectedBatchId, selectedItem.id, run.id);
+          status = selectedItem.status;
         }
         if (status !== 'completed') {
           if (status === 'unknown') unknown++;
@@ -406,16 +429,42 @@ async function createFallbackSourceBatch(
   return { id: batchId, items: [{ id: item.id, status: item.status, kind: item.kind, url }] };
 }
 createFallbackSourceBatch.maxRetries = 0;
-async function importSourceItem(owner: string, batchId: string, itemId: string, runId?: string) {
+async function importSourceItem(
+  owner: string,
+  batchId: string,
+  itemId: string,
+  runId: string,
+  allowBusyRetry: boolean,
+) {
   'use step';
   assertLocalAutomationExecution('source_collection');
+  // Durable waits may resume after a switch or run state changed. Recheck the
+  // original consent before attempting another claim, even for local execution.
+  const current = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
+  assertLocalAutomationRun(current, 'source_collection');
+  const leaseUntil = current.lease_until ? new Date(current.lease_until).getTime() : NaN;
+  const belongsToRun =
+    current.result?.batchId === batchId ||
+    readAutomationSourceFallbacks(current.result?.sourceFallbacks).some(
+      (entry) => entry.batchId === batchId && entry.itemId === itemId,
+    );
+  if (
+    current.status !== 'running' ||
+    !current.lease_token ||
+    !Number.isFinite(leaseUntil) ||
+    leaseUntil <= Date.now() ||
+    !belongsToRun
+  )
+    throw new Error('stale_attempt');
   let outcome: Pick<SourceItem, 'status' | 'error_code' | 'fetch_diagnostic'> | undefined;
+  let admission: ReturnType<typeof importAdmissionCode> = null;
   try {
     const result = (await runImportItem(owner, batchId, itemId)) as unknown as NonNullable<
       typeof outcome
     >;
     if (['completed', 'failed', 'cancelled', 'unknown'].includes(result.status)) outcome = result;
-  } catch {
+  } catch (error) {
+    admission = importAdmissionCode(error);
     // A thrown transport/commit error is not proof that the item failed. Read
     // back its durable result once; do not retry a fetch, parser or AI call.
   }
@@ -426,9 +475,19 @@ async function importSourceItem(owner: string, batchId: string, itemId: string, 
     })) as SourceBatch;
     const item = batch.items.find((row) => row.id === itemId);
     if (!item) throw new Error('source_outcome_unknown');
-    outcome = ['completed', 'failed', 'cancelled', 'unknown'].includes(item.status)
-      ? item
-      : { status: 'unknown' };
+    if (['completed', 'failed', 'cancelled', 'unknown'].includes(item.status)) outcome = item;
+    else if (item.status === 'queued' && admission) {
+      // This marker can only originate before the worker owns a lease. The
+      // readback also rules out a different worker having started this item.
+      if (admission === 'worker_busy' && allowBusyRetry) {
+        console.info('automation_import_waiting', { runId, batchId, itemId });
+        return 'busy';
+      }
+      outcome = {
+        status: admission === 'cancelled' ? 'cancelled' : 'blocked',
+        error_code: admission,
+      };
+    } else outcome = { status: 'unknown' };
   }
   if (runId && outcome.status !== 'completed') {
     // Persist a sanitized receipt, including uncertainty. A lost receipt write stops

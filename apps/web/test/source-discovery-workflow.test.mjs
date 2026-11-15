@@ -157,6 +157,7 @@ test('source discovery orchestrates originals and private candidates without dro
         status: 'queued',
         trigger: 'manual',
         lease_token: 'token',
+        lease_until: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
         phase: 'preparing',
         snapshot: { kind: 'source_collection', profileId: 'profile', profileRevision: 1 },
         result: null,

@@ -4,6 +4,8 @@ import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { runImportProcessing } from '../lib/import-worker-core.ts';
 import { ImportIOError } from '../lib/import-io.ts';
+import { ImportAdmissionError, importAdmissionCode } from '../lib/import-admission.ts';
+import { ImportTaskError } from '../../../packages/ingestion/src/import-task-contract.mjs';
 const path = 'imports/batch/item',
   bytes = Buffer.from('hello'),
   sha256 = createHash('sha256').update(bytes).digest('hex');
@@ -87,6 +89,98 @@ test('failed budget claim performs no external work', async () => {
   });
   await assert.rejects(runImportProcessing(path, 100, deps));
   assert.deepEqual(events, ['expire']);
+});
+test('typed claim refusals are admission errors and perform no external work', async () => {
+  for (const code of ['worker_busy', 'budget_exceeded', 'configuration_conflict', 'cancelled']) {
+    const { events, deps } = fixture({
+      claim: async () => {
+        throw new ImportTaskError(code, 'claim_refused');
+      },
+    });
+    await assert.rejects(runImportProcessing(path, 100, deps), (error) => {
+      assert.ok(error instanceof ImportAdmissionError);
+      assert.ok(error instanceof ImportTaskError);
+      assert.equal(error.code, code);
+      assert.equal(error.reason, 'claim_refused');
+      assert.equal(importAdmissionCode(error), code);
+      return true;
+    });
+    assert.deepEqual(events, ['expire']);
+  }
+});
+test('claim errors without deterministic typed refusals remain unchanged and unmarked', async () => {
+  for (const error of [
+    new ImportTaskError('commit_unknown'),
+    new Error('network'),
+    new Error('worker_busy'),
+    Object.assign(new Error('worker_busy'), { code: 'worker_busy' }),
+    { code: 'budget_exceeded' },
+  ]) {
+    const { events, deps } = fixture({
+      claim: async () => {
+        throw error;
+      },
+    });
+    await assert.rejects(runImportProcessing(path, 100, deps), (caught) => {
+      assert.equal(caught, error);
+      assert.equal(importAdmissionCode(caught), null);
+      return true;
+    });
+    assert.deepEqual(events, ['expire']);
+  }
+});
+test('admission classification requires the marker and a supported refusal code', () => {
+  for (const error of [
+    null,
+    undefined,
+    new ImportTaskError('worker_busy'),
+    { code: 'worker_busy', name: 'ImportAdmissionError' },
+    Object.assign(new ImportAdmissionError('worker_busy'), { code: 'commit_unknown' }),
+  ]) {
+    assert.equal(importAdmissionCode(error), null);
+  }
+});
+test('expiry and completion errors cannot masquerade as claim refusals', async () => {
+  for (const stage of ['expire', 'finish']) {
+    const error = new ImportTaskError('worker_busy');
+    let calls = 0;
+    const { events, deps } = fixture({
+      [stage]: async () => {
+        calls++;
+        throw error;
+      },
+    });
+    await assert.rejects(runImportProcessing(path, 100, deps), (caught) => {
+      assert.equal(caught, error);
+      assert.equal(importAdmissionCode(caught), null);
+      return true;
+    });
+    assert.equal(calls, 1);
+    if (stage === 'expire') assert.deepEqual(events, []);
+    else assert.deepEqual(events.slice(-2), ['parse', 'remove']);
+  }
+});
+test('processing errors with refusal codes retain the unknown charged outcome', async () => {
+  for (const stage of ['fetch', 'parse']) {
+    const error = new ImportTaskError('worker_busy');
+    let completion;
+    const { deps, events } = fixture({
+      [stage]: async () => {
+        throw error;
+      },
+      finish: async (value) => {
+        completion = value;
+        return value;
+      },
+    });
+    const result = await runImportProcessing(path, 100, deps);
+    assert.equal(result.outcome, 'unknown');
+    assert.equal(result.errorCode, 'outcome_unknown');
+    assert.equal(result.chargedMicrousd, 100);
+    assert.equal(importAdmissionCode(error), null);
+    assert.equal(completion.outcome, 'unknown');
+    assert.ok(events.includes('remove'));
+  }
 });
 test('failed URL cleanup finishes before a retry can observe the committed failed state', async () => {
   let original = null;

@@ -75,6 +75,7 @@ async function compile() {
       return f.completion;
     }`,
     '../lib/server/import-service': `export async function executeImportAdmin(){${unexpected}} export async function runImportItem(){${unexpected}}`,
+    '../lib/import-admission': `export function importAdmissionCode(){${unexpected}}`,
     '../lib/server/signal-generation': `export async function executeGeneration(){${unexpected}} export async function failQueuedGeneration(){${unexpected}} export async function queueGeneration(){${unexpected}}`,
     './signal-generation': `export async function signalGenerationWorkflow(){${unexpected}}`,
     './local-signal-generation': `export async function localSignalGenerationWorkflow(){${unexpected}}`,

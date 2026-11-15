@@ -23,6 +23,9 @@ const failureLabels = {
 } as const;
 export type AutomationSourceFailureCode = keyof typeof failureLabels;
 const importFailureLabels = {
+  worker_busy: '导入执行槽忙，排队等待已达上限，资料尚未处理',
+  budget_exceeded: '导入预算不足，资料尚未处理',
+  configuration_conflict: '导入解析配置已变更，资料尚未处理',
   fetch_failed: '原文抓取失败',
   parse_failed: '原文解析失败',
   unsupported_content: '原文格式不支持',
@@ -105,14 +108,26 @@ export function appendAutomationSourceFailure(
     },
   ].slice(-automationSourceFailureLimit);
 }
-/** Keep uncertainty distinct from confirmed failure; never retry it as a failure. */
+/** A blocked receipt describes a confirmed admission refusal, not a stored item
+ * status. Keep uncertain execution separate and never turn it into a refusal. */
 export function appendAutomationImportFailure(
   value: unknown,
   itemId: string,
   outcome: { status: string; error_code?: unknown; fetch_diagnostic?: unknown },
 ): AutomationSourceFailure[] {
   const current = readAutomationSourceFailures(value);
-  if (!itemIdIsValid(itemId) || !['failed', 'cancelled', 'unknown'].includes(outcome.status))
+  if (
+    !itemIdIsValid(itemId) ||
+    !['failed', 'cancelled', 'unknown', 'blocked'].includes(outcome.status)
+  )
+    return current;
+  if (
+    outcome.status === 'blocked' &&
+    (typeof outcome.error_code !== 'string' ||
+      !['worker_busy', 'budget_exceeded', 'configuration_conflict', 'cancelled'].includes(
+        outcome.error_code,
+      ))
+  )
     return current;
   const code: ImportSourceFailure['code'] =
     outcome.status === 'unknown'
