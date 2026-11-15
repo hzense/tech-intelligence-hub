@@ -70,6 +70,19 @@
   width: 32%;
   max-width: 24rem;
 }
+.compactName {
+  max-width: 24rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.batchActions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
 .expandedCell {
   padding: 0 !important;
 }

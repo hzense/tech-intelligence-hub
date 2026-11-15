@@ -83,40 +83,94 @@
   font-weight: 500;
 }
 .runTable {
-  min-width: 1080px;
+  min-width: 1060px;
   table-layout: fixed;
 }
 .runTable > thead > tr > th:nth-child(1) {
-  width: 20%;
+  width: 22%;
 }
 .runTable > thead > tr > th:nth-child(2) {
-  width: 15%;
+  width: 20%;
 }
 .runTable > thead > tr > th:nth-child(3) {
-  width: 21%;
+  width: 12%;
 }
 .runTable > thead > tr > th:nth-child(4) {
-  width: 14%;
+  width: 17%;
 }
 .runTable > thead > tr > th:nth-child(5) {
-  width: 30%;
+  width: 12%;
+}
+.runTable > thead > tr > th:nth-child(6) {
+  width: 17%;
 }
 .runTable small {
   display: block;
   color: var(--muted, #53617b);
   overflow-wrap: anywhere;
 }
+.runTable > tbody > tr > th > span:first-child {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .statusCell {
-  min-width: 13rem;
-  max-width: 20rem;
+  overflow-wrap: anywhere;
+}
+.statusCell > span {
+  display: flex;
+  max-width: 100%;
+}
+.statusCell > [data-status='partial']::before {
+  background: #a97408;
+}
+.statusLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shortError {
+  margin-top: 0.2rem;
 }
 .resultCell {
-  min-width: 19rem;
-  max-width: 36rem;
+  font-variant-numeric: tabular-nums;
 }
-.resultCell pre {
+.actionsCell {
+  white-space: normal;
+}
+.main .runTable .actionsCell button {
+  padding: 0.35rem 0.5rem;
+  margin-block: 0.15rem;
+  font-size: 0.82rem;
+}
+.main .runTable > thead button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.15rem 0;
+  margin: 0;
+  font-size: inherit;
+}
+.runTable .detailRow > td {
+  background: #f8fafc;
+  padding: 1rem 1.25rem;
+}
+.runDetails {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.runDetails p {
+  margin: 0.65rem 0;
+}
+.runDetails pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.detailMetadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 3rem;
 }
 .linkedTasksTable {
   min-width: 0;

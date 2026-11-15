@@ -231,13 +231,13 @@ test(
     await expect(
       taskTable.getByRole('columnheader', { name: '创建时间', exact: true }),
     ).toBeVisible();
-    await expect(taskTable.getByRole('button', { name: /^展开资料：/ })).toHaveAttribute(
+    await expect(taskTable.getByRole('button', { name: /^任务详情：/ })).toHaveAttribute(
       'aria-expanded',
       'false',
     );
     const beforeExpand = commands.length;
-    await taskTable.getByRole('button', { name: /^展开资料：/ }).click();
-    await expect(taskTable.getByRole('button', { name: /^收起资料：/ })).toHaveAttribute(
+    await taskTable.getByRole('button', { name: /^任务详情：/ }).click();
+    await expect(taskTable.getByRole('button', { name: /^收起详情：/ })).toHaveAttribute(
       'aria-expanded',
       'true',
     );
@@ -321,7 +321,7 @@ test(
     await page.reload();
     await page.getByRole('button', { name: '更早批次' }).click();
     await expect(page.getByText('批次 batch-50', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: /^展开资料：/ }).click();
+    await page.getByRole('button', { name: /^任务详情：/ }).click();
     await expect(page.getByText('已达 5 次尝试上限，不能再次重试。')).toBeVisible();
     await expect(page.getByRole('button', { name: /重试/ })).toHaveCount(0);
     await page.getByRole('button', { name: '取消未完成项' }).click();
@@ -331,7 +331,11 @@ test(
     await expect(page.getByText('批次 batch-0', { exact: true })).toBeVisible();
     await expect(page.getByText('第 1 页')).toBeVisible();
     await page.getByRole('button', { name: '历史记录', exact: true }).click();
-    await expect(page.getByText('已取消', { exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByRole('table', { name: '历史导入任务', exact: true })
+        .getByText('已取消', { exact: true }),
+    ).toBeVisible();
     await expect(page.getByText('第 1 页')).toBeVisible();
     await expect(page.getByRole('button', { name: '更早批次' })).toBeDisabled();
     await page.getByRole('button', { name: '当前任务', exact: true }).click();
@@ -355,13 +359,13 @@ test(
       },
     ];
     await page.reload();
-    await page.getByRole('button', { name: /^展开资料：/ }).click();
+    await page.getByRole('button', { name: /^任务详情：/ }).click();
     await expect(page.getByText('原件已过期或不存在，请新建批次重新导入。')).toBeVisible();
     await expect(page.getByRole('button', { name: '重新排队' })).toHaveCount(0);
     batches[0].items[0].error_code = 'worker_unavailable';
     await page.reload();
     await expect(page.getByRole('button', { name: '重新排队' })).toHaveCount(0);
-    await page.getByRole('button', { name: /^展开资料：/ }).click();
+    await page.getByRole('button', { name: /^任务详情：/ }).click();
     await expect(page.getByText('原件不保留，请新建批次重新导入。')).toBeVisible();
     batches = [
       {
@@ -397,11 +401,13 @@ test(
       .getByRole('row')
       .filter({ has: page.getByRole('rowheader', { name: /重复副本.txt.*批次 duplicate/ }) });
     await expect(duplicate).toBeVisible();
+    await duplicate.getByRole('button', { name: /^任务详情：/ }).click();
+    const duplicateDetails = page.locator('#import-batch-duplicate');
     page.once('dialog', (dialog) => dialog.dismiss());
-    await duplicate.getByRole('button', { name: '删除任务', exact: true }).click();
+    await duplicateDetails.getByRole('button', { name: '删除任务', exact: true }).click();
     await expect(duplicate).toBeVisible();
     page.once('dialog', (dialog) => dialog.accept());
-    await duplicate.getByRole('button', { name: '删除任务', exact: true }).click();
+    await duplicateDetails.getByRole('button', { name: '删除任务', exact: true }).click();
     await expect(page.getByRole('rowheader', { name: /重复副本.txt.*批次 duplicate/ })).toHaveCount(
       0,
     );
@@ -409,6 +415,65 @@ test(
       page.getByRole('rowheader', { name: /原始资料.txt.*批次 canonical/ }),
     ).toBeVisible();
     assert.equal(commands.filter((command) => command.action === 'delete').length, 1);
+
+    // Filter/sort only loaded rows; keep the API page cursor in its original order.
+    batches = Array.from({ length: 51 }, (_, index) => ({
+      id: `sortable-${index}`,
+      status: index % 2 === 0 ? 'failed' : 'queued',
+      cancelled: false,
+      created_at: new Date(Date.UTC(2026, 10, 15, 0, index)).toISOString(),
+      items: [
+        {
+          id: `source-${index}`,
+          kind: 'url',
+          status: index % 2 === 0 ? 'failed' : 'queued',
+          declaration: { url: `https://example.com/Research-${String(index).padStart(2, '0')}` },
+        },
+      ],
+    }));
+    await page.reload();
+    const sortable = page.getByRole('table', { name: '当前导入任务', exact: true });
+    const search = page.getByRole('searchbox', { name: '搜索导入任务', exact: true });
+    const filter = page.getByRole('combobox', { name: '导入任务状态', exact: true });
+    const loadedRows = () =>
+      sortable
+        .locator(':scope > tbody > tr:not([id])')
+        .filter({ has: page.getByRole('rowheader') });
+    await expect(loadedRows()).toHaveCount(50);
+    await expect(loadedRows().first()).toContainText('Research-49');
+    const beforeListControls = commands.length;
+    await search.fill('RESEARCH-04');
+    await expect(loadedRows()).toHaveCount(1);
+    await expect(loadedRows()).toContainText('Research-04');
+    await filter.selectOption('queued');
+    await expect(
+      sortable.getByText('没有符合筛选条件的导入任务。可调整关键词或状态，或重置筛选。'),
+    ).toBeVisible();
+    await search.fill('');
+    await expect(loadedRows()).toHaveCount(25);
+    await sortable.getByRole('button', { name: '任务名称', exact: true }).click();
+    await expect(
+      sortable.getByRole('columnheader', { name: '任务名称', exact: true }),
+    ).toHaveAttribute('aria-sort', 'ascending');
+    await expect(loadedRows().first()).toContainText('Research-01');
+    await page.getByRole('button', { name: '重置筛选与排序', exact: true }).click();
+    await expect(filter).toHaveValue('all');
+    await sortable.getByRole('button', { name: '创建时间', exact: true }).click();
+    await expect(loadedRows().first()).toContainText('Research-00');
+    await search.fill('Research-50');
+    await expect(loadedRows()).toHaveCount(0);
+    assert.equal(
+      commands.length,
+      beforeListControls,
+      'Local filters and sorting must not mutate tasks',
+    );
+    await page.getByRole('button', { name: '更早批次', exact: true }).click();
+    await expect(loadedRows()).toHaveCount(1);
+    await expect(loadedRows()).toContainText('Research-50');
+    await page.getByRole('button', { name: '当前任务', exact: true }).click();
+    await expect(search).toHaveValue('');
+    await expect(filter).toHaveValue('all');
+    await expect(loadedRows()).toHaveCount(50);
 
     const recoveryId = '3d6f8ed7-022c-9dcf-b52b-eea13542a727';
     const failedBatch = {

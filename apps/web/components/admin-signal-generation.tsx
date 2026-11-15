@@ -1,6 +1,7 @@
 'use client';
 
 import { importItemName } from '../lib/import-labels';
+import { TaskListToolbar, TaskSortHeader, useTaskList } from './admin-task-list';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { ImportBatch } from '../../../packages/database/src/import-store.mjs';
@@ -272,8 +273,6 @@ export function AdminSignalGeneration({
 }) {
   const localSimulation = localMode && !localRealAi;
   const [data, setData] = useState<ListResponse>({ runs: [], profiles: [], batches: [] });
-  const [taskQuery, setTaskQuery] = useState('');
-  const [taskStatus, setTaskStatus] = useState('all');
   const [batchId, setBatchId] = useState('');
   const [itemId, setItemId] = useState('');
   const [profileId, setProfileId] = useState('');
@@ -315,6 +314,24 @@ export function AdminSignalGeneration({
       batch.items.map((item) => [item.id, importItemName(item)] as const),
     ),
   );
+  const sourceName = (run: GenerationRun) =>
+    run.source_name ?? sourceNames.get(run.item_id) ?? '生成任务';
+  const profileName = (run: GenerationRun) =>
+    data.profiles.find(
+      (entry) => entry.id === run.profile_id && entry.revision === run.profile_revision,
+    )?.name ?? '历史配置';
+  const taskList = useTaskList({
+    items: data.runs,
+    searchText: (run) =>
+      `${sourceName(run)} ${run.id} ${profileName(run)} ${run.profile_id} ${run.error_code ?? ''}`,
+    statusValue: (run) => run.status,
+    sortValues: {
+      name: sourceName,
+      status: (run) => statuses[run.status],
+      created: (run) => Date.parse(run.created_at),
+      cost: (run) => Number(run.charged_microusd),
+    },
+  });
   const tracked = data.runs.find((run) => run.id === pending?.id);
   const selectedRequest = pending ?? (retryDraft ? requestFor(retryDraft) : null);
   const recipientProfile = selectedRequest
@@ -588,8 +605,7 @@ export function AdminSignalGeneration({
       setPending(canonical);
       if (canonical.id !== request.id) setConsent(false);
       acceptRun(run);
-      setTaskQuery('');
-      setTaskStatus('all');
+      taskList.reset();
       setListNavigation((value) => value + 1);
       setMessage(
         localSimulation
@@ -736,13 +752,7 @@ export function AdminSignalGeneration({
     });
   }
 
-  const visibleRuns = data.runs.filter(
-    (run) =>
-      (taskStatus === 'all' || run.status === taskStatus) &&
-      `${run.source_name ?? sourceNames.get(run.item_id) ?? '生成任务'} ${run.id}`
-        .toLowerCase()
-        .includes(taskQuery.trim().toLowerCase()),
-  );
+  const visibleRuns = taskList.visibleItems;
   return (
     <main className={`section-shell ${styles.main}`}>
       <Link className={controls.button} href="/admin">
@@ -1069,32 +1079,13 @@ export function AdminSignalGeneration({
         aria-label="生成任务列表"
       >
         <h2>生成任务</h2>
-        <div className={styles.tableToolbar}>
-          <label>
-            搜索已加载任务
-            <input
-              type="search"
-              placeholder="资料名称或任务编号"
-              value={taskQuery}
-              onChange={(event) => setTaskQuery(event.target.value)}
-            />
-          </label>
-          <label>
-            任务状态
-            <select
-              aria-label="任务状态"
-              value={taskStatus}
-              onChange={(event) => setTaskStatus(event.target.value)}
-            >
-              <option value="all">全部状态</option>
-              {Object.entries(statuses).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <TaskListToolbar
+          label="生成任务"
+          list={taskList}
+          statuses={Object.entries(statuses).map(([value, label]) => ({ value, label }))}
+          shown={visibleRuns.length}
+          total={data.runs.length}
+        />
         {pollError && (
           <p role="alert">进度刷新失败，显示最后一次状态。请手动刷新核对；不会重复调用 AI。</p>
         )}
@@ -1109,27 +1100,29 @@ export function AdminSignalGeneration({
           tabIndex={0}
         >
           <table className={styles.taskTable}>
-            <caption>
-              生成任务 ·{' '}
-              <span role="status" aria-live="polite" aria-atomic="true">
-                显示 {visibleRuns.length} / {data.runs.length} 条已加载记录
-              </span>
-            </caption>
+            <caption>生成任务</caption>
             <thead>
               <tr>
-                <th scope="col">资料 / 任务</th>
-                <th scope="col">状态</th>
+                <TaskSortHeader sortKey="name" list={taskList}>
+                  资料 / 任务
+                </TaskSortHeader>
+                <TaskSortHeader sortKey="status" list={taskList}>
+                  状态
+                </TaskSortHeader>
                 <th scope="col">发布情况</th>
-                <th scope="col">模型配置</th>
-                <th scope="col">创建时间</th>
-                <th scope="col">{localMode ? '费用 / 模拟记账' : '费用'}</th>
+                <TaskSortHeader sortKey="created" list={taskList}>
+                  创建时间
+                </TaskSortHeader>
+                <TaskSortHeader sortKey="cost" list={taskList}>
+                  {localMode ? '费用 / 模拟记账' : '费用'}
+                </TaskSortHeader>
                 <th scope="col">操作</th>
               </tr>
             </thead>
             <tbody>
               {visibleRuns.length === 0 && (
                 <tr>
-                  <td colSpan={7}>没有匹配的已加载任务。</td>
+                  <td colSpan={6}>没有匹配的已加载任务。</td>
                 </tr>
               )}
               {visibleRuns.map((run) => {
@@ -1143,10 +1136,12 @@ export function AdminSignalGeneration({
                         prefetch={false}
                         className={styles.sourceTitle}
                       >
-                        {run.source_name ?? sourceNames.get(run.item_id) ?? '生成任务'}
+                        {sourceName(run)}
                       </Link>
                       <span className={styles.taskId} title={run.id}>
-                        {run.id.slice(0, 8)}
+                        {run.id.slice(0, 8)} · <span>{profileName(run)}</span> ·{' '}
+                        <span>r{run.profile_revision}</span>
+                        {localMode ? ` · ${simulated ? '本地模拟' : '本地真实 AI'}` : ''}
                       </span>
                     </th>
                     <td>
@@ -1162,10 +1157,12 @@ export function AdminSignalGeneration({
                         />
                       )}
                       {generationFailureMessage(run) && (
-                        <p className={styles.taskError}>
-                          失败原因：
-                          {generationFailureMessage(run)}
-                        </p>
+                        <details className={styles.rowDetails}>
+                          <summary>查看失败原因</summary>
+                          <p className={styles.taskError}>
+                            失败原因：{generationFailureMessage(run)}
+                          </p>
+                        </details>
                       )}
                     </td>
                     <td className={styles.publicationCell}>
@@ -1187,21 +1184,6 @@ export function AdminSignalGeneration({
                           );
                         }}
                       />
-                    </td>
-                    <td>
-                      <span>
-                        {data.profiles.find(
-                          (profile) =>
-                            profile.id === run.profile_id &&
-                            profile.revision === run.profile_revision,
-                        )?.name ?? '历史配置'}
-                      </span>
-                      {localMode ? (
-                        <span className={styles.taskId}>
-                          {simulated ? '本地模拟' : '本地真实 AI'}
-                        </span>
-                      ) : null}
-                      <span className={styles.taskId}>r{run.profile_revision}</span>
                     </td>
                     <td className={styles.timeCell}>
                       {Number.isFinite(Date.parse(run.created_at)) ? (

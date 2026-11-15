@@ -829,13 +829,17 @@ test(
         await expect(page.getByRole('checkbox')).not.toBeChecked();
         await picker.selectOption(otherItemId);
         await page.getByRole('checkbox').check();
-        await page.getByLabel('搜索已加载任务').fill('不会匹配的筛选');
-        await page.getByLabel('任务状态', { exact: true }).selectOption('failed');
+        await page.getByLabel('搜索生成任务', { exact: true }).fill('不会匹配的筛选');
+        await page
+          .getByRole('combobox', { name: '生成任务状态', exact: true })
+          .selectOption('failed');
         await page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }).click();
         await expect(page.getByRole('table').getByText('待执行', { exact: true })).toBeVisible();
         await expect(page.getByRole('region', { name: '生成任务列表', exact: true })).toBeFocused();
-        await expect(page.getByLabel('搜索已加载任务')).toHaveValue('');
-        await expect(page.getByLabel('任务状态', { exact: true })).toHaveValue('all');
+        await expect(page.getByLabel('搜索生成任务', { exact: true })).toHaveValue('');
+        await expect(page.getByRole('combobox', { name: '生成任务状态', exact: true })).toHaveValue(
+          'all',
+        );
         await expect(page.getByRole('heading', { name: '当前请求', exact: true })).toHaveCount(0);
         await expect(page.getByRole('heading', { name: '请求恢复', exact: true })).toHaveCount(0);
         assert.equal(commands.length, 1);
@@ -869,6 +873,80 @@ test(
           page.getByRole('button', { name: '创建生成任务（不调用 AI）', exact: true }),
         ).toBeEnabled();
         assert.equal(commands.filter((c) => ['create', 'execute'].includes(c.action)).length, 0);
+        await page.close();
+      },
+    );
+
+    await t.test(
+      'compact generation tasks filter and sort locally with keyboard headers',
+      async () => {
+        const page = await newPage();
+        runs = [
+          {
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            source_name: 'Alpha document',
+            status: 'completed',
+            created_at: '2026-11-10T10:00:00Z',
+            charged_microusd: '10000000',
+          },
+          {
+            id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            source_name: 'Beta document',
+            status: 'failed',
+            created_at: '2026-11-12T10:00:00Z',
+            charged_microusd: '900000',
+            error_code: 'generation_failed',
+          },
+          {
+            id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            source_name: 'Gamma document',
+            status: 'completed',
+            created_at: '2026-11-11T10:00:00Z',
+            charged_microusd: '2000000',
+          },
+        ].map((run) => ({
+          batch_id: batchId,
+          item_id: itemId,
+          profile_id: profileId,
+          profile_revision: 2,
+          reserved_microusd: '10000000',
+          can_delete: true,
+          ...run,
+        }));
+        await page.goto(origin);
+        const table = page.getByRole('table', { name: '生成任务', exact: true });
+        const rowNames = () => table.getByRole('rowheader').getByRole('link').allTextContents();
+        await expect(table.getByRole('rowheader')).toHaveCount(3);
+        assert.deepEqual(await rowNames(), ['Beta document', 'Gamma document', 'Alpha document']);
+        await expect(table.getByRole('columnheader', { name: /创建时间/ })).toHaveAttribute(
+          'aria-sort',
+          'descending',
+        );
+        const costHeader = table.getByRole('button', { name: '费用' });
+        await costHeader.focus();
+        await page.keyboard.press('Enter');
+        assert.deepEqual(await rowNames(), ['Beta document', 'Gamma document', 'Alpha document']);
+        await expect(table.getByRole('columnheader', { name: /费用/ })).toHaveAttribute(
+          'aria-sort',
+          'ascending',
+        );
+        await costHeader.click();
+        assert.deepEqual(await rowNames(), ['Alpha document', 'Gamma document', 'Beta document']);
+        await page
+          .getByRole('combobox', { name: '生成任务状态', exact: true })
+          .selectOption('completed');
+        await page.getByLabel('搜索生成任务', { exact: true }).fill('Gamma');
+        await expect(table.getByRole('rowheader')).toHaveCount(1);
+        await expect(table.getByRole('rowheader')).toContainText('Gamma document');
+        await page.getByLabel('搜索生成任务', { exact: true }).fill('missing');
+        await expect(table.getByText('没有匹配的已加载任务。')).toBeVisible();
+        await page
+          .getByRole('group', { name: '生成任务筛选', exact: true })
+          .getByRole('button', { name: '重置筛选与排序' })
+          .click();
+        assert.deepEqual(await rowNames(), ['Beta document', 'Gamma document', 'Alpha document']);
+        assert.deepEqual(commands, []);
+        assert.equal(dashboardRequests, 1);
         await page.close();
       },
     );
@@ -1349,6 +1427,7 @@ test(
           },
         ];
         await page.goto(origin);
+        await page.getByText('查看失败原因', { exact: true }).click();
         await expect(page.getByText('生成达到本次任务的截止时间', { exact: false })).toBeVisible();
         await page.getByText('诊断与使用说明', { exact: true }).click();
         await expect(
@@ -1486,6 +1565,7 @@ test(
           },
         ];
         await page.goto(`${origin}/?off`);
+        await page.getByText('查看失败原因', { exact: true }).click();
         await expect(page.getByRole('table').getByText(expected, { exact: false })).toBeVisible();
         await page.getByText('更多操作', { exact: true }).click();
         await page.getByRole('button', { name: '查看任务与私有候选', exact: true }).click();
@@ -1495,6 +1575,7 @@ test(
             .getByText(expected, { exact: false }),
         ).toBeVisible();
         await page.reload();
+        await page.getByText('查看失败原因', { exact: true }).click();
         await expect(page.getByRole('table').getByText(expected, { exact: false })).toBeVisible();
         await page.goto(`${origin}/?live-detail`);
         await page.getByRole('button', { name: '刷新任务与发布状态' }).click();
@@ -1796,26 +1877,27 @@ test(
         await expect(page.getByText('PRIVATE_THINKING_SENTINEL', { exact: true })).toHaveCount(0);
         const table = page.getByRole('table', { name: /生成任务/ });
         await expect(table).toBeVisible();
-        assert.deepEqual(await table.getByRole('columnheader').allTextContents(), [
-          '资料 / 任务',
-          '状态',
-          '发布情况',
-          '模型配置',
-          '创建时间',
-          '费用',
-          '操作',
-        ]);
+        assert.deepEqual(
+          (await table.getByRole('columnheader').allTextContents()).map((text) =>
+            text.replace(/[↑↓↕]/g, '').trim(),
+          ),
+          ['资料 / 任务', '状态', '发布情况', '创建时间', '费用', '操作'],
+        );
         await expect(page.getByRole('button', { name: '删除任务', exact: true })).toHaveCount(0);
         const callsBeforeFiltering = commands.length;
-        await page.getByLabel('搜索已加载任务').fill('not-a-matching-source');
+        await page.getByLabel('搜索生成任务', { exact: true }).fill('not-a-matching-source');
         await expect(table.getByText('没有匹配的已加载任务。')).toBeVisible();
-        await expect(table.getByRole('status')).toHaveText('显示 0 / 1 条已加载记录');
-        await page.getByLabel('搜索已加载任务').fill('Synthetic source');
+        await expect(
+          page.getByRole('group', { name: '生成任务筛选', exact: true }).getByRole('status'),
+        ).toHaveText('显示 0 / 1 条已加载记录');
+        await page.getByLabel('搜索生成任务', { exact: true }).fill('Synthetic source');
         await expect(table.getByRole('link', { name: '任务详情' })).toHaveCount(1);
-        await page.getByLabel('任务状态', { exact: true }).selectOption('failed');
+        await page
+          .getByRole('combobox', { name: '生成任务状态', exact: true })
+          .selectOption('failed');
         await expect(table.getByText('没有匹配的已加载任务。')).toBeVisible();
-        await page.getByLabel('任务状态', { exact: true }).selectOption('all');
-        await page.getByLabel('搜索已加载任务').fill('');
+        await page.getByRole('combobox', { name: '生成任务状态', exact: true }).selectOption('all');
+        await page.getByLabel('搜索生成任务', { exact: true }).fill('');
         assert.equal(commands.length, callsBeforeFiltering);
         profileRevision = 3;
         await page.getByRole('button', { name: '手动刷新列表' }).click();

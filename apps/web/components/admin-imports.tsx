@@ -9,6 +9,7 @@ import { validateImportManifest } from '../../../packages/ingestion/src/import-m
 import styles from './admin-imports.module.css';
 import controls from './admin-controls.module.css';
 import tableStyles from './admin-task-table.module.css';
+import { TaskListToolbar, TaskSortHeader, useTaskList } from './admin-task-list';
 import { importFetchFailureMessage, parseImportRecoveryBatchId } from '../lib/import-recovery';
 import {
   ImportClientError,
@@ -101,6 +102,27 @@ export function AdminImports({
   const requestId = useRef<string | null>(null);
   const [pageCursors, setPageCursors] = useState<string[]>([]);
   const [view, setView] = useState<TaskView>('current');
+  const listedBatches = batches.filter(
+    (batch) => showDuplicates || batch.items.some((item) => !item.duplicate_of),
+  );
+  const taskList = useTaskList({
+    items: listedBatches,
+    searchText: (batch) =>
+      [
+        importBatchName(batch),
+        batch.id,
+        labels[batch.status],
+        ...batch.items.flatMap((item) => [item.id, item.declaration.name, item.declaration.url]),
+      ].join(' '),
+    statusValue: (batch) => batch.status,
+    sortValues: {
+      name: (batch) => importBatchName(batch),
+      status: (batch) => labels[batch.status] ?? batch.status,
+      count: (batch) => batch.items.length,
+      created: (batch) => new Date(batch.created_at).getTime(),
+    },
+    initialSort: 'created',
+  });
   const manifest = {
     files: files.map((file, i) => ({
       clientItemId: `file-${i}`,
@@ -126,6 +148,7 @@ export function AdminImports({
     try {
       setBatches((await api(undefined, undefined, next)).batches);
       setView(next);
+      taskList.reset();
       setPageCursors([]);
       setOutput(null);
       setMessage(next === 'current' ? '已显示当前任务。' : '已显示历史记录。');
@@ -520,6 +543,13 @@ export function AdminImports({
           />
           显示重复资料（相同解析片段默认合并）
         </label>
+        <TaskListToolbar
+          label="导入任务"
+          list={taskList}
+          statuses={Object.entries(labels).map(([value, label]) => ({ value, label }))}
+          shown={taskList.visibleItems.length}
+          total={listedBatches.length}
+        />
         <div
           className={tableStyles.scroll}
           role="region"
@@ -530,257 +560,279 @@ export function AdminImports({
             <caption>{view === 'current' ? '当前导入任务' : '历史导入任务'}</caption>
             <thead>
               <tr>
-                <th scope="col">任务名称</th>
-                <th scope="col">状态</th>
-                <th scope="col">资料数量</th>
-                <th scope="col">创建时间</th>
+                <TaskSortHeader sortKey="name" list={taskList}>
+                  任务名称
+                </TaskSortHeader>
+                <TaskSortHeader sortKey="status" list={taskList}>
+                  状态
+                </TaskSortHeader>
+                <TaskSortHeader sortKey="count" list={taskList}>
+                  资料数量
+                </TaskSortHeader>
+                <TaskSortHeader sortKey="created" list={taskList}>
+                  创建时间
+                </TaskSortHeader>
                 <th scope="col">操作</th>
               </tr>
             </thead>
             <tbody>
-              {batches
-                .filter((batch) => showDuplicates || batch.items.some((item) => !item.duplicate_of))
-                .map((batch) => (
-                  <Fragment key={batch.id}>
-                    <tr>
-                      <th scope="row" className={styles.batchName}>
-                        <span className={tableStyles.primary}>{importBatchName(batch)}</span>
-                        <span className={tableStyles.meta}>批次 {batch.id}</span>
-                      </th>
-                      <td>
-                        <span className={tableStyles.status} data-status={batch.status}>
-                          {labels[batch.status] ?? batch.status}
+              {taskList.visibleItems.map((batch) => (
+                <Fragment key={batch.id}>
+                  <tr>
+                    <th scope="row" className={styles.batchName}>
+                      <span
+                        className={`${tableStyles.primary} ${styles.compactName}`}
+                        title={importBatchName(batch)}
+                      >
+                        {importBatchName(batch)}
+                      </span>
+                      <span className={tableStyles.meta} title={batch.id}>
+                        批次 {batch.id.slice(0, 12)}
+                      </span>
+                    </th>
+                    <td>
+                      <span className={tableStyles.status} data-status={batch.status}>
+                        {labels[batch.status] ?? batch.status}
+                      </span>
+                    </td>
+                    <td>
+                      {batch.items.length} 项资料
+                      {!showDuplicates && batch.items.some((item) => item.duplicate_of) && (
+                        <span className={tableStyles.meta}>
+                          含 {batch.items.filter((item) => item.duplicate_of).length}{' '}
+                          份已合并重复资料
                         </span>
-                      </td>
-                      <td>
-                        {batch.items.length} 项资料
-                        {!showDuplicates && batch.items.some((item) => item.duplicate_of) && (
-                          <span className={tableStyles.meta}>
-                            含 {batch.items.filter((item) => item.duplicate_of).length}{' '}
-                            份已合并重复资料
-                          </span>
-                        )}
-                      </td>
-                      <td className={tableStyles.time}>{importCreatedAt(batch.created_at)}</td>
-                      <td>
-                        <div className={tableStyles.actions}>
-                          <button
-                            type="button"
-                            aria-expanded={expandedBatches.has(batch.id)}
-                            aria-controls={`import-batch-${batch.id}`}
-                            aria-label={`${expandedBatches.has(batch.id) ? '收起' : '展开'}资料：${importBatchName(batch)}`}
-                            onClick={() =>
-                              setExpandedBatches((current) => {
-                                const next = new Set(current);
-                                if (next.has(batch.id)) next.delete(batch.id);
-                                else next.add(batch.id);
-                                return next;
-                              })
-                            }
-                          >
-                            {expandedBatches.has(batch.id) ? '收起资料' : '展开资料'}
-                          </button>
-                          <button
-                            disabled={
-                              busy ||
-                              batch.items.some((item) =>
-                                ['running', 'unknown'].includes(item.status),
-                              )
-                            }
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `删除“${importBatchName(batch)}”？该任务和资料将从列表移除，必要的费用记录会保留。`,
-                                )
-                              )
-                                void action({ action: 'delete', batchId: batch.id });
-                            }}
-                          >
-                            删除任务
-                          </button>
-                          {!batch.cancelled && batch.status !== 'completed' && (
+                      )}
+                    </td>
+                    <td className={tableStyles.time}>{importCreatedAt(batch.created_at)}</td>
+                    <td>
+                      <div className={tableStyles.actions}>
+                        <button
+                          type="button"
+                          aria-expanded={expandedBatches.has(batch.id)}
+                          aria-controls={`import-batch-${batch.id}`}
+                          aria-label={`${expandedBatches.has(batch.id) ? '收起详情' : '任务详情'}：${importBatchName(batch)}`}
+                          onClick={() =>
+                            setExpandedBatches((current) => {
+                              const next = new Set(current);
+                              if (next.has(batch.id)) next.delete(batch.id);
+                              else next.add(batch.id);
+                              return next;
+                            })
+                          }
+                        >
+                          {expandedBatches.has(batch.id) ? '收起详情' : '任务详情'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr id={`import-batch-${batch.id}`} hidden={!expandedBatches.has(batch.id)}>
+                    <td colSpan={5} className={styles.expandedCell}>
+                      <div className={styles.batchDetails}>
+                        <div className={styles.batchActions}>
+                          <span className={tableStyles.meta}>完整批次编号：{batch.id}</span>
+                          <div className={tableStyles.actions}>
                             <button
-                              disabled={busy}
-                              onClick={() => void action({ action: 'cancel', batchId: batch.id })}
+                              disabled={
+                                busy ||
+                                batch.items.some((item) =>
+                                  ['running', 'unknown'].includes(item.status),
+                                )
+                              }
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `删除“${importBatchName(batch)}”？该任务和资料将从列表移除，必要的费用记录会保留。`,
+                                  )
+                                )
+                                  void action({ action: 'delete', batchId: batch.id });
+                              }}
                             >
-                              取消未完成项
+                              删除任务
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                    <tr id={`import-batch-${batch.id}`} hidden={!expandedBatches.has(batch.id)}>
-                      <td colSpan={5} className={styles.expandedCell}>
-                        <div className={styles.batchDetails}>
-                          <div
-                            className={tableStyles.scroll}
-                            role="region"
-                            aria-label={`${importBatchName(batch)}的资料明细，可横向滚动`}
-                            tabIndex={0}
-                          >
-                            <table className={`${tableStyles.table} ${styles.itemTable}`}>
-                              <caption>资料明细 · {importBatchName(batch)}</caption>
-                              <thead>
-                                <tr>
-                                  <th scope="col">资料名称</th>
-                                  <th scope="col">状态</th>
-                                  <th scope="col">结果与操作</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {batch.items
-                                  .filter((item) => showDuplicates || !item.duplicate_of)
-                                  .map((item) => (
-                                    <tr key={item.id}>
-                                      <th scope="row" className={styles.itemName}>
-                                        <span className={tableStyles.primary}>
-                                          {item.declaration.name ?? item.declaration.url}
-                                        </span>
-                                        <span className={tableStyles.meta}>
-                                          {item.kind === 'file' ? '文件' : '链接'} · {item.id}
-                                        </span>
-                                        {item.duplicate_of && (
-                                          <span className={tableStyles.meta}>
-                                            重复资料：解析片段与已有资料相同，生成页已自动去重。
-                                          </span>
-                                        )}
-                                      </th>
-                                      <td>
-                                        <span
-                                          className={tableStyles.status}
-                                          data-status={item.status}
-                                        >
-                                          {labels[item.status] ?? item.status}
-                                        </span>
-                                        {item.error_code && (
-                                          <span className={tableStyles.meta}>
-                                            {item.error_code}
-                                          </span>
-                                        )}
-                                        {item.error_code === 'fetch_failed' && (
-                                          <p className={tableStyles.meta}>
-                                            {importFetchFailureMessage(item.fetch_diagnostic)}
-                                          </p>
-                                        )}
-                                      </td>
-                                      <td>
-                                        <div className={tableStyles.actions}>
-                                          {item.status === 'queued' && !batch.cancelled && (
-                                            <button
-                                              disabled={busy}
-                                              onClick={() =>
-                                                void action({
-                                                  action: 'run',
-                                                  batchId: batch.id,
-                                                  itemId: item.id,
-                                                })
-                                              }
-                                            >
-                                              处理（使用已配置预算）
-                                            </button>
-                                          )}
-                                          {item.status === 'running' && !batch.cancelled && (
-                                            <button
-                                              disabled={busy}
-                                              onClick={() =>
-                                                void action({
-                                                  action: 'recover',
-                                                  batchId: batch.id,
-                                                  itemId: item.id,
-                                                })
-                                              }
-                                            >
-                                              核对超时状态
-                                            </button>
-                                          )}
-                                          {item.status === 'failed' && item.fence >= 5 && (
-                                            <p>已达 5 次尝试上限，不能再次重试。</p>
-                                          )}
-                                          {item.error_code === 'source_unavailable' && (
-                                            <p>原件已过期或不存在，请新建批次重新导入。</p>
-                                          )}
-                                          {item.status === 'failed' &&
-                                            (item.kind === 'file' || item.sha256) && (
-                                              <p>原件不保留，请新建批次重新导入。</p>
-                                            )}
-                                          {item.status === 'failed' &&
-                                            item.kind === 'url' &&
-                                            !item.sha256 &&
-                                            item.fence < 5 &&
-                                            item.error_code !== 'source_unavailable' &&
-                                            !batch.cancelled && (
-                                              <button
-                                                disabled={busy}
-                                                onClick={() =>
-                                                  void action({
-                                                    action: 'retry',
-                                                    batchId: batch.id,
-                                                    itemId: item.id,
-                                                  })
-                                                }
-                                              >
-                                                重新排队
-                                              </button>
-                                            )}
-                                          {item.status === 'awaiting_upload' &&
-                                            !batch.cancelled && (
-                                              <button
-                                                disabled={busy}
-                                                onClick={() =>
-                                                  void action({
-                                                    action: 'confirm',
-                                                    batchId: batch.id,
-                                                    itemId: item.id,
-                                                  })
-                                                }
-                                              >
-                                                确认已上传原件
-                                              </button>
-                                            )}
-                                          {item.status === 'completed' && (
-                                            <Link
-                                              className={controls.button}
-                                              href="/admin/signal-generation"
-                                            >
-                                              前往生成页选择资料
-                                            </Link>
-                                          )}
-                                          {item.status === 'completed' && (
-                                            <button
-                                              disabled={busy}
-                                              onClick={(event) => {
-                                                resultOpener.current = event.currentTarget;
-                                                void action({
-                                                  action: 'output',
-                                                  batchId: batch.id,
-                                                  itemId: item.id,
-                                                }).then((result) => {
-                                                  if (result)
-                                                    setOutput({
-                                                      name:
-                                                        item.declaration.name ??
-                                                        item.declaration.url ??
-                                                        '导入资料',
-                                                      data: result,
-                                                    });
-                                                });
-                                              }}
-                                            >
-                                              查看私有解析结果
-                                            </button>
-                                          )}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ))}
-                              </tbody>
-                            </table>
+                            {!batch.cancelled && batch.status !== 'completed' && (
+                              <button
+                                disabled={busy}
+                                onClick={() => void action({ action: 'cancel', batchId: batch.id })}
+                              >
+                                取消未完成项
+                              </button>
+                            )}
                           </div>
                         </div>
-                      </td>
-                    </tr>
-                  </Fragment>
-                ))}
+                        <div
+                          className={tableStyles.scroll}
+                          role="region"
+                          aria-label={`${importBatchName(batch)}的资料明细，可横向滚动`}
+                          tabIndex={0}
+                        >
+                          <table className={`${tableStyles.table} ${styles.itemTable}`}>
+                            <caption>资料明细 · {importBatchName(batch)}</caption>
+                            <thead>
+                              <tr>
+                                <th scope="col">资料名称</th>
+                                <th scope="col">状态</th>
+                                <th scope="col">结果与操作</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {batch.items
+                                .filter((item) => showDuplicates || !item.duplicate_of)
+                                .map((item) => (
+                                  <tr key={item.id}>
+                                    <th scope="row" className={styles.itemName}>
+                                      <span className={tableStyles.primary}>
+                                        {item.declaration.name ?? item.declaration.url}
+                                      </span>
+                                      <span className={tableStyles.meta}>
+                                        {item.kind === 'file' ? '文件' : '链接'} · {item.id}
+                                      </span>
+                                      {item.duplicate_of && (
+                                        <span className={tableStyles.meta}>
+                                          重复资料：解析片段与已有资料相同，生成页已自动去重。
+                                        </span>
+                                      )}
+                                    </th>
+                                    <td>
+                                      <span
+                                        className={tableStyles.status}
+                                        data-status={item.status}
+                                      >
+                                        {labels[item.status] ?? item.status}
+                                      </span>
+                                      {item.error_code && (
+                                        <span className={tableStyles.meta}>{item.error_code}</span>
+                                      )}
+                                      {item.error_code === 'fetch_failed' && (
+                                        <p className={tableStyles.meta}>
+                                          {importFetchFailureMessage(item.fetch_diagnostic)}
+                                        </p>
+                                      )}
+                                    </td>
+                                    <td>
+                                      <div className={tableStyles.actions}>
+                                        {item.status === 'queued' && !batch.cancelled && (
+                                          <button
+                                            disabled={busy}
+                                            onClick={() =>
+                                              void action({
+                                                action: 'run',
+                                                batchId: batch.id,
+                                                itemId: item.id,
+                                              })
+                                            }
+                                          >
+                                            处理（使用已配置预算）
+                                          </button>
+                                        )}
+                                        {item.status === 'running' && !batch.cancelled && (
+                                          <button
+                                            disabled={busy}
+                                            onClick={() =>
+                                              void action({
+                                                action: 'recover',
+                                                batchId: batch.id,
+                                                itemId: item.id,
+                                              })
+                                            }
+                                          >
+                                            核对超时状态
+                                          </button>
+                                        )}
+                                        {item.status === 'failed' && item.fence >= 5 && (
+                                          <p>已达 5 次尝试上限，不能再次重试。</p>
+                                        )}
+                                        {item.error_code === 'source_unavailable' && (
+                                          <p>原件已过期或不存在，请新建批次重新导入。</p>
+                                        )}
+                                        {item.status === 'failed' &&
+                                          (item.kind === 'file' || item.sha256) && (
+                                            <p>原件不保留，请新建批次重新导入。</p>
+                                          )}
+                                        {item.status === 'failed' &&
+                                          item.kind === 'url' &&
+                                          !item.sha256 &&
+                                          item.fence < 5 &&
+                                          item.error_code !== 'source_unavailable' &&
+                                          !batch.cancelled && (
+                                            <button
+                                              disabled={busy}
+                                              onClick={() =>
+                                                void action({
+                                                  action: 'retry',
+                                                  batchId: batch.id,
+                                                  itemId: item.id,
+                                                })
+                                              }
+                                            >
+                                              重新排队
+                                            </button>
+                                          )}
+                                        {item.status === 'awaiting_upload' && !batch.cancelled && (
+                                          <button
+                                            disabled={busy}
+                                            onClick={() =>
+                                              void action({
+                                                action: 'confirm',
+                                                batchId: batch.id,
+                                                itemId: item.id,
+                                              })
+                                            }
+                                          >
+                                            确认已上传原件
+                                          </button>
+                                        )}
+                                        {item.status === 'completed' && (
+                                          <Link
+                                            className={controls.button}
+                                            href="/admin/signal-generation"
+                                          >
+                                            前往生成页选择资料
+                                          </Link>
+                                        )}
+                                        {item.status === 'completed' && (
+                                          <button
+                                            disabled={busy}
+                                            onClick={(event) => {
+                                              resultOpener.current = event.currentTarget;
+                                              void action({
+                                                action: 'output',
+                                                batchId: batch.id,
+                                                itemId: item.id,
+                                              }).then((result) => {
+                                                if (result)
+                                                  setOutput({
+                                                    name:
+                                                      item.declaration.name ??
+                                                      item.declaration.url ??
+                                                      '导入资料',
+                                                    data: result,
+                                                  });
+                                              });
+                                            }}
+                                          >
+                                            查看私有解析结果
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </Fragment>
+              ))}
+              {listedBatches.length > 0 && taskList.visibleItems.length === 0 && (
+                <tr>
+                  <td colSpan={5} className={tableStyles.empty}>
+                    没有符合筛选条件的导入任务。可调整关键词或状态，或重置筛选。
+                  </td>
+                </tr>
+              )}
               {batches.length > 0 &&
                 !showDuplicates &&
                 batches.every((batch) => batch.items.every((item) => item.duplicate_of)) && (

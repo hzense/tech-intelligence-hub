@@ -4,7 +4,7 @@
   overflow-x: auto;
   margin-block: 1rem;
   border: 1px solid var(--line, #d7dce6);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--surface, #fff);
 }
 
@@ -19,14 +19,14 @@
   border-collapse: collapse;
   text-align: left;
   font-size: 0.875rem;
-  line-height: 1.6;
+  line-height: 1.45;
   color: var(--ink, #18233b);
 }
 
 .table caption {
   padding: 0.85rem 1rem;
   text-align: left;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--muted, #53617b);
 }
 
@@ -36,9 +36,9 @@
 
 .table th,
 .table td {
-  padding: 0.85rem 1rem;
+  padding: 0.6rem 0.85rem;
   border-top: 1px solid var(--line, #d7dce6);
-  vertical-align: top;
+  vertical-align: middle;
   overflow-wrap: anywhere;
 }
 
@@ -56,9 +56,9 @@
 
 .primary {
   display: block;
-  min-width: 12rem;
+  min-width: 10rem;
   max-width: 24rem;
-  font-weight: 650;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -76,21 +76,21 @@
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 0.4rem;
-  min-width: 10rem;
+  min-width: 7rem;
 }
 
 .details {
   min-width: 0;
-  margin-block: 0.35rem;
+  margin-block: 0.15rem;
 }
 
 .details > summary {
   width: fit-content;
-  min-height: 44px;
-  padding-block: 0.6rem;
+  min-height: 36px;
+  padding-block: 0.4rem;
   cursor: pointer;
   color: var(--brand, #0047ab);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .details > summary:focus-visible {
@@ -103,7 +103,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .status::before {
@@ -129,6 +129,8 @@
 }
 
 .status[data-status='unknown']::before,
+.status[data-status='partial']::before,
+.status[data-status='outcome_unknown']::before,
 .status[data-status='pending']::before,
 .status[data-status='queued']::before {
   background: #a97408;
@@ -141,7 +143,7 @@
 
 .cost,
 .time {
-  min-width: 8rem;
+  min-width: 6rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -153,9 +155,110 @@
   white-space: normal;
 }
 
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-block: 1rem;
+  min-width: 0;
+}
+
+.searchField,
+.statusField {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.searchField {
+  flex: 1 1 14rem;
+  max-width: 28rem;
+}
+
+.statusField {
+  flex: 0 1 12rem;
+}
+
+.toolbar input,
+.toolbar select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--line, #d7dce6);
+  border-radius: 7px;
+  background: var(--surface, #fff);
+  color: var(--ink, #18233b);
+  font: inherit;
+  font-weight: 400;
+}
+
+.table .sortButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.4rem;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.table .sortButton:hover {
+  color: var(--brand, #0047ab);
+  box-shadow: none;
+}
+
+.sortIcon {
+  color: var(--muted, #53617b);
+}
+
+.toolbar .resetButton {
+  min-height: 40px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line, #d7dce6);
+  border-radius: 7px;
+  background: var(--surface, #fff);
+  color: var(--ink, #18233b);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.toolbar :is(input, select, button):focus-visible,
+.table .sortButton:focus-visible {
+  outline: 3px solid var(--brand-bright, #0b6eff);
+  outline-offset: 3px;
+}
+
+.count {
+  align-self: center;
+  color: var(--muted, #53617b);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 700px) {
   .table th,
   .table td {
-    padding: 0.75rem;
+    padding: 0.6rem;
+  }
+}
+
+@media (pointer: coarse) {
+  .toolbar :is(input, select, button),
+  .table .sortButton,
+  .details > summary {
+    min-height: 44px;
   }
 }

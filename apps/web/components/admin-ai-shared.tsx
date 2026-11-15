@@ -269,7 +269,9 @@ export function ProbeTableRow({ probe }: { probe: AiProbe }) {
     <tr>
       <th scope="row">
         <span className={tableStyles.primary}>{probeLabels[probe.kind]}</span>
-        <small className={tableStyles.meta}>{probe.id}</small>
+        <small className={tableStyles.meta} title={probe.id}>
+          {probe.id.slice(0, 8)}
+        </small>
       </th>
       <td>
         <span className={tableStyles.primary}>{probe.model_id ?? '模型列表读取'}</span>
@@ -282,9 +284,7 @@ export function ProbeTableRow({ probe }: { probe: AiProbe }) {
         {probe.error_code ? <small className={tableStyles.meta}>{probe.error_code}</small> : null}
       </td>
       <td className={tableStyles.time}>
-        <time dateTime={probe.created_at}>
-          {probe.created_at.replace('T', ' ').replace(/\.\d+Z$/, '')}
-        </time>
+        <time dateTime={probe.created_at}>{probe.created_at.slice(0, 16).replace('T', ' ')}</time>
       </td>
       <td className={tableStyles.cost}>
         {usd(probe.charged_microusd)}
