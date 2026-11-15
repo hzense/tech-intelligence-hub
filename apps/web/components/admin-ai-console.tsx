@@ -11,7 +11,7 @@ import {
   aiRequest,
   AiAvailability,
   AiEndpointFields,
-  ProbeSummary,
+  ProbeTableRow,
   probeLabels,
 } from './admin-ai-shared';
 import { aiEndpointChanged, aiEndpointMessage, inspectAiEndpoint } from '../lib/admin-ai-endpoint';
@@ -21,6 +21,7 @@ import {
   clearPendingAiProbe,
 } from '../lib/admin-ai-pending';
 import styles from './admin-ai.module.css';
+import tableStyles from './admin-task-table.module.css';
 import { isValidAiModelId } from '../../../packages/database/src/ai-model-id.mjs';
 import { AdminAiModelPicker } from './admin-ai-model-picker';
 
@@ -586,13 +587,40 @@ export function AdminAiConsole({
       <section className={styles.stack} style={{ marginTop: 24 }} aria-label="最近模型测试">
         <h2>最近测试记录</h2>
         <p className={styles.muted}>仅展示最近 3 次测试；历史费用、审计记录及能力证明仍保留。</p>
-        {[...probes]
-          .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))
-          .slice(0, 3)
-          .map((probe) => (
-            <ProbeSummary key={probe.id} probe={probe} />
-          ))}
-        {probes.length === 0 ? <p className={styles.muted}>暂无测试记录。</p> : null}
+        {probes.length > 0 ? (
+          <div
+            className={tableStyles.scroll}
+            role="region"
+            aria-label="模型测试记录表格，可横向滚动"
+            tabIndex={0}
+          >
+            <table className={tableStyles.table}>
+              <caption>最近 3 次模型测试</caption>
+              <thead>
+                <tr>
+                  <th scope="col">测试任务</th>
+                  <th scope="col">模型与连接修订</th>
+                  <th scope="col">状态</th>
+                  <th scope="col">创建时间（UTC）</th>
+                  <th scope="col">记账费用</th>
+                  <th scope="col">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...probes]
+                  .sort(
+                    (a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id),
+                  )
+                  .slice(0, 3)
+                  .map((probe) => (
+                    <ProbeTableRow key={probe.id} probe={probe} />
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className={tableStyles.empty}>暂无测试记录。</p>
+        )}
       </section>
     </>
   );

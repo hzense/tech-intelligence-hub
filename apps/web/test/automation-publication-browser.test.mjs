@@ -852,6 +852,8 @@ test(
           const generationId = '33333333-3333-4333-8333-333333333333';
           const row = f.props.initial.runs[0];
           row.snapshot.publicationMode = 'automatic';
+          row.charged_microusd = 5_000_000;
+          row.cost_source = 'reserve';
           row.result = { generationIds: [generationId] };
           row.generationProgress = {
             total: 1,
@@ -883,6 +885,27 @@ test(
             f.page.getByRole('cell', { name: '候选已生成', exact: false }),
           ).toBeVisible();
           await expect(f.page.getByText('已确认生成 3 条候选', { exact: false })).toBeVisible();
+          const costNote = f.page.getByText('实际费用未知，尚无供应商费用回执', {
+            exact: true,
+          });
+          await expect(costNote).toBeVisible();
+          for (const width of [390, 1150]) {
+            await f.page.setViewportSize({ width, height: 844 });
+            const bounds = await costNote.evaluate((element) => {
+              const text = globalThis.document.createRange();
+              text.selectNodeContents(element);
+              return {
+                textRight: text.getBoundingClientRect().right,
+                cellRight: element.closest('td').getBoundingClientRect().right,
+              };
+            });
+            assert.ok(
+              bounds.textRight <= bounds.cellRight,
+              `Cost explanation must not overlap the result column at ${width}px`,
+            );
+          }
+          await f.page.setViewportSize({ width: 390, height: 844 });
+          await f.page.getByText('关联生成任务（1 项）', { exact: true }).click();
           await expect(f.page.getByText('已生成 3 条候选', { exact: true })).toBeVisible();
           await expect(
             f.page.getByRole('link', { name: `查看生成任务 · ${generationId}` }),

@@ -388,6 +388,7 @@ test(
       );
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
       await expect(page.getByRole('cell', { name: '候选已生成', exact: false })).toBeVisible();
+      await page.getByText('关联生成任务（1 项）', { exact: true }).click();
       await expect(page.getByText('已生成 3 条候选', { exact: true })).toBeVisible();
       await expect(
         page.getByRole('link', { name: `查看生成任务 · ${generationId}` }),

@@ -81,6 +81,7 @@ test(
             {
               id: value.request.id,
               status: 'queued',
+              created_at: '2026-11-15T10:00:00.000Z',
               cancelled: false,
               intent: value.request.intent,
               items: [
@@ -222,6 +223,32 @@ test(
       page.getByText('已选择 0 个文件、1 个不重复链接。整个批次须通过检查才能提交。'),
     ).toBeVisible();
     await page.getByRole('button', { name: '创建并上传' }).click();
+    const taskTable = page.getByRole('table', { name: '当前导入任务', exact: true });
+    await expect(taskTable).toBeVisible();
+    await expect(
+      taskTable.getByRole('columnheader', { name: '任务名称', exact: true }),
+    ).toBeVisible();
+    await expect(
+      taskTable.getByRole('columnheader', { name: '创建时间', exact: true }),
+    ).toBeVisible();
+    await expect(taskTable.getByRole('button', { name: /^展开资料：/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    const beforeExpand = commands.length;
+    await taskTable.getByRole('button', { name: /^展开资料：/ }).click();
+    await expect(taskTable.getByRole('button', { name: /^收起资料：/ })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    await expect(
+      page.getByRole('table', { name: '资料明细 · https://example.com/research', exact: true }),
+    ).toBeVisible();
+    assert.equal(
+      commands.length,
+      beforeExpand,
+      'Expanding task details must not execute an import',
+    );
     await expect(page.getByRole('button', { name: '处理（使用已配置预算）' })).toBeVisible();
     assert.equal(commands[0].request.intent, 'preview');
     await page.getByRole('button', { name: '处理（使用已配置预算）' }).click();
@@ -236,6 +263,20 @@ test(
       'href',
       '/admin/signal-generation',
     );
+    const historyTable = page.getByRole('table', { name: '历史导入任务', exact: true });
+    await expect(historyTable).toBeVisible();
+    await page.setViewportSize({ width: 390, height: 844 });
+    const taskRegion = page.getByRole('region', { name: '导入任务表格，可横向滚动', exact: true });
+    await taskRegion.focus();
+    await expect(taskRegion).toBeFocused();
+    assert.equal(
+      await page.evaluate(
+        () => globalThis.document.documentElement.scrollWidth <= globalThis.innerWidth,
+      ),
+      true,
+      'Expanded tables scroll within the page on mobile',
+    );
+    await page.setViewportSize({ width: 1280, height: 844 });
     await page.getByRole('button', { name: '查看私有解析结果' }).click();
     await expect(page.getByRole('heading', { name: '私有解析结果' })).toBeVisible();
     await expect(page.getByRole('dialog')).toBeVisible();
@@ -280,6 +321,7 @@ test(
     await page.reload();
     await page.getByRole('button', { name: '更早批次' }).click();
     await expect(page.getByText('批次 batch-50', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: /^展开资料：/ }).click();
     await expect(page.getByText('已达 5 次尝试上限，不能再次重试。')).toBeVisible();
     await expect(page.getByRole('button', { name: /重试/ })).toHaveCount(0);
     await page.getByRole('button', { name: '取消未完成项' }).click();
@@ -313,11 +355,13 @@ test(
       },
     ];
     await page.reload();
+    await page.getByRole('button', { name: /^展开资料：/ }).click();
     await expect(page.getByText('原件已过期或不存在，请新建批次重新导入。')).toBeVisible();
     await expect(page.getByRole('button', { name: '重新排队' })).toHaveCount(0);
     batches[0].items[0].error_code = 'worker_unavailable';
     await page.reload();
     await expect(page.getByRole('button', { name: '重新排队' })).toHaveCount(0);
+    await page.getByRole('button', { name: /^展开资料：/ }).click();
     await expect(page.getByText('原件不保留，请新建批次重新导入。')).toBeVisible();
     batches = [
       {
@@ -342,21 +386,28 @@ test(
     ];
     await page.reload();
     await page.getByRole('button', { name: '历史记录', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '原始资料.txt', exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: '重复副本.txt', exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole('rowheader', { name: /原始资料.txt.*批次 canonical/ }),
+    ).toBeVisible();
+    await expect(page.getByRole('rowheader', { name: /重复副本.txt.*批次 duplicate/ })).toHaveCount(
+      0,
+    );
     await page.getByRole('checkbox', { name: /显示重复资料/ }).check();
     const duplicate = page
-      .locator('section')
-      .filter({ has: page.getByRole('heading', { name: '重复副本.txt', exact: true }) })
-      .last();
+      .getByRole('row')
+      .filter({ has: page.getByRole('rowheader', { name: /重复副本.txt.*批次 duplicate/ }) });
     await expect(duplicate).toBeVisible();
     page.once('dialog', (dialog) => dialog.dismiss());
     await duplicate.getByRole('button', { name: '删除任务', exact: true }).click();
     await expect(duplicate).toBeVisible();
     page.once('dialog', (dialog) => dialog.accept());
     await duplicate.getByRole('button', { name: '删除任务', exact: true }).click();
-    await expect(page.getByRole('heading', { name: '重复副本.txt', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: '原始资料.txt', exact: true })).toBeVisible();
+    await expect(page.getByRole('rowheader', { name: /重复副本.txt.*批次 duplicate/ })).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByRole('rowheader', { name: /原始资料.txt.*批次 canonical/ }),
+    ).toBeVisible();
     assert.equal(commands.filter((command) => command.action === 'delete').length, 1);
 
     const recoveryId = '3d6f8ed7-022c-9dcf-b52b-eea13542a727';

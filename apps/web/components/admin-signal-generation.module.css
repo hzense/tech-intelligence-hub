@@ -63,37 +63,13 @@
   }
 }
 .tableScroll {
-  overflow-x: auto;
-  border: 1px solid var(--line, #b7bcc5);
-  border-radius: 12px;
-}
-.tableScroll:focus-visible {
-  outline: 3px solid #4262d6;
-  outline-offset: 3px;
+  composes: scroll from './admin-task-table.module.css';
 }
 .taskTable {
-  width: 100%;
+  composes: table from './admin-task-table.module.css';
+}
+.tableScroll .taskTable {
   min-width: 980px;
-  border-collapse: collapse;
-  text-align: left;
-  font-size: 0.875rem;
-}
-.taskTable caption {
-  text-align: left;
-  padding: 1rem;
-  font-weight: 600;
-}
-.taskTable thead {
-  background: var(--surface-soft, #f3f6fb);
-}
-.taskTable th,
-.taskTable td {
-  padding: 1rem;
-  border-top: 1px solid var(--line, #b7bcc5);
-  vertical-align: top;
-}
-.taskTable tbody tr:hover {
-  background: var(--surface-soft, #f3f6fb);
 }
 .sourceCell {
   width: 28%;

@@ -1,8 +1,9 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import type { MaterialPlan } from '../../../packages/database/src/material-registration-contract.mjs';
 import controls from './admin-controls.module.css';
 import styles from './candidate-review-editor.module.css';
+import tables from './admin-task-table.module.css';
 import { MaterialOrganizationConfirmation } from './material-organization-confirmation';
 import type {
   OrganizationReview,
@@ -53,6 +54,26 @@ type Dashboard = {
     }>;
   }>;
 };
+const enrichmentStatusLabels: Record<string, string> = {
+  pending: '已排队',
+  running: '执行中',
+  completed: '已完成',
+  failed: '失败或结果未知',
+};
+function requestProgress(request: Dashboard['requests'][number]) {
+  if (request.reports.length)
+    return request.reports.every((report) => report.stages.includes('verified'))
+      ? '登记与核验已完成'
+      : '待确认登记';
+  if (request.proposals?.length)
+    return request.proposals.some((proposal) => !proposal.approved)
+      ? '待人工确认'
+      : '人工确认已保存';
+  const enrichment = request.enrichments?.[0];
+  return enrichment
+    ? `AI 补全：${enrichmentStatusLabels[enrichment.status] ?? enrichment.status}`
+    : '补证材料已保存';
+}
 const errors: Record<string, string> = {
   source_unavailable: '所选资料已变化、取消或删除，请重新选择。',
   invalid_candidate_source_bundle: '资料重复或格式不符，请核对来源；这不是容量超限提示。',
@@ -130,6 +151,7 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
     } | null>(null),
     [message, setMessage] = useState('');
   const [refreshWarning, setRefreshWarning] = useState('');
+  const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
   const [organizationReviews, setOrganizationReviews] = useState<
     Record<string, OrganizationReview | null>
   >({});
@@ -420,252 +442,395 @@ function MaterialWorkflow({ runId, candidateIndex, materialHash, onRegistered, o
           <a className={controls.button} href="/admin/imports">
             导入补证来源
           </a>
-          {data.requests.map((request) => (
-            <article key={request.id} className={styles.materialCard}>
-              <h4>补证材料 · {new Date(request.createdAt).toLocaleString('zh-CN')}</h4>
-              <p>{request.fragmentCount} 个原文片段</p>
-              <p>
-                关联来源不会自动补全。需要提取补充人物、组织类型及领域时，明确确认后才调用
-                AI；仍须核对证据。
-              </p>
-              {data.reviewEnabled &&
-              data.enrichmentEnabled &&
-              (!(request.enrichments ?? []).length ||
-                (request.enrichments?.[0]?.status === 'failed' &&
-                  ['enrichment_failed', 'dispatch_failed'].includes(
-                    request.enrichments[0].error_code ?? '',
-                  ))) ? (
-                <button
-                  type="button"
-                  className={controls.button}
-                  disabled={busy || !data.enabled}
-                  onClick={() => void enrich(request.id, request.enrichments?.[0]?.id)}
-                >
-                  {request.enrichments?.length
-                    ? '确认重试 AI 补证补全（重新计费）'
-                    : '确认启动 AI 补证补全（计费）'}
-                </button>
-              ) : null}
-              {(request.enrichments ?? []).map((task) => (
-                <section key={task.id} aria-label="补证 AI 补全任务">
-                  <p>
-                    补证 AI 补全：
-                    {(
-                      {
-                        pending: '已排队',
-                        running: '执行中',
-                        completed: '已完成',
-                        failed: '失败或结果未知',
-                      } as Record<string, string>
-                    )[task.status] ?? task.status}{' '}
-                    · 任务 {task.id}
-                  </p>
-                  <p>
-                    预留 ${(Number(task.reserved_microusd) / 1000000).toFixed(4)} · 记账 $
-                    {(Number(task.charged_microusd) / 1000000).toFixed(4)}
-                  </p>
-                  {task.result?.candidate ? (
-                    <>
-                      <p>
-                        人物：
-                        {task.result.candidate.persons
-                          .map((p) => `${p.name}（${p.role}）`)
-                          .join('、') || '未找到，不得猜测'}
-                      </p>
-                      <p>组织：{task.result.candidate.organizations.join('、') || '未找到'}</p>
-                      <p>
-                        组织类型提案：
-                        {task.result.materialHints?.organizations
-                          .map((o) => `${o.name}（${o.type === 'company' ? '公司' : '机构'}）`)
-                          .join('、') || '无'}
-                      </p>
-                      <p>领域提案：{task.result.materialHints?.topicIds.join('、') || '无'}</p>
-                    </>
-                  ) : null}
-                  <p>
-                    {task.status === 'completed'
-                      ? '请点击准备核验材料，重新核对原文、人物关系、组织类型及领域；完成不代表核实或发布。'
-                      : '刷新补证状态查看进展；失败或结果未知时请先对账，不要重复调用。'}
-                  </p>
-                </section>
-              ))}
-              {data.reviewEnabled && !request.reports.length ? (
-                <>
-                  <button
-                    type="button"
-                    className={controls.button}
-                    disabled={busy || !data.enabled}
-                    onClick={() => void reviewAction('prepare', request.id)}
-                  >
-                    准备核验材料（不调用 AI）
-                  </button>
-                  {organizationReviews[request.id]?.organizations.length ? (
-                    <MaterialOrganizationConfirmation
-                      key={`${request.id}:${organizationReviews[request.id]!.contextHash}`}
-                      review={organizationReviews[request.id]!}
-                      disabled={busy || !data.enabled}
-                      onConfirm={(confirmation) =>
-                        reviewAction('prepare', request.id, undefined, confirmation)
-                      }
-                    />
-                  ) : null}
-                  {(request.proposals ?? []).map((proposal) => (
-                    <section key={proposal.id} aria-label="待确认核验材料">
-                      <h4>
-                        {proposal.plan.candidate.title} ·{' '}
-                        {proposal.approved ? '人工已确认，等待独立复查' : '待人工确认'}
-                      </h4>
-                      <p>{proposal.plan.candidate.summary}</p>
-                      <p>事件日期：{proposal.plan.candidate.eventDate}</p>
-                      <blockquote>{proposal.dossier.eventDate.quote}</blockquote>
-                      <p>
-                        人物：
-                        {proposal.plan.candidate.persons
-                          .map(
-                            (person) =>
-                              `${proposal.plan.entities.find((entity) => entity.id === person.entityId)?.name}（${person.role}；${person.organizationId ? proposal.plan.entities.find((entity) => entity.id === person.organizationId)?.name : '无已知组织关系'}）`,
-                          )
-                          .join('、')}
-                      </p>
-                      <p>领域：{proposal.plan.topicIds.join('、')}</p>
-                      <p>
-                        组织类型：
-                        {proposal.plan.entities
-                          .filter((entity) => entity.type !== 'person')
-                          .map(
-                            (entity) =>
-                              `${entity.name}（${entity.type === 'company' ? '公司' : '机构'}）`,
-                          )
-                          .join('、')}
-                      </p>
-                      {proposal.dossier.organizationConfirmation ? (
-                        <section aria-label="已保存的组织类型人工确认">
-                          <h5>已保存的组织类型人工确认（仍待独立核验）</h5>
-                          {proposal.dossier.organizationConfirmation.selections.map((row) => (
-                            <blockquote key={row.name}>
-                              <p>
-                                {row.name} · {row.type === 'company' ? '公司' : '机构'}
-                              </p>
-                              <p>{row.quote}</p>
-                              <a href={row.sourceUrl} target="_blank" rel="noopener noreferrer">
-                                核对原文来源
-                              </a>
-                            </blockquote>
-                          ))}
-                        </section>
-                      ) : null}
-                      <ul>
-                        {proposal.plan.candidate.claims.map((claim, index) => (
-                          <li key={index}>{claim.text}</li>
-                        ))}
-                      </ul>
-                      <h5>逐来源确认范围：仅以下原文摘录，不授权其他内容</h5>
-                      {proposal.plan.evidence.map((evidence) => (
-                        <blockquote key={evidence.id}>
-                          <p>{evidence.excerpt}</p>
-                          <a href={evidence.sourceUrl} target="_blank" rel="noopener noreferrer">
-                            {evidence.sourceUrl}
-                          </a>
-                        </blockquote>
-                      ))}
-                      <h5>确认前须核对的六项声明</h5>
-                      <ul>
-                        {Object.entries(proposal.dossier.statements).map(([key, statement]) => (
-                          <li key={key}>{statement}</li>
-                        ))}
-                      </ul>
-                      <p>
-                        规则只准备材料，不证明上述声明。若任何一项不能确认，请勿继续；来源可访问也不等于拥有引用权限。
-                      </p>
-                      {proposal.approvalExpiresAt ? (
-                        <p>
-                          本次确认有效至：
-                          {new Date(proposal.approvalExpiresAt).toLocaleString('zh-CN')}
-                        </p>
-                      ) : null}
-                      <button
-                        type="button"
-                        className={controls.button}
-                        disabled={
-                          busy ||
-                          !data.enabled ||
-                          Boolean(
-                            proposal.approvalExpiresAt &&
-                            Date.parse(proposal.approvalExpiresAt) <= Date.now(),
-                          )
-                        }
-                        onClick={() => void reviewAction('approve', request.id, proposal)}
+          {data.requests.length ? (
+            <div
+              className={tables.scroll}
+              role="region"
+              aria-label="补证请求表格，可横向滚动"
+              tabIndex={0}
+            >
+              <table className={tables.table}>
+                <caption>补证请求</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">补证材料</th>
+                    <th scope="col">执行状态</th>
+                    <th scope="col">创建时间</th>
+                    <th scope="col">材料与结果</th>
+                    <th scope="col">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.requests.map((request) => (
+                    <Fragment key={request.id}>
+                      <tr>
+                        <th scope="row">
+                          <span className={tables.primary}>
+                            {request.reports[0]?.plan.candidate.title ??
+                              request.proposals?.[0]?.plan.candidate.title ??
+                              '补证材料'}
+                          </span>
+                          <span className={tables.meta}>请求 {request.id}</span>
+                        </th>
+                        <td>
+                          <span className={tables.status}>{requestProgress(request)}</span>
+                        </td>
+                        <td className={tables.time}>
+                          <time dateTime={request.createdAt}>
+                            {new Date(request.createdAt).toLocaleString('zh-CN')}
+                          </time>
+                        </td>
+                        <td>
+                          {request.fragmentCount} 个原文片段
+                          <span className={tables.meta}>
+                            AI 补全 {request.enrichments?.length ?? 0} 项 · 核验提案{' '}
+                            {request.proposals?.length ?? 0} 份 · 核验报告 {request.reports.length}{' '}
+                            份
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className={controls.button}
+                            aria-expanded={expandedRequestId === request.id}
+                            aria-controls={`material-request-${request.id}`}
+                            onClick={() =>
+                              setExpandedRequestId((current) =>
+                                current === request.id ? null : request.id,
+                              )
+                            }
+                          >
+                            {expandedRequestId === request.id ? '收起任务详情' : '查看任务详情'}
+                          </button>
+                        </td>
+                      </tr>
+                      <tr
+                        hidden={expandedRequestId !== request.id}
+                        id={`material-request-${request.id}`}
                       >
-                        {proposal.approved
-                          ? '用已保存确认继续提交独立核验'
-                          : '我已核对以上内容，确认提交独立核验'}
-                      </button>
-                    </section>
+                        <td colSpan={5}>
+                          <article className={styles.materialTaskDetail} aria-label="补证任务详情">
+                            <h4>
+                              补证材料 · {new Date(request.createdAt).toLocaleString('zh-CN')}
+                            </h4>
+                            <p>{request.fragmentCount} 个原文片段</p>
+                            <p>
+                              关联来源不会自动补全。需要提取补充人物、组织类型及领域时，明确确认后才调用
+                              AI；仍须核对证据。
+                            </p>
+                            {data.reviewEnabled &&
+                            data.enrichmentEnabled &&
+                            (!(request.enrichments ?? []).length ||
+                              (request.enrichments?.[0]?.status === 'failed' &&
+                                ['enrichment_failed', 'dispatch_failed'].includes(
+                                  request.enrichments[0].error_code ?? '',
+                                ))) ? (
+                              <button
+                                type="button"
+                                className={controls.button}
+                                disabled={busy || !data.enabled}
+                                onClick={() =>
+                                  void enrich(request.id, request.enrichments?.[0]?.id)
+                                }
+                              >
+                                {request.enrichments?.length
+                                  ? '确认重试 AI 补证补全（重新计费）'
+                                  : '确认启动 AI 补证补全（计费）'}
+                              </button>
+                            ) : null}
+                            {request.enrichments?.length ? (
+                              <div
+                                className={tables.scroll}
+                                role="region"
+                                aria-label="补证 AI 补全任务表格，可横向滚动"
+                                tabIndex={0}
+                              >
+                                <table className={tables.table}>
+                                  <caption>补证 AI 补全任务</caption>
+                                  <thead>
+                                    <tr>
+                                      <th scope="col">任务</th>
+                                      <th scope="col">状态</th>
+                                      <th scope="col">费用</th>
+                                      <th scope="col">补全结果</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {request.enrichments.map((task) => (
+                                      <tr key={task.id}>
+                                        <th scope="row">
+                                          <span className={tables.primary}>补证 AI 补全</span>
+                                          <span className={tables.meta}>任务 {task.id}</span>
+                                        </th>
+                                        <td>
+                                          <span
+                                            className={`${tables.status} ${styles.materialTaskStatus}`}
+                                            data-status={task.status}
+                                          >
+                                            {enrichmentStatusLabels[task.status] ?? task.status}
+                                          </span>
+                                        </td>
+                                        <td className={tables.cost}>
+                                          记账 $
+                                          {(Number(task.charged_microusd) / 1000000).toFixed(4)}
+                                          <span className={tables.meta}>
+                                            预留 $
+                                            {(Number(task.reserved_microusd) / 1000000).toFixed(4)}
+                                          </span>
+                                        </td>
+                                        <td>
+                                          {task.result?.candidate ? (
+                                            <>
+                                              <p>
+                                                人物：
+                                                {task.result.candidate.persons
+                                                  .map((p) => `${p.name}（${p.role}）`)
+                                                  .join('、') || '未找到，不得猜测'}
+                                              </p>
+                                              <p>
+                                                组织：
+                                                {task.result.candidate.organizations.join('、') ||
+                                                  '未找到'}
+                                              </p>
+                                              <p>
+                                                组织类型提案：
+                                                {task.result.materialHints?.organizations
+                                                  .map(
+                                                    (o) =>
+                                                      `${o.name}（${o.type === 'company' ? '公司' : '机构'}）`,
+                                                  )
+                                                  .join('、') || '无'}
+                                              </p>
+                                              <p>
+                                                领域提案：
+                                                {task.result.materialHints?.topicIds.join('、') ||
+                                                  '无'}
+                                              </p>
+                                            </>
+                                          ) : null}
+                                          <p>
+                                            {task.status === 'completed'
+                                              ? '请点击准备核验材料，重新核对原文、人物关系、组织类型及领域；完成不代表核实或发布。'
+                                              : '刷新补证状态查看进展；失败或结果未知时请先对账，不要重复调用。'}
+                                          </p>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            ) : null}
+                            {data.reviewEnabled && !request.reports.length ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className={controls.button}
+                                  disabled={busy || !data.enabled}
+                                  onClick={() => void reviewAction('prepare', request.id)}
+                                >
+                                  准备核验材料（不调用 AI）
+                                </button>
+                                {organizationReviews[request.id]?.organizations.length ? (
+                                  <MaterialOrganizationConfirmation
+                                    key={`${request.id}:${organizationReviews[request.id]!.contextHash}`}
+                                    review={organizationReviews[request.id]!}
+                                    disabled={busy || !data.enabled}
+                                    onConfirm={(confirmation) =>
+                                      reviewAction('prepare', request.id, undefined, confirmation)
+                                    }
+                                  />
+                                ) : null}
+                                {(request.proposals ?? []).map((proposal) => (
+                                  <section key={proposal.id} aria-label="待确认核验材料">
+                                    <h4>
+                                      {proposal.plan.candidate.title} ·{' '}
+                                      {proposal.approved
+                                        ? '人工已确认，等待独立复查'
+                                        : '待人工确认'}
+                                    </h4>
+                                    <p>{proposal.plan.candidate.summary}</p>
+                                    <p>事件日期：{proposal.plan.candidate.eventDate}</p>
+                                    <blockquote>{proposal.dossier.eventDate.quote}</blockquote>
+                                    <p>
+                                      人物：
+                                      {proposal.plan.candidate.persons
+                                        .map(
+                                          (person) =>
+                                            `${proposal.plan.entities.find((entity) => entity.id === person.entityId)?.name}（${person.role}；${person.organizationId ? proposal.plan.entities.find((entity) => entity.id === person.organizationId)?.name : '无已知组织关系'}）`,
+                                        )
+                                        .join('、')}
+                                    </p>
+                                    <p>领域：{proposal.plan.topicIds.join('、')}</p>
+                                    <p>
+                                      组织类型：
+                                      {proposal.plan.entities
+                                        .filter((entity) => entity.type !== 'person')
+                                        .map(
+                                          (entity) =>
+                                            `${entity.name}（${entity.type === 'company' ? '公司' : '机构'}）`,
+                                        )
+                                        .join('、')}
+                                    </p>
+                                    {proposal.dossier.organizationConfirmation ? (
+                                      <section aria-label="已保存的组织类型人工确认">
+                                        <h5>已保存的组织类型人工确认（仍待独立核验）</h5>
+                                        {proposal.dossier.organizationConfirmation.selections.map(
+                                          (row) => (
+                                            <blockquote key={row.name}>
+                                              <p>
+                                                {row.name} ·{' '}
+                                                {row.type === 'company' ? '公司' : '机构'}
+                                              </p>
+                                              <p>{row.quote}</p>
+                                              <a
+                                                href={row.sourceUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                              >
+                                                核对原文来源
+                                              </a>
+                                            </blockquote>
+                                          ),
+                                        )}
+                                      </section>
+                                    ) : null}
+                                    <ul>
+                                      {proposal.plan.candidate.claims.map((claim, index) => (
+                                        <li key={index}>{claim.text}</li>
+                                      ))}
+                                    </ul>
+                                    <h5>逐来源确认范围：仅以下原文摘录，不授权其他内容</h5>
+                                    {proposal.plan.evidence.map((evidence) => (
+                                      <blockquote key={evidence.id}>
+                                        <p>{evidence.excerpt}</p>
+                                        <a
+                                          href={evidence.sourceUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          {evidence.sourceUrl}
+                                        </a>
+                                      </blockquote>
+                                    ))}
+                                    <h5>确认前须核对的六项声明</h5>
+                                    <ul>
+                                      {Object.entries(proposal.dossier.statements).map(
+                                        ([key, statement]) => (
+                                          <li key={key}>{statement}</li>
+                                        ),
+                                      )}
+                                    </ul>
+                                    <p>
+                                      规则只准备材料，不证明上述声明。若任何一项不能确认，请勿继续；来源可访问也不等于拥有引用权限。
+                                    </p>
+                                    {proposal.approvalExpiresAt ? (
+                                      <p>
+                                        本次确认有效至：
+                                        {new Date(proposal.approvalExpiresAt).toLocaleString(
+                                          'zh-CN',
+                                        )}
+                                      </p>
+                                    ) : null}
+                                    <button
+                                      type="button"
+                                      className={controls.button}
+                                      disabled={
+                                        busy ||
+                                        !data.enabled ||
+                                        Boolean(
+                                          proposal.approvalExpiresAt &&
+                                          Date.parse(proposal.approvalExpiresAt) <= Date.now(),
+                                        )
+                                      }
+                                      onClick={() =>
+                                        void reviewAction('approve', request.id, proposal)
+                                      }
+                                    >
+                                      {proposal.approved
+                                        ? '用已保存确认继续提交独立核验'
+                                        : '我已核对以上内容，确认提交独立核验'}
+                                    </button>
+                                  </section>
+                                ))}
+                              </>
+                            ) : null}
+                            {!request.reports.length ? (
+                              <p>等待独立材料核验报告。尚未登记，也未获得公开许可。</p>
+                            ) : (
+                              request.reports.map((report) => (
+                                <div key={report.id}>
+                                  <h4>{report.plan.candidate.title}</h4>
+                                  <p>{report.plan.candidate.summary}</p>
+                                  <p>事件日期：{report.plan.candidate.eventDate}</p>
+                                  <p>
+                                    {report.stages.includes('verified')
+                                      ? '已登记 / 已收到材料核验回执'
+                                      : report.stages.includes('registered')
+                                        ? '已登记，待完成核验回执；可用原报告继续'
+                                        : '待确认登记'}
+                                  </p>
+                                  <p>
+                                    人物：
+                                    {report.plan.candidate.persons
+                                      .map(
+                                        (p) =>
+                                          `${report.plan.entities.find((e) => e.id === p.entityId)?.name}（${p.role}）`,
+                                      )
+                                      .join('、')}
+                                  </p>
+                                  <p>
+                                    组织：
+                                    {report.plan.candidate.organizationIds
+                                      .map(
+                                        (id) => report.plan.entities.find((e) => e.id === id)?.name,
+                                      )
+                                      .join('、')}
+                                  </p>
+                                  <p>领域：{report.plan.topicIds.join('、')}</p>
+                                  <ul>
+                                    {report.plan.candidate.claims.map((claim, index) => (
+                                      <li key={`${index}:${claim.evidenceId}`}>{claim.text}</li>
+                                    ))}
+                                  </ul>
+                                  <details>
+                                    <summary>核对公开证据及来源</summary>
+                                    {report.plan.evidence.map((e) => (
+                                      <blockquote key={e.id}>
+                                        <p>{e.excerpt}</p>
+                                        <a
+                                          href={e.sourceUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                        >
+                                          查看来源
+                                        </a>
+                                      </blockquote>
+                                    ))}
+                                  </details>
+                                  {!report.stages.includes('verified') ? (
+                                    <button
+                                      className={controls.button}
+                                      type="button"
+                                      disabled={busy || !data.enabled}
+                                      onClick={() => void action('confirm', report, request.id)}
+                                    >
+                                      确认登记材料（不发布）
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ))
+                            )}
+                          </article>
+                        </td>
+                      </tr>
+                    </Fragment>
                   ))}
-                </>
-              ) : null}
-              {!request.reports.length ? (
-                <p>等待独立材料核验报告。尚未登记，也未获得公开许可。</p>
-              ) : (
-                request.reports.map((report) => (
-                  <div key={report.id}>
-                    <h4>{report.plan.candidate.title}</h4>
-                    <p>{report.plan.candidate.summary}</p>
-                    <p>事件日期：{report.plan.candidate.eventDate}</p>
-                    <p>
-                      {report.stages.includes('verified')
-                        ? '已登记 / 已收到材料核验回执'
-                        : report.stages.includes('registered')
-                          ? '已登记，待完成核验回执；可用原报告继续'
-                          : '待确认登记'}
-                    </p>
-                    <p>
-                      人物：
-                      {report.plan.candidate.persons
-                        .map(
-                          (p) =>
-                            `${report.plan.entities.find((e) => e.id === p.entityId)?.name}（${p.role}）`,
-                        )
-                        .join('、')}
-                    </p>
-                    <p>
-                      组织：
-                      {report.plan.candidate.organizationIds
-                        .map((id) => report.plan.entities.find((e) => e.id === id)?.name)
-                        .join('、')}
-                    </p>
-                    <p>领域：{report.plan.topicIds.join('、')}</p>
-                    <ul>
-                      {report.plan.candidate.claims.map((claim, index) => (
-                        <li key={`${index}:${claim.evidenceId}`}>{claim.text}</li>
-                      ))}
-                    </ul>
-                    <details>
-                      <summary>核对公开证据及来源</summary>
-                      {report.plan.evidence.map((e) => (
-                        <blockquote key={e.id}>
-                          <p>{e.excerpt}</p>
-                          <a href={e.sourceUrl} target="_blank" rel="noopener noreferrer">
-                            查看来源
-                          </a>
-                        </blockquote>
-                      ))}
-                    </details>
-                    {!report.stages.includes('verified') ? (
-                      <button
-                        className={controls.button}
-                        type="button"
-                        disabled={busy || !data.enabled}
-                        onClick={() => void action('confirm', report, request.id)}
-                      >
-                        确认登记材料（不发布）
-                      </button>
-                    ) : null}
-                  </div>
-                ))
-              )}
-            </article>
-          ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className={tables.empty}>暂无补证请求。</p>
+          )}
         </>
       )}
       <button

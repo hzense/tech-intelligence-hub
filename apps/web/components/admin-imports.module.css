@@ -2,6 +2,7 @@
   composes: scope from './admin-controls.module.css';
   padding-block: 2rem 4rem;
   max-width: 1200px;
+  min-width: 0;
 }
 .header,
 .toolbar,
@@ -63,6 +64,25 @@
 }
 .tasks {
   margin-top: 2rem;
+  min-width: 0;
+}
+.batchName {
+  width: 32%;
+  max-width: 24rem;
+}
+.expandedCell {
+  padding: 0 !important;
+}
+.batchDetails {
+  padding: 1rem;
+  background: var(--surface-soft, #f3f5f8);
+}
+.itemTable {
+  min-width: 640px;
+}
+.itemName {
+  width: 36%;
+  max-width: 25rem;
 }
 .tasks button[aria-pressed='true'] {
   background: var(--brand, #0047ab);
