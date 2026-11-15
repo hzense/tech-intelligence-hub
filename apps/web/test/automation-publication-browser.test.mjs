@@ -556,7 +556,7 @@ test(
           );
           await expect(f.page.getByRole('button', { name: '撤回', exact: true })).toHaveCount(0);
           const empty = f.page.getByRole('row').filter({ hasText: '调用结果待核对' });
-          await expect(empty.getByRole('button')).toHaveCount(0);
+          await expect(empty.getByRole('button', { name: '任务详情', exact: true })).toHaveCount(1);
           assert.deepEqual(f.detailReads, []);
           await f.page.getByRole('button', { name: '查看待核对结果', exact: true }).click();
           await expect(
@@ -603,7 +603,7 @@ test(
           await f.page.reload();
           for (const [index, [, explanation]] of diagnostics.entries()) {
             const row = f.page.getByRole('row').filter({ hasText: `专题诊断 ${index + 1}` });
-            await expect(row).toContainText(explanation);
+            await expect(row).toContainText('需核对 · 查看详情');
             await expect(row).toContainText('供应商回执');
             await expect(row).toContainText('$0.0012');
             await expect(row).not.toContainText('未调用 AI');
@@ -612,8 +612,12 @@ test(
               row.getByRole('button', { name: '查看失败详情', exact: true }),
             ).toHaveCount(1);
             await expect(row.getByRole('button', { name: '确认公开', exact: true })).toHaveCount(0);
+            await row.getByRole('button', { name: '查看失败详情', exact: true }).click();
+            await expect(
+              f.page.getByRole('region', { name: `专题诊断 ${index + 1}任务详情`, exact: true }),
+            ).toContainText(explanation);
           }
-          const truncated = f.page.getByRole('row').filter({ hasText: '专题诊断 1' });
+          const truncated = f.page.getByRole('region', { name: '专题诊断 1任务详情', exact: true });
           await expect(truncated).toContainText('“分析”的输出上限调整为 8192');
           await expect(truncated).toContainText('保存并选择新修订');
           await expect(truncated).toContainText('系统不会自动重试');
@@ -703,6 +707,7 @@ test(
           await expect(
             page.getByRole('cell', { name: '人工审核后发布', exact: true }),
           ).toBeVisible();
+          await page.getByRole('button', { name: '查看采集详情', exact: true }).click();
           await expect(page.getByText('任务快照：人工审核后发布', { exact: true })).toBeVisible();
           await page.getByRole('button', { name: '编辑', exact: true }).click();
           await expect(page.getByLabel('发布方式', { exact: true })).toHaveValue('manual');
@@ -743,6 +748,7 @@ test(
           await expect(
             page.getByRole('cell', { name: '检查合格后自动发布', exact: true }),
           ).toBeVisible();
+          await page.getByRole('button', { name: '查看采集详情', exact: true }).click();
           await expect(page.getByText('任务快照：人工审核后发布', { exact: true })).toBeVisible();
           await page.getByRole('button', { name: '编辑', exact: true }).click();
           await expect(page.getByLabel('发布方式', { exact: true })).toHaveValue('automatic');
@@ -878,6 +884,7 @@ test(
             ],
           };
           await f.page.reload();
+          await f.page.getByRole('button', { name: '查看采集详情', exact: true }).click();
           await expect(
             f.page.getByText('任务快照：检查合格后自动发布', { exact: true }),
           ).toBeVisible();
@@ -913,6 +920,195 @@ test(
           await expect(f.page.getByText('请以最新发布状态为准。', { exact: false })).toBeVisible();
           await expect(f.page.getByText(/私有候选|已发布|未发布/)).toHaveCount(0);
           assert.equal(f.posts.length, 0, 'reading result labels never publishes or calls AI');
+          await f.close();
+        },
+      );
+      await t.test(
+        'historical duplicate-only failures are completed in labels and filters without changing receipts',
+        async () => {
+          const f = await setup();
+          const base = f.props.initial.runs[0];
+          const duplicateResult = {
+            failed: 1,
+            sourceFailures: [
+              {
+                itemId: '00000000-0000-4000-8000-000000000001',
+                phase: 'create_candidate',
+                code: 'duplicate_source',
+              },
+            ],
+          };
+          f.props.initial.runs = [
+            {
+              ...base,
+              id: 'historical-duplicate',
+              snapshot: { ...base.snapshot, name: '历史重复任务' },
+              status: 'failed',
+              phase: 'source_failed',
+              result: duplicateResult,
+            },
+            {
+              ...base,
+              id: 'unproven-failure',
+              snapshot: { ...base.snapshot, name: '缺少结果凭据' },
+              status: 'failed',
+              phase: 'source_failed',
+              result: { failed: 1 },
+            },
+            {
+              ...base,
+              id: 'uncertain-duplicate',
+              snapshot: { ...base.snapshot, name: '结果未知任务' },
+              status: 'unknown',
+              phase: 'outcome_unknown',
+              result: duplicateResult,
+            },
+            {
+              ...base,
+              id: 'all-rejected',
+              snapshot: { ...base.snapshot, name: '全部拒绝任务' },
+              status: 'completed',
+              phase: 'no_new_sources',
+              result: { discovery: { articleCount: 0, rejected: 8, duplicates: 0 } },
+            },
+          ];
+          const before = globalThis.structuredClone(f.props.initial.runs);
+          await f.page.reload();
+          const table = f.page.getByRole('table', { name: /自动采集任务/ });
+          const duplicate = table.getByRole('row').filter({ hasText: '历史重复任务' });
+          await expect(
+            duplicate.getByText('采集完成，重复来源已跳过', { exact: true }),
+          ).toBeVisible();
+          await expect(duplicate.locator('[data-status]')).toHaveAttribute(
+            'data-status',
+            'completed',
+          );
+          const status = f.page
+            .getByRole('group', { name: '采集任务筛选', exact: true })
+            .getByRole('combobox');
+          await status.selectOption('completed');
+          await expect(table.getByRole('rowheader')).toHaveCount(1);
+          await expect(table.getByRole('rowheader')).toContainText('历史重复任务');
+          await status.selectOption('failed');
+          await expect(table.getByRole('rowheader')).toHaveCount(2);
+          await expect(
+            table.getByText('采集失败，来源全部未通过校验', { exact: true }),
+          ).toBeVisible();
+          await expect(
+            table.getByRole('rowheader').filter({ hasText: '缺少结果凭据' }),
+          ).toBeVisible();
+          await status.selectOption('unknown');
+          await expect(table.getByRole('rowheader')).toHaveCount(1);
+          await expect(table.getByRole('rowheader')).toContainText('结果未知任务');
+          assert.deepEqual(f.props.initial.runs, before);
+          assert.deepEqual(f.detailReads, []);
+          assert.deepEqual(f.posts, []);
+          await f.close();
+        },
+      );
+      await t.test(
+        'compact collection runs filter and sort without reading details or starting tasks',
+        async () => {
+          const f = await setup();
+          const base = f.props.initial.runs[0];
+          f.props.initial.runs = [
+            {
+              ...base,
+              id: 'run-alpha',
+              snapshot: { ...base.snapshot, name: 'Alpha 配置' },
+              created_at: '2026-10-20T00:00:00Z',
+              charged_microusd: 30_000,
+              phase: 'no_new_sources',
+            },
+            {
+              ...base,
+              id: 'run-beta',
+              snapshot: { ...base.snapshot, name: 'Beta 配置' },
+              created_at: '2026-10-21T00:00:00Z',
+              charged_microusd: 10_000,
+              status: 'failed',
+              error_code: 'provider_rejected',
+              phase: 'discovery_rejected',
+            },
+            {
+              ...base,
+              id: 'run-gamma',
+              snapshot: { ...base.snapshot, name: 'Gamma 配置' },
+              created_at: '2026-10-22T00:00:00Z',
+              charged_microusd: 20_000,
+              status: 'completed',
+              phase: 'done',
+              generationProgress: {
+                total: 1,
+                completed: 0,
+                failed: 0,
+                cancelled: 0,
+                unknown: 1,
+                unavailable: 0,
+                pending: 0,
+                running: 0,
+                knownCandidates: 0,
+                candidateCountComplete: false,
+                active: false,
+                readFailed: false,
+                tasks: [
+                  {
+                    id: '33333333-3333-4333-8333-333333333333',
+                    status: 'unknown',
+                    progress_phase: null,
+                    candidate_count: null,
+                  },
+                ],
+              },
+            },
+          ];
+          await f.page.reload();
+          const table = f.page.getByRole('table', { name: /自动采集任务/ });
+          const names = () => table.getByRole('rowheader').allTextContents();
+          assert.match((await names())[0], /Gamma/);
+          await f.page.setViewportSize({ width: 1280, height: 900 });
+          await f.page
+            .getByRole('region', { name: '运行记录', exact: true })
+            .screenshot({ path: '/tmp/hzense-automation-compact-desktop.png' });
+          await f.page.setViewportSize({ width: 390, height: 844 });
+          assert.equal(
+            await f.page.evaluate(() => globalThis.document.documentElement.scrollWidth <= 390),
+            true,
+          );
+          await f.page.getByLabel('搜索采集任务', { exact: true }).fill('alpha');
+          await expect(table.getByRole('rowheader')).toHaveCount(1);
+          assert.match((await names())[0], /Alpha/);
+          await f.page.getByLabel('搜索采集任务', { exact: true }).fill('run-beta');
+          assert.match((await names())[0], /Beta/);
+          await f.page.getByLabel('搜索采集任务', { exact: true }).fill('');
+          await f.page
+            .getByRole('group', { name: '采集任务筛选', exact: true })
+            .getByRole('combobox')
+            .selectOption('unknown');
+          assert.match((await names())[0], /Gamma/);
+          await expect(table.getByRole('rowheader')).toHaveCount(1);
+          await f.page
+            .getByRole('group', { name: '采集任务筛选', exact: true })
+            .getByRole('combobox')
+            .selectOption('completed');
+          assert.match((await names())[0], /Alpha/);
+          await f.page.getByRole('button', { name: '重置筛选与排序', exact: true }).click();
+          await table.getByRole('button', { name: /费用/ }).click();
+          assert.match((await names())[0], /Beta/);
+          await expect(table.getByRole('columnheader', { name: /费用/ })).toHaveAttribute(
+            'aria-sort',
+            'ascending',
+          );
+          await table.getByRole('button', { name: /费用/ }).click();
+          assert.match((await names())[0], /Alpha/);
+          await table.getByRole('button', { name: /任务 \/ 配置/ }).click();
+          assert.match((await names())[0], /Alpha/);
+          assert.deepEqual(f.detailReads, []);
+          assert.deepEqual(f.posts, []);
+          await f.page.getByLabel('搜索采集任务', { exact: true }).fill('不存在');
+          await expect(table.getByText('没有符合筛选条件的任务。', { exact: true })).toBeVisible();
+          await f.page.getByRole('button', { name: '重置筛选与排序', exact: true }).click();
+          await expect(table.getByRole('rowheader')).toHaveCount(3);
           await f.close();
         },
       );

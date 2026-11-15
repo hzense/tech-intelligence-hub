@@ -183,10 +183,10 @@ test(
       const requests = page.getByRole('table', { name: '补证请求', exact: true });
       await expect(requests).toBeVisible();
       await expect(requests.getByRole('columnheader')).toHaveText([
-        '补证材料',
-        '执行状态',
-        '创建时间',
-        '材料与结果',
+        /补证材料/,
+        /执行状态/,
+        /创建时间/,
+        /材料与结果/,
         '操作',
       ]);
       const requestDetails = page.getByRole('button', { name: '查看任务详情', exact: true });
@@ -269,6 +269,8 @@ test(
         },
       };
       await page.getByRole('button', { name: '刷新补证状态' }).click();
+      await expect(page.getByText('人物：Ada（researcher）')).not.toBeVisible();
+      await enrichmentTasks.getByText('查看补全详情', { exact: true }).click();
       await expect(page.getByText('人物：Ada（researcher）')).toBeVisible();
       assert.equal(commands.filter((command) => command.action === 'enrich').length, 2);
       needsManualIdentity = true;
@@ -427,6 +429,88 @@ test(
         .getByRole('region', { name: '补证 AI 补全任务表格，可横向滚动', exact: true })
         .boundingBox();
       assert.ok(innerTableBounds && innerTableBounds.x + innerTableBounds.width <= 390);
+      // Both list levels filter and sort loaded data without dispatching AI or writes.
+      const originalRequest = data.requests[0];
+      const originalTask = originalRequest.enrichments[0];
+      originalTask.charged_microusd = '10000000';
+      originalRequest.enrichments.push({
+        ...originalTask,
+        id: 'extra-enrichment-task',
+        status: 'failed',
+        charged_microusd: '900000',
+        result: null,
+      });
+      data.requests.push({
+        id: 'extra-request',
+        createdAt: '2026-09-25T10:00:00Z',
+        fragmentCount: 12,
+        reports: [],
+        enrichments: [],
+      });
+      await page.getByRole('button', { name: '刷新补证状态' }).click();
+      const requestHeaders = requests.locator(':scope > tbody > tr > th');
+      await expect(requestHeaders).toHaveCount(2);
+      await expect(requestHeaders.first()).toContainText('extra-re');
+      const requestsBeforeTableControls = commands.length;
+      const createdHeader = requests.getByRole('button', { name: '创建时间', exact: true });
+      await createdHeader.focus();
+      await page.keyboard.press('Enter');
+      await expect(requestHeaders.first()).toContainText(originalRequest.id.slice(0, 8));
+      await expect(requests.getByRole('columnheader', { name: /创建时间/ })).toHaveAttribute(
+        'aria-sort',
+        'ascending',
+      );
+      await page
+        .getByRole('combobox', { name: '补证请求状态', exact: true })
+        .selectOption('登记与核验已完成');
+      await expect(requestHeaders).toHaveCount(1);
+      await page.getByLabel('搜索补证请求', { exact: true }).fill('不存在的补证请求');
+      await expect(requests.getByText('没有匹配的已加载补证请求。')).toBeVisible();
+      await page
+        .getByRole('group', { name: '补证请求筛选', exact: true })
+        .getByRole('button', { name: '重置筛选与排序' })
+        .click();
+      await expect(requestHeaders.first()).toContainText('extra-re');
+      await expect(enrichmentTasks).toBeVisible();
+      await enrichmentTasks.getByRole('button', { name: '费用', exact: true }).click();
+      await expect(enrichmentTasks.getByRole('rowheader').first()).toContainText('extra-en');
+      await enrichmentTasks.getByRole('button', { name: '费用', exact: true }).click();
+      await expect(enrichmentTasks.getByRole('rowheader').first()).toContainText(
+        originalTask.id.slice(0, 8),
+      );
+      await page
+        .getByRole('combobox', { name: '补证 AI 补全任务状态', exact: true })
+        .selectOption('completed');
+      await page.getByLabel('搜索补证 AI 补全任务', { exact: true }).fill('Ada');
+      await expect(enrichmentTasks.getByRole('rowheader')).toHaveCount(1);
+      await page.getByLabel('搜索补证 AI 补全任务', { exact: true }).fill('不存在');
+      await expect(enrichmentTasks.getByText('没有匹配的已加载任务。')).toBeVisible();
+      await page
+        .getByRole('group', { name: '补证 AI 补全任务筛选', exact: true })
+        .getByRole('button', { name: '重置筛选与排序' })
+        .click();
+      await expect(enrichmentTasks.getByRole('rowheader')).toHaveCount(2);
+      assert.equal(commands.length, requestsBeforeTableControls);
+      const requestStatus = page.getByRole('combobox', { name: '补证请求状态', exact: true });
+      await requestStatus.selectOption('补证材料已保存');
+      await expect(requestHeaders).toHaveCount(1);
+      // Refresh removes the final record in the selected state. The selector must
+      // still show that state, not silently display "all" while filtering it out.
+      data.requests[1].enrichments = [
+        { ...originalTask, id: 'changed-state-task', status: 'pending', result: null },
+      ];
+      await page.getByRole('button', { name: '刷新补证状态' }).click();
+      await expect(requestStatus).toHaveValue('补证材料已保存');
+      await expect(requestStatus.locator('option:checked')).toHaveText('补证材料已保存');
+      await expect(requests.getByText('没有匹配的已加载补证请求。')).toBeVisible();
+      await page
+        .getByRole('group', { name: '补证请求筛选', exact: true })
+        .getByRole('button', { name: '重置筛选与排序' })
+        .click();
+      await expect(requestStatus).toHaveValue('all');
+      await expect(requestHeaders).toHaveCount(2);
+      await expect(requests.getByText('AI 补全：已排队', { exact: true })).toBeVisible();
+      assert.equal(commands.length, requestsBeforeTableControls);
       data.enabled = false;
       await page.getByRole('button', { name: '刷新补证状态' }).click();
       await expect(page.getByText('写入未启用，只读查看已保存材料。')).toBeVisible();

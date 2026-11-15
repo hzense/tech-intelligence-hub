@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import type { AutomationConfig } from '../../../packages/database/src/automation-contract.mjs';
 import type {
@@ -10,6 +10,7 @@ import type {
 import { startVisiblePolling } from '../lib/visible-polling';
 import styles from './admin-automation.module.css';
 import tables from './admin-task-table.module.css';
+import { TaskListToolbar, TaskSortHeader, useTaskList } from './admin-task-list';
 import { TopicInsightTags } from './topic-insight-tags';
 import {
   discoveryDiagnosticItems,
@@ -145,7 +146,7 @@ async function api<T>(body?: unknown, signal?: AbortSignal, id?: string): Promis
   return result;
 }
 const money = (microusd: number) => `$${(microusd / 1_000_000).toFixed(4)}`;
-function RunCost({ row }: { row: RunView }) {
+function RunCost({ row, compact = false }: { row: RunView; compact?: boolean }) {
   const stoppedBeforeCall =
     row.snapshot.kind === 'source_collection' &&
     row.status === 'failed' &&
@@ -172,7 +173,7 @@ function RunCost({ row }: { row: RunView }) {
       ) : row.cost_source === 'reserve' ? (
         <>
           <small>预算暂占用</small>
-          <small>实际费用未知，尚无供应商费用回执</small>
+          {!compact ? <small>实际费用未知，尚无供应商费用回执</small> : null}
         </>
       ) : (
         <small>
@@ -183,7 +184,7 @@ function RunCost({ row }: { row: RunView }) {
               : '未结算'}
         </small>
       )}
-      {row.snapshot.kind === 'source_collection' ? (
+      {!compact && row.snapshot.kind === 'source_collection' ? (
         <small>仅含检索，不含导入和生成费用</small>
       ) : null}
     </>
@@ -631,18 +632,77 @@ function SourceResult({
   );
 }
 
-function AutomationResultDetails({
+const runStatusLabels: Record<string, string> = {
+  queued: '排队中',
+  running: '执行中',
+  completed: '已完成',
+  failed: '失败',
+  unknown: '待核对',
+  cancelled: '已取消',
+};
+function runStatus(row: RunView): string {
+  if (row.snapshot.kind !== 'source_collection') return row.status;
+  if (sourceAutomationAllSourcesRejected(row)) return 'failed';
+  const sources = automationSourceOutcomeCounts(row.result);
+  // Historical duplicate-only runs stored failed; the receipt helper corrects presentation only.
+  if (
+    ['completed', 'failed'].includes(row.status) &&
+    !automationGenerationIds(row.result).length &&
+    sources.failed === 0 &&
+    sources.skipped &&
+    sources.unknown === 0
+  )
+    return 'completed';
+  if (row.status !== 'completed') return row.status;
+  if (row.phase === 'no_new_sources') return 'completed';
+  const progress = row.generationProgress;
+  if (!progress?.total) return 'unknown';
+  if (progress?.running) return 'running';
+  if (progress?.tasks.some((task) => task.status === 'pending' && task.progress_phase === 'queued'))
+    return 'queued';
+  if (progress?.unknown || progress?.unavailable || progress?.pending) return 'unknown';
+  if (progress.failed || progress.cancelled || sources.failed)
+    return progress.completed ? 'partial' : 'failed';
+  return progress.candidateCountComplete ? 'completed' : 'unknown';
+}
+function runResultLabel(row: RunView): string {
+  if (row.snapshot.kind === 'topic_insight') {
+    if (row.publication_status === 'published') return '已公开';
+    if (row.publication_status === 'withdrawn') return '已撤回';
+    return row.status === 'completed' && row.result ? '待确认公开' : '—';
+  }
+  const progress = row.generationProgress;
+  if (progress?.knownCandidates || progress?.candidateCountComplete)
+    return `${progress.knownCandidates} 条候选${progress.candidateCountComplete ? '' : '（已确认）'}`;
+  const total = automationGenerationIds(row.result).length;
+  return total ? `${total} 项生成任务` : '—';
+}
+function runDuration(row: RunView): string | null {
+  if (!row.finished_at) return null;
+  const duration = new Date(row.finished_at).getTime() - new Date(row.created_at).getTime();
+  if (!Number.isFinite(duration) || duration < 0) return null;
+  const seconds = Math.round(duration / 1000);
+  return seconds < 60 ? `${seconds} 秒` : `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`;
+}
+function AutomationRunRow({
   row,
   topics,
   insightLeafTopicIds,
   onDetailRead,
+  busy,
+  publicationIssue,
+  onPublish,
 }: {
   row: RunView;
   topics: Topic[];
   insightLeafTopicIds?: string[] | undefined;
   onDetailRead?: (detail: AutomationRunView) => void;
+  busy: boolean;
+  publicationIssue: string | null;
+  onPublish: (confirm: boolean) => void;
 }) {
   const [detail, setDetail] = useState<AutomationRunView | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const request = useRef<AbortController | null>(null);
@@ -651,6 +711,7 @@ function AutomationResultDetails({
     request.current?.abort();
     request.current = null;
     setLoading(false);
+    setExpanded(false);
     setDetail(null);
     setError('');
   }
@@ -658,6 +719,7 @@ function AutomationResultDetails({
     if (request.current) return;
     const controller = new AbortController();
     request.current = controller;
+    setExpanded(true);
     setLoading(true);
     setError('');
     try {
@@ -678,49 +740,168 @@ function AutomationResultDetails({
       }
     }
   }
+  const errorMessage = row.error_code
+    ? ((row.error_code === 'provider_rejected'
+        ? discoveryRequestFailureMessage(row.result?.discoveryRejection)
+        : null) ??
+      errors[row.error_code] ??
+      row.error_code)
+    : null;
+  const statusLabel =
+    row.snapshot.kind === 'source_collection'
+      ? sourceAutomationLabel(row)
+      : (runStatusLabels[row.status] ?? row.status);
   return (
-    <div>
-      <button type="button" disabled={loading} onClick={() => void load()}>
-        {loading
-          ? '读取详情中…'
-          : detail
-            ? '刷新详情'
-            : row.snapshot.kind === 'topic_insight'
-              ? row.status === 'unknown'
-                ? '查看待核对结果'
-                : row.status === 'failed'
-                  ? '查看失败详情'
-                  : '阅读私有报告'
-              : '查看采集详情'}
-      </button>
-      {detail ? (
-        <button type="button" onClick={close}>
-          收起详情
-        </button>
+    <Fragment>
+      <tr>
+        <th scope="row">
+          <span className={tables.primary} title={row.snapshot.name}>
+            {row.snapshot.name}
+          </span>
+          <span className={tables.meta} title={row.id}>
+            {row.id.slice(0, 8)}
+          </span>
+        </th>
+        <td className={styles.statusCell}>
+          <span className={tables.status} data-status={runStatus(row)} title={statusLabel}>
+            <span className={styles.statusLabel}>{statusLabel}</span>
+          </span>
+          {errorMessage ? (
+            <small className={styles.shortError} title={errorMessage}>
+              需核对 · 查看详情
+            </small>
+          ) : null}
+        </td>
+        <td className={styles.resultCell}>{runResultLabel(row)}</td>
+        <td className={tables.time}>
+          {time(row.created_at)}
+          {runDuration(row) ? (
+            <small title="从创建到结束，包含排队时间">总用时 {runDuration(row)}</small>
+          ) : null}
+        </td>
+        <td className={tables.cost}>
+          <RunCost row={row} compact />
+        </td>
+        <td className={styles.actionsCell}>
+          <button
+            type="button"
+            disabled={loading}
+            aria-expanded={expanded}
+            aria-controls={`automation-details-${row.id}`}
+            onClick={() => (expanded ? close() : void load())}
+          >
+            {loading
+              ? '读取详情中…'
+              : expanded
+                ? '收起详情'
+                : row.snapshot.kind === 'topic_insight'
+                  ? row.status === 'unknown' && row.result
+                    ? '查看待核对结果'
+                    : row.status === 'failed'
+                      ? '查看失败详情'
+                      : row.status === 'completed' && row.result
+                        ? '阅读私有报告'
+                        : '任务详情'
+                  : '查看采集详情'}
+          </button>
+          {row.snapshot.kind === 'topic_insight' && row.status === 'completed' && row.result ? (
+            <>
+              <button
+                type="button"
+                disabled={
+                  busy || row.publication_status === 'published' || publicationIssue !== null
+                }
+                title={publicationIssue ?? undefined}
+                onClick={() => onPublish(true)}
+              >
+                确认公开
+              </button>
+              {row.publication_status === 'published' ? (
+                <button type="button" disabled={busy} onClick={() => onPublish(false)}>
+                  撤回
+                </button>
+              ) : null}
+            </>
+          ) : null}
+        </td>
+      </tr>
+      {expanded ? (
+        <tr className={styles.detailRow}>
+          <td colSpan={6}>
+            <div
+              id={`automation-details-${row.id}`}
+              className={styles.runDetails}
+              role="region"
+              aria-label={`${row.snapshot.name}任务详情`}
+            >
+              <div className={styles.detailMetadata}>
+                <p>
+                  任务 ID：{row.id}
+                  <br />
+                  阶段：{row.phase}
+                </p>
+                <p>
+                  <RunCost row={row} />
+                </p>
+              </div>
+              {row.snapshot.kind === 'source_collection' ? (
+                <p>任务快照：{publicationLabel(row.snapshot)}</p>
+              ) : null}
+              {errorMessage ? <p>{errorMessage}</p> : null}
+              {row.snapshot.kind === 'topic_insight' &&
+              row.status === 'completed' &&
+              row.publication_status !== 'published' &&
+              publicationIssue ? (
+                <p>{publicationIssue}</p>
+              ) : null}
+              {row.snapshot.kind === 'topic_insight' && row.status === 'unknown' ? (
+                <p>
+                  {row.result
+                    ? '已保留结果供核对；任务结果仍未知，不能公开，请勿重复生成。'
+                    : '任务结果仍未知，不能公开，请核对原任务，勿重复生成。'}
+                </p>
+              ) : null}
+              {row.snapshot.kind === 'source_collection' && row.result ? (
+                <SourceResult
+                  result={row.result}
+                  summaryOnly
+                  allSourcesRejected={sourceAutomationAllSourcesRejected(row)}
+                  {...(row.generationProgress ? { progress: row.generationProgress } : {})}
+                />
+              ) : null}
+              {error ? <p role="alert">{error}</p> : null}
+              <button type="button" disabled={loading} onClick={() => void load()}>
+                {loading ? '读取详情中…' : '刷新详情'}
+              </button>
+              {detail ? (
+                <>
+                  <p>详情按需读取，不自动刷新，也不会调用 AI。</p>
+                  {detail.result ? (
+                    detail.snapshot.kind === 'topic_insight' ? (
+                      <TopicResult
+                        result={detail.result}
+                        topics={topics}
+                        insightLeafTopicIds={insightLeafTopicIds}
+                      />
+                    ) : (
+                      <details className={tables.details}>
+                        <summary>来源与诊断明细</summary>
+                        <SourceResult
+                          result={detail.result}
+                          allSourcesRejected={sourceAutomationAllSourcesRejected(detail)}
+                        />
+                      </details>
+                    )
+                  ) : (
+                    <p>此任务尚无可查看的结果。</p>
+                  )}
+                </>
+              ) : null}
+            </div>
+          </td>
+        </tr>
       ) : null}
-      {error ? <p role="alert">{error}</p> : null}
-      {detail ? (
-        <>
-          <p>详情按需读取，不自动刷新，也不会调用 AI。</p>
-          {detail.result ? (
-            detail.snapshot.kind === 'topic_insight' ? (
-              <TopicResult
-                result={detail.result}
-                topics={topics}
-                insightLeafTopicIds={insightLeafTopicIds}
-              />
-            ) : (
-              <SourceResult
-                result={detail.result}
-                allSourcesRejected={sourceAutomationAllSourcesRejected(detail)}
-              />
-            )
-          ) : (
-            <p>此任务尚无可查看的结果。</p>
-          )}
-        </>
-      ) : null}
-    </div>
+    </Fragment>
   );
 }
 
@@ -1061,6 +1242,26 @@ export function AdminAutomation({
   }
   const configs = state.configs.filter((row) => row.config.kind === kind);
   const runs = state.runs.filter((row) => row.snapshot.kind === kind);
+  const runList = useTaskList({
+    items: runs,
+    searchText: (row) =>
+      `${row.snapshot.name} ${row.id} ${row.phase} ${row.error_code ?? ''} ${row.snapshot.kind === 'source_collection' ? sourceAutomationLabel(row) : runStatusLabels[row.status]}`,
+    statusValue: runStatus,
+    sortValues: {
+      name: (row) => row.snapshot.name,
+      status: (row) =>
+        row.snapshot.kind === 'source_collection'
+          ? sourceAutomationLabel(row)
+          : runStatusLabels[row.status],
+      result: (row) =>
+        row.snapshot.kind === 'source_collection'
+          ? (row.generationProgress?.knownCandidates ?? null)
+          : row.publication_status,
+      created: (row) => new Date(row.created_at).getTime(),
+      cost: (row) => row.charged_microusd,
+    },
+    initialSort: 'created',
+  });
   const summaryReadFailed = runs.some((row) => row.generationProgress?.readFailed);
   const shouldRefresh =
     configured &&
@@ -1602,6 +1803,21 @@ export function AdminAutomation({
             次；仍不可读时请点击“刷新列表”或打开原任务核对，不要重复启动。
           </p>
         ) : null}
+        <TaskListToolbar
+          label={kind === 'source_collection' ? '采集任务' : '洞察任务'}
+          list={runList}
+          statuses={[
+            { value: 'queued', label: '排队中' },
+            { value: 'running', label: '执行中' },
+            { value: 'completed', label: '已完成' },
+            ...(kind === 'source_collection' ? [{ value: 'partial', label: '部分完成' }] : []),
+            { value: 'failed', label: '失败' },
+            { value: 'unknown', label: '待核对' },
+            { value: 'cancelled', label: '已取消' },
+          ]}
+          shown={runList.visibleItems.length}
+          total={runs.length}
+        />
         {runs.length ? (
           <div
             className={tables.scroll}
@@ -1611,123 +1827,51 @@ export function AdminAutomation({
           >
             <table className={`${tables.table} ${styles.runTable}`}>
               <caption>
-                {kind === 'source_collection' ? '自动采集任务' : '专题洞察任务'} · {runs.length} 项
+                {kind === 'source_collection' ? '自动采集任务' : '专题洞察任务'} ·{' '}
+                {runList.visibleItems.length} 项
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">任务 / 配置</th>
-                  <th scope="col">创建时间</th>
-                  <th scope="col">状态与阶段</th>
-                  <th scope="col">费用与预算</th>
-                  <th scope="col">结果与操作</th>
+                  <TaskSortHeader sortKey="name" list={runList}>
+                    任务 / 配置
+                  </TaskSortHeader>
+                  <TaskSortHeader sortKey="status" list={runList}>
+                    状态
+                  </TaskSortHeader>
+                  <TaskSortHeader sortKey="result" list={runList}>
+                    结果
+                  </TaskSortHeader>
+                  <TaskSortHeader sortKey="created" list={runList}>
+                    创建时间
+                  </TaskSortHeader>
+                  <TaskSortHeader sortKey="cost" list={runList}>
+                    费用
+                  </TaskSortHeader>
+                  <th scope="col">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {runs.map((row) => (
-                  <tr key={row.id}>
-                    <th scope="row">
-                      <span className={tables.primary}>{row.snapshot.name}</span>
-                      <span className={tables.meta} title={row.id}>
-                        {row.id.slice(0, 8)}
-                      </span>
-                      {kind === 'source_collection' ? (
-                        <small className={tables.meta}>
-                          任务快照：{publicationLabel(row.snapshot)}
-                        </small>
-                      ) : null}
-                    </th>
-                    <td className={tables.time}>{time(row.created_at)}</td>
-                    <td className={styles.statusCell}>
-                      <span className={tables.status} data-status={row.status}>
-                        {kind === 'source_collection'
-                          ? sourceAutomationLabel(row)
-                          : `${row.status} · ${row.phase}`}
-                      </span>
-                      {kind === 'source_collection' ? (
-                        <small className={tables.meta}>采集阶段：{row.phase}</small>
-                      ) : null}
-                      {row.error_code ? (
-                        <small>
-                          {(row.error_code === 'provider_rejected'
-                            ? discoveryRequestFailureMessage(row.result?.discoveryRejection)
-                            : null) ??
-                            errors[row.error_code] ??
-                            row.error_code}
-                        </small>
-                      ) : null}
-                    </td>
-                    <td className={tables.cost}>
-                      <RunCost row={row} />
-                    </td>
-                    <td className={styles.resultCell}>
-                      {row.snapshot.kind === 'topic_insight' &&
-                      (row.status === 'failed' ||
-                        ((row.status === 'completed' || row.status === 'unknown') &&
-                          row.result)) ? (
-                        <>
-                          <AutomationResultDetails
-                            key={`${row.id}:${row.status}:${row.phase}`}
-                            row={row}
-                            topics={topics}
-                            insightLeafTopicIds={insightLeafTopicIds}
-                            onDetailRead={(detail) =>
-                              setReadTopicDetails((current) => ({ ...current, [row.id]: detail }))
-                            }
-                          />
-                          {row.status === 'completed' ? (
-                            <>
-                              <button
-                                type="button"
-                                disabled={
-                                  busy ||
-                                  row.publication_status === 'published' ||
-                                  topicPublicationIssue(row) !== null
-                                }
-                                onClick={() => void publish(row, true)}
-                              >
-                                确认公开
-                              </button>
-                              {row.publication_status !== 'published' &&
-                              topicPublicationIssue(row) ? (
-                                <p>{topicPublicationIssue(row)}</p>
-                              ) : null}
-                              {row.publication_status === 'published' ? (
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() => void publish(row, false)}
-                                >
-                                  撤回
-                                </button>
-                              ) : null}
-                            </>
-                          ) : row.status === 'unknown' ? (
-                            <p>已保留结果供核对；任务结果仍未知，不能公开，请勿重复生成。</p>
-                          ) : null}
-                        </>
-                      ) : row.snapshot.kind === 'source_collection' && row.result ? (
-                        <>
-                          <SourceResult
-                            result={row.result}
-                            summaryOnly
-                            allSourcesRejected={sourceAutomationAllSourcesRejected(row)}
-                            {...(row.generationProgress
-                              ? { progress: row.generationProgress }
-                              : {})}
-                          />
-                          <AutomationResultDetails
-                            key={`${row.id}:${row.status}:${row.phase}`}
-                            row={row}
-                            topics={topics}
-                            insightLeafTopicIds={insightLeafTopicIds}
-                          />
-                        </>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                  </tr>
+                {runList.visibleItems.map((row) => (
+                  <AutomationRunRow
+                    key={`${row.id}:${row.status}:${row.phase}`}
+                    row={row}
+                    topics={topics}
+                    insightLeafTopicIds={insightLeafTopicIds}
+                    busy={busy}
+                    publicationIssue={
+                      row.snapshot.kind === 'topic_insight' ? topicPublicationIssue(row) : null
+                    }
+                    onPublish={(confirm) => void publish(row, confirm)}
+                    onDetailRead={(detail) =>
+                      setReadTopicDetails((current) => ({ ...current, [row.id]: detail }))
+                    }
+                  />
                 ))}
+                {!runList.visibleItems.length ? (
+                  <tr>
+                    <td colSpan={6}>没有符合筛选条件的任务。</td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>

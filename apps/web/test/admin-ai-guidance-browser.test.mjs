@@ -360,7 +360,7 @@ test(
         const table = history.getByRole('table', { name: '最近 3 次模型测试' });
         await expect(table.getByRole('row')).toHaveCount(4);
         await expect(table.getByRole('rowheader')).toHaveText(
-          [newer[2], newer[1], newer[0]].map((probe) => `基础连接${probe.id}`),
+          [newer[2], newer[1], newer[0]].map((probe) => `基础连接${probe.id.slice(0, 8)}`),
         );
         const details = table.getByRole('link', { name: '任务详情', exact: true });
         await expect(details).toHaveCount(3);
@@ -388,6 +388,69 @@ test(
         await expect(
           page.getByText('当前连接 r1 的列表包含 2 个模型；选择后只填写模型 ID，不自动测试。'),
         ).toBeVisible();
+        await expectNoWrites();
+      },
+    );
+
+    await t.test(
+      'test list filters and sorts only the latest three records without API writes',
+      async () => {
+        const recent = [
+          {
+            ...savedModelProbe,
+            id: 'recent-a',
+            model_id: 'provider/Alpha',
+            kind: 'connection',
+            status: 'succeeded',
+            charged_microusd: '20000',
+            created_at: '2026-01-02T00:00:00.000Z',
+          },
+          {
+            ...savedModelProbe,
+            id: 'recent-b',
+            model_id: 'provider/Beta',
+            kind: 'structured_output',
+            status: 'failed',
+            charged_microusd: '10000',
+            created_at: '2026-01-03T00:00:00.000Z',
+          },
+          {
+            ...savedModelProbe,
+            id: 'recent-c',
+            model_id: 'provider/Gamma',
+            kind: 'tool_calling',
+            status: 'failed',
+            charged_microusd: '30000',
+            created_at: '2026-01-04T00:00:00.000Z',
+          },
+        ];
+        await mount({ connections: [savedConnection], probes: [savedModelProbe, ...recent] });
+        const history = page.getByRole('region', { name: '最近模型测试' });
+        const table = history.getByRole('table', { name: '最近 3 次模型测试' });
+        const search = history.getByRole('searchbox', { name: '搜索模型测试', exact: true });
+        const filter = history.getByRole('combobox', { name: '模型测试状态', exact: true });
+        const links = table.getByRole('link', { name: '任务详情', exact: true });
+        await search.fill('PROVIDER/BETA');
+        await expect(links).toHaveCount(1);
+        await expect(links).toHaveAttribute('href', '/admin/ai/tests/recent-b');
+        await filter.selectOption('succeeded');
+        await expect(table.getByText('最近 3 次测试中没有符合筛选条件的记录。')).toBeVisible();
+        await search.fill('');
+        await expect(links).toHaveCount(1);
+        await expect(links).toHaveAttribute('href', '/admin/ai/tests/recent-a');
+        await history.getByRole('button', { name: '重置筛选与排序', exact: true }).click();
+        await table.getByRole('button', { name: '记账费用', exact: true }).click();
+        await expect(
+          table.getByRole('columnheader', { name: '记账费用', exact: true }),
+        ).toHaveAttribute('aria-sort', 'ascending');
+        assert.deepEqual(
+          await links.evaluateAll((items) => items.map((link) => link.getAttribute('href'))),
+          ['/admin/ai/tests/recent-b', '/admin/ai/tests/recent-a', '/admin/ai/tests/recent-c'],
+        );
+        await table.getByRole('button', { name: '记账费用', exact: true }).click();
+        await expect(links.first()).toHaveAttribute('href', '/admin/ai/tests/recent-c');
+        await search.fill(savedModelProbe.id);
+        await expect(links).toHaveCount(0);
         await expectNoWrites();
       },
     );
@@ -451,7 +514,7 @@ test(
         const row = (probe) =>
           history
             .getByRole('row')
-            .filter({ has: page.getByRole('rowheader').filter({ hasText: probe.id }) });
+            .filter({ has: page.locator(`a[href="/admin/ai/tests/${probe.id}"]`) });
         for (const probe of probes) {
           await expect(row(probe).getByText('输入／输出 token', { exact: true })).toBeHidden();
           await row(probe).getByText('查看测试摘要', { exact: true }).click();

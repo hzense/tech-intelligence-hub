@@ -13,6 +13,7 @@ import {
   AiEndpointFields,
   ProbeTableRow,
   probeLabels,
+  statusLabels,
 } from './admin-ai-shared';
 import { aiEndpointChanged, aiEndpointMessage, inspectAiEndpoint } from '../lib/admin-ai-endpoint';
 import {
@@ -22,6 +23,7 @@ import {
 } from '../lib/admin-ai-pending';
 import styles from './admin-ai.module.css';
 import tableStyles from './admin-task-table.module.css';
+import { TaskListToolbar, TaskSortHeader, useTaskList } from './admin-task-list';
 import { isValidAiModelId } from '../../../packages/database/src/ai-model-id.mjs';
 import { AdminAiModelPicker } from './admin-ai-model-picker';
 
@@ -72,6 +74,32 @@ export function AdminAiConsole({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [history, setHistory] = useState<unknown>(null);
+  // Limit the history scope first: filters must not expose older capability evidence.
+  const recentProbes = [...probes]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))
+    .slice(0, 3);
+  const probeList = useTaskList({
+    items: recentProbes,
+    searchText: (probe) =>
+      [
+        probeLabels[probe.kind],
+        probe.id,
+        probe.model_id,
+        probe.connection_id,
+        connections.find((connection) => connection.id === probe.connection_id)?.name,
+        statusLabels[probe.status],
+        probe.error_code,
+      ].join(' '),
+    statusValue: (probe) => probe.status,
+    sortValues: {
+      name: (probe) => probeLabels[probe.kind],
+      model: (probe) => probe.model_id,
+      status: (probe) => statusLabels[probe.status],
+      created: (probe) => Date.parse(probe.created_at),
+      cost: (probe) => Number(probe.charged_microusd),
+    },
+    initialSort: 'created',
+  });
   const pendingState = JSON.parse(
     useSyncExternalStore(subscribePending, pendingSnapshot, serverPendingSnapshot),
   ) as ReturnType<typeof readPendingAiProbe>;
@@ -587,6 +615,13 @@ export function AdminAiConsole({
       <section className={styles.stack} style={{ marginTop: 24 }} aria-label="最近模型测试">
         <h2>最近测试记录</h2>
         <p className={styles.muted}>仅展示最近 3 次测试；历史费用、审计记录及能力证明仍保留。</p>
+        <TaskListToolbar
+          label="模型测试"
+          list={probeList}
+          statuses={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))}
+          shown={probeList.visibleItems.length}
+          total={recentProbes.length}
+        />
         {probes.length > 0 ? (
           <div
             className={tableStyles.scroll}
@@ -598,23 +633,35 @@ export function AdminAiConsole({
               <caption>最近 3 次模型测试</caption>
               <thead>
                 <tr>
-                  <th scope="col">测试任务</th>
-                  <th scope="col">模型与连接修订</th>
-                  <th scope="col">状态</th>
-                  <th scope="col">创建时间（UTC）</th>
-                  <th scope="col">记账费用</th>
+                  <TaskSortHeader sortKey="name" list={probeList}>
+                    测试任务
+                  </TaskSortHeader>
+                  <TaskSortHeader sortKey="model" list={probeList}>
+                    模型与连接修订
+                  </TaskSortHeader>
+                  <TaskSortHeader sortKey="status" list={probeList}>
+                    状态
+                  </TaskSortHeader>
+                  <TaskSortHeader sortKey="created" list={probeList}>
+                    创建时间（UTC）
+                  </TaskSortHeader>
+                  <TaskSortHeader sortKey="cost" list={probeList}>
+                    记账费用
+                  </TaskSortHeader>
                   <th scope="col">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {[...probes]
-                  .sort(
-                    (a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id),
-                  )
-                  .slice(0, 3)
-                  .map((probe) => (
-                    <ProbeTableRow key={probe.id} probe={probe} />
-                  ))}
+                {probeList.visibleItems.map((probe) => (
+                  <ProbeTableRow key={probe.id} probe={probe} />
+                ))}
+                {probeList.visibleItems.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className={tableStyles.empty}>
+                      最近 3 次测试中没有符合筛选条件的记录。
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

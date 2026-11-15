@@ -210,11 +210,23 @@ test(
           },
         });
       });
+      const operationMessage = page.locator('main > p[role="status"]');
+      const openSummary = async () => {
+        await expect(page.getByRole('button', { name: '刷新列表', exact: true })).toBeEnabled();
+        const opener = page.getByRole('button', { name: '查看采集详情', exact: true });
+        if (await opener.count()) await opener.click();
+        await expect(page.getByRole('button', { name: '刷新详情', exact: true })).toBeEnabled();
+      };
       const readDetails = async () => {
+        await expect(page.getByRole('button', { name: '刷新列表', exact: true })).toBeEnabled();
         const before = detailGets;
         await page.getByRole('button', { name: /^(查看采集详情|刷新详情)$/ }).click();
         await expect.poll(() => detailGets).toBe(before + 1);
-        await expect(page.getByRole('button', { name: '刷新详情', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: '刷新详情', exact: true })).toBeEnabled();
+        const sourceDetails = page.getByText('来源与诊断明细', { exact: true });
+        await expect(sourceDetails).toBeVisible();
+        if ((await sourceDetails.locator('..').getAttribute('open')) === null)
+          await sourceDetails.click();
       };
       await page.goto(`http://127.0.0.1:${server.address().port}`);
       await expect(page.getByText('无需指定领域或填写网址', { exact: false })).toBeVisible();
@@ -233,7 +245,7 @@ test(
       await page.getByLabel('配置名称', { exact: true }).fill('芯片情报');
       await page.getByLabel('分阶段模型配置', { exact: true }).selectOption(profileId);
       await page.getByRole('button', { name: '保存配置', exact: true }).click();
-      await expect(page.getByRole('status')).toContainText('保存配置不会启动任务');
+      await expect(operationMessage).toContainText('保存配置不会启动任务');
       assert.equal(posts.length, 1);
       assert.deepEqual(posts[0].request.config.sourceUrls, []);
       assert.deepEqual(posts[0].request.config.topicIds, []);
@@ -245,7 +257,7 @@ test(
       assert.equal(posts[0].request.config.enabled, false);
       await page.getByLabel('关注关键词', { exact: false }).fill('芯片，英伟达');
       await page.getByRole('button', { name: '保存配置', exact: true }).click();
-      await expect(page.getByRole('status')).toContainText('r2');
+      await expect(operationMessage).toContainText('r2');
       assert.deepEqual(posts[1].request.config.discovery.keywords, ['芯片', '英伟达']);
       await page.getByRole('button', { name: '编辑', exact: true }).click();
       await expect(page.getByText('此为旧固定网址配置', { exact: false })).toBeVisible();
@@ -253,7 +265,7 @@ test(
       await expect(page.getByRole('button', { name: '保存配置', exact: true })).toBeEnabled();
       await expect(page.getByText('此旧配置包含领域限制', { exact: false })).toBeVisible();
       await page.getByRole('button', { name: '保存配置', exact: true }).click();
-      await expect(page.getByRole('status')).toContainText('保存配置不会启动任务');
+      await expect(operationMessage).toContainText('保存配置不会启动任务');
       assert.equal(posts.length, 3);
       assert.deepEqual(posts[2].request.config.topicIds, []);
       assert.equal(posts[2].request.config.enabled, false);
@@ -294,11 +306,11 @@ test(
           return dialog.accept();
         });
         await remove.click();
-        await expect(page.getByRole('status')).toContainText(
+        await expect(operationMessage).toContainText(
           error === 'config_in_use' ? '暂不能删除' : '提交结果未确认',
         );
         if (error === 'config_in_use')
-          await expect(page.getByRole('status')).toContainText(
+          await expect(operationMessage).toContainText(
             '已结束且无执行锁的历史待核对任务不会阻止删除',
           );
         await expect(remove).toBeEnabled();
@@ -316,7 +328,7 @@ test(
       await page.getByRole('button', { name: '编辑', exact: true }).click();
       page.once('dialog', (dialog) => dialog.accept());
       await remove.click();
-      await expect(page.getByRole('status')).toContainText('配置已删除');
+      await expect(operationMessage).toContainText('配置已删除');
       await expect(remove).toHaveCount(0);
       await expect(page.getByRole('heading', { name: '新建配置' })).toBeVisible();
       await expect(page.getByLabel('配置名称', { exact: true })).toHaveValue('');
@@ -388,6 +400,7 @@ test(
       );
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
       await expect(page.getByRole('cell', { name: '候选已生成', exact: false })).toBeVisible();
+      await openSummary();
       await page.getByText('关联生成任务（1 项）', { exact: true }).click();
       await expect(page.getByText('已生成 3 条候选', { exact: true })).toBeVisible();
       await expect(
@@ -459,9 +472,14 @@ test(
         },
       };
       const beforeCitationRefresh = gets;
+      const beforeCitationDetails = detailGets;
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
       await expect.poll(() => gets).toBe(beforeCitationRefresh + 1);
-      assert.equal(detailGets, 0, 'listing and polling never read full results');
+      assert.equal(
+        detailGets,
+        beforeCitationDetails,
+        'listing and polling never read full results',
+      );
       await expect(page.getByText('查看检索诊断（脱敏）', { exact: true })).toHaveCount(0);
       await readDetails();
       await expect(page.getByText('搜索次数未返回', { exact: false })).toBeVisible();
@@ -794,6 +812,7 @@ test(
       await expect(
         page.getByRole('cell', { name: /^已生成 5 条候选，采集结果仍待核对/ }),
       ).toBeVisible();
+      await openSummary();
       await expect(page.getByText('资料或候选登记未完成：2 项。', { exact: false })).toBeVisible();
       await expect(
         page.getByText('已跳过重复来源：1 项，不重复生成。', { exact: true }),
@@ -841,12 +860,13 @@ test(
           },
         };
         await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+        await openSummary();
         await expect(page.getByText(message, { exact: false })).toBeVisible();
-        await expect(page.getByText('调用前停止，未计费', { exact: true })).toBeVisible();
+        await expect(
+          page.getByRole('cell', { name: /^\$0\.0000 调用前停止，未计费$/ }),
+        ).toBeVisible();
         await readDetails();
-        const budgetPanel = page.locator('details').filter({
-          has: page.getByText('查看采集预算详情', { exact: true }),
-        });
+        const budgetPanel = page.getByText('查看采集预算详情', { exact: true }).locator('..');
         if ((await budgetPanel.getAttribute('open')) === null)
           await page.getByText('查看采集预算详情', { exact: true }).click();
         await expect(page.getByText('单次预算上限：$5.000000', { exact: true })).toBeVisible();
@@ -871,6 +891,7 @@ test(
       run.error_code = 'budget_exceeded';
       run.result = {};
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await openSummary();
       await expect(page.getByText(/此记录未区分单次限制、预留不足或当日余额/)).toBeVisible();
       await expect(page.getByText('调用前停止，未计费', { exact: true })).toHaveCount(0);
       await readDetails();
@@ -986,7 +1007,11 @@ test(
         cost_source: 'estimate',
       });
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
-      const accountingCell = page.getByRole('cell').filter({ hasText: '仅含检索' });
+      await openSummary();
+      const accountingCell = page
+        .getByRole('region', { name: /任务详情$/ })
+        .locator('p')
+        .filter({ hasText: '仅含检索' });
       await expect(accountingCell).toContainText('$0.0000');
       await expect(accountingCell).toContainText('请求拒绝，未计费');
       await expect(accountingCell).not.toContainText('估算');
@@ -996,6 +1021,7 @@ test(
         discoveryRejection: { version: 1, httpStatus: 402, accounting: 'request_rejected' },
       };
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await openSummary();
       await expect(page.getByText('供应商 HTTP 402：', { exact: false })).toBeVisible();
       await expect(page.getByText('这不是本站每日预算不足', { exact: false })).toBeVisible();
       await readDetails();
@@ -1016,6 +1042,7 @@ test(
         cost_source: 'reserve',
       });
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
+      await openSummary();
       await expect(accountingCell).toContainText('$5.0000');
       await expect(accountingCell).toContainText('预算暂占用');
       await expect(accountingCell).toContainText('实际费用未知，尚无供应商费用回执');
