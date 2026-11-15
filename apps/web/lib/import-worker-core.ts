@@ -1,7 +1,11 @@
 import { createHash } from 'node:crypto';
 import type { ImportDocument, ImportItem } from '../../../packages/database/src/import-store.mjs';
 import { ImportIOError, importFetchDiagnostic, type ImportFetchDiagnostic } from './import-io.ts';
-import { parseImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
+import {
+  ImportTaskError,
+  parseImportOutput,
+} from '../../../packages/ingestion/src/import-task-contract.mjs';
+import { ImportAdmissionError } from './import-admission.ts';
 interface ObjectReceipt {
   bytes: Buffer;
   version: string;
@@ -37,7 +41,21 @@ export async function runImportProcessing(
   deps: ImportWorkerDependencies,
 ) {
   await deps.expire();
-  const claim = await deps.claim(); // No external work unless the durable budget/lease claim succeeds.
+  let claim: Awaited<ReturnType<ImportWorkerDependencies['claim']>>;
+  try {
+    // No external work unless the durable budget/lease claim succeeds.
+    claim = await deps.claim();
+  } catch (error) {
+    if (
+      error instanceof ImportTaskError &&
+      (error.code === 'worker_busy' ||
+        error.code === 'budget_exceeded' ||
+        error.code === 'configuration_conflict' ||
+        error.code === 'cancelled')
+    )
+      throw new ImportAdmissionError(error.code, error.reason);
+    throw error;
+  }
   let completion: Completion;
   let processingStarted = false;
   try {
