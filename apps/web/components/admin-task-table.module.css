@@ -86,7 +86,7 @@
 
 .details > summary {
   width: fit-content;
-  min-height: 36px;
+  min-height: 44px;
   padding-block: 0.4rem;
   cursor: pointer;
   color: var(--brand, #0047ab);
@@ -186,7 +186,7 @@
 .toolbar select {
   box-sizing: border-box;
   width: 100%;
-  min-height: 40px;
+  min-height: 44px;
   min-width: 0;
   padding: 0.5rem 0.65rem;
   border: 1px solid var(--line, #d7dce6);
@@ -202,7 +202,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: 0.4rem;
-  min-height: 32px;
+  min-height: 44px;
   padding: 0;
   border: 0;
   border-radius: 3px;
@@ -224,7 +224,7 @@
 }
 
 .toolbar .resetButton {
-  min-height: 40px;
+  min-height: 44px;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--line, #d7dce6);
   border-radius: 7px;

@@ -234,7 +234,7 @@
 .taskTable .actions > a,
 .taskTable .actions > button,
 .taskTable .moreActions summary {
-  min-height: 2rem;
+  min-height: 44px;
   padding: 0.35rem 0.5rem;
   margin: 0;
   font-size: 0.8rem;

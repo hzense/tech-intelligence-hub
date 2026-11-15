@@ -39,11 +39,20 @@ test(
                 background: css.backgroundColor,
                 decoration: css.textDecorationLine,
                 tag: node.tagName,
+                sortableHeader: Boolean(node.closest('th[aria-sort]')),
               };
             });
             assert.ok(style.height >= 44, `${path}: hit target must be at least 44px`);
-            assert.ok(style.border >= 1, `${path}: visible border`);
-            assert.notEqual(style.background, 'rgba(0, 0, 0, 0)', `${path}: visible background`);
+            if (style.sortableHeader) {
+              // Table sorting uses the labeled header and direction indicator as its affordance.
+              await expect(control).toHaveAccessibleName(/\S/);
+              await expect(control.locator('[aria-hidden="true"]')).toHaveText(/[↑↓↕]/);
+              await control.focus();
+              await expect(control).toBeFocused();
+            } else {
+              assert.ok(style.border >= 1, `${path}: visible border`);
+              assert.notEqual(style.background, 'rgba(0, 0, 0, 0)', `${path}: visible background`);
+            }
             if (style.tag === 'A')
               assert.equal(style.decoration, 'none', `${path}: action link is button-styled`);
           }
