@@ -9,6 +9,7 @@ import type {
 } from '../../../packages/database/src/automation-store.mjs';
 import { startVisiblePolling } from '../lib/visible-polling';
 import styles from './admin-automation.module.css';
+import tables from './admin-task-table.module.css';
 import { TopicInsightTags } from './topic-insight-tags';
 import {
   discoveryDiagnosticItems,
@@ -578,18 +579,41 @@ function SourceResult({
           是否自动发布取决于任务创建时的发布方式；检查未通过的候选在任务内处理。请以最新发布状态为准。
         </p>
       ) : null}
-      {summaryOnly ? (
-        <ul>
-          {ids.map((id) => {
-            const task = progress?.tasks.find((row) => row.id === id);
-            return (
-              <li key={id}>
-                <Link href={`/admin/signal-generation/${id}`}>查看生成任务 · {id}</Link>
-                <span>{task ? generationSummaryLabel(task) : '已登记，结果待核对'}</span>
-              </li>
-            );
-          })}
-        </ul>
+      {summaryOnly && ids.length > 0 ? (
+        <details className={tables.details}>
+          <summary>关联生成任务（{ids.length} 项）</summary>
+          <div
+            className={tables.scroll}
+            role="region"
+            aria-label="关联生成任务表格，可横向滚动"
+            tabIndex={0}
+          >
+            <table className={`${tables.table} ${styles.linkedTasksTable}`}>
+              <caption>本次采集关联的生成任务</caption>
+              <thead>
+                <tr>
+                  <th scope="col">任务</th>
+                  <th scope="col">结果</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ids.map((id) => {
+                  const task = progress?.tasks.find((row) => row.id === id);
+                  return (
+                    <tr key={id}>
+                      <th scope="row">
+                        <Link href={`/admin/signal-generation/${id}`} prefetch={false}>
+                          查看生成任务 · {id}
+                        </Link>
+                      </th>
+                      <td>{task ? generationSummaryLabel(task) : '已登记，结果待核对'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </details>
       ) : null}
       {summaryOnly && hasUnresolvedSources ? (
         <p>
@@ -1454,32 +1478,40 @@ export function AdminAutomation({
           <p id="delete-unavailable">删除功能待完成数据库升级与最小授权；现有配置仍可保存。</p>
         ) : null}
         {configs.length ? (
-          <div className={styles.tableWrap}>
-            <table>
+          <div
+            className={tables.scroll}
+            role="region"
+            aria-label="已保存配置表格，可横向滚动"
+            tabIndex={0}
+          >
+            <table className={tables.table}>
+              <caption>已保存配置 · {configs.length} 项</caption>
               <thead>
                 <tr>
-                  <th>名称</th>
-                  <th>频率</th>
-                  {kind === 'source_collection' ? <th>发布方式</th> : null}
-                  <th>状态</th>
-                  <th>操作</th>
+                  <th scope="col">名称</th>
+                  <th scope="col">频率</th>
+                  {kind === 'source_collection' ? <th scope="col">发布方式</th> : null}
+                  <th scope="col">状态</th>
+                  <th scope="col">操作</th>
                 </tr>
               </thead>
               <tbody>
                 {configs.map((row) => (
                   <tr key={row.id}>
-                    <td>
-                      {row.config.name} · r{row.revision}
+                    <th scope="row">
+                      <span className={tables.primary}>
+                        {row.config.name} · r{row.revision}
+                      </span>
                       {kind === 'source_collection' ? (
-                        <small>
+                        <small className={tables.meta}>
                           {row.config.discovery ? 'AI 联网发现' : '旧固定网址配置（编辑可转换）'}
                         </small>
                       ) : null}
-                    </td>
+                    </th>
                     <td>
                       {localMode && !localSchedulingAllowed ? 'manual' : row.config.frequency}
                       {localSchedulingAllowed && row.enabled && row.next_run_at ? (
-                        <small>下次计划：{utcTime(row.next_run_at)}</small>
+                        <small className={tables.meta}>下次计划：{utcTime(row.next_run_at)}</small>
                       ) : null}
                     </td>
                     {kind === 'source_collection' ? <td>{publicationLabel(row.config)}</td> : null}
@@ -1506,7 +1538,7 @@ export function AdminAutomation({
                       {kind === 'source_collection' &&
                       publicationMode(row.config) === 'automatic' &&
                       state.automaticPublicationAvailable !== true ? (
-                        <small>自动发布未就绪 · 不能运行</small>
+                        <small className={tables.meta}>自动发布未就绪 · 不能运行</small>
                       ) : null}
                     </td>
                     <td>
@@ -1571,35 +1603,49 @@ export function AdminAutomation({
           </p>
         ) : null}
         {runs.length ? (
-          <div className={styles.tableWrap}>
-            <table>
+          <div
+            className={tables.scroll}
+            role="region"
+            aria-label="运行记录表格，可横向滚动"
+            tabIndex={0}
+          >
+            <table className={`${tables.table} ${styles.runTable}`}>
+              <caption>
+                {kind === 'source_collection' ? '自动采集任务' : '专题洞察任务'} · {runs.length} 项
+              </caption>
               <thead>
                 <tr>
-                  <th>创建时间</th>
-                  <th>配置</th>
-                  <th>状态与阶段</th>
-                  <th>费用与预算</th>
-                  <th>结果与操作</th>
+                  <th scope="col">任务 / 配置</th>
+                  <th scope="col">创建时间</th>
+                  <th scope="col">状态与阶段</th>
+                  <th scope="col">费用与预算</th>
+                  <th scope="col">结果与操作</th>
                 </tr>
               </thead>
               <tbody>
                 {runs.map((row) => (
                   <tr key={row.id}>
-                    <td>
-                      {time(row.created_at)}
-                      <small>{row.id}</small>
-                    </td>
-                    <td>
-                      <span>{row.snapshot.name}</span>
+                    <th scope="row">
+                      <span className={tables.primary}>{row.snapshot.name}</span>
+                      <span className={tables.meta} title={row.id}>
+                        {row.id.slice(0, 8)}
+                      </span>
                       {kind === 'source_collection' ? (
-                        <small>任务快照：{publicationLabel(row.snapshot)}</small>
+                        <small className={tables.meta}>
+                          任务快照：{publicationLabel(row.snapshot)}
+                        </small>
                       ) : null}
-                    </td>
-                    <td>
-                      {kind === 'source_collection'
-                        ? sourceAutomationLabel(row)
-                        : `${row.status} · ${row.phase}`}
-                      {kind === 'source_collection' ? <small>采集阶段：{row.phase}</small> : null}
+                    </th>
+                    <td className={tables.time}>{time(row.created_at)}</td>
+                    <td className={styles.statusCell}>
+                      <span className={tables.status} data-status={row.status}>
+                        {kind === 'source_collection'
+                          ? sourceAutomationLabel(row)
+                          : `${row.status} · ${row.phase}`}
+                      </span>
+                      {kind === 'source_collection' ? (
+                        <small className={tables.meta}>采集阶段：{row.phase}</small>
+                      ) : null}
                       {row.error_code ? (
                         <small>
                           {(row.error_code === 'provider_rejected'
@@ -1610,10 +1656,10 @@ export function AdminAutomation({
                         </small>
                       ) : null}
                     </td>
-                    <td>
+                    <td className={tables.cost}>
                       <RunCost row={row} />
                     </td>
-                    <td>
+                    <td className={styles.resultCell}>
                       {row.snapshot.kind === 'topic_insight' &&
                       (row.status === 'failed' ||
                         ((row.status === 'completed' || row.status === 'unknown') &&

@@ -124,6 +124,24 @@
   border-left: 3px solid var(--muted, #64748b);
   white-space: pre-wrap;
 }
+.materialTaskDetail {
+  min-width: 0;
+  max-width: min(72rem, calc(100vw - 6rem));
+  padding-block: 0.5rem;
+  overflow-wrap: anywhere;
+}
+.materialTaskStatus {
+  white-space: nowrap;
+}
+.materialTaskDetail h4 {
+  margin-top: 0;
+}
+.materialTaskDetail blockquote {
+  margin: 0.75rem 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid var(--muted, #64748b);
+  white-space: pre-wrap;
+}
 .materialNextStep {
   font-size: 0.9rem;
 }

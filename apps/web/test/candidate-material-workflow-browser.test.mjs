@@ -180,6 +180,25 @@ test(
       await expect(page.getByText('提交结果未知，请刷新核对', { exact: false })).toBeVisible();
       await expect(page.getByRole('checkbox', { name: '官方来源 1' })).toBeDisabled();
       await page.getByRole('button', { name: '使用原请求继续建立' }).click();
+      const requests = page.getByRole('table', { name: '补证请求', exact: true });
+      await expect(requests).toBeVisible();
+      await expect(requests.getByRole('columnheader')).toHaveText([
+        '补证材料',
+        '执行状态',
+        '创建时间',
+        '材料与结果',
+        '操作',
+      ]);
+      const requestDetails = page.getByRole('button', { name: '查看任务详情', exact: true });
+      await expect(requestDetails).toHaveAttribute('aria-expanded', 'false');
+      const commandsBeforeDetails = commands.length;
+      await requestDetails.focus();
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('button', { name: '收起任务详情' })).toHaveAttribute(
+        'aria-expanded',
+        'true',
+      );
+      assert.equal(commands.length, commandsBeforeDetails);
       await expect(
         page.getByText('等待独立材料核验报告。尚未登记，也未获得公开许可。'),
       ).toBeVisible();
@@ -198,13 +217,20 @@ test(
       await expect(enrich).toHaveCount(0);
       data.reviewEnabled = true;
       await page.reload();
+      await requestDetails.click();
       await expect(enrich).toBeVisible();
       page.once('dialog', (dialog) => dialog.dismiss());
       await enrich.click();
       assert.equal(commands.filter((command) => command.action === 'enrich').length, 0);
       page.once('dialog', (dialog) => dialog.accept());
       await enrich.click();
-      await expect(page.getByText('补证 AI 补全：已排队', { exact: false })).toBeVisible();
+      const enrichmentTasks = page.getByRole('table', { name: '补证 AI 补全任务', exact: true });
+      await expect(enrichmentTasks).toBeVisible();
+      await expect(
+        enrichmentTasks.getByRole('cell', { name: '已排队', exact: true }),
+      ).toBeVisible();
+      await expect(enrichmentTasks).toContainText('预留 $0.0123');
+      await expect(enrichmentTasks).toContainText('记账 $0.0000');
       await expect(page.getByText('补证 AI 补全任务已保存并排队', { exact: false })).toBeVisible();
       await expect(enrich).toHaveCount(0);
       assert.equal(commands.filter((command) => command.action === 'enrich').length, 1);
@@ -342,6 +368,7 @@ test(
       await page.getByRole('button', { name: '准备核验材料（不调用 AI）' }).click();
       await expect(page.getByRole('region', { name: '已保存的组织类型人工确认' })).toBeVisible();
       await page.reload();
+      await requestDetails.click();
       await expect(page.getByRole('region', { name: '已保存的组织类型人工确认' })).toContainText(
         'Lab carries out independent research.',
       );
@@ -392,6 +419,14 @@ test(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
         true,
       );
+      const detailBounds = await page
+        .getByRole('article', { name: '补证任务详情', exact: true })
+        .boundingBox();
+      assert.ok(detailBounds && detailBounds.x + detailBounds.width <= 390);
+      const innerTableBounds = await page
+        .getByRole('region', { name: '补证 AI 补全任务表格，可横向滚动', exact: true })
+        .boundingBox();
+      assert.ok(innerTableBounds && innerTableBounds.x + innerTableBounds.width <= 390);
       data.enabled = false;
       await page.getByRole('button', { name: '刷新补证状态' }).click();
       await expect(page.getByText('写入未启用，只读查看已保存材料。')).toBeVisible();

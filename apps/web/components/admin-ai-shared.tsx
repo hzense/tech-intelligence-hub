@@ -12,6 +12,7 @@ import {
   type AiProviderPresetId,
 } from '../lib/admin-ai-endpoint';
 import styles from './admin-ai.module.css';
+import tableStyles from './admin-task-table.module.css';
 
 const messages: Record<string, string> = {
   unauthorized: '登录已过期，请重新登录。',
@@ -240,7 +241,6 @@ export function AiEndpointFields({
   );
 }
 export function ProbeSummary({ probe }: { probe: AiProbe }) {
-  const presentation = aiProbePresentation(probe);
   return (
     <article className={styles.card}>
       <h3>
@@ -257,6 +257,59 @@ export function ProbeSummary({ probe }: { probe: AiProbe }) {
         </dd>
         <dt>创建时间</dt>
         <dd>{probe.created_at}</dd>
+      </dl>
+      <ProbeDetails probe={probe} />
+    </article>
+  );
+}
+
+export function ProbeTableRow({ probe }: { probe: AiProbe }) {
+  const presentation = aiProbePresentation(probe);
+  return (
+    <tr>
+      <th scope="row">
+        <span className={tableStyles.primary}>{probeLabels[probe.kind]}</span>
+        <small className={tableStyles.meta}>{probe.id}</small>
+      </th>
+      <td>
+        <span className={tableStyles.primary}>{probe.model_id ?? '模型列表读取'}</span>
+        <small className={tableStyles.meta}>连接修订 r{probe.connection_revision}</small>
+      </td>
+      <td>
+        <span className={tableStyles.status} data-status={probe.status}>
+          {statusLabels[probe.status]}
+        </span>
+        {probe.error_code ? <small className={tableStyles.meta}>{probe.error_code}</small> : null}
+      </td>
+      <td className={tableStyles.time}>
+        <time dateTime={probe.created_at}>
+          {probe.created_at.replace('T', ' ').replace(/\.\d+Z$/, '')}
+        </time>
+      </td>
+      <td className={tableStyles.cost}>
+        {usd(probe.charged_microusd)}
+        <small className={tableStyles.meta}>{presentation.costLabel}</small>
+      </td>
+      <td>
+        <div className={tableStyles.actions}>
+          <Link className={styles.button} href={`/admin/ai/tests/${probe.id}`} prefetch={false}>
+            任务详情
+          </Link>
+        </div>
+        <details className={tableStyles.details}>
+          <summary>查看测试摘要</summary>
+          <ProbeDetails probe={probe} />
+        </details>
+      </td>
+    </tr>
+  );
+}
+
+function ProbeDetails({ probe }: { probe: AiProbe }) {
+  const presentation = aiProbePresentation(probe);
+  return (
+    <>
+      <dl className={styles.facts}>
         <dt>预算保留／记账</dt>
         <dd>
           {usd(probe.reserved_microusd)} / {usd(probe.charged_microusd)}（{presentation.costLabel}）
@@ -279,6 +332,6 @@ export function ProbeSummary({ probe }: { probe: AiProbe }) {
         <summary>查看安全测试摘要</summary>
         <pre className={styles.code}>{JSON.stringify(probe.result, null, 2)}</pre>
       </details>
-    </article>
+    </>
   );
 }

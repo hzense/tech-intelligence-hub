@@ -82,31 +82,48 @@
   align-items: center;
   font-weight: 500;
 }
-.tableWrap {
-  overflow-x: auto;
-  margin-top: 1rem;
+.runTable {
+  min-width: 1080px;
+  table-layout: fixed;
 }
-.tableWrap table {
-  width: 100%;
-  min-width: 680px;
-  border-collapse: collapse;
-  text-align: left;
+.runTable > thead > tr > th:nth-child(1) {
+  width: 20%;
 }
-.tableWrap th,
-.tableWrap td {
-  padding: 0.8rem;
-  border-bottom: 1px solid #e3e6ef;
-  vertical-align: top;
+.runTable > thead > tr > th:nth-child(2) {
+  width: 15%;
 }
-.tableWrap small {
+.runTable > thead > tr > th:nth-child(3) {
+  width: 21%;
+}
+.runTable > thead > tr > th:nth-child(4) {
+  width: 14%;
+}
+.runTable > thead > tr > th:nth-child(5) {
+  width: 30%;
+}
+.runTable small {
   display: block;
-  color: #53617b;
+  color: var(--muted, #53617b);
   overflow-wrap: anywhere;
 }
-.tableWrap pre {
+.statusCell {
+  min-width: 13rem;
+  max-width: 20rem;
+}
+.resultCell {
+  min-width: 19rem;
+  max-width: 36rem;
+}
+.resultCell pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-width: 60ch;
+}
+.linkedTasksTable {
+  min-width: 0;
+  table-layout: fixed;
+}
+.linkedTasksTable th:first-child {
+  width: 60%;
 }
 .main button {
   border: 1px solid #75809a;

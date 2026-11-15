@@ -357,8 +357,34 @@ test(
           probes: [newer[1], savedModelProbe, newer[0], newer[2]],
         });
         const history = page.getByRole('region', { name: '最近模型测试' });
-        await expect(history.getByRole('link')).toHaveCount(3);
-        await expect(history.getByRole('link')).toHaveText([newer[2].id, newer[1].id, newer[0].id]);
+        const table = history.getByRole('table', { name: '最近 3 次模型测试' });
+        await expect(table.getByRole('row')).toHaveCount(4);
+        await expect(table.getByRole('rowheader')).toHaveText(
+          [newer[2], newer[1], newer[0]].map((probe) => `基础连接${probe.id}`),
+        );
+        const details = table.getByRole('link', { name: '任务详情', exact: true });
+        await expect(details).toHaveCount(3);
+        assert.deepEqual(
+          await details.evaluateAll((links) => links.map((link) => link.getAttribute('href'))),
+          [newer[2], newer[1], newer[0]].map((probe) => `/admin/ai/tests/${probe.id}`),
+        );
+        await expect(history.getByText(savedModelProbe.id, { exact: true })).toHaveCount(0);
+        await page.setViewportSize({ width: 390, height: 844 });
+        const scroll = history.getByRole('region', {
+          name: '模型测试记录表格，可横向滚动',
+        });
+        await expect(scroll).toHaveAttribute('tabindex', '0');
+        assert.ok(
+          await scroll.evaluate((element) => element.scrollWidth > element.clientWidth),
+          'Narrow screens can scroll the task table rather than removing columns',
+        );
+        assert.ok(
+          await page.evaluate(
+            () => globalThis.document.documentElement.scrollWidth <= globalThis.innerWidth + 1,
+          ),
+          'The table must not overflow the whole page',
+        );
+        await page.setViewportSize({ width: 1280, height: 720 });
         await expect(
           page.getByText('当前连接 r1 的列表包含 2 个模型；选择后只填写模型 ID，不自动测试。'),
         ).toBeVisible();
@@ -422,19 +448,24 @@ test(
         ];
         await mount({ connections: [savedConnection], probes });
         const history = page.getByRole('region', { name: '最近模型测试' });
-        const card = (probe) =>
+        const row = (probe) =>
           history
-            .getByRole('article')
-            .filter({ has: page.getByRole('link', { name: probe.id, exact: true }) });
-        await expect(card(probes[0])).toContainText('失败阶段：请求模型 · HTTP 400');
-        await expect(card(probes[0])).toContainText('$0.143360 / $0.000000（明确拒绝，不计费）');
-        await expect(card(probes[0])).toContainText('预留额度已释放');
-        await expect(card(probes[1])).toContainText('失败阶段：校验模型结果');
-        await expect(card(probes[1])).toContainText('$0.143360 / $0.015000（API 返回费用）');
-        await expect(card(probes[1])).toContainText('工具调用数量、工具名称或参数未通过校验');
-        await expect(card(probes[2])).toContainText('费用来源未记录');
-        await expect(card(probes[2])).toContainText('未保存 HTTP 状态与拒绝详情');
-        await expect(card(probes[2])).not.toContainText('预留额度已释放');
+            .getByRole('row')
+            .filter({ has: page.getByRole('rowheader').filter({ hasText: probe.id }) });
+        for (const probe of probes) {
+          await expect(row(probe).getByText('输入／输出 token', { exact: true })).toBeHidden();
+          await row(probe).getByText('查看测试摘要', { exact: true }).click();
+          await expect(row(probe).getByText('输入／输出 token', { exact: true })).toBeVisible();
+        }
+        await expect(row(probes[0])).toContainText('失败阶段：请求模型 · HTTP 400');
+        await expect(row(probes[0])).toContainText('$0.143360 / $0.000000（明确拒绝，不计费）');
+        await expect(row(probes[0])).toContainText('预留额度已释放');
+        await expect(row(probes[1])).toContainText('失败阶段：校验模型结果');
+        await expect(row(probes[1])).toContainText('$0.143360 / $0.015000（API 返回费用）');
+        await expect(row(probes[1])).toContainText('工具调用数量、工具名称或参数未通过校验');
+        await expect(row(probes[2])).toContainText('费用来源未记录');
+        await expect(row(probes[2])).toContainText('未保存 HTTP 状态与拒绝详情');
+        await expect(row(probes[2])).not.toContainText('预留额度已释放');
         await expectNoWrites();
       },
     );
