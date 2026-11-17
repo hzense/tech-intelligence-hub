@@ -23,6 +23,15 @@ GitHub 仓库 `hzense/tech-intelligence-hub` 的 `main` 分支是网站唯一正
 - 本地后台直接访问 `/admin`，不签发令牌或 Cookie；仅在严格回环地址与开发环境约束完整满足时启用固定开发身份，生产 Google 认证不变。此模式信任可访问本机回环地址的所有进程和系统用户，不得用代理、隧道、端口转发或局域网共享；停止服务即可结束可访问性。
 - 真实 AI、自动采集及 AI 补全未在本地接通。模拟 Profile 不表示供应商测试通过，不调用供应商、不派发生产工作流；本地变量只由专用启动器注入，禁止复制到 Vercel。本轮未改生产环境、开关、数据库或部署。
 
+## 公开网站访问统计
+
+接入 Vercel Web Analytics 后，在 Vercel 项目 `tech-intelligence-hub-web` 的 **Analytics** 页查看访客数、页面浏览量、热门页面及来源。首次启用需在控制台开启 Web Analytics，再部署包含 `@vercel/analytics` 的版本并实际访问网站；历史请求不会补录为浏览量。
+
+- 仅 `VERCEL_ENV=production` 下的 `hzense.com`／`www.hzense.com` 公开页面上报；本地、Preview、管理后台、认证及 API 路径不计入。客户端跳转到后台后仍由 `beforeSend` 拦截。
+- 上报页面 URL 去掉查询参数和片段，搜索页只记录 `/search`；不发送自定义事件或表单内容。新增公开路由时需同步 `apps/web/lib/public-web-analytics.ts` 的路径范围。
+- 访问统计由 Vercel 接收和保存，不新增 Neon 表或访问写入。浏览量不等同于 CDN 请求数、爬虫请求数或数据库流量；浏览器禁用 JavaScript／拦截统计脚本时不会产生对应浏览记录。
+- `VERCEL_ENV` 纳入 Turbo 构建环境和缓存键，避免将预览构建的统计开关带入生产。
+
 ## 当前部署
 
 统一 Signal 新开关 `HZENSE_UNIFIED_SIGNAL_ENABLED` 默认未设置／`0`。设置 `1` 将同时启用统一业务写入和公开读取，**必须先完成 0030 受保护结构升级、回填、最小权限授权和独立核验**。新视图未就绪时不回退旧数据；数据库激活后旧写入也被拦截。本批部署保持开关关闭，操作顺序与回退边界见[统一 Signal 切换](UNIFIED_SIGNAL_CUTOVER.md)。
