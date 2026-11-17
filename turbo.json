@@ -2,6 +2,7 @@
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["content/**", "data/seed/**", "data/taxonomy/**"],
   "globalEnv": [
+    "VERCEL_ENV",
     "HZENSE_SIGNAL_READ_MODE",
     "HZENSE_EDITORIAL_PUBLICATION_ENABLED",
     "HZENSE_AUTOMATIC_PUBLICATION_ENABLED",

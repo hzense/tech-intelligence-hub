@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { PublicWebAnalytics } from '@/components/public-web-analytics';
 import { isLocalDevelopment, isLocalRealAi } from '@/lib/local-development';
 import './globals.css';
 
@@ -79,6 +80,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </aside>
         ) : null}
         {children}
+        {process.env.VERCEL_ENV === 'production' && !localDevelopment && !localPreview ? (
+          <PublicWebAnalytics />
+        ) : null}
       </body>
     </html>
   );
