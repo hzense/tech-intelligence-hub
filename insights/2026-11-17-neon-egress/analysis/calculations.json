@@ -1,0 +1,15 @@
+{
+  "units": "decimal MB; timestamps Europe/Berlin",
+  "last_label": "2026-11-16",
+  "last_window_hours": 26.35,
+  "last_window_mb_per_hour": 29.561290322580646,
+  "previous_window_mb_per_hour": 8.913103448275862,
+  "hourly_rate_ratio_vs_previous_window": 3.3166102574854484,
+  "last_24h_equivalent_mb_if_constant_rate": 709.4709677419355,
+  "current_catalog_content_bytes": 303852,
+  "current_12h_resource_person_requests": 1028,
+  "scenario_one_catalog_read_per_detail_request_mb": 312.359856,
+  "scenario_catalog_reads_equivalent_to_778_94mb": 2563.5506759869936,
+  "current_12h_identified_bot_requests": 839,
+  "limitations": "Scenario only, not measured SQL counts or attribution. Current 12h traffic is not yesterday. Daily labels cover partial, unequal intervals."
+}

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="470" viewBox="0 0 800 470">
+<rect width="800" height="470" fill="white"/><g font-family="Arial, sans-serif" font-size="13" fill="#263444">
+<text x="35" y="30" font-size="19">Neon egress: observed partial windows (MB)</text>
+<text x="35" y="54">Labels are NOT midnight-to-midnight totals. Europe/Berlin.</text>
+<line x1="75" y1="90" x2="75" y2="360" stroke="#777"/><line x1="75" y1="360" x2="760" y2="360" stroke="#777"/>
+<text x="35" y="95">800</text><text x="50" y="365">0</text>
+<rect x="105" y="293.12" width="52" height="66.88" fill="#47789b"/>
+<text x="131" y="283.12" text-anchor="middle">198.16</text>
+<text x="131" y="383" text-anchor="middle">11-10</text>
+<text x="131" y="405" text-anchor="middle">25.75 h</text>
+<rect x="198" y="313.05" width="52" height="46.95" fill="#47789b"/>
+<text x="224" y="303.05" text-anchor="middle">139.12</text>
+<text x="224" y="383" text-anchor="middle">11-11</text>
+<text x="224" y="405" text-anchor="middle">25.07 h</text>
+<rect x="291" y="323.91" width="52" height="36.09" fill="#47789b"/>
+<text x="317" y="313.91" text-anchor="middle">106.93</text>
+<text x="317" y="383" text-anchor="middle">11-12</text>
+<text x="317" y="405" text-anchor="middle">23.62 h</text>
+<rect x="384" y="249.70" width="52" height="110.30" fill="#47789b"/>
+<text x="410" y="239.70" text-anchor="middle">326.81</text>
+<text x="410" y="383" text-anchor="middle">11-13</text>
+<text x="410" y="405" text-anchor="middle">23.65 h</text>
+<rect x="477" y="266.26" width="52" height="93.74" fill="#47789b"/>
+<text x="503" y="256.26" text-anchor="middle">277.74</text>
+<text x="503" y="383" text-anchor="middle">11-14</text>
+<text x="503" y="405" text-anchor="middle">23.50 h</text>
+<rect x="570" y="287.30" width="52" height="72.70" fill="#47789b"/>
+<text x="596" y="277.30" text-anchor="middle">215.40</text>
+<text x="596" y="383" text-anchor="middle">11-15</text>
+<text x="596" y="405" text-anchor="middle">24.17 h</text>
+<rect x="663" y="97.11" width="52" height="262.89" fill="#b54c32"/>
+<text x="689" y="87.11" text-anchor="middle">778.94</text>
+<text x="689" y="383" text-anchor="middle">11-16</text>
+<text x="689" y="405" text-anchor="middle">26.35 h</text>
+<text x="35" y="445">Source: hzense.com/admin/dashboard, observed 2026-11-17; rounded to 0.01 MB.</text>
+</g></svg>

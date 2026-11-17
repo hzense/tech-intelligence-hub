@@ -1,0 +1,11 @@
+route,requests,cached_percent
+/resources/[id],550,0
+/signals/[id],514,0
+/persons/[id],478,0
+/topics/[id],268,0
+/,173,0
+/search,87,0
+/index,85,0
+/resources,80,0
+/signals,57,0
+/topics,31,0
