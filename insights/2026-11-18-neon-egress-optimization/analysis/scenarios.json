@@ -1,0 +1,58 @@
+{
+  "observation_date": "2026-11-17",
+  "analysis_date": "2026-11-18",
+  "units": "decimal MB; per selected 12-hour route cohort, not calendar-day totals",
+  "catalog_signal_count": 184,
+  "catalog_content_bytes": 303852,
+  "selected_route_requests": 1028,
+  "conditional_baseline_content_mb": 312.359856,
+  "related_row_scenarios": [
+    {
+      "assumed_related_signals_per_request": 5,
+      "estimated_content_mb": 8.48803956521739,
+      "estimated_content_reduction_percent": 97.28260869565217
+    },
+    {
+      "assumed_related_signals_per_request": 10,
+      "estimated_content_mb": 16.97607913043478,
+      "estimated_content_reduction_percent": 94.56521739130434
+    },
+    {
+      "assumed_related_signals_per_request": 20,
+      "estimated_content_mb": 33.95215826086956,
+      "estimated_content_reduction_percent": 89.13043478260869
+    },
+    {
+      "assumed_related_signals_per_request": 50,
+      "estimated_content_mb": 84.8803956521739,
+      "estimated_content_reduction_percent": 72.82608695652173
+    }
+  ],
+  "cache_scenarios": [
+    {
+      "assumed_cache_hit_rate": 0.5,
+      "assumed_metadata_bytes_per_request": 16384,
+      "estimated_content_plus_metadata_mb": 173.02268,
+      "estimated_reduction_percent": 44.607901215065226
+    },
+    {
+      "assumed_cache_hit_rate": 0.8,
+      "assumed_metadata_bytes_per_request": 16384,
+      "estimated_content_plus_metadata_mb": 79.31472319999999,
+      "estimated_reduction_percent": 74.60790121506523
+    },
+    {
+      "assumed_cache_hit_rate": 0.9,
+      "assumed_metadata_bytes_per_request": 16384,
+      "estimated_content_plus_metadata_mb": 48.0787376,
+      "estimated_reduction_percent": 84.60790121506523
+    },
+    {
+      "assumed_cache_hit_rate": 0.95,
+      "assumed_metadata_bytes_per_request": 16384,
+      "estimated_content_plus_metadata_mb": 32.460744800000015,
+      "estimated_reduction_percent": 89.60790121506523
+    }
+  ],
+  "limitations": "Assumed reads, association counts, uniform record size, cache hit rate and metadata size. Excludes ACL, protocol, report, other route and refresh-race overhead. Not measured savings or a billing forecast."
+}
