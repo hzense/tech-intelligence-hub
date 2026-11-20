@@ -7,7 +7,7 @@ import { fetchNeonUsage, sampleNeonUsage } from '../lib/neon-usage-service.ts';
 import { NeonUsageError } from '../lib/neon-usage-core.ts';
 import { createNeonUsageLocalStore } from '../lib/neon-usage-local.ts';
 
-const { Response, AbortSignal, structuredClone } = globalThis;
+const { Response, AbortSignal, structuredClone, URL } = globalThis;
 
 const projectId = 'synthetic-project-123';
 const apiKey = 'synthetic-neon-key-never-store';
@@ -300,4 +300,55 @@ test('cost provider failure leaves a valid traffic sample and never invents zero
   assert.equal(result.costs.status, 'unavailable');
   assert.equal(result.costs.totalMicrousd, null);
   assert.doesNotMatch(JSON.stringify(result), /private provider error/);
+});
+
+test('paid sampling stores cost and hourly traffic once, and dashboard reads do not call the provider', async () => {
+  const store = memoryStore();
+  let calls = 0;
+  const fetcher = async (url) => {
+    calls++;
+    if (url.endsWith(`/projects/${projectId}`))
+      return Response.json({ project: { ...receipt().project, org_id: 'org-synthetic' } });
+    if (url.includes('/organizations/'))
+      return Response.json({ id: 'org-synthetic', plan: 'launch' });
+    const hourly = new URL(url).searchParams.get('granularity') === 'hourly';
+    return Response.json({
+      projects: [
+        {
+          project_id: projectId,
+          periods: [
+            {
+              period_start: sample.periodStart,
+              period_plan: 'launch',
+              consumption: [
+                {
+                  timeframe_start: hourly ? '2026-11-02T00:00:00Z' : sample.periodStart,
+                  timeframe_end: hourly ? '2026-11-02T01:00:00Z' : '2026-11-02T00:00:00Z',
+                  metrics: [
+                    { metric_name: 'compute_unit_seconds', value: 3600 },
+                    { metric_name: 'public_network_transfer_bytes', value: 123 },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  };
+  assert.equal(
+    await sampleNeonUsage({ projectId, apiKey, store, now: () => now, fetcher }),
+    'sampled',
+  );
+  const saved = await store.read();
+  assert.equal(saved.history.trafficHours.length, 1);
+  assert.equal(saved.history.samples[0].costs.computeUnitSeconds, 7200);
+  assert.equal(saved.history.samples[0].trafficHours, undefined);
+  const { makeNeonUsageDashboard } = await import('../lib/neon-usage-core.ts');
+  const view = makeNeonUsageDashboard({ history: saved.history, now, projectId });
+  assert.equal(view.quotaBytes, 500e9);
+  assert.equal(view.days.at(-1).bytes, 123);
+  assert.equal(view.days.at(-1).source, 'provider');
+  assert.equal(calls, 4);
+  assert.doesNotMatch(JSON.stringify(saved), /org-synthetic|private@example|synthetic-neon-key/);
 });

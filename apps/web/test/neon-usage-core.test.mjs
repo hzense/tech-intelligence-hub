@@ -272,3 +272,112 @@ test('cost snapshots survive history reads, expire with the billing period and n
     { code: 'storage_unavailable' },
   );
 });
+
+function hourlyHistory(date, next, month = date.slice(0, 7)) {
+  const start = berlinUsageMidnight(date),
+    end = berlinUsageMidnight(next);
+  const sampledAt = new Date(end + 6 * hour).toISOString();
+  return {
+    ...history([sample(sampledAt, 99999, month)]),
+    trafficHours: Array.from({ length: (end - start) / hour }, (_, index) => ({
+      from: new Date(start + index * hour).toISOString(),
+      through: new Date(start + (index + 1) * hour).toISOString(),
+      bytes: 100,
+      periodStart: `${month}-01T00:00:00.000Z`,
+      sampledAt,
+    })),
+  };
+}
+
+test('provider hours settle Berlin dates despite late cron, including 23/25-hour DST days', () => {
+  for (const [date, next, count] of [
+    ['2026-11-02', '2026-11-03', 24],
+    ['2026-03-29', '2026-03-30', 23],
+    ['2026-10-25', '2026-10-26', 25],
+  ]) {
+    const saved = hourlyHistory(date, next);
+    const result = neonUsageDays(saved, new Date(saved.samples[0].sampledAt)).find(
+      (row) => row.date === date,
+    );
+    assert.equal(result.source, 'provider');
+    assert.equal(result.status, 'reported');
+    assert.equal(result.bytes, count * 100);
+    assert.equal(result.samples, count);
+  }
+});
+
+test('missing/overlapping hours cannot produce a full day; partial and observed zero remain distinct', () => {
+  const saved = hourlyHistory('2026-11-02', '2026-11-03');
+  const at = new Date(saved.samples[0].sampledAt);
+  const get = (trafficHours) =>
+    neonUsageDays({ ...saved, trafficHours }, at).find((row) => row.date === '2026-11-02');
+  assert.equal(get(saved.trafficHours.slice(1)).status, 'partial');
+  assert.equal(get(saved.trafficHours.filter((_, i) => i !== 10)).bytes, null);
+  assert.equal(get([...saved.trafficHours, saved.trafficHours[0]]).bytes, null);
+  const zero = get(saved.trafficHours.map((row) => ({ ...row, bytes: 0 })));
+  assert.equal(zero.bytes, 0);
+  assert.equal(zero.status, 'reported');
+  const future = saved.trafficHours.map((row) => ({ ...row, sampledAt: '2026-11-04T00:00:00Z' }));
+  assert.equal(get(future).bytes, null);
+});
+
+test('plan allowances override obsolete custom thresholds; unknown plans retain explicit custom reference', () => {
+  for (const [plan, quota] of [
+    ['launch', 500e9],
+    ['scale', 500e9],
+    ['free', 5e9],
+    [null, 123],
+  ]) {
+    const costs = {
+      status: 'unavailable',
+      plan,
+      reason: 'waiting_data',
+      from: null,
+      through: null,
+      totalMicrousd: null,
+      items: [],
+      pricingVersion: '2026-11-02',
+    };
+    const view = makeNeonUsageDashboard({
+      history: history([{ ...sample(now, 1e9), costs }]),
+      now,
+      projectId,
+      quotaBytes: 123,
+    });
+    assert.equal(view.quotaBytes, quota);
+    assert.equal(view.quotaSource, plan ? 'plan' : 'custom');
+  }
+});
+
+test('hour corrections merge by latest observation and whitelist persists only bounded metrics', () => {
+  const saved = hourlyHistory('2026-11-02', '2026-11-03');
+  const correction = {
+    ...saved.trafficHours[0],
+    bytes: 234,
+    sampledAt: '2026-11-03T10:00:00.000Z',
+  };
+  const updated = appendNeonUsageSample(saved, sample(correction.sampledAt, 1e5), [correction]);
+  const stale = appendNeonUsageSample(
+    updated,
+    sample('2026-11-03T11:00:00Z', 1e5),
+    saved.trafficHours,
+  );
+  assert.equal(stale.trafficHours[0].bytes, 234);
+  const parsed = parseNeonUsageHistory(
+    {
+      ...updated,
+      trafficHours: updated.trafficHours.map((row) => ({ ...row, secret: 'must-not-persist' })),
+    },
+    projectId,
+  );
+  assert.doesNotMatch(JSON.stringify(parsed), /must-not-persist/);
+  assert.throws(() =>
+    parseNeonUsageHistory({ ...saved, trafficHours: [correction, correction] }, projectId),
+  );
+  assert.throws(() =>
+    parseNeonUsageHistory({ ...saved, trafficHours: [{ ...correction, bytes: -1 }] }, projectId),
+  );
+  assert.throws(() =>
+    parseNeonUsageHistory({ ...saved, trafficHours: Array(1501).fill(correction) }, projectId),
+  );
+});

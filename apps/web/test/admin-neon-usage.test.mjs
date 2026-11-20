@@ -39,8 +39,9 @@ function dashboard(overrides = {}) {
     projectId: 'synthetic-project',
     timezone: 'Europe/Berlin',
     totalBytes: 360_690_000,
-    quotaBytes: 5_000_000_000,
-    quotaPercent: 7.2138,
+    quotaBytes: 500_000_000_000,
+    quotaSource: 'plan',
+    quotaPercent: 0.072138,
     alert: 'none',
     periodStart: '2026-11-01T00:00:00.000Z',
     periodEnd: '2026-12-01T00:00:00.000Z',
@@ -52,6 +53,7 @@ function dashboard(overrides = {}) {
       from: '2026-11-01T00:00:00.000Z',
       through: '2026-11-02T00:00:00.000Z',
       totalMicrousd: 2_467_700,
+      computeUnitSeconds: 81_509.433962,
       items: [
         { kind: 'compute', microusd: 2_400_000 },
         { kind: 'storage', microusd: 51_000 },
@@ -103,13 +105,13 @@ test('usage dashboard distinguishes missing data, partial estimates, and observe
   assert.match(html, /<h1>运营仪表盘<\/h1>/);
   assert.match(html, /360\.69 MB/);
   assert.match(html, /<dt>今日流量<\/dt><dd>待结算<\/dd>/);
-  assert.match(html, /<dt>昨日流量估算<\/dt><dd>14\.20 MB<\/dd>/);
-  assert.match(html, /<dt>账期剩余额度<\/dt><dd>4\.64 GB<\/dd>/);
-  assert.match(html, /<td>暂无数据<\/td><td>0<\/td><td><span[^>]*>缺少采样<\/span><\/td>/);
-  assert.match(html, /<td>0 B<\/td><td>24<\/td><td><span[^>]*>估算<\/span><\/td>/);
-  assert.match(html, /<td>暂无数据<\/td><td>4<\/td><td><span[^>]*>待结算<\/span><\/td>/);
+  assert.match(html, /<dt>昨日流量<\/dt><dd>14\.20 MB<\/dd>/);
+  assert.match(html, /<dt>套餐剩余流量<\/dt><dd>499\.64 GB<\/dd>/);
+  assert.match(html, /<td>暂无数据<\/td><td>0 样本<\/td><td><span[^>]*>缺少采样<\/span><\/td>/);
+  assert.match(html, /<td>0 B<\/td><td>24 样本<\/td><td><span[^>]*>采样估算<\/span><\/td>/);
+  assert.match(html, /<td>暂无数据<\/td><td>4 样本<\/td><td><span[^>]*>待结算<\/span><\/td>/);
   assert.match(html, /2026\/11\/02 19:00/);
-  assert.match(html, /采样时间不是供应商计费时间/);
+  assert.match(html, /缺失不是零流量/);
   assert.match(html, /不能作为官方账单/);
   assert.match(html, /不是本机 PostgreSQL 流量/);
   assert.match(html, /历史记录保留 60 天/);
@@ -147,21 +149,21 @@ test('unconfigured dashboard explains missing setup and disables sampling, witho
   assert.match(html, /监控尚未配置完成/);
   assert.match(html, /HZENSE_NEON_API_KEY/);
   assert.match(html, /<button[^>]*disabled=""[^>]*>立即采样<\/button>/);
-  assert.match(html, /首次采样建立基线/);
+  assert.match(html, /首次采样会读取最近 7 天/);
   assert.doesNotMatch(html, />0 B</);
 });
 
 test('quota cards distinguish unset quota, missing usage, and an actual overage', () => {
-  const unset = render(dashboard({ quotaBytes: null, quotaPercent: null }));
-  assert.match(unset, /<dt>账期剩余额度<\/dt><dd>未设置<\/dd>/);
+  const unset = render(dashboard({ quotaBytes: null, quotaPercent: null, quotaSource: null }));
+  assert.match(unset, /<dt>参考剩余额度<\/dt><dd>未设置<\/dd>/);
   assert.match(unset, /额度未设置/);
   const missing = render(dashboard({ totalBytes: null, quotaPercent: null }));
-  assert.match(missing, /<dt>账期剩余额度<\/dt><dd>暂无数据<\/dd>/);
+  assert.match(missing, /<dt>套餐剩余流量<\/dt><dd>暂无数据<\/dd>/);
   const overage = render(
-    dashboard({ totalBytes: 5_500_000_000, quotaPercent: 110, alert: 'critical' }),
+    dashboard({ totalBytes: 550_000_000_000, quotaPercent: 110, alert: 'critical' }),
   );
-  assert.match(overage, /<dt>账期剩余额度<\/dt><dd>0 B<\/dd>/);
-  assert.match(overage, /已超出 500\.00 MB/);
+  assert.match(overage, /<dt>套餐剩余流量<\/dt><dd>0 B<\/dd>/);
+  assert.match(overage, /已超出 50\.00 GB/);
   assert.match(overage, /110\.0%/);
 });
 
@@ -194,7 +196,7 @@ function costMarkup(overrides = {}) {
 test('database cost panel shows completed UTC coverage, seven priced categories, and small amounts', () => {
   const html = costMarkup();
   assert.match(html, /数据库费用/);
-  assert.match(html, /已完成日费用估算/);
+  assert.match(html, /本账期已报告用量费用估算/);
   assert.match(html, /Launch/);
   assert.match(html, /\$2\.47/);
   for (const label of [
@@ -209,9 +211,9 @@ test('database cost panel shows completed UTC coverage, seven priced categories,
     assert.match(html, new RegExp(`<dt>${label}</dt>`));
   }
   assert.match(html, /\$0\.0004/);
-  assert.match(html, /费用覆盖：2026\/11\/01 00:00.*2026\/11\/02 00:00.*UTC/);
+  assert.match(html, /费用覆盖：2026\/11\/01 01:00.*2026\/11\/02 01:00.*柏林时间/);
   assert.match(html, /费用采样：2026\/11\/02 19:00/);
-  assert.match(html, /不含 Functions、Auth、税费、折扣及组织级最低消费，不是官方账单/);
+  assert.match(html, /不含 Functions、Auth、对象存储、税费和折扣，不是官方账单/);
   assert.match(html, /单价版本：2026-11-02/);
   const tiny = costMarkup({
     costs: { ...dashboard().costs, totalMicrousd: 10, items: [{ kind: 'compute', microusd: 10 }] },
@@ -261,7 +263,7 @@ test('zero cost is shown only for a valid estimate or a confirmed current Free p
       items: dashboard().costs.items.map((item) => ({ ...item, microusd: 0 })),
     },
   });
-  assert.match(zero, /已完成日费用估算/);
+  assert.match(zero, /本账期已报告用量费用估算/);
   assert.match(zero, /\$0\.00/);
   const unconfirmed = costMarkup({
     costs: { ...dashboard().costs, status: 'free', plan: null, totalMicrousd: 0, items: [] },
@@ -393,15 +395,15 @@ test(
     await costs.getByText('费用口径与单价说明', { exact: true }).click();
     await expect(costs.getByText(/不含 Functions、Auth/)).toBeVisible();
     await costs.getByText('费用口径与单价说明', { exact: true }).click();
-    const chart = page.getByRole('img', { name: /^每日估算流量柱状图/ });
+    const chart = page.getByRole('img', { name: /^每日流量柱状图/ });
     const table = page.getByRole('table', { name: '每日流量明细（Europe/Berlin）' });
     const metrics = page.locator('dl[aria-label="Neon 流量概览"]');
     await expect(metrics.locator('dt')).toHaveCount(4);
     for (const [label, value] of [
       ['本账期累计', '360.69 MB'],
       ['今日流量', '待结算'],
-      ['昨日流量估算', '14.20 MB'],
-      ['账期剩余额度', '4.64 GB'],
+      ['昨日流量', '14.20 MB'],
+      ['套餐剩余流量', '499.64 GB'],
     ]) {
       const card = metrics.locator(':scope > div').filter({ hasText: label });
       await expect(card.locator('dd').first()).toHaveText(value);
@@ -481,3 +483,23 @@ test(
     assert.deepEqual(errors, []);
   },
 );
+
+test('reported hours and insufficient compute history have separate truthful labels', () => {
+  const value = dashboard();
+  Object.assign(value.days.at(-2), {
+    status: 'reported',
+    source: 'provider',
+    samples: 24,
+    from: '2026-10-31T23:00:00.000Z',
+    through: '2026-11-01T23:00:00.000Z',
+  });
+  value.costs.through = '2026-11-01T18:00:00.000Z';
+  const html = render(value);
+  assert.match(html, /24 小时段/);
+  assert.match(html, /用量覆盖：2026\/11\/01 00:00 — 2026\/11\/02 00:00/);
+  assert.match(html, /30 天 Compute 费用预测<\/dt><dd>数据不足/);
+  assert.match(html, /付费套餐不含免费的 Compute 基础额度/);
+  const legacy = costMarkup({ costs: { ...dashboard().costs, computeUnitSeconds: undefined } });
+  assert.match(legacy, /已报告 Compute 用量<\/dt><dd>暂无数据/);
+  assert.match(legacy, /30 天 Compute 费用预测<\/dt><dd>数据不足/);
+});
