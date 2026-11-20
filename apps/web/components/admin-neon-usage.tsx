@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import type { NeonUsageDashboard } from '../lib/neon-usage-core';
+import { neonComputeProjection, neonComputeRate } from '../lib/neon-usage-pricing';
 import { AdminAiUsage } from './admin-ai-usage';
 import controls from './admin-controls.module.css';
 import styles from './admin-neon-usage.module.css';
@@ -52,7 +53,8 @@ function displayTime(value: string | null, timeZone = 'Europe/Berlin') {
 }
 
 const dayLabels = {
-  estimated: '估算',
+  reported: '小时用量汇总',
+  estimated: '采样估算',
   partial: '部分时段',
   missing: '缺少采样',
 };
@@ -73,7 +75,7 @@ const costReasons: Record<string, string> = {
   unsupported_plan: '当前套餐暂不支持费用估算。',
   invalid_metrics: '费用用量未通过校验，暂不显示估算金额。',
   incomplete_period: '当前账期的费用用量不完整，暂不能估算。',
-  waiting_data: '等待 Neon 返回已完成日期的费用用量。',
+  waiting_data: '等待 Neon 返回已完成时段的费用用量。',
 };
 
 function formatUsageCost(microusd: number | null) {
@@ -107,6 +109,9 @@ function DatabaseCosts({
           ? 'Scale'
           : '套餐待确认';
 
+  const projection = neonComputeProjection(costs);
+  const computeRate = neonComputeRate(costs?.plan ?? null);
+
   return (
     <section className={`${styles.panel} ${styles.costPanel}`} aria-labelledby="usage-cost-title">
       <div className={styles.panelHeading}>
@@ -115,7 +120,7 @@ function DatabaseCosts({
       </div>
       <div className={styles.costBody}>
         <dl className={styles.costTotal}>
-          <dt>{free ? '当前 Free 套餐' : '已完成日费用估算'}</dt>
+          <dt>{free ? '当前 Free 套餐' : '本账期已报告用量费用估算'}</dt>
           <dd>
             {available ? formatUsageCost(free ? 0 : costs.totalMicrousd) : '暂不可用'}
             {available ? <span>USD</span> : null}
@@ -140,19 +145,55 @@ function DatabaseCosts({
           </p>
         )}
       </div>
+      <dl className={styles.computeMetrics} aria-label="Compute 用量与预测">
+        <div>
+          <dt>已报告 Compute 用量</dt>
+          <dd>
+            {estimated && costs.computeUnitSeconds !== undefined
+              ? `${(costs.computeUnitSeconds / 3600).toFixed(2)} CU·小时`
+              : '暂无数据'}
+          </dd>
+        </div>
+        <div>
+          <dt>Compute 单价</dt>
+          <dd>
+            {computeRate !== null
+              ? `$${computeRate} / CU·小时`
+              : free
+                ? '每项目每月包含 100 CU·小时'
+                : '待确认'}
+          </dd>
+        </div>
+        <div>
+          <dt>30 天 Compute 费用预测</dt>
+          <dd>{projection ? formatUsageCost(projection.monthlyMicrousd) : '数据不足'}</dd>
+        </div>
+        <div>
+          <dt>项目平均计算占用</dt>
+          <dd>{projection ? `${projection.averageCu.toFixed(3)} CU` : '待满 24 小时统计'}</dd>
+        </div>
+      </dl>
+      <p className={styles.forecastNote}>
+        {computeRate !== null ? '付费套餐不含免费的 Compute 基础额度。' : ''}
+        预测按已报告时段的平均用量外推 30 天，包含休眠与各分支，不代表当前单个实例规格或费用上限。
+        不含 AI、存储、流量、域名及托管费用；AI 未结额不能当作实际费用相加。
+      </p>
       <div className={styles.costFooter}>
         {estimated && costs.from && costs.through ? (
           <p>
-            费用覆盖：{displayTime(costs.from, 'UTC')} — {displayTime(costs.through, 'UTC')}（UTC）
+            费用覆盖：{displayTime(costs.from)} — {displayTime(costs.through)}（柏林时间）
           </p>
         ) : null}
         <p>费用采样：{displayTime(sampledAt)}（柏林时间）</p>
       </div>
       <details className={`${styles.method} ${styles.costMethod}`}>
         <summary>费用口径与单价说明</summary>
-        <p>按 Neon 用量 API 与公开单价估算，仅覆盖已完成的 UTC 日期，不含当天尚未完成的用量。</p>
         <p>
-          不含 Functions、Auth、税费、折扣及组织级最低消费，不是官方账单。单价版本：
+          按 Neon 用量 API 与公开单价估算，合并已完成 UTC
+          日及当日已报告小时，不重复计费；升级当天从实际账期起点计算。数据可能延迟。
+        </p>
+        <p>
+          不含 Functions、Auth、对象存储、税费和折扣，不是官方账单。单价版本：
           {costs?.pricingVersion ?? '尚未获取'}。
         </p>
       </details>
@@ -306,7 +347,7 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
       {dashboard.alert !== 'none' ? (
         <p className={styles.warning} role="status">
           {dashboard.alert === 'critical' ? '流量额度预警：' : '流量额度提醒：'}
-          本账期累计已达到配置额度的 {dashboard.quotaPercent?.toFixed(1)}%。
+          本账期累计已达到所示流量额度的 {dashboard.quotaPercent?.toFixed(1)}%。
           请留意剩余额度和近期增长。
         </p>
       ) : null}
@@ -321,24 +362,30 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
         <div className={styles.metric}>
           <dt>今日流量</dt>
           <dd>{today?.bytes == null ? '待结算' : formatUsageBytes(today.bytes)}</dd>
-          <dd className={styles.metricNote}>已采样时段 · 次日零点结算 · 柏林时间</dd>
+          <dd className={styles.metricNote}>
+            {today?.bytes == null
+              ? '尚无可计算的今日用量'
+              : today.source === 'provider'
+                ? '柏林自然日 · 已报告小时，可能延迟'
+                : '实际采样区间估算 · 不是完整自然日'}
+          </dd>
         </div>
         <div className={styles.metric}>
-          <dt>昨日流量估算</dt>
+          <dt>昨日流量</dt>
           <dd>{formatUsageBytes(yesterday?.bytes ?? null)}</dd>
           <dd className={styles.metricNote}>
             {yesterday ? dayLabels[yesterday.status] : '缺少采样'} · {yesterday?.date ?? '—'}
           </dd>
         </div>
         <div className={styles.metric}>
-          <dt>账期剩余额度</dt>
+          <dt>{dashboard.quotaSource === 'plan' ? '套餐剩余流量' : '参考剩余额度'}</dt>
           <dd>{dashboard.quotaBytes === null ? '未设置' : formatUsageBytes(remaining)}</dd>
           <dd className={styles.metricNote}>
             {overage > 0
               ? `已超出 ${formatUsageBytes(overage)}`
               : dashboard.quotaBytes === null
-                ? '设置额度后显示剩余用量'
-                : `截至最近采样 · 额度 ${formatUsageBytes(dashboard.quotaBytes)}`}
+                ? '取得套餐信息后显示剩余用量'
+                : `${dashboard.quotaSource === 'plan' ? '套餐包含' : '自定义参考，非套餐额度'} ${formatUsageBytes(dashboard.quotaBytes)}`}
           </dd>
         </div>
       </dl>
@@ -378,7 +425,7 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
                 className={styles.chart}
                 data-range={range}
                 role="img"
-                aria-label="每日估算流量柱状图，完整数值和采样状态见下方每日明细表"
+                aria-label="每日流量柱状图，完整数值和采样状态见下方每日明细表"
               >
                 {days.map((day) => (
                   <div
@@ -410,8 +457,12 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
             </div>
             <figcaption className={styles.legend}>
               <span>
+                <i className={`${styles.swatch} ${styles.reported}`} />
+                小时用量汇总
+              </span>
+              <span>
                 <i className={`${styles.swatch} ${styles.estimated}`} />
-                估算
+                采样估算
               </span>
               <span>
                 <i className={`${styles.swatch} ${styles.partial}`} />
@@ -428,12 +479,13 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
               {days[0]?.date} — {days.at(-1)?.date}
             </span>
             <span>
-              {observedDays} / {days.length} 天有可用估算（含部分时段）
+              {observedDays} / {days.length} 天有可用数据（含部分时段）
             </span>
           </div>
           {!hasHistory ? (
             <p className={styles.empty}>
-              尚无采样记录。首次采样建立基线，取得连续两日零点附近的样本后才能结算日流量。
+              尚无采样记录。付费套餐首次采样会读取最近 7
+              天内可用的小时用量；免费套餐需积累相邻采样。
             </p>
           ) : null}
         </section>
@@ -441,7 +493,7 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
           className={`${styles.panel} ${styles.quotaPanel}`}
           aria-labelledby="usage-quota-title"
         >
-          <h2 id="usage-quota-title">账期额度</h2>
+          <h2 id="usage-quota-title">套餐与流量额度</h2>
           <div
             className={styles.gauge}
             style={{
@@ -466,7 +518,7 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
           </div>
           <dl className={styles.quotaDetails}>
             <div>
-              <dt>配置额度</dt>
+              <dt>{dashboard.quotaSource === 'plan' ? '套餐包含流量' : '自定义参考额度'}</dt>
               <dd>
                 {dashboard.quotaBytes === null ? '未设置' : formatUsageBytes(dashboard.quotaBytes)}
               </dd>
@@ -482,8 +534,8 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
               : '等待有效账期信息'}
           </p>
           <p className={styles.sideNote}>
-            每天柏林时间 00:00 采样并结算上一日；调度与供应商指标可能延迟。手动采样最短间隔 15
-            分钟。
+            每日任务读取用量；付费套餐按柏林零点到零点汇总小时数据，调度延迟不改变日期归属。
+            超出包含流量后可能产生费用，所示额度不是消费硬上限。
           </p>
         </aside>
       </div>
@@ -509,8 +561,8 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
             <thead>
               <tr>
                 <th scope="col">日期</th>
-                <th scope="col">估算流量</th>
-                <th scope="col">采样数</th>
+                <th scope="col">流量</th>
+                <th scope="col">数据点</th>
                 <th scope="col">数据状态</th>
               </tr>
             </thead>
@@ -524,7 +576,9 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
                     ) : null}
                   </th>
                   <td>{formatUsageBytes(day.bytes)}</td>
-                  <td>{day.samples}</td>
+                  <td>
+                    {day.samples} {day.source === 'provider' ? '小时段' : '样本'}
+                  </td>
                   <td>
                     <span className={`${styles.dayStatus} ${styles[`${day.status}Text`]}`}>
                       {day.date === today?.date && day.bytes === null
@@ -533,7 +587,8 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
                     </span>
                     {day.from && day.through ? (
                       <div>
-                        采样区间：{displayTime(day.from)} — {displayTime(day.through)}
+                        {day.source === 'provider' ? '用量覆盖' : '采样区间'}：
+                        {displayTime(day.from)} — {displayTime(day.through)}
                       </div>
                     ) : null}
                   </td>
@@ -546,13 +601,15 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
       <details className={styles.method}>
         <summary>数据口径与采样说明</summary>
         <p>
-          每天柏林时间 00:00 结算刚结束的上一日，以相邻两日零点前后 90
-          分钟内的累计值之差估算流量。延迟采样仅展示相邻日期的实际采样区间并标为部分时段，不等同于完整自然日。今日有两次采样时展示已观测增量。采样时间不是供应商计费时间；跨账期重置或缺少相邻日期样本时保留空缺，不把多天流量归到一天。
+          付费套餐优先使用 Neon 官方小时用量，按柏林自然日汇总（夏令时切换日为 23 或 25 小时）。
+          每次采样回补最近 7
+          天内可用的小时数据，完整覆盖才标记为小时用量汇总；当天或升级当天仅展示实际覆盖时段。
+          免费套餐及旧历史保留累计计数器差值估算，跨账期不直接相减。缺失不是零流量。
         </p>
         <p>
           本页监控配置所指向的 Neon 云项目，包含项目各分支的累计出站流量，不是本机 PostgreSQL
-          流量，也不是网站访客下载量。每日数值不能作为官方账单；未记录的历史无法还原。历史记录保留{' '}
-          {dashboard.historyDays} 天。
+          流量，也不是网站访客下载量。每日数值不能作为官方账单；超过小时接口保留期且未保存的自然日用量无法精确还原。AI
+          费用仍按 UTC 预算日统计，与此处柏林日期不同。历史记录保留 {dashboard.historyDays} 天。
         </p>
       </details>
     </div>

@@ -1,4 +1,6 @@
+import { neonComputeRate, neonTransferAllowance } from './neon-usage-pricing.ts';
 import { readImportBytes } from './import-io.ts';
+import { parseNeonUsageHours, type NeonUsageHour } from './neon-usage-hours.ts';
 
 export type NeonUsageCostKind =
   | 'compute'
@@ -23,10 +25,13 @@ export type NeonUsageCosts = {
     | 'incomplete_period'
     | 'waiting_data'
     | null;
+  /** Absent in older persisted estimates. CU-seconds, not elapsed wall time. */
+  computeUnitSeconds?: number;
   pricingVersion: '2026-11-02';
 };
 
-const day = 86_400_000;
+const hour = 3_600_000;
+const day = 24 * hour;
 const pricingVersion = '2026-11-02' as const;
 const kinds: NeonUsageCostKind[] = [
   'compute',
@@ -146,14 +151,18 @@ export function parseNeonUsageCosts(value: unknown): NeonUsageCosts {
     (plan !== 'launch' && plan !== 'scale') ||
     !Number.isFinite(from) ||
     !Number.isFinite(through) ||
-    from % day !== 0 ||
-    through % day !== 0 ||
+    through % hour !== 0 ||
     through <= from ||
     through - from > 35 * day ||
     items.length !== kinds.length ||
     !amount(value.totalMicrousd) ||
     !amount(total) ||
-    total !== value.totalMicrousd
+    total !== value.totalMicrousd ||
+    (value.computeUnitSeconds !== undefined &&
+      (typeof value.computeUnitSeconds !== 'number' ||
+        !Number.isFinite(value.computeUnitSeconds) ||
+        value.computeUnitSeconds < 0 ||
+        value.computeUnitSeconds > Number.MAX_SAFE_INTEGER))
   )
     return invalid();
   return {
@@ -163,6 +172,9 @@ export function parseNeonUsageCosts(value: unknown): NeonUsageCosts {
     through: new Date(through).toISOString(),
     totalMicrousd: total,
     items,
+    ...(value.computeUnitSeconds === undefined
+      ? {}
+      : { computeUnitSeconds: value.computeUnitSeconds as number }),
     reason: null,
     pricingVersion,
   };
@@ -211,13 +223,18 @@ async function providerJSON(url: string, apiKey: string, fetcher: typeof fetch):
   }
 }
 
-function calculate(
+type Frame = { from: number; through: number; values: Record<Metric, number> };
+
+/** Query bounds select the billing window; Neon plan periods can predate a monthly reset. */
+function consumptionFrames(
   value: unknown,
   projectId: string,
   plan: 'launch' | 'scale',
+  periodStart: number,
   from: number,
   through: number,
-): NeonUsageCosts {
+  step: number,
+): Frame[] {
   if (!record(value) || !Array.isArray(value.projects) || value.projects.length !== 1)
     throw new CostError('invalid_metrics');
   const project = value.projects[0];
@@ -228,25 +245,32 @@ function calculate(
     project.periods.length > 35
   )
     throw new CostError('invalid_metrics');
-  const frames = new Map<number, Record<Metric, number>>();
+  const frames = new Map<number, Frame>();
   for (const period of project.periods) {
-    if (!record(period)) throw new CostError('invalid_metrics');
-    const periodStart = timestamp(period.period_start);
-    if (period.period_plan !== plan || !Number.isFinite(periodStart) || periodStart > from)
-      throw new CostError('unsupported_plan');
-    if (!Array.isArray(period.consumption) || period.consumption.length > 35)
+    if (!record(period) || !Number.isFinite(timestamp(period.period_start)))
+      throw new CostError('invalid_metrics');
+    // The plan's start is not necessarily the current monthly billing boundary.
+    // A newer plan segment needs separate pricing and must not silently reset allowances.
+    if (timestamp(period.period_start) > periodStart) throw new CostError('unsupported_plan');
+    if (period.period_plan !== plan) throw new CostError('unsupported_plan');
+    if (!Array.isArray(period.consumption) || period.consumption.length > 168)
       throw new CostError('invalid_metrics');
     for (const frame of period.consumption) {
       if (!record(frame)) throw new CostError('invalid_metrics');
       const start = timestamp(frame.timeframe_start),
         end = timestamp(frame.timeframe_end);
+      // Neon rounds API boundaries; period-scoped metrics in the first bucket
+      // already exclude pre-upgrade usage. Never prorate or discard those metrics.
+      const bucketStart = Math.floor(start / step) * step;
       if (
         !Number.isFinite(start) ||
-        start % day !== 0 ||
-        end - start !== day ||
-        start < from ||
+        !Number.isFinite(end) ||
+        (start !== bucketStart && start !== periodStart) ||
+        end !== bucketStart + step ||
+        bucketStart < from ||
         end > through ||
-        frames.has(start) ||
+        end <= periodStart ||
+        frames.has(bucketStart) ||
         !Array.isArray(frame.metrics) ||
         frame.metrics.length > metrics.length
       )
@@ -272,27 +296,43 @@ function calculate(
       }
       if (plan === 'launch' && values.private_network_transfer_bytes !== 0)
         throw new CostError('invalid_metrics');
-      frames.set(start, values);
+      frames.set(bucketStart, { from: Math.max(start, periodStart), through: end, values });
     }
   }
-  if (frames.size !== (through - from) / day) throw new CostError('incomplete_period');
+  return [...frames.values()].sort((a, b) => a.from - b.from);
+}
+
+function calculate(frames: Frame[], plan: 'launch' | 'scale', from: number): NeonUsageCosts {
+  if (!frames.length) throw new CostError('waiting_data');
+  let through = from;
+  for (const frame of frames) {
+    if (frame.from !== through) throw new CostError('incomplete_period');
+    through = frame.through;
+  }
   const sum = (metric: Metric) => {
-    const total = [...frames.values()].reduce((value, frame) => value + frame[metric], 0);
+    const total = frames.reduce((value, frame) => value + frame.values[metric], 0);
     if (!Number.isFinite(total) || total > Number.MAX_SAFE_INTEGER)
       throw new CostError('invalid_metrics');
     return total;
   };
   const dollars: Record<NeonUsageCostKind, number> = {
-    compute: (sum('compute_unit_seconds') / 3600) * (plan === 'launch' ? 0.106 : 0.222),
+    compute: (sum('compute_unit_seconds') / 3600) * neonComputeRate(plan)!,
     storage: ((sum('root_branch_bytes_month') + sum('child_branch_bytes_month')) / 1e9) * 0.35,
     history: (sum('instant_restore_bytes_month') / 1e9) * 0.2,
     snapshots: (sum('snapshot_storage_bytes_month') / 1e9) * 0.09,
-    publicTransfer: Math.max(0, sum('public_network_transfer_bytes') / 1e9 - 500) * 0.1,
+    publicTransfer:
+      (Math.max(0, sum('public_network_transfer_bytes') - neonTransferAllowance(plan)!) / 1e9) *
+      0.1,
     privateTransfer: (sum('private_network_transfer_bytes') / 1e9) * 0.01,
     branches:
-      ([...frames.values()].reduce(
+      (frames.reduce(
         (total, frame) =>
-          total + Math.max(0, frame.extra_branches_month - (plan === 'launch' ? 9 : 24) * 24),
+          total +
+          Math.max(
+            0,
+            frame.values.extra_branches_month -
+              ((plan === 'launch' ? 9 : 24) * (frame.through - frame.from)) / hour,
+          ),
         0,
       ) /
         744) *
@@ -306,20 +346,13 @@ function calculate(
     through: new Date(through).toISOString(),
     totalMicrousd: items.reduce((total, item) => total + item.microusd, 0),
     items,
+    computeUnitSeconds: sum('compute_unit_seconds'),
     reason: null,
     pricingVersion,
   });
 }
 
-/**
- * Published database rates, not an invoice. Excludes Functions, Auth, discounts,
- * taxes and organization-level minimums; daily branch allowances may understate
- * hourly billing. Requires a UTC-midnight period start; the current UTC day is excluded.
- * Free describes the current plan, not historical paid charges.
- * Sources: neon.com/docs/introduction/usage-calculations and
- * neon.com/docs/guides/consumption-metrics (2026-11-02).
- */
-export async function fetchNeonUsageCosts(options: {
+type Options = {
   projectId: string;
   orgId: unknown;
   periodStart: string;
@@ -327,17 +360,27 @@ export async function fetchNeonUsageCosts(options: {
   now: Date;
   apiKey: string;
   fetcher?: typeof fetch;
-}): Promise<NeonUsageCosts> {
+};
+
+/** Bounded control-plane reads only. Hour buckets backfill delayed cron runs (Neon retains 168 hours).
+ * Completed UTC days cover the older part of the bill; today's completed hours extend it without overlap.
+ * Rates: neon.com/docs/introduction/usage-calculations. This is never an invoice.
+ */
+export async function fetchNeonUsageAccounting(options: Options): Promise<{
+  costs: NeonUsageCosts;
+  trafficHours?: NeonUsageHour[];
+}> {
   if (typeof options.orgId !== 'string' || !/^[a-z0-9-]{1,60}$/.test(options.orgId))
-    return unavailable('missing_org');
+    return { costs: unavailable('missing_org') };
   if (
     !/^[a-z0-9][a-z0-9-]{2,99}$/.test(options.projectId) ||
     !options.apiKey ||
     options.apiKey.length > 512 ||
     /[^\x21-\x7e]/.test(options.apiKey)
   )
-    return unavailable('provider_unavailable');
+    return { costs: unavailable('provider_unavailable') };
   let plan: NeonUsageCosts['plan'] = null;
+  let trafficHours: NeonUsageHour[] | undefined;
   try {
     const fetcher = options.fetcher ?? fetch;
     const org = await providerJSON(
@@ -350,12 +393,14 @@ export async function fetchNeonUsageCosts(options: {
       throw new CostError('unsupported_plan');
     plan = org.plan;
     if (plan === 'free')
-      return parseNeonUsageCosts({
-        ...unavailable('missing_org', plan),
-        status: 'free',
-        totalMicrousd: 0,
-        reason: null,
-      });
+      return {
+        costs: parseNeonUsageCosts({
+          ...unavailable('missing_org', plan),
+          status: 'free',
+          totalMicrousd: 0,
+          reason: null,
+        }),
+      };
     const start = timestamp(options.periodStart),
       end = timestamp(options.periodEnd),
       now = options.now.getTime();
@@ -369,27 +414,76 @@ export async function fetchNeonUsageCosts(options: {
       start < Date.parse('2024-03-01T00:00:00Z')
     )
       throw new CostError('invalid_metrics');
-    // Omitting an initial partial day would incorrectly restart the 500 GB allowance.
-    if (start % day !== 0) throw new CostError('incomplete_period');
-    const from = Math.ceil(start / day) * day,
-      through = Math.floor(now / day) * day;
-    if (through <= from) throw new CostError('waiting_data');
-    const query = new URLSearchParams({
-      org_id: options.orgId,
-      project_ids: options.projectId,
-      limit: '1',
-      from: new Date(from).toISOString(),
-      to: new Date(through).toISOString(),
-      granularity: 'daily',
-      metrics: metrics.join(','),
-    });
-    const data = await providerJSON(
-      `https://console.neon.tech/api/v2/consumption_history/v2/projects?${query}`,
-      options.apiKey,
-      fetcher,
+    const today = Math.floor(now / day) * day;
+    const hourlyEnd = Math.floor(now / hour) * hour;
+    const hourlyStart = Math.max(
+      Math.floor(start / hour) * hour,
+      Math.ceil((now - 168 * hour) / hour) * hour,
     );
-    return calculate(data, options.projectId, plan, from, through);
+    const dailyStart = Math.floor(start / day) * day;
+    const load = async (from: number, through: number, granularity: 'daily' | 'hourly') => {
+      if (through <= from) return [];
+      const query = new URLSearchParams({
+        org_id: options.orgId as string,
+        project_ids: options.projectId,
+        limit: '1',
+        from: new Date(from).toISOString(),
+        to: new Date(through).toISOString(),
+        granularity,
+        metrics: metrics.join(','),
+      });
+      const data = await providerJSON(
+        `https://console.neon.tech/api/v2/consumption_history/v2/projects?${query}`,
+        options.apiKey,
+        fetcher,
+      );
+      return consumptionFrames(
+        data,
+        options.projectId,
+        plan as 'launch' | 'scale',
+        start,
+        from,
+        through,
+        granularity === 'daily' ? day : hour,
+      );
+    };
+    const [daily, hourly] = await Promise.allSettled([
+      load(dailyStart, today, 'daily'),
+      load(hourlyStart, hourlyEnd, 'hourly'),
+    ]);
+    if (hourly.status === 'fulfilled') {
+      trafficHours = parseNeonUsageHours(
+        hourly.value.map((frame) => ({
+          from: new Date(frame.from).toISOString(),
+          through: new Date(frame.through).toISOString(),
+          periodStart: options.periodStart,
+          sampledAt: options.now.toISOString(),
+          bytes: frame.values.public_network_transfer_bytes,
+        })),
+      );
+    }
+    // A failed historical query cannot erase valid hourly traffic. Conversely,
+    // failed hourly collection still permits a complete previous-day cost estimate.
+    if (daily.status === 'rejected') throw daily.reason;
+    const dailyFrames = daily.value;
+    if (today > start && (dailyFrames[0]?.from !== start || dailyFrames.at(-1)?.through !== today))
+      throw new CostError('incomplete_period');
+    const currentHours =
+      hourly.status === 'fulfilled' ? hourly.value.filter((frame) => frame.from >= today) : [];
+    if (!dailyFrames.length && !currentHours.length && hourly.status === 'rejected')
+      throw hourly.reason;
+    return {
+      costs: calculate([...dailyFrames, ...currentHours], plan, start),
+      ...(trafficHours === undefined ? {} : { trafficHours }),
+    };
   } catch (error) {
-    return unavailable(error instanceof CostError ? error.reason : 'provider_unavailable', plan);
+    return {
+      costs: unavailable(error instanceof CostError ? error.reason : 'provider_unavailable', plan),
+      ...(trafficHours === undefined ? {} : { trafficHours }),
+    };
   }
+}
+
+export async function fetchNeonUsageCosts(options: Options): Promise<NeonUsageCosts> {
+  return (await fetchNeonUsageAccounting(options)).costs;
 }

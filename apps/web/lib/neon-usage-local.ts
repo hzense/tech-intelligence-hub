@@ -14,6 +14,7 @@ import {
   type NeonUsageSample,
 } from './neon-usage-core.ts';
 import type { NeonUsageStore } from './neon-usage-service.ts';
+import { mergeNeonUsageHours, type NeonUsageHour } from './neon-usage-hours.ts';
 
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
 const bucket = (sample: NeonUsageSample) =>
@@ -68,7 +69,7 @@ export function createNeonUsageLocalStore(
         !stat.isFile() ||
         stat.nlink < 1 ||
         stat.nlink > 2 ||
-        stat.size > 4096 ||
+        stat.size > 65_536 ||
         (stat.mode & 0o077) !== 0 ||
         stat.uid !== process.getuid?.()
       )
@@ -78,7 +79,7 @@ export function createNeonUsageLocalStore(
       const sample = parsed.samples[0];
       if (parsed.samples.length !== 1 || !sample || `${bucket(sample)}.json` !== name)
         throw new NeonUsageError('storage_unavailable');
-      return { sample, size: data.byteLength, stat };
+      return { sample, hours: parsed.trafficHours ?? [], size: data.byteLength, stat };
     } finally {
       await file.close();
     }
@@ -86,6 +87,7 @@ export function createNeonUsageLocalStore(
   async function snapshot() {
     await prepare();
     const samples: NeonUsageSample[] = [];
+    const hours: NeonUsageHour[] = [];
     const files: Array<{ name: string; sample: NeonUsageSample }> = [];
     let entries = 0,
       bytes = 0;
@@ -106,9 +108,19 @@ export function createNeonUsageLocalStore(
       bytes += value.size;
       if (bytes > neonUsageByteLimit) throw new NeonUsageError('storage_unavailable');
       samples.push(value.sample);
+      hours.push(...value.hours);
       files.push({ name: entry.name, sample: value.sample });
     }
-    const history = parseNeonUsageHistory({ version: 1, projectId, samples }, projectId);
+    const latest = Math.max(0, ...samples.map((sample) => Date.parse(sample.sampledAt)));
+    const history = parseNeonUsageHistory(
+      {
+        version: 1,
+        projectId,
+        samples,
+        ...(hours.length ? { trafficHours: mergeNeonUsageHours([], hours, new Date(latest)) } : {}),
+      },
+      projectId,
+    );
     return {
       history,
       files,
@@ -147,9 +159,27 @@ export function createNeonUsageLocalStore(
           return false;
         const sample = additions[0];
         if (!sample) return false;
-        const packed: NeonUsageHistory = { version: 1, projectId, samples: [sample] };
+        // Store only new/corrected buckets in the immutable slot, not a copy of
+        // seven days for every sample. Reopening merges these deltas by observation time.
+        const previousHours = new Map(
+          (saved.history.trafficHours ?? []).map((item) => [
+            `${item.periodStart}:${item.from}`,
+            item,
+          ]),
+        );
+        const hours = (proposed.trafficHours ?? []).filter((item) => {
+          const prior = previousHours.get(`${item.periodStart}:${item.from}`);
+          return !prior || prior.bytes !== item.bytes || prior.through !== item.through;
+        });
+        const packed: NeonUsageHistory = {
+          version: 1,
+          projectId,
+          samples: [sample],
+          ...(hours.length ? { trafficHours: hours } : {}),
+        };
         const body = JSON.stringify(packed);
         if (
+          Buffer.byteLength(body) > 65_536 ||
           Buffer.byteLength(body) + saved.bytes > neonUsageByteLimit ||
           saved.history.samples.length >= neonUsageHistoryLimit
         )

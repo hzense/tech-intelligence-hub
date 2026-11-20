@@ -7,7 +7,8 @@ import {
   type NeonUsageHistory,
 } from './neon-usage-core.ts';
 import { readImportBytes } from './import-io.ts';
-import { fetchNeonUsageCosts } from './neon-usage-costs.ts';
+import { fetchNeonUsageAccounting } from './neon-usage-costs.ts';
+import type { NeonUsageHour } from './neon-usage-hours.ts';
 
 export interface NeonUsageStore {
   read(): Promise<{ history: NeonUsageHistory; version: string } | null>;
@@ -54,11 +55,12 @@ export async function fetchNeonUsage(
     const value = JSON.parse(
       (await readImportBytes(response.body, 262_144, 10_000)).toString('utf8'),
     );
-    const sample = parseNeonUsageSample(value, projectId, now);
+    const sample: ReturnType<typeof parseNeonUsageSample> & { trafficHours?: NeonUsageHour[] } =
+      parseNeonUsageSample(value, projectId, now);
     // Cost collection is optional and independent from the traffic counter.
     // Older project responses without an organization remain readable.
     if (typeof value.project.org_id === 'string') {
-      sample.costs = await fetchNeonUsageCosts({
+      const accounting = await fetchNeonUsageAccounting({
         projectId,
         orgId: value.project.org_id,
         periodStart: sample.periodStart,
@@ -67,15 +69,18 @@ export async function fetchNeonUsage(
         apiKey,
         fetcher,
       }).catch(() => ({
-        status: 'unavailable' as const,
-        plan: null,
-        from: null,
-        through: null,
-        totalMicrousd: null,
-        items: [],
-        reason: 'provider_unavailable' as const,
-        pricingVersion: '2026-11-02' as const,
+        costs: {
+          status: 'unavailable' as const,
+          plan: null,
+          from: null,
+          through: null,
+          totalMicrousd: null,
+          items: [],
+          reason: 'provider_unavailable' as const,
+          pricingVersion: '2026-11-02' as const,
+        },
       }));
+      Object.assign(sample, accounting);
     }
     return sample;
   } catch {
@@ -102,7 +107,12 @@ export async function sampleNeonUsage(options: {
     );
   };
   if (recent(saved?.history)) return 'recent';
-  const sample = await fetchNeonUsage(options.projectId, options.apiKey, now, options.fetcher);
+  const { trafficHours, ...sample } = await fetchNeonUsage(
+    options.projectId,
+    options.apiKey,
+    now,
+    options.fetcher,
+  );
   const bucket = Math.floor(Date.parse(sample.sampledAt) / neonUsageSampleInterval);
   // A later-starting request may finish first. Its timestamp is ahead of this
   // request's clock, but an occupied identical slot still means first-write wins.
@@ -121,6 +131,7 @@ export async function sampleNeonUsage(options: {
         samples: [],
       },
       sample,
+      trafficHours,
     );
     if (await options.store.compareAndSwap(history, saved?.version ?? null)) return 'sampled';
     saved = await options.store.read();

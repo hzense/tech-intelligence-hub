@@ -1,5 +1,11 @@
 /** Approximate control-plane counters; never database traffic or invoice metering. */
 import { parseNeonUsageCosts, type NeonUsageCosts } from './neon-usage-costs.ts';
+import {
+  mergeNeonUsageHours,
+  parseNeonUsageHours,
+  type NeonUsageHour,
+} from './neon-usage-hours.ts';
+import { neonTransferAllowance } from './neon-usage-pricing.ts';
 import type { AiUsageCosts } from './ai-usage-costs';
 
 export const neonUsageTimezone = 'Europe/Berlin' as const;
@@ -17,11 +23,17 @@ export type NeonUsageSample = {
   bytes: number;
   costs?: NeonUsageCosts;
 };
-export type NeonUsageHistory = { version: 1; projectId: string; samples: NeonUsageSample[] };
+export type NeonUsageHistory = {
+  version: 1;
+  projectId: string;
+  samples: NeonUsageSample[];
+  trafficHours?: NeonUsageHour[];
+};
 export type NeonUsageDay = {
   date: string;
   bytes: number | null;
-  status: 'estimated' | 'partial' | 'missing';
+  status: 'reported' | 'estimated' | 'partial' | 'missing';
+  source?: 'provider' | 'counter';
   samples: number;
   from?: string;
   through?: string;
@@ -37,6 +49,7 @@ export type NeonUsageDashboard = {
   timezone: typeof neonUsageTimezone;
   totalBytes: number | null;
   quotaBytes: number | null;
+  quotaSource: 'plan' | 'custom' | null;
   quotaPercent: number | null;
   alert: 'none' | 'warning' | 'critical';
   periodStart: string | null;
@@ -128,6 +141,7 @@ export function parseNeonUsageHistory(value: unknown, projectId: string): NeonUs
   return {
     version: 1,
     projectId,
+    ...(value.trafficHours === undefined ? {} : { trafficHours: storedHours(value.trafficHours) }),
     samples: value.samples
       .map((s) => ({
         sampledAt: s.sampledAt,
@@ -139,6 +153,13 @@ export function parseNeonUsageHistory(value: unknown, projectId: string): NeonUs
       .sort((a, b) => Date.parse(a.sampledAt) - Date.parse(b.sampledAt)),
   };
 }
+function storedHours(value: unknown): NeonUsageHour[] {
+  try {
+    return parseNeonUsageHours(value);
+  } catch {
+    throw new NeonUsageError('storage_unavailable');
+  }
+}
 function storedCosts(value: unknown): NeonUsageCosts {
   try {
     return parseNeonUsageCosts(value);
@@ -149,6 +170,7 @@ function storedCosts(value: unknown): NeonUsageCosts {
 export function appendNeonUsageSample(
   history: NeonUsageHistory,
   sample: NeonUsageSample,
+  trafficHours?: NeonUsageHour[],
 ): NeonUsageHistory {
   const cutoff = Date.parse(sample.sampledAt) - neonUsageRetentionDays * day;
   const samples = history.samples.filter((s) => Date.parse(s.sampledAt) >= cutoff);
@@ -163,6 +185,15 @@ export function appendNeonUsageSample(
     version: 1,
     projectId: history.projectId,
     samples: samples.slice(-neonUsageHistoryLimit),
+    ...(history.trafficHours || trafficHours
+      ? {
+          trafficHours: mergeNeonUsageHours(
+            history.trafficHours ?? [],
+            trafficHours ?? [],
+            new Date(sample.sampledAt),
+          ),
+        }
+      : {}),
   };
 }
 const formatter = new Intl.DateTimeFormat('en-CA', {
@@ -200,6 +231,9 @@ function samePeriod(a: NeonUsageSample, b: NeonUsageSample) {
 export function neonUsageDays(history: NeonUsageHistory | null, now: Date): NeonUsageDay[] {
   const today = berlinUsageDate(now);
   const samples = (history?.samples ?? []).filter((s) => Date.parse(s.sampledAt) <= now.getTime());
+  const hours = (history?.trafficHours ?? []).filter(
+    (s) => Date.parse(s.sampledAt) <= now.getTime(),
+  );
   const nearest = (target: number) =>
     samples.reduce<NeonUsageSample | undefined>((best, s) => {
       const distance = Math.abs(Date.parse(s.sampledAt) - target);
@@ -212,6 +246,29 @@ export function neonUsageDays(history: NeonUsageHistory | null, now: Date): Neon
     const date = shiftDate(today, index - 29);
     const start = berlinUsageMidnight(date);
     const end = berlinUsageMidnight(shiftDate(date, 1));
+    const reported = hours.filter(
+      (s) => Date.parse(s.from) >= start && Date.parse(s.through) <= end,
+    );
+    if (reported.length) {
+      const firstHour = reported[0]!,
+        lastHour = reported.at(-1)!;
+      // Missing or overlapping buckets are unknown, never silently zero-filled.
+      const continuous = reported.every((s, i) => i === 0 || s.from === reported[i - 1]!.through);
+      const bytes = reported.reduce((total, s) => total + s.bytes, 0);
+      if (continuous && Number.isSafeInteger(bytes))
+        return {
+          date,
+          bytes,
+          source: 'provider' as const,
+          status:
+            Date.parse(firstHour.from) === start && Date.parse(lastHour.through) === end
+              ? ('reported' as const)
+              : ('partial' as const),
+          samples: reported.length,
+          from: firstHour.from,
+          through: lastHour.through,
+        };
+    }
     const inside = samples.filter(
       (s) => Date.parse(s.sampledAt) >= start && Date.parse(s.sampledAt) < end,
     );
@@ -250,6 +307,7 @@ export function neonUsageDays(history: NeonUsageHistory | null, now: Date): Neon
     return {
       date,
       bytes: last.bytes - first.bytes,
+      source: 'counter',
       status: settled ? ('estimated' as const) : ('partial' as const),
       samples: inside.length,
       ...(!settled ? { from: first.sampledAt, through: last.sampledAt } : {}),
@@ -270,7 +328,9 @@ export function makeNeonUsageDashboard(options: {
   const latest = samples.at(-1);
   const currentPeriod = latest && Date.parse(latest.periodEnd) > options.now.getTime();
   const totalBytes = currentPeriod ? latest.bytes : null;
-  const quotaBytes = options.quotaBytes ?? null;
+  const planQuota = currentPeriod ? neonTransferAllowance(latest.costs?.plan ?? null) : null;
+  // A legacy custom 5 GB threshold must never override a confirmed paid plan.
+  const quotaBytes = planQuota ?? options.quotaBytes ?? null;
   const quotaPercent = quotaBytes && totalBytes !== null ? (totalBytes / quotaBytes) * 100 : null;
   const todayStart = berlinUsageMidnight(berlinUsageDate(options.now));
   const expectedBoundary =
@@ -288,6 +348,7 @@ export function makeNeonUsageDashboard(options: {
       !latest || !currentPeriod || Date.parse(latest.sampledAt) < expectedBoundary - 1.5 * hour,
     totalBytes,
     quotaBytes,
+    quotaSource: planQuota !== null ? 'plan' : quotaBytes !== null ? 'custom' : null,
     quotaPercent,
     alert:
       quotaPercent !== null && quotaPercent >= 90

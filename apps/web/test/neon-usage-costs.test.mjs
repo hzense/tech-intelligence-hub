@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { fetchNeonUsageCosts, parseNeonUsageCosts } from '../lib/neon-usage-costs.ts';
+import {
+  fetchNeonUsageAccounting,
+  fetchNeonUsageCosts,
+  parseNeonUsageCosts,
+} from '../lib/neon-usage-costs.ts';
 
 const { Response, structuredClone, URL, AbortSignal } = globalThis;
 const projectId = 'synthetic-project';
@@ -90,7 +94,7 @@ test('Launch uses documented units, monthly project transfer allowance and per-d
   });
   assert.equal(costs.totalMicrousd, 6965161);
   assert.equal(costs.reason, null);
-  assert.equal(mock.calls.length, 2);
+  assert.equal(mock.calls.length, 3);
   for (const { url, request } of mock.calls) {
     assert.equal(url.origin, 'https://console.neon.tech');
     assert.equal(request.method, 'GET');
@@ -200,31 +204,25 @@ test('unknown organization or plan produces unavailable rather than fake zero', 
   );
 });
 
-test('only completed UTC days are queried and partial billing starts cannot reset the free allowance', async () => {
-  for (const [change, reason] of [
-    [{ now: new Date('2026-11-01T23:59:59Z') }, 'waiting_data'],
-    [{ periodStart: '2026-11-01T01:00:00Z' }, 'incomplete_period'],
-    [{ periodEnd: '2026-11-02T00:00:00Z' }, 'invalid_metrics'],
-    [{ periodStart: '2026-11-04T00:00:00Z' }, 'invalid_metrics'],
-    [{ now: new Date('invalid') }, 'invalid_metrics'],
+test('invalid billing boundaries fail early; a plan period may predate the monthly billing boundary', async () => {
+  for (const change of [
+    { periodEnd: '2026-11-02T00:00:00Z' },
+    { periodStart: '2026-11-04T00:00:00Z' },
+    { now: new Date('invalid') },
   ]) {
     const mock = provider();
     const costs = await fetchNeonUsageCosts({ ...options, ...change, fetcher: mock.fetcher });
-    assert.equal(costs.reason, reason);
+    assert.equal(costs.reason, 'invalid_metrics');
     assert.equal(costs.totalMicrousd, null);
     assert.equal(mock.calls.length, 1);
   }
   const data = fixture();
   period(data).period_start = '2026-10-31T18:00:00Z';
   const mock = provider('launch', data);
-  const costs = await fetchNeonUsageCosts({
-    ...options,
-    fetcher: mock.fetcher,
-  });
+  const costs = await fetchNeonUsageCosts({ ...options, fetcher: mock.fetcher });
   assert.equal(costs.status, 'estimated');
   assert.equal(costs.from, '2026-11-01T00:00:00.000Z');
-  assert.equal(costs.through, '2026-11-03T00:00:00.000Z');
-  assert.equal(mock.calls[1].url.searchParams.get('from'), costs.from);
+  assert.equal(itemMap(costs).publicTransfer, 5e6);
 });
 
 test('wrong project, mixed plans, overlapping frames and unsafe metrics fail closed', async () => {
@@ -343,7 +341,9 @@ test('persisted cost parser validates consistency and whitelists a bounded outpu
     { pricingVersion: 'future' },
     { reason: 'provider_unavailable' },
     { plan: 'free' },
-    { from: '2026-11-01T01:00:00Z' },
+    { from: 'not-a-date' },
+    { computeUnitSeconds: -1 },
+    { computeUnitSeconds: Infinity },
     { through: '2026-11-01T00:00:00Z' },
     { items: [{ ...costs.items[0], microusd: -1 }, ...costs.items.slice(1)] },
     { items: [{ ...costs.items[0], microusd: 0.1 }, ...costs.items.slice(1)] },
@@ -353,4 +353,121 @@ test('persisted cost parser validates consistency and whitelists a bounded outpu
     });
   for (const value of [undefined, null, [], {}, { pricingVersion: '2026-11-02', items: [] }])
     assert.throws(() => parseNeonUsageCosts(value), { message: 'invalid_metrics' });
+});
+
+const hourFrame = (from, values = []) => ({
+  timeframe_start: from,
+  timeframe_end: new Date(Math.floor(Date.parse(from) / 3600000) * 3600000 + 3600000).toISOString(),
+  metrics: values,
+});
+function accountingProvider(start, daily, hourly, rejectDaily = false) {
+  const calls = [];
+  return {
+    calls,
+    fetcher: async (url) => {
+      const query = new URL(url);
+      calls.push(query);
+      if (query.pathname.includes('/organizations/'))
+        return Response.json({ id: orgId, plan: 'launch' });
+      const isDaily = query.searchParams.get('granularity') === 'daily';
+      if (isDaily && rejectDaily) return new Response('', { status: 503 });
+      return Response.json({
+        projects: [
+          {
+            project_id: projectId,
+            periods: [
+              {
+                period_start: start,
+                period_plan: 'launch',
+                consumption: isDaily ? daily : hourly,
+              },
+            ],
+          },
+        ],
+      });
+    },
+  };
+}
+
+test('mid-day upgrade uses actual period start and completed hours, without prorating reported usage', async () => {
+  const start = '2026-11-20T16:58:00Z';
+  for (const first of ['2026-11-20T16:00:00Z', start]) {
+    const mock = accountingProvider(
+      start,
+      [],
+      [
+        hourFrame(first, [
+          metric('compute_unit_seconds', 30),
+          metric('public_network_transfer_bytes', 100),
+        ]),
+        hourFrame('2026-11-20T17:00:00Z', [metric('compute_unit_seconds', 900)]),
+      ],
+    );
+    const result = await fetchNeonUsageAccounting({
+      ...options,
+      periodStart: start,
+      now: new Date('2026-11-20T18:24:00Z'),
+      fetcher: mock.fetcher,
+    });
+    assert.equal(result.costs.status, 'estimated');
+    assert.equal(result.costs.from, '2026-11-20T16:58:00.000Z');
+    assert.equal(result.costs.through, '2026-11-20T18:00:00.000Z');
+    assert.equal(result.costs.computeUnitSeconds, 930);
+    assert.equal(itemMap(result.costs).compute, 27383);
+    assert.equal(result.trafficHours[0].from, result.costs.from);
+    assert.equal(result.trafficHours[0].bytes, 100);
+    assert.equal(mock.calls.length, 2);
+  }
+});
+
+test('daily and current-hour usage join once, applying transfer allowance once to the billing period', async () => {
+  const hourly = [
+    hourFrame('2026-11-02T23:00:00Z', [metric('compute_unit_seconds', 7200)]),
+    hourFrame('2026-11-03T00:00:00Z', [
+      metric('compute_unit_seconds', 900),
+      metric('public_network_transfer_bytes', 100e9),
+    ]),
+  ];
+  const mock = accountingProvider(options.periodStart, period(fixture()).consumption, hourly);
+  const result = await fetchNeonUsageAccounting({ ...options, fetcher: mock.fetcher });
+  assert.equal(result.costs.computeUnitSeconds, 11700);
+  assert.equal(itemMap(result.costs).publicTransfer, 15e6);
+  assert.equal(result.costs.through, '2026-11-03T01:00:00.000Z');
+  assert.equal(result.trafficHours.length, 2);
+  assert.equal(mock.calls[2].searchParams.get('to'), '2026-11-03T12:00:00.000Z');
+});
+
+test('hourly backfill stays inside the 168-hour retention window, independently of monthly costs', async () => {
+  const at = new Date('2026-11-20T18:24:00Z');
+  const mock = accountingProvider(
+    options.periodStart,
+    [],
+    [hourFrame('2026-11-20T17:00:00Z')],
+    true,
+  );
+  const result = await fetchNeonUsageAccounting({ ...options, now: at, fetcher: mock.fetcher });
+  assert.equal(result.costs.reason, 'provider_unavailable');
+  assert.equal(result.trafficHours[0].bytes, 0, 'explicit zero bucket survives cost failure');
+  const query = mock.calls[2].searchParams;
+  assert.equal(query.get('from'), '2026-11-13T19:00:00.000Z');
+  assert.ok(at - Date.parse(query.get('from')) < 168 * 3600000);
+});
+
+test('missing current-hour gap cannot be priced or shown as zero; a brand-new period waits', async () => {
+  const mock = accountingProvider(options.periodStart, period(fixture()).consumption, [
+    hourFrame('2026-11-03T01:00:00Z'),
+  ]);
+  const result = await fetchNeonUsageAccounting({ ...options, fetcher: mock.fetcher });
+  assert.equal(result.costs.reason, 'incomplete_period');
+  assert.equal(result.trafficHours.length, 1);
+  const start = '2026-11-20T16:58:00Z';
+  const fresh = accountingProvider(start, [], []);
+  const waiting = await fetchNeonUsageAccounting({
+    ...options,
+    periodStart: start,
+    now: new Date('2026-11-20T16:59:00Z'),
+    fetcher: fresh.fetcher,
+  });
+  assert.equal(waiting.costs.reason, 'waiting_data');
+  assert.equal(fresh.calls.length, 1);
 });

@@ -163,7 +163,7 @@ test('slot filename, size and project identity are checked before using local co
   for (const invalid of [
     { ...history, projectId: 'different-project' },
     { ...history, samples: [nextSample('10')] },
-    { ...history, ignored: 'x'.repeat(4096) },
+    { ...history, ignored: 'x'.repeat(65536) },
   ]) {
     await writeFile(path, JSON.stringify(invalid));
     await assert.rejects(store.read(), { code: 'storage_unavailable' });
@@ -220,4 +220,38 @@ test('installed Blob SDK reads uncached private JSON and sends conditional write
     );
   assert.equal(await store.compareAndSwap(history, '"v1"'), true);
   agent.assertNoPendingInterceptors();
+});
+
+test('local hour history survives reopening and corrections without duplicating unchanged buckets', async (t) => {
+  const { root, directory, store } = await local(t);
+  const hours = Array.from({ length: 8 }, (_, i) => ({
+    from: `2026-11-02T0${i}:00:00.000Z`,
+    through: `2026-11-02T0${i + 1}:00:00.000Z`,
+    periodStart: history.samples[0].periodStart,
+    sampledAt: history.samples[0].sampledAt,
+    bytes: 100,
+  }));
+  await store.compareAndSwap({ ...history, trafficHours: hours }, null);
+  const reopened = createNeonUsageLocalStore(project, root);
+  const saved = await reopened.read();
+  assert.deepEqual(saved.history.trafficHours, hours);
+  const sample = nextSample('10');
+  const changed = hours.map((row, i) => ({
+    ...row,
+    bytes: i === 0 ? 111 : 100,
+    sampledAt: sample.sampledAt,
+  }));
+  assert.equal(
+    await reopened.compareAndSwap(
+      { ...history, samples: [...history.samples, sample], trafficHours: changed },
+      saved.version,
+    ),
+    true,
+  );
+  const { readFile } = await import('node:fs/promises');
+  const slot = JSON.parse(await readFile(join(directory, slotName(sample)), 'utf8'));
+  assert.equal(slot.trafficHours.length, 1);
+  const final = await store.read();
+  assert.equal(final.history.trafficHours.length, 8);
+  assert.equal(final.history.trafficHours[0].bytes, 111);
 });

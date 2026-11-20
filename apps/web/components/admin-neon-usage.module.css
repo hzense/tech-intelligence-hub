@@ -255,6 +255,30 @@
 .costMethod {
   margin-top: 0.6rem;
 }
+.computeMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  padding-block: 1rem;
+  border-top: 1px solid var(--line);
+}
+.computeMetrics dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.computeMetrics dd {
+  margin-top: 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.forecastNote {
+  margin-bottom: 1rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.65;
+}
 .rangeSwitch {
   display: inline-flex;
   padding: 3px;
@@ -333,6 +357,12 @@
 }
 .bar.estimated {
   background: linear-gradient(to bottom, var(--brand-bright), var(--brand));
+}
+.bar.reported {
+  background: linear-gradient(to bottom, #3aa78a, #16816a);
+}
+.reported {
+  background: #16816a;
 }
 .bar.partial {
   background: repeating-linear-gradient(135deg, #b67b16, #b67b16 4px, #dba64e 4px, #dba64e 7px);
@@ -538,6 +568,9 @@
 .estimatedText {
   color: var(--brand);
 }
+.reportedText {
+  color: #16816a;
+}
 .partialText {
   color: #b67b16;
 }
@@ -580,6 +613,9 @@
   }
 }
 @media (max-width: 760px) {
+  .computeMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .costBody {
     grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
