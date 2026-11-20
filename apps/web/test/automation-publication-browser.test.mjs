@@ -1064,8 +1064,10 @@ test(
           ];
           await f.page.reload();
           const table = f.page.getByRole('table', { name: /自动采集任务/ });
-          const names = () => table.getByRole('rowheader').allTextContents();
-          assert.match((await names())[0], /Gamma/);
+          // Reload and React updates can finish after the DOM load event.
+          // Web-first assertions wait for the actual filtered/sorted rows.
+          const names = table.getByRole('rowheader');
+          await expect(names).toHaveText([/Gamma/, /Beta/, /Alpha/]);
           await f.page.setViewportSize({ width: 1280, height: 900 });
           await f.page
             .getByRole('region', { name: '运行记录', exact: true })
@@ -1077,32 +1079,32 @@ test(
           );
           await f.page.getByLabel('搜索采集任务', { exact: true }).fill('alpha');
           await expect(table.getByRole('rowheader')).toHaveCount(1);
-          assert.match((await names())[0], /Alpha/);
+          await expect(names.first()).toContainText(/Alpha/);
           await f.page.getByLabel('搜索采集任务', { exact: true }).fill('run-beta');
-          assert.match((await names())[0], /Beta/);
+          await expect(names.first()).toContainText(/Beta/);
           await f.page.getByLabel('搜索采集任务', { exact: true }).fill('');
           await f.page
             .getByRole('group', { name: '采集任务筛选', exact: true })
             .getByRole('combobox')
             .selectOption('unknown');
-          assert.match((await names())[0], /Gamma/);
+          await expect(names.first()).toContainText(/Gamma/);
           await expect(table.getByRole('rowheader')).toHaveCount(1);
           await f.page
             .getByRole('group', { name: '采集任务筛选', exact: true })
             .getByRole('combobox')
             .selectOption('completed');
-          assert.match((await names())[0], /Alpha/);
+          await expect(names.first()).toContainText(/Alpha/);
           await f.page.getByRole('button', { name: '重置筛选与排序', exact: true }).click();
           await table.getByRole('button', { name: /费用/ }).click();
-          assert.match((await names())[0], /Beta/);
+          await expect(names).toHaveText([/Beta/, /Gamma/, /Alpha/]);
           await expect(table.getByRole('columnheader', { name: /费用/ })).toHaveAttribute(
             'aria-sort',
             'ascending',
           );
           await table.getByRole('button', { name: /费用/ }).click();
-          assert.match((await names())[0], /Alpha/);
+          await expect(names).toHaveText([/Alpha/, /Gamma/, /Beta/]);
           await table.getByRole('button', { name: /任务 \/ 配置/ }).click();
-          assert.match((await names())[0], /Alpha/);
+          await expect(names).toHaveText([/Alpha/, /Beta/, /Gamma/]);
           assert.deepEqual(f.detailReads, []);
           assert.deepEqual(f.posts, []);
           await f.page.getByLabel('搜索采集任务', { exact: true }).fill('不存在');
