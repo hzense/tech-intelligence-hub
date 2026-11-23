@@ -103,7 +103,7 @@ test(
         );
         CREATE TABLE public.editorial_signal_revisions (
           run_id uuid NOT NULL, owner_id text NOT NULL, candidate_index integer NOT NULL,
-          revision integer NOT NULL, action text NOT NULL
+          revision integer NOT NULL, action text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
         );
         CREATE TABLE public.candidate_enrichment_runs (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(), owner_id text NOT NULL,
@@ -383,13 +383,27 @@ test(
           await clear();
           const readStats = () => readSignalGenerationStats(owner, pool, pool);
           const empty = await readStats();
+          const midnight = (
+            await pool.query(
+              "SELECT date_trunc('day', current_timestamp, 'Europe/Berlin') AS today",
+            )
+          ).rows[0].today;
+          const berlin = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Europe/Berlin',
+            dateStyle: 'short',
+          });
+          const today = Date.parse(berlin.format(midnight) + 'T00:00:00Z');
+          const emptyDays = Array.from({ length: 30 }, (_, index) => ({
+            date: new Date(today + (index - 29) * 86_400_000).toISOString().slice(0, 10),
+            count: 0,
+          }));
           assert.deepEqual(empty, {
             tasks: 0,
             completed: 0,
             failed: 0,
             candidates: 0,
             todayCandidates: 0,
-            publication: { pending: 0, published: 0, withdrawn: 0 },
+            publication: { pending: 0, published: 0, withdrawn: 0, days: emptyDays },
           });
           const id = randomUUID();
           const candidates = [0, 1, 2, 3].map((index) => ({
@@ -402,13 +416,10 @@ test(
             candidates,
             rejected: [{ index: 4, classification: 'private', status: 'rejected' }],
           };
-          const midnight = (
-            await pool.query(
-              "SELECT date_trunc('day', current_timestamp, 'Europe/Berlin') AS today",
-            )
-          ).rows[0].today;
+          const historicId = randomUUID();
           await generation({ id, result, finished_at: midnight });
           await generation({
+            id: historicId,
             result: { ...result, candidates: candidates.slice(0, 1) },
             finished_at: new Date(midnight.getTime() - 1),
           });
@@ -423,10 +434,13 @@ test(
           );
           await pool.query(
             `INSERT INTO public.editorial_signal_revisions VALUES
-          ($1,$2,0,1,'draft'), ($1,$2,0,2,'publish'), ($1,$2,0,3,'publish'),
-          ($1,$2,1,1,'publish'), ($1,$2,1,2,'withdraw'), ($1,$2,2,1,'draft'),
-          ($1,'other',3,1,'publish'), ($1,$2,4,1,'publish')`,
-            [id, owner],
+          ($1,$2,0,1,'draft',$3::timestamptz - interval '2 days'),
+          ($1,$2,0,2,'publish',$3::timestamptz - interval '1 millisecond'),
+          ($1,$2,0,3,'publish',$3), ($1,$2,1,1,'publish',$3), ($1,$2,1,2,'withdraw',$3),
+          ($1,$2,2,1,'draft',$3), ($1,'other',3,1,'publish',$3), ($1,$2,4,1,'publish',$3),
+          ($4,$2,0,1,'publish',$3::timestamptz - interval '40 days'),
+          ($4,$2,0,2,'withdraw',$3), ($4,$2,0,3,'publish',$3)`,
+            [id, owner, midnight, historicId],
           );
           const expected = {
             tasks: 54,
@@ -434,7 +448,12 @@ test(
             failed: 1,
             candidates: 5,
             todayCandidates: 4,
-            publication: { pending: 3, published: 1, withdrawn: 1 },
+            publication: {
+              pending: 2,
+              published: 2,
+              withdrawn: 1,
+              days: emptyDays.map((day, index) => ({ ...day, count: index >= 28 ? 1 : 0 })),
+            },
           };
           assert.deepEqual(await readStats(), expected);
           assert.deepEqual(await readSignalGenerationStats(owner, pool, restricted), {
@@ -443,7 +462,7 @@ test(
           });
           await pool.query(`REVOKE SELECT ON public.signal_generation_runs FROM "${reader}";
             GRANT SELECT (id, owner_id, status, deleted_at) ON public.signal_generation_runs TO "${reader}";
-            GRANT SELECT (run_id, owner_id, candidate_index, revision, action) ON public.editorial_signal_revisions TO "${reader}"`);
+            GRANT SELECT (run_id, owner_id, candidate_index, revision, action, created_at) ON public.editorial_signal_revisions TO "${reader}"`);
           assert.deepEqual(await readSignalGenerationStats(owner, pool, restricted), expected);
         },
       );

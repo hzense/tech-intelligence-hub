@@ -1,12 +1,19 @@
 import type { PoolClient } from 'pg';
 
+export type PublicationDay = { date: string; count: number };
+
 export interface SignalGenerationStats {
   tasks: number;
   completed: number;
   failed: number;
   candidates: number;
   todayCandidates: number;
-  publication: { pending: number; published: number; withdrawn: number } | null;
+  publication: {
+    pending: number;
+    published: number;
+    withdrawn: number;
+    days: PublicationDay[];
+  } | null;
 }
 
 type ReadPool = { connect(): Promise<Pick<PoolClient, 'query' | 'release'>> };
@@ -50,7 +57,9 @@ const generated = `
     coalesce(sum(cardinality(indexes)) FILTER (WHERE
       (finished_at AT TIME ZONE 'Europe/Berlin')::date =
       (CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Berlin')::date), 0)::int AS "todayCandidates",
-    (jsonb_object_agg(id, indexes) FILTER (WHERE cardinality(indexes) > 0))::text AS identities
+    (jsonb_object_agg(id, indexes) FILTER (WHERE cardinality(indexes) > 0))::text AS identities,
+    ARRAY(SELECT to_char((CURRENT_TIMESTAMP AT TIME ZONE 'Europe/Berlin')::date - offset_days, 'YYYY-MM-DD')
+          FROM generate_series(29, 0, -1) AS offset_days ORDER BY offset_days DESC) AS dates
   FROM runs`;
 
 const publication = `
@@ -60,37 +69,60 @@ const publication = `
     JOIN public.signal_generation_runs g ON g.id = batch.id::uuid
       AND g.owner_id = $1 AND g.status = 'completed' AND g.deleted_at IS NULL
     CROSS JOIN LATERAL jsonb_array_elements_text(batch.indexes) AS idx
+  ), classified AS MATERIALIZED (
+    SELECT history.action, (history.first_publish AT TIME ZONE 'Europe/Berlin')::date AS first_day
+    FROM accepted a
+    LEFT JOIN LATERAL (
+      SELECT r.action, min(r.created_at) FILTER (WHERE r.action = 'publish') OVER () AS first_publish
+      FROM public.editorial_signal_revisions r
+      WHERE r.owner_id = $1 AND r.run_id = a.id AND r.candidate_index = a.candidate_index
+      ORDER BY r.revision DESC LIMIT 1
+    ) AS history ON true
   )
   SELECT count(*)::int AS matched,
-    (count(*) FILTER (WHERE latest.action = 'publish'))::int AS published,
-    (count(*) FILTER (WHERE latest.action = 'withdraw'))::int AS withdrawn,
-    (count(*) FILTER (WHERE latest.action IS NULL OR latest.action = 'draft'))::int AS pending
-  FROM accepted a
-  LEFT JOIN LATERAL (
-    SELECT r.action FROM public.editorial_signal_revisions r
-    WHERE r.owner_id = $1 AND r.run_id = a.id AND r.candidate_index = a.candidate_index
-    ORDER BY r.revision DESC LIMIT 1
-  ) AS latest ON true`;
+    (count(*) FILTER (WHERE action = 'publish'))::int AS published,
+    (count(*) FILTER (WHERE action = 'withdraw'))::int AS withdrawn,
+    (count(*) FILTER (WHERE action IS NULL OR action = 'draft'))::int AS pending,
+    ARRAY(SELECT count(h.first_day)::int FROM unnest($3::date[]) AS d(day)
+          LEFT JOIN classified h ON h.first_day = d.day GROUP BY d.day ORDER BY d.day) AS totals
+  FROM classified`;
 
 export async function readSignalGenerationStats(
   owner: string,
   generationPool: ReadPool,
   editorialPool: ReadPool,
 ): Promise<SignalGenerationStats | null> {
-  type GenerationRow = Omit<SignalGenerationStats, 'publication'> & { identities: string | null };
+  type GenerationRow = Omit<SignalGenerationStats, 'publication'> & {
+    identities: string | null;
+    dates: string[];
+  };
   const row = await readRow<GenerationRow>(generationPool, generated, [owner]).catch(() => null);
   if (!row) return null;
-  const { identities, ...stats } = row;
+  const { identities, dates, ...stats } = row;
   if (stats.candidates === 0)
-    return { ...stats, publication: { pending: 0, published: 0, withdrawn: 0 } };
+    return {
+      ...stats,
+      publication: {
+        pending: 0,
+        published: 0,
+        withdrawn: 0,
+        days: dates.map((date) => ({ date, count: 0 })),
+      },
+    };
 
-  type PublicationRow = NonNullable<SignalGenerationStats['publication']> & { matched: number };
+  type PublicationRow = Omit<NonNullable<SignalGenerationStats['publication']>, 'days'> & {
+    matched: number;
+    totals: number[];
+  };
   const counts = await readRow<PublicationRow>(editorialPool, publication, [
     owner,
     identities,
+    dates,
   ]).catch(() => null);
   // If a task was removed between the reads, do not classify it as pending.
-  if (!counts || counts.matched !== stats.candidates) return { ...stats, publication: null };
-  const { pending, published, withdrawn } = counts;
-  return { ...stats, publication: { pending, published, withdrawn } };
+  if (!counts || counts.matched !== stats.candidates || counts.totals.length !== dates.length)
+    return { ...stats, publication: null };
+  const { pending, published, withdrawn, totals } = counts;
+  const days = dates.map((date, index) => ({ date, count: totals[index]! }));
+  return { ...stats, publication: { pending, published, withdrawn, days } };
 }
