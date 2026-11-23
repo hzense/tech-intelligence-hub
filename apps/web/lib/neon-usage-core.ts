@@ -6,6 +6,7 @@ import {
   type NeonUsageHour,
 } from './neon-usage-hours.ts';
 import { neonTransferAllowance } from './neon-usage-pricing.ts';
+import type { SignalGenerationStats } from './signal-generation-stats';
 import type { AiUsageCosts } from './ai-usage-costs';
 
 export const neonUsageTimezone = 'Europe/Berlin' as const;
@@ -60,6 +61,7 @@ export type NeonUsageDashboard = {
   costSampledAt: string | null;
   /** Per-admin live ledger summary; never persisted with shared Neon samples. */
   aiCosts?: AiUsageCosts;
+  generationStats?: SignalGenerationStats | null;
 };
 export class NeonUsageError extends Error {
   readonly code:

@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import type { NeonUsageDashboard } from '../lib/neon-usage-core';
 import { neonComputeProjection, neonComputeRate } from '../lib/neon-usage-pricing';
+import { AdminGenerationStats } from './admin-generation-stats';
 import { AdminAiUsage } from './admin-ai-usage';
 import controls from './admin-controls.module.css';
 import styles from './admin-neon-usage.module.css';
@@ -281,7 +282,7 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
         <div>
           <p className={styles.eyebrow}>NEON + AI · OPERATIONS</p>
           <h1>运营仪表盘</h1>
-          <p className={styles.muted}>查看 Neon 流量、数据库费用与 AI 调用费用。</p>
+          <p className={styles.muted}>查看信号生成与发布、Neon 流量、数据库费用和 AI 调用费用。</p>
         </div>
         <div className={styles.actions} aria-label="流量监控操作">
           <button disabled={busy !== null} onClick={() => void request('GET')} type="button">
@@ -313,6 +314,7 @@ export function AdminNeonUsage({ initialDashboard }: { initialDashboard: NeonUsa
           {message}
         </p>
       ) : null}
+      <AdminGenerationStats stats={dashboard.generationStats ?? null} />
       {!dashboard.configured ? (
         <section className={styles.notice} aria-labelledby="usage-configuration-title">
           <div className={styles.noticeHeading}>

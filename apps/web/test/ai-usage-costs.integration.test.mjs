@@ -5,6 +5,7 @@ import test from 'node:test';
 import { URL } from 'node:url';
 import pg from 'pg';
 import { readAiUsageCosts } from '../lib/ai-usage-costs.ts';
+import { readSignalGenerationStats } from '../lib/signal-generation-stats.ts';
 import { validateConnectionTarget } from '../../../packages/database/src/connection-policy.mjs';
 
 const adminUrl = process.env.AI_USAGE_COSTS_TEST_ADMIN_URL;
@@ -98,7 +99,11 @@ test(
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(), owner_id text NOT NULL,
           budget_day date, status text NOT NULL, reserved_microusd bigint NOT NULL,
           charged_microusd bigint NOT NULL, generation_version text NOT NULL,
-          deleted_at timestamptz
+          deleted_at timestamptz, finished_at timestamptz, result jsonb
+        );
+        CREATE TABLE public.editorial_signal_revisions (
+          run_id uuid NOT NULL, owner_id text NOT NULL, candidate_index integer NOT NULL,
+          revision integer NOT NULL, action text NOT NULL
         );
         CREATE TABLE public.candidate_enrichment_runs (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(), owner_id text NOT NULL,
@@ -370,6 +375,76 @@ test(
             JSON.stringify(result),
             /permission denied|candidate_enrichment_runs|SELECT|postgres:/,
           );
+        },
+      );
+      await t.test(
+        'generation dashboard counts saved candidates and their latest owner-scoped revision across all tasks',
+        async () => {
+          await clear();
+          const readStats = () => readSignalGenerationStats(owner, pool, pool);
+          const empty = await readStats();
+          assert.deepEqual(empty, {
+            tasks: 0,
+            completed: 0,
+            failed: 0,
+            candidates: 0,
+            todayCandidates: 0,
+            publication: { pending: 0, published: 0, withdrawn: 0 },
+          });
+          const id = randomUUID();
+          const candidates = [0, 1, 2, 3].map((index) => ({
+            index,
+            classification: 'private',
+            status: 'needs_review',
+          }));
+          const result = {
+            classification: 'private',
+            candidates,
+            rejected: [{ index: 4, classification: 'private', status: 'rejected' }],
+          };
+          const midnight = (
+            await pool.query(
+              "SELECT date_trunc('day', current_timestamp, 'Europe/Berlin') AS today",
+            )
+          ).rows[0].today;
+          await generation({ id, result, finished_at: midnight });
+          await generation({
+            result: { ...result, candidates: candidates.slice(0, 1) },
+            finished_at: new Date(midnight.getTime() - 1),
+          });
+          await generation({ owner_id: 'other', result, finished_at: midnight });
+          await generation({ deleted_at: midnight, result, finished_at: midnight });
+          await generation({ status: 'failed', result, finished_at: midnight });
+          await pool.query(
+            `INSERT INTO public.signal_generation_runs
+          (owner_id, status, reserved_microusd, charged_microusd, generation_version)
+          SELECT $1, 'pending', 0, 0, 'v1' FROM generate_series(1, 51)`,
+            [owner],
+          );
+          await pool.query(
+            `INSERT INTO public.editorial_signal_revisions VALUES
+          ($1,$2,0,1,'draft'), ($1,$2,0,2,'publish'), ($1,$2,0,3,'publish'),
+          ($1,$2,1,1,'publish'), ($1,$2,1,2,'withdraw'), ($1,$2,2,1,'draft'),
+          ($1,'other',3,1,'publish'), ($1,$2,4,1,'publish')`,
+            [id, owner],
+          );
+          const expected = {
+            tasks: 54,
+            completed: 2,
+            failed: 1,
+            candidates: 5,
+            todayCandidates: 4,
+            publication: { pending: 3, published: 1, withdrawn: 1 },
+          };
+          assert.deepEqual(await readStats(), expected);
+          assert.deepEqual(await readSignalGenerationStats(owner, pool, restricted), {
+            ...expected,
+            publication: null,
+          });
+          await pool.query(`REVOKE SELECT ON public.signal_generation_runs FROM "${reader}";
+            GRANT SELECT (id, owner_id, status, deleted_at) ON public.signal_generation_runs TO "${reader}";
+            GRANT SELECT (run_id, owner_id, candidate_index, revision, action) ON public.editorial_signal_revisions TO "${reader}"`);
+          assert.deepEqual(await readSignalGenerationStats(owner, pool, restricted), expected);
         },
       );
     } finally {
