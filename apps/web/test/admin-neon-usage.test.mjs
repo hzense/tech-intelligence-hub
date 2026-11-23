@@ -35,6 +35,14 @@ function dashboard(overrides = {}) {
     available: true,
     error: null,
     sampledAt: '2026-11-02T18:00:00.000Z',
+    generationStats: {
+      tasks: 60,
+      completed: 52,
+      failed: 5,
+      candidates: 78,
+      todayCandidates: 6,
+      publication: { pending: 20, published: 57, withdrawn: 1 },
+    },
     stale: false,
     projectId: 'synthetic-project',
     timezone: 'Europe/Berlin',
@@ -99,6 +107,28 @@ function dashboard(overrides = {}) {
 }
 const render = (value) =>
   renderToStaticMarkup(createElement(module.exports.AdminNeonUsage, { initialDashboard: value }));
+
+test('generation statistics keep unavailable publication counts distinct from zero', () => {
+  const stats = dashboard().generationStats;
+  const partial = render(dashboard({ generationStats: { ...stats, publication: null } }));
+  assert.match(partial, /累计生成候选<\/dt><dd>78<\/dd>/);
+  assert.match(partial, /待发布（含草稿）<\/dt><dd>待核对<\/dd>/);
+  const empty = render(
+    dashboard({
+      generationStats: {
+        tasks: 0,
+        completed: 0,
+        failed: 0,
+        candidates: 0,
+        todayCandidates: 0,
+        publication: { pending: 0, published: 0, withdrawn: 0 },
+      },
+    }),
+  );
+  assert.match(empty, /待发布（含草稿）<\/dt><dd>0<\/dd>/);
+  assert.match(render(dashboard({ generationStats: null })), /生成统计暂不可用/);
+  assert.match(render(dashboard({ configured: false })), /累计生成候选<\/dt><dd>78<\/dd>/);
+});
 
 test('usage dashboard distinguishes missing data, partial estimates, and observed zero', () => {
   const html = render(dashboard());
@@ -318,7 +348,16 @@ async function startFixture(initial) {
         response.statusCode = 503;
         response.end(JSON.stringify({ error: 'synthetic-secret-not-a-safe-code' }));
       } else {
-        response.end(JSON.stringify({ ...initial, totalBytes: 400_000_000 }));
+        response.end(
+          JSON.stringify({
+            ...initial,
+            totalBytes: 400_000_000,
+            generationStats: {
+              ...initial.generationStats,
+              publication: { pending: 19, published: 58, withdrawn: 1 },
+            },
+          }),
+        );
       }
       return;
     }
@@ -384,6 +423,12 @@ test(
     await expect(page.getByRole('button', { name: '立即采样' })).toBeVisible();
     assert.deepEqual(fixture.requests, [], 'Opening the dashboard must not sample or poll');
     const aiCosts = page.getByRole('region', { name: 'AI 调用费用', exact: true });
+    const generation = page.getByRole('region', { name: '信号生成统计' });
+    await expect(generation.getByRole('link', { name: '查看生成任务' })).toHaveAttribute(
+      'href',
+      '/admin/signal-generation',
+    );
+    await expect(generation.getByText('20', { exact: true })).toBeVisible();
     await expect(aiCosts.getByText('$1.50', { exact: true })).toBeVisible();
     await expect(aiCosts.getByRole('table').locator('tbody tr')).toHaveCount(5);
     await aiCosts.getByText('AI 费用口径', { exact: true }).click();
@@ -465,6 +510,7 @@ test(
     }
     assert.deepEqual(fixture.requests, [], 'Range changes and resizing must not fetch or sample');
     await page.getByRole('button', { name: '刷新记录' }).click();
+    await expect(generation.getByText('19', { exact: true })).toBeVisible();
     await expect(page.getByText('400.00 MB', { exact: true })).toBeVisible();
     assert.deepEqual(fixture.requests, ['GET']);
     await page.getByRole('button', { name: '立即采样' }).click();
