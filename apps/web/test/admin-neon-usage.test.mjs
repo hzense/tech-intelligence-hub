@@ -41,7 +41,15 @@ function dashboard(overrides = {}) {
       failed: 5,
       candidates: 78,
       todayCandidates: 6,
-      publication: { pending: 20, published: 57, withdrawn: 1 },
+      publication: {
+        pending: 20,
+        published: 57,
+        withdrawn: 1,
+        days: Array.from({ length: 30 }, (_, i) => ({
+          date: new Date(Date.UTC(2026, 9, 4 + i)).toISOString().slice(0, 10),
+          count: i === 0 ? 6 : i === 29 ? 3 : 0,
+        })),
+      },
     },
     stale: false,
     projectId: 'synthetic-project',
@@ -113,6 +121,8 @@ test('generation statistics keep unavailable publication counts distinct from ze
   const partial = render(dashboard({ generationStats: { ...stats, publication: null } }));
   assert.match(partial, /累计生成候选<\/dt><dd>78<\/dd>/);
   assert.match(partial, /待发布（含草稿）<\/dt><dd>待核对<\/dd>/);
+  assert.match(partial, /发布趋势暂不可用/);
+  assert.doesNotMatch(partial, /每日首次发布信号折线图/);
   const empty = render(
     dashboard({
       generationStats: {
@@ -121,11 +131,17 @@ test('generation statistics keep unavailable publication counts distinct from ze
         failed: 0,
         candidates: 0,
         todayCandidates: 0,
-        publication: { pending: 0, published: 0, withdrawn: 0 },
+        publication: {
+          pending: 0,
+          published: 0,
+          withdrawn: 0,
+          days: stats.publication.days.map((day) => ({ ...day, count: 0 })),
+        },
       },
     }),
   );
   assert.match(empty, /待发布（含草稿）<\/dt><dd>0<\/dd>/);
+  assert.match(empty, /近 30 天每日首次发布信号折线图，共 0 条/);
   assert.match(render(dashboard({ generationStats: null })), /生成统计暂不可用/);
   assert.match(render(dashboard({ configured: false })), /累计生成候选<\/dt><dd>78<\/dd>/);
 });
@@ -354,7 +370,14 @@ async function startFixture(initial) {
             totalBytes: 400_000_000,
             generationStats: {
               ...initial.generationStats,
-              publication: { pending: 19, published: 58, withdrawn: 1 },
+              publication: {
+                pending: 19,
+                published: 58,
+                withdrawn: 1,
+                days: initial.generationStats.publication.days.map((day, i) =>
+                  i === 29 ? { ...day, count: 4 } : day,
+                ),
+              },
             },
           }),
         );
@@ -429,6 +452,19 @@ test(
       '/admin/signal-generation',
     );
     await expect(generation.getByText('20', { exact: true })).toBeVisible();
+    const trend = generation.getByRole('region', { name: '信号发布趋势' });
+    await expect(
+      trend.getByRole('img', { name: /近 30 天.*共 9 条/ }).locator('circle'),
+    ).toHaveCount(30);
+    await trend.getByRole('button', { name: '7 天', exact: true }).click();
+    await expect(
+      trend.getByRole('img', { name: /近 7 天.*共 3 条/ }).locator('circle'),
+    ).toHaveCount(7);
+    await trend.getByText('查看每日发布数').click();
+    const trendRows = trend.getByRole('table').locator('tbody tr');
+    await expect(trendRows).toHaveCount(7);
+    await expect(trendRows.first().getByRole('rowheader')).toHaveText('2026-11-02');
+    await expect(trendRows.first().getByRole('cell')).toHaveText('3');
     await expect(aiCosts.getByText('$1.50', { exact: true })).toBeVisible();
     await expect(aiCosts.getByRole('table').locator('tbody tr')).toHaveCount(5);
     await aiCosts.getByText('AI 费用口径', { exact: true }).click();
@@ -455,6 +491,7 @@ test(
     }
     for (const width of [1440, 390, 320]) {
       await page.setViewportSize({ width, height: 1000 });
+      await expect(trend.getByRole('img')).toBeVisible();
       await expect(table).toBeVisible();
       for (const range of [7, 30]) {
         await page.getByRole('button', { name: `近 ${range} 天`, exact: true }).click();
@@ -511,6 +548,8 @@ test(
     assert.deepEqual(fixture.requests, [], 'Range changes and resizing must not fetch or sample');
     await page.getByRole('button', { name: '刷新记录' }).click();
     await expect(generation.getByText('19', { exact: true })).toBeVisible();
+    await expect(trend.getByRole('img', { name: /近 7 天.*共 4 条/ })).toBeVisible();
+    await expect(trendRows.first().getByRole('cell')).toHaveText('4');
     await expect(page.getByText('400.00 MB', { exact: true })).toBeVisible();
     assert.deepEqual(fixture.requests, ['GET']);
     await page.getByRole('button', { name: '立即采样' }).click();

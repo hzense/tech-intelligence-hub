@@ -1,4 +1,5 @@
 import type { SignalGenerationStats } from '../lib/signal-generation-stats';
+import { AdminPublicationTrend } from './admin-publication-trend';
 import controls from './admin-controls.module.css';
 import styles from './admin-neon-usage.module.css';
 
@@ -43,6 +44,7 @@ export function AdminGenerationStats({ stats }: { stats?: SignalGenerationStats 
       ) : (
         <p className={styles.muted}>生成统计暂不可用，请稍后刷新记录。</p>
       )}
+      <AdminPublicationTrend days={publication?.days} />
     </section>
   );
 }
