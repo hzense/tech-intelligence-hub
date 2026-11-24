@@ -74,6 +74,13 @@ export function CandidateReview({
         </Link>
       </details>
       <div className={controls.group}>
+        <Link
+          className={controls.button}
+          href="/admin/signal-generation/unpublished"
+          prefetch={false}
+        >
+          查看未发布候选
+        </Link>
         <Link className={controls.button} href="/admin/signal-generation">
           {localSimulation ? '返回本地模拟任务列表' : '返回 AI 生成任务列表'}
         </Link>
