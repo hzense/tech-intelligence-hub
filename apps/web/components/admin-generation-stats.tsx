@@ -12,9 +12,14 @@ export function AdminGenerationStats({ stats }: { stats?: SignalGenerationStats 
           <h2 id="generation-stats-title">信号生成统计</h2>
           <p className={styles.muted}>当前管理员 · 全部未删除的生成任务</p>
         </div>
-        <a className={controls.button} href="/admin/signal-generation">
-          查看生成任务
-        </a>
+        <div className={controls.group}>
+          <a className={controls.button} href="/admin/signal-generation/unpublished">
+            只看未发布
+          </a>
+          <a className={controls.button} href="/admin/signal-generation">
+            查看生成任务
+          </a>
+        </div>
       </div>
       {stats ? (
         <>

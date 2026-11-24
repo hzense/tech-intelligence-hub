@@ -18,7 +18,7 @@ export interface SignalGenerationStats {
 
 type ReadPool = { connect(): Promise<Pick<PoolClient, 'query' | 'release'>> };
 
-async function readRow<T extends Record<string, unknown>>(
+async function readRows<T extends Record<string, unknown>>(
   pool: ReadPool,
   sql: string,
   values: unknown[],
@@ -27,12 +27,15 @@ async function readRow<T extends Record<string, unknown>>(
   try {
     const { rows } = await client.query<T>(sql, values);
     client.release();
-    return rows[0];
+    return rows;
   } catch (error) {
     client.release(true);
     throw error;
   }
 }
+
+const acceptedCandidate = `c->>'classification' = 'private' AND c->>'status' = 'needs_review'
+  AND c->'index' IN ('0'::jsonb,'1'::jsonb,'2'::jsonb,'3'::jsonb,'4'::jsonb)`;
 
 // The two existing roles can read different tables. Only accepted candidate
 // identities travel between the two reads, never source documents or results.
@@ -44,8 +47,7 @@ const generated = `
       THEN ARRAY(
         SELECT DISTINCT (c->'index')::int
         FROM jsonb_array_elements(result->'candidates') AS c
-        WHERE c->>'classification' = 'private' AND c->>'status' = 'needs_review'
-          AND c->'index' IN ('0'::jsonb,'1'::jsonb,'2'::jsonb,'3'::jsonb,'4'::jsonb)
+        WHERE ${acceptedCandidate}
       ) ELSE '{}'::int[] END AS indexes
     FROM public.signal_generation_runs
     WHERE owner_id = $1 AND deleted_at IS NULL
@@ -96,7 +98,7 @@ export async function readSignalGenerationStats(
     identities: string | null;
     dates: string[];
   };
-  const row = await readRow<GenerationRow>(generationPool, generated, [owner]).catch(() => null);
+  const [row] = await readRows<GenerationRow>(generationPool, generated, [owner]).catch(() => []);
   if (!row) return null;
   const { identities, dates, ...stats } = row;
   if (stats.candidates === 0)
@@ -114,15 +116,84 @@ export async function readSignalGenerationStats(
     matched: number;
     totals: number[];
   };
-  const counts = await readRow<PublicationRow>(editorialPool, publication, [
+  const [counts] = await readRows<PublicationRow>(editorialPool, publication, [
     owner,
     identities,
     dates,
-  ]).catch(() => null);
+  ]).catch(() => []);
   // If a task was removed between the reads, do not classify it as pending.
   if (!counts || counts.matched !== stats.candidates || counts.totals.length !== dates.length)
     return { ...stats, publication: null };
   const { pending, published, withdrawn, totals } = counts;
   const days = dates.map((date, index) => ({ date, count: totals[index]! }));
   return { ...stats, publication: { pending, published, withdrawn, days } };
+}
+
+// The editorial role sees revisions and run ownership, but not generated results.
+// Include runs without revisions so that a missing or newly created run is never
+// mistaken for a verified unpublished candidate in the second read.
+const editorialRunStates = `
+  SELECT jsonb_object_agg(g.id, coalesce(r.states, '{}'::jsonb))::text AS states
+  FROM public.signal_generation_runs g
+  LEFT JOIN LATERAL (
+    SELECT jsonb_object_agg(candidate_index, jsonb_build_object(
+      'action', action, 'title', CASE WHEN action = 'draft' THEN content->>'title' END
+    )) AS states FROM (
+      SELECT DISTINCT ON (candidate_index) candidate_index, action, content
+      FROM public.editorial_signal_revisions
+      WHERE owner_id = $1 AND run_id = g.id
+      ORDER BY candidate_index, revision DESC
+    ) latest
+  ) r ON true
+  WHERE g.owner_id = $1 AND g.status = 'completed' AND g.deleted_at IS NULL`;
+
+const pendingCandidates = `
+  SELECT g.id AS "runId", candidate.idx AS "index",
+    coalesce(nullif(btrim(rev->>'title'), ''), candidate.title) AS title,
+    coalesce(rev->>'action', 'unpublished') AS status
+  FROM jsonb_each($2::jsonb) AS batch(id, states)
+  JOIN public.signal_generation_runs g ON g.id = batch.id::uuid AND g.owner_id = $1
+    AND g.status = 'completed' AND g.deleted_at IS NULL
+  CROSS JOIN LATERAL (
+    SELECT DISTINCT ON (c->'index') (c->'index')::int AS idx, c->>'title' AS title
+    FROM jsonb_array_elements(CASE WHEN jsonb_typeof(g.result->'candidates') = 'array'
+      THEN g.result->'candidates' ELSE '[]'::jsonb END) WITH ORDINALITY AS items(c, position)
+    WHERE ${acceptedCandidate}
+    ORDER BY c->'index', position
+  ) candidate
+  CROSS JOIN LATERAL (SELECT batch.states->(candidate.idx::text) AS rev) editorial
+  WHERE g.result->>'classification' = 'private' AND (rev IS NULL OR rev->>'action' = 'draft')
+  ORDER BY g.finished_at DESC NULLS LAST, g.id DESC, candidate.idx
+  LIMIT $3 OFFSET $4`;
+
+export type UnpublishedCandidate = {
+  runId: string;
+  index: number;
+  title: string | null;
+  status: 'unpublished' | 'draft';
+};
+
+export const unpublishedPageSize = 25;
+
+export async function readUnpublishedCandidates(
+  owner: string,
+  generationPool: ReadPool,
+  editorialPool: ReadPool,
+  page: number,
+) {
+  const [snapshot] = await readRows<{ states: string | null }>(editorialPool, editorialRunStates, [
+    owner,
+  ]);
+  if (!snapshot) throw new Error('publication_state_unavailable');
+  if (!snapshot.states) return { candidates: [], hasNext: false };
+  const rows = await readRows<UnpublishedCandidate>(generationPool, pendingCandidates, [
+    owner,
+    snapshot.states,
+    unpublishedPageSize + 1,
+    (page - 1) * unpublishedPageSize,
+  ]);
+  return {
+    candidates: rows.slice(0, unpublishedPageSize),
+    hasNext: rows.length > unpublishedPageSize,
+  };
 }

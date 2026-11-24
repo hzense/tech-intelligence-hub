@@ -5,7 +5,11 @@ import test from 'node:test';
 import { URL } from 'node:url';
 import pg from 'pg';
 import { readAiUsageCosts } from '../lib/ai-usage-costs.ts';
-import { readSignalGenerationStats } from '../lib/signal-generation-stats.ts';
+import {
+  readSignalGenerationStats,
+  readUnpublishedCandidates,
+  unpublishedPageSize,
+} from '../lib/signal-generation-stats.ts';
 import { validateConnectionTarget } from '../../../packages/database/src/connection-policy.mjs';
 
 const adminUrl = process.env.AI_USAGE_COSTS_TEST_ADMIN_URL;
@@ -103,7 +107,8 @@ test(
         );
         CREATE TABLE public.editorial_signal_revisions (
           run_id uuid NOT NULL, owner_id text NOT NULL, candidate_index integer NOT NULL,
-          revision integer NOT NULL, action text NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
+          revision integer NOT NULL, action text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+          content jsonb
         );
         CREATE TABLE public.candidate_enrichment_runs (
           id uuid PRIMARY KEY DEFAULT gen_random_uuid(), owner_id text NOT NULL,
@@ -383,6 +388,10 @@ test(
           await clear();
           const readStats = () => readSignalGenerationStats(owner, pool, pool);
           const empty = await readStats();
+          assert.deepEqual(await readUnpublishedCandidates(owner, pool, pool, 1), {
+            candidates: [],
+            hasNext: false,
+          });
           const midnight = (
             await pool.query(
               "SELECT date_trunc('day', current_timestamp, 'Europe/Berlin') AS today",
@@ -408,6 +417,7 @@ test(
           const id = randomUUID();
           const candidates = [0, 1, 2, 3].map((index) => ({
             index,
+            title: `原始候选 ${index}`,
             classification: 'private',
             status: 'needs_review',
           }));
@@ -464,6 +474,48 @@ test(
             GRANT SELECT (id, owner_id, status, deleted_at) ON public.signal_generation_runs TO "${reader}";
             GRANT SELECT (run_id, owner_id, candidate_index, revision, action, created_at) ON public.editorial_signal_revisions TO "${reader}"`);
           assert.deepEqual(await readSignalGenerationStats(owner, pool, restricted), expected);
+          // An unreadable publication history must not make candidates look unpublished.
+          await assert.rejects(readUnpublishedCandidates(owner, pool, restricted, 1));
+          await pool.query(
+            `GRANT SELECT(content) ON public.editorial_signal_revisions TO "${reader}"`,
+          );
+          await pool.query(
+            `UPDATE public.editorial_signal_revisions SET content = '{"title":"修订后的标题"}'
+            WHERE run_id = $1 AND owner_id = $2 AND candidate_index = 2`,
+            [id, owner],
+          );
+          const readPage = (page) => readUnpublishedCandidates(owner, pool, restricted, page);
+          const originalPending = [
+            { runId: id, index: 2, title: '修订后的标题', status: 'draft' },
+            { runId: id, index: 3, title: '原始候选 3', status: 'unpublished' },
+          ];
+          assert.deepEqual(await readPage(1), { candidates: originalPending, hasNext: false });
+          // Newer tasks fill the first page; the older pending candidates remain reachable.
+          await pool.query(
+            `INSERT INTO public.signal_generation_runs
+            (owner_id,status,reserved_microusd,charged_microusd,generation_version,result,finished_at)
+            SELECT $1,'completed',0,0,'v1',$2::jsonb,$3::timestamptz + interval '1 minute'
+            FROM generate_series(1,$4::int)`,
+            [
+              owner,
+              JSON.stringify({ ...result, candidates: candidates.slice(0, 1) }),
+              midnight,
+              unpublishedPageSize,
+            ],
+          );
+          const first = await readPage(1);
+          assert.equal(first.candidates.length, unpublishedPageSize);
+          assert.equal(first.hasNext, true);
+          assert.deepEqual(await readPage(2), { candidates: originalPending, hasNext: false });
+          await pool.query(
+            `INSERT INTO public.editorial_signal_revisions
+            (run_id,owner_id,candidate_index,revision,action) VALUES ($1,$2,2,2,'publish')`,
+            [id, owner],
+          );
+          assert.deepEqual(await readPage(2), {
+            candidates: originalPending.slice(1),
+            hasNext: false,
+          });
         },
       );
     } finally {

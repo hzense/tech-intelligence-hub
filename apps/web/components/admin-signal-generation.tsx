@@ -761,6 +761,13 @@ export function AdminSignalGeneration({
       <h1>
         {localSimulation ? '本地信号生成联调' : localMode ? '本地真实 AI 信号生成' : 'AI 信号生成'}
       </h1>
+      <Link
+        className={controls.button}
+        href="/admin/signal-generation/unpublished"
+        prefetch={false}
+      >
+        只看未发布
+      </Link>
       {localMode && localRealAi ? (
         <p role="status">
           本地真实
