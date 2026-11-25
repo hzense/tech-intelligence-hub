@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { sleep } from 'workflow';
 import { automationLimits } from '../lib/server/automation';
 import { automationPool } from '../lib/server/automation-store-access';
@@ -114,6 +115,8 @@ export async function automationWorkflow(owner: string, id: string) {
       if (handle) await stopTopicWorker(handle);
     }
   }
+  let sourceBatch: SourceBatch | undefined;
+  let visited = 0;
   try {
     const urls = await findSources(owner, run.id);
     if (urls === null) return 'already_started_or_finished';
@@ -128,6 +131,7 @@ export async function automationWorkflow(owner: string, id: string) {
       return 'no_new_sources';
     }
     const batch = await createSourceBatch(owner, run.id, urls);
+    sourceBatch = batch;
     const generationIds: string[] = [];
     const generationDispatches: GenerationDispatch[] = [];
     const queuedSources: QueuedSource[] = [];
@@ -139,6 +143,7 @@ export async function automationWorkflow(owner: string, id: string) {
     let dispatchError: unknown;
     try {
       for (const item of batch.items) {
+        visited++;
         if (item.kind !== 'url') continue;
         let selectedItem = item;
         let selectedBatchId = batch.id;
@@ -255,9 +260,48 @@ export async function automationWorkflow(owner: string, id: string) {
     return unknown ? 'outcome_unknown' : 'completed';
   } catch {
     await failSourceRun(owner, run.id, run.lease_token!);
+    // The current item may already have performed an external operation. Hand off
+    // only the untouched tail of this original batch, after its parent settles.
+    if (sourceBatch) {
+      for (const item of sourceBatch.items.slice(visited)) {
+        if (item.kind !== 'url' || item.status !== 'queued') continue;
+        if (!(await resumeUnvisitedImport(owner, run.id, sourceBatch.id, item.id))) break;
+      }
+    }
     return 'failed';
   }
 }
+
+async function resumeUnvisitedImport(
+  owner: string,
+  runId: string,
+  batchId: string,
+  itemId: string,
+) {
+  'use step';
+  try {
+    const run = await store.readAutomationRun({ pool: automationPool, owner, id: runId });
+    assertLocalAutomationRun(run, 'source_collection');
+    if (
+      run.status !== 'unknown' ||
+      run.phase !== 'source_failed' ||
+      !run.finished_at ||
+      run.lease_token ||
+      run.lease_until ||
+      run.result?.batchId !== batchId
+    )
+      return false;
+    const result = await runImportItem(owner, batchId, itemId, true);
+    return result.status === 'completed' || result.status === 'failed';
+  } catch (error) {
+    // Another worker/admin can win the same first claim. A busy worker, budget
+    // refusal or unconfirmed operation leaves the remaining items for the console.
+    if (error instanceof Error && 'code' in error && error.code === 'not_claimable') return true;
+    console.warn('automation_import_recovery_deferred', { runId, batchId, itemId });
+    return false;
+  }
+}
+resumeUnvisitedImport.maxRetries = 0;
 
 async function claim(owner: string, id: string) {
   'use step';
@@ -655,6 +699,12 @@ async function finishSourceRun(
   });
 }
 finishSourceRun.maxRetries = 0;
+function isCheckpointStorageError(error: unknown) {
+  return (
+    error instanceof store.AutomationError &&
+    ['commit_unknown', 'database_unavailable'].includes(error.code)
+  );
+}
 async function markSourceDispatch(
   owner: string,
   id: string,
@@ -669,15 +719,45 @@ async function markSourceDispatch(
   },
 ) {
   'use step';
-  const run = await store.readAutomationRun({ pool: automationPool, owner, id });
-  await store.updateAutomationRun({
-    pool: automationPool,
-    owner,
-    id,
+  const target = { pool: automationPool, owner, id };
+  const run = await store.readAutomationRun(target).catch((error: unknown) => {
+    if (!isCheckpointStorageError(error)) throw error;
+    return store.readAutomationRun(target);
+  });
+  if (
+    run.status !== 'running' ||
+    run.lease_token !== token ||
+    run.result?.batchId !== result.batchId
+  )
+    throw new store.AutomationError('stale_attempt');
+  const checkpoint = {
+    ...target,
     token,
+    expectedPhase: run.phase,
+    expectedResult: run.result,
     phase: 'dispatching_candidates',
     result: { ...run.result, ...result },
-  });
+  };
+  // Only this database checkpoint is replayable. Keep the original precondition
+  // for the retry, so a late write cannot replace a newer progress receipt.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await store.updateAutomationRun(checkpoint);
+      return;
+    } catch (error) {
+      if (!isCheckpointStorageError(error)) throw error;
+      const saved = await store.readAutomationRun(target);
+      if (saved.status !== 'running' || saved.lease_token !== token) throw error;
+      if (saved.phase === checkpoint.phase && isDeepStrictEqual(saved.result, checkpoint.result))
+        return;
+      if (
+        attempt === 2 ||
+        saved.phase !== run.phase ||
+        !isDeepStrictEqual(saved.result, run.result)
+      )
+        throw error;
+    }
+  }
 }
 markSourceDispatch.maxRetries = 0;
 async function failSourceRun(owner: string, id: string, token: string) {

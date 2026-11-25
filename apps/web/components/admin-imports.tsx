@@ -3,7 +3,7 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { importBatchName } from '../lib/import-labels';
 import { upload } from '@vercel/blob/client';
-import type { ImportBatch } from '../../../packages/database/src/import-store.mjs';
+import type { ImportBatch, ImportItem } from '../../../packages/database/src/import-store.mjs';
 import type { ImportOutput } from '../../../packages/ingestion/src/import-task-contract.mjs';
 import { validateImportManifest } from '../../../packages/ingestion/src/import-manifest.mjs';
 import styles from './admin-imports.module.css';
@@ -24,12 +24,41 @@ const capabilities = {
 const labels: Record<string, string> = {
   awaiting_upload: '等待原件',
   queued: '等待处理',
+  recovery_pending: '待恢复',
   running: '处理中',
   completed: '解析完成',
   partial_success: '部分完成',
   failed: '失败',
   unknown: '结果未知，待对账',
   cancelled: '已取消',
+};
+function batchDisplayStatus(batch: ImportBatch) {
+  return batch.status === 'queued' && batch.items.some((item) => item.recovery_available)
+    ? 'recovery_pending'
+    : batch.status;
+}
+function StatusLabel({ status }: { status: string }) {
+  return (
+    <span className={tableStyles.status} data-status={status}>
+      {labels[status] ?? status}
+    </span>
+  );
+}
+function ItemStatus({ item }: { item: ImportItem }) {
+  return <StatusLabel status={item.recovery_available ? 'recovery_pending' : item.status} />;
+}
+function ResumeImportButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  return (
+    <button type="button" disabled={disabled} onClick={onClick}>
+      续接解析（使用导入预算）
+    </button>
+  );
+}
+const resumeFailureHints: Record<string, string> = {
+  worker_busy: '其他资料正在解析，请稍后刷新。',
+  budget_exceeded: '当前导入预算不足，请核对批次和当日预算。',
+  configuration_conflict: '原批次的解析配置与当前配置不匹配。',
+  not_claimable: '资料状态已变化，请核对最新状态。',
 };
 function importCreatedAt(value: ImportBatch['created_at']) {
   const date = new Date(value);
@@ -111,13 +140,13 @@ export function AdminImports({
       [
         importBatchName(batch),
         batch.id,
-        labels[batch.status],
+        labels[batchDisplayStatus(batch)],
         ...batch.items.flatMap((item) => [item.id, item.declaration.name, item.declaration.url]),
       ].join(' '),
-    statusValue: (batch) => batch.status,
+    statusValue: batchDisplayStatus,
     sortValues: {
       name: (batch) => importBatchName(batch),
-      status: (batch) => labels[batch.status] ?? batch.status,
+      status: (batch) => labels[batchDisplayStatus(batch)] ?? batch.status,
       count: (batch) => batch.items.length,
       created: (batch) => new Date(batch.created_at).getTime(),
     },
@@ -238,6 +267,30 @@ export function AdminImports({
       setBusy(false);
     }
   }
+  async function resumeItem(batchId: string, itemId: string) {
+    setBusy(true);
+    setMessage('正在按原资料编号续接解析…');
+    try {
+      const result = await api({ action: 'resume', batchId, itemId });
+      setMessage(
+        result.status === 'completed'
+          ? '原资料已解析完成。'
+          : `已核对原资料，当前状态为${labels[result.status] ?? '待核对'}。`,
+      );
+    } catch (error) {
+      setMessage(
+        (error instanceof ImportClientError && resumeFailureHints[error.code]) ||
+          '续接结果待核对，请查看原资料的最新状态。',
+      );
+    } finally {
+      try {
+        await refresh();
+      } catch {
+        setMessage((current) => `${current} 任务列表读取失败，请刷新状态。`);
+      }
+      setBusy(false);
+    }
+  }
   async function create() {
     if (!validation.valid) return;
     setBusy(true);
@@ -349,6 +402,9 @@ export function AdminImports({
             <p>导入服务未就绪，暂不能读取原批次。请先完成配置，不会自动执行任何任务。</p>
           )}
           {recoveryMessage && <p role="status">{recoveryMessage}</p>}
+          <p role="status" aria-live="polite">
+            {message}
+          </p>
           {recoveryBatch && (
             <>
               <div
@@ -375,9 +431,7 @@ export function AdminImports({
                           </span>
                         </th>
                         <td>
-                          <span className={tableStyles.status} data-status={item.status}>
-                            {labels[item.status] ?? item.status}
-                          </span>
+                          <ItemStatus item={item} />
                         </td>
                         <td>
                           {item.error_code === 'fetch_failed' && (
@@ -386,8 +440,18 @@ export function AdminImports({
                           {item.error_code && item.error_code !== 'fetch_failed' && (
                             <p>资料处理未完成，请核对原任务后再操作。</p>
                           )}
-                          {['queued', 'running', 'unknown'].includes(item.status) && (
-                            <p>该资料尚未确认结束，请先核对原任务，不要为它重复导入或调用 AI。</p>
+                          {item.recovery_available ? (
+                            <>
+                              <p>采集任务已结束，这份资料尚未开始解析。</p>
+                              <ResumeImportButton
+                                disabled={busy}
+                                onClick={() => void resumeItem(recoveryBatch.id, item.id)}
+                              />
+                            </>
+                          ) : (
+                            ['queued', 'running', 'unknown'].includes(item.status) && (
+                              <p>该资料尚未确认结束，请先核对原任务，不要为它重复导入或调用 AI。</p>
+                            )
                           )}
                           {item.status === 'completed' && (
                             <Link className={controls.button} href="/admin/signal-generation">
@@ -483,9 +547,11 @@ export function AdminImports({
           </button>
         </div>
       </fieldset>
-      <p role="status" aria-live="polite">
-        {message}
-      </p>
+      {!recoveryId && (
+        <p role="status" aria-live="polite">
+          {message}
+        </p>
+      )}
       <section aria-labelledby="import-tasks-title" className={styles.tasks}>
         <div className={styles.toolbar}>
           <div>
@@ -591,12 +657,15 @@ export function AdminImports({
                       </span>
                     </th>
                     <td>
-                      <span className={tableStyles.status} data-status={batch.status}>
-                        {labels[batch.status] ?? batch.status}
-                      </span>
+                      <StatusLabel status={batchDisplayStatus(batch)} />
                     </td>
                     <td>
                       {batch.items.length} 项资料
+                      {batch.items.some((item) => item.recovery_available) && (
+                        <span className={tableStyles.meta}>
+                          {batch.items.filter((item) => item.recovery_available).length} 项待恢复
+                        </span>
+                      )}
                       {!showDuplicates && batch.items.some((item) => item.duplicate_of) && (
                         <span className={tableStyles.meta}>
                           含 {batch.items.filter((item) => item.duplicate_of).length}{' '}
@@ -694,12 +763,7 @@ export function AdminImports({
                                       )}
                                     </th>
                                     <td>
-                                      <span
-                                        className={tableStyles.status}
-                                        data-status={item.status}
-                                      >
-                                        {labels[item.status] ?? item.status}
-                                      </span>
+                                      <ItemStatus item={item} />
                                       {item.error_code && (
                                         <span className={tableStyles.meta}>{item.error_code}</span>
                                       )}
@@ -711,19 +775,27 @@ export function AdminImports({
                                     </td>
                                     <td>
                                       <div className={tableStyles.actions}>
-                                        {item.status === 'queued' && !batch.cancelled && (
-                                          <button
+                                        {item.recovery_available ? (
+                                          <ResumeImportButton
                                             disabled={busy}
-                                            onClick={() =>
-                                              void action({
-                                                action: 'run',
-                                                batchId: batch.id,
-                                                itemId: item.id,
-                                              })
-                                            }
-                                          >
-                                            处理（使用已配置预算）
-                                          </button>
+                                            onClick={() => void resumeItem(batch.id, item.id)}
+                                          />
+                                        ) : (
+                                          item.status === 'queued' &&
+                                          !batch.cancelled && (
+                                            <button
+                                              disabled={busy}
+                                              onClick={() =>
+                                                void action({
+                                                  action: 'run',
+                                                  batchId: batch.id,
+                                                  itemId: item.id,
+                                                })
+                                              }
+                                            >
+                                              处理（使用已配置预算）
+                                            </button>
+                                          )
                                         )}
                                         {item.status === 'running' && !batch.cancelled && (
                                           <button

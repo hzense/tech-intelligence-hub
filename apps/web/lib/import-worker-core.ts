@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
-import type { ImportDocument, ImportItem } from '../../../packages/database/src/import-store.mjs';
+import type {
+  ImportDocument,
+  ImportItem,
+  finishImportAttempt,
+} from '../../../packages/database/src/import-store.mjs';
 import { ImportIOError, importFetchDiagnostic, type ImportFetchDiagnostic } from './import-io.ts';
 import {
   ImportTaskError,
@@ -31,7 +35,7 @@ export interface ImportWorkerDependencies {
   put(path: string, bytes: Buffer): Promise<unknown>;
   confirm(document: ImportDocument, fence: number): Promise<unknown>;
   parse(bytes: Buffer, format: string): Promise<unknown>;
-  finish(completion: Completion): Promise<Record<string, unknown>>;
+  finish(completion: Completion): ReturnType<typeof finishImportAttempt>;
   remove(path: string): Promise<void>;
   cleanupFailed(): void;
 }

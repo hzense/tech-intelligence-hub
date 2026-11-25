@@ -121,7 +121,8 @@ async function compile() {
         name: 'no-live-effects',
         setup(builder) {
           builder.onResolve({ filter: /.*/ }, ({ path }) => {
-            if (['node:process', 'node:crypto'].includes(path)) return { path, external: true };
+            if (['node:process', 'node:crypto', 'node:util'].includes(path))
+              return { path, external: true };
             if (files[path]) return { path: fileURLToPath(new URL(files[path], import.meta.url)) };
             if (!Object.hasOwn(modules, path))
               throw Error(`Unexpected fixture dependency: ${path}`);

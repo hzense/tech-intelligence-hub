@@ -49,7 +49,14 @@ async function compile() {
       export class AutomationError extends Error {constructor(code){super(code);this.code=code}}
       export async function rejectInsightTopicsBeforeClaim(){throw Error('Unexpected insight rejection')}
       export async function rejectAutomaticPublicationBeforeClaim(){throw Error('unexpected rejection')}
-      export async function readAutomationRun(){return structuredClone(globalThis.${key}.run)}
+      export async function readAutomationRun(){
+        const f=globalThis.${key};
+        if(f.failCheckpointRead&&f.run.phase==='creating_candidates'&&f.queues.length===2){
+          f.failCheckpointRead=false;
+          throw new AutomationError('database_unavailable');
+        }
+        return structuredClone(f.run);
+      }
       export async function claimAutomationRun(){
         const f=globalThis.${key};if(f.run.status!=='queued')return null;
         f.run.status='running';return structuredClone(f.run);
@@ -57,10 +64,18 @@ async function compile() {
       export async function updateAutomationRun(args){
         const f=globalThis.${key};
         if(args.phase==='importing_sources'&&args.result?.sourceFailures&&f.failImportReceipt)throw Error('import receipt unconfirmed');
-        if(args.phase==='dispatching_candidates'&&++f.receiptWrites===f.failReceiptWrite)
-          throw Error('receipt write unconfirmed');
+        let receiptFault;
+        if(args.phase==='dispatching_candidates'){
+          ++f.receiptWrites;
+          if(f.receiptWrites===f.failReceiptWrite)throw Error('receipt write unconfirmed');
+          receiptFault=f.receiptFaults?.[f.receiptWrites];
+          if(receiptFault==='advanced')f.run.result.concurrentReceipt='keep';
+          if(receiptFault==='before'||receiptFault==='advanced')throw new AutomationError('database_unavailable');
+        }
         f.runUpdates.push(structuredClone(args));
         f.run={...f.run,...structuredClone(args),status:args.status??f.run.status};
+        if(args.status && args.status!=='running')Object.assign(f.run,{lease_token:null,lease_until:null,finished_at:new Date().toISOString()});
+        if(receiptFault==='after')throw new AutomationError('commit_unknown');
         return structuredClone(f.run);
       }
     `,
@@ -80,8 +95,9 @@ async function compile() {
         }
         return structuredClone(f.batches[request.batchId]);
       }
-      export async function runImportItem(_owner,batchId,itemId){
+      export async function runImportItem(_owner,batchId,itemId,firstUrlAttemptOnly=false){
         const f=globalThis.${key};f.imports.push(itemId);
+        if(firstUrlAttemptOnly)f.firstClaims.push({batchId,itemId,parentStatus:f.run.status});
         const index=f.importAttempts[itemId]??0;f.importAttempts[itemId]=index+1;
         const plan=f.importOutcomes[itemId];
         const outcome=plan?.[Math.min(index,plan.length-1)];
@@ -181,6 +197,7 @@ async function setup(t, options = {}) {
       url: `https://example.com/article-${index}`,
     })),
     imports: [],
+    firstClaims: [],
     importAttempts: {},
     importOutcomes: {},
     importRequests: [],
@@ -233,6 +250,46 @@ function withSourceAlternative() {
     },
   };
 }
+
+test('after a parent interruption, parse untouched original URLs without starting new AI work', async (t) => {
+  const { state: f, execute } = await setup(t, {
+    count: 4,
+    itemStatuses: ['completed', 'completed', 'queued', 'queued'],
+    failCreate: 2,
+    importOutcomes: { [uuid(5)]: [{ status: 'completed' }], [uuid(6)]: [{ status: 'completed' }] },
+  });
+  assert.equal(await execute(), 'failed');
+  assert.deepEqual(
+    f.firstClaims,
+    [uuid(5), uuid(6)].map((itemId) => ({
+      batchId: f.batchId,
+      itemId,
+      parentStatus: 'unknown',
+    })),
+  );
+  assert.equal(f.discoveries, 1);
+  assert.equal(f.creates.length, 2);
+  assert.equal(f.dispatches.length, 1);
+  assert.equal(f.importCreateRequests.length, 1);
+  assert.equal(await execute(), 'already_started_or_finished');
+  assert.equal(f.firstClaims.length, 2);
+});
+
+test('recovery stops on a budget refusal and leaves the rest available for manual recovery', async (t) => {
+  const { state: f, execute } = await setup(t, {
+    count: 3,
+    itemStatuses: ['completed', 'queued', 'queued'],
+    failCreate: 1,
+    importOutcomes: { [uuid(4)]: [{ admission: 'budget_exceeded' }] },
+  });
+  assert.equal(await execute(), 'failed');
+  assert.deepEqual(
+    f.firstClaims.map((row) => row.itemId),
+    [uuid(4)],
+  );
+  assert.equal(f.items[2].status, 'queued');
+  assert.equal(f.dispatches.length, 0);
+});
 
 test('typed worker admission waits durably and dispatches a recovered source exactly once', async (t) => {
   const { state: f, execute } = await setup(t, {
@@ -553,6 +610,51 @@ test('a lost parent receipt write does not strand an acknowledged child queue', 
   assert.deepEqual(f.dispatches, [[owner, f.creates[0].id, queuedAt]]);
   assert.deepEqual(f.run.result.generationIds, [f.creates[0].id]);
 });
+
+for (const fault of ['before', 'after', 'read']) {
+  test(`dispatch checkpoint recovers a transient storage error (${fault}) without repeating billable work`, async (t) => {
+    const { state: f, execute } = await setup(t, {
+      count: 5,
+      itemStatuses: Array(5).fill('queued'),
+      importOutcomes: Object.fromEntries(
+        Array.from({ length: 5 }, (_, i) => [uuid(3 + i), [{ status: 'completed' }]]),
+      ),
+      receiptFaults: { 2: fault },
+      failCheckpointRead: fault === 'read',
+    });
+    assert.equal(await execute(), 'completed');
+    assert.equal(f.discoveries, 1);
+    assert.deepEqual(
+      f.imports,
+      f.items.map((item) => item.id),
+    );
+    assert.deepEqual(
+      f.creates.map((request) => request.itemId),
+      f.imports,
+    );
+    assert.deepEqual(
+      f.dispatches,
+      f.creates.map((request) => [owner, request.id, queuedAt]),
+    );
+    assert.equal(f.receiptWrites, fault === 'before' ? 8 : 7);
+    assert.equal(f.run.result.queuedSources.length, 5);
+  });
+}
+
+for (const [reason, receiptFaults] of [
+  ['repeated storage error', { 1: 'before', 2: 'before' }],
+  ['newer saved receipt', { 1: 'advanced' }],
+]) {
+  test(`dispatch checkpoint stops safely for a ${reason}`, async (t) => {
+    const { state: f, execute } = await setup(t, { receiptFaults });
+    assert.equal(await execute(), 'failed');
+    assert.equal(f.receiptWrites, Object.keys(receiptFaults).length);
+    assert.equal(f.discoveries, 1);
+    assert.equal(f.creates.length, 1);
+    assert.deepEqual(f.dispatches, [[owner, f.creates[0].id, queuedAt]]);
+    if (reason === 'newer saved receipt') assert.equal(f.run.result.concurrentReceipt, 'keep');
+  });
+}
 
 for (const failCleanup of [false, true]) {
   test(`unknown source and dispatch failure reconcile prior children (cleanup failure=${failCleanup})`, async (t) => {

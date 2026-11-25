@@ -16,6 +16,7 @@ export interface ImportItem {
   };
   status: string;
   fence: number;
+  recovery_available?: boolean;
   duplicate_of?: string | null;
   duplicate_batch_id?: string | null;
   error_code?: string | null;
@@ -72,7 +73,12 @@ export function confirmImportDocument(
   args: ItemArgs & { document: ImportDocument; fence?: number },
 ): Promise<{ item_id: string; received: boolean }>;
 export function claimImportItem(
-  args: ItemArgs & { parserVersion: string; reserveMicrousd?: number; dailyLimitMicrousd?: number },
+  args: ItemArgs & {
+    parserVersion: string;
+    reserveMicrousd?: number;
+    dailyLimitMicrousd?: number;
+    firstUrlAttemptOnly?: boolean;
+  },
 ): Promise<{ item: ImportItem; attempt: { fence: number }; document: ImportDocument | null }>;
 export function finishImportAttempt(
   args: ItemArgs & {

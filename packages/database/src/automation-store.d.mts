@@ -107,6 +107,11 @@ export function readAutomationDashboard(input: { pool: unknown; owner: string })
   runs: AutomationRunView[];
   configDeletionAvailable: boolean;
 }>;
+export function readRecoverableAutomationImportBatches(input: {
+  pool: unknown;
+  owner: string;
+  batchIds: string[];
+}): Promise<{ runId: string; batchId: string; itemId: string | null }[]>;
 export function readAutomationRunDetail(input: {
   pool: unknown;
   owner: string;
@@ -162,6 +167,7 @@ export function updateAutomationRun(input: {
   costMicrousd?: number;
   costSource?: 'provider' | 'estimate' | 'reserve';
   expectedPhase?: string;
+  expectedResult?: Record<string, unknown>;
 }): Promise<AutomationRun>;
 export function failAutomationDispatch(input: {
   pool: unknown;

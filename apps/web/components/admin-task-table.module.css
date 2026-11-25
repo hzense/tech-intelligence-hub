@@ -131,6 +131,7 @@
 .status[data-status='unknown']::before,
 .status[data-status='partial']::before,
 .status[data-status='outcome_unknown']::before,
+.status[data-status='recovery_pending']::before,
 .status[data-status='pending']::before,
 .status[data-status='queued']::before {
   background: #a97408;

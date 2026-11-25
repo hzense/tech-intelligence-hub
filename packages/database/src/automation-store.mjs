@@ -279,6 +279,45 @@ export async function readAutomationDashboard({ pool, owner }) {
     };
   });
 }
+/** Owner-scoped parent receipts for a page of import batches. The two service
+ * roles do not have access to each other's tables. */
+export async function readRecoverableAutomationImportBatches({ pool, owner, batchIds }) {
+  owner = automationText(owner);
+  if (!Array.isArray(batchIds) || batchIds.length > 50) fail();
+  const ids = [...new Set(batchIds.map(automationUuid))];
+  if (!ids.length) return [];
+  return transaction(pool, async (client) => {
+    const { rows } = await client.query(
+      `SELECT r.id AS "runId", ref.batch_id AS "batchId", ref.item_id AS "itemId",
+        ref.primary_id AS "primaryId", ref.attempt
+       FROM public.automation_runs r
+       CROSS JOIN LATERAL (
+         SELECT COALESCE(r.result->>'batchId',left(encode(sha256(convert_to(
+           '{"runId":"' || r.id::text || '","kind":"import"}','UTF8')),'hex'),32)::uuid::text)
+           AS batch_id, NULL::text AS item_id, NULL::text AS primary_id, NULL::int AS attempt
+         UNION ALL
+         SELECT f->>'batchId', f->>'itemId', f->>'primaryItemId',
+           (row_number() OVER (PARTITION BY f->>'primaryItemId' ORDER BY ord)-1)::int
+         FROM jsonb_array_elements(CASE WHEN jsonb_typeof(r.result->'sourceFallbacks')='array'
+           THEN r.result->'sourceFallbacks' ELSE '[]'::jsonb END) WITH ORDINALITY AS receipts(f,ord)
+       ) ref
+       WHERE r.owner_id=$1 AND r.snapshot->>'kind'='source_collection'
+         AND r.status IN ('completed','failed','unknown') AND r.finished_at IS NOT NULL
+         AND r.lease_token IS NULL AND r.lease_until IS NULL AND ref.batch_id=ANY($2::text[])`,
+      [owner, ids],
+    );
+    // Recompute each identity with the same function as the creator. Fallbacks
+    // are pinned before batch creation, so a missing itemId can still identify
+    // that single-URL batch after loss of the create acknowledgement.
+    return rows.flatMap(({ runId, batchId, itemId, primaryId, attempt }) => {
+      const expected =
+        attempt === null
+          ? automationStableId({ runId, kind: 'import' })
+          : automationStableId({ runId, itemId: primaryId, kind: 'import_fallback', attempt });
+      return expected === batchId ? [{ runId, batchId, itemId }] : [];
+    });
+  });
+}
 export async function readAutomationRunDetail({ pool, owner, id }) {
   owner = automationText(owner);
   id = automationUuid(id);
@@ -656,6 +695,7 @@ export async function updateAutomationRun({
   costMicrousd,
   costSource,
   expectedPhase,
+  expectedResult,
 }) {
   automationText(owner);
   automationUuid(id);
@@ -686,8 +726,15 @@ export async function updateAutomationRun({
     // still match exactly, and missing inputs never satisfy the fence.
     const previous = (
       await client.query(
-        "SELECT snapshot,(frozen_inputs->'inputs'=$4::jsonb->'inputs') AS inputs_match FROM public.automation_runs WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' AND ($5::text IS NULL OR phase=$5) FOR UPDATE",
-        [id, owner, token, JSON.stringify(result), expectedPhase ?? null],
+        "SELECT snapshot,(frozen_inputs->'inputs'=$4::jsonb->'inputs') AS inputs_match FROM public.automation_runs WHERE id=$1 AND owner_id=$2 AND lease_token=$3 AND status='running' AND ($5::text IS NULL OR phase=$5) AND ($6::jsonb IS NULL OR result=$6::jsonb) FOR UPDATE",
+        [
+          id,
+          owner,
+          token,
+          JSON.stringify(result),
+          expectedPhase ?? null,
+          expectedResult === undefined ? null : JSON.stringify(expectedResult),
+        ],
       )
     ).rows[0];
     if (!previous) fail('stale_attempt');

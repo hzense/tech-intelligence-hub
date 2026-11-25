@@ -352,6 +352,7 @@ export async function claimImportItem({
   parserVersion,
   reserveMicrousd = 0,
   dailyLimitMicrousd = 0,
+  firstUrlAttemptOnly = false,
 }) {
   if (
     typeof parserVersion !== 'string' ||
@@ -364,6 +365,10 @@ export async function claimImportItem({
       i = await item(client, b.id, itemId);
     if (b.cancelled || b.deleted_at) importFail('cancelled');
     if (i.status !== 'queued' || i.fence >= 5) importFail('not_claimable');
+    // Check under the existing row locks. An explicit retry can put a previously
+    // attempted URL back in queued state between recovery lookup and claim.
+    if (firstUrlAttemptOnly && (i.kind !== 'url' || i.fence !== 0 || b.intent !== 'preview'))
+      importFail('not_claimable');
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtextextended('import:worker-capacity',0))",
     );
