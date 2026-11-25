@@ -888,14 +888,17 @@ export function AdminSignalGeneration({
         disabled={!historyConfigured || busy}
         onClick={() =>
           void perform(async () => {
-            const refreshed: ListResponse = await requestApi();
-            setData(refreshed);
-            setListRevision((value) => value + 1);
-            setDetail((previous) =>
-              previous ? (refreshed.runs.find((run) => run.id === previous.id) ?? null) : null,
-            );
-            setConsent(false);
-            setMessage('列表已刷新；未调用 AI。');
+            try {
+              const refreshed: ListResponse = await requestApi();
+              setData(refreshed);
+              setDetail((previous) =>
+                previous ? (refreshed.runs.find((run) => run.id === previous.id) ?? null) : null,
+              );
+              setConsent(false);
+              setMessage('列表已刷新；未调用 AI。');
+            } finally {
+              setListRevision((value) => value + 1);
+            }
           }, true)
         }
       >

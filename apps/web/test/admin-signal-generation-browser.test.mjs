@@ -493,6 +493,12 @@ test(
           unpublishedTotal = 0;
           await refresh.click();
           await expect(link).toHaveAccessibleName(/只看未发布\s*0 条/);
+          await page.route(origin + '/api/admin/signal-generation', (route) =>
+            route.fulfill({ status: 503, json: { error: 'unavailable' } }),
+          );
+          unpublishedTotal = 17;
+          await refresh.click();
+          await expect(link).toHaveAccessibleName(/只看未发布\s*17 条/);
           unpublishedTotal = null;
           const failure = page.waitForResponse(
             (response) =>
