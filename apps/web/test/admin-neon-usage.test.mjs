@@ -120,7 +120,7 @@ test('generation statistics keep unavailable publication counts distinct from ze
   const stats = dashboard().generationStats;
   const partial = render(dashboard({ generationStats: { ...stats, publication: null } }));
   assert.match(partial, /累计生成候选<\/dt><dd>78<\/dd>/);
-  assert.match(partial, /待发布（含草稿）<\/dt><dd>待核对<\/dd>/);
+  assert.match(partial, /待发布（含草稿）<\/dt><dd><a[^>]*><span>待核对<\/span>/);
   assert.match(partial, /发布趋势暂不可用/);
   assert.doesNotMatch(partial, /每日首次发布信号折线图/);
   const empty = render(
@@ -140,7 +140,7 @@ test('generation statistics keep unavailable publication counts distinct from ze
       },
     }),
   );
-  assert.match(empty, /待发布（含草稿）<\/dt><dd>0<\/dd>/);
+  assert.match(empty, /待发布（含草稿）<\/dt><dd><a[^>]*><span>0<\/span>/);
   assert.match(empty, /近 30 天每日首次发布信号折线图，共 0 条/);
   assert.match(render(dashboard({ generationStats: null })), /生成统计暂不可用/);
   assert.match(render(dashboard({ configured: false })), /累计生成候选<\/dt><dd>78<\/dd>/);
@@ -449,9 +449,12 @@ test(
     const generation = page.getByRole('region', { name: '信号生成统计' });
     await expect(generation.getByRole('link', { name: '查看生成任务' })).toHaveAttribute(
       'href',
-      '/admin/signal-generation',
+      '/admin/signal-generation#generation-tasks',
     );
-    await expect(generation.getByText('20', { exact: true })).toBeVisible();
+    await expect(generation.getByRole('link', { name: /20\s*只看未发布/ })).toHaveAttribute(
+      'href',
+      '/admin/signal-generation/unpublished',
+    );
     const trend = generation.getByRole('region', { name: '信号发布趋势' });
     await expect(
       trend.getByRole('img', { name: /近 30 天.*共 9 条/ }).locator('circle'),

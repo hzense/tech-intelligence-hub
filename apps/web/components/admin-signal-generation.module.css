@@ -16,6 +16,33 @@
   margin-block: 2rem;
   min-width: 0;
 }
+.listHeading,
+.queueTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+.listHeading {
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+.queueLink {
+  composes: button from './admin-controls.module.css';
+  font-size: 0.875rem;
+}
+.queueCount {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .diagnostics {
   margin-block: 1rem;
 }

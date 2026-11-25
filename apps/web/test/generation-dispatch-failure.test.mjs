@@ -38,6 +38,7 @@ async function loadDispatchers() {
       export async function failQueuedGeneration(owner,id,queuedAt){return globalThis.__dispatchFailure.failQueued(owner,id,queuedAt)}
       export async function resolveQueuedGeneration(){}
       export async function generationDashboard(){}
+      export async function generationUnpublishedCount(){return 0}
       export async function generationDetail(){}
       export async function generationProgress(){}
       export async function deleteGeneration(){}

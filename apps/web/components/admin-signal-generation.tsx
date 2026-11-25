@@ -273,6 +273,10 @@ export function AdminSignalGeneration({
 }) {
   const localSimulation = localMode && !localRealAi;
   const [data, setData] = useState<ListResponse>({ runs: [], profiles: [], batches: [] });
+  const [listRevision, setListRevision] = useState(0);
+  const [unpublishedCount, setUnpublishedCount] = useState<{ key: string; total: number } | null>(
+    null,
+  );
   const [batchId, setBatchId] = useState('');
   const [itemId, setItemId] = useState('');
   const [profileId, setProfileId] = useState('');
@@ -350,6 +354,41 @@ export function AdminSignalGeneration({
     .map((run) => run.id)
     .sort()
     .join(',');
+  // Refresh the cross-task count when publication changes, not on every progress poll.
+  const countKey =
+    listRevision +
+    ':' +
+    data.runs
+      .filter((run) => run.status === 'completed')
+      .map(
+        (run) =>
+          run.id +
+          '/' +
+          (run.publication?.state === 'available'
+            ? run.publication.candidates.map((candidate) => candidate.status).join(',')
+            : '?'),
+      )
+      .sort()
+      .join('|');
+  useEffect(() => {
+    if (!historyConfigured || !listRevision) return;
+    const controller = new AbortController();
+    void fetch('/api/admin/signal-generation?view=unpublished-count', {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const total = response.ok ? (await response.json()).total : null;
+        if (!controller.signal.aborted)
+          setUnpublishedCount(
+            Number.isSafeInteger(total) && total >= 0 ? { key: countKey, total } : null,
+          );
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setUnpublishedCount(null);
+      });
+    return () => controller.abort();
+  }, [historyConfigured, listRevision, countKey]);
   const [pollError, setPollError] = useState(false);
 
   useEffect(() => {
@@ -455,6 +494,9 @@ export function AdminSignalGeneration({
       })
       .catch(() => {
         if (active) setMessage('列表读取失败。请手动刷新；不会自动调用 AI。');
+      })
+      .finally(() => {
+        if (active) setListRevision((value) => value + 1);
       });
     return () => {
       active = false;
@@ -761,13 +803,6 @@ export function AdminSignalGeneration({
       <h1>
         {localSimulation ? '本地信号生成联调' : localMode ? '本地真实 AI 信号生成' : 'AI 信号生成'}
       </h1>
-      <Link
-        className={controls.button}
-        href="/admin/signal-generation/unpublished"
-        prefetch={false}
-      >
-        只看未发布
-      </Link>
       {localMode && localRealAi ? (
         <p role="status">
           本地真实
@@ -853,13 +888,17 @@ export function AdminSignalGeneration({
         disabled={!historyConfigured || busy}
         onClick={() =>
           void perform(async () => {
-            const refreshed: ListResponse = await requestApi();
-            setData(refreshed);
-            setDetail((previous) =>
-              previous ? (refreshed.runs.find((run) => run.id === previous.id) ?? null) : null,
-            );
-            setConsent(false);
-            setMessage('列表已刷新；未调用 AI。');
+            try {
+              const refreshed: ListResponse = await requestApi();
+              setData(refreshed);
+              setDetail((previous) =>
+                previous ? (refreshed.runs.find((run) => run.id === previous.id) ?? null) : null,
+              );
+              setConsent(false);
+              setMessage('列表已刷新；未调用 AI。');
+            } finally {
+              setListRevision((value) => value + 1);
+            }
           }, true)
         }
       >
@@ -1081,11 +1120,24 @@ export function AdminSignalGeneration({
       </p>
       <section
         ref={taskListRef}
+        id="generation-tasks"
         tabIndex={-1}
         className={styles.taskSection}
         aria-label="生成任务列表"
       >
-        <h2>生成任务</h2>
+        <div className={styles.listHeading}>
+          <h2>生成任务</h2>
+          <Link
+            className={styles.queueLink}
+            href="/admin/signal-generation/unpublished"
+            prefetch={false}
+          >
+            只看未发布
+            <span className={styles.queueCount}>
+              {unpublishedCount?.key === countKey ? `${unpublishedCount.total} 条` : '待核对'}
+            </span>
+          </Link>
+        </div>
         <TaskListToolbar
           label="生成任务"
           list={taskList}

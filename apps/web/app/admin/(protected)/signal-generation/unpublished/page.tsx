@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import controls from '@/components/admin-controls.module.css';
 import table from '@/components/admin-task-table.module.css';
+import generation from '@/components/admin-signal-generation.module.css';
 import { requireAdminSession } from '@/lib/server/admin-auth';
 import { editorialPool } from '@/lib/server/editorial-database';
 import { generationHistoryPool } from '@/lib/server/generation-database';
-import { readUnpublishedCandidates } from '@/lib/signal-generation-stats';
+import { readUnpublishedCandidates, unpublishedPageSize } from '@/lib/signal-generation-stats';
 
 export const metadata: Metadata = {
   title: '未发布候选信号',
@@ -29,18 +31,33 @@ export default async function UnpublishedCandidatesPage({
     editorialPool,
     page,
   ).catch(() => null);
+  const pages = result ? Math.max(1, Math.ceil(result.total / unpublishedPageSize)) : 1;
+  if (result && page > pages) redirect(pages === 1 ? path : `${path}?page=${pages}`);
+  const offset = (page - 1) * unpublishedPageSize;
   return (
     <main className="section-shell">
-      <Link className={controls.button} href="/admin/signal-generation" prefetch={false}>
+      <Link
+        className={controls.button}
+        href="/admin/signal-generation#generation-tasks"
+        prefetch={false}
+      >
         返回生成任务
       </Link>
-      <h1>未发布候选信号</h1>
+      <div className={generation.queueTitle}>
+        <h1>未发布候选信号</h1>
+        <span className={generation.queueCount}>
+          {result ? `共 ${result.total} 条` : '数量待核对'}
+        </span>
+      </div>
       {!result ? (
         <p role="alert">暂时无法核对发布状态，请刷新重试。</p>
       ) : result.candidates.length > 0 ? (
         <div className={table.scroll} role="region" aria-label="未发布候选表格" tabIndex={0}>
           <table className={table.table}>
-            <caption>当前管理员的未发布候选，按生成完成时间从新到旧排列。</caption>
+            <caption>
+              第 {offset + 1}–{offset + result.candidates.length}{' '}
+              条，按生成完成时间从新到旧排列（含草稿）。
+            </caption>
             <thead>
               <tr>
                 <th scope="col">信号标题</th>
@@ -72,17 +89,19 @@ export default async function UnpublishedCandidatesPage({
           </table>
         </div>
       ) : (
-        <p>{page === 1 ? '当前没有待发布的候选信号。' : '本页已无待发布候选。'}</p>
+        <p>当前没有待发布的候选信号。</p>
       )}
-      {result && (page > 1 || result.hasNext) && (
+      {result && pages > 1 && (
         <nav className={controls.group} aria-label="未发布候选分页">
           {page > 1 && (
             <Link className={controls.button} prefetch={false} href={`${path}?page=${page - 1}`}>
               上一页
             </Link>
           )}
-          <span>第 {page} 页</span>
-          {result.hasNext && (
+          <span>
+            第 {page} / {pages} 页
+          </span>
+          {page < pages && (
             <Link className={controls.button} prefetch={false} href={`${path}?page=${page + 1}`}>
               下一页
             </Link>

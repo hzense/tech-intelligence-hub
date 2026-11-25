@@ -70,6 +70,7 @@ test(
     let profileWarnings = [];
     let mismatchedCreate = false;
     let dashboardRequests = 0;
+    let unpublishedTotal = 0;
     let automaticPublicationEnabled = false;
     let detailRequestMethods = [];
     let progressRequests = [];
@@ -106,6 +107,19 @@ test(
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = preflightStatus;
         res.end(JSON.stringify(preflightResponse));
+        return;
+      }
+      if (
+        req.url === '/api/admin/signal-generation?view=unpublished-count' &&
+        req.method === 'GET'
+      ) {
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = unpublishedTotal === null ? 503 : 200;
+        res.end(
+          JSON.stringify(
+            unpublishedTotal === null ? { error: 'unavailable' } : { total: unpublishedTotal },
+          ),
+        );
         return;
       }
       if (req.url.startsWith('/api/admin/signal-generation?id=')) {
@@ -382,6 +396,7 @@ test(
       profileWarnings = [];
       mismatchedCreate = false;
       dashboardRequests = 0;
+      unpublishedTotal = 0;
       automaticPublicationEnabled = false;
       detailRequestMethods = [];
       progressRequests = [];
@@ -450,6 +465,54 @@ test(
         },
       };
     }
+
+    await t.test(
+      'the task list links to all unpublished candidates with an owner-wide count',
+      async () => {
+        const page = await newPage();
+        try {
+          unpublishedTotal = 52;
+          await page.goto(origin);
+          const region = page.getByRole('region', { name: '生成任务列表', exact: true });
+          const link = region.getByRole('link', { name: /只看未发布/ });
+          await expect(link).toHaveAccessibleName(/只看未发布\s*52 条/);
+          await expect(link).toHaveAttribute('href', '/admin/signal-generation/unpublished');
+          await expect(page.getByRole('link', { name: /只看未发布/ })).toHaveCount(1);
+          for (const width of [1280, 375]) {
+            await page.setViewportSize({ width, height: 800 });
+            const rect = await link.boundingBox();
+            const heading = await region
+              .getByRole('heading', { name: '生成任务', exact: true })
+              .boundingBox();
+            assert.ok(rect.x >= heading.x + heading.width && rect.x + rect.width <= width);
+            assert.ok(heading.y < rect.y + rect.height && rect.y < heading.y + heading.height);
+          }
+          await link.focus();
+          await expect(link).toBeFocused();
+          const refresh = page.getByRole('button', { name: '手动刷新列表' });
+          unpublishedTotal = 0;
+          await refresh.click();
+          await expect(link).toHaveAccessibleName(/只看未发布\s*0 条/);
+          await page.route(origin + '/api/admin/signal-generation', (route) =>
+            route.fulfill({ status: 503, json: { error: 'unavailable' } }),
+          );
+          unpublishedTotal = 17;
+          await refresh.click();
+          await expect(link).toHaveAccessibleName(/只看未发布\s*17 条/);
+          unpublishedTotal = null;
+          const failure = page.waitForResponse(
+            (response) =>
+              response.url().endsWith('?view=unpublished-count') && response.status() === 503,
+          );
+          await refresh.click();
+          await failure;
+          await expect(link).toHaveAccessibleName(/只看未发布\s*待核对/);
+          assert.deepEqual(commands, []);
+        } finally {
+          await page.close();
+        }
+      },
+    );
 
     await t.test(
       'new-task authorization reflects automatic publication without authorizing simulated output',

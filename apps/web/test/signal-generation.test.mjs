@@ -1836,6 +1836,38 @@ test('generation API denies anonymous, cross-site, host spoofing and client sour
   assert.match(good.headers.get('cache-control'), /no-store/);
   assert.equal(called, 1);
 });
+test('unpublished totals require an admin session and report failed reads separately from zero', async () => {
+  const get = () =>
+    new Request('https://hzense.com/api/admin/signal-generation?view=unpublished-count', {
+      headers: { host: 'hzense.com' },
+    });
+  const deps = {
+    origin: () => 'https://hzense.com',
+    session: async () => ({ user: { id: 'current-owner' } }),
+    unpublishedCount: async (owner) => {
+      assert.equal(owner, 'current-owner');
+      return 0;
+    },
+    dashboard: assert.fail,
+    execute: assert.fail,
+  };
+  const ok = await createGenerationHandler(deps)(get());
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { total: 0 });
+  assert.equal(
+    (await createGenerationHandler({ ...deps, session: async () => null })(get())).status,
+    401,
+  );
+  const failed = await createGenerationHandler({
+    ...deps,
+    unpublishedCount: async () => {
+      throw Error('private diagnostic');
+    },
+  })(get());
+  assert.equal(failed.status, 503);
+  assert.deepEqual(await failed.json(), { error: 'unavailable' });
+});
+
 test('run returns 202 after dispatch only and read-only progress never executes a task', async () => {
   const id = randomUUID();
   let dispatched = 0,
