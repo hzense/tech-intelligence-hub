@@ -38,6 +38,8 @@ test(
     const globals = await readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
     assets.set('/globals.css', globals.replace(/^@import\s+['"]tailwindcss['"];\s*/m, ''));
     let batches = [];
+    let resumeRefusal;
+    let resumeOutcome = 'completed';
     const commands = [];
     const server = createServer(async (req, res) => {
       if (assets.has(req.url)) {
@@ -102,6 +104,22 @@ test(
           batches[0].status = 'completed';
           batches[0].items[0].status = 'completed';
           res.end('{}');
+          return;
+        }
+        if (value.action === 'resume') {
+          if (resumeRefusal) {
+            res.statusCode = 409;
+            res.end(JSON.stringify({ error: resumeRefusal }));
+            return;
+          }
+          const batch = batches.find((entry) => entry.id === value.batchId);
+          const item = batch.items.find((entry) => entry.id === value.itemId);
+          assert.equal(item.recovery_available, true);
+          item.status = resumeOutcome;
+          delete item.recovery_available;
+          if (batch.items.every((entry) => entry.status === 'completed'))
+            batch.status = 'completed';
+          res.end(JSON.stringify({ status: item.status }));
           return;
         }
         if (value.action === 'output') {
@@ -590,6 +608,72 @@ test(
       page.getByText('导入服务未就绪，暂不能读取原批次。请先完成配置，不会自动执行任何任务。'),
     ).toBeVisible();
     assert.equal(commands.length, beforeInvalid);
+    const recoverable = {
+      ...failedBatch,
+      status: 'queued',
+      items: failedBatch.items.map((item) => ({
+        ...item,
+        status: 'queued',
+        recovery_available: true,
+      })),
+    };
+    batches = [recoverable, batches.find((batch) => batch.id === 'newer-batch-1')];
+    await page.goto(origin);
+    await expect(loadedRows()).toHaveCount(2);
+    await filter.selectOption('recovery_pending');
+    await expect(loadedRows()).toHaveCount(1);
+    await expect(loadedRows()).toContainText('2 项待恢复');
+    await loadedRows()
+      .getByRole('button', { name: /任务详情/ })
+      .click();
+    const itemRows = sortable.getByRole('table').getByRole('row');
+    const resumeName = '续接解析（使用导入预算）';
+    const firstResume = itemRows.nth(1).getByRole('button', { name: resumeName });
+    await expect(firstResume).toBeVisible();
+    await expect(
+      itemRows.nth(1).getByRole('button', { name: '处理（使用已配置预算）' }),
+    ).toHaveCount(0);
+    const beforeResume = commands.length;
+    resumeRefusal = 'worker_busy';
+    await firstResume.click();
+    await expect(page.getByText('其他资料正在解析，请稍后刷新。')).toBeVisible();
+    await expect(firstResume).toBeEnabled();
+    resumeRefusal = undefined;
+    await firstResume.click();
+    await expect(loadedRows()).toContainText('1 项待恢复');
+    await expect(itemRows.nth(1)).toContainText('解析完成');
+    await page.goto(`${origin}/?batchId=${recoveryId}`);
+    await expect(recovery.getByText('采集任务已结束，这份资料尚未开始解析。')).toBeVisible();
+    await recovery.getByRole('button', { name: resumeName }).click();
+    await expect(recovery.getByText('原资料已解析完成。')).toBeVisible();
+    await expect(recovery.getByRole('button', { name: resumeName })).toHaveCount(0);
+    await expect(recovery.getByRole('link', { name: '前往生成页选择资料' })).toHaveCount(2);
+    assert.deepEqual(
+      commands.slice(beforeResume).filter((cmd) => cmd.action !== 'detail'),
+      [recoverable.items[0], recoverable.items[0], recoverable.items[1]].map((item) => ({
+        action: 'resume',
+        batchId: recoveryId,
+        itemId: item.id,
+      })),
+    );
+    for (const [outcome, label] of [
+      ['failed', '失败'],
+      ['unknown', '结果未知，待对账'],
+    ]) {
+      resumeOutcome = outcome;
+      batches = [
+        {
+          ...recoverable,
+          status: 'queued',
+          items: [{ ...recoverable.items[0], status: 'queued', recovery_available: true }],
+        },
+      ];
+      await page.reload();
+      await recovery.getByRole('button', { name: resumeName }).click();
+      await expect(recovery.getByText(`已核对原资料，当前状态为${label}。`)).toBeVisible();
+      await expect(recovery.getByRole('button', { name: resumeName })).toHaveCount(0);
+      await expect(recovery.getByRole('link', { name: '前往生成页选择资料' })).toHaveCount(0);
+    }
     assert.deepEqual(errors, []);
   },
 );

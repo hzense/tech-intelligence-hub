@@ -395,6 +395,31 @@ suite('private import PostgreSQL persistence', () => {
     expect(result.classification).toBe('private');
     expect(result.fragments[0].locator.paragraph).toBe(1);
   });
+  it('claims an untouched preview URL once for recovery, never a file or an explicitly retried URL', async () => {
+    const file = await ready();
+    const claim = (b) =>
+      claimImportItem({ ...args(b), parserVersion: 'text/v1', firstUrlAttemptOnly: true });
+    await expect(claim(file)).rejects.toMatchObject({ code: 'not_claimable' });
+    const b = await created({
+      request: {
+        id: randomUUID(),
+        intent: 'preview',
+        manifest: { urlLines: 'https://example.com/original' },
+      },
+    });
+    const claims = await Promise.allSettled([claim(b), claim(b)]);
+    expect(claims.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    await finishImportAttempt({
+      ...args(b),
+      fence: 1,
+      outcome: 'failed',
+      errorCode: 'fetch_failed',
+    });
+    await retryImportItem(args(b));
+    await expect(claim(b)).rejects.toMatchObject({ code: 'not_claimable' });
+    const row = (await getImportBatch({ pool, owner, id: b.id })).items[0];
+    expect(row).toMatchObject({ id: b.items[0].id, status: 'queued', fence: 1 });
+  });
   it('cancel invalidates running work without deleting completed evidence', async () => {
     const b = await ready();
     await claimImportItem({ ...args(b), parserVersion: 'text/v1' });

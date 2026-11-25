@@ -5,6 +5,9 @@ import { get, head, put, del, BlobNotFoundError } from '@vercel/blob';
 import { Sandbox } from '@vercel/sandbox';
 import { importParserSource } from '../../../../packages/ingestion/src/import-parser-source.mjs';
 import * as store from '../../../../packages/database/src/import-store.mjs';
+import { readRecoverableAutomationImportBatches } from '../../../../packages/database/src/automation-store.mjs';
+import { automationConfigPool } from './automation-store-access';
+import { markRecoverableImports, matchesRecoveryReceipt } from '../import-resume';
 import { assertImportRole } from '../../../../packages/database/src/import-role.mjs';
 import {
   importFail,
@@ -251,7 +254,12 @@ async function parseIsolated(bytes: Buffer, format: string) {
   }
 }
 /** One durable item per invocation. No local timer or fire-and-forget background work. */
-export async function runImportItem(owner: string, batchId: string, itemId: string) {
+export async function runImportItem(
+  owner: string,
+  batchId: string,
+  itemId: string,
+  firstUrlAttemptOnly = false,
+) {
   const config = importConfig();
   const args = {
     pool: importPool,
@@ -260,10 +268,11 @@ export async function runImportItem(owner: string, batchId: string, itemId: stri
     itemId: importUuid(itemId),
   };
   return runImportProcessing(key(batchId, itemId), config.reserve, {
-    expire: () => store.expireImportAttempt(args),
+    expire: () => (firstUrlAttemptOnly ? Promise.resolve() : store.expireImportAttempt(args)),
     claim: () =>
       store.claimImportItem({
         ...args,
+        firstUrlAttemptOnly,
         parserVersion: parserVersion(config.parserIdentity),
         reserveMicrousd: config.reserve,
         dailyLimitMicrousd: config.daily,
@@ -293,20 +302,41 @@ export async function runImportItem(owner: string, batchId: string, itemId: stri
           }),
   });
 }
-export async function executeImportAdmin(owner: string, method: string, body: unknown) {
+async function annotateRecovery(owner: string, batches: store.ImportBatch[]) {
+  return markRecoverableImports(batches, async (batchIds) => {
+    if (!process.env.HZENSE_AUTOMATION_DATABASE_URL) return [];
+    try {
+      return await readRecoverableAutomationImportBatches({
+        pool: automationConfigPool,
+        owner,
+        batchIds,
+      });
+    } catch {
+      // The import list remains usable if the separate automation store is offline.
+      console.warn('import_recovery_lookup_unavailable');
+      return [];
+    }
+  });
+}
+
+export async function executeImportAdmin(
+  owner: string,
+  method: string,
+  body: unknown,
+  includeRecovery = false,
+) {
   if (method === 'GET') {
     const before =
       body && typeof body === 'object' && 'before' in body ? importUuid(body.before) : undefined;
     const view = body && typeof body === 'object' && 'view' in body ? body.view : 'all';
     if (view !== 'all' && view !== 'current' && view !== 'history') importFail();
-    return {
-      batches: await store.listImportBatches({
-        pool: importPool,
-        owner,
-        view,
-        ...(before === undefined ? {} : { before }),
-      }),
-    };
+    const batches = await store.listImportBatches({
+      pool: importPool,
+      owner,
+      view,
+      ...(before === undefined ? {} : { before }),
+    });
+    return { batches: includeRecovery ? await annotateRecovery(owner, batches) : batches };
   }
   if (!body || typeof body !== 'object' || Array.isArray(body)) importFail();
   const value = body as Record<string, unknown>;
@@ -329,7 +359,7 @@ export async function executeImportAdmin(owner: string, method: string, body: un
   if (value.action === 'detail') {
     const batch = await store.getImportBatch({ pool: importPool, owner, id: batchId });
     if (batch.deleted_at) importFail('not_found');
-    return batch;
+    return includeRecovery ? (await annotateRecovery(owner, [batch]))[0]! : batch;
   }
   if (value.action === 'delete') {
     return cleanCancelledImportOriginals(batchId, {
@@ -349,6 +379,15 @@ export async function executeImportAdmin(owner: string, method: string, body: un
   }
   const itemId = importUuid(value.itemId),
     args = { pool: importPool, owner, batchId, itemId };
+  if (value.action === 'resume') {
+    const receipts = await readRecoverableAutomationImportBatches({
+      pool: automationConfigPool,
+      owner,
+      batchIds: [batchId],
+    });
+    if (!matchesRecoveryReceipt(receipts, batchId, itemId)) importFail('not_claimable');
+    return runImportItem(owner, batchId, itemId, true);
+  }
   if (value.action === 'confirm') return confirmImportUpload(owner, batchId, itemId);
   if (value.action === 'retry')
     return retryImportWithSourceCheck(itemId, {

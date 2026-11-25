@@ -6,6 +6,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { validateConnectionTarget } from '../src/connection-policy.mjs';
 import { assertAutomationRole } from '../src/automation-role.mjs';
+import { automationStableId } from '../src/automation-contract.mjs';
 import {
   AutomationError,
   AutomationBudgetError,
@@ -20,6 +21,7 @@ import {
   readAutomationRun,
   readAutomationDashboard,
   readAutomationRunDetail,
+  readRecoverableAutomationImportBatches,
   deleteAutomationConfig,
   enqueueDueAutomations,
   publishAutomationInsight,
@@ -309,6 +311,57 @@ suite('automation role isolation and publication boundary', () => {
     );
     await owner.query('REVOKE SELECT(id) ON public.automation_runs FROM hzense_insight_reader');
     await assertAutomationRole(readerRole, 'reader');
+  });
+  it('links only original import batches owned by a finished, unleased source run', async () => {
+    const operator = 'import-recovery';
+    const config = await save(operator);
+    const runId = randomUUID();
+    const primary = automationStableId({ runId, kind: 'import' });
+    const primaryItemId = randomUUID();
+    const fallback = (attempt) =>
+      automationStableId({ runId, itemId: primaryItemId, kind: 'import_fallback', attempt });
+    const itemId = randomUUID();
+    const foreign = randomUUID();
+    const result = {
+      sourceFallbacks: [
+        { primaryItemId, batchId: fallback(0), itemId },
+        { primaryItemId, batchId: fallback(1) },
+        { primaryItemId, batchId: foreign, itemId },
+      ],
+    };
+    const batchIds = [primary, fallback(0), fallback(1), foreign];
+    const lookup = (ownerId = operator) =>
+      readRecoverableAutomationImportBatches({ pool, owner: ownerId, batchIds });
+    await owner.query(
+      `INSERT INTO public.automation_runs
+        (id,config_id,owner_id,config_revision,snapshot,slot,trigger,status,phase,result,finished_at)
+       VALUES ($1,$2,$3,1,$4,'daily:fixture','scheduled','unknown','source_failed',$5,now())`,
+      [runId, config.id, operator, config.config, result],
+    );
+    // Early versions and lost batch-create acknowledgements may not have result.batchId.
+    const expected = [
+      { runId, batchId: primary, itemId: null },
+      { runId, batchId: fallback(0), itemId },
+      { runId, batchId: fallback(1), itemId: null },
+    ];
+    expect((await lookup()).sort((a, b) => a.batchId.localeCompare(b.batchId))).toEqual(
+      expected.sort((a, b) => a.batchId.localeCompare(b.batchId)),
+    );
+    expect(await lookup('another-operator')).toEqual([]);
+    for (const change of [
+      "status='running'",
+      "status='queued'",
+      "status='cancelled'",
+      "status='unknown',lease_token=gen_random_uuid()",
+      'lease_token=NULL,lease_until=now()',
+      'lease_until=NULL,finished_at=NULL',
+      `finished_at=now(),snapshot='{"kind":"topic_insight"}'`,
+    ]) {
+      await owner.query(`UPDATE public.automation_runs SET ${change} WHERE id=$1`, [runId]);
+      expect(await lookup()).toEqual([]);
+    }
+    await owner.query('DELETE FROM public.automation_runs WHERE id=$1', [runId]);
+    await owner.query('DELETE FROM public.automation_configs WHERE id=$1', [config.id]);
   });
   it('completes after JSONB reorders frozen evidence and publishes only after confirmation', async () => {
     await withTopicFixture(async (attempt) => {
@@ -1056,6 +1109,31 @@ suite('automation role isolation and publication boundary', () => {
         }),
       ).rejects.toThrow('stale_attempt');
       expect(await readAutomationRun({ pool, ...task })).toEqual(before);
+    });
+  });
+  it('rejects a delayed dispatch checkpoint after another receipt in the same phase', async () => {
+    await withBudgetFixture(async ({ queue }) => {
+      const task = await queue({ discovery: true });
+      const run = await claimAutomationRun({ pool, ...task });
+      const target = { pool, ...task, token: run.lease_token, phase: 'dispatching_candidates' };
+      const initial = { batchId: randomUUID(), generationIds: [] };
+      const first = { ...initial, generationIds: [randomUUID()] };
+      await updateAutomationRun({ ...target, result: initial });
+      await updateAutomationRun({
+        ...target,
+        expectedPhase: target.phase,
+        expectedResult: { generationIds: [], batchId: initial.batchId },
+        result: first,
+      });
+      await expect(
+        updateAutomationRun({
+          ...target,
+          expectedPhase: target.phase,
+          expectedResult: initial,
+          result: { ...initial, failed: 1 },
+        }),
+      ).rejects.toThrow('stale_attempt');
+      expect((await readAutomationRun({ pool, ...task })).result).toEqual(first);
     });
   });
   it('settles a genuine pre-call failure only while the task is still preparing', async () => {

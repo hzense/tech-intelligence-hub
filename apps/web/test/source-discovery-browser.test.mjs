@@ -703,9 +703,10 @@ test(
       await page.getByText('查看来源处理失败原因（脱敏）', { exact: true }).click();
       await expect(page.getByText('HTTP 403', { exact: false })).toBeVisible();
       await expect(page.getByText('must-not-display-private', { exact: false })).toHaveCount(0);
-      await expect(
-        page.getByRole('link', { name: /查看失败资料 \/ 导入替代来源/ }),
-      ).toHaveAttribute('href', `/admin/imports?batchId=${failedBatchId}`);
+      await expect(page.getByRole('link', { name: /处理未完成资料/ })).toHaveAttribute(
+        'href',
+        `/admin/imports?batchId=${failedBatchId}`,
+      );
       await expect(page.getByText(/原采集任务与费用保留/)).toBeVisible();
       assert.equal(posts.length, 6, 'reading a failed source creates no import or paid AI work');
 
@@ -756,7 +757,7 @@ test(
       );
       await expect(page.getByText(/此处仅记录导入尝试/)).toBeVisible();
       await expect(page.getByText(/不表示候选已生成或已发布/)).toBeVisible();
-      await expect(page.getByRole('link', { name: /查看失败资料 \/ 导入替代来源/ })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: /处理未完成资料/ })).toHaveCount(0);
       await expect(page.getByText(/原采集任务与费用保留/)).toHaveCount(0);
       await page.getByText('查看来源处理失败原因（脱敏）', { exact: true }).click();
       await expect(page.getByText('HTTP 403', { exact: false })).toBeVisible();
@@ -774,7 +775,7 @@ test(
       run.phase = 'source_failed';
       await page.getByRole('button', { name: '刷新列表', exact: true }).click();
       await readDetails();
-      await expect(page.getByRole('link', { name: /查看失败资料 \/ 导入替代来源/ })).toBeVisible();
+      await expect(page.getByRole('link', { name: /处理未完成资料/ })).toBeVisible();
       await expect(page.getByText(/原采集任务与费用保留/)).toBeVisible();
       delete run.result.sourceFallbacks;
       delete run.result.sourceFailures;

@@ -7,6 +7,6 @@ export const maxDuration = 240;
 export const GET = createImportAdminHandler({
   session: getAdminSession,
   origin: () => getAdminOrigin() ?? undefined,
-  execute: executeImportAdmin,
+  execute: (owner, method, body) => executeImportAdmin(owner, method, body, true),
 });
 export const POST = GET;
