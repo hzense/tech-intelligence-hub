@@ -35,6 +35,7 @@ export function createGenerationHandler(deps: {
   session(): Promise<{ user: { id: string } } | null>;
   origin(): string | undefined;
   dashboard(owner: string): Promise<unknown>;
+  unpublishedCount?(owner: string): Promise<number>;
   execute(owner: string, body: unknown): Promise<unknown>;
   delete?(owner: string, id: string): Promise<unknown>;
   detail?(owner: string, id: string): Promise<unknown>;
@@ -59,6 +60,13 @@ export function createGenerationHandler(deps: {
       )
         return importResponse({ error: 'forbidden' }, 403);
       // Next reconstructs an internal URL; authority comes from actual Host and fixed auth origin.
+      if (
+        request.method === 'GET' &&
+        url.search === '?view=unpublished-count' &&
+        !url.hash &&
+        deps.unpublishedCount
+      )
+        return importResponse({ total: await deps.unpublishedCount(session.user.id) });
       if (request.method === 'GET' && url.searchParams.has('progress') && !url.hash) {
         if ([...url.searchParams.keys()].join(',') !== 'progress' || !deps.progress)
           throw new GenerationError('invalid_request');

@@ -137,7 +137,7 @@ const editorialRunStates = `
   FROM public.signal_generation_runs g
   LEFT JOIN LATERAL (
     SELECT jsonb_object_agg(candidate_index, jsonb_build_object(
-      'action', action, 'title', CASE WHEN action = 'draft' THEN content->>'title' END
+      'action', action, 'title', CASE WHEN $2::boolean AND action = 'draft' THEN content->>'title' END
     )) AS states FROM (
       SELECT DISTINCT ON (candidate_index) candidate_index, action, content
       FROM public.editorial_signal_revisions
@@ -148,7 +148,7 @@ const editorialRunStates = `
   WHERE g.owner_id = $1 AND g.status = 'completed' AND g.deleted_at IS NULL`;
 
 const pendingCandidates = `
-  SELECT g.id AS "runId", candidate.idx AS "index",
+  SELECT g.id AS "runId", candidate.idx AS "index", g.finished_at,
     coalesce(nullif(btrim(rev->>'title'), ''), candidate.title) AS title,
     coalesce(rev->>'action', 'unpublished') AS status
   FROM jsonb_each($2::jsonb) AS batch(id, states)
@@ -162,9 +162,16 @@ const pendingCandidates = `
     ORDER BY c->'index', position
   ) candidate
   CROSS JOIN LATERAL (SELECT batch.states->(candidate.idx::text) AS rev) editorial
-  WHERE g.result->>'classification' = 'private' AND (rev IS NULL OR rev->>'action' = 'draft')
-  ORDER BY g.finished_at DESC NULLS LAST, g.id DESC, candidate.idx
-  LIMIT $3 OFFSET $4`;
+  WHERE g.result->>'classification' = 'private' AND (rev IS NULL OR rev->>'action' = 'draft')`;
+
+const newestFirst = 'finished_at DESC NULLS LAST, "runId" DESC, "index"';
+const pendingPage = `
+  WITH pending AS MATERIALIZED (${pendingCandidates}), visible AS (
+    SELECT * FROM pending ORDER BY ${newestFirst} LIMIT $3 OFFSET $4
+  )
+  SELECT (SELECT count(*)::int FROM pending) AS total,
+    coalesce(jsonb_agg(to_jsonb(visible) - 'finished_at' ORDER BY ${newestFirst}), '[]') AS candidates
+  FROM visible`;
 
 export type UnpublishedCandidate = {
   runId: string;
@@ -179,21 +186,24 @@ export async function readUnpublishedCandidates(
   owner: string,
   generationPool: ReadPool,
   editorialPool: ReadPool,
-  page: number,
+  page?: number,
 ) {
   const [snapshot] = await readRows<{ states: string | null }>(editorialPool, editorialRunStates, [
     owner,
+    page !== undefined,
   ]);
   if (!snapshot) throw new Error('publication_state_unavailable');
-  if (!snapshot.states) return { candidates: [], hasNext: false };
-  const rows = await readRows<UnpublishedCandidate>(generationPool, pendingCandidates, [
-    owner,
-    snapshot.states,
-    unpublishedPageSize + 1,
-    (page - 1) * unpublishedPageSize,
-  ]);
-  return {
-    candidates: rows.slice(0, unpublishedPageSize),
-    hasNext: rows.length > unpublishedPageSize,
-  };
+  if (!snapshot.states) return { candidates: [], total: 0 };
+  // The badge needs only a scalar. Paginated rows and their total share one snapshot.
+  const [result] = await readRows<{ candidates: UnpublishedCandidate[]; total: number }>(
+    generationPool,
+    page === undefined
+      ? `SELECT count(*)::int AS total, '[]'::json AS candidates FROM (${pendingCandidates}) pending`
+      : pendingPage,
+    page === undefined
+      ? [owner, snapshot.states]
+      : [owner, snapshot.states, unpublishedPageSize, (page - 1) * unpublishedPageSize],
+  );
+  if (!result) throw new Error('publication_state_unavailable');
+  return result;
 }

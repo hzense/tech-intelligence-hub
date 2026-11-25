@@ -390,7 +390,11 @@ test(
           const empty = await readStats();
           assert.deepEqual(await readUnpublishedCandidates(owner, pool, pool, 1), {
             candidates: [],
-            hasNext: false,
+            total: 0,
+          });
+          assert.deepEqual(await readUnpublishedCandidates(owner, pool, pool), {
+            candidates: [],
+            total: 0,
           });
           const midnight = (
             await pool.query(
@@ -489,7 +493,11 @@ test(
             { runId: id, index: 2, title: '修订后的标题', status: 'draft' },
             { runId: id, index: 3, title: '原始候选 3', status: 'unpublished' },
           ];
-          assert.deepEqual(await readPage(1), { candidates: originalPending, hasNext: false });
+          assert.deepEqual(await readPage(1), { candidates: originalPending, total: 2 });
+          assert.deepEqual(await readPage(), {
+            candidates: [],
+            total: expected.publication.pending,
+          });
           // Newer tasks fill the first page; the older pending candidates remain reachable.
           await pool.query(
             `INSERT INTO public.signal_generation_runs
@@ -505,8 +513,9 @@ test(
           );
           const first = await readPage(1);
           assert.equal(first.candidates.length, unpublishedPageSize);
-          assert.equal(first.hasNext, true);
-          assert.deepEqual(await readPage(2), { candidates: originalPending, hasNext: false });
+          assert.equal(first.total, unpublishedPageSize + 2);
+          assert.deepEqual(await readPage(2), { candidates: originalPending, total: first.total });
+          assert.deepEqual(await readPage(3), { candidates: [], total: first.total });
           await pool.query(
             `INSERT INTO public.editorial_signal_revisions
             (run_id,owner_id,candidate_index,revision,action) VALUES ($1,$2,2,2,'publish')`,
@@ -514,8 +523,9 @@ test(
           );
           assert.deepEqual(await readPage(2), {
             candidates: originalPending.slice(1),
-            hasNext: false,
+            total: unpublishedPageSize + 1,
           });
+          assert.deepEqual(await readPage(), { candidates: [], total: unpublishedPageSize + 1 });
         },
       );
     } finally {

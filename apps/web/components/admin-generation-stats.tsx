@@ -12,14 +12,9 @@ export function AdminGenerationStats({ stats }: { stats?: SignalGenerationStats 
           <h2 id="generation-stats-title">信号生成统计</h2>
           <p className={styles.muted}>当前管理员 · 全部未删除的生成任务</p>
         </div>
-        <div className={controls.group}>
-          <a className={controls.button} href="/admin/signal-generation/unpublished">
-            只看未发布
-          </a>
-          <a className={controls.button} href="/admin/signal-generation">
-            查看生成任务
-          </a>
-        </div>
+        <a className={controls.button} href="/admin/signal-generation#generation-tasks">
+          查看生成任务
+        </a>
       </div>
       {stats ? (
         <>
@@ -30,7 +25,14 @@ export function AdminGenerationStats({ stats }: { stats?: SignalGenerationStats 
             </div>
             <div>
               <dt>待发布（含草稿）</dt>
-              <dd>{publication?.pending ?? '待核对'}</dd>
+              <dd>
+                <a className={styles.pendingLink} href="/admin/signal-generation/unpublished">
+                  <span>{publication?.pending ?? '待核对'}</span>
+                  <span>
+                    只看未发布 <span aria-hidden="true">→</span>
+                  </span>
+                </a>
+              </dd>
             </div>
             <div>
               <dt>已发布</dt>
@@ -47,7 +49,10 @@ export function AdminGenerationStats({ stats }: { stats?: SignalGenerationStats 
           </p>
         </>
       ) : (
-        <p className={styles.muted}>生成统计暂不可用，请稍后刷新记录。</p>
+        <p className={styles.muted}>
+          生成统计暂不可用，请稍后刷新记录。{' '}
+          <a href="/admin/signal-generation/unpublished">查看未发布候选</a>
+        </p>
       )}
       <AdminPublicationTrend days={publication?.days} />
     </section>

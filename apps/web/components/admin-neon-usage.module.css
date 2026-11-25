@@ -273,6 +273,23 @@
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+.pendingLink {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.55rem;
+  color: var(--brand);
+  min-height: 24px;
+}
+.pendingLink:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+.pendingLink > span + span {
+  font-size: 0.8rem;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
 .forecastNote {
   margin-bottom: 1rem;
   color: var(--muted);

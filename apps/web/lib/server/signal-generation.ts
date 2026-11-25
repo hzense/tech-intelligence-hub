@@ -28,6 +28,7 @@ import { editorialTopicOptions } from './editorial-topics';
 import { readEditorialSignalStatuses } from '../../../../packages/database/src/editorial-signal-store.mjs';
 import { editorialPool } from './editorial-database';
 import { withGenerationPublications } from '../generation-publication';
+import { readUnpublishedCandidates } from '../signal-generation-stats';
 import { isLocalDevelopment, isLocalMockAi, isLocalRealAi } from '../local-development';
 import {
   automaticPublicationAvailable,
@@ -111,6 +112,11 @@ async function historyDtos(owner: string, runs: store.SignalGenerationDisplay[])
     ...(names.has(run.item_id) ? { source_name: names.get(run.item_id) } : {}),
   }));
 }
+export async function generationUnpublishedCount(owner: string) {
+  const { total } = await readUnpublishedCandidates(owner, generationHistoryPool, editorialPool);
+  return total;
+}
+
 export async function generationDashboard(owner: string) {
   if (!generationHistoryConfigured()) throw new GenerationError('not_configured');
   // Keep history available if accounting cannot be read; never substitute zero.
