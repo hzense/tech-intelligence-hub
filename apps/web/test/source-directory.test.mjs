@@ -42,7 +42,10 @@ test('groups registered hosts, private suffix tenants and cited-only sites witho
   assert.deepEqual(directory.rows.find((row) => row.domain === 'partner.org').registeredHosts, [
     'wire.partner.org',
   ]);
-  assert.deepEqual(directory.rows.find((row) => row.domain === 'one.github.io').registeredHosts, []);
+  assert.deepEqual(
+    directory.rows.find((row) => row.domain === 'one.github.io').registeredHosts,
+    [],
+  );
   assert.deepEqual(
     shared.registrations.map((entry) => entry.id),
     ['news', 'press'],
