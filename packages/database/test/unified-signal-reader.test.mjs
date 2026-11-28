@@ -30,6 +30,33 @@ const rows = visible.map(({ id, ...row }) => ({
 }));
 const mapped = mapUnifiedSignalRows(rows);
 
+test('source directory projections preserve the public source and topic IDs of migrated and editorial signals', async () => {
+  const projected = rows.map(({ signal_id, content }) => ({
+    signal_id,
+    title: content.title,
+    occurred_at: content.occurred_at,
+    source_urls: content.sources.map(({ url }) => url),
+    topic_ids: content.topics.map(({ id }) => id),
+  }));
+  const compact = await createUnifiedSignalReader({
+    async query(sql) {
+      return { rows: sql === unifiedPublicStatusQuery ? [{ ready: true }] : projected };
+    },
+  }).sourceDirectory();
+  const byId = new Map(compact.map((signal) => [signal.id, signal]));
+  assert.equal(byId.size, mapped.length);
+  for (const entry of mapped) {
+    const signal = toUnifiedSignal(entry);
+    assert.deepEqual(byId.get(signal.id), {
+      id: signal.id,
+      title: signal.title,
+      date: signal.occurredAt.slice(0, 10),
+      sources: signal.sources.map(({ url }) => ({ url })),
+      topicIds: signal.topics.map(({ id }) => id),
+    });
+  }
+});
+
 test('all 110 archived public contracts preserve text, event dates, sources, labels and resource links', () => {
   for (const row of fixture.sources.archivePlan.rows.filter((r) => r.projection !== null)) {
     assert.deepEqual(

@@ -24,6 +24,10 @@ export async function getUnifiedSignals() {
   await connection();
   return readUnifiedSignalsForTask();
 }
+export async function getUnifiedSourceDirectorySignals() {
+  await connection();
+  return read((reader) => reader.sourceDirectory());
+}
 export async function getUnifiedSignalById(id: string) {
   await connection();
   return read((reader) => reader.byId(id));

@@ -31,4 +31,11 @@ export function assertUnifiedSignalContent(
   options?: { historical?: boolean },
 ): UnifiedSignalContent;
 export function unifiedSignalId(value: unknown): string;
+export function assertUnifiedSignalSourceRow(value: unknown): {
+  signal_id: string;
+  title: string;
+  occurred_at: string;
+  source_urls: string[];
+  topic_ids: string[];
+};
 export function unifiedSignalReadiness(value: unknown): { ready: boolean; missing: string[] };

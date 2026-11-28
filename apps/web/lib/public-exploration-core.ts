@@ -4,6 +4,7 @@ import type { SeedEntity } from '@hzense/content';
 import { isExcludedPublicPerson } from '@hzense/ingestion/person-resource-policy';
 import type { SignalEntry, PublicSignalPerson } from './public-signal-reader-core.ts';
 import { signalPublication, toUnifiedSignal } from './unified-signal-core.ts';
+import { createTopicDomainResolver } from './topic-domain.ts';
 
 export const signalPageSize = 12;
 export type ExplorationParams = Record<string, string | string[] | undefined>;
@@ -66,24 +67,7 @@ export function parseSignalFilters(params: ExplorationParams): SignalFilters {
 }
 
 export function signalDomainIds(entry: SignalEntry, topics: readonly ExplorationTopic[]): string[] {
-  const byId = new Map(topics.map((topic) => [topic.id, topic]));
-  return [
-    ...new Set(
-      entry.topics.flatMap((id) => {
-        let topic = byId.get(id);
-        if (!topic) return [];
-        const visited = new Set<string>();
-        while (topic.parentId) {
-          if (visited.has(topic.id)) return [];
-          visited.add(topic.id);
-          const parent = byId.get(topic.parentId);
-          if (!parent) return [];
-          topic = parent;
-        }
-        return [topic.id];
-      }),
-    ),
-  ];
+  return createTopicDomainResolver(topics)(entry.topics);
 }
 
 function normalized(value: string): string {
@@ -138,6 +122,7 @@ export function selectSignals(
       .map((entity) => [entity.id, entity]),
   );
   const topicNames = new Map(topics.map((topic) => [topic.id, topic.name]));
+  const resolveDomains = filters.domain ? createTopicDomainResolver(topics) : undefined;
   const scope = signals.filter((entry) =>
     filters.archive ? !isCurrentSignal(entry) : isCurrentSignal(entry),
   );
@@ -148,7 +133,7 @@ export function selectSignals(
           const day = entry.occurred_at.slice(0, 10);
           if ((filters.from && day < filters.from) || (filters.to && day > filters.to))
             return false;
-          if (filters.domain && !signalDomainIds(entry, topics).includes(filters.domain))
+          if (resolveDomains && !resolveDomains(entry.topics).includes(filters.domain))
             return false;
           if (filters.topic && !entry.topics.includes(filters.topic)) return false;
           const unified = toUnifiedSignal(entry);

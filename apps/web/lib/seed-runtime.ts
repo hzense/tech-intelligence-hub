@@ -97,6 +97,11 @@ export async function getSeedSourceMap(): Promise<Map<string, SeedSource>> {
   return new Map((await getSeedCatalog()).sources.map((source) => [source.id, source]));
 }
 
+export async function getSourceRegistryAndTaxonomy() {
+  const { sources, taxonomy } = await getSeedCatalog();
+  return { sources, taxonomy };
+}
+
 export async function getSeedRelations(): Promise<SeedRelation[]> {
   return (await getSeedCatalog()).relations;
 }

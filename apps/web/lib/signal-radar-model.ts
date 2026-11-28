@@ -1,9 +1,6 @@
 import type { SignalEntry } from './public-signal-reader-core.ts';
-import {
-  signalDomainIds,
-  type ExplorationTopic,
-  type PublicEntitySummary,
-} from './public-exploration-core.ts';
+import type { ExplorationTopic, PublicEntitySummary } from './public-exploration-core.ts';
+import { createTopicDomainResolver } from './topic-domain.ts';
 import { signalPublication, toUnifiedSignal } from './unified-signal-core.ts';
 import { resourceMedia, resourceProfile, type ResourceMedia } from './resource-presentation.ts';
 
@@ -186,6 +183,7 @@ export function buildSignalRadar(
       signalIds: [],
     }));
   const domainMap = new Map(domains.map((domain) => [domain.id, domain]));
+  const resolveDomains = createTopicDomainResolver(topics);
   const topicMap = new Map(topics.map((topic) => [topic.id, topic]));
   // Keep the full taxonomy path: an event tagged at depth three contributes
   // once to each ancestor category, but never twice through sibling tags.
@@ -269,7 +267,7 @@ export function buildSignalRadar(
     const occurredAt = new Date(occurred).toISOString();
     if (earliestAt === null || occurredAt < earliestAt) earliestAt = occurredAt;
     if (latestAt === null || occurredAt > latestAt) latestAt = occurredAt;
-    const ids = signalDomainIds(entry, topics);
+    const ids = resolveDomains(entry.topics);
     domainsBySignal.set(entry.id, ids);
     const categoryIds = new Set<string>();
     for (const id of entry.topics) {

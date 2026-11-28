@@ -67,6 +67,16 @@ function url(value) {
   }
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password) fail();
 }
+/** Validate the public source-directory projection without loading unrelated content fields. */
+export function assertUnifiedSignalSourceRow(row) {
+  exact(row, ['signal_id', 'title', 'occurred_at', 'source_urls', 'topic_ids']);
+  unifiedSignalId(row.signal_id);
+  text(row.title);
+  date(row.occurred_at, false);
+  list(row.source_urls, url, (value) => value);
+  list(row.topic_ids, unifiedSignalId, (value) => value);
+  return row;
+}
 function participant(value) {
   exact(value, ['id', 'name', 'event_role', 'kind', 'introduction', 'source_urls']);
   if (value.id !== null) unifiedSignalId(value.id);

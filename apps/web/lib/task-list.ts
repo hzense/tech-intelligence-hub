@@ -13,14 +13,22 @@ export function filterAndSortTasks<T>(
     query: string;
     status: string;
     searchText: (item: T) => string;
-    statusValue: (item: T) => string;
+    statusValue: (item: T) => string | readonly string[];
     sortValue: (item: T) => TaskSortValue;
     direction: TaskSortDirection;
   },
 ): T[] {
   const terms = normalize(options.query).trim().split(/\s+/).filter(Boolean);
   const filtered = items.filter((item) => {
-    if (options.status !== 'all' && options.statusValue(item) !== options.status) return false;
+    if (options.status !== 'all') {
+      const statuses = options.statusValue(item);
+      if (
+        typeof statuses === 'string'
+          ? statuses !== options.status
+          : !statuses.includes(options.status)
+      )
+        return false;
+    }
     const text = normalize(options.searchText(item));
     return terms.every((term) => text.includes(term));
   });
