@@ -36,6 +36,13 @@ test('task sorting is stable and never mutates input order or task objects', () 
   assert.equal(filterAndSortTasks(rows, base)[0], rows[0]);
 });
 
+test('a record can appear in a broad status filter and a narrower one', () => {
+  const statusValue = (row) => (row.cost === 0 ? [row.status, 'free'] : row.status);
+  assert.deepEqual(ids({ status: 'free', statusValue }), ['c4']);
+  assert.deepEqual(ids({ status: 'completed', statusValue }), ['z1', 'c4']);
+  assert.deepEqual(ids({ status: 'complete', statusValue }), []);
+});
+
 test('numeric expense and natural text sorting keep unknown values last in either direction', () => {
   assert.deepEqual(ids({ sortValue: (row) => row.cost, direction: 'asc' }), [
     'c4',

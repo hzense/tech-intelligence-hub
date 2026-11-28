@@ -10,7 +10,7 @@ const sourceTypeLabels = {
   company_blog: '公司公告',
   research_lab: '研究机构',
   news_media: '新闻媒体',
-  newsletter: 'Newsletter',
+  newsletter: '行业通讯',
   github: 'GitHub',
   social: '社交媒体',
   regulator: '监管机构',

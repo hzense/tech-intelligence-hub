@@ -5,11 +5,8 @@ import { withWorkflow } from 'workflow/next';
 
 const webRoot = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(webRoot, '../..');
-const contentTrace = [
-  '../../content/**/*',
-  '../../data/seed/*.yaml',
-  '../../data/taxonomy/taxonomy.yaml',
-];
+const seedTrace = ['../../data/seed/*.yaml', '../../data/taxonomy/taxonomy.yaml'];
+const contentTrace = ['../../content/**/*', ...seedTrace];
 const securityHeaders = [
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
@@ -54,6 +51,7 @@ export const nextConfig: NextConfig = {
     ],
     '/api/admin/automation': ['./.automation-worker/worker.cjs', ...contentTrace],
     '/admin/sources': contentTrace,
+    '/admin/source-registry': seedTrace,
     '/': contentTrace,
     '/insights': contentTrace,
     '/insights/[id]': contentTrace,

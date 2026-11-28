@@ -43,6 +43,9 @@ export default async function AdminHomePage() {
           <Link className={styles.backLink} href="/admin/sources">
             自动采集配置
           </Link>
+          <Link className={styles.backLink} href="/admin/source-registry" prefetch={false}>
+            信源
+          </Link>
           <Link className={styles.backLink} href="/admin/topics">
             专题洞察任务
           </Link>

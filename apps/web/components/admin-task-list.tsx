@@ -27,7 +27,7 @@ export function useTaskList<T>({
 }: {
   items: readonly T[];
   searchText: (item: T) => string;
-  statusValue: (item: T) => string;
+  statusValue: (item: T) => string | readonly string[];
   sortValues: Record<string, (item: T) => TaskSortValue>;
   initialSort?: string;
   initialDirection?: TaskSortDirection;
@@ -72,12 +72,14 @@ export function TaskListToolbar({
   statuses,
   shown,
   total,
+  countLabel,
 }: {
   label: string;
   list: ListControls;
   statuses: readonly { value: string; label: string }[];
   shown: number;
   total: number;
+  countLabel?: string;
 }) {
   const id = useId();
   return (
@@ -112,7 +114,7 @@ export function TaskListToolbar({
         重置筛选与排序
       </button>
       <span className={styles.count} role="status" aria-live="polite" aria-atomic="true">
-        显示 {shown} / {total} 条已加载记录
+        {countLabel ?? `显示 ${shown} / ${total} 条已加载记录`}
       </span>
     </div>
   );

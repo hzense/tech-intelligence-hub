@@ -527,6 +527,16 @@ test(
         const html = await page.text();
         assert.match(html, /href="\/admin\/signal-generation"/);
         assert.match(html, /href="\/admin\/sources"/);
+        assert.match(html, /href="\/admin\/source-registry"/);
+        const anonymousDirectory = await request('/admin/source-registry');
+        assert.equal(anonymousDirectory.status, 307);
+        assert.equal(
+          new URL(anonymousDirectory.headers.get('location'), origin).pathname,
+          '/admin/login',
+        );
+        const directory = await request('/admin/source-registry', { headers: { cookie } });
+        assert.equal(directory.status, 200);
+        assert.match(await directory.text(), /semianalysis\.com/);
         assert.doesNotMatch(html, /受限信号发布|发布服务尚未配置|publication-title/);
         assert.doesNotMatch(html, /信号只读工作台|href="\/admin\/signals(?:["/?])/);
         const response = await request('/api/admin/signals/withdraw', {

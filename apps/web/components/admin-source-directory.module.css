@@ -1,0 +1,177 @@
+.main {
+  padding-block: 1.5rem 3rem;
+}
+
+.title {
+  margin: 1.75rem 0 0.4rem;
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+.metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 3rem;
+  margin: 1.25rem 0 0.5rem;
+  padding: 1rem 0;
+  border-block: 1px solid var(--line);
+}
+
+.metrics dt,
+.coverage,
+.muted,
+.references time {
+  color: var(--muted);
+}
+
+.metrics dt,
+.references time {
+  font-size: 0.8rem;
+}
+
+.metrics dd {
+  margin: 0.25rem 0 0;
+  font-size: 1.45rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.coverage {
+  margin: 0.75rem 0 1.25rem;
+  font-size: 0.875rem;
+}
+
+.domainPicker {
+  min-width: 0;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  border: 0;
+}
+
+.domainPicker legend {
+  padding: 0;
+  font-weight: 600;
+}
+
+.domainPicker p {
+  margin: 0.35rem 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.domainOptions,
+.domainTags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.domainOptions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.domainOptions button span {
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+}
+
+.domainOptions button:hover,
+.domainOptions button[aria-pressed='true'] {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.domainOptions button[aria-pressed='true'] {
+  background: var(--surface-soft);
+  box-shadow: inset 0 0 0 1px var(--brand);
+  font-weight: 650;
+}
+
+.domainOptions button:focus-visible {
+  outline: 3px solid var(--brand-bright);
+  outline-offset: 2px;
+}
+
+.domainTags {
+  min-width: 5rem;
+  max-width: 18rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.domainTags li {
+  padding: 0.12rem 0.35rem;
+  border-radius: 0.3rem;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+@media (pointer: coarse) {
+  .domainOptions button {
+    min-height: 44px;
+  }
+}
+
+.number {
+  font-variant-numeric: tabular-nums;
+}
+
+.expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+
+.expand:hover,
+.references a:hover {
+  text-decoration: underline;
+}
+
+.expand:focus-visible,
+.references a:focus-visible {
+  outline: 3px solid var(--brand-bright);
+  outline-offset: 2px;
+}
+
+.references {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+.references a {
+  color: var(--brand);
+  overflow-wrap: anywhere;
+}
+
+.original {
+  display: block;
+  width: fit-content;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+}

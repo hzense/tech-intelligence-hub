@@ -9,6 +9,10 @@ test('traces repository content required by deployed routes', () => {
 
   const includes = nextConfig.outputFileTracingIncludes;
   assert.ok(includes);
+  assert.deepEqual(includes['/admin/source-registry'], [
+    '../../data/seed/*.yaml',
+    '../../data/taxonomy/taxonomy.yaml',
+  ]);
   for (const route of [
     '/',
     '/insights',

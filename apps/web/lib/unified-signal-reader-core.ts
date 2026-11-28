@@ -1,4 +1,8 @@
-import { assertUnifiedSignalContent } from '../../../packages/database/src/unified-signal-contract.mjs';
+import {
+  assertUnifiedSignalContent,
+  assertUnifiedSignalSourceRow,
+} from '../../../packages/database/src/unified-signal-contract.mjs';
+import type { SourceDirectorySignal } from './source-directory';
 import {
   PublicSignalReaderError,
   publicSignalMaximumEntries,
@@ -18,6 +22,38 @@ export const unifiedPublicListQuery = `${unifiedPublicProjection} ORDER BY u.sig
 export const unifiedPublicByIdQuery = `${unifiedPublicProjection} WHERE u.signal_id = $1 LIMIT 2`;
 export const unifiedPublicProbeQuery = `${unifiedPublicProjection} LIMIT 1`;
 export const unifiedPublicStatusQuery = 'SELECT ready FROM public.unified_public_status';
+const unifiedSourceDirectoryQuery = `SELECT u.signal_id, u.content->>'title' AS title,
+  u.content->>'occurred_at' AS occurred_at,
+  CASE WHEN jsonb_typeof(u.content->'sources') = 'array' THEN
+    ARRAY(SELECT item->>'url' FROM jsonb_array_elements(u.content->'sources') AS src(item))
+  END AS source_urls,
+  CASE WHEN jsonb_typeof(u.content->'topics') = 'array' THEN
+    ARRAY(SELECT item->>'id' FROM jsonb_array_elements(u.content->'topics') AS topic(item))
+  END AS topic_ids
+FROM public.unified_public_signals u ORDER BY u.signal_id COLLATE "C" LIMIT $1`;
+
+function mapSourceDirectoryRows(rows: unknown[]): SourceDirectorySignal[] {
+  if (rows.length > publicSignalMaximumEntries) throw new PublicSignalReaderError();
+  const seen = new Set<string>();
+  return rows.map((value) => {
+    const {
+      signal_id: id,
+      title,
+      occurred_at,
+      source_urls,
+      topic_ids,
+    } = assertUnifiedSignalSourceRow(value);
+    if (seen.has(id)) throw new PublicSignalReaderError();
+    seen.add(id);
+    return {
+      id,
+      title,
+      date: occurred_at.slice(0, 10),
+      sources: source_urls.map((url) => ({ url })),
+      topicIds: topic_ids,
+    };
+  });
+}
 
 export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
   if (!Array.isArray(rows) || rows.length > publicSignalMaximumEntries)
@@ -134,30 +170,37 @@ export function mapUnifiedSignalRows(rows: unknown[]): SignalEntry[] {
     .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at) || a.id.localeCompare(b.id));
 }
 export function createUnifiedSignalReader(client: PublicSignalQueryClient) {
-  async function read(sql: string, parameters: unknown[]) {
+  async function read<T>(sql: string, parameters: unknown[], mapRows: (rows: unknown[]) => T) {
     try {
       const status = (await client.query(unifiedPublicStatusQuery, [])).rows;
       if (status.length !== 1 || (status[0] as { ready?: unknown })?.ready !== true)
         throw new PublicSignalReaderError();
-      return mapUnifiedSignalRows((await client.query(sql, parameters)).rows);
+      return mapRows((await client.query(sql, parameters)).rows);
     } catch {
       throw new PublicSignalReaderError();
     }
   }
   return {
     async list() {
-      return read(unifiedPublicListQuery, [publicSignalMaximumEntries + 1]);
+      return read(unifiedPublicListQuery, [publicSignalMaximumEntries + 1], mapUnifiedSignalRows);
+    },
+    async sourceDirectory() {
+      return read(
+        unifiedSourceDirectoryQuery,
+        [publicSignalMaximumEntries + 1],
+        mapSourceDirectoryRows,
+      );
     },
     async byId(id: string): Promise<SignalEntry | undefined> {
       if (typeof id !== 'string' || id.length > 200 || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(id))
         return undefined;
-      const rows = await read(unifiedPublicByIdQuery, [id]);
+      const rows = await read(unifiedPublicByIdQuery, [id], mapUnifiedSignalRows);
       if (rows.length > 1 || (rows.length === 1 && rows[0]!.id !== id))
         throw new PublicSignalReaderError();
       return rows[0];
     },
     async probe(): Promise<void> {
-      const rows = await read(unifiedPublicProbeQuery, []);
+      const rows = await read(unifiedPublicProbeQuery, [], mapUnifiedSignalRows);
       if (rows.length > 1) throw new PublicSignalReaderError();
     },
   };
